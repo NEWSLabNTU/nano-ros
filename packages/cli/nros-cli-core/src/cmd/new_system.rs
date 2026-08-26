@@ -356,7 +356,10 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
     );
 
     let model = SystemToml {
+        image: Default::default(),
+        image_defaults: None,
         system: SystemHeader {
+            default_images: Vec::new(),
             name: system_name,
             rmw: "zenoh".to_string(),
             domain_id: 0,

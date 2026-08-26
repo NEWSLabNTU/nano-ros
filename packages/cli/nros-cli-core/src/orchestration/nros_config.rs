@@ -552,6 +552,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
     let _ = first_target_name; // recorded via the deploy map below.
 
     let system_header = SystemHeader {
+        default_images: Vec::new(),
         name: comp.name.clone(),
         rmw: first_deploy
             .rmw
@@ -650,6 +651,8 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         system: system_header,
         components,
         deploy,
+        image: Default::default(),
+        image_defaults: None,
         domains: Vec::new(),
         bridges: Vec::new(),
         models: Vec::new(),

@@ -12,6 +12,8 @@ pub mod cargo_metadata_schema;
 pub mod cmake_preset;
 pub mod config;
 pub mod facade;
+/// phase-383 W1 — `[image.<id>]`, the buildable unit (RFC-0065 D6).
+pub mod image;
 pub mod launch_synth;
 pub mod manifest;
 // W5.13 follow-up — relocated to nros-orchestration-ir (shared with the macro);

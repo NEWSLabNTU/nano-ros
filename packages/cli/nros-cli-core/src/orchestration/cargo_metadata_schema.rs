@@ -544,8 +544,36 @@ pub struct SystemToml {
     pub components: Vec<SystemComponentEntry>,
     /// `[deploy.<target>]` — keyed by target name (e.g. `native`,
     /// `qemu-mps2-an385`, `flash-stm32f4-disco`).
+    ///
+    /// **PLACEMENT ONLY** since phase-383 W1 (RFC-0065 D6). This is upstream's
+    /// [`DeployTarget`] (`ros_launch_manifest_model`'s `DeployBlock`) and it
+    /// answers "which nodes run where". What to COMPILE lives in [`Self::image`].
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub deploy: BTreeMap<String, DeployTarget>,
+    /// `[image.<id>]` — the buildable images (RFC-0065 D6, phase-383 W1).
+    ///
+    /// A NEW nano-ros-owned table, not a rename of [`Self::deploy`]: that one
+    /// is upstream's `deny_unknown_fields` type, and the two are independent
+    /// (an embedded image is no placement; a machine running stock ROS 2 nodes
+    /// is no image). See [`super::image`] for the full argument.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub image: BTreeMap<String, ImageBlock>,
+    /// `[image_defaults]` — keys shared by every `[image.<id>]` (RFC-0065 D5.1).
+    ///
+    /// **Why a separate table rather than a bare `[image]` header.** TOML would
+    /// happily accept `[image]` carrying both scalars and `[image.<id>]`
+    /// sub-tables, but serde cannot model that alongside `deny_unknown_fields`
+    /// — `flatten` and `deny_unknown_fields` do not compose — and dropping the
+    /// deny is not on the table: a silently ignored `board` key is a build for
+    /// the wrong target that reports success. PlatformIO avoids the same
+    /// collision with `[env]` / `[env:NAME]`, where `:` keeps the namespaces
+    /// apart; `_defaults` is the same trick in TOML's grammar.
+    ///
+    /// Note this is only for keys the system header does not already default
+    /// (`profile`, `variant`, `conf`, `panic`). `rmw` and `ros_edition` fall
+    /// back to [`SystemHeader`] as they always have.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_defaults: Option<ImageBlock>,
     #[serde(default, rename = "domain", skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]
@@ -968,6 +996,17 @@ pub struct SystemHeader {
     /// the first deploy entry in declaration / sorted order. Phase 212.J.2.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_target: Option<String>,
+    /// `default_images` — which `[image.<id>]` a bare `nros build` builds
+    /// (RFC-0065 D1, phase-383 W1.c).
+    ///
+    /// Absent, and with more than one image declared, `nros build` LISTS them
+    /// and fails rather than guessing. PlatformIO's `default_envs` is the
+    /// model; the divergence is deliberate — `pio run` builds every
+    /// environment when none is named, and `examples/workspaces/rust` declares
+    /// eight images across three cross toolchains, so an accidental bare
+    /// invocation would be an expensive way to learn the default.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub default_images: Vec<String>,
     /// Phase 261 W4 — generic capability axes by declared name, e.g.
     /// `features = ["safety", "param_services"]`. Each entry must resolve via
     /// `capability_resolver::capability(name)` (unknown ⇒ hard error, typo guard);
@@ -1052,6 +1091,8 @@ pub struct SystemComponentEntry {
 /// One schema now; `deny_unknown_fields` lives on it, so the next divergence
 /// is a parse error rather than a dropped key.
 pub use ros_launch_manifest_model::system_config::DeployBlock as DeployTarget;
+
+pub use super::image::ImageBlock;
 
 /// `[[domain]]` row.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

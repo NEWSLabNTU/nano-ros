@@ -1,0 +1,402 @@
+//! `[image.<id>]` — the buildable unit (RFC-0065 D6, phase-383 W1).
+//!
+//! ## Why this is a NEW table and not a rename of `[deploy.*]`
+//!
+//! `[deploy.*]` is **not ours**. It is
+//! [`ros_launch_manifest_model::system_config::DeployBlock`], an upstream
+//! `#[serde(deny_unknown_fields)]` type, so a field added there has to land in
+//! another repository first — the wall RFC-0078 hit and recorded in
+//! [`super::cargo_metadata_schema`].
+//!
+//! More importantly the two answer different questions, and upstream has
+//! already paid for the merge. Its placement resolver filters our half out:
+//!
+//! ```ignore
+//! let partitioning = self.deploy.iter()
+//!     .filter(|(_, b)| b.applies_to_launch(launch_file))
+//!     .filter(|(_, b)| b.kind.as_deref() != Some("embedded"));   // excluded
+//! ```
+//!
+//! …commenting that this is "a conflated axis", because "with SEVERAL
+//! [embedded blocks], the fallback asks which of N whole-system board builds
+//! runs a given node, and the answer is 'all of them' — a node→target map
+//! cannot say that".
+//!
+//! The relation is N:M, and all three cells occur in ONE `system.toml`
+//! (`examples/workspaces/rust/src/demo_bringup/`):
+//!
+//! | case | example |
+//! | --- | --- |
+//! | placement, no image | `[deploy.robot1]` / `[deploy.robot2]` — no entry names either |
+//! | image, no placement | every `kind = "embedded"` block |
+//! | both | `[deploy.native]` — a machine that is also a host build |
+//!
+//! So: **`[deploy.*]` answers "which nodes run where"; `[image.*]` answers
+//! "what do I compile, for which board".** An image needs no deploy block and a
+//! deploy block needs no image.
+//!
+//! ## What an image is
+//!
+//! One image is one `(launch, args, board)` bake. Everything else the builder
+//! needs is derived from those three — RFC-0065 D4.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+/// `[image]` / `[image.<id>]` — a buildable image.
+///
+/// `deny_unknown_fields` for upstream's stated reason: a mistyped key must be
+/// an error rather than a silent drop. A silently ignored `board` key is a
+/// build for the wrong target that reports success.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImageBlock {
+    /// nano-ros board id — resolved through `packages/boards/board-support.toml`
+    /// (RFC-0065 D9). NEVER a framework's own board string: the registry
+    /// carries `framework_board` for platforms that have one, so
+    /// `native_sim/native/64` is a resolution RESULT, not something authored
+    /// here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board: Option<String>,
+
+    /// Launch file this image bakes, relative to the bringup pkg. Absent ⇒ the
+    /// system's `default_launch`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch: Option<String>,
+
+    /// Launch arguments bound at resolve time — `{ host = "robot1" }`.
+    ///
+    /// This is how an image selects a MACHINE: `native_entry_robot1` differs
+    /// from `native_entry_robot2` only here. Placement itself stays in
+    /// `[deploy.*]`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub args: BTreeMap<String, String>,
+
+    /// Panic policy, forwarded verbatim to `nros::main!` — the EXISTING
+    /// RFC-0077 enum (`platform` | `halt` | `own`), never a crate name.
+    /// `own` means something else in the image carries the `#[panic_handler]`;
+    /// a support package (RFC-0065 D12) is that slot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panic: Option<String>,
+
+    /// RMW backend for this image. Absent ⇒ the system header's `rmw`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rmw: Option<String>,
+
+    /// ROS edition. Absent ⇒ the system header's `ros_edition`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ros_edition: Option<String>,
+
+    /// Cargo/CMake build profile name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+
+    /// Framework build-variant name — mapped onto Zephyr's own
+    /// `prj_<buildtype>.conf` → `CONF_FILE_BUILD_TYPE` mechanism rather than a
+    /// parallel axis (phase-383 W5.c). `autoware-safety-island`'s
+    /// `prj_actuation.conf` is already this shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+
+    /// Extra framework config fragments for THIS image, in order.
+    ///
+    /// Per-image, not per-board: `nano-ros-rt-eval` builds one app on one board
+    /// twice — with `prj-edf.conf` and without — and `autoware-safety-island`
+    /// carries `tracing.conf` / `tracing_stats.conf`, named by concern
+    /// (phase-383 F3).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conf: Vec<String>,
+
+    /// Capability axes for this image, over the system's own list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
+}
+
+impl ImageBlock {
+    /// Overlay `self` (an `[image.<id>]`) onto `base` (the `[image]` table),
+    /// per-field, with the specific block winning.
+    ///
+    /// RFC-0065 D5.1: without a base table an eight-image workspace repeats its
+    /// RMW and edition eight times, and eight copies of one fact is how they
+    /// start disagreeing.
+    #[must_use]
+    pub fn with_base(&self, base: &ImageBlock) -> ImageBlock {
+        fn pick(specific: &Option<String>, base: &Option<String>) -> Option<String> {
+            specific.clone().or_else(|| base.clone())
+        }
+        ImageBlock {
+            board: pick(&self.board, &base.board),
+            launch: pick(&self.launch, &base.launch),
+            // Maps MERGE (base first, so the specific block overwrites a key it
+            // also sets); scalars replace. A base `args` is a default binding
+            // set, not an all-or-nothing choice.
+            args: {
+                let mut merged = base.args.clone();
+                merged.extend(self.args.clone());
+                merged
+            },
+            panic: pick(&self.panic, &base.panic),
+            rmw: pick(&self.rmw, &base.rmw),
+            ros_edition: pick(&self.ros_edition, &base.ros_edition),
+            profile: pick(&self.profile, &base.profile),
+            variant: pick(&self.variant, &base.variant),
+            // Lists CONCATENATE base-then-specific: conf fragments are ordered
+            // and later ones override earlier, which is exactly Zephyr's
+            // CONF_FILE semantics. A specific block extends the base set rather
+            // than replacing it.
+            conf: base.conf.iter().chain(self.conf.iter()).cloned().collect(),
+            features: base
+                .features
+                .iter()
+                .chain(self.features.iter())
+                .cloned()
+                .collect(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(src: &str) -> ImageBlock {
+        toml::from_str(src).expect("parses")
+    }
+
+    #[test]
+    fn parses_a_minimal_embedded_image() {
+        let b = parse(r#"board = "mps2-an385-freertos""#);
+        assert_eq!(b.board.as_deref(), Some("mps2-an385-freertos"));
+        assert!(b.launch.is_none());
+        assert!(b.conf.is_empty());
+    }
+
+    #[test]
+    fn parses_launch_args_as_a_map() {
+        let b = parse(
+            r#"
+            board = "linux-x86_64"
+            launch = "multihost.launch.xml"
+            args = { host = "robot1" }
+            "#,
+        );
+        assert_eq!(b.args.get("host").map(String::as_str), Some("robot1"));
+    }
+
+    #[test]
+    fn parses_the_per_image_conf_list_in_order() {
+        // phase-383 F3 — rt-eval builds one app on one board twice, differing
+        // only in this list.
+        let b = parse(
+            r#"
+            board = "zephyr-native-sim"
+            conf = ["prj-zenoh.conf", "prj-edf.conf"]
+            "#,
+        );
+        assert_eq!(b.conf, vec!["prj-zenoh.conf", "prj-edf.conf"]);
+    }
+
+    #[test]
+    fn a_mistyped_key_is_an_error_not_a_silent_drop() {
+        // Upstream's reasoning, applied on our side: a silently ignored `board`
+        // is a build for the wrong target that reports success.
+        let e = toml::from_str::<ImageBlock>(r#"bord = "mps2-an385-freertos""#)
+            .expect_err("unknown key must be rejected");
+        assert!(
+            e.to_string().contains("bord") || e.to_string().contains("unknown field"),
+            "error should name the offending key: {e}"
+        );
+    }
+
+    #[test]
+    fn base_supplies_what_the_specific_block_omits() {
+        let base = parse(r#"rmw = "zenoh""#);
+        let specific = parse(r#"board = "mps2-an385-freertos""#);
+        let merged = specific.with_base(&base);
+        assert_eq!(merged.rmw.as_deref(), Some("zenoh"));
+        assert_eq!(merged.board.as_deref(), Some("mps2-an385-freertos"));
+    }
+
+    #[test]
+    fn specific_block_wins_over_base_for_scalars() {
+        let base = parse(r#"rmw = "zenoh""#);
+        let specific = parse(r#"rmw = "cyclonedds""#);
+        assert_eq!(specific.with_base(&base).rmw.as_deref(), Some("cyclonedds"));
+    }
+
+    #[test]
+    fn conf_lists_concatenate_base_first() {
+        // Order is load-bearing: later Zephyr fragments override earlier ones,
+        // so a specific block EXTENDS the base set rather than replacing it.
+        let base = parse(r#"conf = ["prj-common.conf"]"#);
+        let specific = parse(r#"conf = ["prj-edf.conf"]"#);
+        assert_eq!(
+            specific.with_base(&base).conf,
+            vec!["prj-common.conf", "prj-edf.conf"]
+        );
+    }
+
+    #[test]
+    fn args_merge_with_the_specific_key_winning() {
+        let base = parse(r#"args = { host = "robot1", mode = "sim" }"#);
+        let specific = parse(r#"args = { host = "robot2" }"#);
+        let merged = specific.with_base(&base);
+        assert_eq!(merged.args.get("host").map(String::as_str), Some("robot2"));
+        assert_eq!(merged.args.get("mode").map(String::as_str), Some("sim"));
+    }
+}
+
+/// How a bare `nros build` resolved its image set (phase-383 W1.c).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageSelection {
+    /// Exactly these images, from an explicit argument or `default_images`.
+    Images(Vec<String>),
+    /// Nothing to build — the workspace declares no images at all.
+    None,
+    /// Several images and no declared default. `nros build` must LIST these and
+    /// fail, never guess (RFC-0065 D1).
+    Ambiguous(Vec<String>),
+}
+
+/// Resolve which images a bare `nros build` should build.
+///
+/// Order: an explicit `default_images` wins; a single declared image is
+/// unambiguous; anything else is [`ImageSelection::Ambiguous`].
+///
+/// A `default_images` entry naming no declared image is an ERROR rather than a
+/// silent skip — the same reasoning as `deny_unknown_fields` on [`ImageBlock`].
+pub fn select_default_images(
+    declared: &BTreeMap<String, ImageBlock>,
+    default_images: &[String],
+) -> Result<ImageSelection, String> {
+    if !default_images.is_empty() {
+        let unknown: Vec<&str> = default_images
+            .iter()
+            .filter(|n| !declared.contains_key(*n))
+            .map(String::as_str)
+            .collect();
+        if !unknown.is_empty() {
+            let mut known: Vec<&str> = declared.keys().map(String::as_str).collect();
+            known.sort_unstable();
+            return Err(format!(
+                "`default_images` names {} that no `[image.*]` declares: {}. Declared: {}",
+                if unknown.len() == 1 {
+                    "an image"
+                } else {
+                    "images"
+                },
+                unknown.join(", "),
+                if known.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    known.join(", ")
+                }
+            ));
+        }
+        return Ok(ImageSelection::Images(default_images.to_vec()));
+    }
+    let mut names: Vec<String> = declared.keys().cloned().collect();
+    names.sort();
+    match names.len() {
+        0 => Ok(ImageSelection::None),
+        1 => Ok(ImageSelection::Images(names)),
+        _ => Ok(ImageSelection::Ambiguous(names)),
+    }
+}
+
+/// Panic policies `nros::main!` accepts — the EXISTING RFC-0077 enum.
+///
+/// Listed here so `[image.<id>] panic = …` is validated at parse time rather
+/// than at macro-expansion time, where the error names a generated file the
+/// user never wrote. NOT a new vocabulary: `"semihosting"` is a crate, and the
+/// policy that admits it is `own`.
+pub const PANIC_POLICIES: &[&str] = &["platform", "halt", "own"];
+
+/// Validate an image's `panic` against [`PANIC_POLICIES`].
+pub fn validate_panic(policy: Option<&str>) -> Result<(), String> {
+    match policy {
+        None => Ok(()),
+        Some(p) if PANIC_POLICIES.contains(&p) => Ok(()),
+        Some(other) => Err(format!(
+            "`panic = \"{other}\"` is not a policy (expected one of: {}). \
+             A crate such as `panic-semihosting` or `esp-backtrace` is selected \
+             UNDER the `own` policy, not instead of one.",
+            PANIC_POLICIES.join(" | ")
+        )),
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    fn images(names: &[&str]) -> BTreeMap<String, ImageBlock> {
+        names
+            .iter()
+            .map(|n| ((*n).to_string(), ImageBlock::default()))
+            .collect()
+    }
+
+    #[test]
+    fn a_single_image_is_unambiguous() {
+        let got = select_default_images(&images(&["native"]), &[]).expect("ok");
+        assert_eq!(got, ImageSelection::Images(vec!["native".to_string()]));
+    }
+
+    #[test]
+    fn several_images_without_a_default_are_ambiguous() {
+        // RFC-0065 D1 — list and fail, never guess. `examples/workspaces/rust`
+        // declares eight images across three cross toolchains.
+        let got =
+            select_default_images(&images(&["native", "freertos", "zephyr"]), &[]).expect("ok");
+        assert_eq!(
+            got,
+            ImageSelection::Ambiguous(vec![
+                "freertos".to_string(),
+                "native".to_string(),
+                "zephyr".to_string()
+            ])
+        );
+    }
+
+    #[test]
+    fn default_images_disambiguates() {
+        let got = select_default_images(&images(&["native", "freertos"]), &["native".to_string()])
+            .expect("ok");
+        assert_eq!(got, ImageSelection::Images(vec!["native".to_string()]));
+    }
+
+    #[test]
+    fn no_images_declared_selects_nothing() {
+        assert_eq!(
+            select_default_images(&images(&[]), &[]).expect("ok"),
+            ImageSelection::None
+        );
+    }
+
+    #[test]
+    fn a_default_naming_no_declared_image_is_an_error() {
+        let e = select_default_images(&images(&["native"]), &["nativ".to_string()])
+            .expect_err("must reject");
+        assert!(e.contains("nativ"), "error names the typo: {e}");
+        assert!(e.contains("native"), "error lists what IS declared: {e}");
+    }
+
+    #[test]
+    fn panic_accepts_only_the_rfc_0077_policies() {
+        for p in PANIC_POLICIES {
+            validate_panic(Some(p)).expect("policy accepted");
+        }
+        validate_panic(None).expect("absent is fine");
+    }
+
+    #[test]
+    fn panic_rejects_a_crate_name_and_says_why() {
+        let e = validate_panic(Some("semihosting")).expect_err("must reject");
+        assert!(
+            e.contains("own"),
+            "error points at the policy that admits it: {e}"
+        );
+    }
+}
