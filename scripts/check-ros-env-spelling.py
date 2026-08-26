@@ -143,6 +143,25 @@ ALLOWLIST = {
     "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_srv_e2e.sh":
         "shell e2e for the cyclone lane; exports the one RMW the lane names",
 
+    # --- container runtime: the IMAGE pins the distro -------------------------
+    "docker/can-demo/entrypoint.sh":
+        "runs INSIDE the can-demo container, whose Dockerfile is `FROM "
+        "ros:humble-ros-base` — the distro literal is the image's own pin, not "
+        "a test's choice, exactly as for the CI job bootstraps above. It also "
+        "exports the one RMW the demo is about (rmw_zenoh_cpp), and `RosEnv` is "
+        "unreachable: this is the container's PID 1, with no cargo in the image",
+
+    # --- build script whose match is PRINTED ADVICE, not execution ------------
+    "scripts/can/build-zenohc-can.sh":
+        "hand-run build script; the match is inside a `cat <<EOF` telling the "
+        "operator what to source afterwards, so nothing is sourced by the "
+        "script itself. Unlike scripts/debug/capture-ros2-keyexpr.sh below, the "
+        "advice does NOT hardcode a distro — it prints "
+        "`${ROS_DISTRO:-humble}`, so it stays correct on a jazzy host. Kept as "
+        "an entry rather than exempting heredocs structurally, for the same "
+        "reason echo is not exempted: a bypass hidden in a heredoc would be "
+        "invisible",
+
     # --- one-off developer / provisioning scripts, not test machinery ---------
     "scripts/debug/capture-ros2-keyexpr.sh":
         "hand-run debug script; the match is an `echo` telling the operator "

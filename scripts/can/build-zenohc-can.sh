@@ -17,7 +17,7 @@
 #
 # The output is a drop-in replacement for the vendored library:
 #
-#   source /opt/ros/humble/setup.bash
+#   source /opt/ros/$ROS_DISTRO/setup.bash
 #   export LD_LIBRARY_PATH=<out>:$LD_LIBRARY_PATH
 #
 # `librmw_zenoh_cpp.so` and `rmw_zenohd` name libzenohc.so as a plain DT_NEEDED
@@ -161,7 +161,7 @@ cat <<EOF
 
 To use it with the stock rmw_zenoh_cpp, with no ROS rebuild:
 
-  source /opt/ros/humble/setup.bash
+  source /opt/ros/${ROS_DISTRO:-humble}/setup.bash
   export LD_LIBRARY_PATH=$OUT_DIR:\$LD_LIBRARY_PATH
   ldd \$(ros2 pkg prefix rmw_zenoh_cpp)/lib/rmw_zenoh_cpp/rmw_zenohd | grep zenohc
 

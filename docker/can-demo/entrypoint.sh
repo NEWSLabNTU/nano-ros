@@ -42,7 +42,12 @@ ip -br link show "$DEV" | sed 's/^/    /'
 
 rule
 say "2. rmw_zenoh_cpp is using our libzenohc.so, not the vendored one"
-RESOLVED="$(ldd /opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd | awk '/libzenohc/{print $3}')"
+# Located through ament, not a literal prefix (issues 0653/0654): the shell here
+# cannot reach `nros_zenohd_bin`, but `ros2 pkg prefix` is the same question
+# asked path-independently, and it is the idiom scripts/can/build-zenohc-can.sh
+# already prints as the operator's instruction.
+ZENOHD="$(ros2 pkg prefix rmw_zenoh_cpp)/lib/rmw_zenoh_cpp/rmw_zenohd"
+RESOLVED="$(ldd "$ZENOHD" | awk '/libzenohc/{print $3}')"
 echo "    $RESOLVED"
 case "$RESOLVED" in
     /opt/can-demo/lib/*) : ;;
