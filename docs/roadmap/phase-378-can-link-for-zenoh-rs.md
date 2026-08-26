@@ -717,10 +717,19 @@ been diagnosed to a specific line; untested ones have not been attempted.
 
 **Delivery hygiene:**
 
-* `feat/can-link` (the 1.10.0 line for upstream) does **not** carry W4-W7; only
-  `feat/can-link-1.8` is current.
-* The zenoh-c patch and the built `libzenohc.so` exist only in a scratchpad.
+* ~~`feat/can-link` (the 1.10.0 line for upstream) does not carry W4-W7.~~
+  **Ported.** Both branches carry the same six commits; the 1.10.0 line passes
+  53 unit tests and all 5 `vcan0` end-to-end tests. The cherry-pick also
+  surfaced a stale `Cargo.lock` pinning `zenoh-link-can` at the wrong version,
+  now folded into the commit it belongs to.
+* ~~The zenoh-c patch and the built `libzenohc.so` exist only in a scratchpad.~~
+  **`scripts/can/build-zenohc-can.sh`**, with a README covering the version and
+  feature-set matching rules and the opaque-types trap. Verified by building
+  through it and running two ROS 2 nodes over CAN against its output.
 * No upstream PR has been opened.
+* The ASI image build does not yet invoke any of this, and the requirement that
+  zenoh-pico be built with `BATCH_MULTICAST_SIZE=63` lives only in
+  documentation.
 
 ## 5. Risks
 
