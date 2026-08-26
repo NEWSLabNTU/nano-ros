@@ -698,13 +698,16 @@ re-acquire interval, not "drift handling layered later". See `0758-*`. (2026-08-
 
 
 
-**#0820** (rmw/testing, open 2026-08-27) — `c_riscv_nuttx_talker_delivers_cross_process` fails on tier 2: the
-native listener starts and subscribes but receives NONE of the riscv-nuttx C talker's /chatter (0 of 3 in 90 s).
-Reproduced solo twice with `--retries 0` on an idle host, so not the usual in-sweep QEMU flake — its sibling
-`test_qemu_rtic_service_e2e` failed in the same sweep and passes solo. The fixture is NOT stale (rebuilt by the
-lane=tier2 build after the last source edit), and the panic is at the receive-count wait, not the readiness wait.
-NOT established: whether it also fails on origin/main — the revert-and-rebuild control was not run — and where
-delivery stops, since the guest console is buffered and not persisted to test-logs/. See `0820-*`. (2026-08-27)
+**#0820** (cmake/testing, open 2026-08-27) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY: the tier-2
+fixture build left a riscv C talker publishing on ROS domain 1, which its own sources do not produce. Clean
+`rm -rf build-zenoh` + rebuild → publishes on domain 0 and the test PASSES in 3.5 s (it timed out at 90 s
+before). That is issue 0475's symptom AFTER 0475 was resolved, so either phase-209's `LINK_DEPENDS` fix does
+not reach this leaf / the `just nuttx build-riscv-c` path, or tier-2 reached the binary another way — that is
+the open question. NOTE the freshness probe cannot see this class: a 0475 museum binary is NEWER than its
+sources while holding older archive code, so an mtime check is structurally blind to it, and this issue's
+first revision wrongly cited mtime as proof it was "not stale" — every conclusion built on that (a domain
+mismatch, an issue-0801 comparison, a suspected `support_domain != 0` sentinel defect) was wrong with it.
+See `0820-*`. (2026-08-27)
 
 **#0819** (rmw, open 2026-08-26) — XRCE payloads at/above the 4096 transport MTU are DELIVERED CORRUPTED
 rather than refused. With `NROS_XRCE_BUFFER_SIZE` raised so the receive ring is not the constraint,

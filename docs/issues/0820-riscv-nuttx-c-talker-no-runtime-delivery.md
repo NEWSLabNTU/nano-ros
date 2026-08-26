@@ -1,12 +1,83 @@
 ---
 id: 820
-title: "`c_riscv_nuttx_talker_delivers_cross_process` fails on tier 2 — the
-  native listener receives none of the riscv-nuttx C talker's /chatter"
+title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the riscv C talker
+  published on a domain its own sources do not produce (issue 0475's symptom,
+  after 0475 was resolved)"
 status: open
 type: bug
-area: rmw, testing
-related: [issue-0199]
+area: cmake, testing
+related: [issue-0475, issue-0445, issue-0196]
 ---
+
+## Resolution of the reported failure: stale artifact, not a code defect
+
+`c_riscv_nuttx_talker_delivers_cross_process` **passes in 3.5 s** after
+`rm -rf examples/qemu-riscv-nuttx/c/talker/build-zenoh` and a rebuild, on
+unmodified sources. It failed at the full 90 s timeout before that.
+
+The binary the tier-2 fixture build left behind published on ROS domain **1**.
+The same leaf, rebuilt clean from the same commit, publishes on domain **0** —
+which is what the test's listener subscribes to, and what the sources say:
+
+```
+[probe] getenv=(null) NROS_ENTRY_DOMAIN_ID=0 domain_id=0
+[probe] resolve_session_and_domain single: support=0 session=0 -> 0
+```
+
+Same guest, same two listeners, before and after the wipe:
+
+| listener | museum binary | after rm -rf + rebuild |
+| --- | --- | --- |
+| `ROS_DOMAIN_ID=0` (what the test uses) | 0 received | **24 received** |
+| `ROS_DOMAIN_ID=1` | 5 received | 0 received |
+
+The only change between those two columns is the wipe. So the old ARCHIVE code
+linked into that image behaved differently from the archive code in the tree.
+
+## Why this stays open
+
+**Issue 0475 is marked resolved** (phase-209: `LINK_DEPENDS` on the consuming
+target, so a backend `.a` gains a real rebuild edge instead of an order-only
+one). This leaf reproduced 0475's symptom anyway, which means either the fix
+does not reach `examples/qemu-riscv-nuttx/c/talker` / the `just nuttx
+build-riscv-c` path, or the tier-2 fixture build reached the binary another way.
+That is the open question, and it is the one worth answering: a museum binary
+here is indistinguishable from a code defect until someone wipes the directory.
+
+Verify with the 0475 recipe: `ninja -C <build-dir> -t query <exe>` — the RMW
+`.a` must appear under `|`, not `||`, and touching a backend source must relink.
+
+## The staleness probe cannot see this class, and I asserted otherwise
+
+An earlier revision of this issue said "**Not a stale fixture**" and justified it
+by mtime: the talker was rebuilt 2026-08-26 23:54, after the tree's last source
+edit. That reasoning is structurally void for this failure mode. A 0475 museum
+binary is NEWER than its sources while containing older archive content —
+there is no dependency edge, so nothing moves the mtime. **An mtime freshness
+check cannot detect the very class it was invoked against**, and reporting its
+result as evidence is the same shape as issue 0445's absorbing STALE verdict,
+one level down.
+
+Everything that was built on that claim was wrong with it: a "domain mismatch
+root cause", a comparison to issue 0801, and a suspected sentinel defect at
+`packages/api/nros-c/src/node.rs` (`if support_domain != 0`, where 0 is both a
+legal ROS domain and the unset marker). That sentinel ambiguity IS real code and
+may deserve its own issue, but it is NOT what broke this test — the native C
+talker, same source, resolves to domain 0 with no split, and the instrumented
+riscv image now does too.
+
+## Recorded for whoever picks this up
+
+* `domain_of(NuttxRiscv, C, Pubsub)` = **86**, measured. The `1` came from
+  neither the allocator nor any cmake define (`build.ninja` bakes only
+  `NROS_ENTRY_LOCATOR`), which is consistent with it coming from archive code
+  that predates the current resolution.
+* Instrumenting this image is harder than it looks and three separate NULL
+  results each nearly read as "the branch never runs": `nros_log` output goes
+  nowhere (the image installs no sink), a probe string can be absent from the
+  ELF (that IS the museum binary — check with `strings <elf> | grep <probe>`),
+  and with no router running `nros_support_init` returns `-4` so entity creation
+  is never reached at all.
 
 ## Symptom
 
