@@ -406,6 +406,66 @@ fn a_hand_written_entry_suppresses_generation() {
 }
 
 #[test]
+fn entries_for_other_boards_are_not_listed() {
+    // phase-383 W8.b — autoware-safety-island has THREE FreeRTOS entries
+    // (an536, posix, s32z2) and a freertos-posix build listed all three.
+    // RFC-0065's Problem statement names this as one of the four jobs a
+    // hand-written root does by hand.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    for (name, deploy) in [
+        ("posix_entry", "linux"),
+        ("other_entry", "s32z270-freertos"),
+    ] {
+        let d = tmp.path().join("src").join(name);
+        write(&d.join("package.xml"), &pkg_xml(name));
+        write(
+            &d.join("CMakeLists.txt"),
+            &format!("nano_ros_add_executable({name}\n    DEPLOY  {deploy})\n"),
+        );
+    }
+    // A CMakeLists anywhere makes this a cmake workspace.
+    let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::CMake);
+
+    let body =
+        std::fs::read_to_string(tmp.path().join("build/posix-zenoh/CMakeLists.txt")).unwrap();
+    assert!(
+        body.contains("posix_entry"),
+        "the board's own entry: {body}"
+    );
+    assert!(
+        !body.contains("other_entry"),
+        "an entry for another board must not be listed: {body}"
+    );
+}
+
+#[test]
+fn a_framework_entrys_cmakelists_does_not_make_a_workspace_mixed() {
+    // phase-383 W8.a — nano-ros-rt-eval is pure Rust and holds exactly one
+    // CMakeLists: src/zephyr_entry/CMakeLists.txt, which belongs to WEST.
+    // Counting it routed every native image through cmake.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let z = tmp.path().join("src/zephyr_entry");
+    write(&z.join("package.xml"), &pkg_xml("zephyr_entry"));
+    write(&z.join("CMakeLists.txt"), "find_package(Zephyr REQUIRED)\n");
+    write(
+        &z.join("Cargo.toml"),
+        "[package]\nname = \"zephyr_entry\"\nversion = \"0.0.0\"\n\n\
+         [package.metadata.nros.entry]\ndeploy = \"zephyr\"\n",
+    );
+
+    let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert_eq!(
+        plans[0].driver,
+        Driver::Cargo,
+        "a west app's CMakeLists is its framework's, not evidence the graph \
+         crosses languages"
+    );
+}
+
+#[test]
 fn an_unsynced_workspace_is_refused_before_anything_is_generated() {
     // RFC-0065 D2 — a missing prerequisite fails at stage 3, naming the command
     // that fixes it, rather than mid-compile.

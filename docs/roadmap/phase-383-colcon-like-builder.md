@@ -9,14 +9,13 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-27). W1–W7 COMPLETE.** `nros build` runs all five stages and
-generates both the workspace root and the ENTRY PACKAGE — D4's headline claim.
-`nros materialize` hands an entry to the user, one way, stamped. Verified end to
-end: a generated entry carries `nros`, the board crate, the platform feature and
-the node packages DERIVED FROM THE LAUNCH FILE, and `cargo metadata` accepts the
-workspace with it as a member. Remaining: **W8–W10**, the migration — W8 gates
-W9. Corrected RFC-0065 D3, D6 and D10 against what the tools actually do; fixed
-issue 0809 en route.
+**Status (2026-08-27). W1–W8 COMPLETE.** `nros build` runs all five stages,
+generates the workspace root and the entry package, and is verified against two
+downstream trees nobody here wrote — `nano-ros-rt-eval` (two bringups, a
+cargo-only member, a west app in a pure-Rust workspace) and
+`autoware-safety-island` (pure C/C++, three FreeRTOS entries, a self-gating NXP
+package). W8 found three W1–W7 defects; all are fixed. Remaining: **W9**
+(migrate the nine in-tree workspaces) and **W10** (retire the old paths).
 
 ## Goal
 
@@ -349,19 +348,42 @@ Carries **F6**.
 Our nine workspaces are uniform by construction. These two are not, and they
 are where F4–F6 came from.
 
-- [ ] **W8.a** Dry-run migrate `nano-ros-rt-eval`: two bringups, ablation
+- [x] **W8.a** Dry-run migrate `nano-ros-rt-eval`: two bringups, ablation
       variants, a cargo member with no `package.xml`, a vendored nano-ros
       submodule, a cross-target member, two images built together. Assert the
       generated root produces the same `cargo metadata` as its tracked one.
-- [ ] **W8.b** Dry-run migrate `autoware-safety-island` (branch `nano-ros`):
+- [x] **W8.b** Dry-run migrate `autoware-safety-island` (branch `nano-ros`):
       a hand-written `main`, four linker scripts, assembly, a self-gating
       NXP-licensed package, a root preamble, and concern-named conf files.
       Assert its FreeRTOS-POSIX lane still builds.
-- [ ] **W8.c** Neither project is modified in this phase. A dry run that needs
+- [x] **W8.c** Neither project is modified in this phase. A dry run that needs
       an upstream edit is a **W1–W7 defect**, not a migration task.
 
 **This wave gates W9.** If it does not pass, the builder is not ready for the
 in-tree migration regardless of how green our own examples are.
+
+### What it found — three W1–W7 defects, exactly as W8.c predicted
+
+Both dry runs were done on COPIES; neither project was modified.
+
+1. **Preflight probed one sync location of two.** `nros sync` writes generated
+   msg crates to `<ws>/generated/` and models to `<ws>/build/nros/`; the check
+   looked only at the second. `nano-ros-rt-eval` carries fourteen msg packages
+   in `generated/` and was told it had never been synced.
+
+2. **A framework entry's `CMakeLists.txt` was read as a language signal.**
+   rt-eval is pure Rust and holds exactly one CMakeLists —
+   `src/zephyr_entry/CMakeLists.txt`, which belongs to WEST. Counting it routed
+   every native image through cmake, on a workspace with no C or C++ in it.
+
+3. **Entries for other boards were listed.** ASI has three FreeRTOS entries
+   (an536, posix, s32z2) and a `freertos-posix` build listed all three. This is
+   one of the four jobs RFC-0065's Problem statement says a hand-written root
+   does by hand — "which entries belong to the active platform" — and the
+   emitter simply had not done it.
+
+None needed an upstream edit, so W8.c holds: all three were defects in W1–W7,
+found only because these trees are not uniform the way ours are.
 
 ---
 

@@ -135,9 +135,19 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         ),
     };
 
+    // Does the package graph cross languages? A CMakeLists is the signal — but
+    // NOT the one a framework entry carries.
+    //
+    // phase-383 W8.a: `nano-ros-rt-eval` is pure Rust and holds exactly one
+    // CMakeLists, `src/zephyr_entry/CMakeLists.txt`, which belongs to WEST.
+    // Counting it routed every native image through cmake, which would have
+    // failed on a workspace with no C or C++ in it at all. A framework entry's
+    // build file is its framework's, not evidence about the graph.
+    let framework_entries = framework_entry_dirs(&found, &catalog);
     let has_non_rust = found
         .packages
         .iter()
+        .filter(|p| !framework_entries.contains(&p.dir))
         .any(|p| p.dir.join("CMakeLists.txt").is_file());
 
     let mut out = Vec::new();
@@ -227,7 +237,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     rmw: image.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
                     toolchain_file: descriptor.cmake.as_ref().map(|c| c.toolchain_file.clone()),
                     nano_ros_root: nano_ros_root.clone().unwrap_or_default(),
-                    excluded: framework_entry_dirs(&found, &catalog),
+                    excluded: {
+                        let mut e = framework_entries.clone();
+                        e.extend(entries_for_other_boards(&found, &board, &platform));
+                        e
+                    },
                 };
                 crate::builder::cmake_root::write(&found, &manifest_dir, &spec)
                     .map_err(|e| eyre::eyre!("{e}"))?;
@@ -432,6 +446,80 @@ fn generate_entry(
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
     Ok(Some(dir))
+}
+
+/// Deploy tokens a package's entry declaration names, if it is an entry.
+///
+/// Two spellings, because the two languages declare it in different files:
+/// Rust in `[package.metadata.nros.entry] deploy`, C/C++ in the
+/// `nano_ros_add_executable(… DEPLOY <token>…)` call. Both are read; a package
+/// that is not an entry yields an empty list.
+fn entry_deploy_tokens(dir: &std::path::Path) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml"))
+        && let Ok(doc) = text.parse::<toml::Value>()
+        && let Some(d) = doc
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.get("nros"))
+            .and_then(|n| n.get("entry"))
+            .and_then(|e| e.get("deploy"))
+            .and_then(|d| d.as_str())
+    {
+        out.push(d.to_string());
+    }
+    if let Ok(text) = std::fs::read_to_string(dir.join("CMakeLists.txt")) {
+        for line in text.lines() {
+            // Comments explain the keyword constantly, so only a line whose
+            // FIRST token is DEPLOY is a declaration.
+            let t = line.trim();
+            if t.starts_with('#') {
+                continue;
+            }
+            if let Some(rest) = t.strip_prefix("DEPLOY") {
+                out.extend(
+                    rest.trim_end_matches(')')
+                        .split_whitespace()
+                        .filter(|w| !w.starts_with("${"))
+                        .map(|w| w.trim_matches('"').to_string()),
+                );
+            }
+        }
+    }
+    out
+}
+
+/// Entry packages that belong to a DIFFERENT board than the one being built.
+///
+/// RFC-0065's Problem statement names this as one of the four jobs a
+/// hand-written root does by hand: *"which entries belong to the active
+/// platform, by hand"*. phase-383 W8.b caught the emitter skipping it —
+/// `autoware-safety-island` has three FreeRTOS entries (an536, posix, s32z2)
+/// and a `freertos-posix` build listed all three.
+///
+/// An entry naming NO deploy token is kept: it has expressed no opinion, and
+/// silently dropping a package is the failure this whole phase exists to
+/// remove.
+fn entries_for_other_boards(
+    found: &crate::builder::discover::Discovered,
+    board: &str,
+    platform: &str,
+) -> std::collections::BTreeSet<PathBuf> {
+    let mut out = std::collections::BTreeSet::new();
+    for pkg in &found.packages {
+        let tokens = entry_deploy_tokens(&pkg.dir);
+        if tokens.is_empty() {
+            continue;
+        }
+        // The same three spellings `nano_ros_entry` itself accepts.
+        let mine = tokens
+            .iter()
+            .any(|t| t == board || t == platform || t.is_empty());
+        if !mine {
+            out.insert(pkg.dir.clone());
+        }
+    }
+    out
 }
 
 /// The build-tree coordinate for an image — RFC-0070 R2's vocabulary

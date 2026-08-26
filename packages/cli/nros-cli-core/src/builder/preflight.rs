@@ -63,7 +63,15 @@ pub fn check(board: &BoardDescriptor, root: &Path) -> Vec<Missing> {
     // and every leaf `.cargo/config.toml` include points at a tree that does
     // not exist — a cargo manifest-PARSE error four frames deep that never
     // names sync (issue 0463).
-    if root.join("src").is_dir() && !root.join("build/nros").is_dir() {
+    //
+    // **Two locations, and probing only one was a defect W8 caught.** `nros
+    // sync` writes generated msg crates to `<ws>/generated/` and resolved
+    // models to `<ws>/build/nros/`. The first version of this check looked only
+    // at `build/nros`, so `nano-ros-rt-eval` — which carries a populated
+    // `generated/` with fourteen msg packages — was told it had never been
+    // synced. Either output is evidence that sync has run.
+    let synced = root.join("build/nros").is_dir() || root.join("generated").is_dir();
+    if root.join("src").is_dir() && !synced {
         out.push(Missing {
             what: "generated message bindings (this workspace has never been synced)".to_string(),
             remedy: "nros sync".to_string(),
@@ -181,6 +189,21 @@ mod tests {
         std::fs::create_dir_all(tmp.path().join("build/nros")).unwrap();
         let m = check(&board(""), tmp.path());
         assert!(m.iter().all(|m| m.remedy != "nros sync"), "{m:?}");
+    }
+
+    #[test]
+    fn generated_msg_crates_also_count_as_synced() {
+        // phase-383 W8.a — `nano-ros-rt-eval` carries a populated `generated/`
+        // with fourteen msg packages and no `build/nros`. Probing only the
+        // latter told a fully synced workspace it had never been synced.
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("src/actuator_pkg")).unwrap();
+        std::fs::create_dir_all(tmp.path().join("generated/std_msgs")).unwrap();
+        let m = check(&board(""), tmp.path());
+        assert!(
+            m.iter().all(|m| m.remedy != "nros sync"),
+            "generated/ is sync output too: {m:?}"
+        );
     }
 
     #[test]
