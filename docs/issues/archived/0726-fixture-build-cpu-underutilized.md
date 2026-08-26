@@ -831,6 +831,67 @@ slowest stage, bounding the build under any scheduler. It is now the only
 untouched item, and it is a question about one stage's own graph, not about
 scheduling.
 
+## Priority 3 answered (2026-08-26): measured, and it is not threadx's fault
+
+"Worth asking separately why it is 1.6x the next slowest." Asked, with the
+lineage sampler on a quiet box (loadavg 0.16, zero foreign build processes
+before starting — checked, per this issue's own standing rule).
+
+`just threadx_riscv64 build-fixtures`, 32 cores:
+
+| | |
+| --- | --- |
+| cold | **1706 s** (the joblog's 1302 s, reproduced) |
+| immediate warm re-run | **494 s** |
+| occupancy cold | alive 27.4, **runnable 0.10** of 32 |
+| occupancy warm | alive 14.0, **runnable 0.05** of 32 |
+| running leaf processes, cold | 0 for **93%** of instants, 1 for 7%, never 2+ |
+
+The warm number is the finding. That run did **zero** cmake configures and
+**zero** compilations — its entire log is 70 `Finished` lines. It takes 494 s to
+determine that nothing needs doing, because each of 70 cargo invocations
+re-scans its own private fingerprint database at ~7 s each.
+
+Cause: every C/C++ leaf is a standalone cmake project, so Corrosion puts the
+cargo `--target-dir` inside that leaf's build dir, and each leaf rebuilds the
+same staticlib. Five concurrent cargos were sampled with byte-identical
+arguments — same package, features, target, crate-type — differing only in
+`--target-dir`. One run wrote 21 fresh `libnros_c.a` and 14 `libnros_cpp.a`.
+sccache cannot absorb it: `Non-cacheable reasons: crate-type 94` — it does not
+cache `--crate-type=staticlib`.
+
+**But the premise of the question is wrong.** This is not a `threadx_riscv64`
+defect. The per-leaf cargo dir is the shape everywhere — 29 under
+`qemu-riscv64-threadx`, 24 under `threadx-linux`, **59 under `native`** — and
+native has more of them while finishing faster (720 s against 1302 s). So what
+puts threadx on top is the per-invocation cost of the cross target, not a
+structure unique to it. Isolating that needs a comparable cold measurement per
+platform, which was not run, so no per-platform ranking should be quoted from
+here.
+
+Excluded by direct check rather than by argument: issue 0491 churn (build-script
+output stamps did not move between the cold and warm runs) and issue 0648's
+cargo package-cache lock (`~/.cargo/.package-cache` was absent from
+`/proc/locks` during the build; the flocks held were each leaf's own
+`.cargo-lock`, one holder per dir).
+
+Filed as **issue 0805** with the fix and its constraint — the shared-target-dir
+remedy sits on exactly the ground 0616 and 0500 mark dangerous, and the
+distinction is that those forbid one target dir serving two workspace ROOTS
+while these 21 invocations all name the same root. Also recorded there: a shared
+directory fixes the COLD duplication and NOT the 494 s warm floor, which needs
+fewer invocations rather than a shared destination.
+
+### This issue is now fully answered
+
+| priority | outcome |
+| --- | --- |
+| 1 — the gate phase | FIXED: one gate walking build output, 231.83 s -> 0.09 s; phase 124/124 in 10.8 s |
+| 2 — a pooled launcher | CLOSED: it exists (`NROS_BUILD_POOL=1`) and the launcher was never the lever — 92.6% of the build has zero runnable processes of its own |
+| 3 — the threadx tail | ANSWERED and handed to issue 0805; not platform-specific |
+
+Nothing here remains actionable under this id. The live work is 0805.
+
 ## Resolved (2026-08-26): the premise was wrong, and measuring it was the value
 
 This issue opened on "the fixture build statically partitions 32 cores into 4x8,

@@ -747,6 +747,18 @@ fan-out >516 s). Kept: `nros_grep_q` + its ratchet, 0721's traversal fixes, two 
 and several real bugs. Six retractions and four lessons in phase-371's CLOSING SUMMARY.
 See `archived/0726-*`. (2026-08-26)
 
+**#0805** (build, open 2026-08-26) — every C/C++ example leaf is a standalone cmake project, so
+Corrosion puts the cargo `--target-dir` inside that leaf's own build dir and each leaf rebuilds the
+same staticlib. Sampled live: five concurrent cargos with BYTE-IDENTICAL arguments (same package,
+features, target, crate-type), differing only in `--target-dir`; one `threadx_riscv64` run wrote
+**21** fresh `libnros_c.a` and 14 `libnros_cpp.a`. sccache cannot absorb it — its own stats say
+`Non-cacheable reasons: crate-type 94`, i.e. it does not cache `--crate-type=staticlib`, which is
+exactly the artifact. Cold 1706 s / warm 494 s, and the WARM run did zero configures and zero
+compiles: 494 s to decide nothing was needed, across 70 cargo freshness scans at ~7 s each, at
+**runnable 0.05 of 32**. NOT threadx-specific (native has more per-leaf dirs and was faster) and NOT
+0491 churn or the 0648 package-cache lock — both checked and excluded. Answers 0726's priority 3.
+See `0805-*`. (2026-08-26)
+
 Recently resolved (2026-08-20): **#0721** — gate scripts walked built trees to find tracked files, and the
 gate forbidding it could not read Python. Closed after RE-MEASURING: five of the seven scripts in the
 issue's Remaining list were already converted by `5a9b77367`; `check-zephyr-kconfig-symbols` stays a walk
