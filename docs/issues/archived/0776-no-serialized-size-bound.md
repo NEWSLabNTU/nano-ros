@@ -2,11 +2,50 @@
 id: 776
 title: "Nothing computes a message's serialized size bound, so a dropped take
   can say the buffer was too small but never how large it needed to be"
-status: open
+status: resolved
 type: gap
 area: rmw, codegen
 related: [issue-0757, issue-0741, rfc-0023, rfc-0054, phase-380]
+resolved_in: "phase-380"
 ---
+
+## Resolved by phase-380 (2026-08-26)
+
+The capability exists. `nros_serdes::size` computes a bound from the schema
+`FIELDS` codegen already emitted, and `schema::Message` carries it per type:
+
+    size_bound(fields, version, current_alignment) -> SizeBound { bytes, bounded, plain }
+    max_serialized_size(fields, version)           -> Option<usize>
+    serialized_size(&value, version)               -> exact, for THIS message
+    M::MAX_SERIALIZED_SIZE_XCDR1 / _XCDR2, M::IS_PLAIN
+
+Two encodings because there genuinely are two — they pad 8-byte primitives
+differently and XCDR2 adds a DHEADER per struct, so one constant is silently
+wrong for one of them. Offset is threaded rather than maxima summed, since
+padding depends on where a field starts. Checked against `CdrWriter`'s output
+for every committed generated type, both encodings, because a self-consistent
+bound proves nothing.
+
+## What the title asked for, half by half
+
+**"Nothing computes a message's serialized size bound"** — fixed.
+
+**"a dropped take can say the buffer was too small but never how large it needed
+to be"** — fixed for BOUNDED types, by removing the drop rather than improving
+the message. `create_subscription` now carries a `const { assert!(...) }`, so a
+buffer that cannot hold its own message type fails the BUILD. The runtime drop
+this issue describes is unreachable for those types now.
+
+For UNBOUNDED types it is NOT fixed, and cannot be here: `report_dropped_take`
+documents why — the C ABI contract is "non-negative = bytes produced, negative =
+error code", with no required-length out-param, so the backend cannot report how
+big the sample was. That is an ABI change, worth doing on its own merits rather
+than smuggled in behind a log line. `serialized_size(&value)` answers the
+question wherever the VALUE is in hand, which is the publisher side.
+
+So: the gap this issue names is closed; what remains is a different, ABI-shaped
+question about the take path, and W0's `check-generated-schema-coverage` keeps
+the input from silently disappearing again.
 
 ## Problem
 

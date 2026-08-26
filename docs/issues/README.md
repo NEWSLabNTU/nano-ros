@@ -136,20 +136,14 @@ naming only `signal: 11`. Finding a router and being able to RUN one are differe
 first was checked — RFC-0075's drift arriving through the loader instead of a pin (cf. #0609). The fixture
 now derives the paired zenoh dir from the router path and pins it for the child. Verified from a shell that
 never sourced `activate.sh`: 20/20. See `archived/0774-*`. (2026-08-24)
-**#0776** (rmw/codegen, open 2026-08-24) — nothing computes a message's serialized size bound. Upstream has
-`rmw_get_serialized_message_size`; the parity table recorded ours as "generated per type; the bound is
-baked", which was false in both clauses — `nros-serdes` declares only serialize/deserialize, no generated
-crate emits a size constant, and buffers are sized by env knobs the integrator GUESSES. The cost is met in
-`report_dropped_take`, whose only possible advice is "raise the knob", because the runtime cannot name the
-value that would have worked — on targets where that knob is static RAM nobody can spare. Not a vtable slot
-(nothing about a size bound varies by backend) but a `nros-serdes` capability — its `Message::FIELDS` schema already carries the type info, and
-`FieldType` already distinguishes fixed / bounded / unbounded, so the bound is arithmetic over data that
-EXISTS (padding is positional, and it is one bound per encoding version, not one number). Checked what
-ROS 2 actually ships:
-cyclonedds and fastrtps BOTH return `RMW_RET_UNSUPPORTED` with the error string "unimplemented", and NOTHING
-in the install calls the symbol — because upstream's serialized buffer RESIZES, making the bound a perf hint
-there. Ours cannot resize: a sample that does not fit is dropped after the transport ACKed it, so the same
-number is load-bearing here. See `0776-*`. (2026-08-24) Follow-up the same day: the gate that entry calls for is added (`check-rmw-ret-sign`, now STRUCTURAL and on `just check`) — it had reported 0/0 throughout, scanning only near vtable slot names — and it immediately found the same shape in cyclonedds' own `call_blocking` test helpers and in xrce's two service take helpers, which this fix did not reach.
+Recently resolved (2026-08-26): **#0776** — nothing computed a message's serialized size bound, so a
+dropped take could say the buffer was too small and never how large it needed to be. Phase 380 built it:
+`nros_serdes::size` computes from the schema codegen already emitted, per encoding (they pad 8-byte
+primitives differently and XCDR2 adds a DHEADER per struct, so ONE constant is silently wrong for one of
+them), offset THREADED rather than maxima summed, and checked against `CdrWriter`'s own output for every
+generated type. The title's second half is fixed by REMOVING the drop, not improving the message: a
+subscription whose buffer cannot hold its type now fails the BUILD. Still open for UNBOUNDED types, and
+that is ABI-shaped — the take contract has no required-length out-param. See `archived/0776-*`. (2026-08-26)
 
 Recently resolved (2026-08-23): **#0763** (testing/interop) — every ROS 2 setup led with `ros2 daemon stop`,
 

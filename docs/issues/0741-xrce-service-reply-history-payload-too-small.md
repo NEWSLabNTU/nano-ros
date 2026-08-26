@@ -763,6 +763,42 @@ environmental still differs and it is none of the components anyone has checked.
 Recommend the third. Four eliminations in, inference has a poor record on this
 issue.
 
+## 0776 is CLOSED, and it moves this issue's next step (2026-08-26)
+
+The cross-link below said the investigation kept hitting a hole: nothing in this
+tree computes a serialized size bound. Phase 380 filled it —
+`nros_serdes::size` computes one from the schema, and `schema::Message` carries
+`MAX_SERIALIZED_SIZE_XCDR1` / `_XCDR2` per type.
+
+**That does not fix this issue, and it sharpens why.** The cross-link's
+conclusion — "nothing computes anything, so the 15 comes from a peer's default"
+— survives intact, because computing a number and ADVERTISING one are different
+things. Verified in the API rather than inferred:
+
+```c
+uint16_t uxr_buffer_create_topic_bin(
+        uxrSession* session, uxrStreamId stream_id, uxrObjectId object_id,
+        uxrObjectId participant_id,
+        const char* topic_name,
+        const char* type_name,          /* <- names only */
+        uint8_t flags);
+```
+
+`subscriber.c` and `publisher.c` both create topics through that BIN profile,
+which carries a topic name and a type name and no size at all. So even now that
+we can compute the bound, there is nowhere in the current registration path to
+put it, and the Agent keeps filling in whatever default it filled in before.
+
+**The actionable next step this makes possible.** Carrying a size means creating
+topics through the XML profile (`uxr_buffer_create_topic_xml`) with a DDS topic
+XML that states the type's max serialized size, now that
+`M::MAX_SERIALIZED_SIZE_XCDR2` exists to state. That is a real change to the
+XRCE backend's entity creation, not a log-line tweak, and it should be measured
+against the failing host rather than assumed: this issue reproduces 1 run in 13
+here and not at all on three other environments, whereas a missing advertisement
+is identical everywhere — so advertising may well be correct AND not be the
+whole story.
+
 ## Cross-link: issue 0776 is the missing piece this investigation kept hitting
 
 Filed independently, and it names exactly the hole every hypothesis here ran
