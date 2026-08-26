@@ -9,12 +9,13 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). W1 COMPLETE. W2 complete but W2.d (preflight). W3
-complete but W3.b (the entry emitter) — the cargo root is generated, or an
-authored one is used untouched. `nros build` builds Zephyr/ESP-IDF today and
-drives cargo for native Rust workspaces. Fixed issue 0809 en route, and
-corrected RFC-0065 D3: the cargo root cannot live under `build/` because cargo
-requires members below their root. W4 (cmake root) is next.**
+**Status (2026-08-26). W1, W2, W4 COMPLETE. W3 complete except W3.b (the entry
+emitter). `nros build` runs all five stages: it discovers packages, resolves an
+image, preflights, generates the cargo root (at the workspace root — cargo
+forbids `build/`) or the cmake root (under `build/<coord>/`), and hands off with
+`execvp`. Zephyr and ESP-IDF images need no generated root and work today.
+Remaining: W3.b, W5–W10. Fixed issue 0809 en route; corrected RFC-0065 D3 and
+D6.**
 
 ## Goal
 
@@ -150,7 +151,7 @@ any emitter exists.
       preflight, then `exec` the framework tool. Zephyr and ESP-IDF need no
       generated root (RFC-0065 D3), so this is a complete, shippable
       `nros build` for them.
-- [ ] **W2.d** Stage 3 preflight (RFC-0065 D2): auto-fetch what the index can
+- [x] **W2.d** Stage 3 preflight (RFC-0065 D2): auto-fetch what the index can
       fetch **after prompting with the download size**; `--yes` skips the
       prompt; **a non-TTY behaves as verify-only** and never blocks.
       License-gated packages are never auto-fetched in any mode — they fail
@@ -209,12 +210,12 @@ generated one produce identical `cargo metadata` output modulo path prefixes.
 Carries **F5**. This is the wave that must not fragment the corrosion cargo
 tree — **one cmake configure per workspace** (RFC-0070's 80.6 GB measurement).
 
-- [ ] **W4.a** Emit `build/<coord>/CMakeLists.txt` calling
+- [x] **W4.a** Emit `build/<coord>/CMakeLists.txt` calling
       `nano_ros_workspace(BACKEND … PLATFORM … SYSTEM … ORDER_FROM_DEPENDS
       SUBDIRS …)`, with the board→toolchain map resolved **before**
       `project()` and the `NUTTX_DIR` promotion the hand-written roots do by
       hand.
-- [ ] **W4.b** **Emit the C/C++ entry** — the `nano_ros_add_executable(BOARD …
+- [x] **W4.b** **Emit the C/C++ entry** — the `nano_ros_add_executable(BOARD …
       BRINGUP … LAUNCH … LANG … DEPLOY …)` call that the hand-written entry
       leaves carry today, with `BOARD`/`DEPLOY` taken from the resolved image
       rather than written as literals. This is what closes **issue 0798**: a
@@ -222,15 +223,15 @@ tree — **one cmake configure per workspace** (RFC-0070's 80.6 GB measurement).
       Embedded C/C++ entries already carry zero source, so for them this wave
       deletes the package and emits its one call.
 
-- [ ] **W4.c** **User preamble hook.** **F5**: `autoware-safety-island`'s root
+- [x] **W4.c** **User preamble hook.** **F5**: `autoware-safety-island`'s root
       calls `find_package(Eigen3 REQUIRED)`. An optional
       `<bringup>/cmake/preamble.cmake` is `include()`d before `project()` if
       present; absent, nothing changes.
-- [ ] **W4.d** **A package that gates itself out is not an error.** **F5**:
+- [x] **W4.d** **A package that gates itself out is not an error.** **F5**:
       ASI adds `src/s32z2_board_glue` only when the NXP SDK is provisioned —
       "the pkg's own CMakeLists gates and reports". The emitter lists it; the
       package decides.
-- [ ] **W4.e** Assert one cargo target dir per workspace configure, not per
+- [x] **W4.e** Assert one cargo target dir per workspace configure, not per
       package. Test: configure a mixed workspace, then assert exactly one
       `cargo/build` tree under `$NROS_BUILD_ROOT`.
 
