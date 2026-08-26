@@ -254,11 +254,26 @@ mod tests {
         assert_eq!(s.as_str(), "1:2:1,10:,:,:,,");
     }
 
+    /// issue 0793 — this asserted `1:1:1` (TransientLocal) while testing
+    /// `QOS_PROFILE_PARAMETERS`, so it pinned the very defect 0793 fixed: that
+    /// profile disagreed with upstream's `rmw_qos_profile_parameters`, which is
+    /// VOLATILE. Two tests pinned it, in two crates; correcting the constant and
+    /// only the `nros-rmw` test left this one red in tier 2.
     #[test]
-    fn test_qos_string_transient_local() {
+    fn test_qos_string_parameters_is_volatile() {
         let qos = QosSettings::QOS_PROFILE_PARAMETERS;
         let s: heapless::String<32> = qos.to_qos_string();
-        assert_eq!(s.as_str(), "1:1:1,1000:,:,:,,");
+        assert_eq!(s.as_str(), "1:2:1,1000:,:,:,,");
+    }
+
+    /// Keeps the TransientLocal ENCODING covered, which the rename above would
+    /// otherwise drop: durability 1 vs 2 is the only thing separating these two
+    /// strings, and nothing else asserts the 1.
+    #[test]
+    fn test_qos_string_transient_local() {
+        let qos = QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT;
+        let s: heapless::String<32> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "1:1:1,1:,:,:,,");
     }
 
     #[test]
