@@ -34,6 +34,27 @@ those headers, so the link has to be built on the zenoh the ROS side actually
 uses. Branch `feat/can-link-1.8`, cut from `release/1.8.0`; `feat/can-link`
 keeps the 1.10.0 line for the eventual upstream PR.
 
+**Verified to the commit, not just the version number.** zenoh-c pins zenoh by
+git **branch**, not by tag or revision, and its checked-in `Cargo.lock` is stale
+— it still names zenoh 1.7.2 from `main` while the manifest demands 1.8.0 from
+`release/1.8.0`, so cargo resolves that branch fresh at build time. The library
+ROS ships was therefore built from whatever `release/1.8.0` pointed at on its
+build date, which is not something the version number alone establishes.
+
+Fetched and compared:
+
+| | |
+| --- | --- |
+| `upstream/release/1.8.0` head | `29b3e63a`, 2026-03-13 |
+| tag `1.8.0` | the same commit |
+| our branch point | the same commit, plus our six |
+| commits on `release/1.8.0` we lack | **none** |
+| `ros-humble-zenoh-cpp-vendor` built | 2026-07-23 |
+
+The branch has not moved since March, so the July vendor build resolved the same
+commit. Our work sits on exactly the zenoh revision ROS runs — corroborated by
+the substitution working against the stock `rmw_zenoh_cpp` at all.
+
 The port cost almost nothing, which is itself a result: `LinkMulticastTrait`,
 `LinkKind` and `LinkManagerBuilderMulticast::make` are **identical** across the
 two minors. Two conflicts, both version-pin noise in `Cargo.toml` files. All 42
