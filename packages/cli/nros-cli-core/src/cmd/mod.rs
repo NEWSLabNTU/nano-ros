@@ -26,6 +26,7 @@ pub mod explain;
 pub mod generate;
 pub mod generate_px4;
 pub mod init;
+pub mod materialize;
 pub mod metadata;
 pub mod model_path;
 pub mod new;
@@ -49,6 +50,11 @@ pub enum Cmd {
     /// (RFC-0065 / phase-383). The final stage is an `exec`, so compiler
     /// diagnostics are byte-identical to running cargo/cmake/west directly.
     Build(build::Args),
+
+    /// Take ownership of a generated entry package (RFC-0065 D5). The last
+    /// resort: `panic` and `profile` are declarations on the image and need no
+    /// materialising. One way — `nros build` stops regenerating it.
+    Materialize(materialize::Args),
 
     /// Scaffold a new nano-ros project (talker / listener / service / action)
     New(new::Args),

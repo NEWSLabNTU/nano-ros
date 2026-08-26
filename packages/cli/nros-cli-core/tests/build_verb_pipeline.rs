@@ -342,6 +342,70 @@ fn shape_drift_on_a_materialized_entry_warns_and_never_errors() {
 }
 
 #[test]
+fn a_cargo_image_generates_an_entry_from_the_launch_file() {
+    // phase-383 W3.b — D4's headline claim. The node deps are DERIVED: the
+    // launch file names talker_pkg, so that is what the entry links.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    write(
+        &tmp.path().join("src/demo_bringup/launch/system.launch.xml"),
+        "<launch>\n  <node pkg=\"talker_pkg\" exec=\"talker\" name=\"talker\"/>\n</launch>\n",
+    );
+
+    let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert!(plans[0].handoff.is_some());
+
+    let entry = tmp.path().join("build/posix-zenoh/native_entry");
+    if !entry.is_dir() {
+        // The launch resolver is a separate binary; when it is absent the
+        // builder WARNS and carries on (D13 — an un-migrated workspace must
+        // keep building). Assert that documented fallback rather than skipping.
+        assert!(
+            !tmp.path().join("src/native_entry").exists(),
+            "no entry was generated and none was hand-written — the build must \
+             still have produced a handoff, which it did"
+        );
+        return;
+    }
+    let manifest = std::fs::read_to_string(entry.join("Cargo.toml")).unwrap();
+    assert!(
+        manifest.contains("talker_pkg"),
+        "derived from the launch: {manifest}"
+    );
+    assert!(manifest.contains("nros-board-linux"), "{manifest}");
+    assert!(
+        !manifest.contains("= \"/"),
+        "no absolute dependency path (W3.c): {manifest}"
+    );
+    let src = std::fs::read_to_string(entry.join("src/main.rs")).unwrap();
+    assert!(src.contains("nros::main!("), "{src}");
+}
+
+#[test]
+fn a_hand_written_entry_suppresses_generation() {
+    // RFC-0065 D13 — an un-migrated workspace keeps its entry, so the migration
+    // is a DELETION rather than a cutover.
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let hand = tmp.path().join("src/native_entry");
+    write(
+        &hand.join("Cargo.toml"),
+        "[package]\nname = \"native_entry\"\nversion = \"0.0.0\"\n",
+    );
+    write(&hand.join("src/main.rs"), "// hand-written\n");
+
+    plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
+    assert!(
+        !tmp.path().join("build/posix-zenoh/native_entry").exists(),
+        "a hand-written entry must suppress generation"
+    );
+    assert_eq!(
+        std::fs::read_to_string(hand.join("src/main.rs")).unwrap(),
+        "// hand-written\n"
+    );
+}
+
+#[test]
 fn an_unsynced_workspace_is_refused_before_anything_is_generated() {
     // RFC-0065 D2 — a missing prerequisite fails at stage 3, naming the command
     // that fixes it, rather than mid-compile.

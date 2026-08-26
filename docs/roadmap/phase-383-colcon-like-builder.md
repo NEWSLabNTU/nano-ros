@@ -9,12 +9,14 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-26). W1, W2, W4, W5 COMPLETE. W3 complete except W3.b (the
-entry emitter). W6 COMPLETE. W7 complete except
-W7.b, which is blocked on W3.b.
-`nros build` runs all five stages for cargo, cmake, west and ESP-IDF images.
-Remaining: W3.b, then W8–W10's migration. Fixed issue 0809 en route; corrected
-RFC-0065 D3, D6 and D10 against what the tools actually do.**
+**Status (2026-08-27). W1–W7 COMPLETE.** `nros build` runs all five stages and
+generates both the workspace root and the ENTRY PACKAGE — D4's headline claim.
+`nros materialize` hands an entry to the user, one way, stamped. Verified end to
+end: a generated entry carries `nros`, the board crate, the platform feature and
+the node packages DERIVED FROM THE LAUNCH FILE, and `cargo metadata` accepts the
+workspace with it as a member. Remaining: **W8–W10**, the migration — W8 gates
+W9. Corrected RFC-0065 D3, D6 and D10 against what the tools actually do; fixed
+issue 0809 en route.
 
 ## Goal
 
@@ -175,7 +177,7 @@ Carries **F10**.
 - [x] **W3.a** Emit `build/<coord>/Cargo.toml` with `[workspace] members` from
       W2.a's union, `exclude` for west/idf entries, and the workspace-level
       `[patch]` set `nros sync` already computes.
-- [ ] **W3.b** **Emit the Rust entry** (RFC-0065 D4 — the heart of this
+- [x] **W3.b** **Emit the Rust entry** (RFC-0065 D4 — the heart of this
       phase). From `(launch, args, board)` produce `build/<coord>/<image>_entry/`
       carrying `Cargo.toml` (board crate, node rlibs, the `*_nros_selection`
       facade `nros sync` generates) and a `main.rs` whose body is the one-line
@@ -304,14 +306,14 @@ Carries **F6**.
 - [x] **W7.a** Forward `panic` and `profile` from `[image.<id>]` into the
       generated entry (RFC-0065 D5). These are the only escapes the D4 survey
       found; the custom spin loop already has RFC-0024 §11.8.
-- [ ] **W7.b** `nros materialize <image>` writes `src/<image>_entry/`. Naming
+- [x] **W7.b** `nros materialize <image>` writes `src/<image>_entry/`. Naming
       follows the **image**, which D6 made the named unit.
 
-      **BLOCKED ON W3.b, and that is structural rather than scheduling.**
-      Materialising means "write the generated entry out and stop regenerating
-      it" — there is nothing to write until the generator exists. The stamp and
-      drift machinery it needs (W7.c/W7.d) are landed and tested, so this is a
-      thin verb over `builder::materialize` once W3.b lands.
+      **Landed once W3.b unblocked it.** Materialising COPIES a real generated
+      entry rather than running a second emitter, so the two can never drift.
+      `--force` is required to overwrite an already-materialised entry: a second
+      run would otherwise silently discard the edits the first existed to
+      enable.
 - [x] **W7.c** **Shape stamp that WARNS, never errors.** **F6**:
       `autoware-safety-island` carries `freertos_main.cpp`, `board_init.c`,
       `cp15_arm.S` and four `.ld` fragments — it will hold a materialised entry
