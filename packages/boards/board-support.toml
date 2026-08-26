@@ -66,6 +66,31 @@ tier = 1
 maintainers = []
 notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything."
 
+# phase-385 — QEMU MPS3-AN536, dual Cortex-R52 FreeRTOS: the emulated
+# counterpart to `s32z270-freertos` (same CPU, same kernel port, same toolchain
+# file) and the first place the ARMv8-R half of the FreeRTOS platform has ever
+# run, since no emulator models the S32Z270 RTU (issue 0772).
+#
+# `scaffold`, and deliberately so: the board builds, boots and delivers Cyclone
+# pub/sub, but it has no `PlatformId` variant, so NOTHING in the runtime matrix
+# runs it. Phase-385 W4 defers that cell explicitly — "a new `MP::` platform
+# variant [with] ~67 references across platform.rs, matrix.rs, lane_scope.rs
+# and several test files, each with its own gate ... is its own commit, not a
+# tail end of this one".
+#
+# So `matrix_platform` is ABSENT rather than borrowed from a sibling. That is
+# what makes this row honest: scaffold promises nothing and owes no
+# maintainers, which is exactly the board's state. Its two `fixtures.toml` rows
+# build under `platform = "freertos"` with `NANO_ROS_BOARD`, so they are
+# attributed to the existing platform and are not a runtime witness for this
+# board. Give it a tier when W4 lands the cell, not before — a tier that is
+# merely asserted is the drift this gate exists to catch.
+[[board]]
+crate = "nros-board-mps3-an536-freertos"
+nightly_token = "freertos"
+tier = "scaffold"
+maintainers = []
+
 [[board]]
 crate = "nros-board-mps2-an385-freertos"
 matrix_platform = "FreertosMps2"
