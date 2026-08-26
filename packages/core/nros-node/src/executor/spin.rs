@@ -2579,7 +2579,9 @@ impl<'s> Executor<'s> {
             nros_rmw::QosOverrideRole::Publisher,
             overrides,
         );
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -3313,6 +3315,7 @@ impl<'s> Executor<'s> {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         )
+        .with_domain(self.domain_id)
         .with_namespace(&ns)
         // Phase 231 (RFC-0038) — hand the backend the receive-buffer size so it
         // can size-class its receive storage (zenoh-pico: small vs large).
@@ -3460,7 +3463,9 @@ impl<'s> Executor<'s> {
             nros_rmw::QosOverrideRole::Subscription,
             overrides,
         );
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -3524,6 +3529,7 @@ impl<'s> Executor<'s> {
             <B as BorrowedMessage>::TYPE_NAME,
             <B as BorrowedMessage>::TYPE_HASH,
         )
+        .with_domain(self.domain_id)
         .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
@@ -3603,7 +3609,9 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
             (r.name.clone(), r.namespace.clone(), r.session_idx)
         };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -3679,7 +3687,9 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::InvalidSchedContextBinding)?;
             (r.name.clone(), r.namespace.clone(), r.session_idx)
         };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -3823,6 +3833,7 @@ impl<'s> Executor<'s> {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         )
+        .with_domain(self.domain_id)
         .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
@@ -3899,6 +3910,7 @@ impl<'s> Executor<'s> {
             <M as RosMessage>::TYPE_NAME,
             <M as RosMessage>::TYPE_HASH,
         )
+        .with_domain(self.domain_id)
         .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
@@ -4302,7 +4314,9 @@ impl<'s> Executor<'s> {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -4387,7 +4401,9 @@ impl<'s> Executor<'s> {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
@@ -4470,7 +4486,9 @@ impl<'s> Executor<'s> {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }

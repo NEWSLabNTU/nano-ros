@@ -1,7 +1,7 @@
 ---
 id: 801
 title: CONFIG_NROS_DOMAIN_ID reaches the node token but not the entities
-status: open
+status: resolved
 ---
 
 # 0801 — the domain splits across entities in one session
@@ -112,3 +112,44 @@ The next concrete step is a one-line diagnostic rather than another candidate
 fix: print `config.domain_id`, `ctx.domain_id` and `session.domain_id()` at
 entity creation and see which of the three is 0. Three guesses have now cost
 three build/flash cycles each; the measurement is cheaper.
+
+## RESOLVED — `spin.rs` built every arena `TopicInfo` without a domain
+
+`nros-node/src/executor/spin.rs` constructed eleven `TopicInfo`s as
+
+    TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns)
+
+setting namespace and node name and never calling `.with_domain(...)`, so each
+kept `TopicInfo`'s default of 0. The executor knew the right value the whole time
+(`executor.domain_id = config.domain_id`), which is also what the node liveliness
+token used -- hence one token on the configured domain and every entity on 0.
+
+All eleven fixed with `.with_domain(self.domain_id)`; this is the arena path that
+serves `nros_cpp_subscription_register`, publishers, services and clients alike,
+so it was never subscription-specific.
+
+Verified on an S32K344 over serial, ROS domain 10:
+
+    domains:  3x @ros2_lv/10, sub decl for (10/     (was 1x/10, 2x/0, sub on 0/)
+    ros2 node list:  /listener
+    board RTT:       I heard: [hello from host]
+
+## How it was found, after three wrong guesses
+
+Guessing cost three build-flash-test cycles each. What ended it was writing the
+three candidate values into `#[unsafe(no_mangle)]` statics and reading them over
+SWD:
+
+    CFG (node token)  = 0x0000000a = 10
+    CTX (entity)      = 0xdead0001   <- untouched sentinel
+    SESSION (entity)  = 0xdead0002   <- untouched sentinel
+    entity hits       = 0
+
+The sentinels proved the instrumented function never ran at all, which is what
+redirected the search to `nros_cpp_subscription_register` -> the arena path. Two
+of the three "candidate sites" eliminated earlier were eliminated correctly but
+for the wrong reason (byte-identical images), and that reasoning would have
+misled just as easily in the other direction.
+
+The lesson worth keeping: a sentinel value proves whether code RAN. Diffing a
+built image only proves whether it CHANGED, and those are not the same question.
