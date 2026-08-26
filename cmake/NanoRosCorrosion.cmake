@@ -436,9 +436,37 @@ function(nros_share_corrosion_cargo_dir)
             "directory between two configurations that differ is the defect "
             "this function exists to avoid, so there is no default key.")
     endif()
+    # NORMALISE before hashing. The key's inputs are cmake lists assembled by
+    # append, and this tree demonstrably produces both DUPLICATES and
+    # order-dependence in them — an observed capability list read
+    # `caps=safety,safety`, and one cargo invocation carried `panic-platform`
+    # SEVEN times because `corrosion_set_features` appends once per entry.
+    #
+    # None of that changes what gets BUILT (cargo dedupes), but all of it would
+    # change the HASH, and an unstable key makes two identical leaves stop
+    # sharing — or, worse, makes one leaf re-point on every configure. A key
+    # must be a function of the configuration, not of how the list was
+    # assembled. Sorting and de-duplicating each field is what makes that true.
+    set(_key_norm "")
+    foreach(_field IN LISTS _SC_KEY)
+        # Split `name=a,b,a` into its parts, sort + dedupe them, rebuild.
+        if(_field MATCHES "^([^=]+)=(.*)$")
+            set(_fname "${CMAKE_MATCH_1}")
+            set(_fval "${CMAKE_MATCH_2}")
+            if(NOT _fval STREQUAL "")
+                string(REPLACE "," ";" _fparts "${_fval}")
+                list(REMOVE_DUPLICATES _fparts)
+                list(SORT _fparts)
+                string(REPLACE ";" "," _fval "${_fparts}")
+            endif()
+            list(APPEND _key_norm "${_fname}=${_fval}")
+        else()
+            list(APPEND _key_norm "${_field}")
+        endif()
+    endforeach()
     # The key is HASHED rather than spelled: it contains a capability list and
     # a target triple, and the result is a path component.
-    string(REPLACE ";" "|" _key_text "${_SC_KEY}")
+    string(REPLACE ";" "|" _key_text "${_key_norm}")
     string(SHA1 _key_hash "${_key_text}")
     string(SUBSTRING "${_key_hash}" 0 12 _key_hash)
     set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_ROOT}/${_key_hash}")

@@ -3603,6 +3603,13 @@ check-cmake-find-program-shadowed:
     @python3 scripts/check-cmake-find-program-shadowed.py --self-test
     @python3 scripts/check-cmake-find-program-shadowed.py
 
+# Issue 0805 — the shared Corrosion cargo store only grows: a key dir is named
+# by a hash of the leaf's configuration, so any key change orphans the old one.
+# Reports by default; `just gc-shared-cargo --prune` deletes. Reachability is
+# exact — a dir is live iff some leaf's `cargo` symlink resolves to it.
+gc-shared-cargo *ARGS:
+    @python3 scripts/build/gc-shared-cargo.py {{ARGS}}
+
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #
 # `just` resolves a recipe reference only when the recipe RUNS, so deleting a
