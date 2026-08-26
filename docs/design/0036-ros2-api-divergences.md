@@ -83,7 +83,7 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
 - `nros::` not `rclcpp::`; `nros_*` C fns not `rcl_*`/`rclc_*`; `CONFIG_NROS_*`
   build config. Signals the embedded variant while mirroring the surface.
 - Topic key conventions (`rt/`, `rq/`, `rr/`) preserved for rmw_zenoh
-  interop; `QosSettings.avoid_ros_namespace_conventions` toggles them.
+  interop; `QoSProfile.avoid_ros_namespace_conventions` toggles them.
 
 ### Execution & blocking model
 

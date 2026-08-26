@@ -13,7 +13,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use nros_rmw::{QosSettings, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
+use nros_rmw::{QoSProfile, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
 use nros_rmw_cffi::{
     CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
@@ -281,7 +281,7 @@ fn native_loan_routes_through_vtable() {
     let mut session = open_session();
     let topic = TopicInfo::new("/ln", "std_msgs/msg/Int32", "RIHS01_ln");
     let publisher = session
-        .create_publisher(&topic, QosSettings::default())
+        .create_publisher(&topic, QoSProfile::default())
         .expect("create publisher");
 
     let pre_loan = LOAN_CALLS.load(Ordering::SeqCst);
@@ -321,7 +321,7 @@ fn native_loan_drop_calls_discard() {
     let mut session = open_session();
     let topic = TopicInfo::new("/ln2", "std_msgs/msg/Int32", "RIHS01_ln").with_domain(0);
     let publisher = session
-        .create_publisher(&topic, QosSettings::default())
+        .create_publisher(&topic, QoSProfile::default())
         .expect("create publisher");
 
     let pre_loan = LOAN_CALLS.load(Ordering::SeqCst);

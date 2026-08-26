@@ -24,12 +24,12 @@ Phase 189.M3.3 (done 2026-05-29).
 ## The gap
 
 The `Session` trait (`packages/core/nros-rmw/src/traits.rs`) threads
-`QosSettings` through the **pub/sub** create methods but **not** the service
+`QoSProfile` through the **pub/sub** create methods but **not** the service
 ones:
 
 ```rust
-fn create_publisher(&mut self, topic: &TopicInfo, qos: QosSettings) -> ...;     // qos ✓
-fn create_subscription(&mut self, topic: &TopicInfo, qos: QosSettings) -> ...;    // qos ✓
+fn create_publisher(&mut self, topic: &TopicInfo, qos: QoSProfile) -> ...;     // qos ✓
+fn create_subscription(&mut self, topic: &TopicInfo, qos: QoSProfile) -> ...;    // qos ✓
 fn create_service(&mut self, service: &ServiceInfo) -> ...;              // NO qos
 fn create_client(&mut self, service: &ServiceInfo) -> ...;             // NO qos
 ```
@@ -61,7 +61,7 @@ So **service QoS is fixed at the RMW layer**, not caller-selectable:
 
 ## What a fix needs (a dedicated slice, before M3.3)
 
-1. **Thread `QosSettings` into the service create path.** Either add a `qos`
+1. **Thread `QoSProfile` into the service create path.** Either add a `qos`
    param to `create_service` / `create_client` (mirrors pub/sub),
    or carry it on `ServiceInfo` (`ServiceInfo<'a>` already bundles the
    service-name/type metadata — a QoS field is the lower-churn option, but a

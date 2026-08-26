@@ -235,7 +235,7 @@ pub struct RuntimeCtx<'a> {
     ///
     /// Primitive `(topic, role, policy, value)` codes — the SAME wire form the
     /// C and C++ ABIs use — because `nros-platform` sits below `nros-rmw` in the
-    /// layer graph and a typed `QosOverride` field here would invert it. The
+    /// layer graph and a typed `QoSOverride` field here would invert it. The
     /// register seam installs them via `Executor::set_node_qos_overrides`, which
     /// decodes at entity-create time.
     pub qos_overrides: &'static [(&'static str, u8, u8, u32)],

@@ -1,12 +1,12 @@
 //! Node source metadata recorded without opening middleware.
 
 use crate::{
-    ParameterType, QosSettings,
+    ParameterType, QoSProfile,
     heapless::{String, Vec},
 };
 
 #[cfg(feature = "alloc")]
-use crate::{QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy};
+use crate::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy};
 #[cfg(feature = "alloc")]
 // phase-359 W8 — `alloc`, not `std`. These three are the file's ONLY reason for
 // a gate, and `alloc::{format, string::String, vec::Vec}` are the same types.
@@ -306,7 +306,7 @@ pub struct EntityMetadata {
     pub source_name_kind: SourceNameKind,
     pub type_name: &'static str,
     pub type_hash: &'static str,
-    pub qos: QosSettings,
+    pub qos: QoSProfile,
     pub callback_slot: Option<CallbackSlot>,
     pub callback_id: Option<MetadataString>,
     pub callback_source: SourceLocationMetadata,
@@ -1012,7 +1012,7 @@ pub struct EntityMetadataSpec<'a> {
     pub source_name: &'a str,
     pub type_name: &'static str,
     pub type_hash: &'static str,
-    pub qos: QosSettings,
+    pub qos: QoSProfile,
 }
 
 /// Build an [`EntityMetadata`] from its identifying fields, defaulting the
@@ -1245,7 +1245,7 @@ fn write_interface(
 }
 
 #[cfg(feature = "alloc")]
-fn write_qos(out: &mut impl core::fmt::Write, qos: QosSettings) -> core::fmt::Result {
+fn write_qos(out: &mut impl core::fmt::Write, qos: QoSProfile) -> core::fmt::Result {
     write!(out, "\"qos\":{{")?;
     write_json_field(out, "reliability", reliability_json(qos.reliability))?;
     out.write_char(',')?;
@@ -1376,36 +1376,36 @@ fn effect_json_kind(kind: CallbackEffectKind) -> &'static str {
 }
 
 #[cfg(feature = "alloc")]
-fn reliability_json(value: QosReliabilityPolicy) -> &'static str {
+fn reliability_json(value: QoSReliabilityPolicy) -> &'static str {
     match value {
-        QosReliabilityPolicy::Reliable => "reliable",
-        QosReliabilityPolicy::BestEffort => "best_effort",
+        QoSReliabilityPolicy::Reliable => "reliable",
+        QoSReliabilityPolicy::BestEffort => "best_effort",
     }
 }
 
 #[cfg(feature = "alloc")]
-fn durability_json(value: QosDurabilityPolicy) -> &'static str {
+fn durability_json(value: QoSDurabilityPolicy) -> &'static str {
     match value {
-        QosDurabilityPolicy::Volatile => "volatile",
-        QosDurabilityPolicy::TransientLocal => "transient_local",
+        QoSDurabilityPolicy::Volatile => "volatile",
+        QoSDurabilityPolicy::TransientLocal => "transient_local",
     }
 }
 
 #[cfg(feature = "alloc")]
-fn history_json(value: QosHistoryPolicy) -> &'static str {
+fn history_json(value: QoSHistoryPolicy) -> &'static str {
     match value {
-        QosHistoryPolicy::KeepLast => "keep_last",
-        QosHistoryPolicy::KeepAll => "keep_all",
+        QoSHistoryPolicy::KeepLast => "keep_last",
+        QoSHistoryPolicy::KeepAll => "keep_all",
     }
 }
 
 #[cfg(feature = "alloc")]
-fn liveliness_json(value: QosLivelinessPolicy) -> &'static str {
+fn liveliness_json(value: QoSLivelinessPolicy) -> &'static str {
     match value {
-        QosLivelinessPolicy::None => "system_default",
-        QosLivelinessPolicy::Automatic => "automatic",
-        QosLivelinessPolicy::ManualByTopic => "manual_by_topic",
-        QosLivelinessPolicy::ManualByNode => "manual_by_node",
+        QoSLivelinessPolicy::None => "system_default",
+        QoSLivelinessPolicy::Automatic => "automatic",
+        QoSLivelinessPolicy::ManualByTopic => "manual_by_topic",
+        QoSLivelinessPolicy::ManualByNode => "manual_by_node",
     }
 }
 

@@ -1159,7 +1159,7 @@ typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
 
 /**
  * Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
- * Rust's `nros_rmw::QosOverride`. The deploy plan lowers a
+ * Rust's `nros_rmw::QoSOverride`. The deploy plan lowers a
  * `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
  * array of these, which the entry installs on the node via
  * [`nros_node_set_qos_overrides`](crate::node::nros_node_set_qos_overrides);
@@ -1192,7 +1192,7 @@ typedef struct nros_qos_override_t {
    * durability `0`=volatile/`1`=transient_local; history
    * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
    * lifespan / liveliness_lease_duration = milliseconds; liveliness =
-   * the `QosLivelinessPolicy` discriminant
+   * the `QoSLivelinessPolicy` discriminant
    * (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
    */
   uint32_t value;

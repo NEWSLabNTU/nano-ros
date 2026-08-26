@@ -7,14 +7,14 @@
 //! if either ever needed a vtable, this file would stop compiling.
 #![cfg(feature = "alloc")]
 
-use nros_rmw::QosSettings;
+use nros_rmw::QoSProfile;
 use nros_rmw_cffi::{
     NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NrosRmwQos, generated, rmw_compare_gids_equal,
     rmw_qos_profile_check_compatible,
 };
 
 fn base() -> NrosRmwQos {
-    NrosRmwQos::try_from(QosSettings::default()).expect("default qos")
+    NrosRmwQos::try_from(QoSProfile::default()).expect("default qos")
 }
 
 fn verdict(pubq: NrosRmwQos, subq: NrosRmwQos) -> (i32, u32) {
@@ -259,7 +259,7 @@ fn policy_values_match_upstreams_numbering() {
 /// written with `as u8` — so the two cannot be checked separately.
 #[test]
 fn the_rust_liveliness_enum_carries_the_abi_values() {
-    use nros_rmw::QosLivelinessPolicy as P;
+    use nros_rmw::QoSLivelinessPolicy as P;
     use nros_rmw_cffi::generated::rmw_liveliness_kind_t as lk;
 
     assert_eq!(P::None as u32, lk::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT);

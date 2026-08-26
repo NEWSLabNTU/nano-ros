@@ -2166,7 +2166,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         .unwrap_or("/");
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
-    use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+    use nros_node::{ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
     let action_info = ActionInfo::new(action_str, type_str, hash_str).with_domain(ctx.domain_id);
     let session = ctx.executor.session_mut();
 
@@ -2192,7 +2192,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         node_name_str,
     );
     let send_goal_server =
-        match session.create_service(&send_goal_info, QosSettings::services_default()) {
+        match session.create_service(&send_goal_info, QoSProfile::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2209,7 +2209,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         node_name_str,
     );
     let cancel_goal_server =
-        match session.create_service(&cancel_goal_info, QosSettings::services_default()) {
+        match session.create_service(&cancel_goal_info, QoSProfile::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2224,7 +2224,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         node_name_str,
     );
     let get_result_server =
-        match session.create_service(&get_result_info, QosSettings::services_default()) {
+        match session.create_service(&get_result_info, QoSProfile::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2241,7 +2241,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
         feedback_topic = feedback_topic.with_node_name(n);
     }
     let feedback_publisher =
-        match session.create_publisher(&feedback_topic, QosSettings::BEST_EFFORT) {
+        match session.create_publisher(&feedback_topic, QoSProfile::BEST_EFFORT) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2259,7 +2259,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_init_polling(
     {
         status_topic = status_topic.with_node_name(n);
     }
-    let status_publisher = match session.create_publisher(&status_topic, QosSettings::BEST_EFFORT) {
+    let status_publisher = match session.create_publisher(&status_topic, QoSProfile::BEST_EFFORT) {
         Ok(h) => h,
         Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
     };
@@ -2576,7 +2576,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         .unwrap_or("/");
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
-    use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+    use nros_node::{ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
     let action_info = ActionInfo::new(action_str, type_str, hash_str).with_domain(ctx.domain_id);
     let session = ctx.executor.session_mut();
 
@@ -2602,7 +2602,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         node_name_str,
     );
     let send_goal_client =
-        match session.create_client(&send_goal_info, QosSettings::services_default()) {
+        match session.create_client(&send_goal_info, QoSProfile::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2619,7 +2619,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         node_name_str,
     );
     let cancel_goal_client =
-        match session.create_client(&cancel_goal_info, QosSettings::services_default()) {
+        match session.create_client(&cancel_goal_info, QoSProfile::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2634,7 +2634,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         node_name_str,
     );
     let get_result_client =
-        match session.create_client(&get_result_info, QosSettings::services_default()) {
+        match session.create_client(&get_result_info, QoSProfile::services_default()) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };
@@ -2651,7 +2651,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_init_polling(
         feedback_topic = feedback_topic.with_node_name(n);
     }
     let feedback_subscriber =
-        match session.create_subscription(&feedback_topic, QosSettings::BEST_EFFORT) {
+        match session.create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT) {
             Ok(h) => h,
             Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
         };

@@ -191,7 +191,7 @@ typedef struct NrosCppSessionSpec {
 
 /**
  * Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
- * Rust's `nros_rmw::QosOverride` (and nros-c's `nros_qos_override_t`). The
+ * Rust's `nros_rmw::QoSOverride` (and nros-c's `nros_qos_override_t`). The
  * deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
  * into a `&'static` array of these, which the entry installs on the node via
  * [`nros_cpp_node_set_qos_overrides`]; the node folds matching `(topic, role)`
@@ -220,7 +220,7 @@ typedef struct nros_cpp_qos_override_t {
    * durability `0`=volatile/`1`=transient_local; history
    * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
    * lifespan / liveliness_lease_duration = milliseconds; liveliness =
-   * the `QosLivelinessPolicy` discriminant
+   * the `QoSLivelinessPolicy` discriminant
    * (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
    */
   uint32_t value;
@@ -366,7 +366,7 @@ typedef void (*nros_cpp_guard_callback_t)(void *context);
  * (`reliability`, `durability`, `history`, `depth`) plus extended
  * policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
  * `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
- * `nros_qos_t` (C API) and `QosSettings` (Rust API).
+ * `nros_qos_t` (C API) and `QoSProfile` (Rust API).
  */
 typedef struct nros_cpp_qos_t {
   enum nros_cpp_qos_reliability_t reliability;

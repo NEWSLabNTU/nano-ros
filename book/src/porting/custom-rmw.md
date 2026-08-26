@@ -91,13 +91,13 @@ impl Session for MyProtoSession {
     type ServiceHandle = MyProtoServer;
     type ClientHandle = MyProtoClient;
 
-    fn create_publisher(&mut self, t: &TopicInfo, q: QosSettings)
+    fn create_publisher(&mut self, t: &TopicInfo, q: QoSProfile)
         -> Result<MyProtoPub, TransportError> { todo!() }
-    fn create_subscription(&mut self, t: &TopicInfo, q: QosSettings)
+    fn create_subscription(&mut self, t: &TopicInfo, q: QoSProfile)
         -> Result<MyProtoSub, TransportError> { todo!() }
-    fn create_service(&mut self, s: &ServiceInfo, q: QosSettings)
+    fn create_service(&mut self, s: &ServiceInfo, q: QoSProfile)
         -> Result<MyProtoServer, TransportError> { todo!() }
-    fn create_client(&mut self, s: &ServiceInfo, q: QosSettings)
+    fn create_client(&mut self, s: &ServiceInfo, q: QoSProfile)
         -> Result<MyProtoClient, TransportError> { todo!() }
     fn close(&mut self) -> Result<(), TransportError> { todo!() }
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), TransportError> {

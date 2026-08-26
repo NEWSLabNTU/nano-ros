@@ -103,7 +103,7 @@ nros uses compile-time generics: `Publisher<M: RosMessage>` monomorphizes at bui
 
 `rmw_qos_profile_t` exposes the complete DDS QoS model: deadline, lifespan, liveliness lease duration, etc. Most embedded applications need only reliability (best-effort vs reliable) and optionally history depth.
 
-**nros-rmw adaptation:** `QosSettings` with a minimal subset: reliability, durability, history policy, depth. Middleware backends map these to their native QoS. Additional QoS can be added later without breaking the trait interface.
+**nros-rmw adaptation:** `QoSProfile` with a minimal subset: reliability, durability, history policy, depth. Middleware backends map these to their native QoS. Additional QoS can be added later without breaking the trait interface.
 
 ### 6. No serialization boundary
 
@@ -146,7 +146,7 @@ Five items in the current `traits.rs` are zenoh-specific and must move to `nros-
 | `TopicInfo::to_key()` | traits.rs | Formats zenoh keyexpr `<domain>/<topic>/<type>/TypeHashNotSupported` | Move to `nros-rmw-zenoh/keyexpr.rs` |
 | `TopicInfo::to_key_wildcard()` | traits.rs | Same, with wildcard suffix | Same |
 | `ServiceInfo::to_key()` / `to_key_wildcard()` | traits.rs | Same pattern for services | Same |
-| `QosSettings::to_qos_string()` | traits.rs | Formats zenoh liveliness QoS string `2:2:1,1:,:,:,,` | Same |
+| `QoSProfile::to_qos_string()` | traits.rs | Formats zenoh liveliness QoS string `2:2:1,1:,:,:,,` | Same |
 | `validate_locator()` / `locator_protocol()` | traits.rs | Parses zenoh locator format `tcp/...` | Same |
 
 Everything else (trait signatures, QoS enums, error types, `ServiceRequest`) is genuinely middleware-agnostic.

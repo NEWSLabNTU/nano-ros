@@ -3,7 +3,7 @@
 use core::{marker::PhantomData, mem::MaybeUninit};
 
 use nros_core::{BorrowedMessage, RosMessage, RosService};
-use nros_rmw::{QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
+use nros_rmw::{QoSProfile, ServiceInfo, Session, TopicInfo, TransportError};
 
 use crate::{session, timer::TimerDuration};
 
@@ -2481,7 +2481,7 @@ impl<'s> Executor<'s> {
     pub fn set_node_qos_overrides(
         &mut self,
         node_id: super::node_record::NodeId,
-        overrides: &'static [super::node_record::QosOverrideCode],
+        overrides: &'static [super::node_record::QoSOverrideCode],
     ) {
         if let Some(r) = self.nodes.get_mut(node_id.index()) {
             r.qos_overrides = overrides;
@@ -2522,7 +2522,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<crate::executor::handles::EmbeddedPublisher<M>, NodeError> {
         // Phase 212.K.7.6.b — register `M`'s cyclonedds descriptor before
         // creating the underlying publisher handle. No-op for other RMWs.
@@ -2557,7 +2557,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
         let handle =
             self.create_raw_publisher_handle_on(node_id, topic_name, type_name, type_hash, qos)?;
@@ -2579,7 +2579,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<session::RmwPublisher, NodeError> {
         let (node_name, ns, session_idx, overrides) = {
             let r = self
@@ -2599,7 +2599,7 @@ impl<'s> Executor<'s> {
         let qos = super::node_record::apply_qos_override_codes(
             qos,
             topic_name,
-            nros_rmw::QosOverrideRole::Publisher,
+            nros_rmw::QoSOverrideRole::Publisher,
             overrides,
         );
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
@@ -3528,7 +3528,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
         group: Option<&str>,
     ) -> Result<HandleId, NodeError>
@@ -3673,7 +3673,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -3699,7 +3699,7 @@ impl<'s> Executor<'s> {
         let qos = super::node_record::apply_qos_override_codes(
             qos,
             topic_name,
-            nros_rmw::QosOverrideRole::Subscription,
+            nros_rmw::QoSOverrideRole::Subscription,
             overrides,
         );
         let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
@@ -3741,7 +3741,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: super::node_record::NodeId,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -3832,7 +3832,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -3906,7 +3906,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -3993,7 +3993,7 @@ impl<'s> Executor<'s> {
     pub fn add_arena_subscription_callback<F, const RX_BUF: usize>(
         &mut self,
         handle: session::RmwSubscriber,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -4044,7 +4044,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -4121,7 +4121,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: Option<super::node_record::NodeId>,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -4240,7 +4240,7 @@ impl<'s> Executor<'s> {
         }
         let handle = self
             .session
-            .create_service(&info, QosSettings::services_default())
+            .create_service(&info, QoSProfile::services_default())
             .map_err(NodeError::Transport)?;
 
         let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
@@ -4279,7 +4279,7 @@ impl<'s> Executor<'s> {
         &mut self,
         node_id: super::node_record::NodeId,
         service_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -4368,7 +4368,7 @@ impl<'s> Executor<'s> {
             F,
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
-        >(node_id, service_name, QosSettings::services_default(), callback)
+        >(node_id, service_name, QoSProfile::services_default(), callback)
     }
 
     // ========================================================================
@@ -4537,7 +4537,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
         group: Option<&str>,
@@ -4623,7 +4623,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: RawSubscriptionInfoCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -4704,7 +4704,7 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: super::types::RawSubscriptionSafetyCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -4786,7 +4786,7 @@ impl<'s> Executor<'s> {
             service_name,
             service_type,
             service_hash,
-            QosSettings::services_default(),
+            QoSProfile::services_default(),
             callback,
             context,
         )
@@ -4804,7 +4804,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -4828,7 +4828,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -4850,7 +4850,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -4936,7 +4936,7 @@ impl<'s> Executor<'s> {
             service_name,
             service_type,
             service_hash,
-            QosSettings::services_default(),
+            QoSProfile::services_default(),
             callback,
             context,
         )
@@ -4945,7 +4945,7 @@ impl<'s> Executor<'s> {
     /// Register a raw service client with a custom reply buffer size + QoS.
     ///
     /// `qos` applies to the client's request + reply endpoints (Phase 193.3b);
-    /// defaults to [`QosSettings::services_default`] via the convenience
+    /// defaults to [`QoSProfile::services_default`] via the convenience
     /// wrapper.
     #[allow(clippy::too_many_arguments)]
     pub fn register_service_client_raw_sized<const REPLY_BUF: usize>(
@@ -4953,7 +4953,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -4978,7 +4978,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -5000,7 +5000,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: Option<RawResponseCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<HandleId, NodeError> {
@@ -5075,7 +5075,7 @@ impl<'s> Executor<'s> {
         service_name: &str,
         service_type: &str,
         service_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<(HandleId, *mut ServiceClientSendHeader<REPLY_BUF>), NodeError>
     where
@@ -6431,7 +6431,7 @@ impl<'s> Executor<'s> {
             // matters exactly when a tool sets many parameters at once, the case
             // the deep queue is for.
             session
-                .create_service(&info, QosSettings::parameters_default())
+                .create_service(&info, QoSProfile::parameters_default())
                 .map_err(NodeError::Transport)
         }
 
@@ -6611,7 +6611,7 @@ impl<'s> Executor<'s> {
                 info = info.with_node_name(node_name);
             }
             session
-                .create_service(&info, QosSettings::services_default())
+                .create_service(&info, QoSProfile::services_default())
                 .map_err(NodeError::Transport)
         }
 

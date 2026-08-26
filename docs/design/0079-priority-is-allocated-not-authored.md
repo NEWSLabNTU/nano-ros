@@ -90,7 +90,7 @@ perception rigs and recorders.
 | `background` | opportunistic, may starve |
 
 This is deliberately the shape ROS 2 QoS already has, and which this codebase
-already implements (`QosSettings::services_default()`): a small set of named
+already implements (`QoSProfile::services_default()`): a small set of named
 profiles over a fully expressive struct, profiles taught first. Users arrive
 understanding it.
 

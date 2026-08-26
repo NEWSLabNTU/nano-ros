@@ -325,7 +325,7 @@ pub enum nros_cpp_qos_liveliness_t {
 /// (`reliability`, `durability`, `history`, `depth`) plus extended
 /// policies (`liveliness_kind`, `deadline_ms`, `lifespan_ms`,
 /// `liveliness_lease_ms`, `avoid_ros_namespace_conventions`) match
-/// `nros_qos_t` (C API) and `QosSettings` (Rust API).
+/// `nros_qos_t` (C API) and `QoSProfile` (Rust API).
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct nros_cpp_qos_t {
@@ -350,40 +350,40 @@ pub struct nros_cpp_qos_t {
 }
 
 impl nros_cpp_qos_t {
-    pub(crate) fn to_qos_settings(self) -> nros_rmw::QosSettings {
+    pub(crate) fn to_qos_settings(self) -> nros_rmw::QoSProfile {
         use nros_rmw::{
-            QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+            QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy,
         };
 
-        nros_rmw::QosSettings {
+        nros_rmw::QoSProfile {
             reliability: match self.reliability {
-                nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABLE => QosReliabilityPolicy::Reliable,
+                nros_cpp_qos_reliability_t::NROS_CPP_QOS_RELIABLE => QoSReliabilityPolicy::Reliable,
                 nros_cpp_qos_reliability_t::NROS_CPP_QOS_BEST_EFFORT => {
-                    QosReliabilityPolicy::BestEffort
+                    QoSReliabilityPolicy::BestEffort
                 }
             },
             durability: match self.durability {
-                nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE => QosDurabilityPolicy::Volatile,
+                nros_cpp_qos_durability_t::NROS_CPP_QOS_VOLATILE => QoSDurabilityPolicy::Volatile,
                 nros_cpp_qos_durability_t::NROS_CPP_QOS_TRANSIENT_LOCAL => {
-                    QosDurabilityPolicy::TransientLocal
+                    QoSDurabilityPolicy::TransientLocal
                 }
             },
             history: match self.history {
-                nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST => QosHistoryPolicy::KeepLast,
-                nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_ALL => QosHistoryPolicy::KeepAll,
+                nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_LAST => QoSHistoryPolicy::KeepLast,
+                nros_cpp_qos_history_t::NROS_CPP_QOS_KEEP_ALL => QoSHistoryPolicy::KeepAll,
             },
             liveliness_kind: match self.liveliness_kind {
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_NONE => {
-                    QosLivelinessPolicy::None
+                    QoSLivelinessPolicy::None
                 }
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_AUTOMATIC => {
-                    QosLivelinessPolicy::Automatic
+                    QoSLivelinessPolicy::Automatic
                 }
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_TOPIC => {
-                    QosLivelinessPolicy::ManualByTopic
+                    QoSLivelinessPolicy::ManualByTopic
                 }
                 nros_cpp_qos_liveliness_t::NROS_CPP_QOS_LIVELINESS_MANUAL_BY_NODE => {
-                    QosLivelinessPolicy::ManualByNode
+                    QoSLivelinessPolicy::ManualByNode
                 }
             },
             depth: self.depth as u32,
@@ -1217,7 +1217,7 @@ pub struct nros_cpp_node_t {
 }
 
 /// Phase 211.H (issue #52) — one per-topic QoS override, the C++-FFI mirror of
-/// Rust's `nros_rmw::QosOverride` (and nros-c's `nros_qos_override_t`). The
+/// Rust's `nros_rmw::QoSOverride` (and nros-c's `nros_qos_override_t`). The
 /// deploy plan lowers a `qos_overrides.<topic>.<role>.<policy>` launch param
 /// into a `&'static` array of these, which the entry installs on the node via
 /// [`nros_cpp_node_set_qos_overrides`]; the node folds matching `(topic, role)`
@@ -1240,7 +1240,7 @@ pub struct nros_cpp_qos_override_t {
     /// durability `0`=volatile/`1`=transient_local; history
     /// `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
     /// lifespan / liveliness_lease_duration = milliseconds; liveliness =
-    /// the `QosLivelinessPolicy` discriminant
+    /// the `QoSLivelinessPolicy` discriminant
     /// (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
     pub value: u32,
 }
@@ -1271,19 +1271,19 @@ pub(crate) fn resolve_node_entity_name(
 }
 
 /// Fold any overrides matching `(topic, role)` into `qos`. Mirrors
-/// `nros_rmw::QosSettings::apply_overrides`: single linear scan,
+/// `nros_rmw::QoSProfile::apply_overrides`: single linear scan,
 /// last-write-wins, no alloc. `overrides` may be null (`len == 0` ⇒ no-op).
 ///
 /// # Safety
 /// `overrides` must be null or point to `len` valid `nros_cpp_qos_override_t`,
 /// each `topic` null or a valid NUL-terminated UTF-8 C string for the call.
 pub(crate) unsafe fn apply_qos_overrides(
-    mut qos: nros_rmw::QosSettings,
+    mut qos: nros_rmw::QoSProfile,
     overrides: *const nros_cpp_qos_override_t,
     len: usize,
     topic: &str,
     role: u8,
-) -> nros_rmw::QosSettings {
+) -> nros_rmw::QoSProfile {
     if overrides.is_null() || len == 0 {
         return qos;
     }
@@ -2890,7 +2890,7 @@ mod dispatch_guard_tests {
 #[cfg(test)]
 mod qos_override_tests {
     use super::*;
-    use nros_rmw::{QosDurabilityPolicy, QosReliabilityPolicy};
+    use nros_rmw::{QoSDurabilityPolicy, QoSReliabilityPolicy};
 
     #[test]
     fn apply_qos_overrides_matches_topic_and_role() {
@@ -2900,7 +2900,7 @@ mod qos_override_tests {
             policy: 0, // reliability
             value: 0,  // best_effort
         }];
-        let base = nros_rmw::QosSettings::default(); // Reliable
+        let base = nros_rmw::QoSProfile::default(); // Reliable
 
         let got = unsafe {
             apply_qos_overrides(
@@ -2911,7 +2911,7 @@ mod qos_override_tests {
                 NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::BestEffort);
 
         // Wrong role / topic / empty → untouched.
         let got = unsafe {
@@ -2923,7 +2923,7 @@ mod qos_override_tests {
                 NROS_CPP_QOS_OVERRIDE_ROLE_SUBSCRIPTION,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
         let got = unsafe {
             apply_qos_overrides(
                 base,
@@ -2933,7 +2933,7 @@ mod qos_override_tests {
                 NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
         let got = unsafe {
             apply_qos_overrides(
                 base,
@@ -2943,7 +2943,7 @@ mod qos_override_tests {
                 NROS_CPP_QOS_OVERRIDE_ROLE_PUBLISHER,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
     }
 
     #[test]
@@ -2964,14 +2964,14 @@ mod qos_override_tests {
         ];
         let got = unsafe {
             apply_qos_overrides(
-                nros_rmw::QosSettings::default(),
+                nros_rmw::QoSProfile::default(),
                 ovr.as_ptr(),
                 ovr.len(),
                 "/t",
                 NROS_CPP_QOS_OVERRIDE_ROLE_SUBSCRIPTION,
             )
         };
-        assert_eq!(got.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(got.durability, QoSDurabilityPolicy::TransientLocal);
         assert_eq!(got.depth, 42);
     }
 

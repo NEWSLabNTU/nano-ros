@@ -119,7 +119,7 @@ enum Proof {
     /// publisher talking to a default subscriber delivers exactly as many
     /// messages as a QoS-matched pair, so this proof stayed green through
     /// issue 0306, which made every declarative Rust entity run
-    /// `QosSettings::default()`. The profile assertion is what makes the cell
+    /// `QoSProfile::default()`. The profile assertion is what makes the cell
     /// about QoS rather than about delivery.
     QosMatchedProfile {
         /// The topic the pair uses — the C-family demos publish on `/chatter`.
@@ -777,7 +777,7 @@ fn run_cell(pcell: &MCell) {
                         });
                     // The workspaces declare `reliable + transient_local +
                     // keep_last(10)` per entity, in code.
-                    // Every one of these differs from `QosSettings::default()`
+                    // Every one of these differs from `QoSProfile::default()`
                     // except reliability, so together they cannot be satisfied
                     // by a defaulted entity.
                     for expect in [

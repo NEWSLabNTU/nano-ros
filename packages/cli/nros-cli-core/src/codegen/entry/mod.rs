@@ -116,7 +116,7 @@ pub struct Plan {
 /// codes) lives in `nros_orchestration_ir::qos_override`, shared with the
 /// `nros::main!` proc-macro, and REJECTS what it cannot lower. A plan therefore
 /// never carries an override the emitters would silently drop.
-pub type QosOverrideSpec = nros_orchestration_ir::qos_override::LoweredOverride;
+pub type QoSOverrideSpec = nros_orchestration_ir::qos_override::LoweredOverride;
 
 /// One Node-pkg invocation in launch order.
 ///
@@ -157,7 +157,7 @@ pub struct PlanNode {
     /// node's `qos_overrides.<topic>.<role>.<policy>` launch params. Empty when
     /// none. The typed C++ entry emitter bakes them into a
     /// `node.set_qos_overrides(...)` call before `configure(node)`.
-    pub qos_overrides: Vec<QosOverrideSpec>,
+    pub qos_overrides: Vec<QoSOverrideSpec>,
     /// Launch `<param name= value=>` initials (NON-qos params; qos ones go to
     /// `qos_overrides`). Preserved in launch-file order. (#116)
     pub params: Vec<(String, String)>,
@@ -311,7 +311,7 @@ pub fn sanitize_pkg(pkg: &str) -> String {
 /// unparseable value) instead of filtering it away. Silence is the wrong
 /// failure mode for QoS: the image would run different delivery semantics than
 /// the model declares, invisibly.
-fn qos_overrides_from_params(params: &[(String, String)]) -> Result<Vec<QosOverrideSpec>> {
+fn qos_overrides_from_params(params: &[(String, String)]) -> Result<Vec<QoSOverrideSpec>> {
     nros_orchestration_ir::qos_override::lower_all(
         params.iter().map(|(k, v)| (k.as_str(), v.as_str())),
     )
@@ -705,7 +705,7 @@ mod tests {
 
     /// Issue 0276 + phase-54 — a model's `params_files` project into
     /// `PlanNode.params` at codegen time, and `qos_overrides.*` split out into
-    /// typed [`QosOverrideSpec`]s instead of being baked as parameters.
+    /// typed [`QoSOverrideSpec`]s instead of being baked as parameters.
     ///
     /// The resolution algorithm itself lives in the shared `model` crate; this
     /// asserts the WIRING, not a second copy. The param file writes the node
@@ -810,7 +810,7 @@ contracts: {}
     }
 
     /// Phase 211.H (issue #52) — `qos_overrides.<topic>.<role>.<policy>` params
-    /// decompose into sorted `QosOverrideSpec`s; non-matching params are ignored.
+    /// decompose into sorted `QoSOverrideSpec`s; non-matching params are ignored.
     #[test]
     fn qos_overrides_decompose_from_params() {
         let params = vec![

@@ -19,7 +19,7 @@ use core::{
 };
 use std::sync::Mutex;
 
-use nros_rmw::{QosSettings, RmwConfig, Session, SessionMode, Subscription, TopicInfo};
+use nros_rmw::{QoSProfile, RmwConfig, Session, SessionMode, Subscription, TopicInfo};
 use nros_rmw_cffi::{
     CffiRmw, CffiSubscription, EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
@@ -265,7 +265,7 @@ fn open_subscriber(topic: &str) -> CffiSubscription {
         .expect("open");
     let info = TopicInfo::new(topic, "example/Stub", "RIHS01_stub");
     let sub = session
-        .create_subscription(&info, QosSettings::default())
+        .create_subscription(&info, QoSProfile::default())
         .expect("create_subscription");
     // Leak the session: its `close` would drop through the stub vtable whose
     // `backend_data` is a bare sentinel, not a `Box`. The process exits after.

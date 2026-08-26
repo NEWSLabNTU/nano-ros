@@ -144,7 +144,7 @@ pub fn record_entity(
             source_name,
             type_name,
             type_hash: "",
-            qos: crate::QosSettings::default(),
+            qos: crate::QoSProfile::default(),
         };
         let Ok(mut entity) = entity_metadata(spec) else {
             return false;

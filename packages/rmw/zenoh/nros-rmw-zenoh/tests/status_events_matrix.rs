@@ -23,8 +23,8 @@
 
 use core::ffi::c_void;
 use nros_rmw::{
-    EventCallback, EventKind, Publisher, QosSettings, Session, SessionMode, Subscription,
-    TopicInfo, Transport, TransportConfig, TransportError,
+    EventCallback, EventKind, Publisher, QoSProfile, Session, SessionMode, Subscription, TopicInfo,
+    Transport, TransportConfig, TransportError,
 };
 use nros_rmw_zenoh::ZenohTransport;
 use nros_tests::fixtures::ZenohRouter;
@@ -95,7 +95,7 @@ fn topic() -> TopicInfo<'static> {
 /// `unsafe impl Send for Context`.
 #[test]
 fn zenoh_event_matrix() {
-    use nros_rmw::QosPolicyMask;
+    use nros_rmw::QoSPolicyMask;
     // issue 0388 — an absent zenohd is an unmet PRECONDITION, not a defect, and
     // `router_locator` already treats it that way ("tests will skip"). This
     // `expect` then panicked anyway, so the tier reported a missing prerequisite
@@ -113,7 +113,7 @@ fn zenoh_event_matrix() {
 
     // ---- Subscriber-side mask ----
     let mut sub = sess
-        .create_subscription(&topic(), QosSettings::QOS_PROFILE_DEFAULT)
+        .create_subscription(&topic(), QoSProfile::QOS_PROFILE_DEFAULT)
         .expect("create_subscription");
 
     // Full Tier-1 sub-side set: MessageLost (attachment seq gap),
@@ -142,7 +142,7 @@ fn zenoh_event_matrix() {
 
     // ---- Publisher-side mask ----
     let mut pubr = sess
-        .create_publisher(&topic(), QosSettings::QOS_PROFILE_DEFAULT)
+        .create_publisher(&topic(), QoSProfile::QOS_PROFILE_DEFAULT)
         .expect("create_publisher");
 
     // Pub-side: OfferedDeadlineMissed (clock check) + LivelinessLost
@@ -170,19 +170,19 @@ fn zenoh_event_matrix() {
 
     // ---- Session-level supported QoS mask ----
     let mask = sess.supported_qos_policies();
-    assert!(mask.contains(QosPolicyMask::CORE));
-    assert!(mask.contains(QosPolicyMask::DEADLINE));
-    assert!(mask.contains(QosPolicyMask::LIFESPAN));
-    assert!(mask.contains(QosPolicyMask::LIVELINESS_AUTOMATIC));
+    assert!(mask.contains(QoSPolicyMask::CORE));
+    assert!(mask.contains(QoSPolicyMask::DEADLINE));
+    assert!(mask.contains(QoSPolicyMask::LIFESPAN));
+    assert!(mask.contains(QoSPolicyMask::LIVELINESS_AUTOMATIC));
 
     // ---- LivelinessLost (Phase 108.C.zenoh.4-followup) ----
     //
     // Manual liveliness with a 100 ms lease: the publisher fires
     // `LivelinessLost` from `publish_raw` when the gap since the last
     // `assert_liveliness()` exceeds the lease.
-    use nros_rmw::{QosLivelinessPolicy, QosSettings as Qos};
+    use nros_rmw::{QoSLivelinessPolicy, QoSProfile as Qos};
     let manual_qos = Qos {
-        liveliness_kind: QosLivelinessPolicy::ManualByTopic,
+        liveliness_kind: QoSLivelinessPolicy::ManualByTopic,
         liveliness_lease_ms: 100,
         ..Qos::QOS_PROFILE_DEFAULT
     };

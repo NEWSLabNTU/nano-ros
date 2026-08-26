@@ -51,6 +51,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0821** (rmw, open 2026-08-27) — the board takes a USAGE FAULT with `pc=0` at exactly 2 x
+`Z_TRANSPORT_LEASE`: the auto-reconnect teardown runs INSIDE the task it is dismantling. See `0821-*`.
+
 Recently resolved (2026-08-27): **#0822** (rmw) — zenoh-pico's Zephyr port picked thread stacks with
 `thread_stack_area[thread_index++]` over a fixed 4-entry array, with `thread_index` never reset and
 never bounds checked, so the fifth task an image created got a stack one whole stack past the end and

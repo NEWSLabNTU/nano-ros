@@ -136,7 +136,7 @@ Rust:
 // builder
 let pub_ = node.publisher("/cmd_vel").typed::<Twist>().tx_express(true).build()?;
 // or via the QoS profile
-let qos = nros::QosSettings::RELIABLE.tx_express(true);
+let qos = nros::QoSProfile::RELIABLE.tx_express(true);
 let pub_ = node.create_publisher_with_qos::<Twist>("/cmd_vel", qos)?;
 ```
 

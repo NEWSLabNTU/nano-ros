@@ -336,7 +336,7 @@
   },
   "cpp:ParameterEventsQoS::ParameterEventsQoS": {
     "verdict": "declined",
-    "why": "the QoS preset for `/parameter_events`. We define the profile (`QOS_PROFILE_PARAMETER_EVENTS`, reachable from Rust as `QosSettings::parameter_events_default`) and publish nothing on the topic. the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
+    "why": "the QoS preset for `/parameter_events`. We define the profile (`QOS_PROFILE_PARAMETER_EVENTS`, reachable from Rust as `QoSProfile::parameter_events_default`) and publish nothing on the topic. the `/parameter_events` family. We publish no `/parameter_events` topic at all -- `QOS_PROFILE_PARAMETER_EVENTS` is defined in `nros-rmw/src/traits.rs` and has no publisher behind it -- so there is nothing for an event handler to subscribe to. Bringing it back needs a `std::function`-shaped callback registry and a shared_ptr handle per registration, neither of which exists without an allocator. What a user loses: reacting to ANOTHER node's parameter change. Phase 379 W3."
   },
   "cpp:ParameterMap": {
     "verdict": "declined",
@@ -364,7 +364,7 @@
   },
   "cpp:ParametersQoS::ParametersQoS": {
     "verdict": "gap",
-    "why": "the QoS preset for the parameter SERVICES -- transient-local in ROS 2, so a tool that starts after the device still sees its declared parameters. We define the matching profile (`QOS_PROFILE_PARAMETERS`: reliable, transient-local, keep-last 1000) and then do not use it: `Executor::register_parameter_services` creates all six servers with `QosSettings::services_default()` (`nros-node/src/executor/spin.rs`). So the constant is dead and the behaviour is the one the service stage recorded at `rust:QoSProfile::parameter_services_default`. Phase 379 W3."
+    "why": "the QoS preset for the parameter SERVICES -- transient-local in ROS 2, so a tool that starts after the device still sees its declared parameters. We define the matching profile (`QOS_PROFILE_PARAMETERS`: reliable, transient-local, keep-last 1000) and then do not use it: `Executor::register_parameter_services` creates all six servers with `QoSProfile::services_default()` (`nros-node/src/executor/spin.rs`). So the constant is dead and the behaviour is the one the service stage recorded at `rust:QoSProfile::parameter_services_default`. Phase 379 W3."
   },
   "cpp:Seq": {
     "verdict": "divergence",
@@ -566,15 +566,11 @@
   },
   "rust:QoSProfile::parameter_events_default": {
     "verdict": "rename",
-    "why": "rclrs spells the preset `QoSProfile::parameter_events_default`; ours is `QosSettings::parameter_events_default` -- the same words on a type we spell `QosSettings` where ROS 2 spells `QoSProfile`. The type rename belongs to the qos stage; see the service stage's `rust:QoSProfile::services_default`. Ours half: `rust:QosSettings::parameter_events_default`."
+    "why": "rclrs spells the preset `QoSProfile::parameter_events_default`; ours is `QosSettings::parameter_events_default` -- the same words on a type we spell `QosSettings` where ROS 2 spells `QoSProfile`. The type rename belongs to the qos stage; see the service stage's `rust:QoSProfile::services_default`. Ours half: `rust:QosSettings::parameter_events_default`. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::parameter_events_default`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::parameter_events_default` was deleted; the text above records the state BEFORE the rename and is kept as history."
   },
-  "rust:QosSettings::parameter_events_default": {
+  "rust:QoSProfile::parameters_default": {
     "verdict": "rename",
-    "why": "the ours-only half of `rust:QoSProfile::parameter_events_default`. Worth knowing that the profile it returns has no publisher behind it -- we emit no `/parameter_events` (see `cpp:ParameterEventHandler`)."
-  },
-  "rust:QosSettings::parameters_default": {
-    "verdict": "rename",
-    "why": "rclrs spells the parameter-SERVICES preset `QoSProfile::parameter_services_default`; ours drops the word `services`, which makes it read as \"the QoS for parameters\" rather than \"the QoS for the parameter services\". Same `QosSettings`/`QoSProfile` type rename as `rust:QosSettings::parameter_events_default`. It is also DEAD: `Executor::register_parameter_services` builds all six servers with `QosSettings::services_default()`, so the transient-local profile this returns is never applied -- the gap the service stage recorded at `rust:QoSProfile::parameter_services_default`. See `cpp:ParametersQoS::ParametersQoS`."
+    "why": "rclrs spells the parameter-SERVICES preset `QoSProfile::parameter_services_default`; ours drops the word `services`, which makes it read as \"the QoS for parameters\" rather than \"the QoS for the parameter services\". (The owning type's own `QoSProfile`->`QoSProfile` rename landed 2026-08-27, phase-379 W5; the MEMBER name above is what still differs.) It is also DEAD: `Executor::register_parameter_services` builds all six servers with `QoSProfile::services_default()`, so the transient-local profile this returns is never applied -- the gap the service stage recorded at `rust:QoSProfile::parameter_services_default`. See `cpp:ParametersQoS::ParametersQoS`."
   },
   "rust:RmwParameterConversionError": {
     "verdict": "gap",

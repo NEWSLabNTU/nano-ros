@@ -2,7 +2,7 @@
 
 use heapless::Vec;
 use nros_core::RosMessage;
-use nros_rmw::{QosSettings, TopicInfo};
+use nros_rmw::{QoSProfile, TopicInfo};
 
 use crate::{publisher::PublisherHandle, subscriber::SubscriptionHandle};
 
@@ -88,7 +88,7 @@ struct PublisherInfo {
     /// Type hash
     type_hash: &'static str,
     /// QoS settings
-    qos: QosSettings,
+    qos: QoSProfile,
     /// Active flag
     active: bool,
 }
@@ -104,7 +104,7 @@ struct SubscriberInfo {
     /// Type hash
     type_hash: &'static str,
     /// QoS settings
-    qos: QosSettings,
+    qos: QoSProfile,
     /// Active flag
     active: bool,
 }
@@ -143,7 +143,7 @@ pub struct PublisherOptions<'a> {
     /// Topic name
     pub topic: &'a str,
     /// QoS settings
-    pub qos: QosSettings,
+    pub qos: QoSProfile,
 }
 
 impl<'a> PublisherOptions<'a> {
@@ -151,12 +151,12 @@ impl<'a> PublisherOptions<'a> {
     pub fn new(topic: &'a str) -> Self {
         Self {
             topic,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         }
     }
 
     /// Set the QoS settings
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -168,7 +168,7 @@ pub struct SubscriptionOptions<'a> {
     /// Topic name
     pub topic: &'a str,
     /// QoS settings
-    pub qos: QosSettings,
+    pub qos: QoSProfile,
 }
 
 impl<'a> SubscriptionOptions<'a> {
@@ -176,12 +176,12 @@ impl<'a> SubscriptionOptions<'a> {
     pub fn new(topic: &'a str) -> Self {
         Self {
             topic,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         }
     }
 
     /// Set the QoS settings
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }

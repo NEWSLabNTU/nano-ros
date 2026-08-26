@@ -6,7 +6,7 @@
 #![cfg(feature = "platform-posix")]
 
 use nros_rmw::{
-    Publisher, QosSettings, Session, SessionMode, Subscription, TopicInfo, Transport,
+    Publisher, QoSProfile, Session, SessionMode, Subscription, TopicInfo, Transport,
     TransportConfig,
 };
 use nros_rmw_zenoh::{
@@ -152,7 +152,7 @@ fn test_pubsub_loopback() {
 
     // Create subscriber first
     let mut subscriber = session
-        .create_subscription(&topic, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic, QoSProfile::BEST_EFFORT)
         .expect("Failed to create subscriber");
 
     // Wait for subscriber to be established
@@ -160,7 +160,7 @@ fn test_pubsub_loopback() {
 
     // Create publisher
     let publisher = session
-        .create_publisher(&topic, QosSettings::BEST_EFFORT)
+        .create_publisher(&topic, QoSProfile::BEST_EFFORT)
         .expect("Failed to create publisher");
 
     // Publish a CDR-encoded Int32 message
@@ -268,13 +268,13 @@ fn two_sessions_deliver_cross_session_through_router() {
 
     // Subscriber on session A, established BEFORE session B publishes.
     let mut subscriber = session_a
-        .create_subscription(&topic, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic, QoSProfile::BEST_EFFORT)
         .expect("Failed to create subscriber on session A");
     thread::sleep(Duration::from_secs(2));
 
     // Publisher on session B.
     let publisher = session_b
-        .create_publisher(&topic, QosSettings::BEST_EFFORT)
+        .create_publisher(&topic, QoSProfile::BEST_EFFORT)
         .expect("Failed to create publisher on session B");
 
     let test_value: i32 = 348;
@@ -359,11 +359,11 @@ fn test_multiple_publishers() {
     let topic2 = TopicInfo::new("test/pub2", "Int32", "hash2");
 
     let _pub1 = session
-        .create_publisher(&topic1, QosSettings::BEST_EFFORT)
+        .create_publisher(&topic1, QoSProfile::BEST_EFFORT)
         .expect("Failed to create publisher 1");
 
     let _pub2 = session
-        .create_publisher(&topic2, QosSettings::BEST_EFFORT)
+        .create_publisher(&topic2, QoSProfile::BEST_EFFORT)
         .expect("Failed to create publisher 2");
 
     session.close().expect("Failed to close session");
@@ -395,11 +395,11 @@ fn test_multiple_subscribers() {
     let topic2 = TopicInfo::new("test/sub2", "Int32", "hash2");
 
     let _sub1 = session
-        .create_subscription(&topic1, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic1, QoSProfile::BEST_EFFORT)
         .expect("Failed to create subscriber 1");
 
     let _sub2 = session
-        .create_subscription(&topic2, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic2, QoSProfile::BEST_EFFORT)
         .expect("Failed to create subscriber 2");
 
     session.close().expect("Failed to close session");
@@ -549,13 +549,13 @@ fn test_pubsub_loopback_with_scouting_disabled() {
     let topic = TopicInfo::new("test/props-loopback", "Int32", "hash_props");
 
     let mut subscriber = session
-        .create_subscription(&topic, QosSettings::BEST_EFFORT)
+        .create_subscription(&topic, QoSProfile::BEST_EFFORT)
         .expect("Failed to create subscriber");
 
     thread::sleep(Duration::from_secs(1));
 
     let publisher = session
-        .create_publisher(&topic, QosSettings::BEST_EFFORT)
+        .create_publisher(&topic, QoSProfile::BEST_EFFORT)
         .expect("Failed to create publisher");
 
     // Publish a CDR-encoded Int32 message

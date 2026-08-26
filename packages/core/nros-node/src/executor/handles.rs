@@ -227,8 +227,8 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// Phase 108.B — manually assert this publisher's liveliness.
     /// Required for publishers configured with
-    /// [`QosLivelinessPolicy::ManualByTopic`] /
-    /// [`QosLivelinessPolicy::ManualByNode`]. No-op for AUTOMATIC /
+    /// [`QoSLivelinessPolicy::ManualByTopic`] /
+    /// [`QoSLivelinessPolicy::ManualByNode`]. No-op for AUTOMATIC /
     /// NONE kinds. Returns `Err(Unsupported)` if the backend doesn't
     /// implement manual liveliness.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
@@ -730,7 +730,7 @@ impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
     }
 
     /// Phase 108.B — manually assert this publisher's liveliness.
-    /// Required for `QosLivelinessPolicy::ManualByTopic` /
+    /// Required for `QoSLivelinessPolicy::ManualByTopic` /
     /// `ManualByNode`. No-op for AUTOMATIC / NONE.
     pub fn assert_liveliness(&self) -> Result<(), NodeError> {
         use nros_rmw::Publisher as _;

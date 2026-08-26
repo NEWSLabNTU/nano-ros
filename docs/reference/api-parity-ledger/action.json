@@ -1144,9 +1144,9 @@
     "verdict": "divergence",
     "why": "creating an action entity on a live node handle. rclrs has no actions; rclcpp_action's equivalent is the free function `rclcpp_action::create_client` / `create_server` (see `cpp:create_server`). The `_sized` variants override the buffer const generics and the `_raw` variants take CDR bytes; both exist because the storage is static and its size is part of the type. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal."
   },
-  "rust:QosSettings::action_status_default": {
+  "rust:QoSProfile::action_status_default": {
     "verdict": "extension",
-    "why": "the `<action>/status` topic's ROS-mandated profile (transient-local, so a late-joining monitor sees the current goal set) as a named constructor on `QosSettings`. rclrs has no actions and so no preset; rclcpp_action's equivalent is the `rcl_action_qos_profile_status_default` constant. Related open question in the param stage: `rust:QoSProfile::parameter_services_default`."
+    "why": "the `<action>/status` topic's ROS-mandated profile (transient-local, so a late-joining monitor sees the current goal set) as a named constructor on `QoSProfile`. rclrs has no actions and so no preset; rclcpp_action's equivalent is the `rcl_action_qos_profile_status_default` constant. Related open question in the param stage: `rust:QoSProfile::parameter_services_default`."
   },
   "rust:RawActionClientSpec": {
     "verdict": "divergence",

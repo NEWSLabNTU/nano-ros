@@ -40,15 +40,15 @@ TRANSIENT_LOCAL + RELIABLE (`rcl_action_qos_profile_status_default`).
 
 ## nano-ros design
 
-### 1. Core: thread one `QosSettings` per service through the trait
+### 1. Core: thread one `QoSProfile` per service through the trait
 
 `Session::create_service` / `create_client`
-(`nros-rmw/src/traits.rs:852,858`) gain a `qos: QosSettings` param — mirroring
+(`nros-rmw/src/traits.rs:852,858`) gain a `qos: QoSProfile` param — mirroring
 `create_publisher` / `create_subscription`. **One profile per service**, applied to
 both request + reply endpoints (matches `rmw_qos_profile_t` semantics). This is
 the breaking change; it ripples to every backend.
 
-The default stays **`QosSettings::services_default()`** (already exists =
+The default stays **`QoSProfile::services_default()`** (already exists =
 `QOS_PROFILE_SERVICES_DEFAULT` = RELIABLE+VOLATILE+KEEP_LAST(10) =
 `rmw_qos_profile_services_default`), so stock-`rmw_cyclonedds_cpp` interop is
 preserved when callers don't override.

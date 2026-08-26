@@ -66,7 +66,7 @@ pub(crate) type SeqScalar = i64;
 #[cfg(not(target_has_atomic = "64"))]
 pub(crate) type SeqScalar = i32;
 
-use nros_rmw::{QosSettings, ServiceInfo, TopicInfo, TransportError};
+use nros_rmw::{QoSProfile, ServiceInfo, TopicInfo, TransportError};
 
 use crate::{
     keyexpr::QosKeyExpr,
@@ -492,7 +492,7 @@ impl Ros2Liveliness {
         namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
-        qos: &QosSettings,
+        qos: &QoSProfile,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; ZID_HEX_SIZE];
@@ -535,7 +535,7 @@ impl Ros2Liveliness {
         namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
-        qos: &QosSettings,
+        qos: &QoSProfile,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; ZID_HEX_SIZE];
@@ -575,7 +575,7 @@ impl Ros2Liveliness {
         namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
-        qos: &QosSettings,
+        qos: &QoSProfile,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; ZID_HEX_SIZE];
@@ -615,7 +615,7 @@ impl Ros2Liveliness {
         namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
-        qos: &QosSettings,
+        qos: &QoSProfile,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; ZID_HEX_SIZE];
@@ -891,7 +891,7 @@ mod tests {
     fn test_ros2_liveliness_publisher_keyexpr() {
         let zid = ZenohId::from_bytes([0u8; 16]);
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
-        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
             Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, 11, "/", "my_node", &topic, &qos);
 
@@ -908,7 +908,7 @@ mod tests {
     fn test_ros2_liveliness_publisher_keyexpr_with_namespace() {
         let zid = ZenohId::from_bytes([0u8; 16]);
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
-        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
             Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, 11, "/demo", "talker", &topic, &qos);
         assert!(keyexpr.as_str().contains("/0/11/MP/%/%demo/talker/"));
@@ -918,7 +918,7 @@ mod tests {
     fn test_ros2_liveliness_subscriber_keyexpr() {
         let zid = ZenohId::from_bytes([0u8; 16]);
         let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "RIHS01_def456");
-        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
             Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, 11, "/", "my_node", &topic, &qos);
 
@@ -937,7 +937,7 @@ mod tests {
             "example_interfaces::srv::dds_::AddTwoInts",
             "RIHS01_abc123",
         );
-        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        let qos = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr = Ros2Liveliness::service_server_keyexpr::<256>(
             0, &zid, 11, "/", "my_node", &service, &qos,
         );
@@ -957,7 +957,7 @@ mod tests {
             "example_interfaces::srv::dds_::AddTwoInts",
             "RIHS01_abc123",
         );
-        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        let qos = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr = Ros2Liveliness::service_server_keyexpr::<256>(
             0, &zid, 11, "/demo", "my_node", &service, &qos,
         );
@@ -972,7 +972,7 @@ mod tests {
             "example_interfaces::srv::dds_::AddTwoInts",
             "RIHS01_abc123",
         );
-        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        let qos = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr = Ros2Liveliness::service_client_keyexpr::<256>(
             0, &zid, 11, "/", "my_node", &service, &qos,
         );

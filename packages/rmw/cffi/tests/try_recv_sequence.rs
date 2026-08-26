@@ -380,7 +380,7 @@ fn open_subscriber(name: &str, vtable: &'static NrosRmwVtable) -> nros_rmw_cffi:
     .expect("open_named");
     let _ = &session as &dyn core::any::Any; // silence unused if `Session` unused
     let info = TopicInfo::new("/burst", "example/Burst", "RIHS01_burst");
-    let qos = nros_rmw::QosSettings::default();
+    let qos = nros_rmw::QoSProfile::default();
     let sub = session.create_subscription(&info, qos).expect("create_sub");
     core::mem::forget(session);
     sub

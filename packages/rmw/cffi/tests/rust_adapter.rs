@@ -14,7 +14,7 @@ use std::sync::{
 };
 
 use nros_rmw::{
-    ClientTrait, EventCallback, EventKind, Publisher, QosPolicyMask, QosSettings, Rmw, RmwConfig,
+    ClientTrait, EventCallback, EventKind, Publisher, QoSPolicyMask, QoSProfile, Rmw, RmwConfig,
     ServiceInfo, ServiceRequest, ServiceTrait, Session, Subscription, TopicInfo, TransportError,
 };
 use nros_rmw_cffi::{
@@ -132,7 +132,7 @@ impl Session for IdentitySession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
             kind: "publisher",
@@ -145,7 +145,7 @@ impl Session for IdentitySession {
     fn create_subscription(
         &mut self,
         topic: &TopicInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
         IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
             kind: "subscriber",
@@ -158,7 +158,7 @@ impl Session for IdentitySession {
     fn create_service(
         &mut self,
         service: &ServiceInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error> {
         IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
             kind: "service_server",
@@ -171,7 +171,7 @@ impl Session for IdentitySession {
     fn create_client(
         &mut self,
         service: &ServiceInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
         IDENTITY_RECORDS.lock().unwrap().push(IdentityRecord {
             kind: "service_client",
@@ -200,7 +200,7 @@ impl Session for NoopSession {
     fn create_publisher(
         &mut self,
         _topic: &TopicInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         CREATE_PUB_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopPublisher)
@@ -208,7 +208,7 @@ impl Session for NoopSession {
     fn create_subscription(
         &mut self,
         _topic: &TopicInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
         CREATE_SUB_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopSubscriber)
@@ -216,7 +216,7 @@ impl Session for NoopSession {
     fn create_service(
         &mut self,
         _service: &ServiceInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error> {
         CREATE_SRV_SERVER_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopServer)
@@ -224,7 +224,7 @@ impl Session for NoopSession {
     fn create_client(
         &mut self,
         _service: &ServiceInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
         CREATE_SRV_CLIENT_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(NoopClient)
@@ -237,8 +237,8 @@ impl Session for NoopSession {
         DRIVE_IO_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
-    fn supported_qos_policies(&self) -> QosPolicyMask {
-        QosPolicyMask::CORE
+    fn supported_qos_policies(&self) -> QoSPolicyMask {
+        QoSPolicyMask::CORE
     }
 }
 
@@ -645,7 +645,7 @@ fn rust_backend_adapter_preserves_session_identity() {
                 b"example/AddTwoInts\0".as_ptr().cast(),
                 b"def456\0".as_ptr().cast(),
                 7,
-                &NrosRmwQos::try_from(QosSettings::services_default()).unwrap(),
+                &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut srv,
             )
         },
@@ -666,7 +666,7 @@ fn rust_backend_adapter_preserves_session_identity() {
                 b"example/AddTwoInts\0".as_ptr().cast(),
                 b"def456\0".as_ptr().cast(),
                 7,
-                &NrosRmwQos::try_from(QosSettings::services_default()).unwrap(),
+                &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut cli,
             )
         },
@@ -788,7 +788,7 @@ fn rust_backend_adapter_routes_events_and_services() {
                 b"T\0".as_ptr().cast(),
                 b"H\0".as_ptr().cast(),
                 0,
-                &NrosRmwQos::try_from(QosSettings::services_default()).unwrap(),
+                &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut srv,
             )
         },
@@ -848,7 +848,7 @@ fn rust_backend_adapter_routes_events_and_services() {
                 b"T\0".as_ptr().cast(),
                 b"H\0".as_ptr().cast(),
                 0,
-                &NrosRmwQos::try_from(QosSettings::services_default()).unwrap(),
+                &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut cli,
             )
         },

@@ -172,7 +172,7 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node, const char* service_name,
 
     /* Honor the caller's QoS; fall back to the default reliable /
      * volatile / keep-last(10) profile (matches the Rust impl's
-     * `QosSettings::services_default`) when none is supplied. */
+     * `QoSProfile::services_default`) when none is supplied. */
     rmw_qos_profile_t default_qos = NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT;
     const rmw_qos_profile_t* eff_qos = (qos != NULL) ? qos : &default_qos;
     uxrQoS_t xrce_qos = xrce_map_qos(eff_qos);

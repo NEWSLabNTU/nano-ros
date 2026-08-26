@@ -51,7 +51,7 @@ pub struct ZenohPublisher {
     /// `ManualByTopic` / `ManualByNode` AND `liveliness_lease_ms > 0`.
     /// AUTOMATIC + NONE never fire — zenoh session keepalive covers
     /// AUTOMATIC; NONE means the app opted out.
-    liveliness_kind: nros_rmw::QosLivelinessPolicy,
+    liveliness_kind: nros_rmw::QoSLivelinessPolicy,
     /// Phase 108.C.zenoh.4-followup — liveliness lease in ms. `0` =
     /// infinite (no LivelinessLost firing).
     liveliness_lease_ms: u32,
@@ -93,7 +93,7 @@ impl ZenohPublisher {
         context: &Context,
         topic: &nros_rmw::TopicInfo,
         liveliness: Option<LivelinessToken>,
-        qos: &nros_rmw::QosSettings,
+        qos: &nros_rmw::QoSProfile,
     ) -> Result<Self, TransportError> {
         // Generate the topic key with null terminator
         let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
@@ -215,10 +215,10 @@ impl ZenohPublisher {
     /// Called from `publish_raw`; if the app stops publishing entirely,
     /// no event fires (publisher path has no spin tick).
     fn check_liveliness_lost(&self) {
-        use nros_rmw::QosLivelinessPolicy;
+        use nros_rmw::QoSLivelinessPolicy;
         if !matches!(
             self.liveliness_kind,
-            QosLivelinessPolicy::ManualByTopic | QosLivelinessPolicy::ManualByNode
+            QoSLivelinessPolicy::ManualByTopic | QoSLivelinessPolicy::ManualByNode
         ) {
             return;
         }
@@ -414,10 +414,10 @@ impl Publisher for ZenohPublisher {
     /// Refreshes the lease for `ManualByTopic` / `ManualByNode`. No-op
     /// for `Automatic` (zenoh keepalive covers it) and `None`.
     fn assert_liveliness(&self) -> Result<(), Self::Error> {
-        use nros_rmw::QosLivelinessPolicy;
+        use nros_rmw::QoSLivelinessPolicy;
         if matches!(
             self.liveliness_kind,
-            QosLivelinessPolicy::ManualByTopic | QosLivelinessPolicy::ManualByNode
+            QoSLivelinessPolicy::ManualByTopic | QoSLivelinessPolicy::ManualByNode
         ) {
             let now = now_ms();
             if now != 0 {

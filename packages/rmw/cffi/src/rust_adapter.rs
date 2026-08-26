@@ -42,7 +42,7 @@ use alloc::boxed::Box;
 use core::{ffi::c_void, marker::PhantomData};
 
 use nros_rmw::{
-    ClientTrait, Publisher, QosSettings, Rmw, RmwConfig, ServiceTrait, Session, SessionMode,
+    ClientTrait, Publisher, QoSProfile, Rmw, RmwConfig, ServiceTrait, Session, SessionMode,
     Subscription, TopicInfo, TransportError,
 };
 
@@ -228,34 +228,34 @@ unsafe fn cstr_to_str<'a>(ptr: *const core::ffi::c_char) -> &'a str {
     core::str::from_utf8(slice).unwrap_or("")
 }
 
-/// Convert the cffi QoS view back into a `nros_rmw::QosSettings`. The
+/// Convert the cffi QoS view back into a `nros_rmw::QoSProfile`. The
 /// adapter trampolines call this when forwarding `create_publisher` /
 /// `create_subscription` into the Rust trait.
-fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
+fn qos_from_cffi(q: &NrosRmwQos) -> QoSProfile {
     use crate::generated;
     use nros_rmw::{
-        QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+        QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy,
     };
     // Phase 376 W5/B2 — these were `== 0` tests against a dense 0/1 encoding.
     // Under upstream's numbering 0 is SYSTEM_DEFAULT for every policy, so each
     // test now has three cases, not two, and the third one is the default the
     // profile constants already use. Written as a match on the named constants
     // so an unrecognised value is visible rather than folded into one arm.
-    QosSettings {
+    QoSProfile {
         reliability: match q.reliability as i32 {
-            generated::NROS_RMW_RELIABILITY_BEST_EFFORT => QosReliabilityPolicy::BestEffort,
-            generated::NROS_RMW_RELIABILITY_RELIABLE => QosReliabilityPolicy::Reliable,
+            generated::NROS_RMW_RELIABILITY_BEST_EFFORT => QoSReliabilityPolicy::BestEffort,
+            generated::NROS_RMW_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
             // SYSTEM_DEFAULT and UNKNOWN both mean "the caller did not pin
             // this"; RELIABLE is the ROS default and the safer of the two.
-            _ => QosReliabilityPolicy::Reliable,
+            _ => QoSReliabilityPolicy::Reliable,
         },
         durability: match q.durability as i32 {
-            generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QosDurabilityPolicy::TransientLocal,
-            _ => QosDurabilityPolicy::Volatile,
+            generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QoSDurabilityPolicy::TransientLocal,
+            _ => QoSDurabilityPolicy::Volatile,
         },
         history: match q.history as i32 {
-            generated::NROS_RMW_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
-            _ => QosHistoryPolicy::KeepLast,
+            generated::NROS_RMW_HISTORY_KEEP_ALL => QoSHistoryPolicy::KeepAll,
+            _ => QoSHistoryPolicy::KeepLast,
         },
         depth: q.depth as u32,
         // phase-301 (issue 0240): the express hint left the QoS struct; the
@@ -265,15 +265,15 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QosSettings {
         lifespan_ms: q.lifespan_ms,
         liveliness_kind: match q.liveliness_kind as u32 {
             generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_AUTOMATIC => {
-                QosLivelinessPolicy::Automatic
+                QoSLivelinessPolicy::Automatic
             }
             generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_NODE => {
-                QosLivelinessPolicy::ManualByNode
+                QoSLivelinessPolicy::ManualByNode
             }
             generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC => {
-                QosLivelinessPolicy::ManualByTopic
+                QoSLivelinessPolicy::ManualByTopic
             }
-            _ => QosLivelinessPolicy::None,
+            _ => QoSLivelinessPolicy::None,
         },
         liveliness_lease_ms: q.liveliness_lease_ms,
         avoid_ros_namespace_conventions: q.avoid_ros_namespace_conventions != 0,

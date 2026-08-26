@@ -21,7 +21,7 @@ use core::{
 };
 
 use nros_rmw::{
-    ClientTrait, QosSettings, RmwConfig, ServiceInfo, Session, SessionMode, TransportError,
+    ClientTrait, QoSProfile, RmwConfig, ServiceInfo, Session, SessionMode, TransportError,
 };
 use nros_rmw_cffi::{
     CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
@@ -274,7 +274,7 @@ fn open_client(svc_name: &str) -> nros_rmw_cffi::CffiClient {
         .expect("open");
     let info = ServiceInfo::new(svc_name, "example/Stub", "RIHS01_stub");
     let client = session
-        .create_client(&info, QosSettings::services_default())
+        .create_client(&info, QoSProfile::services_default())
         .expect("create_client");
     // Leak the session intentionally — its `close` would try to drop
     // through the stub vtable, and the stub's `backend_data` is a

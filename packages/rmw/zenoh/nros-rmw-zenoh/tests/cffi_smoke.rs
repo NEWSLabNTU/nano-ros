@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use nros_rmw::{Publisher, QosSettings, Session, Subscription, TopicInfo};
+use nros_rmw::{Publisher, QoSProfile, Session, Subscription, TopicInfo};
 use nros_rmw_cffi::{CffiSession, NROS_RMW_RET_OK, RustBackendAdapter};
 use nros_rmw_zenoh::ZenohRmw;
 use nros_tests::fixtures::ZenohRouter;
@@ -111,7 +111,7 @@ fn cffi_pubsub_round_trip() {
     // shouldn't have to know about), subscriber-first ordering with a
     // 1 s settle before the publisher comes up.
     let topic = TopicInfo::new("test/cffi_loopback", "Int32", "hash123");
-    let qos = QosSettings::BEST_EFFORT;
+    let qos = QoSProfile::BEST_EFFORT;
 
     let mut subscriber = session
         .create_subscription(&topic, qos)

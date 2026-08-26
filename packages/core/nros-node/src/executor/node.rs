@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 
 use nros_core::{RosAction, RosMessage, RosService};
-use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session as _, TopicInfo, TransportError};
+use nros_rmw::{ActionInfo, QoSProfile, ServiceInfo, Session as _, TopicInfo, TransportError};
 
 use crate::{
     rmw_type_registry::{MessageForRmw, register_type},
@@ -31,10 +31,10 @@ pub struct NodeHandle<'a> {
     /// Phase 211.H — per-node QoS overrides lowered from the launch
     /// `qos_overrides.<topic>.<role>.<policy>` params and baked into a
     /// `&'static` table by the entry codegen. Folded into each entity's
-    /// `QosSettings` at `create_publisher`/`create_subscription` time
+    /// `QoSProfile` at `create_publisher`/`create_subscription` time
     /// (setup-time, no alloc). Empty (`&[]`) by default → zero cost for
     /// systems without overrides.
-    qos_overrides: &'static [nros_rmw::QosOverride],
+    qos_overrides: &'static [nros_rmw::QoSOverride],
     /// RFC-0052 W3b.4 — baked contract-monitor table (mirror of
     /// `qos_overrides`): `create_publisher` attaches the matching
     /// endpoint's counter cell so `publish` can bump it lock-free.
@@ -72,7 +72,7 @@ impl<'a> NodeHandle<'a> {
     /// lifetime to thread and no runtime allocation. Plan = authority: an
     /// override for a topic the entity creates is applied transparently (the
     /// user's `create_publisher(topic)` call is unchanged, matching rclcpp).
-    pub fn set_qos_overrides(&mut self, overrides: &'static [nros_rmw::QosOverride]) {
+    pub fn set_qos_overrides(&mut self, overrides: &'static [nros_rmw::QoSOverride]) {
         self.qos_overrides = overrides;
     }
 
@@ -95,7 +95,7 @@ impl<'a> NodeHandle<'a> {
 
     /// The installed QoS-override table (empty unless the entry set one).
     #[must_use]
-    pub fn qos_overrides(&self) -> &'static [nros_rmw::QosOverride] {
+    pub fn qos_overrides(&self) -> &'static [nros_rmw::QoSOverride] {
         self.qos_overrides
     }
 
@@ -212,14 +212,14 @@ impl<'a> NodeHandle<'a> {
         &mut self,
         topic_name: &str,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
-        self.create_publisher_with_qos::<M>(topic_name, QosSettings::default())
+        self.create_publisher_with_qos::<M>(topic_name, QoSProfile::default())
     }
 
     /// Create a publisher with custom QoS settings.
     pub fn create_publisher_with_qos<M: MessageForRmw>(
         &mut self,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
         // Phase 212.K.7.6.b — under `rmw-cyclonedds`, ensure the runtime
         // type-descriptor exists before the cffi vtable creates the
@@ -230,7 +230,7 @@ impl<'a> NodeHandle<'a> {
         // override the backend can't honour still errors loudly below.
         let qos = qos.apply_overrides(
             topic_name,
-            nros_rmw::QosOverrideRole::Publisher,
+            nros_rmw::QoSOverrideRole::Publisher,
             self.qos_overrides,
         );
         // Phase 108.B — synchronous QoS validation against backend's
@@ -275,7 +275,7 @@ impl<'a> NodeHandle<'a> {
         type_name: &str,
         type_hash: &str,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
-        self.create_publisher_raw_with_qos(topic_name, type_name, type_hash, QosSettings::default())
+        self.create_publisher_raw_with_qos(topic_name, type_name, type_hash, QoSProfile::default())
     }
 
     /// Typeless publisher with custom QoS.
@@ -284,12 +284,12 @@ impl<'a> NodeHandle<'a> {
         topic_name: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
         // Phase 211.H — apply plan qos_overrides (publisher side) before validate.
         let qos = qos.apply_overrides(
             topic_name,
-            nros_rmw::QosOverrideRole::Publisher,
+            nros_rmw::QoSOverrideRole::Publisher,
             self.qos_overrides,
         );
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
@@ -322,7 +322,7 @@ impl<'a> NodeHandle<'a> {
         PublisherBuilder {
             node: self,
             topic,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         }
     }
 
@@ -341,21 +341,21 @@ impl<'a> NodeHandle<'a> {
         &mut self,
         topic_name: &str,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
-        self.create_subscription_with_qos::<M, RX_BUF>(topic_name, QosSettings::default())
+        self.create_subscription_with_qos::<M, RX_BUF>(topic_name, QoSProfile::default())
     }
 
     /// Create a subscription with custom QoS and buffer size.
     pub fn create_subscription_with_qos<M: MessageForRmw, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
         // Phase 212.K.7.6.b — see `create_publisher_with_qos`.
         register_type::<M>()?;
         // Phase 211.H — apply plan qos_overrides (subscription side) before validate.
         let qos = qos.apply_overrides(
             topic_name,
-            nros_rmw::QosOverrideRole::Subscription,
+            nros_rmw::QoSOverrideRole::Subscription,
             self.qos_overrides,
         );
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
@@ -414,9 +414,9 @@ impl<'a> NodeHandle<'a> {
         // validate, mirroring `create_publisher_raw_with_qos`. The raw entity
         // paths honour node overrides exactly like the typed ones — an
         // override the active RMW can't meet errors loudly, never silently.
-        let qos = QosSettings::default().apply_overrides(
+        let qos = QoSProfile::default().apply_overrides(
             topic_name,
-            nros_rmw::QosOverrideRole::Subscription,
+            nros_rmw::QoSOverrideRole::Subscription,
             self.qos_overrides,
         );
         qos.validate_against(nros_rmw::Session::supported_qos_policies(self.session))
@@ -451,7 +451,7 @@ impl<'a> NodeHandle<'a> {
         Svc::Request: MessageForRmw,
         Svc::Reply: MessageForRmw,
     {
-        self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QosSettings::services_default())
+        self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QoSProfile::services_default())
     }
 
     /// Phase 193.2b — service server with an explicit QoS profile (applied to
@@ -459,7 +459,7 @@ impl<'a> NodeHandle<'a> {
     pub fn create_service_with_qos<Svc: RosService>(
         &mut self,
         service_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<EmbeddedServiceServer<Svc>, NodeError>
     where
         Svc::Request: MessageForRmw,
@@ -472,7 +472,7 @@ impl<'a> NodeHandle<'a> {
     pub fn create_service_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError>
     where
         Svc::Request: MessageForRmw,
@@ -517,14 +517,14 @@ impl<'a> NodeHandle<'a> {
         Svc::Request: MessageForRmw,
         Svc::Reply: MessageForRmw,
     {
-        self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QosSettings::services_default())
+        self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, QoSProfile::services_default())
     }
 
     /// Phase 193.2b — service client with an explicit QoS profile.
     pub fn create_client_with_qos<Svc: RosService>(
         &mut self,
         service_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<EmbeddedServiceClient<Svc>, NodeError>
     where
         Svc::Request: MessageForRmw,
@@ -537,7 +537,7 @@ impl<'a> NodeHandle<'a> {
     pub fn create_client_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError>
     where
         Svc::Request: MessageForRmw,
@@ -604,7 +604,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_service(&info, QosSettings::services_default())
+            .create_service(&info, QoSProfile::services_default())
             .map_err(NodeError::Transport)?;
         Ok(crate::executor::handles::RawServiceServer::new(handle))
     }
@@ -639,7 +639,7 @@ impl<'a> NodeHandle<'a> {
         );
         let handle = self
             .session
-            .create_client(&info, QosSettings::services_default())
+            .create_client(&info, QoSProfile::services_default())
             .map_err(|_| NodeError::Transport(TransportError::ServiceClientCreationFailed))?;
         Ok(crate::executor::handles::RawServiceClient::new(handle))
     }
@@ -710,7 +710,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_server = self
             .session
-            .create_service(&send_goal_info, QosSettings::services_default())
+            .create_service(&send_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -724,7 +724,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_server = self
             .session
-            .create_service(&cancel_goal_info, QosSettings::services_default())
+            .create_service(&cancel_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_type: heapless::String<256> =
@@ -740,7 +740,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_server = self
             .session
-            .create_service(&get_result_info, QosSettings::services_default())
+            .create_service(&get_result_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_type: heapless::String<256> =
@@ -756,7 +756,7 @@ impl<'a> NodeHandle<'a> {
         );
         let feedback_publisher = self
             .session
-            .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
+            .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
@@ -770,10 +770,7 @@ impl<'a> NodeHandle<'a> {
         );
         let status_publisher = self
             .session
-            .create_publisher(
-                &status_topic,
-                QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
-            )
+            .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(super::action_core::ActionServerCore {
@@ -848,7 +845,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_client = self
             .session
-            .create_client(&send_goal_info, QosSettings::services_default())
+            .create_client(&send_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -862,7 +859,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_client = self
             .session
-            .create_client(&cancel_goal_info, QosSettings::services_default())
+            .create_client(&cancel_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_type: heapless::String<256> =
@@ -878,7 +875,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_client = self
             .session
-            .create_client(&get_result_info, QosSettings::services_default())
+            .create_client(&get_result_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_type: heapless::String<256> =
@@ -894,7 +891,7 @@ impl<'a> NodeHandle<'a> {
         );
         let feedback_subscriber = self
             .session
-            .create_subscription(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(super::action_core::ActionClientCore::new(
@@ -1002,7 +999,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_server = self
             .session
-            .create_service(&send_goal_info, QosSettings::services_default())
+            .create_service(&send_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -1016,7 +1013,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_server = self
             .session
-            .create_service(&cancel_goal_info, QosSettings::services_default())
+            .create_service(&cancel_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -1030,7 +1027,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_server = self
             .session
-            .create_service(&get_result_info, QosSettings::services_default())
+            .create_service(&get_result_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -1044,7 +1041,7 @@ impl<'a> NodeHandle<'a> {
         );
         let feedback_publisher = self
             .session
-            .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
+            .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
@@ -1058,10 +1055,7 @@ impl<'a> NodeHandle<'a> {
         );
         let status_publisher = self
             .session
-            .create_publisher(
-                &status_topic,
-                QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
-            )
+            .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(ActionServer {
@@ -1169,7 +1163,7 @@ impl<'a> NodeHandle<'a> {
         );
         let send_goal_client = self
             .session
-            .create_client(&send_goal_info, QosSettings::services_default())
+            .create_client(&send_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -1183,7 +1177,7 @@ impl<'a> NodeHandle<'a> {
         );
         let cancel_goal_client = self
             .session
-            .create_client(&cancel_goal_info, QosSettings::services_default())
+            .create_client(&cancel_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -1197,7 +1191,7 @@ impl<'a> NodeHandle<'a> {
         );
         let get_result_client = self
             .session
-            .create_client(&get_result_info, QosSettings::services_default())
+            .create_client(&get_result_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -1211,7 +1205,7 @@ impl<'a> NodeHandle<'a> {
         );
         let feedback_subscriber = self
             .session
-            .create_subscription(&feedback_topic, QosSettings::BEST_EFFORT)
+            .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(ActionClient {
@@ -1242,12 +1236,12 @@ impl<'a> NodeHandle<'a> {
 pub struct PublisherBuilder<'n, 'a, 't> {
     node: &'n mut NodeHandle<'a>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
 }
 
 impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
     /// Set the QoS (also settable on the typed/generic builder).
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1291,12 +1285,12 @@ impl<'n, 'a, 't> PublisherBuilder<'n, 'a, 't> {
 pub struct TypedPublisherBuilder<'n, 'a, 't, M> {
     node: &'n mut NodeHandle<'a>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     _phantom: PhantomData<M>,
 }
 
 impl<'n, 'a, 't, M: MessageForRmw> TypedPublisherBuilder<'n, 'a, 't, M> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1319,11 +1313,11 @@ pub struct GenericPublisherBuilder<'n, 'a, 't> {
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
 }
 
 impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1395,7 +1389,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         SubscriptionBuilder {
             ctx: self,
             topic,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         }
     }
 
@@ -1409,7 +1403,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         CtxPublisherBuilder {
             ctx: self,
             topic,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         }
     }
 
@@ -1419,7 +1413,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         topic: &str,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
         self.executor
-            .create_publisher_on::<M>(self.node_id, topic, QosSettings::default())
+            .create_publisher_on::<M>(self.node_id, topic, QoSProfile::default())
     }
 
     /// Convenient generic (type-erased) publisher — rclcpp `create_generic_*`.
@@ -1429,7 +1423,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         type_name: &str,
         type_hash: &str,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
-        self.create_generic_publisher_with_qos(topic, type_name, type_hash, QosSettings::default())
+        self.create_generic_publisher_with_qos(topic, type_name, type_hash, QoSProfile::default())
     }
 
     /// Issue 0306 — the same, with an explicit profile. The declarative
@@ -1442,7 +1436,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         topic: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<crate::executor::handles::EmbeddedRawPublisher, NodeError> {
         self.executor
             .create_publisher_raw_on(self.node_id, topic, type_name, type_hash, qos)
@@ -1463,7 +1457,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
             .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
                 topic,
-                QosSettings::default(),
+                QoSProfile::default(),
                 callback,
                 None, // no group — node default
             )
@@ -1537,7 +1531,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
             .register_subscription_buffered_on::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
                 topic,
-                QosSettings::default(),
+                QoSProfile::default(),
                 callback,
                 Some(group.name()),
             )
@@ -1557,7 +1551,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
         // Publishers carry no executor callback slot; group is forward-compat.
         self.executor
-            .create_publisher_on::<M>(self.node_id, topic, QosSettings::default())
+            .create_publisher_on::<M>(self.node_id, topic, QoSProfile::default())
     }
 
     /// RFC-0041 / Phase 239.1 — callback-based service client (rclcpp
@@ -1605,7 +1599,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
                 service_name,
                 Svc::SERVICE_NAME,
                 Svc::SERVICE_HASH,
-                QosSettings::services_default(),
+                QoSProfile::services_default(),
                 callback,
             )?;
         Ok(ServiceClientCallback::new(hdr))
@@ -1707,7 +1701,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
             topic,
             type_name,
             type_hash,
-            QosSettings::default(),
+            QoSProfile::default(),
             callback,
         )
     }
@@ -1719,7 +1713,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         topic: &str,
         type_name: &str,
         type_hash: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
         callback: F,
     ) -> Result<super::types::HandleId, NodeError>
     where
@@ -1759,7 +1753,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
                 topic,
                 type_name,
                 type_hash,
-                QosSettings::default(),
+                QoSProfile::default(),
                 callback,
             )
     }
@@ -1792,7 +1786,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
             .register_subscription_buffered_borrowed_on::<B, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
                 self.node_id,
                 topic,
-                QosSettings::default().keep_last(1),
+                QoSProfile::default().keep_last(1),
                 callback,
             )
     }
@@ -1804,7 +1798,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
         CtxServiceBuilder {
             ctx: self,
             name,
-            qos: QosSettings::services_default(),
+            qos: QoSProfile::services_default(),
         }
     }
 
@@ -1826,7 +1820,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
             F,
             { crate::config::DEFAULT_RX_BUF_SIZE },
             { crate::config::DEFAULT_RX_BUF_SIZE },
-        >(self.node_id, name, QosSettings::services_default(), callback)
+        >(self.node_id, name, QoSProfile::services_default(), callback)
     }
 }
 
@@ -1834,13 +1828,13 @@ impl<'e, 's> NodeCtx<'e, 's> {
 pub struct CtxServiceBuilder<'c, 'e, 't, 's> {
     ctx: &'c mut NodeCtx<'e, 's>,
     name: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
 }
 
 impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
     /// Service QoS (applies to both the request + reply endpoints). Defaults to
-    /// `QosSettings::services_default()`.
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    /// `QoSProfile::services_default()`.
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1865,11 +1859,11 @@ impl<'c, 'e, 't, 's> CtxServiceBuilder<'c, 'e, 't, 's> {
 pub struct CtxPublisherBuilder<'c, 'e, 't, 's> {
     ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
 }
 
 impl<'c, 'e, 't, 's> CtxPublisherBuilder<'c, 'e, 't, 's> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1904,12 +1898,12 @@ impl<'c, 'e, 't, 's> CtxPublisherBuilder<'c, 'e, 't, 's> {
 pub struct CtxTypedPublisherBuilder<'c, 'e, 't, 's, M> {
     ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     _phantom: PhantomData<M>,
 }
 
 impl<'c, 'e, 't, 's, M: MessageForRmw> CtxTypedPublisherBuilder<'c, 'e, 't, 's, M> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1927,11 +1921,11 @@ pub struct CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
 }
 
 impl<'c, 'e, 't, 's> CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -1951,11 +1945,11 @@ impl<'c, 'e, 't, 's> CtxGenericPublisherBuilder<'c, 'e, 't, 's> {
 pub struct SubscriptionBuilder<'c, 'e, 't, 's> {
     ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
 }
 
 impl<'c, 'e, 't, 's> SubscriptionBuilder<'c, 'e, 't, 's> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -2000,7 +1994,7 @@ pub struct TypedSubscriptionBuilder<
 > {
     ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
     _phantom: PhantomData<M>,
 }
@@ -2008,7 +2002,7 @@ pub struct TypedSubscriptionBuilder<
 impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
     TypedSubscriptionBuilder<'c, 'e, 't, 's, M, RX>
 {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -2090,7 +2084,7 @@ pub struct TypedSubInfoBuilder<
 > {
     ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
     _phantom: PhantomData<M>,
 }
@@ -2098,7 +2092,7 @@ pub struct TypedSubInfoBuilder<
 impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
     TypedSubInfoBuilder<'c, 'e, 't, 's, M, RX>
 {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -2151,7 +2145,7 @@ pub struct TypedSubSafetyBuilder<
 > {
     ctx: &'c mut NodeCtx<'e, 's>,
     topic: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
     _phantom: PhantomData<M>,
 }
@@ -2160,7 +2154,7 @@ pub struct TypedSubSafetyBuilder<
 impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
     TypedSubSafetyBuilder<'c, 'e, 't, 's, M, RX>
 {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -2212,12 +2206,12 @@ pub struct GenericSubscriptionBuilder<
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
 }
 
 impl<'c, 'e, 't, 's, const RX: usize> GenericSubscriptionBuilder<'c, 'e, 't, 's, RX> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -2287,12 +2281,12 @@ pub struct GenericSubInfoBuilder<
     topic: &'t str,
     type_name: &'t str,
     type_hash: &'t str,
-    qos: QosSettings,
+    qos: QoSProfile,
     sched: Option<super::sched_context::SchedContextId>,
 }
 
 impl<'c, 'e, 't, 's, const RX: usize> GenericSubInfoBuilder<'c, 'e, 't, 's, RX> {
-    pub fn qos(mut self, qos: QosSettings) -> Self {
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
         self.qos = qos;
         self
     }
@@ -2391,14 +2385,14 @@ mod builder_tests {
         let _typed = node
             .publisher("/chatter")
             .typed::<TestMsg>()
-            .qos(QosSettings::default().keep_last(5))
+            .qos(QoSProfile::default().keep_last(5))
             .build()
             .expect("typed publisher builds");
 
         // generic: node.publisher(t).qos(..).generic(type, hash).build()
         let _generic = node
             .publisher("/chatter")
-            .qos(QosSettings::default())
+            .qos(QoSProfile::default())
             .generic("std_msgs/msg/Int32", "hash")
             .build()
             .expect("generic publisher builds");
@@ -2414,7 +2408,7 @@ mod builder_tests {
             .node_mut(id)
             .subscription("/chatter")
             .typed::<TestMsg>()
-            .qos(QosSettings::default().keep_last(5))
+            .qos(QoSProfile::default().keep_last(5))
             .build(|_m: &TestMsg| {})
             .expect("typed subscription builds");
 
@@ -2473,7 +2467,7 @@ mod builder_tests {
             .node_mut(id)
             .subscription("/chatter")
             .typed::<TestMsg>()
-            .qos(QosSettings::default().keep_last(5))
+            .qos(QoSProfile::default().keep_last(5))
             .message_info()
             .build(|_m: &TestMsg, _info: Option<&nros_core::MessageInfo>| {})
             .expect("typed + message_info subscription builds");
@@ -2504,7 +2498,7 @@ mod builder_tests {
             .node_mut(id)
             .subscription("/topic")
             .generic("std_msgs/msg/Int32", "hash")
-            .qos(QosSettings::default().keep_last(1))
+            .qos(QoSProfile::default().keep_last(1))
             .rx_buffer::<1024>()
             .build(|_data: &[u8]| {})
             .expect("generator-shape subscription builds");

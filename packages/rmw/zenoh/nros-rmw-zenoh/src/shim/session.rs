@@ -1,7 +1,7 @@
 //! ZenohSession implementation
 
 use nros_rmw::{
-    QosSettings, ServiceInfo, Session, SessionMode, TopicInfo, TransportConfig, TransportError,
+    QoSProfile, ServiceInfo, Session, SessionMode, TopicInfo, TransportConfig, TransportError,
 };
 
 use super::{
@@ -544,7 +544,7 @@ impl Session for ZenohSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this publisher's node.
@@ -576,7 +576,7 @@ impl Session for ZenohSession {
     fn create_subscription(
         &mut self,
         topic: &TopicInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
         let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this subscriber's node.
@@ -608,7 +608,7 @@ impl Session for ZenohSession {
     fn create_service(
         &mut self,
         service: &ServiceInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error> {
         // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
         // slot (the `None` below is the liveliness token, not QoS) — the
@@ -633,7 +633,7 @@ impl Session for ZenohSession {
                             service.namespace,
                             node_name,
                             service,
-                            &QosSettings::services_default(),
+                            &QoSProfile::services_default(),
                         )
                     })
                 })
@@ -645,7 +645,7 @@ impl Session for ZenohSession {
     fn create_client(
         &mut self,
         service: &ServiceInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
         // TODO(193.1b): zenoh-pico services have no endpoint-level QoS
         // slot — the requested service QoS cannot be applied to the
@@ -668,7 +668,7 @@ impl Session for ZenohSession {
                             service.namespace,
                             node_name,
                             service,
-                            &QosSettings::services_default(),
+                            &QoSProfile::services_default(),
                         )
                     })
                 })
@@ -786,7 +786,7 @@ impl Session for ZenohSession {
         }
     }
 
-    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
+    fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
         // Phase 108.B/C — zenoh-pico's wire protocol has no native
         // DDS QoS, so the shim emulates everything:
         // - Reliability maps to zenoh congestion-control (CORE).
@@ -809,13 +809,13 @@ impl Session for ZenohSession {
         //   (108.C.zenoh.4-followup).
         // - LIVELINESS_LEASE: caller-supplied lease duration honoured
         //   for all liveliness kinds.
-        use nros_rmw::QosPolicyMask;
-        QosPolicyMask::CORE
-            | QosPolicyMask::DEADLINE
-            | QosPolicyMask::LIFESPAN
-            | QosPolicyMask::LIVELINESS_AUTOMATIC
-            | QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
-            | QosPolicyMask::LIVELINESS_MANUAL_BY_NODE
-            | QosPolicyMask::LIVELINESS_LEASE
+        use nros_rmw::QoSPolicyMask;
+        QoSPolicyMask::CORE
+            | QoSPolicyMask::DEADLINE
+            | QoSPolicyMask::LIFESPAN
+            | QoSPolicyMask::LIVELINESS_AUTOMATIC
+            | QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
+            | QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE
+            | QoSPolicyMask::LIVELINESS_LEASE
     }
 }

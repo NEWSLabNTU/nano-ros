@@ -7,7 +7,7 @@
 //!   * subscribes `/fmu/out/vehicle_odometry`  (PX4 → companion), and
 //!   * publishes  `/fmu/in/offboard_control_mode`  (companion → PX4).
 //!
-//! Both endpoints use the PX4 QoS profile ([`QosSettings::px4`] —
+//! Both endpoints use the PX4 QoS profile ([`QoSProfile::px4`] —
 //! `BEST_EFFORT` + `TRANSIENT_LOCAL` + `KEEP_LAST(1)`); the default
 //! reliable+volatile profile will *not* match PX4's endpoints.
 //!
@@ -81,7 +81,7 @@ fn main() {
         .node_mut(nid)
         .subscription("/fmu/out/vehicle_odometry")
         .typed::<VehicleOdometry>()
-        .qos(QosSettings::px4())
+        .qos(QoSProfile::px4())
         .build(move |msg: &VehicleOdometry| {
             let n = rx_cb.fetch_add(1, Ordering::SeqCst) + 1;
             info!(
@@ -96,7 +96,7 @@ fn main() {
     let setpoint = executor
         .node_mut(nid)
         .publisher("/fmu/in/offboard_control_mode")
-        .qos(QosSettings::px4())
+        .qos(QoSProfile::px4())
         .typed::<OffboardControlMode>()
         .build()
         .expect("Failed to advertise /fmu/in/offboard_control_mode");

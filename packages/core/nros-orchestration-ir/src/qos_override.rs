@@ -35,7 +35,7 @@ pub use nros_rmw::{qos_override_policy as policy, qos_override_role as role};
 pub const QOS_OVERRIDE_PREFIX: &str = "qos_overrides.";
 
 /// One lowered override: `(topic, role, policy, value)`, matching
-/// [`nros_rmw::QosOverrideCode`] but owning its topic (the producers turn it
+/// [`nros_rmw::QoSOverrideCode`] but owning its topic (the producers turn it
 /// into a baked literal).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LoweredOverride {
@@ -55,7 +55,7 @@ pub struct LoweredOverride {
 /// mistake is invisible at runtime, so the build message is the only place a
 /// user can learn what they typed wrong.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QosOverrideError {
+pub enum QoSOverrideError {
     /// The key has the prefix but not the `<topic>.<role>.<policy>` shape.
     Malformed { key: String },
     /// The role segment is not `publisher` or `subscription`.
@@ -71,25 +71,25 @@ pub enum QosOverrideError {
     },
 }
 
-impl fmt::Display for QosOverrideError {
+impl fmt::Display for QoSOverrideError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            QosOverrideError::Malformed { key } => write!(
+            QoSOverrideError::Malformed { key } => write!(
                 f,
                 "parameter `{key}` looks like a QoS override but is not \
                  `qos_overrides.<topic>.<role>.<policy>`"
             ),
-            QosOverrideError::UnknownRole { key, role } => write!(
+            QoSOverrideError::UnknownRole { key, role } => write!(
                 f,
                 "parameter `{key}`: unknown QoS override role `{role}` \
                  (expected `publisher` or `subscription`)"
             ),
-            QosOverrideError::UnknownPolicy { key, policy } => write!(
+            QoSOverrideError::UnknownPolicy { key, policy } => write!(
                 f,
                 "parameter `{key}`: unknown QoS override policy `{policy}` (expected one of: \
                  {POLICY_NAMES})"
             ),
-            QosOverrideError::BadValue {
+            QoSOverrideError::BadValue {
                 key,
                 policy,
                 value,
@@ -102,7 +102,7 @@ impl fmt::Display for QosOverrideError {
     }
 }
 
-impl std::error::Error for QosOverrideError {}
+impl std::error::Error for QoSOverrideError {}
 
 /// The policy spellings this build models, for diagnostics.
 const POLICY_NAMES: &str = "reliability, durability, history, depth, deadline, lifespan, \
@@ -118,7 +118,7 @@ pub fn is_qos_override(name: &str) -> bool {
 /// Returns `Ok(None)` when `name` is not a QoS override at all — the caller is
 /// walking a mixed parameter list. A name that DOES carry the prefix but is
 /// unusable is an `Err`, never a skip.
-pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOverrideError> {
+pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QoSOverrideError> {
     let Some(rest) = name.strip_prefix(QOS_OVERRIDE_PREFIX) else {
         return Ok(None);
     };
@@ -129,17 +129,17 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
     let mut parts = rest.rsplitn(3, '.');
     let (Some(policy_s), Some(role_s), Some(topic)) = (parts.next(), parts.next(), parts.next())
     else {
-        return Err(QosOverrideError::Malformed { key });
+        return Err(QoSOverrideError::Malformed { key });
     };
     if topic.is_empty() || role_s.is_empty() || policy_s.is_empty() {
-        return Err(QosOverrideError::Malformed { key });
+        return Err(QoSOverrideError::Malformed { key });
     }
 
     let role = match role_s {
         "publisher" => qos_override_role::PUBLISHER,
         "subscription" => qos_override_role::SUBSCRIPTION,
         _ => {
-            return Err(QosOverrideError::UnknownRole {
+            return Err(QoSOverrideError::UnknownRole {
                 key,
                 role: role_s.to_string(),
             });
@@ -147,7 +147,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
     };
 
     let v = value.trim();
-    let bad = |expected: &'static str| QosOverrideError::BadValue {
+    let bad = |expected: &'static str| QoSOverrideError::BadValue {
         key: name.to_string(),
         policy: policy_s.to_string(),
         value: v.to_string(),
@@ -192,7 +192,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
         "liveliness" => (
             qos_override_policy::LIVELINESS,
             match v {
-                // The discriminants of `nros_rmw::QosLivelinessPolicy`, NAMED
+                // The discriminants of `nros_rmw::QoSLivelinessPolicy`, NAMED
                 // rather than written out. Phase 376 W5/B2 renumbered that enum
                 // to upstream's ordering (MANUAL_BY_NODE 3 -> 2,
                 // MANUAL_BY_TOPIC 2 -> 3) and these literals kept compiling
@@ -201,10 +201,10 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
                 // variant is what keeps the two ends from drifting apart, and
                 // the comment claiming they were discriminants was the only
                 // thing binding them before.
-                "none" => nros_rmw::QosLivelinessPolicy::None as u32,
-                "automatic" => nros_rmw::QosLivelinessPolicy::Automatic as u32,
-                "manual_by_topic" => nros_rmw::QosLivelinessPolicy::ManualByTopic as u32,
-                "manual_by_node" => nros_rmw::QosLivelinessPolicy::ManualByNode as u32,
+                "none" => nros_rmw::QoSLivelinessPolicy::None as u32,
+                "automatic" => nros_rmw::QoSLivelinessPolicy::Automatic as u32,
+                "manual_by_topic" => nros_rmw::QoSLivelinessPolicy::ManualByTopic as u32,
+                "manual_by_node" => nros_rmw::QoSLivelinessPolicy::ManualByNode as u32,
                 _ => {
                     return Err(bad(
                         "`none`, `automatic`, `manual_by_topic` or `manual_by_node`",
@@ -217,7 +217,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
             ms("a duration in milliseconds")?,
         ),
         _ => {
-            return Err(QosOverrideError::UnknownPolicy {
+            return Err(QoSOverrideError::UnknownPolicy {
                 key,
                 policy: policy_s.to_string(),
             });
@@ -235,7 +235,7 @@ pub fn lower(name: &str, value: &str) -> Result<Option<LoweredOverride>, QosOver
 /// Lower every QoS override in a parameter list, sorted for deterministic
 /// emission. Non-override parameters are ignored; the FIRST unusable override
 /// is an error, so a build never ships a half-applied QoS table.
-pub fn lower_all<'a, I>(params: I) -> Result<Vec<LoweredOverride>, QosOverrideError>
+pub fn lower_all<'a, I>(params: I) -> Result<Vec<LoweredOverride>, QoSOverrideError>
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
 {
@@ -307,7 +307,7 @@ mod tests {
                 // renumbered this enum to upstream's ordering and a literal
                 // `2` here kept asserting the OTHER policy. A test that
                 // hardcodes a discriminant cannot notice it moved.
-                nros_rmw::QosLivelinessPolicy::ManualByTopic as u32,
+                nros_rmw::QoSLivelinessPolicy::ManualByTopic as u32,
             ),
             (
                 "qos_overrides./chatter.publisher.liveliness_lease_duration",
@@ -350,19 +350,19 @@ mod tests {
     fn unusable_overrides_are_errors_not_silence() {
         // `pub` instead of `publisher` — the typo that used to vanish.
         let e = lower("qos_overrides./t.pub.reliability", "reliable").unwrap_err();
-        assert!(matches!(e, QosOverrideError::UnknownRole { .. }), "{e:?}");
+        assert!(matches!(e, QoSOverrideError::UnknownRole { .. }), "{e:?}");
         assert!(e.to_string().contains("publisher"), "{e}");
 
         // A policy this build does not model.
         let e = lower("qos_overrides./t.publisher.bandwidth", "10").unwrap_err();
-        assert!(matches!(e, QosOverrideError::UnknownPolicy { .. }), "{e:?}");
+        assert!(matches!(e, QoSOverrideError::UnknownPolicy { .. }), "{e:?}");
         assert!(e.to_string().contains("deadline"), "{e}");
 
         // Right policy, wrong value.
         let e = lower("qos_overrides./t.publisher.reliability", "relaible").unwrap_err();
-        assert!(matches!(e, QosOverrideError::BadValue { .. }), "{e:?}");
+        assert!(matches!(e, QoSOverrideError::BadValue { .. }), "{e:?}");
         let e = lower("qos_overrides./t.publisher.depth", "lots").unwrap_err();
-        assert!(matches!(e, QosOverrideError::BadValue { .. }), "{e:?}");
+        assert!(matches!(e, QoSOverrideError::BadValue { .. }), "{e:?}");
 
         // Prefix present, shape wrong.
         for key in [
@@ -375,7 +375,7 @@ mod tests {
             assert!(
                 matches!(
                     e,
-                    QosOverrideError::Malformed { .. } | QosOverrideError::UnknownRole { .. }
+                    QoSOverrideError::Malformed { .. } | QoSOverrideError::UnknownRole { .. }
                 ),
                 "{key}: {e:?}"
             );
@@ -413,6 +413,6 @@ mod tests {
             ("qos_overrides./b.publisher.nonsense", "1"),
         ])
         .unwrap_err();
-        assert!(matches!(e, QosOverrideError::UnknownPolicy { .. }), "{e:?}");
+        assert!(matches!(e, QoSOverrideError::UnknownPolicy { .. }), "{e:?}");
     }
 }

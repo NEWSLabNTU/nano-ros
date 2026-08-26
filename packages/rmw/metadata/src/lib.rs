@@ -105,7 +105,7 @@ impl Session for MetadataSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo<'_>,
-        _qos: nros_rmw::QosSettings,
+        _qos: nros_rmw::QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
         record(EntityKind::Publisher, topic.name, topic.type_name, None)?;
         Ok(MetadataPublisher)
@@ -114,7 +114,7 @@ impl Session for MetadataSession {
     fn create_subscription(
         &mut self,
         topic: &TopicInfo<'_>,
-        _qos: nros_rmw::QosSettings,
+        _qos: nros_rmw::QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
         record(EntityKind::Subscription, topic.name, topic.type_name, None)?;
         Ok(MetadataSubscription)
@@ -123,7 +123,7 @@ impl Session for MetadataSession {
     fn create_service(
         &mut self,
         service: &ServiceInfo<'_>,
-        _qos: nros_rmw::QosSettings,
+        _qos: nros_rmw::QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error> {
         record(
             EntityKind::ServiceServer,
@@ -137,7 +137,7 @@ impl Session for MetadataSession {
     fn create_client(
         &mut self,
         service: &ServiceInfo<'_>,
-        _qos: nros_rmw::QosSettings,
+        _qos: nros_rmw::QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error> {
         record(
             EntityKind::ServiceClient,

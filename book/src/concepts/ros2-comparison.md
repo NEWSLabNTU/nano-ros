@@ -177,7 +177,7 @@ requested QoS at entity-create time and returns
 a requested policy:
 
 ```rust
-if session.supported_qos_policies().contains(QosPolicyMask::DEADLINE) {
+if session.supported_qos_policies().contains(QoSPolicyMask::DEADLINE) {
     // backend honours deadline; safe to set deadline_ms
 } else {
     // app handles deadline monitoring itself

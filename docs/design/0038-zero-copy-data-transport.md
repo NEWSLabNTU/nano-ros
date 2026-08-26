@@ -105,7 +105,7 @@ shared pool.
 - The opt-in `lending` feature (`SlotBorrowing` / `ZenohView`) and the
   alloc-only `unstable-zenoh-api` path already remove copy #1 on narrow paths.
   Neither is the default receive path.
-- QoS depth (`QosSettings::depth`, traits.rs:372) currently sizes the arena
+- QoS depth (`QoSProfile::depth`, traits.rs:372) currently sizes the arena
   buffer only (`buffered_region_size(qos.depth, ...)`, arena.rs:250). It does
   **not** reach the backend ring, whose depth is the build-time
   `SUBSCRIBER_RING_DEPTH` constant.
@@ -181,7 +181,7 @@ trait methods:
 
 That is the whole interface delta — two methods, one already present. **No QoS,
 pool, depth, or slot concept appears in the trait**: QoS depth is already passed
-at subscription creation (`QosSettings::depth`) and is handled entirely
+at subscription creation (`QoSProfile::depth`) and is handled entirely
 backend-side. Everything in **D1 below is backend-internal and optional** — a
 zpico-and-friends storage refactor, not a cross-backend mandate. A backend that
 never adopts the shared pool, or never implements the in-place methods, keeps

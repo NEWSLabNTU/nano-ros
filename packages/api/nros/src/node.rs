@@ -10,7 +10,7 @@ use nros_node::rmw_type_registry::MessageForRmw;
 
 use crate::{
     ActionTag, CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus,
-    ParameterType, QosSettings, RosAction, RosMessage, RosService, ServiceTag, SubscriptionTag,
+    ParameterType, QoSProfile, RosAction, RosMessage, RosService, ServiceTag, SubscriptionTag,
     TimerDuration,
     heapless::Vec,
     node_metadata::{
@@ -745,7 +745,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         topic: &str,
     ) -> NodeResult<NodePublisher<'entity, M>> {
-        self.create_publisher_with_qos::<M>(id, topic, QosSettings::default())
+        self.create_publisher_with_qos::<M>(id, topic, QoSProfile::default())
     }
 
     /// Declare a publisher using `topic` as the stable entity ID.
@@ -758,7 +758,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         &mut self,
         topic: &'entity str,
     ) -> NodeResult<NodePublisher<'entity, M>> {
-        self.create_publisher_for_topic_with_qos::<M>(topic, QosSettings::default())
+        self.create_publisher_for_topic_with_qos::<M>(topic, QoSProfile::default())
     }
 
     /// Declare a publisher with explicit QoS, using `topic` as the stable entity ID.
@@ -766,7 +766,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     pub fn create_publisher_for_topic_with_qos<'entity, M: MessageForRmw>(
         &mut self,
         topic: &'entity str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> NodeResult<NodePublisher<'entity, M>> {
         self.create_publisher_with_qos::<M>(EntityId::new(topic), topic, qos)
     }
@@ -778,7 +778,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         &mut self,
         id: EntityId<'entity>,
         topic: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> NodeResult<NodePublisher<'entity, M>> {
         register_declared_type::<M>()?;
         let mut metadata = entity_metadata(EntityMetadataSpec {
@@ -806,7 +806,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         callback_id: CallbackId<'callback>,
         topic: &str,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
-        self.create_subscription_with_qos::<M>(id, callback_id, topic, QosSettings::default())
+        self.create_subscription_with_qos::<M>(id, callback_id, topic, QoSProfile::default())
     }
 
     /// Declare a subscription using `callback_id` as the stable entity ID.
@@ -823,7 +823,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         self.create_subscription_for_callback_with_qos::<M>(
             callback_id,
             topic,
-            QosSettings::default(),
+            QoSProfile::default(),
         )
     }
 
@@ -865,7 +865,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
             type_name: <M as RosMessage>::TYPE_NAME,
             type_hash: <M as RosMessage>::TYPE_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
@@ -882,7 +882,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         &mut self,
         callback_id: CallbackId<'callback>,
         topic: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> NodeResult<NodeSubscription<'callback, M>> {
         self.create_subscription_with_qos::<M>(
             EntityId::new(callback_id.as_str()),
@@ -898,7 +898,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         &mut self,
         topic: &'entity str,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
-        self.create_subscription_for_topic_with_qos::<M>(topic, QosSettings::default())
+        self.create_subscription_for_topic_with_qos::<M>(topic, QoSProfile::default())
     }
 
     /// Declare a subscription with explicit QoS, using `topic` as both IDs.
@@ -906,7 +906,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
     pub fn create_subscription_for_topic_with_qos<'entity, M: MessageForRmw>(
         &mut self,
         topic: &'entity str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
         self.create_subscription_with_qos::<M>(
             EntityId::new(topic),
@@ -924,7 +924,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         id: EntityId<'entity>,
         callback_id: CallbackId<'callback>,
         topic: &str,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> NodeResult<NodeSubscription<'entity, M>> {
         // Phase 380 W4 — a subscription whose receive buffer provably cannot
         // hold its own message type fails the BUILD, not the field.
@@ -1003,7 +1003,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             // which also has a `TYPE_NAME`; disambiguate to the ROS-facing one.
             type_name: <M as RosMessage>::TYPE_NAME,
             type_hash: <M as RosMessage>::TYPE_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
@@ -1028,7 +1028,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: "",
             type_name: "",
             type_hash: "",
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
@@ -1085,7 +1085,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: service_name,
             type_name: S::SERVICE_NAME,
             type_hash: S::SERVICE_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.callback_id = Some(copy_str(callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
@@ -1174,7 +1174,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: service_name,
             type_name: S::SERVICE_NAME,
             type_hash: S::SERVICE_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.declare_entity(metadata)?;
@@ -1261,7 +1261,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: action_name,
             type_name: A::ACTION_NAME,
             type_hash: A::ACTION_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.callback_id = Some(copy_str(goal_callback_id.as_str())?);
         metadata.callback_source = SourceLocationMetadata::caller()?;
@@ -1390,7 +1390,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: action_name,
             type_name: A::ACTION_NAME,
             type_hash: A::ACTION_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.source = SourceLocationMetadata::caller()?;
         self.declare_entity(metadata)?;
@@ -1457,7 +1457,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: name,
             type_name: A::ACTION_NAME,
             type_hash: A::ACTION_HASH,
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.callback_id = Some(copy_str(result_callback_name)?);
         metadata.action_accepted_callback_id = Some(copy_str(feedback_callback_name)?);
@@ -1495,7 +1495,7 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
             source_name: name,
             type_name: "",
             type_hash: "",
-            qos: QosSettings::default(),
+            qos: QoSProfile::default(),
         })?;
         metadata.parameter_type = Some(default.parameter_type());
         metadata.parameter_default = Some(default);

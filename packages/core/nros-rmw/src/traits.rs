@@ -330,8 +330,8 @@ pub enum TransportError {
 
 /// QoS history policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QosHistoryPolicy {
-    /// Keep last N messages (where N is defined in QosSettings)
+pub enum QoSHistoryPolicy {
+    /// Keep last N messages (where N is defined in QoSProfile)
     #[default]
     KeepLast,
     /// Keep all messages (up to resource limits)
@@ -340,11 +340,11 @@ pub enum QosHistoryPolicy {
 
 /// QoS reliability policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QosReliabilityPolicy {
+pub enum QoSReliabilityPolicy {
     /// Reliable delivery (retransmit if needed).
     ///
     /// Default — matches ROS 2 `rmw_qos_profile_default` and the
-    /// `QosSettings::default()` / `QOS_PROFILE_DEFAULT` aggregates.
+    /// `QoSProfile::default()` / `QOS_PROFILE_DEFAULT` aggregates.
     #[default]
     Reliable,
     /// Best-effort delivery (no retransmits)
@@ -353,7 +353,7 @@ pub enum QosReliabilityPolicy {
 
 /// QoS durability policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum QosDurabilityPolicy {
+pub enum QoSDurabilityPolicy {
     /// Messages are discarded when subscriber disconnects
     #[default]
     Volatile,
@@ -364,7 +364,7 @@ pub enum QosDurabilityPolicy {
 /// QoS liveliness policy. Matches DDS `LIVELINESS` semantics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
-pub enum QosLivelinessPolicy {
+pub enum QoSLivelinessPolicy {
     /// No liveliness assertion or tracking. Default for entities
     /// that don't care about liveliness.
     #[default]
@@ -383,40 +383,40 @@ pub enum QosLivelinessPolicy {
     ManualByTopic = 3,
 }
 
-/// Phase 211.H — which side of a topic a [`QosOverride`] targets.
+/// Phase 211.H — which side of a topic a [`QoSOverride`] targets.
 /// Mirrors the `<role>` segment of a ROS 2
 /// `qos_overrides.<topic>.<role>.<policy>` launch parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QosOverrideRole {
+pub enum QoSOverrideRole {
     /// `qos_overrides.<topic>.publisher.*`
     Publisher,
     /// `qos_overrides.<topic>.subscription.*`
     Subscription,
 }
 
-/// Phase 211.H — a single policy value a [`QosOverride`] sets. A typed enum
+/// Phase 211.H — a single policy value a [`QoSOverride`] sets. A typed enum
 /// (not a string) so the codegen that bakes these from the plan catches an
 /// unknown policy / mistyped value at generation time rather than silently
 /// no-op-ing at runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum QosOverrideValue {
+pub enum QoSOverrideValue {
     /// `.reliability` → Reliable / BestEffort.
-    Reliability(QosReliabilityPolicy),
+    Reliability(QoSReliabilityPolicy),
     /// `.durability` → Volatile / TransientLocal.
-    Durability(QosDurabilityPolicy),
+    Durability(QoSDurabilityPolicy),
     /// `.history` → KeepLast / KeepAll.
-    History(QosHistoryPolicy),
+    History(QoSHistoryPolicy),
     /// `.depth` → KeepLast depth.
     Depth(u32),
-    /// Issue 0303 — `.deadline` → [`QosSettings::deadline_ms`]. `0` /
+    /// Issue 0303 — `.deadline` → [`QoSProfile::deadline_ms`]. `0` /
     /// [`DURATION_INFINITE_MS`] = no deadline check.
     Deadline(u32),
-    /// Issue 0303 — `.lifespan` → [`QosSettings::lifespan_ms`].
+    /// Issue 0303 — `.lifespan` → [`QoSProfile::lifespan_ms`].
     Lifespan(u32),
-    /// Issue 0303 — `.liveliness` → [`QosSettings::liveliness_kind`].
-    Liveliness(QosLivelinessPolicy),
+    /// Issue 0303 — `.liveliness` → [`QoSProfile::liveliness_kind`].
+    Liveliness(QoSLivelinessPolicy),
     /// Issue 0303 — `.liveliness_lease_duration` →
-    /// [`QosSettings::liveliness_lease_ms`].
+    /// [`QoSProfile::liveliness_lease_ms`].
     LivelinessLease(u32),
 }
 
@@ -426,13 +426,13 @@ pub enum QosOverrideValue {
 /// One numbering for every language: `nros_qos_override_t` (C),
 /// `nros_cpp_qos_override_t` (C++), `RuntimeCtx::qos_overrides` (the Rust
 /// entry bake) and `NodeRecord::qos_overrides` are all THIS tuple. Codes rather
-/// than [`QosOverride`] because the table crosses the C ABI and rides
+/// than [`QoSOverride`] because the table crosses the C ABI and rides
 /// `nros-platform`, which sits below this crate in the layer graph.
 ///
 /// `topic` is `&'static` because every producer bakes a literal.
-pub type QosOverrideCode = (&'static str, u8, u8, u32);
+pub type QoSOverrideCode = (&'static str, u8, u8, u32);
 
-/// `role` codes for [`QosOverrideCode`].
+/// `role` codes for [`QoSOverrideCode`].
 pub mod qos_override_role {
     /// The override targets publishers on the topic.
     pub const PUBLISHER: u8 = 0;
@@ -440,7 +440,7 @@ pub mod qos_override_role {
     pub const SUBSCRIPTION: u8 = 1;
 }
 
-/// `policy` codes for [`QosOverrideCode`].
+/// `policy` codes for [`QoSOverrideCode`].
 ///
 /// Append-only: these numbers are baked into shipped images and mirrored in
 /// two C headers. Never renumber — add.
@@ -457,20 +457,20 @@ pub mod qos_override_policy {
     pub const DEADLINE: u8 = 4;
     /// value = milliseconds (issue 0303).
     pub const LIFESPAN: u8 = 5;
-    /// value = [`super::QosLivelinessPolicy`] discriminant (issue 0303).
+    /// value = [`super::QoSLivelinessPolicy`] discriminant (issue 0303).
     pub const LIVELINESS: u8 = 6;
     /// value = milliseconds (issue 0303).
     pub const LIVELINESS_LEASE: u8 = 7;
 }
 
-/// Decode one [`QosOverrideCode`] into a typed [`QosOverride`].
+/// Decode one [`QoSOverrideCode`] into a typed [`QoSOverride`].
 ///
 /// `None` for an unrecognised role or policy code. THE one decoder: before
 /// issue 0303 this match existed four times (nros-node, nros-c, nros-cpp, and
 /// the executor's node record), each with a silent catch-all, so adding a
 /// policy meant finding all four — and the two FFI copies had already been
 /// forgotten once.
-pub fn decode_qos_override(code: &QosOverrideCode) -> Option<QosOverride> {
+pub fn decode_qos_override(code: &QoSOverrideCode) -> Option<QoSOverride> {
     let (topic, role, policy, value) = *code;
     decode_qos_override_parts(topic, role, policy, value)
 }
@@ -482,8 +482,8 @@ pub fn decode_qos_override_parts(
     role: u8,
     policy: u8,
     value: u32,
-) -> Option<QosOverride> {
-    Some(QosOverride {
+) -> Option<QoSOverride> {
+    Some(QoSOverride {
         topic,
         role: decode_qos_override_role(role)?,
         value: decode_qos_override_value(policy, value)?,
@@ -491,10 +491,10 @@ pub fn decode_qos_override_parts(
 }
 
 /// Decode a `role` code. `None` for an unrecognised one.
-pub fn decode_qos_override_role(role: u8) -> Option<QosOverrideRole> {
+pub fn decode_qos_override_role(role: u8) -> Option<QoSOverrideRole> {
     match role {
-        qos_override_role::PUBLISHER => Some(QosOverrideRole::Publisher),
-        qos_override_role::SUBSCRIPTION => Some(QosOverrideRole::Subscription),
+        qos_override_role::PUBLISHER => Some(QoSOverrideRole::Publisher),
+        qos_override_role::SUBSCRIPTION => Some(QoSOverrideRole::Subscription),
         _ => None,
     }
 }
@@ -504,40 +504,40 @@ pub fn decode_qos_override_role(role: u8) -> Option<QosOverrideRole> {
 ///
 /// Split out from [`decode_qos_override`] for the FFI paths: they have already
 /// matched the topic against a `*const c_char`, so they need the VALUE without
-/// a `&'static str` to build a whole [`QosOverride`] around.
-pub fn decode_qos_override_value(policy: u8, value: u32) -> Option<QosOverrideValue> {
+/// a `&'static str` to build a whole [`QoSOverride`] around.
+pub fn decode_qos_override_value(policy: u8, value: u32) -> Option<QoSOverrideValue> {
     let out = match policy {
-        qos_override_policy::RELIABILITY => QosOverrideValue::Reliability(if value == 0 {
-            QosReliabilityPolicy::BestEffort
+        qos_override_policy::RELIABILITY => QoSOverrideValue::Reliability(if value == 0 {
+            QoSReliabilityPolicy::BestEffort
         } else {
-            QosReliabilityPolicy::Reliable
+            QoSReliabilityPolicy::Reliable
         }),
-        qos_override_policy::DURABILITY => QosOverrideValue::Durability(if value == 1 {
-            QosDurabilityPolicy::TransientLocal
+        qos_override_policy::DURABILITY => QoSOverrideValue::Durability(if value == 1 {
+            QoSDurabilityPolicy::TransientLocal
         } else {
-            QosDurabilityPolicy::Volatile
+            QoSDurabilityPolicy::Volatile
         }),
-        qos_override_policy::HISTORY => QosOverrideValue::History(if value == 1 {
-            QosHistoryPolicy::KeepAll
+        qos_override_policy::HISTORY => QoSOverrideValue::History(if value == 1 {
+            QoSHistoryPolicy::KeepAll
         } else {
-            QosHistoryPolicy::KeepLast
+            QoSHistoryPolicy::KeepLast
         }),
-        qos_override_policy::DEPTH => QosOverrideValue::Depth(value),
-        qos_override_policy::DEADLINE => QosOverrideValue::Deadline(value),
-        qos_override_policy::LIFESPAN => QosOverrideValue::Lifespan(value),
+        qos_override_policy::DEPTH => QoSOverrideValue::Depth(value),
+        qos_override_policy::DEADLINE => QoSOverrideValue::Deadline(value),
+        qos_override_policy::LIFESPAN => QoSOverrideValue::Lifespan(value),
         // The encoder is `nros_orchestration_ir::qos_override`; both ends name
         // the variant rather than its number, so W5/B2's renumbering moved them
         // together instead of silently swapping two policies.
-        qos_override_policy::LIVELINESS => QosOverrideValue::Liveliness(match value {
-            v if v == QosLivelinessPolicy::None as u32 => QosLivelinessPolicy::None,
-            v if v == QosLivelinessPolicy::Automatic as u32 => QosLivelinessPolicy::Automatic,
-            v if v == QosLivelinessPolicy::ManualByNode as u32 => QosLivelinessPolicy::ManualByNode,
-            v if v == QosLivelinessPolicy::ManualByTopic as u32 => {
-                QosLivelinessPolicy::ManualByTopic
+        qos_override_policy::LIVELINESS => QoSOverrideValue::Liveliness(match value {
+            v if v == QoSLivelinessPolicy::None as u32 => QoSLivelinessPolicy::None,
+            v if v == QoSLivelinessPolicy::Automatic as u32 => QoSLivelinessPolicy::Automatic,
+            v if v == QoSLivelinessPolicy::ManualByNode as u32 => QoSLivelinessPolicy::ManualByNode,
+            v if v == QoSLivelinessPolicy::ManualByTopic as u32 => {
+                QoSLivelinessPolicy::ManualByTopic
             }
             _ => return None,
         }),
-        qos_override_policy::LIVELINESS_LEASE => QosOverrideValue::LivelinessLease(value),
+        qos_override_policy::LIVELINESS_LEASE => QoSOverrideValue::LivelinessLease(value),
         _ => return None,
     };
     Some(out)
@@ -545,21 +545,21 @@ pub fn decode_qos_override_value(policy: u8, value: u32) -> Option<QosOverrideVa
 
 /// Phase 211.H — one per-topic QoS override, lowered from a ROS 2
 /// `qos_overrides.<topic>.<role>.<policy>` launch parameter by the planner and
-/// baked into a `&'static [QosOverride]` table by the entry codegen. The node
-/// folds the matching entries into the entity's [`QosSettings`] at
+/// baked into a `&'static [QoSOverride]` table by the entry codegen. The node
+/// folds the matching entries into the entity's [`QoSProfile`] at
 /// `create_publisher` / `create_subscription` time (setup-time, single
 /// linear scan, no alloc), *before* the backend-compat `validate_against` —
 /// so an override the active RMW can't honour still errors loudly, never a
 /// silent downgrade.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QosOverride {
+pub struct QoSOverride {
     /// The resolved (remapped) topic name the override targets, e.g.
     /// `"/chatter"`. Matched exactly against the entity's topic.
     pub topic: &'static str,
     /// Publisher or subscription side.
-    pub role: QosOverrideRole,
+    pub role: QoSOverrideRole,
     /// The policy + value to set.
-    pub value: QosOverrideValue,
+    pub value: QoSOverrideValue,
 }
 
 /// Phase-301 (issue 0241) — explicit "infinite" spelling for the u32
@@ -605,15 +605,15 @@ pub fn duration_to_qos_ms(d: core::time::Duration) -> Result<u32, TransportError
 /// Zero-valued time-window fields ("off") mean infinite — the policy
 /// is effectively disabled for the entity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QosSettings {
+pub struct QoSProfile {
     /// History policy
-    pub history: QosHistoryPolicy,
+    pub history: QoSHistoryPolicy,
     /// Reliability policy
-    pub reliability: QosReliabilityPolicy,
+    pub reliability: QoSReliabilityPolicy,
     /// Durability policy
-    pub durability: QosDurabilityPolicy,
+    pub durability: QoSDurabilityPolicy,
     /// Liveliness policy
-    pub liveliness_kind: QosLivelinessPolicy,
+    pub liveliness_kind: QoSLivelinessPolicy,
     /// History depth (only used if history is KeepLast)
     pub depth: u32,
     /// Subscription max-inter-arrival / publisher offered-rate, ms.
@@ -635,13 +635,13 @@ pub struct QosSettings {
     pub tx_express: bool,
 }
 
-impl Default for QosSettings {
+impl Default for QoSProfile {
     fn default() -> Self {
         Self::QOS_PROFILE_DEFAULT
     }
 }
 
-impl QosSettings {
+impl QoSProfile {
     /// Phase 211.H — fold the plan's `qos_overrides` matching `topic` + `role`
     /// into this profile, returning the overridden profile. Setup-time only
     /// (called from `create_publisher`/`create_subscription`): a single linear
@@ -653,8 +653,8 @@ impl QosSettings {
     pub fn apply_overrides(
         mut self,
         topic: &str,
-        role: QosOverrideRole,
-        overrides: &[QosOverride],
+        role: QoSOverrideRole,
+        overrides: &[QoSOverride],
     ) -> Self {
         for ovr in overrides {
             if ovr.topic == topic && ovr.role == role {
@@ -667,20 +667,20 @@ impl QosSettings {
     /// Issue 0303 — apply ONE decoded override value. The single place a
     /// policy maps to the field it sets; `apply_overrides` and the FFI folds
     /// both go through it, so a new policy cannot reach some paths only.
-    pub fn apply_override_value(&mut self, value: QosOverrideValue) {
+    pub fn apply_override_value(&mut self, value: QoSOverrideValue) {
         match value {
-            QosOverrideValue::Reliability(r) => self.reliability = r,
-            QosOverrideValue::Durability(d) => self.durability = d,
-            QosOverrideValue::History(h) => self.history = h,
-            QosOverrideValue::Depth(d) => self.depth = d,
-            QosOverrideValue::Deadline(ms) => self.deadline_ms = ms,
-            QosOverrideValue::Lifespan(ms) => self.lifespan_ms = ms,
-            QosOverrideValue::Liveliness(k) => self.liveliness_kind = k,
-            QosOverrideValue::LivelinessLease(ms) => self.liveliness_lease_ms = ms,
+            QoSOverrideValue::Reliability(r) => self.reliability = r,
+            QoSOverrideValue::Durability(d) => self.durability = d,
+            QoSOverrideValue::History(h) => self.history = h,
+            QoSOverrideValue::Depth(d) => self.depth = d,
+            QoSOverrideValue::Deadline(ms) => self.deadline_ms = ms,
+            QoSOverrideValue::Lifespan(ms) => self.lifespan_ms = ms,
+            QoSOverrideValue::Liveliness(k) => self.liveliness_kind = k,
+            QoSOverrideValue::LivelinessLease(ms) => self.liveliness_lease_ms = ms,
         }
     }
 
-    /// Issue 0303 — fold baked [`QosOverrideCode`]s for one `(topic, role)`.
+    /// Issue 0303 — fold baked [`QoSOverrideCode`]s for one `(topic, role)`.
     /// Unrecognised codes are skipped; the producers reject them at BAKE time
     /// (`nros_orchestration_ir::qos_override`), so a code reaching here that
     /// this build does not know is an older image running newer data, not a
@@ -688,8 +688,8 @@ impl QosSettings {
     pub fn apply_override_codes(
         self,
         topic: &str,
-        role: QosOverrideRole,
-        codes: &[QosOverrideCode],
+        role: QoSOverrideRole,
+        codes: &[QoSOverrideCode],
     ) -> Self {
         let mut qos = self;
         for code in codes {
@@ -701,21 +701,21 @@ impl QosSettings {
     }
 }
 
-impl QosSettings {
+impl QoSProfile {
     /// Internal const builder. Extended-policy fields default to
     /// "off" (zero) and `liveliness_kind = Automatic` (the upstream
     /// `rmw_qos_profile_default` choice).
     const fn build(
-        reliability: QosReliabilityPolicy,
-        durability: QosDurabilityPolicy,
-        history: QosHistoryPolicy,
+        reliability: QoSReliabilityPolicy,
+        durability: QoSDurabilityPolicy,
+        history: QoSHistoryPolicy,
         depth: u32,
     ) -> Self {
         Self {
             history,
             reliability,
             durability,
-            liveliness_kind: QosLivelinessPolicy::Automatic,
+            liveliness_kind: QoSLivelinessPolicy::Automatic,
             depth,
             deadline_ms: 0,
             lifespan_ms: 0,
@@ -733,49 +733,49 @@ impl QosSettings {
 
     /// Best-effort QoS (for real-time)
     pub const BEST_EFFORT: Self = Self::build(
-        QosReliabilityPolicy::BestEffort,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::BestEffort,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         1,
     );
 
     /// Reliable QoS
     pub const RELIABLE: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         10,
     );
 
     /// System default QoS profile (matches rmw_qos_profile_system_default)
     pub const QOS_PROFILE_SYSTEM_DEFAULT: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         1,
     );
 
     /// Default QoS profile (matches rmw_qos_profile_default)
     pub const QOS_PROFILE_DEFAULT: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         10,
     );
 
     /// Sensor data QoS profile (matches rmw_qos_profile_sensor_data)
     pub const QOS_PROFILE_SENSOR_DATA: Self = Self::build(
-        QosReliabilityPolicy::BestEffort,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::BestEffort,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         5,
     );
 
     /// Services default QoS profile (matches rmw_qos_profile_services_default)
     pub const QOS_PROFILE_SERVICES_DEFAULT: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         10,
     );
 
@@ -790,33 +790,33 @@ impl QosSettings {
     /// defect; the wrong one being the one named after the upstream constant is
     /// what made it hard to see.
     pub const QOS_PROFILE_PARAMETERS: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         1000,
     );
 
     /// Clock QoS profile - same as sensor data but with depth 1
     pub const QOS_PROFILE_CLOCK: Self = Self::build(
-        QosReliabilityPolicy::BestEffort,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::BestEffort,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         1,
     );
 
     /// Parameter events QoS profile (matches rmw_qos_profile_parameter_events)
     pub const QOS_PROFILE_PARAMETER_EVENTS: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepAll,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepAll,
         0, // Not used with KeepAll
     );
 
     /// Action status default QoS profile (matches rcl_action_qos_profile_status_default)
     pub const QOS_PROFILE_ACTION_STATUS_DEFAULT: Self = Self::build(
-        QosReliabilityPolicy::Reliable,
-        QosDurabilityPolicy::TransientLocal,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::Reliable,
+        QoSDurabilityPolicy::TransientLocal,
+        QoSHistoryPolicy::KeepLast,
         1,
     );
 
@@ -829,9 +829,9 @@ impl QosSettings {
     /// `TRANSIENT_LOCAL` durability silently fails to match `/fmu/out/*`.
     /// Adjust depth via `.keep_last(n)` for higher-rate streams.
     pub const QOS_PROFILE_PX4: Self = Self::build(
-        QosReliabilityPolicy::BestEffort,
-        QosDurabilityPolicy::Volatile,
-        QosHistoryPolicy::KeepLast,
+        QoSReliabilityPolicy::BestEffort,
+        QoSDurabilityPolicy::Volatile,
+        QoSHistoryPolicy::KeepLast,
         1,
     );
 
@@ -888,55 +888,55 @@ impl QosSettings {
 
     /// Set history to keep last N messages
     pub const fn keep_last(mut self, depth: u32) -> Self {
-        self.history = QosHistoryPolicy::KeepLast;
+        self.history = QoSHistoryPolicy::KeepLast;
         self.depth = depth;
         self
     }
 
     /// Set history to keep all messages
     pub const fn keep_all(mut self) -> Self {
-        self.history = QosHistoryPolicy::KeepAll;
+        self.history = QoSHistoryPolicy::KeepAll;
         self
     }
 
     /// Set reliability to reliable
     pub const fn reliable(mut self) -> Self {
-        self.reliability = QosReliabilityPolicy::Reliable;
+        self.reliability = QoSReliabilityPolicy::Reliable;
         self
     }
 
     /// Set reliability to best-effort
     pub const fn best_effort(mut self) -> Self {
-        self.reliability = QosReliabilityPolicy::BestEffort;
+        self.reliability = QoSReliabilityPolicy::BestEffort;
         self
     }
 
     /// Set durability to volatile
     pub const fn volatile(mut self) -> Self {
-        self.durability = QosDurabilityPolicy::Volatile;
+        self.durability = QoSDurabilityPolicy::Volatile;
         self
     }
 
     /// Set durability to transient local
     pub const fn transient_local(mut self) -> Self {
-        self.durability = QosDurabilityPolicy::TransientLocal;
+        self.durability = QoSDurabilityPolicy::TransientLocal;
         self
     }
 
     /// Set reliability policy explicitly
-    pub const fn reliability(mut self, policy: QosReliabilityPolicy) -> Self {
+    pub const fn reliability(mut self, policy: QoSReliabilityPolicy) -> Self {
         self.reliability = policy;
         self
     }
 
     /// Set durability policy explicitly
-    pub const fn durability(mut self, policy: QosDurabilityPolicy) -> Self {
+    pub const fn durability(mut self, policy: QoSDurabilityPolicy) -> Self {
         self.durability = policy;
         self
     }
 
     /// Set history policy explicitly
-    pub const fn history(mut self, policy: QosHistoryPolicy) -> Self {
+    pub const fn history(mut self, policy: QoSHistoryPolicy) -> Self {
         self.history = policy;
         self
     }
@@ -1201,7 +1201,7 @@ pub trait Session {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error>;
 
     /// Create a subscriber bound to this session.
@@ -1212,7 +1212,7 @@ pub trait Session {
     fn create_subscription(
         &mut self,
         topic: &TopicInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error>;
 
     /// Create a service server bound to this session. Replies are
@@ -1221,24 +1221,24 @@ pub trait Session {
     ///
     /// `qos` is applied to both the request and reply endpoints (a
     /// service is two DDS topics; rmw uses one profile for both). The
-    /// default is [`QosSettings::services_default`]
+    /// default is [`QoSProfile::services_default`]
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
     fn create_service(
         &mut self,
         service: &ServiceInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::ServiceHandle, Self::Error>;
 
     /// Create a service client bound to this session.
     ///
     /// `qos` is applied to both the request and reply endpoints (a
     /// service is two DDS topics; rmw uses one profile for both). The
-    /// default is [`QosSettings::services_default`]
+    /// default is [`QoSProfile::services_default`]
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)).
     fn create_client(
         &mut self,
         service: &ServiceInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<Self::ClientHandle, Self::Error>;
 
     /// Close the session, releasing transport resources. All entity
@@ -1270,11 +1270,11 @@ pub trait Session {
     /// includes a policy the backend can't enforce. **No silent
     /// downgrade.**
     ///
-    /// Default returns [`QosPolicyMask::CORE`] — reliability +
+    /// Default returns [`QoSPolicyMask::CORE`] — reliability +
     /// durability VOLATILE + history + depth. Backends override per
     /// supported policy.
-    fn supported_qos_policies(&self) -> QosPolicyMask {
-        QosPolicyMask::CORE
+    fn supported_qos_policies(&self) -> QoSPolicyMask {
+        QoSPolicyMask::CORE
     }
 
     /// Phase 110.0 — backend's next internal-event deadline in
@@ -1370,9 +1370,9 @@ pub trait Session {
 /// reliability, durability=VOLATILE, history, depth. Backends opt
 /// into additional policies by OR-ing the relevant flags.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct QosPolicyMask(pub u32);
+pub struct QoSPolicyMask(pub u32);
 
-impl QosPolicyMask {
+impl QoSPolicyMask {
     pub const RELIABILITY: Self = Self(1 << 0);
     pub const DURABILITY_VOLATILE: Self = Self(1 << 1);
     pub const DURABILITY_TRANSIENT_LOCAL: Self = Self(1 << 2);
@@ -1401,53 +1401,53 @@ impl QosPolicyMask {
     }
 }
 
-impl core::ops::BitOr for QosPolicyMask {
+impl core::ops::BitOr for QoSPolicyMask {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self {
         self.union(rhs)
     }
 }
 
-impl core::ops::BitOrAssign for QosPolicyMask {
+impl core::ops::BitOrAssign for QoSPolicyMask {
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 |= rhs.0;
     }
 }
 
-impl QosSettings {
+impl QoSProfile {
     /// Compute the set of QoS policies actually requested by this profile.
     ///
     /// Zero-valued time fields and `LivelinessKind::None` count as "not
     /// requesting" the corresponding policy — the cheap default. The
     /// `CORE` bits (reliability, durability=VOLATILE, history, depth)
     /// are always present because every nano-ros backend honours them.
-    pub fn required_policies(&self) -> QosPolicyMask {
-        let mut mask = QosPolicyMask::CORE;
-        if self.durability == QosDurabilityPolicy::TransientLocal {
-            mask = QosPolicyMask(
-                (mask.0 & !QosPolicyMask::DURABILITY_VOLATILE.0)
-                    | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL.0,
+    pub fn required_policies(&self) -> QoSPolicyMask {
+        let mut mask = QoSPolicyMask::CORE;
+        if self.durability == QoSDurabilityPolicy::TransientLocal {
+            mask = QoSPolicyMask(
+                (mask.0 & !QoSPolicyMask::DURABILITY_VOLATILE.0)
+                    | QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL.0,
             );
         }
         // Phase-301 (issue 0241): DURATION_INFINITE_MS reads the same as 0
         // (infinite = no check) at every duration check site.
         if self.deadline_ms != 0 && self.deadline_ms != DURATION_INFINITE_MS {
-            mask |= QosPolicyMask::DEADLINE;
+            mask |= QoSPolicyMask::DEADLINE;
         }
         if self.lifespan_ms != 0 && self.lifespan_ms != DURATION_INFINITE_MS {
-            mask |= QosPolicyMask::LIFESPAN;
+            mask |= QoSPolicyMask::LIFESPAN;
         }
         match self.liveliness_kind {
-            QosLivelinessPolicy::None => {}
-            QosLivelinessPolicy::Automatic => mask |= QosPolicyMask::LIVELINESS_AUTOMATIC,
-            QosLivelinessPolicy::ManualByTopic => mask |= QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC,
-            QosLivelinessPolicy::ManualByNode => mask |= QosPolicyMask::LIVELINESS_MANUAL_BY_NODE,
+            QoSLivelinessPolicy::None => {}
+            QoSLivelinessPolicy::Automatic => mask |= QoSPolicyMask::LIVELINESS_AUTOMATIC,
+            QoSLivelinessPolicy::ManualByTopic => mask |= QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC,
+            QoSLivelinessPolicy::ManualByNode => mask |= QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE,
         }
         if self.liveliness_lease_ms != 0 && self.liveliness_lease_ms != DURATION_INFINITE_MS {
-            mask |= QosPolicyMask::LIVELINESS_LEASE;
+            mask |= QoSPolicyMask::LIVELINESS_LEASE;
         }
         if self.avoid_ros_namespace_conventions {
-            mask |= QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS;
+            mask |= QoSPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS;
         }
         mask
     }
@@ -1456,7 +1456,7 @@ impl QosSettings {
     /// profile requires is missing from the backend's `supported` mask.
     /// Used at entity-create time to enforce the **no silent
     /// degradation** contract.
-    pub fn validate_against(&self, supported: QosPolicyMask) -> Result<(), TransportError> {
+    pub fn validate_against(&self, supported: QoSPolicyMask) -> Result<(), TransportError> {
         if supported.contains(self.required_policies()) {
             Ok(())
         } else {
@@ -1662,7 +1662,7 @@ pub trait Publisher {
 
     /// Phase 109 — assert this publisher's liveliness manually.
     /// Required for publishers configured with
-    /// `QosLivelinessPolicy::ManualByTopic`. No-op for other
+    /// `QoSLivelinessPolicy::ManualByTopic`. No-op for other
     /// liveliness kinds. Default impl returns `Ok(())` (no-op);
     /// backends override when they implement manual liveliness.
     fn assert_liveliness(&self) -> Result<(), Self::Error> {
@@ -2493,62 +2493,62 @@ mod tests {
     #[test]
     fn qos_apply_overrides_matches_topic_and_role() {
         // Default is Reliable / Volatile / KeepLast(10).
-        static OVERRIDES: &[QosOverride] = &[
-            QosOverride {
+        static OVERRIDES: &[QoSOverride] = &[
+            QoSOverride {
                 topic: "/chatter",
-                role: QosOverrideRole::Publisher,
-                value: QosOverrideValue::Reliability(QosReliabilityPolicy::BestEffort),
+                role: QoSOverrideRole::Publisher,
+                value: QoSOverrideValue::Reliability(QoSReliabilityPolicy::BestEffort),
             },
-            QosOverride {
+            QoSOverride {
                 topic: "/chatter",
-                role: QosOverrideRole::Publisher,
-                value: QosOverrideValue::Depth(5),
+                role: QoSOverrideRole::Publisher,
+                value: QoSOverrideValue::Depth(5),
             },
-            QosOverride {
+            QoSOverride {
                 topic: "/scan",
-                role: QosOverrideRole::Subscription,
-                value: QosOverrideValue::Durability(QosDurabilityPolicy::TransientLocal),
+                role: QoSOverrideRole::Subscription,
+                value: QoSOverrideValue::Durability(QoSDurabilityPolicy::TransientLocal),
             },
         ];
 
         // Matching topic + publisher role → reliability + depth applied.
-        let pub_qos = QosSettings::default().apply_overrides(
+        let pub_qos = QoSProfile::default().apply_overrides(
             "/chatter",
-            QosOverrideRole::Publisher,
+            QoSOverrideRole::Publisher,
             OVERRIDES,
         );
-        assert_eq!(pub_qos.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(pub_qos.reliability, QoSReliabilityPolicy::BestEffort);
         assert_eq!(pub_qos.depth, 5);
-        assert_eq!(pub_qos.durability, QosDurabilityPolicy::Volatile); // untouched
+        assert_eq!(pub_qos.durability, QoSDurabilityPolicy::Volatile); // untouched
 
         // Same topic but subscription role → publisher overrides DON'T apply;
         // the /scan override is for a different topic → also no change.
-        let sub_qos = QosSettings::default().apply_overrides(
+        let sub_qos = QoSProfile::default().apply_overrides(
             "/chatter",
-            QosOverrideRole::Subscription,
+            QoSOverrideRole::Subscription,
             OVERRIDES,
         );
-        assert_eq!(sub_qos, QosSettings::default());
+        assert_eq!(sub_qos, QoSProfile::default());
 
         // The /scan subscription override applies only to /scan+subscription.
-        let scan_qos = QosSettings::default().apply_overrides(
+        let scan_qos = QoSProfile::default().apply_overrides(
             "/scan",
-            QosOverrideRole::Subscription,
+            QoSOverrideRole::Subscription,
             OVERRIDES,
         );
-        assert_eq!(scan_qos.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(scan_qos.durability, QoSDurabilityPolicy::TransientLocal);
 
         // Empty table → identity (the zero-override fast path).
         assert_eq!(
-            QosSettings::default().apply_overrides("/x", QosOverrideRole::Publisher, &[]),
-            QosSettings::default()
+            QoSProfile::default().apply_overrides("/x", QoSOverrideRole::Publisher, &[]),
+            QoSProfile::default()
         );
     }
 
     #[test]
     fn test_qos_defaults() {
-        let qos = QosSettings::default();
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        let qos = QoSProfile::default();
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
     }
 
     #[test]
@@ -2623,26 +2623,26 @@ mod tests {
 
     #[test]
     fn test_qos_profile_sensor_data() {
-        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::BestEffort);
-        assert_eq!(qos.durability, QosDurabilityPolicy::Volatile);
-        assert_eq!(qos.history, QosHistoryPolicy::KeepLast);
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(qos.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(qos.history, QoSHistoryPolicy::KeepLast);
         assert_eq!(qos.depth, 5);
     }
 
     #[test]
     fn test_qos_profile_default() {
-        let qos = QosSettings::QOS_PROFILE_DEFAULT;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.durability, QosDurabilityPolicy::Volatile);
+        let qos = QoSProfile::QOS_PROFILE_DEFAULT;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QoSDurabilityPolicy::Volatile);
         assert_eq!(qos.depth, 10);
     }
 
     #[test]
     fn test_qos_profile_services_default() {
-        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.durability, QosDurabilityPolicy::Volatile);
+        let qos = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QoSDurabilityPolicy::Volatile);
     }
 
     #[test]
@@ -2652,11 +2652,11 @@ mod tests {
         // caller's profile, exactly like pub/sub. A backend advertising the
         // profile's required policies admits it; dropping any required bit (here
         // RELIABILITY) rejects it with `IncompatibleQos` — no silent downgrade.
-        let qos = QosSettings::services_default();
+        let qos = QoSProfile::services_default();
         let required = qos.required_policies();
         assert!(qos.validate_against(required).is_ok());
-        assert!(qos.validate_against(QosPolicyMask(u32::MAX)).is_ok());
-        let missing = QosPolicyMask(required.0 & !QosPolicyMask::RELIABILITY.0);
+        assert!(qos.validate_against(QoSPolicyMask(u32::MAX)).is_ok());
+        let missing = QoSPolicyMask(required.0 & !QoSPolicyMask::RELIABILITY.0);
         assert_eq!(
             qos.validate_against(missing),
             Err(TransportError::IncompatibleQos)
@@ -2671,11 +2671,11 @@ mod tests {
     /// the two survived every run.
     #[test]
     fn test_qos_profile_parameters() {
-        let qos = QosSettings::QOS_PROFILE_PARAMETERS;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        let qos = QoSProfile::QOS_PROFILE_PARAMETERS;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
         assert_eq!(
             qos.durability,
-            QosDurabilityPolicy::Volatile,
+            QoSDurabilityPolicy::Volatile,
             "rmw_qos_profile_parameters is VOLATILE; transient-local would make \
              every parameter server retain for late joiners, which ROS 2 does not do"
         );
@@ -2684,83 +2684,83 @@ mod tests {
 
     #[test]
     fn test_qos_profile_clock() {
-        let qos = QosSettings::QOS_PROFILE_CLOCK;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::BestEffort);
+        let qos = QoSProfile::QOS_PROFILE_CLOCK;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::BestEffort);
         assert_eq!(qos.depth, 1);
     }
 
     #[test]
     fn test_qos_profile_parameter_events() {
-        let qos = QosSettings::QOS_PROFILE_PARAMETER_EVENTS;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.history, QosHistoryPolicy::KeepAll);
+        let qos = QoSProfile::QOS_PROFILE_PARAMETER_EVENTS;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.history, QoSHistoryPolicy::KeepAll);
     }
 
     #[test]
     fn test_qos_profile_action_status() {
-        let qos = QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT;
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
+        let qos = QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT;
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QoSDurabilityPolicy::TransientLocal);
         assert_eq!(qos.depth, 1);
     }
 
     #[test]
     fn test_qos_static_constructors() {
         assert_eq!(
-            QosSettings::topics_default(),
-            QosSettings::QOS_PROFILE_DEFAULT
+            QoSProfile::topics_default(),
+            QoSProfile::QOS_PROFILE_DEFAULT
         );
         assert_eq!(
-            QosSettings::sensor_data_default(),
-            QosSettings::QOS_PROFILE_SENSOR_DATA
+            QoSProfile::sensor_data_default(),
+            QoSProfile::QOS_PROFILE_SENSOR_DATA
         );
         assert_eq!(
-            QosSettings::services_default(),
-            QosSettings::QOS_PROFILE_SERVICES_DEFAULT
+            QoSProfile::services_default(),
+            QoSProfile::QOS_PROFILE_SERVICES_DEFAULT
         );
         assert_eq!(
-            QosSettings::parameters_default(),
-            QosSettings::QOS_PROFILE_PARAMETERS
+            QoSProfile::parameters_default(),
+            QoSProfile::QOS_PROFILE_PARAMETERS
         );
         assert_eq!(
-            QosSettings::action_status_default(),
-            QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT
+            QoSProfile::action_status_default(),
+            QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT
         );
     }
 
     #[test]
     fn test_qos_builder_explicit_setters() {
-        let qos = QosSettings::new()
-            .reliability(QosReliabilityPolicy::Reliable)
-            .durability(QosDurabilityPolicy::TransientLocal)
-            .history(QosHistoryPolicy::KeepAll)
+        let qos = QoSProfile::new()
+            .reliability(QoSReliabilityPolicy::Reliable)
+            .durability(QoSDurabilityPolicy::TransientLocal)
+            .history(QoSHistoryPolicy::KeepAll)
             .depth(100);
 
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
-        assert_eq!(qos.history, QosHistoryPolicy::KeepAll);
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(qos.history, QoSHistoryPolicy::KeepAll);
         assert_eq!(qos.depth, 100);
     }
 
     #[test]
     fn test_qos_builder_chaining() {
         // Test that builder methods can be chained in any order
-        let qos = QosSettings::sensor_data_default()
+        let qos = QoSProfile::sensor_data_default()
             .reliable()
             .transient_local()
             .keep_last(20);
 
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
-        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
-        assert_eq!(qos.history, QosHistoryPolicy::KeepLast);
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QoSDurabilityPolicy::TransientLocal);
+        assert_eq!(qos.history, QoSHistoryPolicy::KeepLast);
         assert_eq!(qos.depth, 20);
     }
 
     #[test]
     fn test_qos_eq_impl() {
-        // Verify that PartialEq works correctly via derive on QosSettings
-        let qos1 = QosSettings::QOS_PROFILE_DEFAULT;
-        let qos2 = QosSettings::topics_default();
+        // Verify that PartialEq works correctly via derive on QoSProfile
+        let qos1 = QoSProfile::QOS_PROFILE_DEFAULT;
+        let qos2 = QoSProfile::topics_default();
         // Both should have same values - verify field by field
         assert_eq!(qos1.reliability, qos2.reliability);
         assert_eq!(qos1.durability, qos2.durability);
@@ -2853,18 +2853,18 @@ mod tests {
     // TRANSIENT_LOCAL + KEEP_LAST so it matches PX4's uxrce_dds_client endpoints.
     #[test]
     fn px4_qos_profile_matches_uxrce_dds_client() {
-        let q = QosSettings::px4();
-        assert_eq!(q.reliability, QosReliabilityPolicy::BestEffort);
+        let q = QoSProfile::px4();
+        assert_eq!(q.reliability, QoSReliabilityPolicy::BestEffort);
         // VOLATILE — PX4's /fmu/out writers are volatile; a TRANSIENT_LOCAL
         // reader silently fails to match (verified against real PX4 SITL).
-        assert_eq!(q.durability, QosDurabilityPolicy::Volatile);
-        assert_eq!(q.history, QosHistoryPolicy::KeepLast);
-        assert_eq!(q, QosSettings::QOS_PROFILE_PX4);
+        assert_eq!(q.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(q.history, QoSHistoryPolicy::KeepLast);
+        assert_eq!(q, QoSProfile::QOS_PROFILE_PX4);
         // Depth is tunable via the builder without losing the PX4 policies.
-        let deep = QosSettings::px4().keep_last(5);
+        let deep = QoSProfile::px4().keep_last(5);
         assert_eq!(deep.depth, 5);
-        assert_eq!(deep.reliability, QosReliabilityPolicy::BestEffort);
-        assert_eq!(deep.durability, QosDurabilityPolicy::Volatile);
+        assert_eq!(deep.reliability, QoSReliabilityPolicy::BestEffort);
+        assert_eq!(deep.durability, QoSDurabilityPolicy::Volatile);
     }
 
     // --- RmwConfig Tests ---

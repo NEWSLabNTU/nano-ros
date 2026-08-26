@@ -939,8 +939,8 @@ impl nros_subscription_t {
         self.context
     }
 
-    /// Get the stored QoS as `nros_rmw::QosSettings`
-    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+    /// Get the stored QoS as `nros_rmw::QoSProfile`
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
     }
 

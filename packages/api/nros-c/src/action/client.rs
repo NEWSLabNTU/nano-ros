@@ -1097,7 +1097,7 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
         let namespace_str =
             core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
 
-        use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+        use nros_node::{ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
         let action_info =
             ActionInfo::new(action_str, type_str, type_hash_str).with_domain(domain_id);
 
@@ -1117,7 +1117,7 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
         let send_goal_client =
-            match session.create_client(&send_goal_info, QosSettings::services_default()) {
+            match session.create_client(&send_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -1132,7 +1132,7 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
         .with_node_name(node_name_str)
         .with_namespace(namespace_str);
         let cancel_goal_client =
-            match session.create_client(&cancel_goal_info, QosSettings::services_default()) {
+            match session.create_client(&cancel_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -1146,7 +1146,7 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
                 .with_node_name(node_name_str)
                 .with_namespace(namespace_str);
         let get_result_client =
-            match session.create_client(&get_result_info, QosSettings::services_default()) {
+            match session.create_client(&get_result_info, QoSProfile::services_default()) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -1159,7 +1159,7 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
         let feedback_subscriber =
-            match session.create_subscription(&feedback_topic, QosSettings::BEST_EFFORT) {
+            match session.create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };

@@ -69,11 +69,11 @@ pub use safety::{IntegrityStatus, SafetyValidator, crc32};
 
 // Re-export main types
 pub use traits::{
-    ActionInfo, ClientTrait, DURATION_INFINITE_MS, LocatorProtocol, Publisher, QosDurabilityPolicy,
-    QosHistoryPolicy, QosLivelinessPolicy, QosOverride, QosOverrideCode, QosOverrideRole,
-    QosOverrideValue, QosPolicyMask, QosReliabilityPolicy, QosSettings, Rmw, RmwConfig,
-    ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode, Subscription, TopicInfo,
-    Transport, TransportConfig, TransportError, decode_qos_override, decode_qos_override_parts,
+    ActionInfo, ClientTrait, DURATION_INFINITE_MS, LocatorProtocol, Publisher, QoSDurabilityPolicy,
+    QoSHistoryPolicy, QoSLivelinessPolicy, QoSOverride, QoSOverrideCode, QoSOverrideRole,
+    QoSOverrideValue, QoSPolicyMask, QoSProfile, QoSReliabilityPolicy, Rmw, RmwConfig, ServiceInfo,
+    ServiceRequest, ServiceTrait, Session, SessionMode, Subscription, TopicInfo, Transport,
+    TransportConfig, TransportError, decode_qos_override, decode_qos_override_parts,
     decode_qos_override_role, decode_qos_override_value, duration_to_qos_ms, locator_protocol,
     qos_override_policy, qos_override_role, validate_locator,
 };

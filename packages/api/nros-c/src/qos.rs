@@ -147,43 +147,43 @@ pub static NROS_QOS_SERVICES: nros_qos_t = nros_qos_t {
 };
 
 impl nros_qos_t {
-    /// Convert to nros QosSettings
-    pub(crate) fn to_qos_settings(self) -> nros_node::QosSettings {
+    /// Convert to nros QoSProfile
+    pub(crate) fn to_qos_settings(self) -> nros_node::QoSProfile {
         use nros_node::{
-            QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
+            QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy,
         };
 
         let reliability = match self.reliability {
             nros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT => {
-                QosReliabilityPolicy::BestEffort
+                QoSReliabilityPolicy::BestEffort
             }
-            nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE => QosReliabilityPolicy::Reliable,
+            nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
         };
 
         let durability = match self.durability {
-            nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE => QosDurabilityPolicy::Volatile,
+            nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE => QoSDurabilityPolicy::Volatile,
             nros_qos_durability_t::NROS_QOS_DURABILITY_TRANSIENT_LOCAL => {
-                QosDurabilityPolicy::TransientLocal
+                QoSDurabilityPolicy::TransientLocal
             }
         };
 
         let history = match self.history {
-            nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST => QosHistoryPolicy::KeepLast,
-            nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
+            nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST => QoSHistoryPolicy::KeepLast,
+            nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL => QoSHistoryPolicy::KeepAll,
         };
 
         let liveliness_kind = match self.liveliness_kind {
-            nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE => QosLivelinessPolicy::None,
-            nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC => QosLivelinessPolicy::Automatic,
+            nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE => QoSLivelinessPolicy::None,
+            nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC => QoSLivelinessPolicy::Automatic,
             nros_qos_liveliness_t::NROS_QOS_LIVELINESS_MANUAL_BY_TOPIC => {
-                QosLivelinessPolicy::ManualByTopic
+                QoSLivelinessPolicy::ManualByTopic
             }
             nros_qos_liveliness_t::NROS_QOS_LIVELINESS_MANUAL_BY_NODE => {
-                QosLivelinessPolicy::ManualByNode
+                QoSLivelinessPolicy::ManualByNode
             }
         };
 
-        nros_node::QosSettings {
+        nros_node::QoSProfile {
             reliability,
             durability,
             history,
@@ -199,7 +199,7 @@ impl nros_qos_t {
 }
 
 /// Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
-/// Rust's `nros_rmw::QosOverride`. The deploy plan lowers a
+/// Rust's `nros_rmw::QoSOverride`. The deploy plan lowers a
 /// `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
 /// array of these, which the entry installs on the node via
 /// [`nros_node_set_qos_overrides`](crate::node::nros_node_set_qos_overrides);
@@ -226,7 +226,7 @@ pub struct nros_qos_override_t {
     /// durability `0`=volatile/`1`=transient_local; history
     /// `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
     /// lifespan / liveliness_lease_duration = milliseconds; liveliness =
-    /// the `QosLivelinessPolicy` discriminant
+    /// the `QoSLivelinessPolicy` discriminant
     /// (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
     pub value: u32,
 }
@@ -237,7 +237,7 @@ pub(crate) const QOS_OVERRIDE_ROLE_PUBLISHER: u8 = 0;
 pub(crate) const QOS_OVERRIDE_ROLE_SUBSCRIPTION: u8 = 1;
 
 /// Fold any overrides matching `(topic, role)` into `qos`, returning the
-/// overridden profile. Mirrors `nros_rmw::QosSettings::apply_overrides`: a
+/// overridden profile. Mirrors `nros_rmw::QoSProfile::apply_overrides`: a
 /// single linear scan, last-write-wins on a duplicate `(topic, role, policy)`,
 /// no alloc. `overrides` may be null (`len == 0` ⇒ no-op).
 ///
@@ -246,12 +246,12 @@ pub(crate) const QOS_OVERRIDE_ROLE_SUBSCRIPTION: u8 = 1;
 /// with a `topic` that is null or a valid NUL-terminated UTF-8 C string for the
 /// duration of the call.
 pub(crate) unsafe fn apply_qos_overrides(
-    mut qos: nros_node::QosSettings,
+    mut qos: nros_node::QoSProfile,
     overrides: *const nros_qos_override_t,
     len: usize,
     topic: &str,
     role: u8,
-) -> nros_node::QosSettings {
+) -> nros_node::QoSProfile {
     if overrides.is_null() || len == 0 {
         return qos;
     }
@@ -280,7 +280,7 @@ pub(crate) unsafe fn apply_qos_overrides(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nros_node::{QosDurabilityPolicy, QosReliabilityPolicy};
+    use nros_node::{QoSDurabilityPolicy, QoSReliabilityPolicy};
 
     #[test]
     fn apply_qos_overrides_matches_topic_and_role() {
@@ -291,7 +291,7 @@ mod tests {
             policy: 0, // reliability
             value: 0,  // best_effort
         }];
-        let base = nros_node::QosSettings::default(); // Reliable
+        let base = nros_node::QoSProfile::default(); // Reliable
 
         // Matching (topic, role) → overridden.
         let got = unsafe {
@@ -303,7 +303,7 @@ mod tests {
                 QOS_OVERRIDE_ROLE_PUBLISHER,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::BestEffort);
 
         // Wrong role → untouched.
         let got = unsafe {
@@ -315,7 +315,7 @@ mod tests {
                 QOS_OVERRIDE_ROLE_SUBSCRIPTION,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
 
         // Wrong topic → untouched.
         let got = unsafe {
@@ -327,7 +327,7 @@ mod tests {
                 QOS_OVERRIDE_ROLE_PUBLISHER,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
 
         // Null / empty table → no-op.
         let got = unsafe {
@@ -339,7 +339,7 @@ mod tests {
                 QOS_OVERRIDE_ROLE_PUBLISHER,
             )
         };
-        assert_eq!(got.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(got.reliability, QoSReliabilityPolicy::Reliable);
     }
 
     #[test]
@@ -360,14 +360,14 @@ mod tests {
         ];
         let got = unsafe {
             apply_qos_overrides(
-                nros_node::QosSettings::default(),
+                nros_node::QoSProfile::default(),
                 ovr.as_ptr(),
                 ovr.len(),
                 "/t",
                 QOS_OVERRIDE_ROLE_SUBSCRIPTION,
             )
         };
-        assert_eq!(got.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(got.durability, QoSDurabilityPolicy::TransientLocal);
         assert_eq!(got.depth, 42);
     }
 }

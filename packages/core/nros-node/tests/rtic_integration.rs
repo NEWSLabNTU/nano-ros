@@ -32,22 +32,22 @@ fn test_node_config_with_domain() {
 /// Test QoS settings creation
 #[test]
 fn test_qos_settings() {
-    use nros_node::{QosReliabilityPolicy, QosSettings};
+    use nros_node::{QoSProfile, QoSReliabilityPolicy};
 
     // Default QoS - RELIABLE
-    let default_qos = QosSettings::default();
+    let default_qos = QoSProfile::default();
     assert_eq!(
         default_qos.reliability,
-        QosReliabilityPolicy::Reliable,
+        QoSReliabilityPolicy::Reliable,
         "Default should be reliable"
     );
     assert_eq!(default_qos.history_depth(), 10, "Default history depth");
 
     // Custom QoS using builder
-    let custom_qos = QosSettings::new().reliable().keep_last(100);
+    let custom_qos = QoSProfile::new().reliable().keep_last(100);
     assert_eq!(
         custom_qos.reliability,
-        QosReliabilityPolicy::Reliable,
+        QoSReliabilityPolicy::Reliable,
         "Custom should be reliable"
     );
     assert_eq!(custom_qos.history_depth(), 100, "Custom history depth");
@@ -61,8 +61,8 @@ fn test_memory_bounds() {
     // NodeConfig should be small
     assert!(size_of::<nros_node::NodeConfig>() < 256);
 
-    // QosSettings should be tiny
-    assert!(size_of::<nros_node::QosSettings>() < 32);
+    // QoSProfile should be tiny
+    assert!(size_of::<nros_node::QoSProfile>() < 32);
 }
 
 /// Test that const generic buffer sizes can be used

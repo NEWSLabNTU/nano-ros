@@ -117,7 +117,7 @@ executor.add_subscription_buffered_raw::<65536>(
     "/camera/image",
     Image::TYPE_NAME,
     Image::TYPE_HASH,
-    QosSettings::default(),
+    QoSProfile::default(),
     |cdr: &[u8]| {
         let mut r = CdrReader::new_with_header(cdr).unwrap();
         // Skip header fields by reading and discarding them

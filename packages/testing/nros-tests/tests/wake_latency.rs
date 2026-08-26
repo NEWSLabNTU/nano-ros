@@ -195,7 +195,7 @@ fn timer_fires_n_times_per_n_seconds_under_idle_subs(zenohd_unique: ZenohRouter)
         nros_tests::skip!("zenohd not found");
     }
 
-    use nros_node::{QosSettings, timer::TimerDuration};
+    use nros_node::{QoSProfile, timer::TimerDuration};
 
     let locator = zenohd_unique.locator();
     let config = ExecutorConfig::new(&locator)
@@ -220,7 +220,7 @@ fn timer_fires_n_times_per_n_seconds_under_idle_subs(zenohd_unique: ZenohRouter)
             .node_mut(nid)
             .subscription(&topic)
             .generic("std_msgs/msg/Empty", "")
-            .qos(QosSettings::default())
+            .qos(QoSProfile::default())
             .rx_buffer::<256>()
             .build(|_data: &[u8]| {})
             .expect("register idle sub");

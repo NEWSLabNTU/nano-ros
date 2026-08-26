@@ -37,9 +37,9 @@ pub mod generated;
 pub use generated::*;
 
 use nros_rmw::{
-    ClientTrait, MessageInfo, Publisher, QosDurabilityPolicy, QosHistoryPolicy,
-    QosReliabilityPolicy, QosSettings, ServiceInfo, ServiceRequest, ServiceTrait, Session,
-    TopicInfo, TransportError,
+    ClientTrait, MessageInfo, Publisher, QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
+    QoSReliabilityPolicy, ServiceInfo, ServiceRequest, ServiceTrait, Session, TopicInfo,
+    TransportError,
 };
 
 // Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
@@ -376,29 +376,29 @@ pub const NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT: NrosRmwQos = NROS_RMW_QOS_PROFILE
 // through unchanged; finer-grained callers lower via
 // `nros_rmw::duration_to_qos_ms` (sub-ms CEILs to 1 ms, past-u32
 // errors).
-impl TryFrom<QosSettings> for NrosRmwQos {
+impl TryFrom<QoSProfile> for NrosRmwQos {
     type Error = TransportError;
 
-    fn try_from(qos: QosSettings) -> Result<Self, TransportError> {
+    fn try_from(qos: QoSProfile) -> Result<Self, TransportError> {
         if qos.depth > u16::MAX as u32 {
             return Err(TransportError::InvalidArgument);
         }
         Ok(Self {
             reliability: match qos.reliability {
-                QosReliabilityPolicy::BestEffort => {
+                QoSReliabilityPolicy::BestEffort => {
                     generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8
                 }
-                QosReliabilityPolicy::Reliable => generated::NROS_RMW_RELIABILITY_RELIABLE as u8,
+                QoSReliabilityPolicy::Reliable => generated::NROS_RMW_RELIABILITY_RELIABLE as u8,
             },
             durability: match qos.durability {
-                QosDurabilityPolicy::Volatile => generated::NROS_RMW_DURABILITY_VOLATILE as u8,
-                QosDurabilityPolicy::TransientLocal => {
+                QoSDurabilityPolicy::Volatile => generated::NROS_RMW_DURABILITY_VOLATILE as u8,
+                QoSDurabilityPolicy::TransientLocal => {
                     generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL as u8
                 }
             },
             history: match qos.history {
-                QosHistoryPolicy::KeepLast => generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
-                QosHistoryPolicy::KeepAll => generated::NROS_RMW_HISTORY_KEEP_ALL as u8,
+                QoSHistoryPolicy::KeepLast => generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
+                QoSHistoryPolicy::KeepAll => generated::NROS_RMW_HISTORY_KEEP_ALL as u8,
             },
             liveliness_kind: qos.liveliness_kind as u8,
             depth: qos.depth as u16,
@@ -1698,7 +1698,7 @@ impl Session for CffiSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<CffiPublisher, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
@@ -1764,7 +1764,7 @@ impl Session for CffiSession {
     fn create_subscription(
         &mut self,
         topic: &TopicInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<CffiSubscription, TransportError> {
         let mut hash_buf = [0u8; HASH_BUF_LEN];
         let hash_ptr = to_c_str(topic.type_hash, &mut hash_buf);
@@ -1854,7 +1854,7 @@ impl Session for CffiSession {
     fn create_service(
         &mut self,
         service: &ServiceInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<CffiService, TransportError> {
         let qos_struct = NrosRmwQos::try_from(qos)?;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
@@ -1905,7 +1905,7 @@ impl Session for CffiSession {
     fn create_client(
         &mut self,
         service: &ServiceInfo,
-        qos: QosSettings,
+        qos: QoSProfile,
     ) -> Result<CffiClient, TransportError> {
         let qos_struct = NrosRmwQos::try_from(qos)?;
         let mut hash_buf = [0u8; HASH_BUF_LEN];
@@ -2068,17 +2068,17 @@ impl Session for CffiSession {
     /// TODO 115.K.2.x: extend `nros_rmw_vtable_t` with a
     /// `supported_qos_policies()` callback so the runtime queries
     /// the backend instead of guessing.
-    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
-        use nros_rmw::QosPolicyMask;
-        QosPolicyMask::CORE
-            | QosPolicyMask::DURABILITY_TRANSIENT_LOCAL
-            | QosPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
-            | QosPolicyMask::DEADLINE
-            | QosPolicyMask::LIFESPAN
-            | QosPolicyMask::LIVELINESS_AUTOMATIC
-            | QosPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
-            | QosPolicyMask::LIVELINESS_MANUAL_BY_NODE
-            | QosPolicyMask::LIVELINESS_LEASE
+    fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
+        use nros_rmw::QoSPolicyMask;
+        QoSPolicyMask::CORE
+            | QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
+            | QoSPolicyMask::AVOID_ROS_NAMESPACE_CONVENTIONS
+            | QoSPolicyMask::DEADLINE
+            | QoSPolicyMask::LIFESPAN
+            | QoSPolicyMask::LIVELINESS_AUTOMATIC
+            | QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
+            | QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE
+            | QoSPolicyMask::LIVELINESS_LEASE
     }
 }
 
@@ -3875,14 +3875,14 @@ mod tests {
 
     #[test]
     fn qos_depth_at_u16_max_lowers() {
-        let qos = nros_rmw::QosSettings::default().keep_last(u16::MAX as u32);
+        let qos = nros_rmw::QoSProfile::default().keep_last(u16::MAX as u32);
         let lowered = NrosRmwQos::try_from(qos).expect("depth 65535 must lower");
         assert_eq!(lowered.depth, u16::MAX);
     }
 
     #[test]
     fn qos_depth_past_u16_max_is_create_time_error() {
-        let qos = nros_rmw::QosSettings::default().keep_last(u16::MAX as u32 + 1);
+        let qos = nros_rmw::QoSProfile::default().keep_last(u16::MAX as u32 + 1);
         assert_eq!(
             NrosRmwQos::try_from(qos),
             Err(TransportError::InvalidArgument)
@@ -3891,8 +3891,8 @@ mod tests {
 
     #[test]
     fn qos_infinite_sentinel_passes_through_and_reads_as_unset() {
-        use nros_rmw::{DURATION_INFINITE_MS, QosPolicyMask};
-        let qos = nros_rmw::QosSettings {
+        use nros_rmw::{DURATION_INFINITE_MS, QoSPolicyMask};
+        let qos = nros_rmw::QoSProfile {
             deadline_ms: DURATION_INFINITE_MS,
             lifespan_ms: DURATION_INFINITE_MS,
             liveliness_lease_ms: DURATION_INFINITE_MS,
@@ -3900,9 +3900,9 @@ mod tests {
         };
         // Sentinel behaves like 0 at the check sites: no extra policy demanded.
         let required = qos.required_policies();
-        assert!(!required.contains(QosPolicyMask::DEADLINE));
-        assert!(!required.contains(QosPolicyMask::LIFESPAN));
-        assert!(!required.contains(QosPolicyMask::LIVELINESS_LEASE));
+        assert!(!required.contains(QoSPolicyMask::DEADLINE));
+        assert!(!required.contains(QoSPolicyMask::LIFESPAN));
+        assert!(!required.contains(QoSPolicyMask::LIVELINESS_LEASE));
         // And lowers unchanged — the C side sees the explicit spelling.
         let lowered = NrosRmwQos::try_from(qos).expect("sentinel must lower");
         assert_eq!(lowered.deadline_ms, DURATION_INFINITE_MS);
@@ -3975,7 +3975,7 @@ mod tests {
         // Create a publisher; verify backend received the typed
         // struct with topic_name + qos populated.
         let topic = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "RIHS01_abc");
-        let qos = nros_rmw::QosSettings::default();
+        let qos = nros_rmw::QoSProfile::default();
         let publisher = session
             .create_publisher(&topic, qos)
             .expect("publisher create");

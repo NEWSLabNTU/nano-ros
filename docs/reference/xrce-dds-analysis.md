@@ -498,7 +498,7 @@ This is dramatically simpler than zpico-platform-mps2-an385's 55 FFI symbols (z_
 - **Agent deployment.** Users must run a separate agent process. This adds operational complexity vs zenoh-pico's direct peer model.
 - **DDS entity hierarchy.** The participant > publisher > datawriter hierarchy adds internal complexity to `nros-rmw-xrce`, but this is hidden from users behind `Session::create_publisher()`.
 - **Discovery.** XRCE-DDS doesn't do client-side discovery -- the agent handles it. If nros wants to expose `ros2 topic list` visibility, the agent must be configured to advertise.
-- **QoS subset.** XRCE-DDS supports a limited QoS subset (reliability, durability, history depth). This aligns with nros's minimal `QosSettings`.
+- **QoS subset.** XRCE-DDS supports a limited QoS subset (reliability, durability, history depth). This aligns with nros's minimal `QoSProfile`.
 - **Entity ID management.** Object IDs are `(u16 id, u8 type)` tuples. `XrceSession` must track allocated IDs to avoid collisions when creating multiple publishers/subscribers.
 
 ## Comparison: zpico-sys vs xrce-sys Build Complexity

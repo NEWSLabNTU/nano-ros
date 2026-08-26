@@ -127,10 +127,10 @@ nros-rmw is flatter -- there is no node at the RMW level:
 
 ```
 Rmw::open(&RmwConfig) → Session
-  → session.create_publisher(&TopicInfo, QosSettings) → Self::PublisherHandle
-  → session.create_subscription(&TopicInfo, QosSettings) → Self::SubscriptionHandle
-  → session.create_service(&ServiceInfo, QosSettings) → Self::ServiceHandle
-  → session.create_client(&ServiceInfo, QosSettings) → Self::ClientHandle
+  → session.create_publisher(&TopicInfo, QoSProfile) → Self::PublisherHandle
+  → session.create_subscription(&TopicInfo, QoSProfile) → Self::SubscriptionHandle
+  → session.create_service(&ServiceInfo, QoSProfile) → Self::ServiceHandle
+  → session.create_client(&ServiceInfo, QoSProfile) → Self::ClientHandle
 ```
 
 `Node` lives one layer up in `nros-node`. It is purely a namespace and liveliness concern -- it borrows the session from the executor and creates typed communication handles. The RMW layer only knows about sessions and communication endpoints.

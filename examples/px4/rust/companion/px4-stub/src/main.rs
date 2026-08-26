@@ -73,7 +73,7 @@ fn main() {
             .node_mut(nid)
             .subscription("/fmu/out/vehicle_odometry")
             .typed::<VehicleOdometry>()
-            .qos(QosSettings::px4())
+            .qos(QoSProfile::px4())
             .build(move |m: &VehicleOdometry| {
                 let n = rx_cb.fetch_add(1, Ordering::SeqCst) + 1;
                 info!(
@@ -87,7 +87,7 @@ fn main() {
     let odom = executor
         .node_mut(nid)
         .publisher("/fmu/out/vehicle_odometry")
-        .qos(QosSettings::px4())
+        .qos(QoSProfile::px4())
         .typed::<VehicleOdometry>()
         .build()
         .expect("Failed to advertise /fmu/out/vehicle_odometry");

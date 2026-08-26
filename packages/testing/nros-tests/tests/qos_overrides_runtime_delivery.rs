@@ -1,7 +1,7 @@
 //! Phase 211.H — `qos_overrides` honoured at runtime on a LIVE entity.
 //!
 //! The planner's lowering of `qos_overrides.<topic>.<role>.<policy>` launch
-//! params into the entry's `&'static [QosOverride]` table is covered by unit
+//! params into the entry's `&'static [QoSOverride]` table is covered by unit
 //! tests (`plan_system_lowers_qos_overrides`, `render_sub_qos_expr_bakes_*`).
 //! What those can't show is the LAST link: that the baked table actually
 //! changes a running entity's QoS and the entity still delivers. This test
@@ -12,7 +12,7 @@
 //! publisher / subscription on `/chatter`. The override is folded into the
 //! entity at create time by `create_publisher_raw_with_qos` /
 //! `create_subscription_raw` (the wired runtime path). Each role logs the
-//! effective profile through the SAME `QosSettings::apply_overrides` the create
+//! effective profile through the SAME `QoSProfile::apply_overrides` the create
 //! path runs — so the logged profile IS the live entity's.
 //!
 //! ## Why cross-process

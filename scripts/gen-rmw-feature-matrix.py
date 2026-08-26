@@ -173,7 +173,7 @@ def zenoh_has(pattern):
 
 
 def qos_mask(text, fn_name):
-    """Collect QosPolicyMask::X terms inside fn `fn_name`'s body."""
+    """Collect QoSPolicyMask::X terms inside fn `fn_name`'s body."""
     m = re.search(rf"fn {fn_name}[^{{]*\{{", text)
     if not m:
         return None
@@ -182,7 +182,7 @@ def qos_mask(text, fn_name):
         depth += {"{": 1, "}": -1}.get(text[i], 0)
         i += 1
     body = text[start:i]
-    return sorted(set(re.findall(r"QosPolicyMask::([A-Z0-9_]+)", body)))
+    return sorted(set(re.findall(r"QoSPolicyMask::([A-Z0-9_]+)", body)))
 
 
 def cell(v):

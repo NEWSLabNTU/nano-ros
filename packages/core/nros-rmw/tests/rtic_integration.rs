@@ -33,38 +33,38 @@ fn test_mutex_with_api() {
 /// Test QoS settings creation
 #[test]
 fn test_qos_settings() {
-    use nros_rmw::{QosReliabilityPolicy, QosSettings};
+    use nros_rmw::{QoSProfile, QoSReliabilityPolicy};
 
     // Default QoS - RELIABLE
-    let qos = QosSettings::default();
+    let qos = QoSProfile::default();
     assert_eq!(
         qos.reliability,
-        QosReliabilityPolicy::Reliable,
+        QoSReliabilityPolicy::Reliable,
         "Default QoS should be reliable"
     );
     assert_eq!(qos.history_depth(), 10, "Default QoS history depth");
 
     // Reliable QoS constant
-    let reliable_qos = QosSettings::RELIABLE;
+    let reliable_qos = QoSProfile::RELIABLE;
     assert_eq!(
         reliable_qos.reliability,
-        QosReliabilityPolicy::Reliable,
+        QoSReliabilityPolicy::Reliable,
         "RELIABLE QoS should be reliable"
     );
 
     // Best effort QoS constant
-    let best_effort_qos = QosSettings::BEST_EFFORT;
+    let best_effort_qos = QoSProfile::BEST_EFFORT;
     assert_eq!(
         best_effort_qos.reliability,
-        QosReliabilityPolicy::BestEffort,
+        QoSReliabilityPolicy::BestEffort,
         "BEST_EFFORT QoS should be best effort"
     );
 
     // Test builder pattern
-    let custom_qos = QosSettings::new().keep_last(5).reliable();
+    let custom_qos = QoSProfile::new().keep_last(5).reliable();
     assert_eq!(
         custom_qos.reliability,
-        QosReliabilityPolicy::Reliable,
+        QoSReliabilityPolicy::Reliable,
         "Builder should set reliability"
     );
     assert_eq!(custom_qos.history_depth(), 5, "Builder should set history");

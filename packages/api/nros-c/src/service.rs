@@ -210,7 +210,7 @@ impl nros_service_t {
     }
 
     /// Phase 193.4 — the service's QoS as `nros_node` settings.
-    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
     }
 }
@@ -522,7 +522,7 @@ pub unsafe extern "C" fn nros_service_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        match session.create_service(&info, nros_node::QosSettings::services_default()) {
+        match session.create_service(&info, nros_node::QoSProfile::services_default()) {
             Ok(handle) => {
                 let raw = nros_node::RawServiceServer::<
                     { crate::config::MESSAGE_BUFFER_SIZE },
@@ -1013,7 +1013,7 @@ impl Default for nros_client_t {
 
 impl nros_client_t {
     /// Phase 193.4b — the client's QoS as `nros_node` settings.
-    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
     }
 }
@@ -1293,7 +1293,7 @@ pub unsafe extern "C" fn nros_client_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
 
-        match session.create_client(&info, nros_node::QosSettings::services_default()) {
+        match session.create_client(&info, nros_node::QoSProfile::services_default()) {
             Ok(handle) => {
                 let raw = nros_node::RawServiceClient::<
                     { crate::config::MESSAGE_BUFFER_SIZE },

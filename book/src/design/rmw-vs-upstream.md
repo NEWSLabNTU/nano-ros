@@ -439,13 +439,13 @@ constant unchanged.
 ### Per-backend support, no silent downgrade
 
 Each backend advertises which policies it can honour via
-`Session::supported_qos_policies()`, returning a `QosPolicyMask`
+`Session::supported_qos_policies()`, returning a `QoSPolicyMask`
 bitfield. Policies a backend can't enforce are explicit.
 
 ```rust
 pub trait Session {
-    fn supported_qos_policies(&self) -> QosPolicyMask {
-        QosPolicyMask::CORE     // reliability + durability VOLATILE + history + depth
+    fn supported_qos_policies(&self) -> QoSPolicyMask {
+        QoSPolicyMask::CORE     // reliability + durability VOLATILE + history + depth
     }
 }
 ```
@@ -461,7 +461,7 @@ Apps that need cross-backend portability check the mask at startup:
 
 ```rust
 if session.supported_qos_policies()
-    .contains(QosPolicyMask::DEADLINE)
+    .contains(QoSPolicyMask::DEADLINE)
 {
     pub.create_with_qos(...deadline_ms = 100, ...);
 } else {

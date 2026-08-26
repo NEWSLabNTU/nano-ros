@@ -12,7 +12,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use nros_rmw::{QosSettings, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
+use nros_rmw::{QoSProfile, RmwConfig, Session as _, SessionMode, SlotLending, TopicInfo};
 use nros_rmw_cffi::{
     CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
@@ -234,7 +234,7 @@ fn arena_fallback_commit_emits_publish_raw() {
 
     let topic = TopicInfo::new("/lf", "std_msgs/msg/Int32", "RIHS01_lf");
     let publisher = session
-        .create_publisher(&topic, QosSettings::default())
+        .create_publisher(&topic, QoSProfile::default())
         .expect("create publisher");
 
     let initial = PUBLISH_CALLS.load(Ordering::SeqCst);
@@ -282,7 +282,7 @@ fn arena_fallback_drop_discards() {
     let mut session = CffiRmw::open_with_rmw("lf_arena", &cfg).expect("open");
     let topic = TopicInfo::new("/lf2", "std_msgs/msg/Int32", "RIHS01_lf");
     let publisher = session
-        .create_publisher(&topic, QosSettings::default())
+        .create_publisher(&topic, QoSProfile::default())
         .expect("create publisher");
 
     let pre = PUBLISH_CALLS.load(Ordering::SeqCst);

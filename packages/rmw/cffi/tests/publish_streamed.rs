@@ -22,7 +22,7 @@ use core::{
 };
 use std::sync::Mutex;
 
-use nros_rmw::{Publisher as _, QosSettings, Session, SessionMode, TopicInfo};
+use nros_rmw::{Publisher as _, QoSProfile, Session, SessionMode, TopicInfo};
 use nros_rmw_cffi::{
     EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
     NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService,
@@ -315,7 +315,7 @@ fn open_publisher(name: &str, vt: &'static NrosRmwVtable) -> nros_rmw_cffi::Cffi
     )
     .expect("open_named");
     let info = TopicInfo::new("/streamed", "example/Streamed", "RIHS01_streamed");
-    let qos = QosSettings::default();
+    let qos = QoSProfile::default();
     let pub_ = session.create_publisher(&info, qos).expect("create_pub");
     core::mem::forget(session);
     pub_

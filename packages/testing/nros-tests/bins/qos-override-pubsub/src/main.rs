@@ -2,7 +2,7 @@
 //!
 //! Proves a per-topic QoS override (the kind the launch planner lowers from a
 //! `qos_overrides.<topic>.<role>.<policy>` launch param into the entry's baked
-//! `&'static [QosOverride]` table) is HONOURED on a LIVE, running entity — not
+//! `&'static [QoSOverride]` table) is HONOURED on a LIVE, running entity — not
 //! just in the planner's lowering unit tests. The override is installed on the
 //! `NodeHandle` via `set_qos_overrides` (exactly what a baked entry does) and
 //! folded into the entity at `create_publisher_raw_*` / `create_subscription_raw`
@@ -22,7 +22,7 @@
 //! The proof rests on the `qos effective:` log line — with the override it
 //! reports `BestEffort`, without it `Reliable` — and on cross-process delivery
 //! succeeding under the override. The effective profile is computed through the
-//! SAME `QosSettings::apply_overrides` the node's create path runs, on the same
+//! SAME `QoSProfile::apply_overrides` the node's create path runs, on the same
 //! `(topic, role, table)` inputs, so the logged profile IS the live entity's.
 //! (The executor routes through the CFFI session whose `supported_qos_policies`
 //! advertises a broad mask, so an unsupported-policy *rejection* path can't be
@@ -37,8 +37,8 @@ use core::time::Duration;
 
 use log::{error, info};
 use nros::{
-    Executor, ExecutorConfig, QosOverride, QosOverrideRole, QosOverrideValue, QosReliabilityPolicy,
-    QosSettings,
+    Executor, ExecutorConfig, QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSReliabilityPolicy,
+    QoSProfile,
 };
 
 const TOPIC: &str = "/chatter";
@@ -48,16 +48,16 @@ const TYPE_HASH: &str = "TypeHashNotSupported";
 /// `qos_overrides./chatter.{publisher,subscription}.reliability = best_effort`.
 /// Both roles present so the same table serves talker + listener (the node
 /// folds only the entry whose role matches the entity being created).
-const OVR_BEST_EFFORT: &[QosOverride] = &[
-    QosOverride {
+const OVR_BEST_EFFORT: &[QoSOverride] = &[
+    QoSOverride {
         topic: TOPIC,
-        role: QosOverrideRole::Publisher,
-        value: QosOverrideValue::Reliability(QosReliabilityPolicy::BestEffort),
+        role: QoSOverrideRole::Publisher,
+        value: QoSOverrideValue::Reliability(QoSReliabilityPolicy::BestEffort),
     },
-    QosOverride {
+    QoSOverride {
         topic: TOPIC,
-        role: QosOverrideRole::Subscription,
-        value: QosOverrideValue::Reliability(QosReliabilityPolicy::BestEffort),
+        role: QoSOverrideRole::Subscription,
+        value: QoSOverrideValue::Reliability(QoSReliabilityPolicy::BestEffort),
     },
 ];
 
@@ -71,7 +71,7 @@ fn int32_cdr(value: i32) -> [u8; 8] {
     buf
 }
 
-fn select_overrides() -> &'static [QosOverride] {
+fn select_overrides() -> &'static [QoSOverride] {
     match std::env::var("NROS_QOS_OVERRIDE").as_deref() {
         Ok("reliability=best_effort") => OVR_BEST_EFFORT,
         _ => &[],
@@ -103,20 +103,20 @@ fn main() {
     }
 }
 
-/// Log the QoS the entity is actually created with — `QosSettings::default()`
+/// Log the QoS the entity is actually created with — `QoSProfile::default()`
 /// folded through the SAME `apply_overrides` the node's create path runs, on the
 /// same `(topic, role, table)` inputs, so the logged profile IS the live
 /// entity's profile.
-fn log_effective(role: QosOverrideRole, overrides: &[QosOverride]) {
-    let eff = QosSettings::default().apply_overrides(TOPIC, role, overrides);
+fn log_effective(role: QoSOverrideRole, overrides: &[QoSOverride]) {
+    let eff = QoSProfile::default().apply_overrides(TOPIC, role, overrides);
     info!(
         "qos effective: role={role:?} reliability={:?} durability={:?}",
         eff.reliability, eff.durability
     );
 }
 
-fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QosOverride]) {
-    log_effective(QosOverrideRole::Publisher, overrides);
+fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QoSOverride]) {
+    log_effective(QoSOverrideRole::Publisher, overrides);
 
     let publisher = {
         let mut node = exec.create_node("qos_override").expect("create node");
@@ -131,7 +131,7 @@ fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QosOverride]) {
             TOPIC,
             TYPE_NAME,
             TYPE_HASH,
-            QosSettings::default(),
+            QoSProfile::default(),
         ) {
             Ok(p) => {
                 info!("publisher created on {TOPIC} (override honoured)");
@@ -157,8 +157,8 @@ fn run_talker(exec: &mut Executor<'static>, overrides: &'static [QosOverride]) {
     }
 }
 
-fn run_listener(exec: &mut Executor<'static>, overrides: &'static [QosOverride]) {
-    log_effective(QosOverrideRole::Subscription, overrides);
+fn run_listener(exec: &mut Executor<'static>, overrides: &'static [QoSOverride]) {
+    log_effective(QoSOverrideRole::Subscription, overrides);
 
     let mut sub = {
         let mut node = exec.create_node("qos_override").expect("create node");

@@ -1034,7 +1034,7 @@ passing its own tests. Three findings, all now fixed:
    runtime re-types as an INTEGER; the other two still used `to_string()`. All
    three now call `ParamValue::to_bake_string()`.
 3. **QoS overrides were dropped on the model path.** `qos_overrides.*` params
-   decompose into typed `QosOverrideSpec`s — implemented on the launch path
+   decompose into typed `QoSOverrideSpec`s — implemented on the launch path
    (211.H / issue #52), never inherited by the model path, where every
    `PlanNode` was built with `qos_overrides: Vec::new()`. A model carrying
    `qos_overrides./chatter.publisher.reliability` therefore baked it as an

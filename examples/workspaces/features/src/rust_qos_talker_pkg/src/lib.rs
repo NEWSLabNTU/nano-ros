@@ -2,7 +2,7 @@
 //! an EXPLICIT, non-default QoS profile (phase-263 B4).
 //!
 //! The nano-ros QoS differentiator in the declarative shape: instead of
-//! `create_publisher_for_topic` (which takes `QosSettings::default()` =
+//! `create_publisher_for_topic` (which takes `QoSProfile::default()` =
 //! reliable + volatile + keep-last), this declares the publisher via
 //! `create_publisher_for_topic_with_qos` with `reliable() + transient_local() +
 //! depth(10)`. TRANSIENT_LOCAL durability is the visible behaviour: a
@@ -13,7 +13,7 @@
 #![no_std]
 
 use nros::{
-    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, QosSettings,
+    Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeOptions, NodeResult, QoSProfile,
     TimerDuration,
 };
 use std_msgs::msg::Int32;
@@ -21,11 +21,8 @@ use std_msgs::msg::Int32;
 /// The shared QoS contract both endpoints declare. RELIABLE delivery,
 /// TRANSIENT_LOCAL durability (the broker holds history for late joiners),
 /// KEEP_LAST(10) history depth.
-pub fn qos_profile() -> QosSettings {
-    QosSettings::default()
-        .reliable()
-        .transient_local()
-        .depth(10)
+pub fn qos_profile() -> QoSProfile {
+    QoSProfile::default().reliable().transient_local().depth(10)
 }
 
 /// Reliable talker — monotonic counter published on `/qos_chatter` at 1 Hz.

@@ -12,7 +12,7 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use nros_rmw::{QosSettings, Session as _, TopicInfo};
+use nros_rmw::{QoSProfile, Session as _, TopicInfo};
 use nros_rmw_cffi::{
     CffiSession, EMPTY_VTABLE, NROS_RMW_RET_OK, NrosRmwNode, NrosRmwPublisher, NrosRmwQos,
     NrosRmwSession, NrosRmwVtable, generated, nros_rmw_cffi_register_named,
@@ -263,11 +263,11 @@ fn create_node_fires_once_per_distinct_node() {
 
     // Two entities on ONE node: the slot fires once.
     let _p1 = session
-        .create_publisher(&topic_on("alpha", "/a"), QosSettings::default())
+        .create_publisher(&topic_on("alpha", "/a"), QoSProfile::default())
         .expect("first publisher");
     assert_eq!(CREATE_NODE_CALLS.load(Ordering::SeqCst), 1);
     let _p2 = session
-        .create_publisher(&topic_on("alpha", "/b"), QosSettings::default())
+        .create_publisher(&topic_on("alpha", "/b"), QoSProfile::default())
         .expect("second publisher on the same node");
     assert_eq!(
         CREATE_NODE_CALLS.load(Ordering::SeqCst),
@@ -277,7 +277,7 @@ fn create_node_fires_once_per_distinct_node() {
 
     // A different node is a different record.
     let _p3 = session
-        .create_publisher(&topic_on("beta", "/c"), QosSettings::default())
+        .create_publisher(&topic_on("beta", "/c"), QoSProfile::default())
         .expect("publisher on a second node");
     assert_eq!(CREATE_NODE_CALLS.load(Ordering::SeqCst), 2);
 
@@ -310,10 +310,10 @@ fn closing_a_session_destroys_the_nodes_it_created() {
         let mut session =
             CffiSession::open_named("node-destroy", "", 0, 0, "fallback").expect("open_named");
         let _p = session
-            .create_publisher(&topic_on("gamma", "/g"), QosSettings::default())
+            .create_publisher(&topic_on("gamma", "/g"), QoSProfile::default())
             .expect("publisher");
         let _q = session
-            .create_publisher(&topic_on("delta", "/d"), QosSettings::default())
+            .create_publisher(&topic_on("delta", "/d"), QoSProfile::default())
             .expect("publisher on a second node");
         assert_eq!(
             DESTROY_NODE_CALLS.load(Ordering::SeqCst),

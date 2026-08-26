@@ -28,7 +28,7 @@ use nros_core::{
     BorrowedMessage, CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed,
     LeSliceView, RosAction, RosMessage, SerError, Serialize,
 };
-use nros_rmw::{QosSettings, TransportError};
+use nros_rmw::{QoSProfile, TransportError};
 
 use crate::{
     mock::{MockServiceServer, MockSession, MockSubscriber},
@@ -1127,7 +1127,7 @@ fn test_arena_overflow() {
         let result = executor
             .node_mut(nid)
             .subscription(topic)
-            .qos(QosSettings::default().keep_last(1))
+            .qos(QoSProfile::default().keep_last(1))
             .typed::<TestMsg>()
             .rx_buffer::<OVERFLOW_RX_BUF>()
             .build(|_msg: &TestMsg| {});
@@ -1148,7 +1148,7 @@ fn test_arena_overflow() {
     let result = executor
         .node_mut(nid)
         .subscription("/overflow")
-        .qos(QosSettings::default().keep_last(1))
+        .qos(QoSProfile::default().keep_last(1))
         .typed::<TestMsg>()
         .rx_buffer::<OVERFLOW_RX_BUF>()
         .build(|_msg: &TestMsg| {});
@@ -1176,7 +1176,7 @@ fn test_entry_slots_exhausted() {
         let r = executor
             .node_mut(nid)
             .subscription(&topic)
-            .qos(QosSettings::default().keep_last(1))
+            .qos(QoSProfile::default().keep_last(1))
             .typed::<TestMsg>()
             .rx_buffer::<64>()
             .build(|_msg: &TestMsg| {});
@@ -1194,7 +1194,7 @@ fn test_entry_slots_exhausted() {
     let result = executor
         .node_mut(nid)
         .subscription("/one-too-many")
-        .qos(QosSettings::default().keep_last(1))
+        .qos(QoSProfile::default().keep_last(1))
         .typed::<TestMsg>()
         .rx_buffer::<64>()
         .build(|_msg: &TestMsg| {});
@@ -1608,7 +1608,7 @@ fn test_drop_with_mixed_entries() {
     executor
         .node_mut(nid)
         .subscription("/sub")
-        .qos(QosSettings::default().keep_last(1))
+        .qos(QoSProfile::default().keep_last(1))
         .typed::<TestMsg>()
         .rx_buffer::<64>()
         .build(|_msg: &TestMsg| {})
@@ -2249,7 +2249,7 @@ fn test_raw_subscription_callback() {
             "/test",
             "test/msg/TestMsg",
             "test_hash",
-            QosSettings::default().keep_last(1),
+            QoSProfile::default().keep_last(1),
             raw_cb,
             core::ptr::null_mut(),
             None, // no group
@@ -2299,7 +2299,7 @@ fn test_raw_subscription_info_callback() {
             "/test",
             "test/msg/TestMsg",
             "test_hash",
-            QosSettings::default().keep_last(1),
+            QoSProfile::default().keep_last(1),
             info_cb,
             core::ptr::null_mut(),
         )
@@ -2450,7 +2450,7 @@ fn test_let_semantics_raw_subscription() {
             "/test",
             "test/msg/TestMsg",
             "test_hash",
-            QosSettings::default().keep_last(1),
+            QoSProfile::default().keep_last(1),
             raw_let_cb,
             core::ptr::null_mut(),
             None, // no group
@@ -2805,7 +2805,7 @@ fn test_service_builder_qos() {
     let _h2 = exec
         .node_mut(id)
         .service("/svc2")
-        .qos(QosSettings::default().reliable().keep_last(5))
+        .qos(QoSProfile::default().reliable().keep_last(5))
         .build::<TestService, _>(|req: &TestServiceRequest| TestServiceReply { sum: req.a })
         .expect("service builder with qos builds");
 }
@@ -2816,7 +2816,7 @@ fn test_node_service_client_with_qos() {
     // create_client_with_qos (rclcpp-style qos overload).
     let mut executor: Executor = executor_with_clock(MockSession::new());
     let mut node = executor.create_node("n").unwrap();
-    let q = QosSettings::default().reliable().keep_last(7);
+    let q = QoSProfile::default().reliable().keep_last(7);
     let _srv = node
         .create_service_with_qos::<TestService>("/svc", q)
         .expect("service with qos");

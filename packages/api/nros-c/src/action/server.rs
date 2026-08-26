@@ -118,7 +118,7 @@ impl Default for nros_action_server_t {
 
 impl nros_action_server_t {
     /// Phase 193.4b — the server's QoS as `nros_node` settings.
-    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QoSProfile {
         self.qos.to_qos_settings()
     }
 }
@@ -901,7 +901,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
         // `Node::create_action_server_raw_sized` but operating on
         // a raw `&mut Session` to avoid creating a temporary
         // `Node`).
-        use nros_node::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+        use nros_node::{ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
         let action_info =
             ActionInfo::new(action_str, type_str, type_hash_str).with_domain(domain_id);
 
@@ -921,7 +921,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
         let send_goal_server =
-            match session.create_service(&send_goal_info, QosSettings::services_default()) {
+            match session.create_service(&send_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -936,7 +936,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
         .with_node_name(node_name_str)
         .with_namespace(namespace_str);
         let cancel_goal_server =
-            match session.create_service(&cancel_goal_info, QosSettings::services_default()) {
+            match session.create_service(&cancel_goal_info, QoSProfile::services_default()) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -950,7 +950,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
                 .with_node_name(node_name_str)
                 .with_namespace(namespace_str);
         let get_result_server =
-            match session.create_service(&get_result_info, QosSettings::services_default()) {
+            match session.create_service(&get_result_info, QoSProfile::services_default()) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -963,7 +963,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
             .with_node_name(node_name_str)
             .with_namespace(namespace_str);
         let feedback_publisher =
-            match session.create_publisher(&feedback_topic, QosSettings::BEST_EFFORT) {
+            match session.create_publisher(&feedback_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };
@@ -978,7 +978,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
         .with_node_name(node_name_str)
         .with_namespace(namespace_str);
         let status_publisher =
-            match session.create_publisher(&status_topic, QosSettings::BEST_EFFORT) {
+            match session.create_publisher(&status_topic, QoSProfile::BEST_EFFORT) {
                 Ok(h) => h,
                 Err(_) => return NROS_RET_ERROR,
             };

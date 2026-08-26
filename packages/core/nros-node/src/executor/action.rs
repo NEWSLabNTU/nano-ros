@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 
 use nros_core::RosAction;
-use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+use nros_rmw::{ActionInfo, QoSProfile, ServiceInfo, Session, TopicInfo};
 
 #[allow(unused_imports)]
 use crate::rmw_type_registry::{MessageForRmw, register_type};
@@ -51,8 +51,8 @@ pub struct RawActionServerSpec<'a> {
     /// QoS for the action's three underlying service servers (send_goal
     /// / cancel_goal / get_result; Phase 193.4b). The feedback + status
     /// publishers keep their own profiles. Use
-    /// [`QosSettings::services_default`] for the rclc-compatible default.
-    pub qos: QosSettings,
+    /// [`QoSProfile::services_default`] for the rclc-compatible default.
+    pub qos: QoSProfile,
     pub goal_callback: RawGoalCallback,
     pub cancel_callback: RawCancelCallback,
     pub accepted_callback: Option<RawAcceptedCallback>,
@@ -208,7 +208,7 @@ impl<'s> Executor<'s> {
         .with_domain(self.domain_id);
         let send_goal_server = self
             .session
-            .create_service(&send_goal_info, QosSettings::services_default())
+            .create_service(&send_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
@@ -220,7 +220,7 @@ impl<'s> Executor<'s> {
         .with_domain(self.domain_id);
         let cancel_goal_server = self
             .session
-            .create_service(&cancel_goal_info, QosSettings::services_default())
+            .create_service(&cancel_goal_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
@@ -232,7 +232,7 @@ impl<'s> Executor<'s> {
         .with_domain(self.domain_id);
         let get_result_server = self
             .session
-            .create_service(&get_result_info, QosSettings::services_default())
+            .create_service(&get_result_info, QoSProfile::services_default())
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
@@ -244,7 +244,7 @@ impl<'s> Executor<'s> {
         .with_domain(self.domain_id);
         let feedback_publisher = self
             .session
-            .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
+            .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
@@ -256,10 +256,7 @@ impl<'s> Executor<'s> {
         .with_domain(self.domain_id);
         let status_publisher = self
             .session
-            .create_publisher(
-                &status_topic,
-                QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
-            )
+            .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         let server = ActionServer {
@@ -679,13 +676,10 @@ impl<'s> Executor<'s> {
                     .create_service(&get_result_info, qos)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_publisher(&feedback_topic, QosSettings::QOS_PROFILE_DEFAULT)
+                    .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_publisher(
-                        &status_topic,
-                        QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT,
-                    )
+                    .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
             )
         };
@@ -1142,16 +1136,16 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             (
                 session
-                    .create_client(&send_goal_info, QosSettings::services_default())
+                    .create_client(&send_goal_info, QoSProfile::services_default())
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_client(&cancel_goal_info, QosSettings::services_default())
+                    .create_client(&cancel_goal_info, QoSProfile::services_default())
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_client(&get_result_info, QosSettings::services_default())
+                    .create_client(&get_result_info, QoSProfile::services_default())
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_subscription(&feedback_topic, QosSettings::BEST_EFFORT)
+                    .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
             )
         };
@@ -1309,16 +1303,16 @@ impl<'s> Executor<'s> {
                 .ok_or(NodeError::BackendMismatch)?;
             (
                 session
-                    .create_client(&send_goal_info, QosSettings::services_default())
+                    .create_client(&send_goal_info, QoSProfile::services_default())
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_client(&cancel_goal_info, QosSettings::services_default())
+                    .create_client(&cancel_goal_info, QoSProfile::services_default())
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_client(&get_result_info, QosSettings::services_default())
+                    .create_client(&get_result_info, QoSProfile::services_default())
                     .map_err(|_| NodeError::ActionCreationFailed)?,
                 session
-                    .create_subscription(&feedback_topic, QosSettings::BEST_EFFORT)
+                    .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
                     .map_err(|_| NodeError::ActionCreationFailed)?,
             )
         };

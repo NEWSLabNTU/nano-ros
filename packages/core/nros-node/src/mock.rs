@@ -9,7 +9,7 @@
 use core::cell::{Cell, RefCell};
 
 use nros_rmw::{
-    ClientTrait, Publisher, QosSettings, ServiceInfo, ServiceRequest, ServiceTrait, Session,
+    ClientTrait, Publisher, QoSProfile, ServiceInfo, ServiceRequest, ServiceTrait, Session,
     Subscription, TopicInfo, TransportError,
 };
 
@@ -256,14 +256,14 @@ impl Session for MockSession {
     /// The mock (test) backend supports every QoS policy, so QoS validation
     /// never rejects a test entity (the default `CORE` mask can't even admit
     /// the default profile's liveliness bit).
-    fn supported_qos_policies(&self) -> nros_rmw::QosPolicyMask {
-        nros_rmw::QosPolicyMask(u32::MAX)
+    fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
+        nros_rmw::QoSPolicyMask(u32::MAX)
     }
 
     fn create_publisher(
         &mut self,
         _topic: &TopicInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<MockPublisher, TransportError> {
         Ok(MockPublisher)
     }
@@ -271,7 +271,7 @@ impl Session for MockSession {
     fn create_subscription(
         &mut self,
         _topic: &TopicInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<MockSubscriber, TransportError> {
         Ok(MockSubscriber::new())
     }
@@ -279,7 +279,7 @@ impl Session for MockSession {
     fn create_service(
         &mut self,
         _service: &ServiceInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<MockServiceServer, TransportError> {
         Ok(MockServiceServer::new())
     }
@@ -287,7 +287,7 @@ impl Session for MockSession {
     fn create_client(
         &mut self,
         _service: &ServiceInfo,
-        _qos: QosSettings,
+        _qos: QoSProfile,
     ) -> Result<MockServiceClient, TransportError> {
         Ok(MockServiceClient::new())
     }

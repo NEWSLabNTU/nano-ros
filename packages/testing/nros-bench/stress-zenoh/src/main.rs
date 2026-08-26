@@ -112,7 +112,7 @@ fn run_talker() {
     let publisher = node
         .create_publisher_with_qos::<std_msgs::msg::Int32>(
             "/stress_test",
-            nros::QosSettings::RELIABLE.tx_express(tx_express),
+            nros::QoSProfile::RELIABLE.tx_express(tx_express),
         )
         .expect("Failed to create publisher");
 
@@ -181,7 +181,7 @@ fn run_listener() {
     let mut subscription = node
         .create_subscription_with_qos::<std_msgs::msg::Int32, 65536>(
             "/stress_test",
-            nros::QosSettings::RELIABLE,
+            nros::QoSProfile::RELIABLE,
         )
         .expect("Failed to create subscription");
 

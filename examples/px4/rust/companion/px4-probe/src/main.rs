@@ -67,7 +67,7 @@ fn main() {
         .node_mut(nid)
         .subscription("/fmu/out/timesync_status")
         .typed::<TimesyncStatus>()
-        .qos(QosSettings::px4())
+        .qos(QoSProfile::px4())
         .build(move |m: &TimesyncStatus| {
             let n = rx_cb.fetch_add(1, Ordering::SeqCst) + 1;
             info!(

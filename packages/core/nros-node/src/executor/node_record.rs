@@ -77,29 +77,29 @@ pub struct NodeRecord {
     /// SAME primitive `(topic, role, policy, value)` code form the C and C++
     /// ABIs use (`nros_qos_override_t` / `nros_cpp_qos_override_t`).
     ///
-    /// Codes rather than [`nros_rmw::QosOverride`] because the entry codegen
+    /// Codes rather than [`nros_rmw::QoSOverride`] because the entry codegen
     /// bakes this through `RuntimeCtx`, and `nros-platform` sits BELOW
     /// `nros-rmw` in the layer graph — a typed field there would invert it.
     /// Decoded at entity-create time by [`decode_qos_override`].
     ///
     /// Empty by default: a system with no overrides pays nothing.
-    pub qos_overrides: &'static [QosOverrideCode],
+    pub qos_overrides: &'static [QoSOverrideCode],
 }
 
 /// Issue #52 / 0303 — one baked QoS override, re-exported from `nros-rmw`
 /// where the single decoder lives. Kept as a name here because `NodeRecord`
 /// and the entry bake spell it.
-pub use nros_rmw::QosOverrideCode;
+pub use nros_rmw::QoSOverrideCode;
 
 /// Fold a node's baked override codes into `qos` for one `(topic, role)`.
-/// Thin alias over [`nros_rmw::QosSettings::apply_override_codes`] — issue 0303
+/// Thin alias over [`nros_rmw::QoSProfile::apply_override_codes`] — issue 0303
 /// collapsed four copies of this match into that one.
 pub fn apply_qos_override_codes(
-    qos: nros_rmw::QosSettings,
+    qos: nros_rmw::QoSProfile,
     topic: &str,
-    role: nros_rmw::QosOverrideRole,
-    codes: &[QosOverrideCode],
-) -> nros_rmw::QosSettings {
+    role: nros_rmw::QoSOverrideRole,
+    codes: &[QoSOverrideCode],
+) -> nros_rmw::QoSProfile {
     qos.apply_override_codes(topic, role, codes)
 }
 
@@ -440,14 +440,14 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
 mod tests {
     use super::*;
     use nros_rmw::{
-        QosDurabilityPolicy, QosHistoryPolicy, QosOverrideRole, QosReliabilityPolicy, QosSettings,
+        QoSDurabilityPolicy, QoSHistoryPolicy, QoSOverrideRole, QoSProfile, QoSReliabilityPolicy,
     };
 
     /// Issue #52 — the primitive codes decode to the same overrides the C and
     /// C++ ABIs spell, and fold only into the matching `(topic, role)`.
     #[test]
     fn codes_fold_into_the_matching_topic_and_role() {
-        const CODES: &[QosOverrideCode] = &[
+        const CODES: &[QoSOverrideCode] = &[
             // /chatter publisher reliability = best_effort
             ("/chatter", 0, 0, 0),
             // /chatter subscription depth = 7
@@ -457,49 +457,45 @@ mod tests {
         ];
 
         let pub_qos = apply_qos_override_codes(
-            QosSettings::default(),
+            QoSProfile::default(),
             "/chatter",
-            QosOverrideRole::Publisher,
+            QoSOverrideRole::Publisher,
             CODES,
         );
-        assert_eq!(pub_qos.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(pub_qos.reliability, QoSReliabilityPolicy::BestEffort);
         // The subscription-side depth entry must NOT leak onto the publisher.
-        assert_eq!(pub_qos.depth, QosSettings::default().depth);
+        assert_eq!(pub_qos.depth, QoSProfile::default().depth);
         // Nor the other topic's durability.
-        assert_eq!(pub_qos.durability, QosSettings::default().durability);
+        assert_eq!(pub_qos.durability, QoSProfile::default().durability);
 
         let sub_qos = apply_qos_override_codes(
-            QosSettings::default(),
+            QoSProfile::default(),
             "/chatter",
-            QosOverrideRole::Subscription,
+            QoSOverrideRole::Subscription,
             CODES,
         );
         assert_eq!(sub_qos.depth, 7);
-        assert_eq!(sub_qos.reliability, QosSettings::default().reliability);
+        assert_eq!(sub_qos.reliability, QoSProfile::default().reliability);
 
         let other = apply_qos_override_codes(
-            QosSettings::default(),
+            QoSProfile::default(),
             "/other",
-            QosOverrideRole::Publisher,
+            QoSOverrideRole::Publisher,
             CODES,
         );
-        assert_eq!(other.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(other.durability, QoSDurabilityPolicy::TransientLocal);
     }
 
     /// An unrecognised role or policy code is SKIPPED, never applied as a
     /// silently wrong override.
     #[test]
     fn unknown_codes_are_skipped_not_guessed() {
-        const BAD: &[QosOverrideCode] = &[("/t", 9, 0, 1), ("/t", 0, 9, 1)];
+        const BAD: &[QoSOverrideCode] = &[("/t", 9, 0, 1), ("/t", 0, 9, 1)];
         assert!(nros_rmw::decode_qos_override(&BAD[0]).is_none());
         assert!(nros_rmw::decode_qos_override(&BAD[1]).is_none());
-        let qos = apply_qos_override_codes(
-            QosSettings::default(),
-            "/t",
-            QosOverrideRole::Publisher,
-            BAD,
-        );
-        assert_eq!(qos, QosSettings::default());
+        let qos =
+            apply_qos_override_codes(QoSProfile::default(), "/t", QoSOverrideRole::Publisher, BAD);
+        assert_eq!(qos, QoSProfile::default());
     }
 
     /// History `keep_all` and reliability `reliable` are the non-default arms —
@@ -507,24 +503,20 @@ mod tests {
     #[test]
     fn history_and_reliability_arms_decode() {
         let qos = apply_qos_override_codes(
-            QosSettings::default(),
+            QoSProfile::default(),
             "/t",
-            QosOverrideRole::Subscription,
+            QoSOverrideRole::Subscription,
             &[("/t", 1, 2, 1), ("/t", 1, 0, 1)],
         );
-        assert_eq!(qos.history, QosHistoryPolicy::KeepAll);
-        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.history, QoSHistoryPolicy::KeepAll);
+        assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
     }
 
     /// An empty table leaves QoS untouched — the common case pays nothing.
     #[test]
     fn empty_table_is_a_no_op() {
-        let qos = apply_qos_override_codes(
-            QosSettings::default(),
-            "/t",
-            QosOverrideRole::Publisher,
-            &[],
-        );
-        assert_eq!(qos, QosSettings::default());
+        let qos =
+            apply_qos_override_codes(QoSProfile::default(), "/t", QoSOverrideRole::Publisher, &[]);
+        assert_eq!(qos, QoSProfile::default());
     }
 }

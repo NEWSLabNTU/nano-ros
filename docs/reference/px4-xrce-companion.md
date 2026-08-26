@@ -45,8 +45,8 @@ profile:
 
 ```rust
 use nros::prelude::*;
-let qos = QosSettings::px4();          // BEST_EFFORT + TRANSIENT_LOCAL + KEEP_LAST(1)
-// raise depth for high-rate streams: QosSettings::px4().keep_last(10)
+let qos = QoSProfile::px4();          // BEST_EFFORT + TRANSIENT_LOCAL + KEEP_LAST(1)
+// raise depth for high-rate streams: QoSProfile::px4().keep_last(10)
 ```
 
 `nros-rmw-xrce` already lowers both policies (`xrce_map_qos`, `session.c`).

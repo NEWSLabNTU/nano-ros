@@ -547,7 +547,7 @@ pub struct PlanParameter {
 /// `qos_overrides.<topic>.<role>.<policy>` launch parameter. ROS expresses
 /// these as specially-named `<param>`s; the planner splits them out of the
 /// generic `parameters` table into this typed list so the codegen can emit the
-/// matching `QosSettings` on the publisher/subscriber for `<topic>` instead of
+/// matching `QoSProfile` on the publisher/subscriber for `<topic>` instead of
 /// the API default. `role` is `"publisher"` / `"subscription"`; `policy` is
 /// `reliability` / `durability` / `history` / `depth` (others pass through for
 /// forward-compat). One entry per `(topic, role, policy)`.

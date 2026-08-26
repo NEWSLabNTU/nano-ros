@@ -77,7 +77,7 @@ These are thin wrappers — each is the builder below with defaults.
 ```rust
 let sub = node.subscription("/chatter")          // SubscriptionBuilder
     .generic(type_name, type_hash)               // XOR .typed::<Int32>()
-    .qos(QosSettings::default().keep_last(10))
+    .qos(QoSProfile::default().keep_last(10))
     .rx_buffer::<2048>()                          // const-generic staging size
     .message_info()                              // callback gets (&[u8], &MessageInfo)
     .session(slot)                               // bind to an open_multi session (172.K.5)

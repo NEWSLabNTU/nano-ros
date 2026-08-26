@@ -540,7 +540,7 @@ impl ZenohSubscriber {
         context: &Context,
         topic: &nros_rmw::TopicInfo,
         liveliness: Option<super::LivelinessToken>,
-        qos: &nros_rmw::QosSettings,
+        qos: &nros_rmw::QoSProfile,
     ) -> Result<Self, TransportError> {
         // Phase 108.C.zenoh.4 — wildcard liveliness keyexpr matching
         // any publisher on this (topic, type). Built once and stored

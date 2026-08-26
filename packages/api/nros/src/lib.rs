@@ -681,10 +681,10 @@ pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, Time
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
-    ClientTrait, Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy,
-    QosOverride, QosOverrideRole, QosOverrideValue, QosPolicyMask, QosReliabilityPolicy,
-    QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session, SessionMode,
-    Subscription as SubscriptionTrait, TopicInfo, Transport, TransportConfig,
+    ClientTrait, Publisher, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+    QoSOverride, QoSOverrideRole, QoSOverrideValue, QoSPolicyMask, QoSProfile,
+    QoSReliabilityPolicy, Rmw, RmwConfig, ServiceInfo, ServiceRequest, ServiceTrait, Session,
+    SessionMode, Subscription as SubscriptionTrait, TopicInfo, Transport, TransportConfig,
 };
 
 /// Phase 108.B — standard ROS-2-equivalent QoS profiles. Match
@@ -693,17 +693,17 @@ pub use nros_rmw::{
 /// downgrade.
 pub mod qos {
     use crate::{
-        QosDurabilityPolicy, QosHistoryPolicy, QosLivelinessPolicy, QosReliabilityPolicy,
-        QosSettings,
+        QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile,
+        QoSReliabilityPolicy,
     };
 
     /// `rmw_qos_profile_default`-equivalent: reliable + volatile +
     /// keep-last(10), automatic liveliness, no deadline / lifespan.
-    pub const DEFAULT: QosSettings = QosSettings {
-        reliability: QosReliabilityPolicy::Reliable,
-        durability: QosDurabilityPolicy::Volatile,
-        history: QosHistoryPolicy::KeepLast,
-        liveliness_kind: QosLivelinessPolicy::Automatic,
+    pub const DEFAULT: QoSProfile = QoSProfile {
+        reliability: QoSReliabilityPolicy::Reliable,
+        durability: QoSDurabilityPolicy::Volatile,
+        history: QoSHistoryPolicy::KeepLast,
+        liveliness_kind: QoSLivelinessPolicy::Automatic,
         depth: 10,
         deadline_ms: 0,
         lifespan_ms: 0,
@@ -714,23 +714,23 @@ pub mod qos {
 
     /// `rmw_qos_profile_sensor_data`-equivalent: best-effort +
     /// volatile + keep-last(5).
-    pub const SENSOR_DATA: QosSettings = QosSettings {
-        reliability: QosReliabilityPolicy::BestEffort,
+    pub const SENSOR_DATA: QoSProfile = QoSProfile {
+        reliability: QoSReliabilityPolicy::BestEffort,
         depth: 5,
         ..DEFAULT
     };
 
     /// `rmw_qos_profile_services_default`-equivalent.
-    pub const SERVICES_DEFAULT: QosSettings = DEFAULT;
+    pub const SERVICES_DEFAULT: QoSProfile = DEFAULT;
 
     /// `rmw_qos_profile_parameters`-equivalent: depth = 1000.
-    pub const PARAMETERS: QosSettings = QosSettings {
+    pub const PARAMETERS: QoSProfile = QoSProfile {
         depth: 1000,
         ..DEFAULT
     };
 
     /// `rmw_qos_profile_system_default`-equivalent.
-    pub const SYSTEM_DEFAULT: QosSettings = DEFAULT;
+    pub const SYSTEM_DEFAULT: QoSProfile = DEFAULT;
 }
 
 // Re-export safety types when feature is enabled
@@ -1032,7 +1032,7 @@ pub use nros_params::{
 pub mod prelude {
     pub use crate::{
         CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
-        QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, RosMessage,
+        QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, RosMessage,
         RosService, Serialize, StandaloneNode, SubscriptionHandle, TopicInfo,
     };
 
@@ -1121,7 +1121,7 @@ mod tests {
         use crate::prelude::*;
 
         let _ = NodeConfig::new("test_node", "/");
-        let _ = QosSettings::BEST_EFFORT;
+        let _ = QoSProfile::BEST_EFFORT;
     }
 
     /// Verify the Node* canonical trait + context + result types

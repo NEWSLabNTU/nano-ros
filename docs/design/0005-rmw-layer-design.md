@@ -343,13 +343,13 @@ pub trait Session {
     type ServiceServer: ServiceServer;
     type ServiceClient: ServiceClient;
 
-    fn create_publisher(&mut self, topic: &TopicInfo, qos: &QosSettings)
+    fn create_publisher(&mut self, topic: &TopicInfo, qos: &QoSProfile)
         -> Result<Self::Publisher, RmwError>;
-    fn create_subscription(&mut self, topic: &TopicInfo, qos: &QosSettings)
+    fn create_subscription(&mut self, topic: &TopicInfo, qos: &QoSProfile)
         -> Result<Self::Subscriber, RmwError>;
-    fn create_service(&mut self, service: &ServiceInfo, qos: &QosSettings)
+    fn create_service(&mut self, service: &ServiceInfo, qos: &QoSProfile)
         -> Result<Self::ServiceServer, RmwError>;
-    fn create_client(&mut self, service: &ServiceInfo, qos: &QosSettings)
+    fn create_client(&mut self, service: &ServiceInfo, qos: &QoSProfile)
         -> Result<Self::ServiceClient, RmwError>;
 
     fn spin_once(&self, timeout_ms: u32) -> Result<(), RmwError>;

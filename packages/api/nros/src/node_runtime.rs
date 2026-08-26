@@ -714,7 +714,7 @@ struct ExecutorSink<'a> {
     /// node this sink creates (`Executor::set_node_qos_overrides`) BEFORE the
     /// component declares entities, so `create_publisher`/`create_subscription`
     /// fold the matching ones in. Empty → nothing installed, zero cost.
-    qos_overrides: &'static [nros_node::executor::node_record::QosOverrideCode],
+    qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
 }
 
 struct SinkNode {
@@ -807,7 +807,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 // (`create_publisher_for_topic_with_qos`) rides
                 // `metadata.qos`; this used to call the default-QoS
                 // constructor, so every declarative entity was created
-                // `QosSettings::default()` and a node's own QoS was silently
+                // `QoSProfile::default()` and a node's own QoS was silently
                 // discarded. Plan overrides still win: they fold in below this,
                 // inside the executor's create path.
                 let handle = self
@@ -912,7 +912,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         entity_name,
                         metadata.type_name,
                         metadata.type_hash,
-                        crate::QosSettings::services_default(),
+                        crate::QoSProfile::services_default(),
                         service_server_trampoline,
                         ctx,
                     )
@@ -927,7 +927,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         entity_name,
                         metadata.type_name,
                         metadata.type_hash,
-                        crate::QosSettings::services_default(),
+                        crate::QoSProfile::services_default(),
                         None,
                         core::ptr::null_mut(),
                     )
@@ -965,7 +965,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             action_name: entity_name,
                             type_name: metadata.type_name,
                             type_hash: metadata.type_hash,
-                            qos: crate::QosSettings::services_default(),
+                            qos: crate::QoSProfile::services_default(),
                             goal_callback: action_goal_trampoline,
                             cancel_callback: action_cancel_trampoline,
                             accepted_callback: Some(action_accepted_trampoline),
@@ -1516,7 +1516,7 @@ fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     params: &'p [(&'p str, &'p str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &'p [(&'p str, &'p str)],
-    qos_overrides: &'static [nros_node::executor::node_record::QosOverrideCode],
+    qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
 ) -> NodeResult<Arc<ComponentCell>>
 where
     C::State: 'static,
@@ -1662,7 +1662,7 @@ pub unsafe fn install_node_typed_with_launch<C: ExecutableNode + 'static>(
     params: &[(&str, &str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &[(&str, &str)],
-    qos_overrides: &'static [nros_node::executor::node_record::QosOverrideCode],
+    qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
 ) -> i32
 where
     C::State: 'static,

@@ -106,7 +106,7 @@ is propagated through the feature chain but does not add any API surface.
 - `LifecycleState`, `LifecycleTransition`, `LifecyclePollingNode`
 - `Logger` (uses `core::sync::atomic`)
 - `GoalId`, `GoalStatus`, `GoalResponse`, `CancelResponse`, `CancelReturnCode`
-- `QosSettings`, `TopicInfo`, `ServiceInfo`
+- `QoSProfile`, `TopicInfo`, `ServiceInfo`
 - `SafetyValidator`, `IntegrityStatus` (with `safety-e2e` feature)
 - Sync primitives: `spin::Mutex` or `critical-section` (feature-selected)
 

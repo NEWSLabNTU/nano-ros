@@ -913,7 +913,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
     };
 
     let qos_settings = if qos.is_null() {
-        nros_node::QosSettings::default()
+        nros_node::QoSProfile::default()
     } else {
         (*qos).to_qos_settings()
     };

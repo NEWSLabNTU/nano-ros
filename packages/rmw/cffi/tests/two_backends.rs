@@ -332,7 +332,7 @@ fn two_sessions_route_to_correct_vtable() {
     // the in-stub assert.
     let topic_a = TopicInfo::new("/tb_a", "std_msgs/msg/Int32", "RIHS01_a");
     let topic_b = TopicInfo::new("/tb_b", "std_msgs/msg/Int32", "RIHS01_b");
-    let qos = nros_rmw::QosSettings::default();
+    let qos = nros_rmw::QoSProfile::default();
     let pub_a = session_a.create_publisher(&topic_a, qos).expect("pub a");
     let pub_b = session_b.create_publisher(&topic_b, qos).expect("pub b");
     use nros_rmw::Publisher as _;

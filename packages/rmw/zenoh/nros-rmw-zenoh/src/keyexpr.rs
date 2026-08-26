@@ -1,11 +1,10 @@
 //! Zenoh key expression generation for RMW types
 //!
 //! Extension traits that add zenoh-specific key expression methods
-//! to the middleware-agnostic `TopicInfo`, `ServiceInfo`, and `QosSettings` types.
+//! to the middleware-agnostic `TopicInfo`, `ServiceInfo`, and `QoSProfile` types.
 
 use nros_rmw::{
-    QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, ServiceInfo,
-    TopicInfo,
+    QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo, TopicInfo,
 };
 
 /// Extension trait for generating zenoh key expressions from `TopicInfo`
@@ -105,7 +104,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
     }
 }
 
-/// Extension trait for generating zenoh QoS liveliness strings from `QosSettings`
+/// Extension trait for generating zenoh QoS liveliness strings from `QoSProfile`
 pub trait QosKeyExpr {
     /// Convert QoS settings to rmw_zenoh liveliness token format string.
     ///
@@ -118,23 +117,23 @@ pub trait QosKeyExpr {
     fn to_qos_string<const N: usize>(&self) -> heapless::String<N>;
 }
 
-impl QosKeyExpr for QosSettings {
+impl QosKeyExpr for QoSProfile {
     fn to_qos_string<const N: usize>(&self) -> heapless::String<N> {
         let mut s = heapless::String::new();
 
         let reliability = match self.reliability {
-            QosReliabilityPolicy::Reliable => 1,
-            QosReliabilityPolicy::BestEffort => 2,
+            QoSReliabilityPolicy::Reliable => 1,
+            QoSReliabilityPolicy::BestEffort => 2,
         };
 
         let durability = match self.durability {
-            QosDurabilityPolicy::TransientLocal => 1,
-            QosDurabilityPolicy::Volatile => 2,
+            QoSDurabilityPolicy::TransientLocal => 1,
+            QoSDurabilityPolicy::Volatile => 2,
         };
 
         let history = match self.history {
-            QosHistoryPolicy::KeepLast => 1,
-            QosHistoryPolicy::KeepAll => 2,
+            QoSHistoryPolicy::KeepLast => 1,
+            QoSHistoryPolicy::KeepAll => 2,
         };
 
         let _ = core::fmt::write(
@@ -242,14 +241,14 @@ mod tests {
 
     #[test]
     fn test_qos_string_sensor_data() {
-        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "2:2:1,5:,:,:,,");
     }
 
     #[test]
     fn test_qos_string_default() {
-        let qos = QosSettings::QOS_PROFILE_DEFAULT;
+        let qos = QoSProfile::QOS_PROFILE_DEFAULT;
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "1:2:1,10:,:,:,,");
     }
@@ -261,7 +260,7 @@ mod tests {
     /// only the `nros-rmw` test left this one red in tier 2.
     #[test]
     fn test_qos_string_parameters_is_volatile() {
-        let qos = QosSettings::QOS_PROFILE_PARAMETERS;
+        let qos = QoSProfile::QOS_PROFILE_PARAMETERS;
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "1:2:1,1000:,:,:,,");
     }
@@ -271,21 +270,21 @@ mod tests {
     /// strings, and nothing else asserts the 1.
     #[test]
     fn test_qos_string_transient_local() {
-        let qos = QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT;
+        let qos = QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT;
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "1:1:1,1:,:,:,,");
     }
 
     #[test]
     fn test_qos_string_keep_all() {
-        let qos = QosSettings::QOS_PROFILE_PARAMETER_EVENTS;
+        let qos = QoSProfile::QOS_PROFILE_PARAMETER_EVENTS;
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "1:2:2,0:,:,:,,");
     }
 
     #[test]
     fn test_qos_string_custom() {
-        let qos = QosSettings::new()
+        let qos = QoSProfile::new()
             .best_effort()
             .transient_local()
             .keep_all()

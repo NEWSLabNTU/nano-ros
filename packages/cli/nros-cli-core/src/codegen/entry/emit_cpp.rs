@@ -29,7 +29,7 @@
 use std::fmt::Write;
 
 use super::{
-    Plan, QosOverrideSpec, emit_boot_config_static,
+    Plan, QoSOverrideSpec, emit_boot_config_static,
     emit_c::{emit_declare_params, emit_declare_remaps},
     sanitize_pkg,
 };
@@ -37,7 +37,7 @@ use super::{
 /// Emit a `static const nros_cpp_qos_override_t __nros_qos_<i>[] = {…};` + the
 /// `__nros_node_<i>.set_qos_overrides(…)` call for node `i`. No-op when the node
 /// has no (recognised) overrides.
-fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QosOverrideSpec]) {
+fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QoSOverrideSpec]) {
     // Issue 0303 — the plan already carries CODES: the lowering (and its
     // rejection of anything unusable) happened in
     // `nros_orchestration_ir::qos_override`, so there is nothing to decode or

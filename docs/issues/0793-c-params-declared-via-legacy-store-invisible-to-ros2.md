@@ -82,7 +82,7 @@ campaign built a checker rather than another prose catalog.
 ## Also found, and FIXED 2026-08-25: two copies of one QoS profile, disagreeing
 
 `QOS_PROFILE_PARAMETERS` had no caller — `register_parameter_services` passed
-`QosSettings::services_default()` — so every parameter server ran on a depth-10
+`QoSProfile::services_default()` — so every parameter server ran on a depth-10
 queue where ROS 2 gives them 1000. That matters exactly when a tool sets many
 parameters at once, which is what the deep queue is for. Now wired to
 `parameters_default()`.
@@ -92,7 +92,7 @@ parameters at once, which is what the deep queue is for. Now wired to
 `rmw_qos_profile_parameters` is KEEP_LAST(1000) + RELIABLE + **VOLATILE**
 (verified in `/opt/ros/<distro>/include/rmw/rmw/qos_profiles.h`). We had **two
 copies** of the profile that disagreed: `nros::qos::PARAMETERS` (correct,
-volatile) and `QosSettings::QOS_PROFILE_PARAMETERS` (transient-local, wrong) —
+volatile) and `QoSProfile::QOS_PROFILE_PARAMETERS` (transient-local, wrong) —
 and the one named after the upstream constant was the wrong one.
 
 Worse, `test_qos_profile_parameters` **asserted the wrong value**, so the
