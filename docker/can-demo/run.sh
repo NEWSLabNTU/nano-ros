@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and run the ROS-2-over-CAN demo (RFC-0082 / phase-380).
+# Build and run the ROS-2-over-CAN demo (RFC-0082 / phase-387).
 #
 #   docker/can-demo/run.sh --zenoh <path-to-zenoh-fork> [--negative] [--build-only]
 #

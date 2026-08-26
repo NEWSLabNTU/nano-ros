@@ -2,7 +2,7 @@
 
 A ROS 2 topic crossing a CAN bus to another ROS 2 node **and** to a zenoh-pico
 peer, with no router and no TCP endpoint anywhere. Implements
-[RFC-0082](../../docs/design/0082-a-demonstrable-can-stack.md) / phase-380.
+[RFC-0082](../../docs/design/0082-a-demonstrable-can-stack.md) / phase-387.
 
 ```sh
 sudo modprobe vcan                                    # once, on the host

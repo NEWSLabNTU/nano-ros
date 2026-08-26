@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 #
-# ROS 2 over CAN, end to end, in one container (RFC-0082 / phase-380).
+# ROS 2 over CAN, end to end, in one container (RFC-0082 / phase-387).
 #
 # Reproduces the stack ROS actually ships rather than an approximation of it.
 # rmw_zenoh does not consume released zenoh-c: every live branch pins a commit

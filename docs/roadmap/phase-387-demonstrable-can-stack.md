@@ -1,4 +1,4 @@
-# Phase 380 — A demonstrable CAN stack
+# Phase 387 — A demonstrable CAN stack
 
 **Status (2026-08-26). W0-W7 DONE. The container works.**
 

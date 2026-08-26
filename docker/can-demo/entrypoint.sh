@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ROS 2 over CAN, end to end, self-verifying (RFC-0082 / phase-380).
+# ROS 2 over CAN, end to end, self-verifying (RFC-0082 / phase-387).
 #
 #   (default)    run the demo and assert it worked
 #   --negative   run the deliberately-broken variant and assert it FAILS
