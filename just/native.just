@@ -238,6 +238,14 @@ build-fixture-extras:
     # Phase 214.J.2 — codegen-stamp guard for trait-surface drift.
     source scripts/build/codegen-stamp.sh
     source scripts/build/cmake-incremental.sh
+    # issue 0805 — `nros_build_dir` / `NROS_KIND_*` for the shared Corrosion
+    # cargo dir. cargo.sh sources build-root.sh only from inside one of its
+    # functions, so the names are NOT in scope here; without this the
+    # `-DNROS_SHARED_CARGO_ROOT=` below expands EMPTY and the cmake side
+    # silently degrades to per-leaf dirs — the fix reading as applied while
+    # doing nothing. Verified in scope, not assumed.
+    # shellcheck source=scripts/build/build-root.sh
+    source scripts/build/build-root.sh
     repo_root="$PWD"
     echo "Building native C/C++ + Cyclone test fixtures..."
     # Phase 176 — cmake parallelism via the fifo jobserver when present.
@@ -290,7 +298,7 @@ build-fixture-extras:
     # codegen-off, cyclone prefix) are injected here via the shared builder's
     # NROS_CMAKE_EXTRA_DEFS contract. The cpp/parameters cell (target
     # parameters_roundtrip) is a manifest row too, so it builds in the same pass.
-    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON"
+    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" native) -DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON"
     bash scripts/build/fixture-make-driver.sh linux-cmake-rmw
     unset NROS_CMAKE_EXTRA_DEFS
     # Phase 186 — native c/cpp Cyclone cells self-provision from source (static
@@ -300,7 +308,7 @@ build-fixture-extras:
     # blocked on a runtime bug (177.32) so its tests skip at runtime, but the
     # fixtures build cleanly here. These cells are manifest rows and run through
     # fixtures-build.sh, preserving the incremental build-cyclonedds directories.
-    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" native) -DCMAKE_BUILD_TYPE=Release -DNANO_ROS_BUILD_CODEGEN=OFF -D_NANO_ROS_CODEGEN_TOOL=${codegen_tool} -DCMAKE_DISABLE_FIND_PACKAGE_CycloneDDS=ON -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=${repo_root}/scripts/cyclonedds/msg_to_cyclone_idl.py"
     # The two cyclone leaves run in parallel. The recursive-cargo jobserver
     # deadlock (issue 0022) is fixed at the source — nros-sizes-build strips the
     # jobserver from its nested probe cargo — so no per-leaf workaround is needed

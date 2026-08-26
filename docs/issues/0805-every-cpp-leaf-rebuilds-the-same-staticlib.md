@@ -218,3 +218,93 @@ through `build_threadx_cmake_rmw` while the C/C++ leaves reach cmake through
   than predicted: 461 s against a 414-494 s baseline. It is 70 cargo invocations
   re-scanning fingerprints at ~7 s each, and it needs FEWER INVOCATIONS — the
   prebuilt-artifact shape — not a shared destination.
+
+## `native` wired too (2026-08-26), plus four defects the guards caught
+
+`native` is the tier-1 lane and had the most duplication: **59 per-leaf cargo
+dirs, 186 GB**. Now **0 per-leaf dirs, 61 GB**, with the shared root at 8.5 GB
+across both platforms.
+
+Correctness, established the clean way after a false alarm (below): the same
+leaf built through the SAME lane with sharing OFF and ON is **byte-identical**
+(`485381fdc490af076a1e` both ways), and native lane builds are byte-reproducible
+run-to-run, which is what makes that comparison meaningful.
+
+### The false alarm, recorded because it nearly became a wrong conclusion
+
+A checksum sweep after the native rebuild showed **53 of 53 binaries differing**
+from the baseline captured earlier in the session. That looked like the change
+corrupting output. It was not: between the two captures the tree had been
+rebased onto ~50 upstream commits. The baseline was STALE, and it was measuring
+upstream, not this change. The lane-level A/B above is the comparison that
+actually isolates the variable.
+
+Same shape as the `_cyclonedds`-suffixed "missing binaries" earlier in this
+issue: a checksum set is only evidence if nothing else moved between captures.
+
+### Four defects, each caught by a guard rather than by review
+
+1. **The key was UNSTABLE.** The call sat after `nros_feature_set()` (right for
+   capabilities) but BEFORE `nros_resolve_cargo_profile()`. `NROS_CARGO_PROFILE`
+   is a cache variable, so it read empty on a fresh configure and `release` on
+   the next — the same leaf computing two keys. The mismatch guard caught it.
+   Placement must be after BOTH.
+2. **The mismatch error printed two HASHES.** Diagnosing #1 was impossible until
+   the error printed the key TEXT — the "two hex strings nobody can order by
+   eye" problem CLAUDE.md records for submodule pins. The key file is now
+   written BEFORE the checks so both sides of a mismatch exist on disk.
+3. **An empty `-DNROS_SHARED_CARGO_ROOT=` was silently ignored.** `nros_build_dir`
+   is not in scope in `just/native.just` (cargo.sh sources build-root.sh only
+   from inside one of its functions), so the flag expanded empty and the cmake
+   side fell back to per-leaf dirs — the fix reading as applied while doing
+   nothing. Now a hard error: nobody passes this flag meaning nothing.
+4. **A re-pointed symlink DANGLED.** The re-point branch created the link but
+   not its target, and `mkdir` on a dangling symlink fails with EEXIST — cargo
+   reports `failed to create directory ... File exists (os error 17)`, naming
+   the link and not the missing target. The target is now created before any
+   branch.
+
+The mismatch guard also stopped demanding a wipe. It RE-POINTS: a symlink is not
+data, the old key's directory keeps its contents, and the dir serves exactly one
+key at a time so the ambiguity it guards against cannot arise. Failing would have
+forced every leaf's build dir to be deleted for a rename.
+
+### One failure mode that survives, and its exact scope
+
+A leaf build dir wiped while its shared dir stays populated fails to rebuild
+under a BARE `cmake -S … -B …`: cargo sees the build script as fresh, so
+`write_header_to_corrosion` never runs, and the per-leaf
+`nros_cpp_config_generated.h` is never written — the mirror copy then fails with
+`No such file or directory`. This is the sizes-header class (0088 -> 0114 ->
+0122 -> 0123 -> 0245 -> 0268) reappearing through a shared target dir.
+
+**It does NOT occur through the lanes.** Verified on both: wipe one leaf, run the
+lane, header and binary come back, rc=0 (threadx 473 s, native 253 s). I could
+not determine WHY the lane's cargo re-runs the script where a bare invocation
+does not, and I am recording that rather than inventing a mechanism. Nothing in
+the tree passes `NROS_SHARED_CARGO_ROOT` outside a lane, so the exposure today is
+zero — but anyone enabling sharing by hand should know this edge exists.
+
+### The shared root ACCUMULATES
+
+A key change orphans the old directory rather than deleting it. This session's
+profile-field fix stranded 8 dirs holding 8.6 GB, removed by hand. That is the
+issue-0500 SDK-store class one directory over: a store that only grows. A GC —
+drop key dirs whose `.key` no longer matches any live configuration — is worth
+having before this spreads to more platforms.
+
+### Still open
+
+* **Other platforms.** freertos, nuttx, threadx-linux, esp32, zephyr all still
+  give each C/C++ leaf its own cargo dir. Every one reaches cmake through
+  `NROS_CMAKE_EXTRA_DEFS`, so wiring is one line each — but each needs its own
+  lane-level byte-identity A/B, and `nros_build_dir` must be verified IN SCOPE
+  in that recipe first (defect 3 above).
+* **The warm floor**, unchanged and untouchable by this: 70 cargo invocations
+  re-scanning fingerprints. It needs fewer invocations, not a shared destination.
+* **Two smells surfaced by the keys, neither investigated**: `caps=safety,safety`
+  carries a duplicate, and one observed cargo invocation passed
+  `panic-platform` SEVEN times. Harmless to cargo and to the key, but both point
+  at a list that accumulates instead of replacing.
+* **The platform has two spellings** — `threadx` and `threadx_riscv64` at the
+  same board/rmw/triple, so that platform keeps 4 key dirs where 2 may do.

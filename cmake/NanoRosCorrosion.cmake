@@ -414,6 +414,18 @@ endfunction()
 # This is OFF unless a caller passes `-DNROS_SHARED_CARGO_ROOT=<dir>`; the
 # directory under it is chosen by KEY, which the caller must supply.
 function(nros_share_corrosion_cargo_dir)
+    # An EMPTY `-DNROS_SHARED_CARGO_ROOT=` is a caller whose shell variable did
+    # not expand, and it is indistinguishable from "not requested" unless asked
+    # separately — which is how a lane can carry this flag, look wired, and
+    # silently keep per-leaf dirs. That happened once (`nros_build_dir` was not
+    # in scope in `just/native.just`), so it is a hard error rather than a
+    # fallback: nobody passes this flag meaning nothing.
+    if(DEFINED CACHE{NROS_SHARED_CARGO_ROOT} AND NROS_SHARED_CARGO_ROOT STREQUAL "")
+        message(FATAL_ERROR
+            "nano-ros: -DNROS_SHARED_CARGO_ROOT was passed EMPTY. The caller's "
+            "path variable did not expand (issue 0805). Fix the caller; an "
+            "empty value would silently fall back to per-leaf cargo dirs.")
+    endif()
     if(NOT NROS_SHARED_CARGO_ROOT)
         return()
     endif()
@@ -431,6 +443,21 @@ function(nros_share_corrosion_cargo_dir)
     string(SUBSTRING "${_key_hash}" 0 12 _key_hash)
     set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_ROOT}/${_key_hash}")
     set(_link "${CMAKE_BINARY_DIR}/cargo")
+    # Record the key text BEFORE the checks below, not after the symlink is
+    # created. The mismatch branch used to fire first and print two HASHES with
+    # no way to see what differed — the same "two hex strings nobody can compare
+    # by eye" problem CLAUDE.md records for submodule pins. Both sides of a
+    # mismatch must be readable on disk.
+    #
+    # Create the TARGET, not just the root, and do it before any branch below.
+    # Every branch — fresh link, matching link, re-pointed link — needs the
+    # target to exist, because a symlink to a missing directory is DANGLING and
+    # `mkdir` on one fails with EEXIST. Creating it in only some branches left
+    # `<build>/cargo` dangling and cargo reported
+    # `failed to create directory ... File exists (os error 17)`, naming the
+    # link rather than the absent target.
+    file(MAKE_DIRECTORY "${NROS_SHARED_CARGO_DIR}")
+    file(WRITE "${NROS_SHARED_CARGO_DIR}.key" "${_key_text}\n")
 
     if(IS_SYMLINK "${_link}")
         # Re-configure of a build dir already sharing. Honour it only if it
@@ -442,11 +469,34 @@ function(nros_share_corrosion_cargo_dir)
         endif()
         get_filename_component(_want "${NROS_SHARED_CARGO_DIR}" ABSOLUTE)
         if(NOT _current STREQUAL _want)
+            set(_prev_key "unknown")
+        if(EXISTS "${_current}.key")
+            file(READ "${_current}.key" _prev_key)
+            string(STRIP "${_prev_key}" _prev_key)
+        endif()
+        # RE-POINT rather than fail. A symlink is not data: the old key's
+        # directory keeps its contents for whoever still uses it, and this leaf
+        # simply starts using the directory its CURRENT configuration names.
+        # The ambiguity this guard exists to prevent — two keys' artifacts live
+        # in one build dir — cannot arise, because the dir serves exactly one
+        # key at a time.
+        #
+        # It used to FATAL and demand a wipe. That is wrong for the common
+        # case: any change to a key input (a profile, a capability) would force
+        # every leaf's build dir to be deleted, which is a large cost for a
+        # rename. Keep the message, drop the demand.
+        file(REMOVE "${_link}")
+        file(CREATE_LINK "${NROS_SHARED_CARGO_DIR}" "${_link}" SYMBOLIC RESULT _rc)
+        if(NOT _rc EQUAL 0)
             message(FATAL_ERROR
-                "nano-ros: ${_link} already points at ${_current}, but this "
-                "configure asks for ${_want}. Two different shared-cargo keys "
-                "in one build dir would make cargo's unhashed artifact "
-                "ambiguous. Wipe this build dir and re-configure.")
+                "nano-ros: could not re-point ${_link} -> "
+                "${NROS_SHARED_CARGO_DIR} (${_rc}).")
+        endif()
+        message(STATUS
+            "nano-ros: shared-cargo key changed, re-pointing ${_link}\n"
+            "  was: ${_prev_key}\n"
+            "  now: ${_key_text}")
+        return()
         endif()
         return()
     endif()
@@ -468,16 +518,12 @@ function(nros_share_corrosion_cargo_dir)
         return()
     endif()
 
-    file(MAKE_DIRECTORY "${NROS_SHARED_CARGO_DIR}")
     file(CREATE_LINK "${NROS_SHARED_CARGO_DIR}" "${_link}" SYMBOLIC RESULT _rc)
     if(NOT _rc EQUAL 0)
         message(FATAL_ERROR
             "nano-ros: could not link ${_link} -> ${NROS_SHARED_CARGO_DIR} "
             "(${_rc}).")
     endif()
-    # A hash in a path is unreadable by design; write the key beside it so a
-    # human debugging "why are these two leaves not sharing" can diff them.
-    file(WRITE "${NROS_SHARED_CARGO_DIR}.key" "${_key_text}\n")
     message(STATUS
         "nano-ros: sharing Corrosion cargo dir -> ${NROS_SHARED_CARGO_DIR}")
 endfunction()
