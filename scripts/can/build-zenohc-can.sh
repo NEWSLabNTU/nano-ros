@@ -26,6 +26,14 @@
 # because a cargo feature adds no C API.
 set -euo pipefail
 
+# issue 0726 — `grep -q` in a CONDITIONAL cannot tell a non-match (exit 1) from
+# the tool failing to run at all (exit >=2). Under a 32-way fan-out a forked
+# grep that failed to start was once reported as a missing force-link anchor:
+# a false, specific claim, and only under load. `nros_grep_q` exits 2 on a tool
+# failure instead of reporting a finding.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/grep-q.sh"
+
 ZENOH_DIR=""
 ZENOHC_TAG=""
 OUT_DIR=""
@@ -81,7 +89,7 @@ CONFIGURE_H="$VENDOR_PREFIX/include/zenoh_configure.h"
 FEATURES="transport_can"
 if [ -f "$CONFIGURE_H" ]; then
     while read -r define feature; do
-        if grep -q "^#define $define\b" "$CONFIGURE_H"; then
+        if nros_grep_q "^#define $define\b" "$CONFIGURE_H"; then
             FEATURES="$FEATURES,$feature"
         fi
     done <<'MAP'
@@ -125,7 +133,7 @@ zenoh-util = { path = \"$ZENOH_DIR/commons/zenoh-util\" }
 # Patching only the parent manifest is the obvious thing to do and it does not work.
 for manifest in "$SRC/Cargo.toml" "$SRC/build-resources/opaque-types/Cargo.toml"; do
     [ -f "$manifest" ] || die "expected $manifest; zenoh-c layout changed"
-    grep -q 'transport_vsock = \["zenoh/transport_vsock"\]' "$manifest" ||
+    nros_grep_q 'transport_vsock = \["zenoh/transport_vsock"\]' "$manifest" ||
         die "$manifest has no transport_vsock feature line to anchor to; layout changed"
     sed -i 's|transport_vsock = \["zenoh/transport_vsock"\]|&\ntransport_can = ["zenoh/transport_can"]|' "$manifest"
     printf '%s' "$PATCH_BLOCK" >> "$manifest"
