@@ -1,7 +1,8 @@
-# Phase 384 — XRCE advertises the type's size, instead of inheriting the Agent's 1028
+# Phase 384 — XRCE silently drops every message over 1024 bytes
 
-**Status (2026-08-26). W4 RUN FIRST — premise CONFIRMED by measurement. W1-W3,
-W5 open.** Depends on phase-380, which built the number this phase transmits.
+**Status (2026-08-26). W4 RUN FIRST — the DEFECT is confirmed and its mechanism
+traced to the line. The phase's ORIGINAL DESIGN IS REFUTED: the Agent ignores any
+size a client sends. Redesigned below; W1-W3 as first drafted are withdrawn.**
 
 ## Why
 
@@ -99,104 +100,114 @@ that fails without this phase's fix and passes with it, and it should assert
 delivery at a size ABOVE 1028 rather than sweeping — the sweep was for finding
 the boundary, and now the boundary is known.
 
-## Design
+## The mechanism, traced (2026-08-26)
 
-The client offers three entity-creation profiles; the choice IS the design.
+The measurement above is explained exactly by the Agent's own serializer:
 
-| profile | carries | cost | verdict |
-| --- | --- | --- | --- |
-| **BIN** (today) | topic name, type name, `uxrQoS_t {durability, reliability, history, depth}` | smallest submessage, no string building | Cannot express a size — checked at all three levels, including the QoS struct. This is the constraint the phase exists to escape. |
-| **XML** | an arbitrary DDS topic/endpoint XML | builds a string at runtime; the CREATE submessage must fit the output stream MTU | The only profile that can state a size from the client. Already compiled in — `create_entities_xml` is in `nros-rmw-xrce-cffi/build.rs`'s source list. |
-| **REF** | a profile NAME the Agent looks up in its own config | tiny submessage | Moves the number into a hand-maintained Agent config file — a second place to keep the truth, drifting from the type. That is the guess phase-380 removed; rejected on those grounds, not on cost. |
+```cpp
+// third-party/xrce/agent/src/cpp/types/TopicPubSubType.cpp
+TopicPubSubType::TopicPubSubType(bool with_key) {
+    m_typeSize = 1024 + 4 /*encapsulation*/;      // the ONLY assignment, anywhere
+}
 
-So: **XML, for the entities whose advertised size a peer reads.**
+bool TopicPubSubType::serialize(void *data, rtps::SerializedPayload_t *payload) {
+    bool rv = false;
+    ...
+    if (buffer->size() <= (payload->max_size - 4)) { memcpy(...); rv = true; }
+    return rv;                                     // else: false, silently
+}
+```
 
-### Which entities, and why not all of them
+`payload->max_size` comes from `m_typeSize`, so the predicate is
+`size <= 1024` — and the measurement is 1024 delivered, 1028 not. Source and
+experiment agree to the byte.
 
-The size a remote reader sizes itself from comes from the WRITER side of the
-match. So the ones that matter are the ones we publish through:
+When `serialize` returns false the DDS write is dropped. The XRCE client is
+never told: `WRITE_DATA` is acknowledged by the XRCE reliability layer long
+before the DDS publish is attempted, so from the application's side the publish
+succeeded. That is issue 0757's signature and why nothing has ever reported it.
 
-* `publisher.c` — `uxr_buffer_create_topic_bin` + datawriter.
-* `service.c` — `uxr_buffer_create_replier_bin` (the reply topic, and the
-  request topic for a client).
+## Why this phase's original design is REFUTED
 
-`subscriber.c` should be left on BIN in the first instance. Our own receive
-buffer is a local matter that phase-380 W4 already asserts at build time, and
-every entity moved to XML costs MTU and code size on targets that have neither
-to spare. Moving it later is cheap; moving it now buys nothing measurable.
+The first draft proposed moving entity creation from the BIN profile to XML so
+the client could state the type's size. **The Agent would ignore it.**
 
-### Getting the number to the C layer
+* `m_typeSize` is assigned in exactly ONE place — the constructor above — and
+  never from topic attributes, XML, or anything else. Verified by grepping the
+  whole Agent tree for the symbol: one hit.
+* Both construction sites are `TopicPubSubType{false}`
+  (`FastDDSMiddleware.cpp:180`, `FastEntities.cpp:186`). The XML path sets the
+  type's NAME from the attrs and nothing else.
 
-The bound is a Rust `const` on the message type; entity creation is C. The ABI
-already has a field for the subscription direction and none for the others:
+So BIN, XML and REF are equivalent for this purpose. The client cannot influence
+the ceiling by any profile, and the "which profile" question the first draft
+called "the design" was the wrong question.
 
-* `rmw_subscription_options_t::rx_buffer_hint` (u32, "0 = unset") exists and
-  today carries the LOCAL buffer size, set from `RX_BUF` in `spin.rs`. The XRCE
-  backend ignores it entirely.
-* `rmw_publisher_options_t` has `tx_express` and `_reserved[7]`.
-* Services have no options struct in the create path at all.
+Recorded rather than deleted because the draft was written from the client-side
+API alone, and reading the Agent's serializer — twenty minutes — would have
+saved the whole design.
 
-Two candidate shapes, and W1 below should pick one with a measurement rather
-than an opinion:
+## Redesign
 
-1. **Reuse/extend the options structs.** `_reserved[7]` on the publisher side
-   can hold a `u32 max_serialized_size` without changing the struct's size, and
-   the subscription side already has a field of the right shape. Services still
-   need a route — either a new options param on the service-create slot (an ABI
-   change, and phase-376 has just finished stabilising that ABI) or a lookup.
-2. **A type-size registry, mirroring `register_type_descriptor`.** The Cyclone
-   backend already has a seam where Rust hands the C side per-type information
-   at registration time (`rmw_type_registry`). A size is exactly that shape,
-   costs no ABI change, and serves publishers, subscriptions and services
-   uniformly. Cost is a table and a lookup at entity creation.
+The ceiling is in the Agent, so a real fix is Agent-side, and the Agent is
+**upstream eProsima**: `.gitmodules` records no `branch =`, and its HEAD is a
+clean `Release v2.4.3` with no carried patches. Changing it means creating a
+fork and a patch line under the rules in CLAUDE.md — a structural step this
+phase should not take casually.
 
-(2) looks right for the same reason the descriptor seam looks right, but it
-should be justified against the RAM it costs on the smallest target before being
-adopted.
+Two tracks, and the first does not depend on the second:
+
+**Track A — make it LOUD, in this repo, now.** phase-380 computes a type's max
+serialized size at compile time. The Agent's ceiling is a known constant. So an
+image that publishes or subscribes a BOUNDED type larger than 1024 bytes over
+XRCE can fail the BUILD, exactly as phase-380 W4 does for the receive buffer.
+That converts silent data loss into a compile error without touching the Agent,
+and it is honest about the limit rather than pretending the transport is
+size-agnostic. It does not raise the ceiling.
+
+**Track B — raise the ceiling, upstream or in a fork.** `TopicPubSubType` needs
+to take its size from the topic it is registered for. That is a small patch —
+a constructor parameter and a call site — but it lands in a vendored third-party
+Agent, so it means: fork under NEWSLabNTU, patch line named in `.gitmodules`, and
+ideally a PR to eProsima so the fork can retire. Only once B exists does the
+client-side advertising work (the original W1-W3) become useful, because only
+then is there something listening.
+
+Sequencing matters: **A first.** It is small, local, testable here, and it stops
+the silent loss. B is worth doing and is a different kind of commitment.
 
 ## Work items
 
-**W1 — decide the transport of the number, by measurement.** Prototype both
-shapes above far enough to compare: bytes of RAM per registered type, code size
-delta on the smallest XRCE target, and whether services can be served without an
-ABI change. Write the answer down with the numbers; do not pick on taste.
+**W1 — the build-time refusal (Track A).** An XRCE image that publishes or
+subscribes a bounded type whose `MAX_SERIALIZED_SIZE` exceeds the Agent's
+ceiling fails the build, naming the ceiling and the type. Reuse
+`nros_serdes::size::bound_fits` and the pattern phase-380 W4 established; the
+constant belongs beside the XRCE backend, not in the generic core, because it is
+that transport's limit and not a property of messages.
 
-**Acceptance:** a recorded comparison, and a decision that names what it costs.
+**Acceptance:** a build that fails for a >1024-byte bounded type over XRCE and
+passes for the same type over another backend, since the ceiling is the Agent's
+alone.
 
-**W2 — the XML the Agent accepts.** Build the topic/endpoint XML carrying
-`maxSerializedSize` (or the Agent's expected spelling — read
-`TopicPubSubType`/`Topic` handling in `third-party/xrce/agent` rather than
-guessing the tag) and prove the Agent creates a topic with the size we asked for.
+**W2 — the regression test.** Commit the measurement above as a test: publish
+above the ceiling and assert delivery is refused loudly rather than silently
+dropped. It must fail on today's tree. `nros-bench/large-msg-xrce` and
+`test_xrce_e2e_integrity` already exist; extend rather than add a third harness,
+and assert at a size just past the boundary rather than sweeping — the sweep
+found the boundary and it is recorded above.
 
-**Acceptance:** an Agent-side observation — a log or a `ros2 topic info -v` on a
-peer — showing a max size we chose and the Agent did not.
+**W3 — say it where users choose a message (Track A).** The 1024-byte XRCE
+ceiling belongs in the book beside the transport's other limits, with the
+measurement that establishes it. An integrator choosing a message size for an
+XRCE deployment currently has no way to learn this except by losing data.
 
-**W3 — MTU and the smallest target.** A CREATE submessage carrying XML must fit
-the output stream. Measure the XML length for a realistic type against
-`NROS_XRCE_CUSTOM_TRANSPORT_MTU` and the serial transport's framing, and state
-the ceiling. If a long type name plus XML cannot fit the smallest supported MTU,
-that is a finding this phase must publish, not paper over — a truncated CREATE
-is worse than a wrong size.
+**W4 — DONE.** The premise measurement, above.
 
-**Acceptance:** a stated maximum type-name length at each supported MTU, and a
-build-time or runtime refusal when it would be exceeded.
-
-**W4 — the cliff test.** Publish a BOUNDED message larger than 1024 bytes over
-XRCE to a stock ROS 2 subscriber and assert delivery. This is the acceptance for
-the whole phase and it must FAIL before W1–W3 land, or the premise is wrong and
-the phase should stop.
-
-`packages/testing/nros-bench/large-msg-xrce` already publishes increasing
-payload sizes and has a `fixtures.toml` row; extend or promote it rather than
-writing a third large-message harness.
-
-**Acceptance:** red before, green after, with the size that crosses the cliff
-named in the test.
-
-**W5 — the unbounded case, stated not solved.** An unbounded type has no bound
-to advertise, so it keeps whatever the Agent defaults to. Say so in the same
-place the knob is documented, so the next person does not read this phase as
-covering everything. phase-380's own "What this does NOT fix" is the precedent.
+**W5 — decide on the fork (Track B).** A written decision, not code: do we fork
+the Agent to make `TopicPubSubType` size-aware, upstream it, or accept the
+ceiling and live with W1's refusal? The cost is a fork and a patch line; the
+benefit is large messages over XRCE at all. This is a maintainer call and should
+be recorded as one.
 
 ## Risks
 
