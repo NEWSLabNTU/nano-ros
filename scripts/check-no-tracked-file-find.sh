@@ -119,7 +119,21 @@ for f in FILES:
 # Legitimate reasons are real and common here — build dirs, staging copies, a
 # tree being deleted, an untracked submodule — so this is part of the rule, not
 # an escape hatch. A gate that demands an impossible fix gets disabled.
-PY_WALK = re.compile(r"\.rglob\(|\.glob\(\s*[\"']\*\*|\bos\.walk\(")
+# issue 0726 — `recursive=True` is the fourth spelling, and it slipped the three
+# above for two years' worth of gates. The rule this file states is "EVERY
+# recursive walk", but the pattern required the `**` to be a LITERAL right after
+# `.glob(`. Both offenders wrote it with the pattern in a variable and the path
+# computed:
+#
+#     for pat in ("examples/**/Cargo.toml", ...):
+#         glob.glob(os.path.join(ROOT, pat), recursive=True)
+#
+# invisible to `\.glob\(\s*["']\*\*`. `check-deploy-board-resolves` was measured
+# at 23-24 MINUTES inside `check-fast -P32` (1.86 s through the index), and
+# `check-site-config` had the same shape. Matching `recursive=True` catches the
+# spelling regardless of where the pattern or the root came from — which is the
+# property the other three alternatives lack.
+PY_WALK = re.compile(r"\.rglob\(|\.glob\(\s*[\"']\*\*|\bos\.walk\(|recursive\s*=\s*True")
 PY_ALLOW = re.compile(r"walk-ok:")
 
 PY_FILES = [f for f in FILES if f.endswith(".py")]

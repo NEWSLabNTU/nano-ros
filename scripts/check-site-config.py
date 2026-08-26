@@ -31,6 +31,11 @@ import glob
 import os
 import re
 import sys
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
+
 
 try:
     import tomllib  # 3.11+
@@ -100,8 +105,11 @@ def exported_vars():
 
 def system_tomls():
     out = []
-    for pat in ("examples/**/system.toml", "packages/**/system.toml"):
-        out += glob.glob(os.path.join(ROOT, pat), recursive=True)
+    # issue 0721 / 0726 — index, not walk. Same hazard as
+    # check-deploy-board-resolves: `examples/` and `packages/` are the two trees
+    # holding build output, so a recursive glob pays for every target/ tree to
+    # find a handful of tracked files.
+    out += [str(q) for q in tracked("examples", "packages", name="system.toml")]
     return sorted(out)
 
 

@@ -506,6 +506,80 @@ What survives, because it does not depend on live process sampling:
   on the box, which is why it is the finding this campaign now rests on:
   `nros_resolve_corrosion` is 20 s of a 33 s leaf configure.
 
+## Priority 1 done (2026-08-26) — the gate phase was one gate, and it was walking build output
+
+The "Corrected priority" above puts the gate phase first. It has since been
+PARALLELISED (`check-fast (parallel) … at -P32`), which the sections above
+predate — so the serial-dependency shape they describe is already gone. What
+remained was worse and simpler: **one gate dominated the parallel phase.**
+
+Its own banner said so, and nobody read it:
+
+```
+check-fast (parallel): 121 gate(s) OK at -P32; slowest check-deploy-board-resolves 1469201ms
+check-fast (parallel): 116 gate(s) OK at -P32; slowest check-deploy-board-resolves 1392852ms
+```
+
+**23-24 minutes, one gate**, on the critical path of every `just check` and every
+`build-test-fixtures`.
+
+### Cause: a fourth spelling of the walk this repo already banned
+
+`check-deploy-board-resolves.py` and `check-site-config.py` both did
+
+```python
+for pat in ("examples/**/system.toml", "packages/**/system.toml"):
+    glob.glob(os.path.join(ROOT, pat), recursive=True)
+```
+
+`examples/` and `packages/` are the two trees holding build output — measured
+**5769** `Cargo.toml` on disk against **237** git tracks. The walk must descend
+every `target/` and `build-*/` tree to produce paths it then discards.
+
+Issue 0721 already banned this and shipped `scripts/lib/tracked.py` for it. The
+gate that enforces it, `check-no-tracked-file-find.sh`, missed both because its
+pattern required a LITERAL `**` right after `.glob(`:
+
+```python
+PY_WALK = re.compile(r"\.rglob\(|\.glob\(\s*[\"']\*\*|\bos\.walk\(")
+```
+
+Here the pattern is a variable and the path is computed, so neither alternative
+matched. The rule the file states is "EVERY recursive walk"; the regex was
+narrower than the rule — issue 0196's shape, and the same
+second-spelling failure `tracked.py`'s own docstring warns about.
+
+### Fixed
+
+Both scripts converted to `tracked()`, and `PY_WALK` widened with
+`recursive\s*=\s*True`, which matches regardless of where the pattern or the
+root came from.
+
+Widening earned itself immediately: it flagged a SECOND recursive glob in
+`check-deploy-board-resolves.py` that I had not noticed, in the function above
+the one I had measured. Fixing only the measured site would have left the other
+paying the same cold walk.
+
+| | before | after |
+| --- | --- | --- |
+| `check-deploy-board-resolves` | 231.83 s warm (23-24 min inside `-P32`) | **0.09 s** |
+| `check-site-config` | — | 0.06 s |
+| whole `check-fast-parallel` | dominated by the above | **10.77 s, 124/124 OK** |
+
+Verdicts unchanged: "20 distinct value(s), 36 descriptor alias(es)" and "30
+deploy block(s) across 5 board(s) … 36 board name(s)".
+
+Numbers are WARM, per this issue's own warning. The point of the fix is that it
+removes the cold cliff rather than moving it: an index read is one file whatever
+the page cache holds, which is why 0721 measured `git ls-files` at 0.002 s
+against a walk that had not finished in 300 s.
+
+### What is left
+
+Priorities 2 and 3 are untouched: a launcher that overlaps stages AND shares
+tokens, and the `threadx_riscv64` tail (1302 s) that bounds the build under any
+scheduler. Both still need the measurement harness this issue describes.
+
 ## Resolved (2026-08-26): the premise was wrong, and measuring it was the value
 
 This issue opened on "the fixture build statically partitions 32 cores into 4x8,

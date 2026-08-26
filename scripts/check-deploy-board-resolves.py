@@ -21,6 +21,11 @@ Buildless: reads the descriptors and every `system.toml` / entry `Cargo.toml`.
 import glob
 import os
 import sys
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
+
 
 try:
     import tomllib
@@ -47,9 +52,13 @@ def descriptors():
 def deploy_values():
     """`board value -> [where it is declared]`, both site homes."""
     out = {}
-    pats = ("examples/**/system.toml", "packages/**/system.toml")
-    for pat in pats:
-        for path in glob.glob(os.path.join(ROOT, pat), recursive=True):
+    # issue 0721 / 0726 — index, not walk; same reason as the Cargo.toml scan
+    # below. This one is the site the WIDENED gate caught after the other was
+    # converted, which is the argument for widening it: the file had two
+    # recursive globs and fixing the one I had measured would have left the
+    # other paying the same cold-walk cost.
+    for path in tracked("examples", "packages", name="system.toml"):
+        if True:
             try:
                 with open(path, "rb") as fh:
                     doc = tomllib.load(fh)
@@ -61,8 +70,13 @@ def deploy_values():
                         f"{os.path.relpath(path, ROOT)} [deploy.{name}]"
                     )
     # Standalone leaves: the deploy KEY is the board (no `board =` there).
-    for pat in ("examples/**/Cargo.toml", "packages/testing/**/Cargo.toml"):
-        for path in glob.glob(os.path.join(ROOT, pat), recursive=True):
+    # issue 0721 / 0726 — the INDEX, not a walk. `examples/` holds build output
+    # (measured 5769 Cargo.toml on disk against 237 git tracks), and a recursive
+    # glob must descend every `target/` and `build-*/` tree to produce the paths
+    # it then discards. Warm that costs seconds; cold it is minutes, and this
+    # gate was measured at 23-24 MINUTES inside `check-fast -P32` twice.
+    for path in tracked("examples", "packages/testing", name="Cargo.toml"):
+        if True:
             try:
                 with open(path, "rb") as fh:
                     doc = tomllib.load(fh)
