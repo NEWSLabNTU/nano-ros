@@ -28,6 +28,50 @@ while read -r count path _rest; do
     expected["$path"]="$count"
 done < <(sed -E 's/#.*//' "$allowlist")
 
+# phase-386 W1 — every audited row must declare `body:<kind>`, the answer to
+# "if nobody overrides this, is the weak body CORRECT?". The existing
+# override-default/optional-hook classification answers a DIFFERENT question
+# (is a strong def guaranteed) and the two are independent, so a row can be
+# correctly classified there and still hide a stub that lies.
+#
+# Validated here rather than left as prose because an unchecked column drifts:
+# a new row would simply omit it, and the axis would decay into a comment on
+# the subset of rows that happened to get one. `silent-wrong` is deliberately
+# NOT an accepted value — that state is the bug this axis exists to surface,
+# and a row needing it should be fixed instead (phase-386 W2 removed the two
+# that had it).
+missing_body=""
+bad_body=""
+while IFS= read -r line; do
+    case "$line" in \#*|"") continue;; esac
+    rowpath=$(printf '%s' "$line" | awk '{print $2}')
+    [ -n "$rowpath" ] || continue
+    body=$(printf '%s' "$line" | sed -nE 's/.*body:([a-z-]+).*/\1/p')
+    if [ -z "$body" ]; then
+        missing_body="$missing_body  $rowpath"$'\n'
+    else
+        case "$body" in
+            correct|reports-failure|self-enforcing) ;;
+            *) bad_body="$bad_body  $rowpath -> body:$body"$'\n' ;;
+        esac
+    fi
+done < "$allowlist"
+
+if [ -n "$missing_body" ] || [ -n "$bad_body" ]; then
+    echo "weak-source: allowlist rows with a missing/invalid \`body:\` axis:" >&2
+    [ -n "$missing_body" ] && { echo "  MISSING:" >&2; printf '%s' "$missing_body" >&2; }
+    [ -n "$bad_body" ] && { echo "  INVALID:" >&2; printf '%s' "$bad_body" >&2; }
+    echo >&2
+    echo "  Answer: if nobody overrides it, is the weak body CORRECT?" >&2
+    echo "    body:correct         a valid runtime state; nothing is missing" >&2
+    echo "    body:reports-failure says so in a form the CALLER understands" >&2
+    echo "    body:self-enforcing  misuse faults immediately; do not 'fix' it" >&2
+    echo >&2
+    echo "  There is no body:silent-wrong. A row that would need it is the bug" >&2
+    echo "  this axis exists to surface — fix the stub, do not label it." >&2
+    exit 1
+fi
+
 # Walk owned C/C++/asm, skipping vendored / build / generated trees.
 declare -A actual
 while IFS= read -r f; do

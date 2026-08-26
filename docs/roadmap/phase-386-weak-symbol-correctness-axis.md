@@ -238,3 +238,46 @@ output of W2 for W1's column:
 Only shape 1 is a correctness bug. Shape 2 is a diagnosability bug. Shape 3 is
 neither, and a column that cannot distinguish the three would send someone to
 "fix" shape 3 and make it worse.
+
+
+## W1 LANDED — the axis is a gated column, not a comment
+
+`scripts/weak-symbols-allowlist.txt` rows now carry `body:<kind>` alongside the
+existing classification, and `check-weak-symbols.sh` validates it.
+
+| value | meaning |
+| --- | --- |
+| `body:correct` | a valid runtime state; nothing is missing when no override exists |
+| `body:reports-failure` | cannot do the job and says so in a form the CALLER understands |
+| `body:self-enforcing` | misuse faults immediately; **do not "fix" it** |
+
+Current audit: 13 `correct`, 4 `reports-failure`, 0 `self-enforcing`
+(`stdin` lives inside a `reports-failure` file rather than having its own row).
+
+**There is deliberately no `body:silent-wrong`.** That state is the bug this
+axis exists to surface, and W2 removed the two rows that had it. A row that
+would need the value should be fixed, not labelled — the gate rejects it with
+that sentence.
+
+### Why validated rather than documented
+
+An unchecked column decays: a new row omits it, and the axis quietly becomes a
+comment on whichever rows happened to get one. That is the same
+silent-coverage shape as a gate that cannot fail, which is what this whole phase
+is about — so leaving the axis unenforced would have reproduced the defect at
+the level of the fix.
+
+Both directions verified against a real data row, after a first attempt tested
+the wrong thing: the header comment now contains the literal `body:correct`, so
+a naive `sed` mutated prose the loop correctly skips, and the gate "passed" a
+mutation it had never seen. Controls now confirm a missing token reports
+`MISSING`, an invalid one reports `INVALID` with the offending row, and the
+restored file is green.
+
+### Additive, as 0769 required
+
+The new token sits in the comment, which both source-level gates strip before
+parsing, and it does not touch `[img: …]`. `check-weak-symbols-image.sh`'s
+override-default handling is unchanged, so nothing that was being verified
+stopped being verified — the constraint 0769 established when it showed a
+well-meant relabel would have silently narrowed coverage.
