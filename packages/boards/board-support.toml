@@ -130,31 +130,6 @@ notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform:
 # (crate, matrix_platform): tier is a per-witness promise ("`just ci` exercises
 # it" is true of arm and false of rv-virt), so they cannot share a row.
 [[board]]
-crate = "nros-board-mps3-an536-freertos"
-# NO matrix_platform, for the same reason as s32z270 above: this board has no
-# `MP::` variant yet, and pointing it at `FreertosMps2` would claim MPS2-AN385's
-# Runtime cells for a Cortex-R52 part that shares only a kernel — the exact
-# defect this gate rejects. phase-385 W4 says so explicitly and defers the
-# variant to its own commit (~67 references across platform.rs / matrix.rs /
-# lane_scope.rs, each with its own gate).
-#
-# Tier 3 is FORCED by the schema, and it undersells the board. The tier text
-# reads "NO CI lane can boot it (hardware or a license-gated model is
-# required)", which is false here: phase-385 booted it on stock
-# `qemu-system-arm -M mps3-an536`, brought lwIP up, and got continuous
-# CycloneDDS `Published:`/`Received:` pairs (W2/W3/W5, all DONE). But tiers 1
-# and 2 both require >=1 Runtime cell and this board has none, `scaffold` means
-# structurally incomplete (it is not), and `infra` means not-a-board. There is
-# no registry spelling for "boots, but nobody has written the cell yet".
-#
-# So this row records the CI reality, not the board's capability. Promote it
-# when phase-385 W4 lands the matrix cell — that is a tier change, not new
-# work on the board.
-tier = 3
-maintainers = ["aeon"]
-notes = "Cortex-R52 FreeRTOS on QEMU's mps3-an536, dual-core part. Boots, networks over LAN9118/lwIP, and delivers CycloneDDS pub/sub end to end (phase-385 W2/W3/W5). Tier 3 only because no runtime matrix cell exists yet (W4 partial); it is not build-only in the usual sense. W6 is open: two guests on a shared virtual LAN stall when the second participant appears."
-
-[[board]]
 crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxArm"
 nightly_token = "nuttx"
