@@ -402,6 +402,12 @@ exclude = [
     # consumer-side via env/strong-symbol seams; see the bundle's
     # nros-board.toml header.
     "packages/boards/nros-board-s32z270-freertos",
+    # phase-385 W1 — QEMU MPS3-AN536 (dual Cortex-R52) FreeRTOS board bundle:
+    # the EMULATED counterpart to the s32z270 bundle above, and the only
+    # Cortex-R52 board here that can actually run (issue 0772 — no emulator
+    # models the S32Z270 RTU). Same cross-only reason to sit in the exclude
+    # list: armv8r-none-eabihf, its own Cargo.lock.
+    "packages/boards/nros-board-mps3-an536-freertos",
     # Phase 212.N.7 step-4 — the `freertos-qemu-mps2-an385-bsp` baker
     # crate is retired. Its `bake_system_main_rs` + `__nros_component_*`
     # symbol-walking is gone (no in-tree consumers after step-5

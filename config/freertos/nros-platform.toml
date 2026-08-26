@@ -50,7 +50,15 @@ extra_sources = [
 # the build target wins. Was the scalar `"cortex-m3"`, which combined with that
 # profile's `target_exclude = "thumbv7em"` made every Cortex-M4F / M7 FreeRTOS
 # target unbuildable by construction.
-arch = ["cortex-m3", "cortex-m7"]
+# phase-385 W1 — `cortex-r52` was MISSING from this list. Its `[arch.*]` block
+# landed with phase-372 W1, but the resolver walks THIS list (declared order,
+# first match wins), so the profile was unreachable: an `armv8r-none-eabihf`
+# cargo build panicked with "no [arch.*] profile … admits TARGET", naming only
+# m3 and m7. The S32Z270 board never noticed because its CMake lane passes
+# `FREERTOS_CFLAGS` explicitly (`nros_armv8r_cflags_env`), which short-circuits
+# the lookup — so the gap only surfaces on a cargo-native build, which is
+# exactly what a QEMU board's `runner` needs.
+arch = ["cortex-m3", "cortex-m7", "cortex-r52"]
 compile = { opt_level = "s", warnings = false, cflags = ["-ffunction-sections", "-fdata-sections"] }
 required_env = [
   { name = "FREERTOS_DIR", help = "FreeRTOS kernel source. just setup-freertos; export FREERTOS_DIR=$PWD/third-party/freertos/kernel", validate_subdir = "include" },

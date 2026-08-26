@@ -64,6 +64,12 @@ board = "mps2-an385-freertos"
 kind = "embedded"
 board = "s32z270-freertos"
 
+# phase-385 W1 — the AN536 cell: the same entry leaf on the emulated R52, which
+# unlike the S32Z270 above can actually be booted.
+[deploy.an536]
+kind = "embedded"
+board = "mps3-an536-freertos"
+
 [deploy.threadx-linux]
 kind = "embedded"
 board = "threadx-linux"

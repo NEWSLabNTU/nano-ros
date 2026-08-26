@@ -15,12 +15,31 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+/* ---- Semihosting trap instruction ----
+ *
+ * The instruction that enters the debugger is INSTRUCTION-SET dependent, and
+ * this family is no longer Thumb-only: `bkpt #0xAB` is the T32 encoding, while
+ * an A/R-profile board running in ARM state (Cortex-R52 — phase-385) must use
+ * `svc #0x123456`. Compiled for ARM state, a `bkpt #0xAB` is not recognised as
+ * a semihosting call at all: QEMU takes a real prefetch/data abort and the
+ * image ends up spinning in the abort vector with no output — which reads as a
+ * dead image rather than a wrong console.
+ *
+ * `__thumb__` is defined by the compiler for the TU's own instruction set, so
+ * this selects correctly per board without a board-specific #define.
+ */
+#if defined(__thumb__)
+#define NROS_SEMIHOST_TRAP "bkpt #0xAB\n"
+#else
+#define NROS_SEMIHOST_TRAP "svc #0x123456\n"
+#endif
+
 /* ---- Semihosting helpers ---- */
 
 void semihosting_write0(const char *s) {
     __asm__ volatile("mov r0, #0x04\n"
                      "mov r1, %0\n"
-                     "bkpt #0xAB\n"
+                     NROS_SEMIHOST_TRAP
                      :
                      : "r"(s)
                      : "r0", "r1", "memory");

@@ -1,0 +1,58 @@
+# Phase 385 W1 — board profile descriptor. FreeRTOS on QEMU MPS3-AN536
+# (dual Cortex-R52).
+#
+# The emulated counterpart to `s32z270-freertos`: same CPU, same kernel port,
+# same toolchain file — but nothing here is licensed or consumer-provided, so
+# a clean checkout produces an image that BOOTS AND SCHEDULES. That is the
+# board's whole reason to exist: the ARMv8-R half of the FreeRTOS platform had
+# never run anywhere (no emulator models the S32Z270 RTU — issue 0772).
+#
+# The `runner` below is what makes `cargo run` and the fixture lane work.
+# Semihosting is enabled because the family's console (`_write`,
+# `nros_board_freertos_console_write` in nros-board-freertos) goes through it.
+
+[[board]]
+names = ["mps3-an536-freertos", "an536", "AN536"]
+platform = "freertos"
+toolchain = "stable"
+platform_feature = "platform-freertos"
+local_aliases = ["platform-freertos"]
+link_kind = "none"
+entry_kind = "board-run"
+supported_netstacks = ["lwip"]
+board_crate = "nros-board-mps3-an536-freertos"
+capability_features = ["safety-e2e"]
+cargo_config = '''
+[target.armv8r-none-eabihf]
+runner = "qemu-system-arm -machine mps3-an536 -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C", "link-arg=-Tan536.ld",
+    "-C", "link-arg=--nmagic",
+    "-C", "link-arg=--gc-sections",
+]
+'''
+
+[board.entry]
+crate_name = "nros_board_mps3_an536_freertos"
+signature = "#[unsafe(no_mangle)]\nextern \"C\" fn main() -> !"
+
+[board.capabilities]
+heap = true
+atomics = true
+threads = true
+
+# RFC-0048 §6 — CMake toolchain file for `nros setup`'s preset. Shared with
+# the S32Z270 board: same Cortex-R52 flags, same armv8r-none-eabihf target.
+[board.cmake]
+toolchain_file = "cmake/toolchain/arm-freertos-armcr52.cmake"
+
+# RFC-0079 — the PORT's priority address plan. Read from the port, not chosen
+# here: the family FreeRTOSConfig sets configMAX_PRIORITIES = 8, and the
+# transport band (zenoh read/lease + the lwIP poll task) sits at 4, per
+# nros-board-common/src/freertos_config.rs. Identical to the MPS2 sibling
+# because both take the family defaults unchanged.
+[board.priority_plan]
+direction = "bigger-is-urgent"
+range = [1, 7]
+reserved.transport = [4, 4]
+pool.app = [1, 3]

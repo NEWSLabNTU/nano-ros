@@ -111,9 +111,14 @@ fn board_cpp_path(board: &str) -> &str {
         // build got as far as the link before `app_main` came up undefined.
         // phase-372 W2 — the S32Z270 RTU (Cortex-R52) joins the family list;
         // same C startup ownership of `main` as every FreeRTOS board.
-        "freertos" | "mps2-an385-freertos" | "freertos-posix" | "s32z270-freertos" | "s32z270" => {
-            "::nros::board::FreertosBoard"
-        }
+        // phase-385 W1 — QEMU MPS3-AN536 joins on the same terms.
+        "freertos"
+        | "mps2-an385-freertos"
+        | "freertos-posix"
+        | "s32z270-freertos"
+        | "s32z270"
+        | "mps3-an536-freertos"
+        | "an536" => "::nros::board::FreertosBoard",
         // Phase 246 — Azure RTOS ThreadX family (threadx-linux host sim +
         // bare-metal qemu-riscv64). The board's C `startup.c` enters the kernel
         // and dispatches to the typed entry's `app_main` inside the app thread, so

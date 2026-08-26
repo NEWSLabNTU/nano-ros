@@ -1,0 +1,32 @@
+[package]
+name = "nros-board-mps3-an536-freertos"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "QEMU MPS3-AN536 (dual Cortex-R52) board crate for nros on FreeRTOS + lwIP"
+
+[lib]
+name = "nros_board_mps3_an536_freertos"
+
+[dependencies]
+# Generic FreeRTOS+lwIP+nros-platform-freertos build glue lives in
+# nros-board-freertos; its build.rs compiles the kernel/lwIP/platform
+# archives and the link-lib lines propagate transitively.
+nros-board-freertos = { path = "../nros-board-freertos" }
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["platform-freertos", "global-allocator"] }
+nros-platform-cffi = { path = "../../platform/nros-platform-cffi", default-features = false }
+# Optional zenoh transport, mirroring the family default. The board this
+# bundle exists for (ASI, phase-372) runs cyclonedds and builds with
+# `default-features = false`.
+zpico-sys = { path = "../../rmw/zenoh/zpico-sys", default-features = false, features = ["freertos", "platform-aliases"], optional = true }
+
+[build-dependencies]
+nros-board-common = { path = "../nros-board-common", features = ["build-helpers"] }
+cc = "1"
+nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:zpico-sys", "nros-board-freertos/rmw-zenoh"]
+safety-e2e = ["nros-board-freertos/safety-e2e"]

@@ -15,6 +15,11 @@ if(NOT CMAKE_TOOLCHAIN_FILE AND DEFINED NANO_ROS_BOARD)
     elseif(NANO_ROS_BOARD STREQUAL "s32z270-freertos")
         set(CMAKE_TOOLCHAIN_FILE
             "${_nros_root}/cmake/toolchain/arm-freertos-armcr52.cmake")
+    # phase-385 W1 — QEMU MPS3-AN536, the same Cortex-R52 toolchain as the
+    # S32Z270 cell above; the difference is that this one can be RUN.
+    elseif(NANO_ROS_BOARD STREQUAL "mps3-an536-freertos")
+        set(CMAKE_TOOLCHAIN_FILE
+            "${_nros_root}/cmake/toolchain/arm-freertos-armcr52.cmake")
     endif()
 endif()
 
@@ -60,6 +65,9 @@ elseif(NANO_ROS_BOARD STREQUAL "mps2-an385-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
 # phase-372 W2 — the S32Z270 cross cell reuses the same embedded FreeRTOS entry.
 elseif(NANO_ROS_BOARD STREQUAL "s32z270-freertos")
+    list(APPEND _ws_subdirs src/freertos_entry)
+# phase-385 W1 — so does the AN536 cell.
+elseif(NANO_ROS_BOARD STREQUAL "mps3-an536-freertos")
     list(APPEND _ws_subdirs src/freertos_entry)
 # phase-370 W3 — the same FreeRTOS platform on the host: no toolchain file is
 # mapped above, because the POSIX port compiles with the host compiler. That
