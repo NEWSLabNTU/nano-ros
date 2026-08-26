@@ -71,7 +71,7 @@ fn multi_tier_binary_runs_both_tiers_with_router() -> nros_tests::TestResult<()>
     let bin = multi_tier_bin()?;
     let domain = nros_tests::unique_ros_domain_id();
     let port = 17_400u16 + u16::from(domain);
-    let router = nros_tests::fixtures::ZenohRouter::start(port).expect("start zenohd router");
+    let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start(port));
     let locator = router.locator();
 
     let out = Command::new("timeout")

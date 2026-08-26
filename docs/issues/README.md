@@ -3728,6 +3728,24 @@ buffer, no lock, and no delivery on Cyclone's worker thread. Test provokes a rea
 asserting a stub. Also corrected `has_data`'s untrue "must not mutate subscription state". See
 `archived/0780-*`.
 
+Recently resolved (2026-08-26): **#0804** (testing) — `just ci-matrix` reported 7 real failures on this host
+and none was a code defect: six QEMU lanes plus one large-message lane could not find `rmw_zenohd`, because
+this machine's ROS lives in the distrobox. `ZenohRouter::start*` returns `RouterUnavailable` for exactly
+"not runnable here" and `fixtures::or_skip` is the one reading of it (skip that variant, keep every other
+router error a failure) — written for #0599 and reachable only through the `zenohd()`/`zenohd_unique()`
+rstest fixtures, while **31 direct call sites went around it with `.expect(...)`**. Same shape as #0800 one
+layer over: the mechanism existed, was documented, and nothing was wired to it. All 31 now use `or_skip`,
+the `ZenohRouter` doc example stopped teaching `.unwrap()`, and `just check-zenohd-router-skips` gates the
+class (balanced-paren aware; deliberately does not flag `unwrap_or_else(|e| skip!(...))`, which errs the
+other way). Second defect found inside the same red: #0695 derived the junit path from `CARGO_TARGET_DIR`,
+which is false on cargo-nextest 0.9.143 — the BUILD honours it, the junit still goes to
+`target/nextest/<profile>/junit.xml` — so `_nextest-tolerant` hit its "no junit means the build failed"
+branch and turned every `[SKIPPED]` in `test-zpico-multisession` into a hard red. Now both candidates are
+deleted before the run and the written one is read back, which keeps 0695's anti-staleness point without
+predicting the path. Tier 2 green after: 1695 tests, 1367 passed, 0 real failures, 328 skips (capability
+270, lane 58) — and 270 capability skips means much of tier 2 did not execute here, which is the honest
+reading. See `archived/0804-*`.
+
 Recently resolved (2026-08-26): **#0781** (rmw tech-debt) — one in-place-dispatch capability, five slots.
 Item 1 was REJECTED with a counterexample: deriving the capability from `process_raw_in_place` nullity would
 break `nros-rmw-metadata`. `RustBackendAdapter::<R>::VTABLE` is a `const`, so it installs that slot for EVERY

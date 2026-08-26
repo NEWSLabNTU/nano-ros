@@ -103,8 +103,9 @@ fn wake_latency_cortex_m3_p99_within_bound() {
     // the matching locator `tcp/10.0.2.2:7800` (issue #0317 corrected the stale
     // 7451); they must stay in lockstep. `start_slirp` binds the router on
     // `0.0.0.0` so the slirp-isolated guests reach it via gateway `10.0.2.2`.
-    let router = ZenohRouter::start_slirp(nros_tests::platform::FREERTOS.zenohd_port)
-        .expect("Failed to start zenohd (slirp)");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_slirp(
+        nros_tests::platform::FREERTOS.zenohd_port,
+    ));
 
     // Issue #0317 — TWO images: the publisher publishes on `/wake-latency`, and
     // the zenohd router delivers each sample to the SUBSCRIBER image's session as

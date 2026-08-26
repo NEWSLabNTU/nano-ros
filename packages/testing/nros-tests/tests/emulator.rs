@@ -38,8 +38,8 @@ use nros_tests::{
         build_qemu_rtic_mixed_talker, build_qemu_rtic_service_client,
         build_qemu_rtic_service_server, build_qemu_rtic_talker, build_qemu_serial_listener,
         build_qemu_serial_talker, build_qemu_talker_xrce, build_qemu_wcet_bench,
-        is_arm_toolchain_available, is_qemu_available, is_socat_available, parse_test_results,
-        qemu_binary, require_xrce_agent, require_zenoh_pico_arm,
+        is_arm_toolchain_available, is_qemu_available, is_socat_available, or_skip,
+        parse_test_results, qemu_binary, require_xrce_agent, require_zenoh_pico_arm,
     },
     platform, wait_for_port,
 };
@@ -328,7 +328,7 @@ fn test_qemu_bsp_pubsub_e2e() {
 
     // zenohd (host) is the broker both slirp-isolated instances connect out to.
     eprintln!("Starting zenohd (slirp) on {port}...");
-    let _zenohd = ZenohRouter::start_slirp(port).expect("Failed to start zenohd");
+    let _zenohd = or_skip(ZenohRouter::start_slirp(port));
 
     // Subscriber before publisher; brief settle so the listener is subscribed.
     eprintln!("Starting BSP listener QEMU...");
@@ -424,9 +424,10 @@ fn test_qemu_serial_pubsub_e2e() {
     // Start zenohd with serial listeners on the zenohd side of each pair.
     // zenohd must be ready before QEMU starts, so the InitSyn handshake succeeds.
     eprintln!("Starting zenohd with serial listeners...");
-    let _zenohd =
-        ZenohRouter::start_serial(&[&listener_pair.zenohd_path, &talker_pair.zenohd_path])
-            .expect("Failed to start zenohd with serial listeners");
+    let _zenohd = or_skip(ZenohRouter::start_serial(&[
+        &listener_pair.zenohd_path,
+        &talker_pair.zenohd_path,
+    ]));
 
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting serial listener QEMU...");
@@ -552,11 +553,10 @@ fn test_qemu_rtic_pubsub_e2e() {
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd = ZenohRouter::start_slirp(
+    let _zenohd = or_skip(ZenohRouter::start_slirp(
         platform::BAREMETAL
             .zenohd_port_for(platform::TestVariant::Pubsub, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
+    ));
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
@@ -639,11 +639,10 @@ fn test_qemu_rtic_service_e2e() {
     let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd = ZenohRouter::start_slirp(
+    let _zenohd = or_skip(ZenohRouter::start_slirp(
         platform::BAREMETAL
             .zenohd_port_for(platform::TestVariant::Service, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
+    ));
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
@@ -724,11 +723,10 @@ fn test_qemu_rtic_action_e2e() {
     let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd = ZenohRouter::start_slirp(
+    let _zenohd = or_skip(ZenohRouter::start_slirp(
         platform::BAREMETAL
             .zenohd_port_for(platform::TestVariant::Action, platform::TestLang::Rust),
-    )
-    .expect("Failed to start zenohd");
+    ));
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
@@ -826,8 +824,9 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     // Start zenohd (firmware connects via slirp gateway to host). The mixed
     // pair bakes its own allocator aux slot (phase-295 W4) — no sharing with
     // the plain RTIC / BSP / large-msg lanes.
-    let _zenohd = ZenohRouter::start_slirp(nros_tests::alloc::BAREMETAL_MIXED_PRIORITY_PORT)
-        .expect("Failed to start zenohd");
+    let _zenohd = or_skip(ZenohRouter::start_slirp(
+        nros_tests::alloc::BAREMETAL_MIXED_PRIORITY_PORT,
+    ));
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(

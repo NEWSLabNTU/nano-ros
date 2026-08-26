@@ -122,7 +122,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
 
     // Ephemeral router + unique cyclone domain (overriding the baked endpoints
     // below) so this test never collides with a concurrent one.
-    let zenohd = ZenohRouter::start_unique().expect("start ephemeral zenohd");
+    let zenohd = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let zenoh_locator = zenohd.locator();
     let domain = nros_tests::unique_ros_domain_id();
 
@@ -203,7 +203,7 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
         Err(e) => nros_tests::skip!("talker `header` fixture not prebuilt ({e})"),
     };
 
-    let zenohd = ZenohRouter::start_unique().expect("start ephemeral zenohd");
+    let zenohd = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let zenoh_locator = zenohd.locator();
     let domain = nros_tests::unique_ros_domain_id();
 

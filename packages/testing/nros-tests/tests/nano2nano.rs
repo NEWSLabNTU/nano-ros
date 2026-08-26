@@ -443,8 +443,10 @@ fn test_tls_talker_listener_communication(
     let certs = tls_certs::TlsCerts::generate().expect("Failed to generate TLS certs");
 
     // Start zenohd with TLS listener
-    let router = ZenohRouter::start_tls_unique(certs.cert_path(), certs.key_path())
-        .expect("Failed to start zenohd with TLS");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_tls_unique(
+        certs.cert_path(),
+        certs.key_path(),
+    ));
     let locator = router.locator();
     eprintln!("TLS router at: {}", locator);
 

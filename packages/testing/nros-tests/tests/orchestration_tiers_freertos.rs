@@ -141,8 +141,8 @@ fn multi_tier_freertos_firmware_connects_over_slirp_and_runs_tiers() -> nros_tes
     // alias). Issue 0342: this was a bare `7447`, the only such literal among 14
     // `start_slirp` call sites, and it sat inside another platform's window.
     assert_fixture_port();
-    let _router = nros_tests::fixtures::ZenohRouter::start_slirp(ROUTER_PORT)
-        .expect("start slirp zenohd router");
+    let _router =
+        nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_slirp(ROUTER_PORT));
 
     let mut qemu = nros_tests::qemu::QemuProcess::start_mps2_an385_networked(&bin)
         .expect("boot multi-tier freertos firmware on QEMU");

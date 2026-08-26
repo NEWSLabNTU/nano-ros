@@ -197,8 +197,7 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     // the firmware at `tcp/10.0.2.2:<port>` (slirp host alias), so
     // `Executor::open` connects here instead of hanging on an unreachable
     // locator (#46/#48).
-    let _router = ZenohRouter::start_slirp(entry_zenohd_port(entry))
-        .expect("start slirp zenohd router for the FreeRTOS Entry pkg");
+    let _router = nros_tests::fixtures::or_skip(ZenohRouter::start_slirp(entry_zenohd_port(entry)));
 
     // Spawn under QEMU MPS2-AN385 with slirp LAN9118 networking — same
     // shape `QemuProcess::start_mps2_an385_networked` uses for the

@@ -112,7 +112,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
         .expect("native Rust workspace Entry fixture");
     let talker = nros_tests::fixtures::build_native_talker()
         .expect("native Rust talker fixture for workspace E2E publisher");
-    let router = nros_tests::fixtures::ZenohRouter::start_unique().expect("start zenohd");
+    let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_unique());
 
     let mut cmd = Command::new(entry);
     cmd.env("NROS_LOCATOR", router.locator())

@@ -192,9 +192,12 @@ fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestRe
 /// # Example
 ///
 /// ```ignore
-/// use nros_tests::fixtures::ZenohRouter;
+/// use nros_tests::fixtures::{ZenohRouter, or_skip};
 ///
-/// let router = ZenohRouter::start_unique().unwrap();
+/// // `or_skip`, never `.unwrap()`: a host with no `rmw_zenohd` must SKIP the
+/// // lane, and only `or_skip` tells that apart from a router that is present
+/// // and refuses to start (issues 0599, 0804).
+/// let router = or_skip(ZenohRouter::start_unique());
 /// println!("Router at: {}", router.locator());
 /// // Router is automatically stopped when dropped
 /// ```

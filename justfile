@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-zenohd-router-skips check-single-rust-staticlib check-cli-source-dirs check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -2193,7 +2193,10 @@ _nextest-tolerant +nextest_args:
     # CARGO_TARGET_DIR (test-zpico-multisession) has its junit there, and
     # reading `target/nextest/default/junit.xml` here would tally whatever
     # unrelated run last wrote it.
-    junit="$(nros_nextest_junit_path)"
+    # Clear every candidate first, then read back whichever nextest wrote:
+    # the store does NOT follow CARGO_TARGET_DIR (see nextest-profile.sh), so
+    # the path cannot be predicted before the run.
+    nros_nextest_junit_reset
     # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
     # (missing fixture/binary/emulator) — nextest has no native skip, so those
     # count as failures and exit non-zero. Treat a run as passing iff there are
@@ -2203,6 +2206,7 @@ _nextest-tolerant +nextest_args:
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
     rc=$?
     set -e
+    junit="$(nros_nextest_junit_path)"
     # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
     just _rewrite-skipped-junit "$junit" || true
     [ $rc -eq 0 ] && exit 0
@@ -2426,7 +2430,6 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
     cargo_nextest_args=($(nros_cargo_nextest_args))
     nextest_run_profile_args=($(nros_nextest_run_profile_args))
     nextest_fail_fast_args=($(nros_nextest_fail_fast_args))
-    junit="$(nros_nextest_junit_path)"
     set +e
     failed=0
     # Issue #57: exclude the QEMU/Zephyr e2e binaries by binary() too — nextest
@@ -2443,9 +2446,12 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
     nros_nextest_record_begin test
     nros_nextest_record_write_command \
         cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
-    rm -f "$junit"
+    nros_nextest_junit_reset
     cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
+    # Read back whichever candidate nextest wrote — the store does not follow
+    # CARGO_TARGET_DIR, so this cannot be resolved before the run.
+    junit="$(nros_nextest_junit_path)"
     # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying so
     # downstream junit consumers (CI dashboards, _count-real-failures, etc.)
     # see them as native skips rather than failures.
@@ -3058,7 +3064,6 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     cargo_nextest_args=($(nros_cargo_nextest_args))
     nextest_run_profile_args=($(nros_nextest_run_profile_args))
     nextest_fail_fast_args=($(nros_nextest_fail_fast_args))
-    junit="$(nros_nextest_junit_path)"
     set +e
     failed=0
     just init-test-logs
@@ -3160,9 +3165,12 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     nros_nextest_record_begin test-all
     nros_nextest_record_write_command \
         cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
-    rm -f "$junit"
+    nros_nextest_junit_reset
     cargo nextest run "${cargo_nextest_args[@]}" "${NROS_NEXTEST_RECORD_ARGS[@]}" "${args[@]}"
     nextest_exit=$?
+    # Read back whichever candidate nextest wrote — the store does not follow
+    # CARGO_TARGET_DIR, so this cannot be resolved before the run.
+    junit="$(nros_nextest_junit_path)"
     # Phase 214.R.1: rewrite [SKIPPED] failures → <skipped> before tallying.
     just _rewrite-skipped-junit "$junit" || true
     real_failures=$(just _count-real-failures "$junit")
@@ -3736,6 +3744,15 @@ check-rmw-alloc-sites:
 check-rmw-slot-producers:
     @python3 scripts/check-rmw-slot-producers.py --self-test
     @python3 scripts/check-rmw-slot-producers.py --check
+
+# issue 0804 — `ZenohRouter::start*(...).expect(...)` turns "this host has no ROS
+# router" into a test failure. `fixtures::or_skip` is the one reading of
+# `RouterUnavailable` (skip), and it keeps every other router error a failure.
+# 31 sites went around it, which is why tier 2 reported 7 real failures on a
+# host whose ROS lives in a distrobox. Source-only, fast line.
+check-zenohd-router-skips:
+    @python3 scripts/check-zenohd-router-skips.py --self-test
+    @python3 scripts/check-zenohd-router-skips.py
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and

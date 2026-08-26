@@ -10,8 +10,8 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, ZenohRouter, qemu_large_msg_test_binary, require_xrce_agent,
-        require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary,
+        ManagedProcess, XrceAgent, ZenohRouter, or_skip, qemu_large_msg_test_binary,
+        require_xrce_agent, require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary,
         zenoh_stress_test_large_buf_binary, zenohd_unique,
     },
 };
@@ -661,8 +661,9 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     // The bench firmware bakes its own allocator aux slot (phase-295 W4) —
     // nothing else shares this router, so the test runs parallel to the
     // other bare-metal QEMU lanes.
-    let _zenohd = ZenohRouter::start_slirp(nros_tests::alloc::BAREMETAL_LARGE_MSG_PORT)
-        .expect("Failed to start zenohd");
+    let _zenohd = or_skip(ZenohRouter::start_slirp(
+        nros_tests::alloc::BAREMETAL_LARGE_MSG_PORT,
+    ));
 
     let mut cmd = nros_tests::qemu::qemu_system_arm_cmd();
     cmd.args([

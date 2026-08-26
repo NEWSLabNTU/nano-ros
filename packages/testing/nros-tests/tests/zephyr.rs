@@ -256,7 +256,7 @@ fn setup_isolation(cell: &Cell) -> (IsoGuard, Option<String>) {
     let lang = cell.lang.as_test_lang();
     match cell.iso {
         Iso::EphemeralZenohd => {
-            let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+            let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
             let locator = router.locator();
             eprintln!("[{}] ephemeral zenohd on {locator}", cell.id());
             (IsoGuard::Router(router), Some(locator))
@@ -265,7 +265,7 @@ fn setup_isolation(cell: &Cell) -> (IsoGuard, Option<String>) {
             // Baked router port — the allocator's number, which is also
             // the fixture's locator bake.
             let port = platform::ZEPHYR.zenohd_port_for(variant, lang);
-            let router = ZenohRouter::start(port).expect("Failed to start zenohd");
+            let router = nros_tests::fixtures::or_skip(ZenohRouter::start(port));
             eprintln!("[{}] zenohd on baked port {port}", cell.id());
             (IsoGuard::Router(router), None)
         }
@@ -838,7 +838,7 @@ fn test_zephyr_to_native_e2e() {
     // `-testargs --nros-locator` dial THIS router), so this test no longer needs
     // the fixed per-(variant,lang) port and can run parallel with its siblings.
     eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     eprintln!("zenohd locator: {locator}");
 
@@ -936,7 +936,7 @@ fn test_native_to_zephyr_e2e() {
 
     // #166 / phase-286 W1 — per-test ephemeral zenohd + locator override.
     eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     eprintln!("zenohd locator: {locator}");
 
@@ -1036,7 +1036,7 @@ fn test_bidirectional_native_zephyr_e2e() {
     // four peers dial THIS router: natives via NROS_LOCATOR, Zephyr images via
     // `-testargs --nros-locator`).
     eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     eprintln!("zenohd locator: {locator}");
 
@@ -1202,7 +1202,7 @@ fn test_native_server_zephyr_client() {
     // Start zenohd router
     // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
     eprintln!("Starting per-test zenohd router (ephemeral, #166)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     eprintln!("zenohd locator: {locator}");
 
@@ -1328,7 +1328,7 @@ fn test_zephyr_server_native_client() {
     // Start zenohd router
     eprintln!("Starting zenohd router...");
     // #166 / phase-286 W1 slice 4 — per-test ephemeral zenohd + locator override.
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     eprintln!("zenohd locator: {locator}");
 
@@ -1429,7 +1429,7 @@ fn test_zephyr_cpp_talker_to_native_listener() {
     }
 
     // #166 / phase-286 W1 slice 2 — per-test ephemeral zenohd + locator override.
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     // Build native Rust listener
     let native_listener = match build_native_listener() {
@@ -1509,7 +1509,7 @@ fn test_native_talker_to_zephyr_cpp_listener() {
     }
 
     // #166 / phase-286 W1 slice 2 — per-test ephemeral zenohd + locator override.
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     // Build native Rust talker
     let native_talker = match build_native_talker() {
@@ -1628,7 +1628,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // `zephyr_component_main!`), so this test dials its own ephemeral router
     // instead of the shared baked rust-pubsub port — no longer serial.
     eprintln!("Starting per-test zenohd router (ephemeral port)...");
-    let router = ZenohRouter::start_unique().expect("Failed to start zenohd");
+    let router = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let locator = router.locator();
     eprintln!("zenohd started on {locator}");
 

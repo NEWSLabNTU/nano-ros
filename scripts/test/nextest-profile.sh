@@ -24,13 +24,52 @@ nros_nextest_fail_fast_args() {
     fi
 }
 
+# Every place nextest might have written the junit, most-specific first.
+#
+# issue 0695 assumed the store follows CARGO_TARGET_DIR
+# (`<target-dir>/nextest/<profile>/junit.xml`). It does not, at least through
+# cargo-nextest 0.9.143: with CARGO_TARGET_DIR exported, the BUILD honours it
+# (binaries land in `target-zpico-multisession/<profile>/deps/`) and the junit
+# still goes to `target/nextest/<profile>/junit.xml`. The derived path
+# therefore named a file that never appeared, `_nextest-tolerant` took its
+# "no junit means the build failed" branch, and every `[SKIPPED]` precondition
+# in `test-zpico-multisession` became a hard red — which is how tier 2 failed
+# on a host with no ROS, where those tests are supposed to skip.
+#
+# Both are listed rather than picking one, because which nextest uses is a
+# property of the version, and pinning the wrong one fails silently in exactly
+# the direction that reads as a real test failure.
+nros_nextest_junit_candidates() {
+    local profile
+    profile="$(nros_nextest_run_profile_name)"
+    if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+        printf '%s/nextest/%s/junit.xml\n' "$CARGO_TARGET_DIR" "$profile"
+    fi
+    printf 'target/nextest/%s/junit.xml\n' "$profile"
+}
+
+# Clear every candidate BEFORE a run. This is what keeps 0695's real concern
+# answered — a reader must never tally whatever unrelated run last wrote the
+# default path — now that the path cannot be predicted from the target dir.
+nros_nextest_junit_reset() {
+    local candidate
+    while IFS= read -r candidate; do
+        [ -n "$candidate" ] && rm -f "$candidate"
+    done < <(nros_nextest_junit_candidates)
+}
+
+# The junit nextest actually wrote, or — when none exists yet — the first
+# candidate, so a caller's `[ ! -f "$junit" ]` build-failure guard still trips.
 nros_nextest_junit_path() {
-    # issue 0695 — nextest stores junit under the TARGET DIR
-    # (`<target-dir>/nextest/<profile>/junit.xml`), so a lane that exports a
-    # scoped CARGO_TARGET_DIR (`test-zpico-multisession`, issue 0400) writes
-    # its junit there. A hardcoded `target/` here made the skip-tolerant
-    # readers inspect whatever unrelated run last wrote the default path.
-    printf '%s/nextest/%s/junit.xml\n' "${CARGO_TARGET_DIR:-target}" "$(nros_nextest_run_profile_name)"
+    local candidate first=""
+    while IFS= read -r candidate; do
+        [ -z "$first" ] && first="$candidate"
+        if [ -f "$candidate" ]; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done < <(nros_nextest_junit_candidates)
+    printf '%s\n' "$first"
 }
 
 nros_nextest_record_enabled() {

@@ -281,7 +281,7 @@ fn test_router_reconnect() {
     let listener_binary = build_native_listener().expect("Failed to build listener");
 
     // Allocate an ephemeral port for this test (avoids collisions with parallel tests)
-    let router1 = ZenohRouter::start_unique().expect("Failed to start router");
+    let router1 = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());
     let port = router1.port();
     let locator = router1.locator();
 
@@ -333,7 +333,7 @@ fn test_router_reconnect() {
     assert!(received1 >= 1, "Phase 1 should have received messages");
 
     // Phase 2: Restart router and verify communication resumes
-    let _router2 = ZenohRouter::start(port).expect("Failed to restart router");
+    let _router2 = nros_tests::fixtures::or_skip(ZenohRouter::start(port));
 
     let mut listener2_cmd = Command::new(listener_binary);
     listener2_cmd
