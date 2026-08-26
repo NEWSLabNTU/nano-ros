@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
+
+**#0811** (platform, open 2026-08-26) — `ep->iptcp` is allocated by two different allocators and always freed by one of them. See `0811-*`.
+
+**#0812** (api, open 2026-08-26) — `nros_publisher_loan` heap-allocates a Box per loan, putting a malloc on the ZERO-COPY path. See `0812-*`.
+
+**#0813** (rmw, open 2026-08-26) — `ZENOH_TX_BUF` is a bare const, so the loan path's 1 KiB ceiling is neither tunable nor visible in the pool inventory. See `0813-*`.
+
+**#0814** (rmw, open 2026-08-26) — the whole zero-copy surface sits behind `feature = "lending"`, which only a posix test crate ever enables. See `0814-*`.
+
+**#0815** (tooling, open 2026-08-26) — the static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure. See `0815-*`.
+
+**#0816** (tooling, open 2026-08-26) — the book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property. See `0816-*`.
+
 Recently resolved (2026-08-26): **#0817** (platform) — sixteen allocation sites in the Zephyr port
 called `k_malloc`/`k_free` directly instead of the `nros_platform_alloc` funnel RFC-0034 D6 defines
 (net.c's local sockaddr + addrinfo, timer.c's handle, platform.c's mutex/condvar/task control
