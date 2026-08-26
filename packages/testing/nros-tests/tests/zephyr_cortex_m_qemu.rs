@@ -98,12 +98,23 @@ fn run_pubsub_cell(lang: &str, matrix_lang: Lang, wait_marker: &str, budget: Dur
         nros_tests::skip!("zenohd not found — run `just setup` / source ./activate.sh");
     }
 
+    // issue 0807 — this used to `skip!` on ANY resolver error, with a message
+    // that said "not prebuilt" whatever the cause. Two things were wrong with
+    // that. Since issue 0584 an absent IN-LANE fixture is a hard failure, not a
+    // skip: the run is gated, so the build already promised these exist.
+    // And the resolver's other verdict is STALE, which the skip relabelled as
+    // missing — so a stale image reported as "not prebuilt", was filtered out
+    // as a setup condition, and the cell silently stopped running. It sat that
+    // way through five consecutive stale verdicts (issue 0806).
+    //
+    // Out-of-lane is already handled INSIDE the resolver, which raises its own
+    // `[SKIPPED]`, so anything that reaches this `Err` is a genuine failure and
+    // must be loud.
     let binary = build_zephyr_cortex_m_example(lang, "talker", Rmw::Zenoh).unwrap_or_else(|e| {
-        nros_tests::skip!(
-            "zephyr/{}/talker for mps2_an385 not prebuilt; run \
-             `just zephyr build-fixtures` first: {:?}",
-            lang,
-            e
+        panic!(
+            "zephyr/{lang}/talker for mps2_an385 did not resolve. The lane gate \
+             already asserted this fixture is built, so this is a real failure, \
+             not a setup condition — read the verdict before rebuilding: {e:?}"
         )
     });
 

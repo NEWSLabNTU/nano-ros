@@ -326,8 +326,32 @@ pub(crate) fn hash_file_content(path: &Path) -> Option<u64> {
 /// content-hashed; a moved mtime with an unchanged hash is an artifact (not
 /// stale), a changed hash or a newly-appearing file is a real edit (stale).
 /// Atomically (temp + rename) write the source baseline sidecar.
-fn write_srcbaseline(path: &Path, bin_hash: u64, files: &[PathBuf]) {
-    let mut out = format!("bin {bin_hash}\n");
+/// Nanosecond mtime of a path, if it can be read.
+fn mtime_nanos(p: &Path) -> Option<u128> {
+    Some(
+        p.metadata()
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_nanos(),
+    )
+}
+
+fn write_srcbaseline(path: &Path, binary_path: &Path, bin_hash: u64, files: &[PathBuf]) {
+    let bin_mtime = mtime_nanos(binary_path);
+    // issue 0806 — the binary's MTIME rides along with its hash. The hash alone
+    // cannot answer "was this rebuilt?" when the build is REPRODUCIBLE: a
+    // rebuild that emits identical bytes leaves the hash equal, the baseline
+    // unrefreshed, and every source that moved before it permanently "changed".
+    // A build OUTPUT is the one artifact whose mtime is trustworthy here —
+    // git rewrites source mtimes (the treadmill this whole content-aware path
+    // exists for) and never touches build outputs.
+    let mut out = match bin_mtime {
+        Some(m) => format!("bin {bin_hash} {m}\n"),
+        None => format!("bin {bin_hash}\n"),
+    };
     for f in files {
         let Ok(meta) = f.metadata() else { continue };
         let Some(mtime) = meta
@@ -394,12 +418,16 @@ pub(crate) fn candidates_changed_content_policy(
 
     // Parse baseline: first line `bin <hash>`, then `<mtime_nanos> <size> <hash> <path>`.
     let mut stored_bin: Option<u64> = None;
+    let mut stored_bin_mtime: Option<u128> = None;
     let mut stored: std::collections::HashMap<PathBuf, (u128, u64, u64)> =
         std::collections::HashMap::new();
     if let Some(text) = &baseline {
         for line in text.lines() {
             if let Some(rest) = line.strip_prefix("bin ") {
-                stored_bin = rest.trim().parse().ok();
+                // `bin <hash>` (pre-0806) or `bin <hash> <mtime_nanos>`.
+                let mut it = rest.trim().split(' ');
+                stored_bin = it.next().and_then(|h| h.parse().ok());
+                stored_bin_mtime = it.next().and_then(|m| m.parse().ok());
                 continue;
             }
             let mut it = line.splitn(4, ' ');
@@ -435,9 +463,52 @@ pub(crate) fn candidates_changed_content_policy(
     // (`a_stale_verdict_reports_its_own_reasoning_and_its_age`) catches exactly
     // that. `first_sight_is_fresh` names the choice at each call site instead of
     // hiding it here.
-    if stored_bin != Some(bin_hash) {
+    // issue 0806 — "was it rebuilt?" is TWO questions, and the hash answers only
+    // one. A REPRODUCIBLE build that emits identical bytes leaves the hash
+    // equal, so the baseline never refreshes and every source that moved before
+    // it stays "changed" forever: the verdict is absorbing, and no number of
+    // rebuilds clears it (measured at four consecutive STALE verdicts on
+    // `build-cortex-m-c-talker-zenoh`, whose baseline was two rebuilds old).
+    //
+    // The binary's MTIME closes it. This is the one artifact whose mtime can be
+    // trusted: git rewrites SOURCE mtimes — the treadmill this whole
+    // content-aware path exists to survive — and never touches build outputs.
+    //
+    // Only consulted when the baseline actually carries one, so pre-0806
+    // baselines keep the hash-only behaviour and self-heal on their next
+    // rebuild instead of all going stale at once.
+    let bin_mtime = mtime_nanos(binary_path);
+
+    // The decisive case, and the one the baseline cannot express: an artifact
+    // NEWER THAN EVERY INPUT is fresh by definition — the build ran after the
+    // last source touch, whatever the bytes came out as. Checking this FIRST is
+    // what makes a reproducible rebuild able to clear a verdict at all; the
+    // content machinery below exists only to adjudicate the opposite case,
+    // where a source genuinely looks newer and we must tell a real edit from a
+    // git-induced mtime bump.
+    //
+    // Without it the probe is ABSORBING: hash equal => baseline never
+    // refreshed => sources that moved before the last build stay "changed"
+    // forever. Measured at five consecutive STALE verdicts on
+    // `build-cortex-m-c-talker-zenoh` across two full rebuilds, with nothing
+    // under any watched path newer than the image.
+    if let Some(bin_m) = bin_mtime
+        && files
+            .iter()
+            .filter_map(|f| mtime_nanos(f))
+            .all(|src_m| src_m <= bin_m)
+    {
+        write_srcbaseline(&baseline_path, binary_path, bin_hash, &files);
+        return Some(false);
+    }
+
+    let rebuilt = match (stored_bin_mtime, bin_mtime) {
+        (Some(stored), Some(now)) => stored_bin != Some(bin_hash) || stored != now,
+        _ => stored_bin != Some(bin_hash),
+    };
+    if rebuilt {
         if first_sight_is_fresh {
-            write_srcbaseline(&baseline_path, bin_hash, &files);
+            write_srcbaseline(&baseline_path, binary_path, bin_hash, &files);
             return Some(false);
         }
         // A stale verdict verifies NOTHING, so it must not leave a baseline
@@ -476,7 +547,7 @@ pub(crate) fn candidates_changed_content_policy(
         }
     }
     if refreshed {
-        write_srcbaseline(&baseline_path, bin_hash, &files);
+        write_srcbaseline(&baseline_path, binary_path, bin_hash, &files);
     }
     Some(false)
 }

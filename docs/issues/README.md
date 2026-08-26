@@ -51,6 +51,29 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-26): **#0806** (testing) — a REPRODUCIBLE rebuild could not clear a STALE
+verdict. `candidates_changed_content_policy` refreshed its `.nros-srcbaseline` only when the
+artifact's own content HASH changed, which answers "were these bytes produced by a different
+compilation?" and not "did a build run after those sources changed?" — different questions whenever
+the build is reproducible, which ours is on purpose. A source edit that does not reach an image left
+the hash equal, the baseline frozen, and that source permanently "changed": five consecutive STALE
+verdicts on `build-cortex-m-c-talker-zenoh` across two full `just zephyr build-fixtures` runs, with
+`find -newer` returning nothing under any watched path and the baseline mtime two rebuilds old.
+Issue 0445's absorbing shape with a new cause; CLAUDE.md's "suspect the probe" rule was right. Fixed
+by checking FIRST that the artifact is newer than every input — fresh by definition — and leaving the
+content machinery to its actual job, telling a real edit from 0764's mtime treadmill. Verified all
+three ways (reproducible rebuild → fresh, real edit → STALE, edit reverted → fresh), because a probe
+that forgives everything is issue 0196. See `archived/0806-*`. (2026-08-26)
+
+Recently resolved (2026-08-26): **#0807** (testing) — the Cortex-M cells wrapped EVERY resolver error
+in `skip!("… not prebuilt …")`, which both skipped where issue 0584 requires a hard failure (the lane
+gate has already asserted in-lane fixtures exist) and RELABELLED the error: the resolver's other
+verdict is STALE, not missing. That string is load-bearing — `fixtures/binaries/mod.rs` filters skips
+on `msg.contains("not prebuilt")` and `_count-real-failures` drops them — so a stale image was
+laundered into a setup condition and vanished from the summary, hiding 0806 for five verdicts while
+the cell ran nothing at all. Now panics with the real verdict quoted; verified by mutation that a
+stale fixture fails loudly with no `[SKIPPED]` anywhere. See `archived/0807-*`. (2026-08-26)
+
 Recently resolved (2026-08-26): **#0802** (verification/ci) — `just verification kani` installed an
 UNPINNED `kani-verifier`, so the prover behind every harness was whatever crates.io published that
 day (`--locked` pins the crate's dependency graph, NOT its version). That is 0.67.0, whose
