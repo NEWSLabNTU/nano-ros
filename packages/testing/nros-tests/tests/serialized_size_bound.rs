@@ -357,22 +357,30 @@ fn buffer_fits_is_const_and_refuses_unbounded_types() {
     const FITS: bool = buffer_fits::<Time>(1024, EncodingVersion::Xcdr1);
     const TIGHT: bool = buffer_fits::<Time>(12, EncodingVersion::Xcdr1);
     const TOO_SMALL: bool = buffer_fits::<Time>(11, EncodingVersion::Xcdr1);
-    assert!(FITS);
-    assert!(
-        TIGHT,
-        "Time is exactly 12 bytes under XCDR1, so 12 must fit"
-    );
-    assert!(!TOO_SMALL, "11 must not fit a 12-byte type");
+    // `const { assert!(..) }` rather than a runtime `assert!`, which is what the
+    // comment above asks for — these fail the BUILD instead of a test run — and
+    // also what rust 1.97's `clippy::assertions_on_constants` requires, since a
+    // runtime assert on a const-evaluable expression is checked far too late.
+    const { assert!(FITS) };
+    const {
+        assert!(
+            TIGHT,
+            "Time is exactly 12 bytes under XCDR1, so 12 must fit"
+        )
+    };
+    const { assert!(!TOO_SMALL, "11 must not fit a 12-byte type") };
 
     // XCDR2 is larger (DHEADER), so a buffer sized from XCDR1 alone is a trap
     // the two-constant design exists to expose.
-    assert!(!buffer_fits::<Time>(12, EncodingVersion::Xcdr2));
+    const { assert!(!buffer_fits::<Time>(12, EncodingVersion::Xcdr2)) };
 
     // Unbounded => false, never an optimistic guess.
-    assert!(
-        !buffer_fits::<Header>(usize::MAX, EncodingVersion::Xcdr1),
-        "no finite buffer fits an unbounded type; the honest answer is false"
-    );
+    const {
+        assert!(
+            !buffer_fits::<Header>(usize::MAX, EncodingVersion::Xcdr1),
+            "no finite buffer fits an unbounded type; the honest answer is false"
+        )
+    };
 }
 
 /// Phase 380 W5 — loan eligibility is `plain`, and `plain` means the size is
@@ -384,7 +392,8 @@ fn loan_eligibility_tracks_plain() {
     type Header = nros_std_msgs_diag::msg::Header;
 
     const TIME_LOANABLE: bool = is_loan_eligible::<Time>();
-    assert!(TIME_LOANABLE, "Time is two fixed integers — fixed layout");
+    // Const-evaluable, so it is checked at build time — see the note above.
+    const { assert!(TIME_LOANABLE, "Time is two fixed integers — fixed layout") };
     assert!(
         !is_loan_eligible::<Header>(),
         "Header has a string; a loan would hand out a pointer into a layout that          is not fixed"
