@@ -147,6 +147,34 @@ Recorded rather than deleted because the draft was written from the client-side
 API alone, and reading the Agent's serializer — twenty minutes — would have
 saved the whole design.
 
+## The ceiling is NOT unique to XRCE — but the SILENCE is (2026-08-26)
+
+An earlier revision of this phase asserted the 1024 limit was "the Agent's
+alone". Measured, it is not, and the correction changes what Track A is for.
+
+| run | result |
+| --- | --- |
+| zenoh, 2048-byte payload, default 1024 rx buffer | FAIL — `overflow_drops=20` |
+| zenoh, 4096-byte payload, LARGE rx buffer fixture | **PASS** |
+| XRCE, 2048-byte payload | FAIL — `received=0`, no drops counted |
+
+Three differences, and each one matters:
+
+* **Cause.** Zenoh stops at OUR `NROS_SUBSCRIPTION_BUFFER_SIZE` (1024 by
+  default). XRCE stops at the AGENT's `m_typeSize`, traced above.
+* **Configurability.** Zenoh's ceiling is raisable and raising it works — 4096
+  delivers. XRCE's is not reachable from this repo at all, so the knob an
+  integrator would try first, and which `report_dropped_take` explicitly tells
+  them to raise, cannot help them. That is worth saying out loud in the book.
+* **Observability.** Zenoh COUNTS the loss (`overflow_drops=20`) — that is
+  issue 0757's fix working. XRCE reports nothing: the sample is acknowledged by
+  the XRCE reliability layer and dropped inside the Agent, so no counter on
+  either side of our code ever sees it.
+
+So Track A is not "XRCE is uniquely limited". It is **"XRCE is the one that
+loses data without saying so, and its limit is the one the user cannot raise"**.
+That is a narrower claim and the one the evidence supports.
+
 ## Redesign
 
 The ceiling is in the Agent, so a real fix is Agent-side, and the Agent is
@@ -185,9 +213,11 @@ ceiling fails the build, naming the ceiling and the type. Reuse
 constant belongs beside the XRCE backend, not in the generic core, because it is
 that transport's limit and not a property of messages.
 
-**Acceptance:** a build that fails for a >1024-byte bounded type over XRCE and
-passes for the same type over another backend, since the ceiling is the Agent's
-alone.
+**Acceptance:** a build that fails for a >1024-byte bounded type over XRCE,
+naming the ceiling and the type.
+
+NOT "and passes over another backend" — that was in an earlier draft of this
+item and it is false; see the comparison below.
 
 **W2 — the regression test.** Commit the measurement above as a test: publish
 above the ceiling and assert delivery is refused loudly rather than silently
