@@ -890,7 +890,7 @@ requirements the waves must carry.
 | **F3** | conf fragments are per-image, not per-board | D10 — **corrected above** |
 | **F4** | a cargo member with **no `package.xml`** is invisible to the walk | D1 stage 1 |
 | **F5** | a real root carries a preamble (`find_package(Eigen3)`) and **conditional** packages | D3 |
-| **F6** | a project may own its `main` permanently, plus `.ld` fragments and `.S` | D5, D12 |
+| **F6** | a project may own its `main` permanently, plus `.ld` fragments and `.S` | D5, D12 — **evidence moved upstream, see below** |
 | **F7** | a workspace may declare **several bringups** | D1, D6 |
 | **F8** | a bringup may have **variant system configs** | D6 |
 | **F9** | a vendored nano-ros checkout inside the workspace needs `.nros-ignore` honoured | D1 stage 1 |
@@ -910,15 +910,26 @@ is derivable. The generated root therefore needs a **user preamble hook** and
 must treat a package's own self-gating as normal — a package that excludes
 itself is not an error.
 
-**F6 — `materialize` is a steady state, not an escape.** ASI's
-`actuation_module/freertos_s32z2/` carries `freertos_main.cpp`, `board_init.c`,
-`lwip_bringup.c`, `newlib_stubs.c`, `operator_new.cpp`, `cp15_arm.S` and **four
-linker-script fragments** (`discard_unwind.ld`, `node_stack_in_sram.ld`,
-`netc_bd_no_cacheable.ld`). Two consequences: D5's shape stamp must be a
-*warning*, never an error, because this project will carry a materialised entry
-forever by design; and **D12 covers libraries but not linker fragments** —
-Zephyr's `zephyr_linker_sources()` is the seam those need, and
-`nano_ros_support_library` must grow an equivalent.
+**F6 — `materialize` is a steady state, not an escape.** When observed (ASI
+`1b71a84`), `actuation_module/freertos_s32z2/` carried `freertos_main.cpp`,
+`board_init.c`, `lwip_bringup.c`, `newlib_stubs.c`, `operator_new.cpp`,
+`cp15_arm.S` and four `.ld` fragments. Two consequences follow: D5's shape stamp
+must WARN rather than error, because such a project carries a materialised entry
+forever by design; and **D12 covers libraries but not linker fragments**, so
+`nano_ros_support_library` needs a `LINKER_FRAGMENTS` seam.
+
+> **Evidence moved, 2026-08-26.** By ASI `3ad3cdb` that directory is **gone** —
+> the lane was restructured upstream and the hand-written entry with it. So "a
+> downstream will own its entry forever" is no longer supported by the example
+> that produced it, and this finding is weaker than first recorded.
+>
+> What survives argues the same way: ASI keeps `prj_actuation.conf`,
+> `tracing.conf`, `tracing_stats.conf` and `nano_ros_overlay.conf` — F3's
+> concern-named, per-image conf sets, unchanged. And both design consequences
+> are independently justified and cheap: a stamp that warns costs nothing if
+> nobody needs it, and linker fragments are needed by any vendor BSP, not only
+> by ASI. Neither should be revisited on this news; both should stop citing a
+> file list that no longer exists.
 
 **F7/F8 — bringups are plural, and have variants.** `nano-ros-rt-eval` declares
 `demo_bringup` **and** `load_bringup`, each with its own `system.toml`; and

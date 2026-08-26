@@ -325,8 +325,20 @@ Carries **F6**.
       3.22, so `$<LINK_LIBRARY:WHOLE_ARCHIVE,…>` (3.24+) is unavailable; owning
       the spelling means the floor can rise later with no user edit.
 - [x] **W7.f** Add `LINKER_FRAGMENTS` to the same function. **F6**: D12 covered
-      libraries but not `.ld` fragments, and ASI has four. Zephyr's
-      `zephyr_linker_sources()` is the seam.
+      libraries but not `.ld` fragments.
+
+      **Two corrections found while implementing (2026-08-26).** *The seam is
+      not primarily Zephyr's:* this item said "`zephyr_linker_sources()` is the
+      seam", but the motivating fragments belong to ASI's **s32z2 FreeRTOS**
+      lane, where that command does not exist. The non-Zephyr path —
+      `-L<fragment-dir>` plus `LINK_DEPENDS`, the idiom
+      `nano-ros-board-mps2-an385-freertos.cmake` already uses — is the PRIMARY
+      seam and Zephyr's is the alternate. Both are implemented; followed
+      literally, the wording would have put the motivating case on the fallback.
+      *And `zephyr_linker_sources()` takes a location argument* (`SECTIONS`,
+      `ROM_START`, `NOCACHE_SECTION`, …) the drafted signature had no slot for —
+      a no-cache buffer fragment is exactly one needing a non-default location.
+      Hence `ZEPHYR_SECTION`, defaulting to `SECTIONS`.
 
 ---
 
