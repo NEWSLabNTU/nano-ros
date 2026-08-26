@@ -157,7 +157,26 @@ entity made through a node HANDLE still declared on domain 0 while the arena pat
 one — the split surviving one constructor over. `loan_e2e` sits on that seam (publishes via handle,
 subscribes via arena) and so delivered on domain 0 and on NO other domain; it had been green only
 because both halves were uniformly wrong. See `archived/0801-*`. (2026-08-26)
-**#0803** (platform, open 2026-08-26) — POSIX states a reserved transport band of `90..99` (RFC-0079 / #0765) and prints `transport tasks at SCHED_FIFO 90` at boot, but the zenoh read and lease threads actually run at SCHED_FIFO **1** — below both application tiers (10 and 80). So POSIX ships #0623's inversion: the app preempts the link it publishes over. Measured with `cap_sys_nice+ep` granted, one CPU, three reps per arm: requesting 90, 40 or 5 gives byte-identical kernel tables, while skipping the call leaves the threads SCHED_OTHER — the path is live and the value is discarded. Control threads spawned from the very same attr objects DO land on FIFO 90, so glibc, the capability and the attr are all sound; the loss is inside the transport path. Hid because the POLICY is right and only the number is wrong, and the boot line reports the REQUESTED priority rather than the achieved one. See `0803-*`. (2026-08-26)
+Recently resolved (2026-08-27): **#0803** (platform) — POSIX announced a reserved transport band of
+SCHED_FIFO 90 and the kernel ran the zenoh read/lease threads at **1**, below every tier, so the app
+preempted the link it publishes over. Cause: `platform_aliases.c` supplies `_z_task_init` on every build but
+ThreadX and forwards `task_attributes` to `nros_platform_task_init`, which reads it as
+`nros_platform_task_attr_t *` — while `ZENOH_LINUX` makes zenoh-pico's `unix.h` typedef `z_task_attr_t` to
+`pthread_attr_t`, which is what the POSIX arm filled. The platform layer read pthread's opaque bytes as an
+nros struct; the `priority` offset is 0, which the ABI defines as band value 0 = LEAST urgent, so it asked
+for `sched_get_priority_min` = 1. pthread keeps its schedparam elsewhere, so that offset is 0 for 90, 40 and
+5 alike — which IS the issue's "byte-identical kernel tables". `nros_zenoh_generic_platform.h` had predicted
+it in writing ("correct only while the value is always NULL, which it was"); #0765 made it non-NULL. Two
+headers disagreeing about one type, #0135's shape. Fixed by filling an `nros_platform_task_attr_t` with
+`NROS_PLATFORM_PRIORITY_RAW(n)` — BOTH the process-wide default and the per-session copy, since `zpico_open`
+re-points `task_attributes` and fixing only the global measured as still-1. Verified: read/lease now FF 90
+above tier-high's 80. `nros_platform_task_init` now reads the priority BACK off the running thread and warns
+when the kernel disagrees, because "reports the request, never the result" is what let this hide. Two
+corrections: `TEMP-0079-DIAG` and `NROS_TMP_TRANSPORT_PRIO` are not in the tree, so the four measured arms
+cannot be re-run as written; and the Notes' inheritance hypothesis is wrong — that function no longer runs
+on the path and the threads were still 1. Method note worth keeping: instrumentation that reads a struct
+through the same lens that WROTE it agrees with itself and proves nothing — printing from the CONSUMER
+(`priority=0 native=1`) ended it, the same lesson #0801 recorded. See `archived/0803-*`.
 
 **#0772** (platform/boards, open 2026-08-24) — FreeRTOS/lwIP has no wall-clock epoch, so an image there stamps from its BOOT epoch and a validating peer rejects it — the same defect #0758 fixed on Zephyr. The demand is the SAME consumer, not a speculative one: `board-support.toml` records `nros-board-s32z270-freertos` (Cortex-R52) as the "ASI phase-4 W5.b consumer", and 0758's closing note that "no FreeRTOS consumer has asked" was read off the Zephyr side alone. NOT a port of the Zephyr code: lwIP ships SNTP but our build compiles no `src/apps/*`, and its API is a background daemon with a compile-time callback macro — there is no synchronous `sntp_simple` equivalent, so 0758 W4's "acquired before the first stamp" guarantee does not carry and the clock flips mid-run. Verification is hardware-only (no emulator models the S32Z270 RTU); prove the mechanism on an mps2-an385 lwIP image instead. See `0772-*`. (2026-08-24)
 

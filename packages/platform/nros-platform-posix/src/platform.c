@@ -372,6 +372,30 @@ int8_t nros_platform_task_init(void *task, void *attr,
             memset(&sp, 0, sizeof(sp));
             sp.sched_priority = native;
             int prio_rc = pthread_setschedparam(*t, SCHED_FIFO, &sp);
+            /* issue 0803 — report what the task GOT, not what it asked for.
+             *
+             * Everything above reports the request. That is how the transport
+             * band could announce "SCHED_FIFO 90" at boot while the kernel ran
+             * those threads at 1 for four weeks: the attribute was read back
+             * through the same lens that wrote it, so every check agreed with
+             * itself and none of them asked the kernel. A mismatch here is
+             * exactly the shape that hid — policy applied, value wrong — so it
+             * is read back from the thread and reported when it differs. */
+            if (prio_rc == 0) {
+                int got_policy = -1;
+                struct sched_param got;
+                memset(&got, 0, sizeof(got));
+                if (pthread_getschedparam(*t, &got_policy, &got) == 0
+                    && (got_policy != SCHED_FIFO || got.sched_priority != native)) {
+                    fprintf(stderr,
+                            "[warn] nros: task `%s` asked for SCHED_FIFO %d and the kernel "
+                            "gave it policy=%d priority=%d. A transport or tier that lands "
+                            "BELOW what it declared inverts the ordering it exists to "
+                            "state (issue 0803).\n",
+                            (a->name != NULL) ? a->name : "?", native, got_policy,
+                            got.sched_priority);
+                }
+            }
             /* RFC-0079 / issue 0765 — a REFUSAL is reported, once.
              *
              * This used to be `(void) pthread_setschedparam(...)`. On a Linux

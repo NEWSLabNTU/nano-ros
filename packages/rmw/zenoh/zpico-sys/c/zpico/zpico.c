@@ -17,6 +17,7 @@
  * `select`-driven read-task wakeup path). Replaces the
  * `peer->_socket._fd` field access that no longer compiles
  * once `NROS_PLATFORM_ALIASES` is defined on the vendor build. */
+#include <nros/platform.h>
 #include <nros/platform_net.h>
 #include <stdio.h>
 #include <string.h>
@@ -434,6 +435,13 @@ struct zpico_session {
     zp_task_lease_options_t lease_task_opts;
     z_task_attr_t read_task_attr;
     z_task_attr_t lease_task_attr;
+    /* issue 0803 — the per-session copy the ALIAS task path reads. See the note
+     * on `g_default_read_nros_attr`: `task_attributes` must point at an
+     * `nros_platform_task_attr_t`, and `zpico_open` re-points it per session,
+     * so the session needs storage of that type too. Fixing only the global
+     * left this re-point handing the platform layer the pthread copy again. */
+    nros_platform_task_attr_t read_nros_attr;
+    nros_platform_task_attr_t lease_nros_attr;
 #endif
 };
 
@@ -601,6 +609,28 @@ static bool g_default_read_task_configured = false;
 static bool g_default_lease_task_configured = false;
 static zp_task_read_options_t g_default_read_task_opts;
 static zp_task_lease_options_t g_default_lease_task_opts;
+/* issue 0803 — the attribute the ALIAS task path reads.
+ *
+ * On a build whose `_z_task_init` comes from `platform_aliases.c` (everything
+ * but ThreadX), that alias forwards `task_attributes` straight to
+ * `nros_platform_task_init`, which reads it as `nros_platform_task_attr_t *`.
+ * `ZENOH_LINUX` makes zenoh-pico's `unix.h` typedef `z_task_attr_t` to
+ * `pthread_attr_t`, so the POSIX arm below used to fill a `pthread_attr_t` and
+ * hand the platform layer 56 bytes of a different struct — `stack_bytes`,
+ * `priority` and `flags` read out of pthread's opaque bytes. The requested 90
+ * became whatever those bytes said, clamped into [1,99]: measured 1, for every
+ * requested value, on every arm.
+ *
+ * `nros_zenoh_generic_platform.h` predicted exactly this — "correct only while
+ * the value is always NULL, which it was" — and issue 0765 made it non-NULL.
+ * Two headers disagreeing about one type is issue 0135's shape.
+ *
+ * So the POSIX arm fills THIS, and `task_attributes` points at it. The pointer
+ * width is unchanged, so `zp_task_read_options_t`'s layout is untouched; what
+ * changes is that the pointee is the struct the reader expects. */
+static nros_platform_task_attr_t g_default_read_nros_attr;
+static nros_platform_task_attr_t g_default_lease_nros_attr;
+
 static z_task_attr_t g_default_read_task_attr;
 static z_task_attr_t g_default_lease_task_attr;
 #endif
@@ -1390,11 +1420,28 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     // SCHED_OTHER thread unconditionally. So the app preempted the link it
     // publishes over, with no way for an operator to state otherwise — issue
     // 0623's inversion, on the one platform that could not express the fix.
-    zpico_posix_fifo_set_priority(&g_default_read_task_attr, read_priority);
-    zpico_posix_fifo_set_priority(&g_default_lease_task_attr, lease_priority);
+    /* issue 0803 — fill the struct the alias reader expects, not a
+     * `pthread_attr_t`. `NROS_PLATFORM_PRIORITY_RAW` because this is a RAW
+     * SCHED_FIFO value from the board's reserved band, not a value on the
+     * normalised cross-RTOS band — the same vocabulary issue 0623 settled on
+     * after a normalised scale silently inverted a tier against the transport. */
+    nros_platform_task_attr_init(&g_default_read_nros_attr);
+    nros_platform_task_attr_init(&g_default_lease_nros_attr);
+    if (read_priority != 0u) {
+        g_default_read_nros_attr.priority = NROS_PLATFORM_PRIORITY_RAW(read_priority);
+    }
+    if (lease_priority != 0u) {
+        g_default_lease_nros_attr.priority = NROS_PLATFORM_PRIORITY_RAW(lease_priority);
+    }
+    if (read_stack_bytes != 0u) {
+        g_default_read_nros_attr.stack_bytes = read_stack_bytes;
+    }
+    if (lease_stack_bytes != 0u) {
+        g_default_lease_nros_attr.stack_bytes = lease_stack_bytes;
+    }
 #endif
-    g_default_read_task_opts.task_attributes = &g_default_read_task_attr;
-    g_default_lease_task_opts.task_attributes = &g_default_lease_task_attr;
+    g_default_read_task_opts.task_attributes = (z_task_attr_t *) &g_default_read_nros_attr;
+    g_default_lease_task_opts.task_attributes = (z_task_attr_t *) &g_default_lease_nros_attr;
     g_default_read_task_configured = true;
     g_default_lease_task_configured = true;
 #elif defined(ZENOH_THREADX)
@@ -1510,12 +1557,30 @@ int32_t zpico_open(zpico_session_t* session) {
     s->lease_task_attr = g_default_lease_task_attr;
     s->read_task_opts = g_default_read_task_opts;
     s->lease_task_opts = g_default_lease_task_opts;
+#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
+    /* issue 0803 — point at the per-session `nros_platform_task_attr_t`, which
+     * is what `platform_aliases.c`'s `_z_task_init` forwards to
+     * `nros_platform_task_init`. Pointing at `read_task_attr` handed it a
+     * `pthread_attr_t`, whose bytes at the `priority` offset are 0 whatever was
+     * requested — decoded as band value 0, the LEAST urgent RT priority, so the
+     * transport landed at SCHED_FIFO 1 below every tier and 90/40/5 all
+     * produced identical kernel tables. */
+    s->read_nros_attr = g_default_read_nros_attr;
+    s->lease_nros_attr = g_default_lease_nros_attr;
+    if (s->read_task_configured) {
+        s->read_task_opts.task_attributes = (z_task_attr_t *) &s->read_nros_attr;
+    }
+    if (s->lease_task_configured) {
+        s->lease_task_opts.task_attributes = (z_task_attr_t *) &s->lease_nros_attr;
+    }
+#else
     if (s->read_task_configured) {
         s->read_task_opts.task_attributes = &s->read_task_attr;
     }
     if (s->lease_task_configured) {
         s->lease_task_opts.task_attributes = &s->lease_task_attr;
     }
+#endif
 #endif
 #if ZPICO_TX_BATCH_THREAD == 1
     s->flush_task_configured = g_default_flush_task_configured;
@@ -1564,6 +1629,7 @@ int32_t zpico_open(zpico_session_t* session) {
     const zp_task_read_options_t* read_opts = s->read_task_configured ? &s->read_task_opts : NULL;
     const zp_task_lease_options_t* lease_opts =
         s->lease_task_configured ? &s->lease_task_opts : NULL;
+
 
     if (zp_start_read_task(z_session_loan_mut(&s->session), read_opts) < 0) {
         z_close(z_session_loan_mut(&s->session), NULL);

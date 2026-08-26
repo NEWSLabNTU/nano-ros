@@ -1,7 +1,7 @@
 ---
 id: 803
 title: "POSIX transport band is announced but not applied — zenoh read/lease land on SCHED_FIFO 1, below every tier"
-status: open
+status: resolved
 type: bug
 area: platform
 related: [issue-0765, issue-0623, issue-0506, rfc-0079]
@@ -153,3 +153,99 @@ there is no `CAP_SYS_NICE`, so `zpico_posix_rt_permitted()` returns 0 and
 `TEMP-0079-DIAG` is **not in the tree** — `git grep` finds neither it nor
 `NROS_TMP_TRANSPORT_PRIO`, the runtime override the four measured arms varied.
 Whoever picks this up cannot re-run the table as written without restoring both.
+
+## Resolved, 2026-08-27 — a `pthread_attr_t` read as an `nros_platform_task_attr_t`
+
+Measured, not inferred. `read`/`lease` now run at **SCHED_FIFO 90**, above every
+tier, which is what the band exists to state:
+
+```
+TID      CLS RTPRIO
+294056   FF   10     main / tier `low`
+294058   FF   90     zenoh read      <- was 1
+294060   FF   90     zenoh lease     <- was 1
+294061   FF   80     tier `high`
+```
+
+### Mechanism
+
+`_z_task_init` on this build is NOT zenoh-pico's unix one.
+`c/zpico/platform_aliases.c` supplies it for every platform except ThreadX
+(`NROS_PLATFORM_ALIASES_SKIP_TASK` is set only there) and forwards
+`task_attributes` straight to `nros_platform_task_init`, which reads it as
+`nros_platform_task_attr_t *`.
+
+But `ZENOH_LINUX` makes zenoh-pico's `unix.h` typedef `z_task_attr_t` to
+`pthread_attr_t`, and the POSIX arm of `zpico_set_task_config` filled exactly
+that. So the platform layer read 56 bytes of a `pthread_attr_t` as an nros
+struct. The `priority` offset reads **0**, which the ABI documents as band value
+0 — *least urgent* — so `nros_posix_native_priority` returned
+`sched_get_priority_min(SCHED_FIFO)` = **1**.
+
+That is why the requested value never mattered: pthread keeps its `schedparam`
+elsewhere, so that offset is 0 for 90, for 40 and for 5. The issue's own table
+("90, 40 and 5 produce byte-identical kernel tables") is this fact.
+
+`nros_zenoh_generic_platform.h` predicted it in writing:
+
+> `platform_aliases.c` forwards that value straight to
+> `nros_platform_task_init`, which reads it as a `nros_platform_task_attr_t *`
+> — correct only while the value is always NULL, which it was.
+
+Issue 0765 made it non-NULL. Two headers disagreeing about one type is issue
+0135's shape, named there and reached here.
+
+### Fix
+
+The POSIX arm fills an `nros_platform_task_attr_t` —
+`NROS_PLATFORM_PRIORITY_RAW(n)`, because the reserved band is RAW SCHED_FIFO,
+the vocabulary issue 0623 settled on — and `task_attributes` points at it. The
+pointer width is unchanged, so `zp_task_read_options_t`'s layout is untouched.
+
+**Both halves were needed.** Fixing only the process-wide default left the bug
+alive: `zpico_open` re-points `task_attributes` at the session's own
+`pthread_attr_t` copy, so the session needs storage of the right type too. The
+first attempt changed the global, measured, and was still 1.
+
+### The boot line now reports what it GOT
+
+Required by this issue, and general rather than transport-specific, because
+"reports the request, never the result" is the class. `nros_platform_task_init`
+reads the priority back off the running thread and warns when the kernel
+disagrees. Silent on a correct run; it is what would have caught this in a day.
+
+### How it was found, and what misled me
+
+Reading the chain proved nothing four times: the attribute is correct at every
+point our code can see it, and every hypothesis from reading — inheritance, the
+struct copy, `RLIMIT_RTPRIO`, an environmental clamp, `_zp_start_read_task`'s
+"already running" early-return — was eliminated by measurement.
+
+**The instrumentation itself lied, twice.** Dumping the attr with
+`pthread_attr_get*` reads it through the same lens that wrote it, so it reported
+a healthy `FIFO/EXPLICIT/90` while the consumer saw zeros; and a probe thread
+spawned from our code with that same pointer really did come out at 90, because
+`pthread_create` is the reader it was written for. Two self-consistent views of
+one buffer, and the bug lived in the third.
+
+What ended it was printing from the CONSUMER — one line in
+`nros_platform_task_init` showing `priority=0 native=1` — which is the same
+lesson issue 0801 recorded three days earlier: a value read where it is USED
+proves what is happening; a value read where it is WRITTEN proves only that you
+wrote it.
+
+### Corrections to this issue
+
+* `TEMP-0079-DIAG` is **not** in the tree, and neither is
+  `NROS_TMP_TRANSPORT_PRIO`. The four measured arms cannot be re-run as written.
+* The Notes' hypothesis — priority 1 inherited from the probe in
+  `zpico_posix_rt_permitted()` — is wrong. That function no longer runs on this
+  path at all and the threads were still 1.
+
+### Reproducing without a host sudo
+
+`tmp/setcap-via-docker.sh` grants `cap_sys_nice+ep` through a container
+(`--cap-add SETFCAP`, `--network none`, the host's own `setcap` invoked via the
+host loader, since the only local image lacks it and docker networking is broken
+on this host). File capabilities live in an xattr on the file, so it persists —
+and is dropped by every rebuild, so re-run it after each one.
