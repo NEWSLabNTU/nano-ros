@@ -81,3 +81,34 @@ Build any zephyr C example with `-DNROS_ZENOH_DEBUG=3`, read the log, and:
     grep -oE '@ros2_lv/[0-9]+' <trace> | sort | uniq -c
 
 A correct run shows one domain. Discovery-affecting: this should be a gate.
+
+## Narrowed further (2026-08-26), still open
+
+Three candidate sites tried and measured on hardware. All three left the split
+exactly as it was -- `1x @ros2_lv/10`, `2x @ros2_lv/0`, subscription key on `0/`:
+
+1. `nros-c/src/node.rs::resolve_session_and_domain` -- hardcoded `0` fallback.
+   Fixed to inherit the session's domain. **Not this bug**: that crate is not
+   linked into a zephyr C example; the image is byte-identical after the change,
+   including after deleting the Rust build directory.
+2. `nros-cpp/src/{publisher,subscription}.rs` -- `TopicInfo::with_domain(ctx.domain_id)`.
+   Changed to take the domain from the session instead. No effect, so
+   `session.domain_id()` is ALSO 0. Reverted rather than left as churn.
+3. Same, reading the primary session unconditionally. No effect either.
+
+What that leaves. `CffiSession` is opened as
+`CffiSession::open(config.locator, mode, config.domain_id, config.node_name)`
+and `shim/session.rs` declares the node token from that same `config.domain_id`
+-- and the node token demonstrably comes out on 10. So one field of one config
+reaches the node token as 10 and the same field reaches every entity as 0.
+
+The remaining explanations are (a) there are two RmwConfig/session instances and
+the entity path resolves the wrong one, or (b) `ctx.domain_id` in `CppContext` is
+never written for this entry shape -- `nros_cpp_init` writes it into
+`Node::global_storage()`, and it is worth confirming the entity path reads that
+same buffer rather than a zero-initialised one.
+
+The next concrete step is a one-line diagnostic rather than another candidate
+fix: print `config.domain_id`, `ctx.domain_id` and `session.domain_id()` at
+entity creation and see which of the three is 0. Three guesses have now cost
+three build/flash cycles each; the measurement is cheaper.
