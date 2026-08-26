@@ -1436,9 +1436,21 @@ pub struct CffiSession {
     namespace_buf: [u8; NAME_BUF_LEN],
     /// Backend-private state, written by `vtable.create_session`.
     backend_data: *mut c_void,
+    /// The domain this session was opened on. Kept because the entity paths
+    /// need it and could not otherwise recover it: `create_session` consumed
+    /// it and nothing stored it, so a caller with no support context silently
+    /// fell back to domain 0 while the session itself was on another domain
+    /// (issue 0801).
+    domain_id: u32,
 }
 
 impl CffiSession {
+    /// Domain this session was opened on. Authoritative: it is the value the
+    /// backend actually got, not a re-derivation that can disagree with it.
+    pub fn domain_id(&self) -> u32 {
+        self.domain_id
+    }
+
     fn make_view(&mut self) -> NrosRmwSession {
         NrosRmwSession {
             node_name: self.node_name_buf.as_ptr().cast(),
@@ -1592,6 +1604,7 @@ impl CffiSession {
             node_name_buf: [0u8; NAME_BUF_LEN],
             namespace_buf: [0u8; NAME_BUF_LEN],
             backend_data: core::ptr::null_mut(),
+            domain_id,
         };
         let _ = to_c_str(node_name, &mut session.node_name_buf);
 

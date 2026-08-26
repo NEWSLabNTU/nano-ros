@@ -604,12 +604,19 @@ pub(crate) unsafe fn resolve_session_and_domain(
         let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
         let node_id = nros_node::executor::node_record::NodeId::from_raw(node.node_id);
         let session = rust_exec.node_session_mut(node_id)?;
+        // Inherit from the SESSION when there is no support context. The old
+        // `else { 0 }` silently put every entity on domain 0 while the session
+        // itself was open on another domain -- the node liveliness token used
+        // the configured domain and every publisher, subscriber and their
+        // tokens used 0. Since the domain is the first element of every key
+        // rmw_zenoh matches on, discovery simply never matched, with no error
+        // anywhere (issue 0801).
         let domain_id = if node.domain_id_override != NROS_DOMAIN_ID_INHERIT {
             node.domain_id_override
         } else if !support_ptr.is_null() {
             (*support_ptr).domain_id as u32
         } else {
-            0
+            session.domain_id()
         };
         Some((session, domain_id))
     } else {
@@ -618,8 +625,21 @@ pub(crate) unsafe fn resolve_session_and_domain(
         {
             return None;
         }
-        let domain_id = support_mut.domain_id as u32;
+        // Prefer the SESSION's domain. `support.domain_id` is resolved from the
+        // C ABI argument, where 0 means "unset" and resolves to 0 -- but the
+        // session was opened from RmwConfig, which carries CONFIG_NROS_DOMAIN_ID.
+        // When a caller leaves the C argument unset the two disagree, and every
+        // entity lands on domain 0 while the node liveliness token uses the
+        // configured domain. Discovery then never matches and nothing reports an
+        // error, because the domain is just the first element of the key
+        // (issue 0801).
+        let support_domain = support_mut.domain_id as u32;
         let session = support_mut.get_session_mut()?;
+        let domain_id = if support_domain != 0 {
+            support_domain
+        } else {
+            session.domain_id()
+        };
         Some((session, domain_id))
     }
 }
