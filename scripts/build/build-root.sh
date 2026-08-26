@@ -90,6 +90,14 @@ export NROS_KIND_WEST_FIXTURES="west-fixtures"
 # and keep their names.
 export NROS_KIND_COMPILE_CHECK="compile-check-fixtures"
 
+# issue 0805 — the SHARED Corrosion cargo target dirs. A C/C++ example leaf is
+# a standalone cmake project, so Corrosion roots its `--target-dir` at that
+# leaf's `CMAKE_BINARY_DIR` and every leaf rebuilds the same staticlib (21
+# fresh `libnros_c.a` in one threadx_riscv64 run, ~1.2 GB per leaf). The
+# coordinate is the platform; cmake appends a hash of the leaf's resolved
+# feature inputs, so two leaves share only when their cargo inputs are equal.
+export NROS_KIND_CORROSION_CARGO="corrosion-cargo"
+
 # Everything else — bare `<family>`, named for what it holds.
 export NROS_KIND_BORROWED_E2E="borrowed-e2e"
 export NROS_KIND_CARGO="cargo"

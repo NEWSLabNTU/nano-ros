@@ -137,3 +137,84 @@ just a shared directory.
   checked explicitly, on `mixed` (the entry that has caught it both times).
 * Cold and warm wall clock re-measured with `sample-build-lineage.sh` on a quiet
   box, both reported, with the box's own loadavg alongside.
+
+## Fixed for `threadx_riscv64` (2026-08-26): 1706 s -> 898 s, binaries identical
+
+### Mechanism
+
+Corrosion 0.6.1 offers no knob for its cargo directory — it is a plain local,
+computed as `${CMAKE_BINARY_DIR}/cargo/<folder>_<hash-of-manifest-path>`. Its
+`CARGO_FLAGS` hook is not a substitute: a second `--target-dir` moves cargo's
+OUTPUT while Corrosion keeps looking for the byproduct at the path it derived,
+so the build stops finding its own artifact. The only override point is the path
+Corrosion already computes, so `nros_share_corrosion_cargo_dir()` replaces
+`<build>/cargo` with a symlink to a shared directory.
+
+### The key is the whole design
+
+Sharing is safe only between leaves whose cargo inputs are EQUAL, because cargo
+uplifts the archive to an unhashed `libnros_c.a` and two feature sets sharing a
+directory would overwrite each other's — the 0500/0616 failure, diagnosed far
+from its cause. So:
+
+* The key is the full input set `nros_feature_set()` is a function of —
+  platform, rmw, board, **capabilities** — plus profile and target triple. Equal
+  key implies equal features by construction, not by inspection. Keying on
+  "platform + rmw" would have been WRONG: capabilities are per-leaf.
+* It is computed in `packages/api/nros-c/CMakeLists.txt` AFTER
+  `nros_feature_set()`, not in `nros_resolve_corrosion()` — capabilities are not
+  resolved that early, and a key computed before its inputs exist is the bug
+  rather than the fix. Corrosion only needs the link before the BUILD, so
+  configure-time placement is free.
+* Every field is LABELLED (`board=`, `caps=`). An empty element vanishes from a
+  cmake list, so bare values would make `(board="", caps="x")` and
+  `(board="x", caps="")` hash identically. That was a real bug in the first
+  version of this change, caught by printing the key.
+* The key text is written to `<dir>.key` beside the hash, because a hash in a
+  path answers no questions when two leaves unexpectedly do not share.
+
+### Measured, quiet box, 32 cores
+
+| | |
+| --- | --- |
+| cold, before | 1706 s |
+| cold, Rust leaves only | 1125 s |
+| **cold, both paths** | **898 s (-47%)** |
+| warm, before | 414-494 s |
+| warm, after | 461 s — **unchanged, as predicted** |
+| per-leaf cargo dirs | 29 -> **0** |
+| shared dirs | 4, keyed |
+
+**All 29 fixture binaries are byte-for-byte identical to the pre-change build.**
+That is the correctness argument; the timing is only the point of doing it.
+
+Wiring one path was not enough and the numbers say so: the Rust leaves go
+through `build_threadx_cmake_rmw` while the C/C++ leaves reach cmake through
+`fixtures-build.sh` via `NROS_CMAKE_EXTRA_DEFS`. Doing only the first left 17 of
+29 per-leaf dirs in place and gave 1125 s instead of 898 s.
+
+### Two things this surfaced
+
+* **The platform has two spellings.** The four keys differ only in
+  `platform=threadx_riscv64` (Rust path) vs `platform=threadx` (C/C++ path), at
+  the same board, rmw and triple. So the tree keeps 4 shared dirs where 2 may
+  do. That is the SAFE direction — over-separation costs sharing, and only
+  under-separation can corrupt — but it is a real inconsistency worth its own
+  look.
+* **An existing build dir does not get this.** `<build>/cargo` is already a real
+  directory there, and the function DEGRADES rather than failing: not sharing is
+  the old behaviour, correct and slower, so a `FATAL_ERROR` would break every
+  incremental build that predates the feature in exchange for a speedup. It
+  prints a STATUS naming this issue so the degradation is not silent. Wipe the
+  build dir to opt in.
+
+### Still open
+
+* **Only `threadx_riscv64` is wired.** Every other platform still gives each
+  C/C++ leaf its own cargo dir. The mechanism is platform-neutral — it needs
+  `-DNROS_SHARED_CARGO_ROOT` on the other lanes and the same before/after
+  binary-identity check per platform. Do not wire them blind.
+* **The warm floor is untouched and this cannot touch it**, now measured rather
+  than predicted: 461 s against a 414-494 s baseline. It is 70 cargo invocations
+  re-scanning fingerprints at ~7 s each, and it needs FEWER INVOCATIONS — the
+  prebuilt-artifact shape — not a shared destination.

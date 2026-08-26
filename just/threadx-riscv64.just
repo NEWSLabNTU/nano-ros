@@ -247,9 +247,15 @@ build-fixture-extras:
         # Rust/Corrosion build reads it via option_env!; the -D below covers the
         # C/C++ glue. Only set for Cyclone (_dom non-empty).
         [ -n "$_dom" ] && export NROS_DOMAIN_ID="$_dom"
+        # issue 0805 — one Corrosion cargo dir per (platform, resolved feature
+        # inputs) instead of one per leaf. cmake keys the subdirectory itself:
+        # the leaf's capabilities are not knowable here, and keying on
+        # "platform + rmw" alone would let two leaves with different
+        # capabilities overwrite each other's unhashed `libnros_c.a`.
         THREADX_DIR="$threadx_dir" NETX_DIR="$netx_dir" \
         THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
           nros_cmake_fixture_build "$dir" "$dir/$build_dir" "$sig" \
+            -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root" \
             -DNANO_ROS_PLATFORM=threadx_riscv64 \
             -DNROS_RMW="$rmw" \
             ${_dom:+-DNROS_DOMAIN_ID=$_dom} \
@@ -275,7 +281,13 @@ build-fixture-extras:
     # the platform must now come from the invocation (mirrors threadx-linux's
     # recipe). Without it the root default "posix" configures
     # nros-platform-posix under the riscv64 cross toolchain → FindThreads dies.
-    base_defs="-DNANO_ROS_PLATFORM=threadx_riscv64 -DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
+    # issue 0805 — the C/C++ leaves reach cmake through `fixtures-build.sh`
+    # via NROS_CMAKE_EXTRA_DEFS, a different path from the Rust leaves'
+    # `build_threadx_cmake_rmw`. BOTH need the shared root or only half the
+    # leaves collapse — measured: wiring only the Rust path left 17 of 29
+    # per-leaf cargo dirs in place.
+    shared_cargo_root="$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" threadx-riscv64)"
+    base_defs="-DNROS_SHARED_CARGO_ROOT=$shared_cargo_root -DNANO_ROS_PLATFORM=threadx_riscv64 -DCMAKE_TOOLCHAIN_FILE=$toolchain -DTHREADX_DIR=$threadx_dir -DNETX_DIR=$netx_dir -DTHREADX_CONFIG_DIR=$config_dir -DNETX_CONFIG_DIR=$config_dir -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen -DNROS_RMW_CYCLONEDDS_MSG_TO_IDL=$root/scripts/cyclonedds/msg_to_cyclone_idl.py"
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh

@@ -370,6 +370,118 @@ endfunction()
 # already has Corrosion (a parent project, or a second call) reports and
 # returns.
 #
+# --------------------------------------------------------------------------
+# nros_share_corrosion_cargo_dir()
+#
+# Issue 0805 — collapse the per-leaf cargo target dir onto a SHARED one.
+#
+# Corrosion computes its `--target-dir` as
+#
+#     ${CMAKE_BINARY_DIR}/cargo/<workspace-folder>_<hash-of-manifest-path>
+#
+# The hash is of the WORKSPACE MANIFEST PATH, so it is identical for every
+# consumer of this repo (`nano-ros_1147c` everywhere). Only `CMAKE_BINARY_DIR`
+# differs — and a C/C++ example leaf is a standalone cmake project, so every
+# leaf gets its own and rebuilds the same staticlib. Measured on
+# `threadx_riscv64`: 21 fresh `libnros_c.a` and 14 `libnros_cpp.a` in ONE stage
+# run, five concurrent cargos with byte-identical arguments, ~1.2 GB per leaf.
+#
+# sccache cannot absorb it — it does not cache `--crate-type=staticlib`
+# (`Non-cacheable reasons: crate-type`), which is exactly the artifact.
+#
+# Corrosion 0.6.1 exposes no knob for the directory (it is a plain local), and
+# its `CARGO_FLAGS` hook is not a substitute: a second `--target-dir` would move
+# cargo's OUTPUT while Corrosion kept looking for the artifact at the path it
+# derived, so the build would fail to find its own byproduct. Redirecting the
+# path Corrosion already computes is the only override point, hence a symlink.
+#
+# SAFETY — the caller asserts, this function does not guess.
+#
+# Two leaves may share a directory only if their cargo inputs are IDENTICAL.
+# They are not merely "similar": cargo uplifts the final artifact to an
+# UNHASHED name (`libnros_c.a`), so two different feature sets sharing a
+# directory would overwrite each other's archive and a leaf would silently link
+# the wrong one. That is the 0500 / 0616 failure mode, and it is diagnosed as a
+# duplicate-symbol or wrong-arch link error a long way from its cause.
+#
+# Concretely, `nros_feature_set()` derives the crate's features from RMW,
+# PLATFORM, BOARD and **CAPABILITIES** — and capabilities are per-leaf. So two
+# leaves on the same platform and RMW can still want different `nros-c`
+# features, which is why keying on "platform + rmw" would be WRONG. The key
+# below is the full input set that `nros_feature_set` is a function of, so
+# equal keys imply equal features by construction rather than by inspection.
+#
+# This is OFF unless a caller passes `-DNROS_SHARED_CARGO_ROOT=<dir>`; the
+# directory under it is chosen by KEY, which the caller must supply.
+function(nros_share_corrosion_cargo_dir)
+    if(NOT NROS_SHARED_CARGO_ROOT)
+        return()
+    endif()
+    cmake_parse_arguments(_SC "" "" "KEY" ${ARGN})
+    if(NOT _SC_KEY)
+        message(FATAL_ERROR
+            "nros_share_corrosion_cargo_dir: KEY is required. Sharing a cargo "
+            "directory between two configurations that differ is the defect "
+            "this function exists to avoid, so there is no default key.")
+    endif()
+    # The key is HASHED rather than spelled: it contains a capability list and
+    # a target triple, and the result is a path component.
+    string(REPLACE ";" "|" _key_text "${_SC_KEY}")
+    string(SHA1 _key_hash "${_key_text}")
+    string(SUBSTRING "${_key_hash}" 0 12 _key_hash)
+    set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_ROOT}/${_key_hash}")
+    set(_link "${CMAKE_BINARY_DIR}/cargo")
+
+    if(IS_SYMLINK "${_link}")
+        # Re-configure of a build dir already sharing. Honour it only if it
+        # points where THIS configure was told to point: a stale link is a leaf
+        # silently building into another key's directory.
+        file(READ_SYMLINK "${_link}" _current)
+        if(NOT IS_ABSOLUTE "${_current}")
+            get_filename_component(_current "${CMAKE_BINARY_DIR}/${_current}" ABSOLUTE)
+        endif()
+        get_filename_component(_want "${NROS_SHARED_CARGO_DIR}" ABSOLUTE)
+        if(NOT _current STREQUAL _want)
+            message(FATAL_ERROR
+                "nano-ros: ${_link} already points at ${_current}, but this "
+                "configure asks for ${_want}. Two different shared-cargo keys "
+                "in one build dir would make cargo's unhashed artifact "
+                "ambiguous. Wipe this build dir and re-configure.")
+        endif()
+        return()
+    endif()
+
+    if(EXISTS "${_link}")
+        # A real directory from an earlier non-shared configure. DEGRADE, do not
+        # fail: this is EVERY build dir that predates this feature, so a
+        # FATAL_ERROR here would break incremental builds for everyone who pulls
+        # it, in exchange for a speedup. Not sharing is exactly the old
+        # behaviour — correct, just slower — which makes it a safe fallback, and
+        # the STATUS line keeps it from being a silent one.
+        #
+        # Deleting it is not on the table either: it holds build output this
+        # function did not create.
+        message(STATUS
+            "nano-ros: NOT sharing the Corrosion cargo dir — ${_link} is a real "
+            "directory from an earlier build. Remove this build directory to "
+            "enable sharing (issue 0805).")
+        return()
+    endif()
+
+    file(MAKE_DIRECTORY "${NROS_SHARED_CARGO_DIR}")
+    file(CREATE_LINK "${NROS_SHARED_CARGO_DIR}" "${_link}" SYMBOLIC RESULT _rc)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR
+            "nano-ros: could not link ${_link} -> ${NROS_SHARED_CARGO_DIR} "
+            "(${_rc}).")
+    endif()
+    # A hash in a path is unreadable by design; write the key beside it so a
+    # human debugging "why are these two leaves not sharing" can diff them.
+    file(WRITE "${NROS_SHARED_CARGO_DIR}.key" "${_key_text}\n")
+    message(STATUS
+        "nano-ros: sharing Corrosion cargo dir -> ${NROS_SHARED_CARGO_DIR}")
+endfunction()
+
 # A macro, not a function: `find_package` / `FetchContent_MakeAvailable` define
 # commands and targets that must land in the CALLER's scope.
 # --------------------------------------------------------------------------

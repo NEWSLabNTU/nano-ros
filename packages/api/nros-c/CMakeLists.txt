@@ -57,6 +57,38 @@ nros_feature_set(_features
     BOARD        "${NANO_ROS_BOARD}"
     CAPABILITIES "${_caps}")
 
+# Issue 0805 — collapse this leaf's private Corrosion cargo dir onto a shared
+# one. No-op unless the caller passed `-DNROS_SHARED_CARGO_ROOT`.
+#
+# The KEY is deliberately the full input set `nros_feature_set()` above is a
+# function of, plus the things that change the artifact without changing the
+# feature list (profile, target triple). Equal key therefore implies equal
+# `nros-c` AND `nros-cpp` features by construction — which matters because
+# cargo uplifts the archive to an UNHASHED `libnros_c.a`, so two leaves with
+# different features sharing a directory would overwrite each other's archive
+# and one would silently link the other's.
+#
+# Called HERE and not from `nros_resolve_corrosion()`: capabilities are not
+# resolved that early, and a key computed before its inputs exist is the bug
+# rather than the fix. Corrosion only needs the link to exist before the BUILD,
+# not before the import, so configure-time placement is free.
+#
+# Each field is LABELLED, and that is load-bearing rather than decorative: an
+# empty element vanishes from a cmake list, so passing the bare values would
+# make (board="", caps="x") and (board="x", caps="") hash IDENTICALLY — two
+# different configurations sharing one directory, which is precisely the defect
+# being fixed. A label keeps every field non-empty and positional.
+if(COMMAND nros_share_corrosion_cargo_dir)
+    string(REPLACE ";" "," _caps_flat "${_caps}")
+    nros_share_corrosion_cargo_dir(KEY
+        "platform=${NANO_ROS_PLATFORM}"
+        "rmw=${NANO_ROS_RMW}"
+        "board=${NANO_ROS_BOARD}"
+        "caps=${_caps_flat}"
+        "profile=${NROS_CARGO_PROFILE}"
+        "target=${Rust_CARGO_TARGET}")
+endif()
+
 # ---- Build nros-c via Corrosion ----
 # phase-336 — PROFILE is passed explicitly. Without it Corrosion falls back to
 # its own CMAKE_BUILD_TYPE mapping (Debug→dev, EVERYTHING else→release), so a
