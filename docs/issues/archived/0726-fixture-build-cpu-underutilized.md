@@ -414,7 +414,8 @@ Earlier utilization figures in this issue came through a sampler that matched
 itself (`pgrep -f "just build-test-fixtures"` appears in the sampler's own
 command line, so the loop never exits and reports a build running long after it
 ended — one figure was taken with no build alive at all). Replaced by
-`scripts/build/sample-build-cpu.sh`, which tracks the build by the PID captured
+`scripts/build/sample-build-lineage.sh` (the `sample-build-cpu.sh` named here
+was itself withdrawn and deleted — see below), which tracks the build by the PID captured
 at launch and counts build tools by exact `comm` name rather than reading
 `/proc/loadavg`'s global runnable count.
 

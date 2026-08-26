@@ -549,6 +549,55 @@ times, which felt like enough — but all three runs shared the same warm
 precondition, so repetition confirmed nothing. **Repeating a measurement is not
 the same as varying its preconditions.**
 
+## The RETRACTED corrosion finding named a real bug (2026-08-26)
+
+"Next" above says of the 20 s `nros_resolve_corrosion`:
+
+> that finding is RETRACTED (see the cold-cache correction above) and must not
+> be picked up.
+
+Picked it up anyway, because 20 s in one function is a strange thing for a cold
+cache alone to produce. The retraction was **half right**: the number was not
+"our resolution logic is slow", and it was not reproducible (a leaf configure is
+3.0 s warm here). But it was not noise either. It was a **git clone**.
+
+The trace attributes it precisely:
+
+```
+1.17 s  FetchContent.cmake:1921        ${CMAKE_COMMAND} --build .
+0.08 s  <build>/_deps/corrosion-src/cmake/FindRust.cmake:352
+```
+
+`_deps/corrosion-src` means the leaf fetched Corrosion from GitHub at configure
+time while `~/.nros/sdk/corrosion` held a provisioned 0.6.1. Cause (issue 0726,
+fixed): `find_program` short-circuits when its result variable is already
+defined, and an empty string counts —
+
+```cmake
+set(_NROS_CLI "")            # normal variable, now DEFINED
+find_program(_NROS_CLI nros) # <-- does nothing; stays ""
+```
+
+— so the store was never asked and the FetchContent fallback took over.
+
+The methodological point is worth more than the fix. This phase has correctly
+retracted a lot of contaminated numbers, and the discipline is right. But
+"cold cache" is an *explanation*, and an explanation is not the same as a
+measurement: it accounted for the magnitude plausibly enough that the finding
+was closed with a do-not-reopen note, and the actual mechanism — a network
+clone that should never have run — sat underneath it for five days. A retraction
+should retract the NUMBER, not the QUESTION.
+
+Same shape as the STALE-verdict rule in CLAUDE.md (issue 0445): a plausible
+absorbing explanation is exactly the kind that stops investigation early.
+
+Scope, stated before the conclusion as this phase requires: the fix does NOT
+change any `just` platform lane. All of them pass `-D_NANO_ROS_CODEGEN_TOOL`,
+so they took the first branch and never reached the dead search. It changes the
+documented user flow (`cmake -S . -B build -DNANO_ROS_ROOT=…`), which went from
+requiring the network to resolving offline in 0.78 s. **No timing in this phase
+is affected, and none of its conclusions move.**
+
 
 ---
 
