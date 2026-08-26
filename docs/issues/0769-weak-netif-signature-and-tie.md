@@ -101,3 +101,47 @@ zpico's `smoltcp_{init,cleanup}` were caught earlier by the image gate, this one
 by reading. All three erred in the same direction: claiming a strong override
 exists where none is guaranteed. Re-audit the remaining classifications before
 removing anything on the strength of the label.
+
+## The `network_glue.c` relabel is NOT a safe swap (2026-08-26)
+
+This issue argues `network_glue.c`'s `override-default` label is wrong and should
+be `optional-hook`, and the semantic argument holds: its weak returns -1 meaning
+"no board override → no Ethernet", and `poll_netif` is a no-op for IRQ-driven RX
+boards. Both are supported shipped states, not placeholders awaiting a guaranteed
+strong definition.
+
+**But the classification is not documentation — it drives a gate.**
+`scripts/check-weak-symbols-image.sh` exists to verify
+
+> that each audited **override-default** weak symbol is actually overridden
+
+by `nm`-ing built images, driven by the `[img: …]` set on the allowlist row.
+`network_glue.c` currently carries
+`[img: nros_board_register_netif nros_board_poll_netif]`, so the gate today
+checks that LAN9118 MPS2 images really do override both.
+
+Relabelling to `optional-hook` and dropping `[img:]` would **silently remove that
+check**. The images that override would keep overriding, the gate would keep
+passing, and nobody would learn when one stopped. That is the
+guarantee-that-cannot-fail shape this repo treats as worse than a red — and it
+would be introduced by a change whose stated purpose is accuracy.
+
+### What the fix actually needs
+
+The two facts are independent and the schema currently conflates them:
+
+* **Is a strong override GUARANTEED?** (`override-default` vs `optional-hook`)
+  — for `network_glue.c`, no.
+* **Which image classes are EXPECTED to override it?** — for `network_glue.c`,
+  the LAN9118 MPS2 images, and that expectation is worth gating.
+
+So the row wants to be an `optional-hook` that still carries an `[img: …]`
+expectation. Whether `check-weak-symbols-image.sh` accepts that combination
+today is untested; the header comment reads as though `[img:]` is only meaningful
+for `override-default`.
+
+Deliberately not changed here. A relabel that quietly narrows gate coverage is
+worse than a label that reads slightly wrong, and the issue's own closing
+paragraph makes the same point about the other three mislabels: all erred toward
+claiming a guarantee that was not there. The correction should not err toward
+removing a check that was.
