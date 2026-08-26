@@ -337,30 +337,72 @@ carries keys shared by every image, and `[image.<id>]` overrides them. Without
 it, an eight-image workspace repeats its RMW, edition and profile eight times —
 and eight copies of one fact is how they start disagreeing.
 
-### D6 — `[deploy.<id>]` becomes `[image.<id>]`
+### D6 — `[image.<id>]` is a NEW table; `[deploy.<id>]` keeps placement
 
-The table already holds the triple the builder needs:
+**Corrected 2026-08-26 on first contact with the code.** An earlier draft made
+this a *rename*. It is a **split**, and the reason is ownership:
 
-```toml
-[image.robot1]                            [image.freertos]
-kind   = "self"                           kind  = "embedded"
-target = "x86_64-unknown-linux-gnu"       board = "mps2-an385-freertos"
-launch = "multihost.launch.xml"
-nodes  = ["/talker"]
+```rust
+pub use ros_launch_manifest_model::system_config::DeployBlock as DeployTarget;
 ```
 
-`kind` stops being two species under one name and becomes one axis: whether the
-image carries a **partition** of the nodes (`self`) or **all** of them
-(`embedded`).
+`[deploy.*]` is not ours. It is an upstream `#[serde(deny_unknown_fields)]` type
+from `NEWSLabNTU/ros-launch-manifest` (git tag v0.1.11), so a field added there
+must land in another repository first — the wall RFC-0078 already hit and
+documented in `cargo_metadata_schema.rs`.
 
-This also retires an orphan class. Today `[deploy.robot1]` and `[deploy.robot2]`
-are declared and **no entry points at them** — `native_entry_robot1` declares
-`deploy = "native"` and selects its machine through a *second* mechanism, a
-launch argument (`args = [("host", "robot1")]`). Once the entry is synthesized
-*from* the image declaration, the second mechanism disappears.
+**The two are independent concepts, N:M, and upstream has already paid for the
+merge.** Its placement resolver filters our half out:
 
-Migration carries a deprecation window in which both `[deploy.*]` and
-`[image.*]` parse, with `[deploy.*]` warning.
+```rust
+let partitioning: Vec<(&String, &DeployBlock)> = self.deploy.iter()
+    .filter(|(_, b)| b.applies_to_launch(launch_file))
+    .filter(|(_, b)| b.kind.as_deref() != Some("embedded"))   // <- excluded
+```
+
+…with the comment *"placement counting blocks it was never meant to govern …
+**this one is a conflated axis**"*, and *"With SEVERAL [embedded blocks], the
+fallback asks which of N whole-system board builds runs a given node, and the
+answer is 'all of them' — a node→target map cannot say that."*
+
+Upstream has also ruled the build half is not its vocabulary: *"This crate
+models launch and system STRUCTURE. A consumer's site configuration — where its
+RTOS SDK lives, which network stack it chose … is not that vocabulary."*
+
+The cardinality test settles it — all three cells are populated in **one**
+`system.toml` (`examples/workspaces/rust/src/demo_bringup/`):
+
+| case | example | why |
+| --- | --- | --- |
+| **placement, no image** | `[deploy.robot1]`, `[deploy.robot2]` | declared, and **no entry package points at either** |
+| **image, no placement** | every `kind = "embedded"` block | upstream excludes these from placement by design |
+| **both** | `[deploy.native]` | a machine that is also a host build; 7 entries claim it |
+
+So:
+
+```toml
+[deploy.robot1]              # ros-launch-manifest — PLACEMENT
+kind   = "self"
+nodes  = ["/talker"]
+
+[image.robot1]               # nano-ros — BUILD
+board  = "linux-x86_64"
+launch = "multihost.launch.xml"
+args   = { host = "robot1" }
+
+[image.freertos]             # no deploy block needed:
+board  = "mps2-an385-freertos"   # embedded was never a placement
+panic  = "halt"
+```
+
+`kind` stays upstream's, meaning what it always meant. An `[image.<id>]` needs
+no `[deploy.<id>]`, and a `[deploy.<id>]` needs no `[image.<id>]`.
+
+**Consequences.** No upstream release is in the critical path. The `kind =
+"embedded"` deploy blocks that exist only to name a board become deletable once
+their `[image.*]` lands. And the deprecation window (D1's phase-222 pattern)
+covers only the **build fields inside `[deploy.*]`**, never the table — the
+placement half is upstream's and is not being retired.
 
 ### D7 — Vocabulary: there is no `--target`
 
@@ -962,6 +1004,15 @@ rejected here, because neither has a derivation to perform.
 
 - **2026-08-02** — created as Draft; problem statement + the "front of colcon,
   not the back" framing; four open questions.
+- **2026-08-26 (e)** — **D6 corrected on first contact with the code**: the
+  `[deploy.*]` → `[image.*]` move is a SPLIT, not a rename. `[deploy.*]` is an
+  upstream `deny_unknown_fields` type (ros-launch-manifest v0.1.11) whose own
+  placement resolver already filters `kind="embedded"` out and calls the merge
+  "a conflated axis", and whose docs rule build/site config out of its
+  vocabulary. All three cardinality cells are populated in one `system.toml`, so
+  the concepts are N:M. `[image.*]` is therefore a new nano-ros-owned table with
+  no upstream dependency, and the deprecation covers only the build FIELDS, not
+  the table.
 - **2026-08-26 (d)** — migration simulation against the nine in-tree
   workspaces and two downstream projects (`autoware-safety-island`,
   `nano-ros-rt-eval`). **D10 corrected**: `CONF_FILE` suppresses `boards/` and

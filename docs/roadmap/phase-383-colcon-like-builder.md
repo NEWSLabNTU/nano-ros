@@ -70,14 +70,18 @@ nothing else is owed.
 Carries **F3, F7, F8**. Nothing else can start: every later wave reads this
 schema.
 
-- [ ] **W1.a** Add `[image.<id>]` (RFC-0065 D6) to the system-config schema in
-      `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`,
-      beside the existing `DeployTargetMetadata`. Fields: `kind`
-      (`self`|`embedded`), `board`, `launch`, `args`, `nodes`, `panic`,
-      `profile`, `variant`, `conf` — the last two are **F3/F8**: a variant name
-      and an explicit per-image overlay list, because `nano-ros-rt-eval` builds
-      one app on one board twice (`prj-edf.conf` vs not) and
-      `demo_bringup/ablation/*.toml` are whole alternate system configs.
+- [ ] **W1.a** Add a **new, nano-ros-owned** `[image.<id>]` table (RFC-0065 D6)
+      to `SystemToml` in
+      `packages/cli/nros-cli-core/src/orchestration/cargo_metadata_schema.rs`.
+      **Not a rename**: `[deploy.*]` is
+      `ros_launch_manifest_model::system_config::DeployBlock`, an upstream
+      `deny_unknown_fields` type (git tag v0.1.11), and it keeps its placement
+      meaning. Fields: `board`, `launch`, `args`, `panic`, `profile`, `variant`,
+      `conf`, `rmw`, `edition`, `features` — where `variant`/`conf` are **F3/F8**
+      (`nano-ros-rt-eval` builds one app on one board twice, and
+      `demo_bringup/ablation/*.toml` are whole alternate system configs).
+      `deny_unknown_fields` on our side too, matching upstream's reasoning that
+      a mistyped key must error rather than silently drop.
 - [ ] **W1.b** Add the `[image]` base table (RFC-0065 D5.1) merged under each
       `[image.<id>]`, so an eight-image workspace states its RMW and edition
       once. Precedent: PlatformIO's `[env]` / `[env:NAME]`.
@@ -97,11 +101,16 @@ schema.
       `PlatformId`, still live one layer up. Add `framework_board` to the
       registry rows that need it; `check-board-tiers` already validates the
       file's completeness.
-- [ ] **W1.f** Deprecate `[deploy.*]` using phase-222's shipped pattern
-      verbatim: both spellings parse, `[deploy.*]` warns once per invocation
-      naming `[image.*]`, `NROS_SUPPRESS_DEPRECATION=1` opts out,
-      `nros doctor` flags it in config files, deletion at the next minor
-      version. **A version boundary, not a time period.**
+- [ ] **W1.f** Deprecate the **build fields inside `[deploy.*]`** — never the
+      table, which stays upstream's placement declaration. A `[deploy.<id>]`
+      carrying `board`/`rmw`/`profile`/`optimize`/`features` with no
+      `[image.<id>]` beside it warns once per invocation naming the replacement,
+      using phase-222's shipped pattern verbatim: `NROS_SUPPRESS_DEPRECATION=1`
+      opts out, `nros doctor` flags it in config files, removal at the next
+      minor version. **A version boundary, not a time period.** A
+      `kind = "embedded"` block whose only content was build fields becomes
+      deletable once its `[image.*]` lands — upstream already excludes it from
+      placement.
 
 **Acceptance.** `nros ws model-dims` over all nine in-tree workspaces returns
 byte-identical output before and after the bringups are rewritten to
