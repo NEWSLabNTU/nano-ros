@@ -94,3 +94,50 @@ exists to prevent exactly this.
 
 Ordering note: W1 is cheap and unblocks the rest. W2 is the one with real value
 and the most per-symbol judgement. W4 is independent and can proceed in parallel.
+
+
+## W2 partly landed — and it corrected this phase's own classification
+
+**ThreadX libc stubs (group 5, 6 of 8 symbols): done.** They now set `errno`
+before returning -1.
+
+This phase filed them as "linkable, wrong if reached". **That was wrong.**
+Returning -1 IS the correct POSIX answer on a freestanding target — there is no
+filesystem, so `open` genuinely cannot open. The real defect was narrower and
+worse: they returned -1 **without setting `errno`**, so a caller doing the
+standard `if (rc < 0) perror(...)` read a STALE errno and got a confident,
+unrelated diagnosis. Silence would have been better than a wrong answer.
+
+`ENOSYS` where the operation does not exist here at all (open, pipe); `EBADF`
+where a descriptor was supplied that cannot be valid, since nothing on this
+target can have produced one.
+
+### The constraint that shapes the rest of W2
+
+**This group cannot fail loud by PRINTING.** `write` is how printing reaches the
+console, so a diagnostic inside it recurses — exactly issue 0589's Zephyr
+hazard, where a Rust `println!` re-entered `zvfs_write` and exhausted the stack
+with no message at all. `errno` is the only channel available.
+
+Anyone applying W2 to group 4 (zpico's 9 serial aliases) must carry that
+constraint: check what the symbol is on the path of before adding any output,
+and prefer an out-of-band signal to a print.
+
+### Correction to the phase's framing
+
+The axis this phase proposes — CORRECT vs LINKABLE-ONLY — is still the right
+one, but "linkable-only" turned out to be two different things:
+
+* **no truthful answer exists** (a genuine stub that lies), and
+* **a truthful answer exists and is not being given** (these, which returned the
+  right value with the wrong explanation).
+
+The second is the more common shape and the more dangerous one, because the
+return value looks correct under test. W1's column should distinguish them.
+
+Verified: `just check-weak-symbols` OK (17 files), and
+`just threadx_riscv64 build-fixture-extras` completes with zero errors and no
+diagnostics from `platform.c`.
+
+Remaining in W2: group 4's serial aliases, and the two ThreadX symbols that are
+not functions (`stdin`, and the `#if !defined(__linux__)` guard itself).

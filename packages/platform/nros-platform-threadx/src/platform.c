@@ -36,6 +36,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <sys/types.h>
+#include <errno.h>
 
 #ifndef TX_TIMER_TICKS_PER_SECOND
 #  define TX_TIMER_TICKS_PER_SECOND 100u
@@ -161,17 +162,35 @@ size_t nros_platform_heap_total_bytes(void) {
  * for the freestanding (bare-metal) ThreadX targets — the riscv64 cross
  * toolchain does not define `__linux__`; the hosted linux port does.
  */
+/* phase-386 W2 — these set `errno` before returning -1.
+ *
+ * Returning -1 is the CORRECT POSIX answer on a freestanding target: there is
+ * no filesystem, so `open` genuinely cannot open. What was wrong is that a
+ * caller doing the standard `if (rc < 0) perror(...)` read a STALE errno and
+ * got a confident, unrelated diagnosis — silence would have been better.
+ *
+ * `ENOSYS` where the operation does not exist here at all (open, pipe);
+ * `EBADF` where a descriptor was supplied that cannot be valid, since nothing
+ * on this target can have produced one.
+ *
+ * NOTE these cannot fail loud by PRINTING. `write` is how printing reaches the
+ * console, so a diagnostic inside it recurses — the same hazard as issue 0589
+ * on Zephyr, where a Rust `println!` re-entered `zvfs_write` and exhausted the
+ * stack with no message. errno is the only channel available to this group.
+ */
 #if !defined(__linux__)
 __attribute__((weak)) void *stdin = NULL;
 
 __attribute__((weak)) int open(const char *path, int flags, ...) {
     (void) path;
     (void) flags;
+    errno = ENOSYS;
     return -1;
 }
 
 __attribute__((weak)) int close(int fd) {
     (void) fd;
+    errno = EBADF;
     return -1;
 }
 
@@ -179,6 +198,7 @@ __attribute__((weak)) ssize_t read(int fd, void *buf, size_t count) {
     (void) fd;
     (void) buf;
     (void) count;
+    errno = EBADF;
     return -1;
 }
 
@@ -186,6 +206,7 @@ __attribute__((weak)) ssize_t write(int fd, const void *buf, size_t count) {
     (void) fd;
     (void) buf;
     (void) count;
+    errno = EBADF;
     return -1;
 }
 
@@ -193,6 +214,7 @@ __attribute__((weak)) off_t lseek(int fd, off_t offset, int whence) {
     (void) fd;
     (void) offset;
     (void) whence;
+    errno = EBADF;
     return (off_t) -1;
 }
 
@@ -201,6 +223,7 @@ __attribute__((weak)) int pipe(int fds[2]) {
         fds[0] = -1;
         fds[1] = -1;
     }
+    errno = ENOSYS;
     return -1;
 }
 #endif /* !__linux__ */
