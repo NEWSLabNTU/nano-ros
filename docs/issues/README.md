@@ -51,6 +51,19 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-26): **#0817** (platform) — sixteen allocation sites in the Zephyr port
+called `k_malloc`/`k_free` directly instead of the `nros_platform_alloc` funnel RFC-0034 D6 defines
+(net.c's local sockaddr + addrinfo, timer.c's handle, platform.c's mutex/condvar/task control
+blocks). On Zephyr both routes reach `_system_heap`, so it looked cosmetic — it is not: the funnel is
+what lets the arena's ALGORITHM be swapped without hunting every site, and a direct `k_malloc` keeps
+allocating from the kernel heap after the funnel moves, splitting the one arena D6 exists to keep
+whole. The backend is deliberately unchanged; it is the one place that should call `k_malloc`.
+Verified by disassembly on mr_canhubk3/s32k344: `z_malloc` tail-calls `nros_platform_alloc`, so
+zenoh-pico's 42 sites and the Rust `#[global_allocator]` share one funnel with no exceptions. Left
+behind: a source grep cannot see vendored C (#0816 wants a link-time symbol gate), and net.c still
+frees `ep->iptcp` with `zsock_freeaddrinfo` whichever allocator produced it (#0811). See
+`archived/0817-*`. (2026-08-26)
+
 Recently resolved (2026-08-26): **#0806** (testing) — a REPRODUCIBLE rebuild could not clear a STALE
 verdict. `candidates_changed_content_policy` refreshed its `.nros-srcbaseline` only when the
 artifact's own content HASH changed, which answers "were these bytes produced by a different
