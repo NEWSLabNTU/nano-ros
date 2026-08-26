@@ -247,7 +247,24 @@ if(NOT _riscv_stdcxx MATCHES "^/" OR NOT EXISTS "${_riscv_stdcxx}")
     if(DEFINED _NANO_ROS_CODEGEN_TOOL AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
         set(_NROS_CLI_RV "${_NANO_ROS_CODEGEN_TOOL}")
     else()
-        find_program(_NROS_CLI_RV nros)
+        # Issue 0726 — `find_program` DOES NOTHING when a variable of that name
+        # is already defined, and the `set(_NROS_CLI_RV "")` above defines it
+        # (empty counts). Written as `find_program(_NROS_CLI_RV nros)` this
+        # never searched: the variable stayed "", the store was never asked,
+        # and the "no SDK libstdc++" fallback below took over — which the
+        # comment above correctly predicted would "sit unnoticed", because it
+        # is a legitimate configuration and nothing distinguishes it from a
+        # host that genuinely lacks the SDK.
+        #
+        # A distinct CACHE name is what makes the search actually run. The
+        # shared `nros_resolve_cli` is the right answer everywhere it is
+        # reachable, but this is a TOOLCHAIN file: it is re-evaluated for every
+        # `try_compile`, so pulling in a module there multiplies its cost by
+        # the probe count rather than paying it once.
+        find_program(_NROS_CLI_RV_FOUND nros)
+        if(_NROS_CLI_RV_FOUND)
+            set(_NROS_CLI_RV "${_NROS_CLI_RV_FOUND}")
+        endif()
     endif()
     if(_NROS_CLI_RV)
         # WORKING_DIRECTORY for the reason spelled out in

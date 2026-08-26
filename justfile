@@ -476,7 +476,7 @@ check-fast: _check-skip-reset \
     check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
     check-readiness-marker-literals \
     check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-zenohd-router-skips check-single-rust-staticlib check-cli-source-dirs check-api-parity-ledger check-just-recipe-refs \
+    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-cmake-find-program-shadowed check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-zenohd-router-skips check-single-rust-staticlib check-cli-source-dirs check-api-parity-ledger check-just-recipe-refs \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
@@ -3594,6 +3594,14 @@ check-no-vacuous-tests:
 check-nextest-binary-filters:
     @python3 scripts/check-nextest-binary-filters.py --self-test
     @python3 scripts/check-nextest-binary-filters.py
+
+# Issue 0726 — `find_program(VAR ...)` is a NO-OP when VAR is already defined,
+# so the "initialise then search" spelling never searches. All three sites in
+# this tree paired it with a quiet fallback (FetchContent clone, "no SDK
+# libstdc++", host-idlc), so none failed loudly.
+check-cmake-find-program-shadowed:
+    @python3 scripts/check-cmake-find-program-shadowed.py --self-test
+    @python3 scripts/check-cmake-find-program-shadowed.py
 
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #

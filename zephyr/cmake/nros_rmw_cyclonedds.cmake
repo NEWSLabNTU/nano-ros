@@ -315,7 +315,17 @@ else()
         endif()
     endforeach()
     if(_NROS_CLI_IDLC STREQUAL "")
-        find_program(_NROS_CLI_IDLC nros)
+        # Issue 0726 — a distinct CACHE name, because `find_program` is a NO-OP
+        # when a variable of that name is already defined and `_NROS_CLI_IDLC`
+        # was set to "" ten lines up. Spelled `find_program(_NROS_CLI_IDLC nros)`
+        # this rung never ran, so a build whose CLI was only on PATH fell
+        # through to the host-idlc search — reaching exactly the FATAL_ERROR the
+        # comment above describes, "advising three remedies that were all
+        # already satisfied".
+        find_program(_NROS_CLI_IDLC_FOUND nros)
+        if(_NROS_CLI_IDLC_FOUND)
+            set(_NROS_CLI_IDLC "${_NROS_CLI_IDLC_FOUND}")
+        endif()
     endif()
     if(_NROS_CLI_IDLC)
         # WORKING_DIRECTORY, and it is load-bearing: `nros sdk-path` reads

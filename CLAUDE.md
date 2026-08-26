@@ -485,7 +485,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   and both provisioning paths print success either way. Corrosion `< 0.6.0` shares one
   `cargo/build` across workspace roots ⇒ duplicate `#[no_mangle]` ⇒ `mixed` cannot link.
   **Read the configure's `nano-ros: Corrosion <ver> via <origin>` line — never infer the
-  version from having run the installer.** Gate: `check-cmake-corrosion-prefix`.
+  version from having run the installer** — the ordering gate that used to back this
+  was retired with the globbed prefix (phase-365 W3a), so the printed line is the only
+  evidence. And READ IT: the resolver's PATH fallback could not fire for two phases
+  (`find_program` no-ops on an already-defined var), so every configure that did not
+  pass `-D_NANO_ROS_CODEGEN_TOOL` — which is the book's documented user flow — cloned
+  Corrosion from git and FAILED OFFLINE while the store held it. Gate:
+  `check-cmake-find-program-shadowed` (issue 0726).
 - **A cargo `--target-dir` serves exactly ONE workspace root (issue 0616)** — `-C metadata`
   includes the path SPELLING a crate was reached by (a member is recorded relative to its
   root, an external path dep absolutely), so two roots sharing a directory get two units of

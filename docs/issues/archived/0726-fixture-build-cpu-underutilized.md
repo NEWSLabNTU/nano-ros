@@ -580,6 +580,161 @@ Priorities 2 and 3 are untouched: a launcher that overlaps stages AND shares
 tokens, and the `threadx_riscv64` tail (1302 s) that bounds the build under any
 scheduler. Both still need the measurement harness this issue describes.
 
+## Priority 2 detour (2026-08-26): the configure finding was a DEAD `find_program`
+
+The section above left "a launcher that overlaps stages and shares tokens" as
+priority 2, and the CMake configure trace as the one live-process finding that
+survived the sampler contamination — `nros_resolve_corrosion` at 20 s of a 33 s
+leaf configure. Chasing that number found a defect, though not the one the
+number described.
+
+### The number did not reproduce; the shape did
+
+A leaf configure here is **3.0 s warm**, not 33 s. The 33 s reading has the same
+cold-vs-warm problem this issue has already recorded twice, so it is not quoted
+further. What the trace DID show is real and does not depend on temperature:
+
+```
+execute_process   2.48 s of 2.95 s   (84%, 44 calls)
+```
+
+and, in the per-site attribution, paths that should not have existed at all:
+
+```
+1.17 s  FetchContent.cmake:1921   ${CMAKE_COMMAND} --build .
+0.08 s  tmp/leaf-build2/_deps/corrosion-src/cmake/FindRust.cmake:352
+```
+
+`_deps/corrosion-src` means the leaf **cloned Corrosion from GitHub at configure
+time** — while `/home/aeon/.nros/sdk/corrosion` held a provisioned 0.6.1.
+
+### Root cause
+
+`find_program` short-circuits when its result variable is already defined. That
+is the caching contract, and **an empty string counts as defined.** So:
+
+```cmake
+set(_NROS_CLI "")            # normal variable, now DEFINED
+find_program(_NROS_CLI nros) # <-- does nothing; _NROS_CLI stays ""
+```
+
+Demonstrated rather than reasoned about:
+
+```
+-- after find_program: []                                      # with the pre-set
+-- no pre-set:         [/…/packages/cli/target/release/nros]   # same call, no pre-set
+```
+
+`_nros_corrosion_store_dir` therefore returned empty for every configure that
+did not pre-set `_NANO_ROS_CODEGEN_TOOL`, skipped `find_package` entirely, and
+fell through to the FetchContent branch. Issue 0500's whole store-ordering
+apparatus was dead code on that path.
+
+### Who was actually affected — NOT the CI lanes
+
+Every `just` platform lane passes `-D_NANO_ROS_CODEGEN_TOOL` in its
+`base_defs` (freertos, native, nuttx, threadx-linux, threadx-riscv64,
+zephyr-dev, zephyr-setup), so they took the first branch and never reached the
+dead search. The fixture build was not cloning Corrosion.
+
+What was affected is the **documented user flow** — `book/src/getting-started/
+first-project.md` and `workspace-cpp.md` both say
+
+```
+cmake -S . -B build -DNANO_ROS_ROOT=<path-to-your-nano-ros-checkout>
+```
+
+with no codegen-tool `-D`, as does
+`examples/templates/multi-package-workspace/build-all.sh`. Those are the
+copy-out projects RFC-0026 makes the primary consumer shape.
+
+An earlier draft of this section claimed the 116 build dirs carrying
+`_deps/corrosion-src` were evidence of scale. Checked properly: **118 of 119 of
+them ALSO have `Corrosion_DIR` pointing into the SDK store**, so they are
+residue from an earlier configure, not live FetchContent builds. Exactly one is
+a true fetch-only dir. The claim is withdrawn; the impact below is the one that
+holds.
+
+### The consequence, measured
+
+Same leaf, same tree, full PATH, three fresh configures each:
+
+| | | |
+| --- | --- | --- |
+| before | 2.44 / 2.05 / 1.96 s | via FetchContent |
+| after | 0.73 / 0.82 / 0.80 s | via SDK store |
+
+And the sharp one — with the network blocked, on a host where
+`nros setup --tool corrosion` HAS been run:
+
+```
+OFFLINE, before fix:  rc=1   Failed to clone repository: 'https://github.com/corrosion-rs/corrosion.git'
+OFFLINE, after fix:   rc=0   via SDK store
+```
+
+The pre-fix run advises the remedy the user already applied:
+
+```
+-- nano-ros: Corrosion not provisioned — fetching v0.6.1 from git.
+   Install it offline-safe with:  nros setup --tool corrosion
+```
+
+That is issue 0628's failure mode returning through a different mechanism: it
+was fixed for the "installed where I did not look" case and reappeared as
+"never looked at all".
+
+### It is a CLASS — two more sites, both with quiet fallbacks
+
+A sweep for `set(VAR …)` followed by `find_*(VAR …)` found three sites, and the
+reason none had been noticed is that all three pair the dead search with a
+legitimate-looking fallback:
+
+| site | what the dead search cost |
+| --- | --- |
+| `cmake/NanoRosCorrosion.cmake` | FetchContent clone instead of the SDK store |
+| `cmake/toolchain/riscv64-threadx.cmake` | never asked the store for libstdc++; silently took the "no SDK libstdc++" fallback |
+| `zephyr/cmake/nros_rmw_cyclonedds.cmake` | skipped the PATH rung, fell to the host-idlc search |
+
+Two of them predicted this in their own comments. The threadx one:
+
+> Here the failure is quiet by design — the "no SDK libstdc++" fallback below is
+> a real configuration — which is precisely why it could sit unnoticed.
+
+and the cyclonedds one describes ending in "a FATAL_ERROR advising three
+remedies that were all already satisfied". Both were right, and both were
+describing a search that could not run.
+
+The riscv64 candidate exists on this host
+(`…/riscv-none-elf/lib/rv64imafdc_zicsr/lp64d/libstdc++.a`), and 10 C++ fixture
+rows build on that platform — but that lane passes `-D_NANO_ROS_CODEGEN_TOOL`,
+so it took the first branch and its behaviour is unchanged. The fix matters
+there for the same non-lane configures as above.
+
+### Fixed
+
+* `NanoRosCorrosion.cmake` now calls the SHARED resolver
+  `nros_resolve_cli(<out> OPTIONAL …)` (issues 0219 / 0325) — whose own comment
+  records that it exists to stop bespoke copies, and this was the sixth. It
+  already honours `_NANO_ROS_CODEGEN_TOOL` first, so 0754's precedence is kept.
+* The other two use a distinct result variable instead. Deliberate asymmetry:
+  a toolchain file is re-evaluated for every `try_compile`, so an include there
+  is paid per probe; and the cyclonedds rung runs before the interface
+  generator is included and must degrade rather than FATAL.
+* New gate `check-cmake-find-program-shadowed` (12 self-tests, on the fast
+  line). Negative control: it reports all three sites against `HEAD`, zero
+  after. It is the durable half — the wrong spelling is the natural one.
+
+Also corrected while here: `check-cmake-corrosion-prefix`, named as a live gate
+by CLAUDE.md and twice by `NanoRosCorrosion.cmake`, **does not exist** — issue
+0625 records phase-365 W3a retiring it deliberately when the prefix became
+constructed. Three stale references now say so.
+
+### Priority 2 and 3 still stand
+
+This was a detour into the configure, not the launcher. Stage overlap plus a
+shared token pool is untouched, and so is the `threadx_riscv64` 1302 s tail. The
+lineage-scoped sampler on a quiet box is still the prerequisite for both.
+
 ## Resolved (2026-08-26): the premise was wrong, and measuring it was the value
 
 This issue opened on "the fixture build statically partitions 32 cores into 4x8,

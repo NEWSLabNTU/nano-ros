@@ -38,9 +38,17 @@
 # The shell-side sibling is `scripts/build/cmake-prefix.sh`, which exports the
 # same prefixes for a configure that does NOT include this checkout's root (a
 # standalone template calling `find_package(Corrosion)` on its own). Keep the
-# two candidate rules in step; `check-cmake-corrosion-prefix` gates the wiring.
+# two candidate rules in step. NOTE `check-cmake-corrosion-prefix` no longer
+# exists — phase-365 W3a (`24519cac8`) retired it deliberately when the prefix
+# became CONSTRUCTED from the pin rather than globbed, so there is no gate on
+# this wiring and the two rules are kept in step by hand (issue 0625).
 
 include_guard(GLOBAL)
+
+# `nros_resolve_cli` — the SHARED CLI resolver (issues 0219 / 0325). Included at
+# FILE scope: inside a function `CMAKE_CURRENT_LIST_DIR` names the CALLER's file,
+# and the frame pop drops what the include defined.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 
 # CACHE INTERNAL, not a plain `set`: this module is `include()`d from inside
 # functions, and a normal variable set at file scope is gone when that frame
@@ -161,13 +169,34 @@ function(_nros_corrosion_store_dir out_var)
     # PATH discovery: a second independent `find_program` re-introduces
     # the 0663/0625 shadowing class (a stale `nros` earlier on PATH
     # answering for the one the build validated).
+    #
+    # Issue 0726 — the fallback was a SIXTH bespoke `find_program`, and it could
+    # never fire:
+    #
+    #     set(_NROS_CLI "")          # normal variable, now DEFINED
+    #     find_program(_NROS_CLI nros)   # <-- no-op; `_NROS_CLI` stays ""
+    #
+    # `find_program` does nothing when a variable of that name is already
+    # defined, and an empty string counts as defined. So every configure that
+    # did NOT pre-set `_NANO_ROS_CODEGEN_TOOL` returned empty here, skipped
+    # `find_package` entirely, and fell through to the FetchContent branch —
+    # cloning Corrosion from GitHub at configure time while a provisioned copy
+    # sat in the SDK store. That made the whole 0500 ordering apparatus dead
+    # code on this path and made a configure REQUIRE the network.
+    #
+    # `nros_resolve_cli` (issues 0219 / 0325) is the shared resolver that
+    # already owns this precedence — including `_NANO_ROS_CODEGEN_TOOL` first,
+    # which is 0754's requirement — plus its own stale-path drop. Its own
+    # comment records that it exists to stop the fifth bespoke copy; this was
+    # the sixth. OPTIONAL because a missing CLI is a legitimate fall-through to
+    # FetchContent here, not the FATAL_ERROR other callers want.
     set(_NROS_CLI "")
     if(DEFINED _NANO_ROS_CODEGEN_TOOL AND EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
         set(_NROS_CLI "${_NANO_ROS_CODEGEN_TOOL}")
     else()
-        find_program(_NROS_CLI nros)
+        nros_resolve_cli(_NROS_CLI OPTIONAL CONTEXT "nros_resolve_corrosion")
     endif()
-    if(NOT _NROS_CLI)
+    if(NOT _NROS_CLI OR _NROS_CLI STREQUAL "NOTFOUND")
         return()
     endif()
     execute_process(
@@ -256,8 +285,8 @@ function(nros_report_corrosion origin version location)
     # This line classified `< 0.6.0` as a link risk and then configured anyway,
     # so the only thing standing between a host and the duplicate-symbol failure
     # was the SDK store happening to hold a newer copy. The store ACCUMULATES
-    # (issue 0500) and `check-cmake-corrosion-prefix` enforces newest-FIRST
-    # ordering, not a version FLOOR: a host with only 0.5.1 installed resolves
+    # (issue 0500), and the ordering rule it is sorted by is newest-FIRST, not
+    # a version FLOOR: a host with only 0.5.1 installed resolves
     # it, silently, and gets two `-C metadata` identities of every nros crate in
     # one `deps/`.
     #
