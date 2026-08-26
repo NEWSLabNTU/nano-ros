@@ -736,6 +736,101 @@ This was a detour into the configure, not the launcher. Stage overlap plus a
 shared token pool is untouched, and so is the `threadx_riscv64` 1302 s tail. The
 lineage-scoped sampler on a quiet box is still the prerequisite for both.
 
+## Priority 2 CLOSED (2026-08-26): the launcher was never the lever
+
+Not by building a third launcher. The pooled one asked for here — stage overlap
+AND one shared token pool — already exists as `NROS_BUILD_POOL=1` (phase-371 W3,
+commit `5a403b4a8`), and its structural win is proven from the joblog: all 7
+non-zephyr stages start at the same instant, mean 3.29 in flight against the
+static launcher's hard cap of 4.
+
+What closes the item is that phase-371's lineage-scoped measurement — the
+harness this section said was a prerequisite — answered the question underneath
+it:
+
+| | |
+| --- | --- |
+| build's own processes alive | mean 36.3 |
+| **runnable** | mean **0.1**, median 0 |
+| share of run with ZERO runnable | **92.6%** |
+| loadavg runnable (cross-check) | mean 1.9 |
+
+A build that is 92.6% idle *by its own processes* cannot be helped by a
+scheduler that hands out permission to run. Permission was never the scarce
+resource. Both launchers were solving a problem the build does not have, and so
+would a third.
+
+**The default stays static 4x8, deliberately.** Flipping to pooled would be an
+unmeasured change in the direction the evidence argues against: the build's
+constraint is I/O, and pooled admits more concurrent stages, so it could
+plausibly be slower rather than faster. The cold A/B that would settle it costs
+several hours per run (native alone has run 655-4051 s) and this issue's own
+data says the result cannot matter much either way. Pooled remains available,
+opt-in, structurally better, and proven green 8/8 — the right shape for anyone
+who later has a reason to want it.
+
+### Correction: there were never "86 unconverted walk sites"
+
+phase-371 wrote that its wchan result "raises the value of issue 0721's 86
+unconverted walk sites". Two different sets got merged: 0721 is the WALK class
+(resolved), and the 86 are 0726's own `grep -q` error-conflation sites, which
+have nothing to do with traversal I/O.
+
+Counted properly, the walk class has **9** live exemptions, and every one is
+legitimately outside the git index — build output (`dep-closure`,
+`prune-superseded-artifacts`), UNTRACKED leaf `target/` dirs the index cannot
+see by definition, `--self-test` temp trees, the Zephyr submodule, an installed
+ROS include tree. There is nothing left to convert.
+
+### Re-measured: the gate phase's I/O signature is gone
+
+phase-371's wchan table was taken BEFORE the `check-deploy-board-resolves` fix
+earlier in this issue (231.83 s -> 0.09 s). Same instrument
+(`sample-build-wchan.sh`), same target — that table explicitly characterises the
+GATE PHASE, not the compile phase — re-run afterwards:
+
+| | before | after |
+| --- | --- | --- |
+| leaves RUNNING | 1% | **34%** |
+| leaves in D (uninterruptible disk) | **64%** | 7% |
+| leaves in S | 35% | 58% |
+
+Leaf blockers, before and after:
+
+```
+before:  468 python3  __wait_on_buffer          disk
+         245 awk      pipe_read
+         243 grep     folio_wait_bit_common     page cache / disk
+         171 python3  d_alloc_parallel          dentry — PATH LOOKUP contention
+
+after:    19 bash     pipe_read
+          14 sleep    hrtimer_nanosleep
+          11 sort     pipe_read
+          11 awk      pipe_read
+           9 cargo    jbd2_log_wait_commit
+```
+
+The directory-traversal signature — `__wait_on_buffer`,
+`folio_wait_bit_common`, `d_alloc_parallel` — is **absent**, and the running
+leaves are now `python3` (30) and `grep` (11) doing actual work. That confirms
+the mechanism rather than merely the wall clock: the gates were not
+"I/O-bound by nature", they were walking gigabytes of build output, and one
+gate was most of it.
+
+Limits, stated plainly: 593 process-samples over ~11 s against 5774 over 791 s,
+so the after-sample is much smaller; and the page cache is warm. **I cannot test
+cold — dropping caches needs root, which is not available here.** The
+warm-to-warm 231.83 s -> 0.09 s comparison is what isolates the walk from cache
+temperature, and 0721's own `git ls-files` at 0.002 s against a walk that had
+not finished in 300 s is why the structural argument holds cold.
+
+### What is actually left
+
+Priority 3, unchanged: the `threadx_riscv64` tail at 1302 s, 1.6x the next
+slowest stage, bounding the build under any scheduler. It is now the only
+untouched item, and it is a question about one stage's own graph, not about
+scheduling.
+
 ## Resolved (2026-08-26): the premise was wrong, and measuring it was the value
 
 This issue opened on "the fixture build statically partitions 32 cores into 4x8,

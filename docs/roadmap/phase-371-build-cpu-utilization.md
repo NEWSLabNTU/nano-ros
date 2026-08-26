@@ -301,8 +301,14 @@ default) turns those walks into 32-way concurrent path lookups, which is why the
 dentry allocator shows up at all. The gate phase is fast in wall-clock (7 s) but
 it saturates the filesystem rather than the CPU.
 
-That raises the value of issue 0721's **86 unconverted walk sites** above what
-this phase previously assigned them. Their SERIAL cost is small — that is why
+That raises the value of issue 0721's remaining walk exemptions above what
+this phase previously assigned them. **Correction (2026-08-26): "86" was
+wrong** — it merged two unrelated sets. 0721 is the WALK class (resolved);
+the 86 are 0726's `grep -q` error-conflation sites, which have nothing to do
+with traversal I/O. The walk class has 9 live exemptions and every one is
+legitimately outside the index. The real remaining walker was
+`check-deploy-board-resolves` at 231.83 s, now 0.09 s — after which this
+wchan table's disk signature disappears entirely (see 0726). Their SERIAL cost is small — that is why
 they were left — but under the fan-out each one becomes concurrent path-lookup
 pressure. The ranking there was made when the gates ran serially and should be
 revisited now that they do not.
