@@ -596,6 +596,62 @@ green catches that. Three retractions in this session — a wrong root cause in
 #0844, an over-broad staleness rule, a `const` assertion that could only be true
 — all passed every gate they were subject to.
 
+## Contributors outside the team
+
+Everything above assumes an agent or maintainer with push access. An outside
+contributor works from a fork, and three things change.
+
+### The trust boundary is ENQUEUEING, not merging
+
+A fork PR runs on hosted runners with a read-only token and no secrets. That is
+safe, and it stays safe only while the triggers stay `pull_request` — **never
+`pull_request_target`**, which runs the fork's code with the base repo's token
+and secrets. No workflow here uses it today; that is a property to keep, not a
+coincidence.
+
+The moment untrusted code reaches your hardware is when a maintainer enqueues
+the PR, because `merge_group` jobs run on self-hosted runners. So:
+
+> **Clicking "merge when ready" on a fork PR is the trust decision.** It is not
+> a scheduling convenience. Read the diff first — including its build scripts,
+> `build.rs`, and any `justfile` or workflow change.
+
+Enable *Require approval for all outside collaborators* so a first PR cannot
+even reach hosted CI without a maintainer's click, and keep the runner
+unprivileged and ephemeral so a mistake is survivable rather than fatal.
+
+### They can only run L0–L2, so those lanes must stand alone
+
+An outside contributor has a fresh clone: no Zephyr SDK, no ROS, no QEMU, no
+warm sccache. The lane split happens to be exactly right for them — L0 needs a
+shell, L1 needs cargo, and L2 needs a host compiler. **The same property that
+lets L2 run on a free hosted runner is what lets a contributor run it on a
+laptop.**
+
+That is a requirement to hold, not an observation. `just probe bootstrap`
+already runs the book's setup flow in a clean container (issue 0204), and `just
+doctor` reports install status; both should cover the L0–L2 path specifically,
+so "can a stranger verify their own change?" has a mechanical answer.
+
+There is no `CONTRIBUTING.md` today. It should say one thing loudly: run
+`just ci`, expect L0–L2, and do not attempt the cross lanes.
+
+### Claims do not work for them
+
+`just claim` writes `refs/claims/…` to origin, which needs push access. An
+outside contributor cannot claim, so for them the coordination mechanism is
+GitHub issue assignment — and an agent must therefore check **both** the claim
+refs and the issue's assignee before starting, or it will duplicate an outsider's
+in-flight work. The ref is the fast path, not the only one.
+
+### They cannot debug a queue failure
+
+If L3 or L4 fails on a fork PR, the contributor has no SDK, no runner access and
+no way to reproduce. That makes two things load-bearing rather than nice:
+`queue.yml` uploading its logs unconditionally, and a maintainer owning triage
+for fork PRs. Handing someone a red they cannot reproduce, on hardware they
+cannot see, is how outside contribution stops.
+
 ## How it behaves under concurrency
 
 A tabletop run of the design against eight scenarios, drawn from what actually
