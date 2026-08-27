@@ -1,14 +1,72 @@
 ---
 id: 848
-title: "The router stops transmitting on serial ~200 ms after the handshake —
-  confirmed at the board's UART, not from router logs"
+title: "The router's serial keepalive is a 1-byte write that never lands as a
+  parseable frame — board never resets its lease and expires at 2 x lease"
 status: open
 type: bug
 area: rmw
 related: [issue-0839, issue-0821]
 ---
 
-## RESOLVED DIAGNOSIS (2026-08-28) — measured at the board's UART
+## ROOT CAUSE (2026-08-28) — both sides on one timeline
+
+Built `zenohd` v1.9.0 from source with `--features zenoh/transport_serial`
+(serial is feature-gated; the first build refused with "Unicast not supported
+for serial protocol"), instrumented the keepalive arm, the `TimeoutTracker`,
+and the serial link's `write()`. Ran it against the board with the board's own
+receive probes in the same run.
+
+```
+ROUTER writes -- all 12 returned OK, keepalive arm fired 4x
+  18:07:48.050   74 bytes  [e1 09 f0 c7 1f ...]   handshake
+  18:07:48.080    6 bytes  [62 3c b4 ea d3 03]
+  18:07:48.269   10 bytes  [25 b4 ea d3 03 ...]
+  18:07:48.300   10 bytes  [25 b5 ea d3 03 ...]
+  18:07:58.307    1 byte   [04]      <- KEEPALIVE
+  18:08:08.309    1 byte   [04]      <- KEEPALIVE
+
+BOARD receives
+  frame rb=9  ok hdr=0x03      the early, larger writes
+  frame rb=83 ok hdr=0x00      arrive and parse correctly
+  frame rb=15 ok hdr=0x00
+  timeout, rb=4                <- 4 bytes, no terminator, dropped
+  timeout, rb=0  x many
+  expired x1
+```
+
+**The keepalive is a one-byte write and it never lands as a parseable frame.**
+zenoh-pico's serial reader scans byte-by-byte for the `0x00` COBS terminator
+(`_z_read_serial_internal`); it saw 4 bytes that never terminated and timed out
+after 1000 ms. Every larger write in the same session framed and parsed fine.
+
+So the full chain is: timer fires -> arm fires -> `write()` returns OK -> the
+small keepalive does not arrive as a complete frame -> the board never resets
+`_received` -> lease expires at `2 x Z_TRANSPORT_LEASE` -> close, reconnect,
+repeat.
+
+### What this retires
+
+Every earlier hypothesis in this issue is now superseded, and each was wrong for
+a different reason worth keeping:
+
+- *"the router never sends keepalives"* — it does; the arm fires 4x. The
+  evidence I had (absence of `universal::tx: Scheduled` lines) could never have
+  shown it, because the arm bypasses the pipeline.
+- *"the keepalive arm never fires"* — instrumented: `arm_enabled=true`,
+  `keep_alive=10s`, fired.
+- *"the board's read path is broken"* — it decodes every frame it is handed,
+  including post-handshake data frames.
+- *"the tx task is blocked"* — profiled: `tx-0` parked in `ep_poll`, nothing
+  held.
+
+### Not yet established
+
+WHY a 1-byte payload fails to produce a complete frame while 6-, 10- and
+74-byte payloads succeed. Candidates: framing/flush behaviour in `ZSerial`
+for very small buffers, or a terminator that is written but not flushed. That
+is one more probe inside `ZSerial::write` and is the obvious next step.
+
+## Earlier diagnosis (superseded, kept for the record)
 
 The original claim (router goes silent) was right; the *evidence* for it was
 not, and it was retracted below for that reason. It has now been re-established
