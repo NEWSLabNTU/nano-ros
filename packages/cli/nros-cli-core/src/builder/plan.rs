@@ -49,6 +49,35 @@ impl Driver {
         matches!(self, Driver::Cargo | Driver::CMake)
     }
 
+    /// Whether this driver's entry package must be EXCLUDED from the cargo
+    /// root rather than listed as a member.
+    ///
+    /// Not the same question as [`Self::needs_generated_root`], though the two
+    /// were conflated until phase-383 W9.b. That one asks whether stage 4 emits
+    /// a root; this one asks whether the package can be a cargo member at all.
+    ///
+    /// Only west: a Zephyr entry is a `staticlib` built by `west` through
+    /// `rust_cargo_application()`, carries its own `CMakeLists.txt`, and
+    /// deliberately declares no `[workspace]` of its own. The eight
+    /// hand-written roots excluded exactly their west entries and nothing else.
+    ///
+    /// An ESP-IDF entry is an ordinary cargo package — `esp32_entry` is a
+    /// `Cargo.toml`, a `package.xml` and `src/`, with no CMakeLists — and
+    /// `idf.py` wraps a cargo build of it. Excluding it broke the fixture row
+    /// that builds the same package directly (`cargo build -p esp32_entry
+    /// --target riscv32imc-unknown-none-elf` → "package ID specification
+    /// `esp32_entry` did not match any packages"), because an excluded package
+    /// is not a member.
+    ///
+    /// Cross-target membership is not itself a reason to exclude: `freertos_entry`
+    /// and `nuttx_entry` are members and always were. What protects a bare
+    /// `cargo build` at the root is that nothing here ever runs one — every
+    /// build names its package with `-p`.
+    #[must_use]
+    pub fn excluded_from_cargo_root(self) -> bool {
+        matches!(self, Driver::West)
+    }
+
     /// The program stage 5 execs.
     #[must_use]
     pub fn program(self) -> &'static str {

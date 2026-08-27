@@ -546,3 +546,41 @@ fn a_relative_workspace_root_plans_the_same_as_an_absolute_one() {
     assert_eq!(rel[0].qualified, abs[0].qualified);
     assert_eq!(rel[0].board, abs[0].board);
 }
+
+/// An ESP-IDF entry is a cargo MEMBER; only west entries are excluded.
+///
+/// phase-383 W9.b. The exclude set was computed from `needs_generated_root()`,
+/// which answers a different question — whether stage 4 emits a root — and that
+/// swept in the idf entry. `esp32_entry` is a `Cargo.toml`, a `package.xml` and
+/// `src/`, with no CMakeLists; `idf.py` wraps a cargo build of it, and the
+/// `workspace-rust-esp32` fixture row builds the same package directly. An
+/// excluded package is not a member, so that row died with "package ID
+/// specification `esp32_entry` did not match any packages" — during the
+/// `lane=all` build, after zephyr, qemu, nuttx and native had all gone green.
+#[test]
+fn only_west_entries_are_excluded_from_the_generated_root() {
+    use nros_cli_core::builder::plan::Driver;
+    assert!(Driver::West.excluded_from_cargo_root());
+    assert!(
+        !Driver::IdfPy.excluded_from_cargo_root(),
+        "an ESP-IDF entry is an ordinary cargo package"
+    );
+    assert!(!Driver::Cargo.excluded_from_cargo_root());
+    assert!(!Driver::CMake.excluded_from_cargo_root());
+
+    // The old exclude test was `!needs_generated_root()`. idf.py is exactly
+    // where that disagrees with the right question, which is why collapsing the
+    // two was invisible until an idf entry had to be a cargo member.
+    assert!(!Driver::IdfPy.needs_generated_root());
+    assert_ne!(
+        !Driver::IdfPy.needs_generated_root(),
+        Driver::IdfPy.excluded_from_cargo_root(),
+        "the old predicate excluded idf.py; the right one does not"
+    );
+    // west agrees under both, which is why the other seven workspaces never
+    // caught it.
+    assert_eq!(
+        !Driver::West.needs_generated_root(),
+        Driver::West.excluded_from_cargo_root()
+    );
+}

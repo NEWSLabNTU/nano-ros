@@ -247,7 +247,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // build/ — cargo requires members to sit below their root and
                 // resolves a package's workspace by walking up. An existing
                 // hand-written root is used as-is, never overwritten.
-                let excluded = framework_entry_dirs(&found, &catalog);
+                let excluded = cargo_excluded_entry_dirs(&found, &catalog);
                 // EVERY cargo image's entry, not just this one.
                 //
                 // The root is a property of the WORKSPACE; making its member
@@ -732,6 +732,26 @@ fn framework_entry_dirs(
     found: &crate::builder::discover::Discovered,
     catalog: &crate::orchestration::board_descriptor::BoardCatalog,
 ) -> std::collections::BTreeSet<PathBuf> {
+    entry_dirs_where(found, catalog, |d| !d.needs_generated_root())
+}
+
+/// Entry packages the generated cargo root must EXCLUDE.
+///
+/// A strictly smaller set than [`framework_entry_dirs`] — see
+/// [`Driver::excluded_from_cargo_root`] for why the two questions differ.
+fn cargo_excluded_entry_dirs(
+    found: &crate::builder::discover::Discovered,
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+) -> std::collections::BTreeSet<PathBuf> {
+    entry_dirs_where(found, catalog, Driver::excluded_from_cargo_root)
+}
+
+/// Entry package directories whose resolved driver satisfies `want`.
+fn entry_dirs_where(
+    found: &crate::builder::discover::Discovered,
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    want: impl Fn(Driver) -> bool,
+) -> std::collections::BTreeSet<PathBuf> {
     use crate::orchestration::board_descriptor::DeployResolution;
     let mut out = std::collections::BTreeSet::new();
     for pkg in &found.packages {
@@ -750,7 +770,7 @@ fn framework_entry_dirs(
             .and_then(|d| d.as_str());
         let Some(deploy) = deploy else { continue };
         if let DeployResolution::Board(d) = catalog.resolve_deploy(deploy)
-            && !plan::driver_for(d.platform.kebab(), false).needs_generated_root()
+            && want(plan::driver_for(d.platform.kebab(), false))
         {
             out.insert(pkg.dir.clone());
         }
