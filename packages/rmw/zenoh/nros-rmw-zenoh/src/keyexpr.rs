@@ -54,6 +54,45 @@ impl TopicKeyExpr for TopicInfo<'_> {
     }
 }
 
+/// Render a service type name in the DDS form rmw_zenoh puts on the wire.
+///
+/// nano-ros' raw service API takes the ROS-style `pkg/srv/Type` (every call
+/// site in this tree passes that form, and it is what `ros2 service call`
+/// prints), but rmw_zenoh keys carry the mangled `pkg::srv::dds_::Type_`.
+/// Leaving it unmangled does not merely look wrong: `/` is a zenoh keyexpr
+/// SEPARATOR, so `example_interfaces/srv/AddTwoInts` splits the key into three
+/// extra segments and nothing lines up with the fields a peer expects. That is
+/// why a service registered from this stack was invisible to `ros2 service
+/// list` even with the domain correct (issue 0824).
+///
+/// Verified against a native `demo_nodes_cpp add_two_ints_server` on
+/// rmw_zenoh, which declares:
+///   `…/SS/%/%/add_two_ints_server/%add_two_ints/example_interfaces::srv::dds_::AddTwoInts_/…`
+///
+/// A name that already contains `::` is passed through untouched, so callers
+/// that supply the mangled form (generated code does) are unaffected.
+/// Anything that is not exactly `a/b/c` is passed through as well rather than
+/// mangled into nonsense.
+pub(crate) struct DdsSrvType<'a>(pub &'a str);
+
+impl core::fmt::Display for DdsSrvType<'_> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let s = self.0;
+        if s.contains("::") {
+            return f.write_str(s);
+        }
+        let mut parts = s.split('/');
+        match (parts.next(), parts.next(), parts.next(), parts.next()) {
+            (Some(pkg), Some(kind), Some(name), None)
+                if !pkg.is_empty() && !kind.is_empty() && !name.is_empty() =>
+            {
+                write!(f, "{pkg}::{kind}::dds_::{name}_")
+            }
+            _ => f.write_str(s),
+        }
+    }
+}
+
 /// Extension trait for generating zenoh key expressions from `ServiceInfo`
 pub trait ServiceKeyExpr {
     /// Generate the service key in rmw_zenoh format
@@ -76,7 +115,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/TypeHashNotSupported",
-                self.domain_id, service_stripped, self.type_name
+                self.domain_id, service_stripped, DdsSrvType(self.type_name)
             ),
         );
         #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
@@ -84,7 +123,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/{}",
-                self.domain_id, service_stripped, self.type_name, self.type_hash
+                self.domain_id, service_stripped, DdsSrvType(self.type_name), self.type_hash
             ),
         );
         key
@@ -97,7 +136,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/*",
-                self.domain_id, service_stripped, self.type_name
+                self.domain_id, service_stripped, DdsSrvType(self.type_name)
             ),
         );
         key

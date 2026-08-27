@@ -596,7 +596,7 @@ impl Ros2Liveliness {
                 ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
-                service.type_name,
+                crate::keyexpr::DdsSrvType(service.type_name),
                 service.type_hash,
                 qos_string.as_str()
             ),
@@ -636,7 +636,7 @@ impl Ros2Liveliness {
                 ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
-                service.type_name,
+                crate::keyexpr::DdsSrvType(service.type_name),
                 service.type_hash,
                 qos_string.as_str()
             ),
@@ -695,7 +695,7 @@ impl Ros2Liveliness {
                 PROTO_VERSION_TOPIC,
                 ENTITY_SERVICE_SERVER,
                 service_mangled.as_str(),
-                service.type_name,
+                crate::keyexpr::DdsSrvType(service.type_name),
             ),
         );
         key
@@ -1032,7 +1032,7 @@ mod tests {
         // Verify service info fields are correct
         assert_eq!(service.name, "/add_two_ints");
         assert_eq!(
-            service.type_name,
+            crate::keyexpr::DdsSrvType(service.type_name),
             "example_interfaces::srv::dds_::AddTwoInts"
         );
         assert_eq!(service.domain_id, 0);
