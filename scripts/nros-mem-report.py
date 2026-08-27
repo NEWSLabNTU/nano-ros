@@ -214,22 +214,31 @@ def crate_ident_for(rel, inv):
     return None
 
 
-def newest_source_mtime():
-    """mtime of the newest tracked source under packages/, or None.
+def newest_source_mtime(crate_dirs):
+    """mtime of the newest tracked source under the given crate dirs, or None.
 
-    A number is only as good as the artifact it came from, and this tool is
-    pointed at a path typed by hand — which the harness's staleness probe does
-    not guard, because that probe covers fixtures the harness RESOLVES. Issue
-    0827's first draft was measured on a three-week-old binary in
-    `examples/**/target-*/`, the pre-phase-340 layout that `build-test-fixtures`
-    no longer writes; it reported success while touching nothing there. The
-    conclusion survived because the pool figures happened not to have moved.
-    Next time it would not.
+    Scoped to the crates that DECLARE the pools being checked, not to all of
+    packages/. A number is only as good as the artifact it came from, and this
+    tool is pointed at a path typed by hand -- which the harness's staleness
+    probe does not guard, because that probe covers fixtures the harness
+    RESOLVES. Issue 0827's first draft was measured on a three-week-old binary
+    in `examples/**/target-*/`, the pre-phase-340 layout that
+    `build-test-fixtures` no longer writes.
+
+    The scope matters as much as the check. A first version compared against
+    every tracked source under packages/, which made an unrelated edit -- two
+    C test TUs in `nros-c` -- report a perfectly fresh zenoh fixture as stale.
+    A staleness rule that fires on files the artifact does not depend on gets
+    switched off, and then it guards nothing.
     """
+    if not crate_dirs:
+        return None
+    patterns = []
+    for d in sorted(crate_dirs):
+        patterns += [f"{d}/*.rs", f"{d}/*.c", f"{d}/*.cpp", f"{d}/*.h", f"{d}/*.hpp"]
     try:
         files = subprocess.run(
-            ["git", "ls-files", "packages/*.rs", "packages/*.c", "packages/*.cpp",
-             "packages/*.h", "packages/*.hpp"],
+            ["git", "ls-files"] + patterns,
             cwd=ROOT, capture_output=True, text=True, check=True,
         ).stdout.split()
     except (OSError, subprocess.CalledProcessError):
@@ -269,13 +278,16 @@ def analyse(elf, pools_by_name):
     # `nros_rmw_zenoh::shim::service::SERVICE_BUFFERS` in the image and
     # `SERVICE_BUFFERS` in the annotation.
     matched = []
+    matched_crate_dirs = set()
     for size, _t, name in ram:
         leaf = name.rsplit("::", 1)[-1]
         if leaf in pools_by_name:
-            expr, declared, err, rel, line, crate = pools_by_name[leaf]
+            expr, declared, err, rel, line, crate, crate_dir = pools_by_name[leaf]
             # Same leaf in a different crate is a different pool.
             if crate is not None and not name.startswith(crate + "::"):
                 continue
+            if crate_dir:
+                matched_crate_dirs.add(crate_dir)
             matched.append(
                 {
                     "pool": leaf,
@@ -295,7 +307,7 @@ def analyse(elf, pools_by_name):
         elf_mtime = os.path.getmtime(elf)
     except OSError:
         elf_mtime = None
-    newest_src = newest_source_mtime()
+    newest_src = newest_source_mtime(matched_crate_dirs)
     stale = (
         elf_mtime is not None and newest_src is not None and newest_src > elf_mtime
     )
@@ -542,7 +554,9 @@ def main():
     pools_by_name = {}
     for name, expr, rel, line in pools:
         b, err = inv.pool_bytes(expr, knobs)
-        pools_by_name[name] = (expr, b, err, rel, line, crate_ident_for(rel, inv))
+        pools_by_name[name] = (
+            expr, b, err, rel, line, crate_ident_for(rel, inv), inv.crate_of(rel),
+        )
 
     baseline = None
     if args.baseline:
