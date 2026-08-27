@@ -33,7 +33,7 @@ nano-ros on them. Per-crate tier truth is the generated
 | Nordic       | nRF52840-DK          | Cortex-M4F         | Armv7E-M   | Zephyr        | Untested | Zephyr starter — supply `-b nrf52840dk_nrf52840`                  |
 | Nordic       | nRF5340-DK           | Cortex-M33 (dual)  | Armv8-M    | Zephyr        | Untested | Zephyr starter — supply `-b nrf5340dk_nrf5340_cpuapp`             |
 | Espressif    | ESP32-C3 (QEMU)      | RISC-V (RV32IMC)   | RISC-V     | bare (esp-hal) | Tested  | `examples/qemu-esp32-baremetal/rust/`                              |
-| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | Ready (build-only) | `integrations/nano-ros/`                                 |
+| Espressif    | ESP32-C3-DevKit      | RISC-V (RV32IMC)   | RISC-V     | ESP-IDF        | Ready (build-only, **nightly lane**) | `integrations/nano-ros/` — built by `full-matrix` only; nothing boots an IDF image in CI |
 | Espressif    | ESP32-S3-DevKit      | Xtensa LX7         | Xtensa     | ESP-IDF        | Not supported (no board crate) | Xtensa is not a supported target today — see [ESP32 chapter](../getting-started/esp32.md) |
 | Espressif    | ESP32-C6-DevKit      | RISC-V             | RISC-V     | ESP-IDF        | Untested | Same ESP-IDF path as C3                                            |
 | NXP          | LPC55S69-EVK         | Cortex-M33         | Armv8-M    | Zephyr        | Untested | Zephyr `-b lpcxpresso55s69_cpu0`                                  |

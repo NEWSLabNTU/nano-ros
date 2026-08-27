@@ -38,9 +38,9 @@ Honest expectations first: the fastest real win is on your **Linux
 host** (~10 minutes, no ROS 2, no daemon — `--rmw cyclonedds`), and
 every embedded chapter has a QEMU flow that works without hardware.
 Real-hardware flashing is currently documented only for out-of-tree
-boards ([STM32F4 worked example](../porting/stm32f4-out-of-tree.md));
-the ESP-IDF component builds but ships no reference app yet. The
-zenoh embedded flows need a ROS 2 install on the host for the router.
+boards ([STM32F4 worked example](../porting/stm32f4-out-of-tree.md)).
+The zenoh embedded flows need a ROS 2 install on the host for the
+router.
 
 1. Check your board's row in **[Supported
    Boards](../reference/supported-boards.md)**.

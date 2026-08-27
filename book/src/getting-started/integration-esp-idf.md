@@ -1,5 +1,15 @@
 # ESP32 (ESP-IDF component)
 
+> **Support level: nightly only.** This path is exercised by the
+> nightly full-matrix lane, never by the per-change or per-platform
+> ones, and its coverage stops at "the image builds" — nothing boots an
+> IDF image in CI. Treat it as a working integration shell you can build
+> on, not as a supported starter. If you want a first ESP32 result, take
+> the [esp-hal path](./esp32.md), which does boot under QEMU in CI.
+>
+> **Contributors:** the lane is `just esp_idf ci` (doctor +
+> build-c-port).
+
 Single-node starter on ESP32-family chips via the **ESP-IDF
 component path** — Espressif's native C / C++ build system. For the
 bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
