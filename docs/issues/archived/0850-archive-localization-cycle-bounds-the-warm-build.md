@@ -1,7 +1,7 @@
 ---
 id: 850
 title: "A copy/localize cycle re-processes libnros_cpp.a every build, and now bounds the warm wall at 85% disk-wait"
-status: open
+status: resolved
 type: performance
 area: build
 related: [issue-0805, issue-0648, phase-371]
@@ -96,3 +96,77 @@ above.
 * Whichever fix lands, prove the produced binaries are byte-identical to the
   current ones — this whole area has repeatedly failed as a wrong artifact
   rather than a build error.
+
+## RESOLVED (2026-08-28) — 227 s -> 54 s, and the diagnosis above was half right
+
+### What the issue got wrong
+
+It named the copy/localize cycle as the cause. The cycle is real and it does
+defeat an mtime stamp — but it explains only the 17 `libnros_cpp.a`
+re-processings, and reading the link wrapper showed the larger, unstamped half:
+
+```bash
+bash "$STRIP_SCRIPT" "$LLVM_AR" "$arg"        # stamped by issue 0805
+snap=$(mktemp); cp -p "$arg" "$snap"          # NOT stamped: full archive copy
+for sym in memset memcpy memmove memcmp bcmp strlen; do
+    obj=$("$LLVM_AR" t "$arg" | grep …)       # NOT stamped: 6 x llvm-ar t
+```
+
+That second block runs on EVERY archive on EVERY link regardless of the 0805
+stamp — ~9 archives x 29 leaves = ~260 archive copies and ~1560 `llvm-ar`
+invocations per warm build.
+
+A third hypothesis also died on measurement: that block is only **0.07 s** per
+archive alone, so ~18 s of work total — nowhere near 4.7 concurrent `llvm-ar` in
+D-state. The work is small; what makes it the bound is doing it hundreds of
+times CONCURRENTLY against one disk queue. Removing work, not scheduling it
+differently, was therefore the lever.
+
+### The fix
+
+Memoise the whole per-archive pipeline on the archive's **content**, and restore
+by copy on a hit.
+
+Content, not size+mtime, is the load-bearing choice: everything in that pipeline
+rewrites the archive in place, so its own output can never be a valid key, and
+Corrosion re-copies the unlocalized `libnros_cpp.a` into each leaf every build —
+which resets both size and mtime but writes the SAME BYTES. That is exactly what
+0805's stamp could not survive, and what a content key does.
+
+Written last, so a failure leaves no memo claiming work that did not happen.
+
+### Verified
+
+| | |
+| --- | --- |
+| warm rebuild, before | 227 s |
+| warm rebuild, after | **54 s** |
+| archive re-processings, warm | 17 -> **0** |
+| same tree with memos purged | 261 s (the work returns) |
+| **binaries** | **all 29 BYTE-IDENTICAL, memo path vs non-memo path** |
+
+The byte-identity check is the one that matters: a memo that restores archives by
+copy is exactly the shape that fails as a wrong artifact rather than a build
+error, which this area has done repeatedly.
+
+### Warm floor, end to end
+
+| stage | wall |
+| --- | --- |
+| before issue 0805 | 459 s |
+| after the cargo fingerprint fix | 362 s |
+| after the archive skip-stamp | 331 s |
+| after parallel rust dispatch | 227 s |
+| after this memo | **54 s** |
+
+**8.5x off the warm rebuild.** Four hypotheses were measured along the way —
+cargo recompilation, cargo lock waits, CPU saturation, and this issue's own
+copy/localize framing. Three were wrong. The instruments were right every time,
+which is the only durable lesson here.
+
+### Still open, and deliberately not done
+
+The prologue's four `fixtures-build.sh` group calls remain sequential at 2-7 of
+32 cores. That was ~40 s of a 240 s wall; against a 54 s wall it is now the
+LARGEST remaining term, and worth revisiting with `sample-build-leaves.sh` rather
+than assumed — the whole point of this issue is that the bound moves.

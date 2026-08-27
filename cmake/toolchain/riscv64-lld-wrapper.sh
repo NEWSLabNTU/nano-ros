@@ -32,6 +32,34 @@ fi
 # buggy on RISC-V (recursive implementation). picolibc provides correct ones.
 for arg in "$@"; do
     if [[ "$arg" == *.a ]] && [ -f "$arg" ] && [ -w "$arg" ]; then
+        # issue 0850 — MEMOISE the whole per-archive pipeline on the archive's
+        # CONTENT, and restore by copy on a hit.
+        #
+        # Everything below rewrites the archive in place, so its own output is
+        # never a valid cache key: Corrosion re-copies the UNLOCALIZED
+        # `libnros_cpp.a` into each leaf every build, which is why issue 0805's
+        # size+mtime stamp inside the strip script cannot hold — the copy resets
+        # both. Content survives that, because `copy_if_different` writes the
+        # same bytes each time.
+        #
+        # Measured cost of NOT doing this: leaf state 85% D (uninterruptible
+        # disk wait) with `llvm-ar rq_qos_wait` the dominant blocker by an order
+        # of magnitude, on a warm rebuild that compiles nothing. The work per
+        # archive is small alone (~0.07 s for the mem-symbol pass, ~4.3 s for a
+        # full strip) — it is doing it ~260 times across 29 leaves, concurrently,
+        # that saturates the disk queue.
+        memo_sha="$arg.nros-linkmemo.sha"
+        memo_out="$arg.nros-linkmemo.out"
+        in_hash="$(sha256sum "$arg" 2>/dev/null | cut -d' ' -f1)"
+        if [ -n "$in_hash" ] && [ -f "$memo_out" ] \
+           && [ "$(cat "$memo_sha" 2>/dev/null)" = "$in_hash" ]; then
+            # Same input as last time — restore the known result instead of
+            # recomputing it. `-p` keeps the mtime stable so downstream targets
+            # do not relink.
+            cp -p "$memo_out" "$arg"
+            continue
+        fi
+
         bash "$STRIP_SCRIPT" "$LLVM_AR" "$arg" 2>/dev/null
         # Also remove Rust compiler_builtins mem functions (they have weak
         # linkage but lld picks them over picolibc due to archive processing
@@ -49,6 +77,13 @@ for arg in "$@"; do
             touch -r "$snap" "$arg" 2>/dev/null || true
         fi
         rm -f "$snap"
+
+        # Record the result against the INPUT hash. Written last, so a failure
+        # above leaves no memo claiming work that did not happen.
+        if [ -n "$in_hash" ]; then
+            cp -p "$arg" "$memo_out" 2>/dev/null \
+                && printf '%s\n' "$in_hash" > "$memo_sha" 2>/dev/null || true
+        fi
     fi
 done
 

@@ -72,7 +72,7 @@ instrumenting both ends in one run settled it. See `archived/0848-*`. (2026-08-2
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-32 open. One line each — the detail lives in the issue file,
+31 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -107,7 +107,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
 - **#0848** (rmw) — The router's serial keepalive is a 1-byte write that never lands as a parseable frame — board never resets its lease and expires at 2 x lease See `0848-*`.
-- **#0850** (build) — A copy/localize cycle re-processes libnros_cpp.a every build, and now bounds the warm wall at 85% disk-wait See `0850-*`.
 
 <!-- END GENERATED open-issue list -->
 
@@ -271,6 +270,17 @@ version-checked or ran — the same accumulating-store trap as 0500, where a sta
 pin. Found in phase-382 W2', whose proofs could only be run by downgrading to 0.62.0 by hand. Now
 pinned via `KANI_VERSION`, with install and `doctor` both asking the DRIVER instead of the
 filesystem and failing on a mismatch. See `archived/0802-*`. (2026-08-26)
+
+Recently resolved (2026-08-28): **#0850** — the warm `threadx_riscv64` rebuild was 85% disk-wait with `llvm-ar
+rq_qos_wait` the dominant blocker. The issue's own framing (a copy/localize cycle) was HALF RIGHT: that cycle explains
+17 re-processings, but reading the link wrapper found the larger half — a second, unstamped per-archive block running
+on every archive on every link, ~260 archive copies and ~1560 `llvm-ar` calls per warm build. A third hypothesis died
+too: that block is 0.07 s per archive alone, so the work is small and only becomes the bound when done hundreds of
+times concurrently against one disk. Fixed by memoising the whole pipeline on the archive's CONTENT — load-bearing,
+because the pipeline rewrites in place and Corrosion re-copies the same bytes with a new mtime, which is precisely
+what 0805's size+mtime stamp could not survive. Warm 227 s -> **54 s**, re-processings 17 -> 0, and all 29 binaries
+BYTE-IDENTICAL against a memo-purged rebuild. Warm floor end to end this session: 459 -> 54 s (8.5x). See
+`archived/0850-*`. (2026-08-28)
 
 Recently resolved (2026-08-28): **#0805** — every C/C++ example leaf drove its own cargo build of the same
 staticlib, and sccache could not dedupe it (`Non-cacheable reasons: crate-type` — it does not cache
