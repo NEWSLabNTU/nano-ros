@@ -1,9 +1,10 @@
 # Phase 385 — MPS3-AN536 FreeRTOS board bundle (Cortex-R52 on QEMU, lwIP, Cyclone)
 
-**Status (2026-08-26).** W0–W3 and W5 LANDED — **the board boots, schedules
-and delivers CycloneDDS pub/sub on Cortex-R52**, which no board in this tree
-could do before. W4 partial (fixture row registered; the runtime matrix cell is
-not written). W6 open. Filed from the ASI reference-consumer side (its view
+**Status (2026-08-27).** W0–W3, W5 and **W6** LANDED — the board boots,
+schedules, and delivers CycloneDDS pub/sub on Cortex-R52 **between two QEMU
+guests over the emulated LAN9118**, which no board in this tree could do
+before. W4 partial (fixture row registered; the runtime matrix cell is not
+written). Filed from the ASI reference-consumer side (its view
 lives in `docs/roadmap/phase-6-emulated-r52-lane.md` in
 `NEWSLabNTU/autoware-safety-island`). Sibling to phase-372, which built the
 S32Z270 bundle that has never RUN.
@@ -123,23 +124,47 @@ in the ASI repo.
   asked only for participant + writers/readers, matching MPS2. The image
   actually DELIVERS: `Published: N` / `Received: N` pairs, continuously. So
   CycloneDDS pub/sub works end to end on Cortex-R52 FreeRTOS.
-* **W6 — Cyclone DELIVERY out of the guest. OPEN, with findings.**
-  Attempted two ways:
-  - **Two guests on a shared virtual LAN** (`-net nic -net socket,mcast=…`,
-    second image rebuilt with `NROS_ENTRY_IP_LAST=11` so IP and MAC differ).
-    Node A runs normally (67 publish/receive pairs). Node B boots, reports
-    `Network ready`, and then **stalls before its first publish** — not
-    crashed: sampled in `sys32` inside `vApplicationIdleHook`, so its tasks
-    are alive and something in the Cyclone path is blocking. Node B alone,
-    with no LAN attached, runs fine (27/27). So the stall is specific to two
-    participants meeting, and that is the thread to pull next.
-  - **A host CycloneDDS peer** needs `tap`, because the baked network is
-    `192.0.3.0/24` (only the last octet is configurable — the base is
-    hardcoded in `cmake/templates/freertos_app_config.c.in`) while this
-    host's `tap0` is `192.168.10.1/24`, and bringing a tap up requires root.
-    Not attempted for that reason.
-  *Acceptance unchanged: a sample crosses from the QEMU guest to a host
-  CycloneDDS peer.*
+* **W6 — Cyclone DELIVERY out of the guest. DONE (2026-08-27).** Two guests
+  on a shared virtual LAN (`-net nic -net socket,mcast=<group>`, the second
+  image rebuilt with `NROS_ENTRY_IP_LAST=11` so IP and MAC differ) exchange
+  samples both ways:
+
+  ```
+  A: published=37  received=69
+  B: published=32  received=64
+  ```
+
+  Each node receives its own samples PLUS the peer's — every `Received: N`
+  value appears exactly twice — which is cross-node DDS delivery out of a
+  QEMU FreeRTOS guest, the thing phase-370's stretch goal never claimed.
+
+  **The stall reported on 2026-08-26 was not a defect.** It looked like one:
+  one of the two nodes would boot, print `Network ready`, and never publish,
+  while the other ran normally; the victim was alive (sampled in `sys32`
+  inside `vApplicationIdleHook`) and fine when run alone. Two observations
+  broke it open — the victim SWAPPED between runs (so it was not "the second
+  node"), and once a node stalled while its partner had failed to start at
+  all, so it was alone on the group. The cause was leftover QEMU instances
+  from earlier runs still joined to the SAME multicast group, replaying the
+  same image and therefore the same IP and MAC: duplicate participants,
+  ghost peers, selective delivery. On a fresh group with no strays, both
+  nodes work every time.
+
+  This is the ghost-instance class the ASI consumer already records twice
+  (its phase-4 notes: an orphaned FVP survived pid-file kills and ran
+  concurrently on the same tap IP/MAC; and issue 0746, where `ros2 topic hz`
+  was aggregating three stale island processes). It now has a third
+  instance, in this repo, and the rule generalises: **before believing any
+  multi-node result on a shared QEMU LAN, prove the participant count** —
+  `pgrep -a qemu-system-arm`, and use a distinct multicast group per
+  experiment.
+
+  What remains untested is a HOST CycloneDDS peer, which needs `tap`: the
+  baked network is `192.0.3.0/24` (only the last octet is configurable — the
+  base is hardcoded in `cmake/templates/freertos_app_config.c.in`) and
+  bringing a tap interface up requires root. Guest-to-guest is what the
+  acceptance asked for and is now met; guest-to-host is worth a follow-up
+  when someone wants the emulated closed loop against a real ROS stack.
 
 ## Correction carried in from the consumer's scoping
 
@@ -147,10 +172,11 @@ The ASI scope first called the Cyclone milestone "a port, not a bring-up", on
 the strength of phase-370's status line. Read closely, that phase claims the
 MPS2 cell *"builds, boots, and creates writers and readers"* — while its own
 stretch goal, *"one QEMU MPS2 cyclonedds cell boots and DELIVERS locally"*, is
-not claimed as met. **Cross-node DDS delivery out of a QEMU FreeRTOS guest is
-therefore unproven in this repo**, which is why W5 and W6 are separate items
-with separate acceptance. Worth fixing in phase-370's summary line too, since
-that is what the misreading came from.
+not claimed as met. Cross-node DDS delivery out of a QEMU FreeRTOS guest was
+therefore unproven in this repo, which is why W5 and W6 are separate items with
+separate acceptance. **W6 has since proven it** (2026-08-27, above) — the gap
+was real and is now closed, on AN536 rather than MPS2. Worth fixing phase-370's
+summary line too, since that is what the misreading came from.
 
 ## Defects found on the way (2026-08-26)
 
@@ -190,7 +216,8 @@ now has a working implementation of both to copy.
 1. `nros-board-mps3-an536-freertos` boots on QEMU, schedules tasks, ticks.
 2. lwIP is up over the emulated `lan9118`; the host can ping it.
 3. A fixture builds and boots the board in CI from a clean checkout.
-4. Cyclone creates entities (W5) and delivers to a host peer (W6).
+4. Cyclone creates entities (W5) and delivers between guests (W6). A HOST
+   peer additionally needs tap (root) — see W6.
 5. The consumer lane (ASI `freertos-an536`) builds and boots its controller
    image against this bundle — consumer-side acceptance lives in ASI phase-6.
 
