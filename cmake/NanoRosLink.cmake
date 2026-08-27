@@ -103,6 +103,36 @@ function(nano_ros_link_rmw TARGET)
             LINK_DEPENDS "$<TARGET_FILE:nros_rmw_${_chosen}>")
     endif()
 
+    # Issue 0837 — the SAME edge for every other file named in that flag.
+    #
+    # The fix above covered the backend archive and stopped there, but the flag
+    # is a list: on Linux/BSD the Cyclone path whole-archives
+    # `<nros_rmw_cyclonedds.a>,<libddsc.a>` in one string. `libddsc.a` had no
+    # edge, so bumping the cyclonedds submodule rebuilt it and relinked nothing
+    # — `lib/libddsc.a` at 18:06 against `c_talker` at 15:45, `cmake --build`
+    # exiting 0 having done nothing, and the executable still carrying the old
+    # CycloneDDS. The test-side staleness probe caught it (it walks the
+    # submodule); the build side reported OK, which is how it survived.
+    #
+    # The producers APPEND to `NANO_ROS_LINK_DEPEND_FILES` on `NanoRos` rather
+    # than each adding a line here, so an archive added to either flag in future
+    # gets its edge by existing. That is the difference between fixing this site
+    # and fixing the class — and this issue exists because the first fix did the
+    # former.
+    #
+    # Verify: the file must appear under `|` (implicit), not `||` (order-only),
+    # in `ninja -C <build-dir> -t query <exe>`.
+    if(TARGET NanoRos)
+        get_target_property(_nros_link_dep_files NanoRos NANO_ROS_LINK_DEPEND_FILES)
+        if(_nros_link_dep_files)
+            foreach(_f IN LISTS _nros_link_dep_files)
+                if(_f)
+                    set_property(TARGET ${TARGET} APPEND PROPERTY LINK_DEPENDS "${_f}")
+                endif()
+            endforeach()
+        endif()
+    endif()
+
     # Issue 0737 — bind the CycloneDDS this image was COMPILED against.
     #
     # `nano-ros-posix.cmake` already names this hazard on the self-provision

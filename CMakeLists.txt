@@ -300,6 +300,23 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
             if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
                 target_link_libraries(NanoRos INTERFACE
                     "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
+                # Issue 0837 — every FILE named inside that flag needs a rebuild
+                # edge, not just the backend archive.
+                #
+                # Issue 0475 gave `nros_rmw_cyclonedds` one (in
+                # `nano_ros_link_rmw`). `libddsc.a` rides the SAME flag string
+                # and never got one, so a cyclonedds submodule bump rebuilt
+                # `libddsc.a` and left every executable linking the old one:
+                # measured `lib/libddsc.a` at 18:06 against `c_talker` at 15:45,
+                # with `cmake --build` exiting 0 having done nothing. Fixing the
+                # reported site instead of the class is what left it.
+                #
+                # Recorded as a LIST on `NanoRos` so the link seam consumes
+                # whatever the flag names: a third archive added to either flag
+                # is covered by existing, rather than needing a third
+                # `LINK_DEPENDS` line somewhere else.
+                set_property(TARGET NanoRos APPEND PROPERTY
+                    NANO_ROS_LINK_DEPEND_FILES "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}")
                 # phase-368 W4 — the flag above names the SDK's libddsc.so by
                 # ABSOLUTE PATH, but ld records only its SONAME (libddsc.so.0),
                 # so without an RPATH the runtime loader searches the default
@@ -344,6 +361,10 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
                 if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
                     target_link_libraries(nros-cpp-headers INTERFACE
                         "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
+                    # Issue 0837 — same flag, same missing edge; see the C
+                    # umbrella above. One property, both consumers.
+                    set_property(TARGET NanoRos APPEND PROPERTY
+                        NANO_ROS_LINK_DEPEND_FILES "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}")
                     # Same RPATH stamp as the C umbrella above (one defect,
                     # two consumers) — see the comment there.
                     get_filename_component(_nros_ddsc_dir
