@@ -48,23 +48,9 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
             return;
         }
         xrce_service_request_entry* e = &slot->req_ring[slot->req_write_idx];
-        /* XRCE-DDS interop: the agent delivers the bare CDR-serialized request
-         * WITHOUT the 4-byte CDR encapsulation header (it owns the DDS-side
-         * representation header). nano-ros's deserializers expect the header,
-         * so prepend it — mirrors `xrce_topic_callback` and is symmetric with
-         * the strip on `uxr_buffer_request` / `uxr_buffer_reply`. */
-        if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
-            e->overflow = true;
-            e->len = 0;
-        } else {
-            e->overflow = false;
-            e->data[0] = 0x00; /* CDR_LE representation id */
-            e->data[1] = 0x01;
-            e->data[2] = 0x00; /* options */
-            e->data[3] = 0x00;
-            memcpy(e->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
-            e->len = len + XRCE_CDR_HEADER_LEN;
-        }
+        /* Issue 0819 — one staging path for every inbound payload, fragments
+         * included; see `xrce_stage_inbound`. */
+        e->overflow = !xrce_stage_inbound(e->data, XRCE_BUFFER_SIZE, ub, len, &e->len);
         e->sample_id = *sample_id;
         slot->req_write_idx =
             (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
@@ -89,20 +75,9 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
         }
         /* Issue 0778 — remember WHICH request this answers. */
         slot->reply_request_id = request_id;
-        /* XRCE-DDS interop: re-prepend the CDR encapsulation header stripped on
-         * the wire (mirrors the request inbox + `xrce_topic_callback`). */
-        if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
-            slot->overflow = true;
-            slot->has_reply = true;
-            return;
-        }
-        slot->overflow = false;
-        slot->data[0] = 0x00;
-        slot->data[1] = 0x01;
-        slot->data[2] = 0x00;
-        slot->data[3] = 0x00;
-        memcpy(slot->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
-        slot->len = len + XRCE_CDR_HEADER_LEN;
+        /* Issue 0819 — one staging path for every inbound payload, fragments
+         * included; see `xrce_stage_inbound`. */
+        slot->overflow = !xrce_stage_inbound(slot->data, XRCE_BUFFER_SIZE, ub, len, &slot->len);
         slot->has_reply = true;
         return;
     }

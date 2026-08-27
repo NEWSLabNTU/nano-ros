@@ -302,6 +302,31 @@ uxrObjectId xrce_alloc_entity_id(xrce_session_state_t* st, uint8_t type);
 rmw_ret_t xrce_confirm_entities(xrce_session_state_t* st, const uint16_t* requests,
                                      uint8_t* statuses, size_t count);
 
+/* Issue 0819 — stage one inbound XRCE payload into a receive slot.
+ *
+ * Every receive callback in this backend does the same three things: bound the
+ * declared length against the slot, write the 4-byte CDR encapsulation header
+ * the agent strips on the wire, and copy the payload in behind it. The copy is
+ * the part that cannot be hand-written, and all three sites had it wrong the
+ * same way.
+ *
+ * A fragmented message does NOT arrive as contiguous bytes. `uxr_next_input_
+ * reliable_buffer_available` initialises the `ucdrBuffer` over the FIRST
+ * fragment only and installs `on_full_input_buffer`, which swaps in the next
+ * fragment when a read crosses the end; `read_format_data` deliberately
+ * propagates that callback onto the buffer it hands the callback. So
+ * `ub->iterator` addresses one fragment, `ucdr_buffer_remaining()` measures one
+ * fragment, and a flat `memcpy` of the DECLARED length reads past the fragment
+ * into whatever follows it. `ucdr_deserialize_array_uint8_t` is the read that
+ * honours the chain, and is what this uses.
+ *
+ * Writes the header + payload into `dst` (capacity `dst_cap`) and sets
+ * `*out_len` to the total staged length. Returns false when the message does
+ * not fit or the reassembly failed — the caller's overflow flag, surfaced as
+ * `NROS_RMW_RET_MESSAGE_TOO_LARGE`, which is loud. `*out_len` is 0 then. */
+bool xrce_stage_inbound(uint8_t* dst, size_t dst_cap, struct ucdrBuffer* ub, size_t len,
+                        size_t* out_len);
+
 /* DDS topic-name conversion. Strips a leading '/' and prepends "rt/"
  * unless `avoid_ros_prefix` is non-zero. Writes a NUL-terminated
  * string into `out` (capacity `out_cap`); truncates if too long. */

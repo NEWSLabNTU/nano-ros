@@ -419,25 +419,30 @@ fn xrce_raising_the_ring_delivers_the_same_payload(xrce_stress_test_large_buf_bi
     );
 }
 
-/// Issue 0819 — a payload at the transport MTU must be REFUSED, not silently
-/// truncated.
+/// Issue 0819 — a payload that spans several transport fragments is delivered
+/// INTACT.
 ///
-/// The receive callback used to `memcpy` the submessage's DECLARED length out of
-/// the ucdr buffer without checking the buffer held that many bytes. Near the
-/// MTU the two diverge, so the tail arrived as whatever the transport buffer
-/// held — zeros — while `entry->len` still reported the full length. Measured
-/// before the fix: a 4096-byte payload arrived with its last 16 bytes zeroed,
-/// deterministically (first bad byte at offset 4080 = MTU - 16), and the
-/// boundary moved when the MTU moved.
+/// A fragmented XRCE message does not arrive as contiguous bytes:
+/// `uxr_next_input_reliable_buffer_available` initialises the `ucdrBuffer` over
+/// the first fragment and installs `on_full_input_buffer` to swap in the next
+/// one mid-read, and `read_format_data` propagates that callback onto the
+/// buffer handed to our receive callback. The callback used to `memcpy` the
+/// DECLARED length straight off `ub->iterator`, which cannot cross a fragment
+/// boundary — so the tail arrived as whatever followed the first fragment
+/// (zeros) while `entry->len` reported the full length. `xrce_stage_inbound`
+/// reads through `ucdr_deserialize_array_uint8_t`, which walks the chain.
 ///
-/// The ring is raised here so that `XRCE_BUFFER_SIZE` is NOT the constraint —
-/// otherwise this would pass for phase-384's reason instead of this one, and
-/// would keep passing if the 0819 guard were removed.
+/// This asserted REFUSAL until 2026-08-27. That was the interim guard, not the
+/// fix: refusing at the MTU rejects exactly the payloads the client is supposed
+/// to fragment, so it traded a delivery bug for a capability regression. Both
+/// intermediate states are named here because both look like a pass from a
+/// distance — a count-only assertion passes through the truncation, and a
+/// `MessageTooLarge`-only assertion passes through the regression.
 ///
-/// Asserts the LOUD failure, not merely "not valid": silent truncation also
-/// produces invalid payloads, and that is exactly the bug.
+/// The ring is raised so `XRCE_BUFFER_SIZE` is NOT the constraint — otherwise
+/// this would pass for phase-384's reason rather than this one.
 #[rstest]
-fn xrce_payload_at_the_mtu_is_refused_not_truncated(xrce_stress_test_large_buf_binary: PathBuf) {
+fn xrce_fragmented_payload_is_delivered_intact(xrce_stress_test_large_buf_binary: PathBuf) {
     if !require_xrce_agent() {
         nros_tests::skip!("XRCE agent not available");
     }
@@ -449,18 +454,20 @@ fn xrce_payload_at_the_mtu_is_refused_not_truncated(xrce_stress_test_large_buf_b
         "/stress_xrce_at_mtu",
     );
 
-    let too_large = count_pattern(&output, "MessageTooLarge");
+    let delivered = count_pattern(&output, nros_tests::output::INT32_LISTENER_LOG_PREFIX);
     let invalid = count_pattern(&output, "valid=false");
+    let too_large = count_pattern(&output, "MessageTooLarge");
 
+    assert!(
+        delivered >= 5,
+        "a 4096-byte payload spans fragments and must be REASSEMBLED, not \
+         refused; got {delivered} delivered and {too_large} MessageTooLarge.\n\
+         Output:\n{output}",
+    );
     assert_eq!(
         invalid, 0,
-        "a sample arrived and failed validation — that is issue 0819's silent \
-         truncation, not a refusal.\nOutput:\n{output}",
-    );
-    assert!(
-        too_large >= 5,
-        "expected the at-MTU payload to be refused as MessageTooLarge, got \
-         {too_large} occurrence(s).\nOutput:\n{output}",
+        "samples arrived but did not survive reassembly ({invalid} invalid) — \
+         that is issue 0819's original silent-truncation signature.\nOutput:\n{output}",
     );
 }
 

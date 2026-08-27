@@ -56,44 +56,12 @@ void xrce_topic_callback(uxrSession *session,
             return;
         }
         xrce_subscriber_ring_entry *entry = &slot->entries[slot->write_idx];
-        /* XRCE-DDS interop: the agent delivers the bare CDR-serialized sample,
-         * WITHOUT the 4-byte CDR encapsulation header (representation id +
-         * options) — that header lives on the DDS/RTPS side, which the agent
-         * owns. nano-ros's deserializers (and every other RMW path) expect the
-         * header, so prepend the little-endian header here. Real PX4 /
-         * `uxrce_dds_client` and real ROS 2 nodes both send headerless XRCE
-         * payloads; without this, deserialization is misaligned by 4 bytes and
-         * every inbound sample is dropped. (Symmetric with the publish side,
-         * which strips the header before `uxr_buffer_topic`.) */
-        /* Issue 0819 — `length` is what the submessage DECLARES, not what the
-         * buffer HOLDS. Near the transport MTU the two diverge, and copying
-         * `len` bytes from `ub->iterator` then reads past the valid payload:
-         * the tail arrives as whatever the transport buffer held (zeros), the
-         * sample looks complete because `entry->len` is the declared length,
-         * and only an application that validates its own payload can tell.
-         * Measured: at MTU 4096 a 4096-byte payload arrived with its last 16
-         * bytes zeroed, deterministically, and the boundary moved with the MTU.
-         * It is also an out-of-bounds READ of the transport buffer.
-         *
-         * Treat a short buffer as the overflow it is — the take then reports
-         * NROS_RMW_RET_MESSAGE_TOO_LARGE, which is loud and already handled,
-         * rather than handing up a silently truncated sample. */
-        const size_t _avail = ucdr_buffer_remaining(ub);
-        if (len > _avail) {
-            entry->overflow = true;
-            entry->len = 0;
-        } else if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
-            entry->overflow = true;
-            entry->len = 0;
-        } else {
-            entry->data[0] = 0x00; /* CDR_LE representation id */
-            entry->data[1] = 0x01;
-            entry->data[2] = 0x00; /* options */
-            entry->data[3] = 0x00;
-            memcpy(entry->data + XRCE_CDR_HEADER_LEN, ub->iterator, len);
-            entry->len = len + XRCE_CDR_HEADER_LEN;
-            entry->overflow = false;
-        }
+        /* Issue 0819 — staging (bound, CDR header, fragment-aware copy) is
+         * `xrce_stage_inbound`, shared with the two service inboxes because all
+         * three had the same fragment bug. A refusal sets the entry's overflow
+         * flag, which the take reports as NROS_RMW_RET_MESSAGE_TOO_LARGE. */
+        entry->overflow =
+            !xrce_stage_inbound(entry->data, XRCE_BUFFER_SIZE, ub, len, &entry->len);
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
         slot->count++;
         return;

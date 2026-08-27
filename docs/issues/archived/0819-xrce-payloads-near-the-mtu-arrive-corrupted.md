@@ -2,10 +2,10 @@
 id: 819
 title: "XRCE payloads at/above the transport MTU are DELIVERED CORRUPTED rather
   than refused"
-status: open
+status: resolved
 type: bug
 area: rmw
-related: [phase-384, issue-0741]
+related: [phase-384, issue-0741, issue-0847]
 ---
 
 ## Symptom
@@ -286,22 +286,107 @@ non-confirmation — an output stream that never drains across subsequent
 `drive_io` ticks — and report that. The signal exists, it is thrown away, and it
 is not readable synchronously at the point where it is thrown away.
 
-## Still not established
+## Resolution (2026-08-27) — RECEIVE side, and the cause is a chained buffer
 
-* **Where the bytes are lost.** `uxr_buffer_topic` did NOT refuse — otherwise
-  the talker would have returned `MESSAGE_TOO_LARGE` — so
-  `uxr_prepare_reliable_buffer_to_write` accepted the length, necessarily via
-  its fragmenting branch, since one reliable slot is exactly one MTU here.
-  Whether the fragments are emitted, reach the agent, or are reassembled is
-  unmeasured: the verbose agent log could not be captured in this environment
-  (the shell terminated the backgrounded agent before its redirect settled).
-* **Send versus receive** therefore stays open, as it was.
-* **Whether a larger MTU still fixes it** — not re-measured on current main.
+Send was never at fault. The talker's bytes reached the listener at every size
+tested; the loss was entirely in our receive callback.
 
-## What a fix must NOT do
+**A fragmented XRCE message does not arrive as contiguous bytes.**
+`uxr_next_input_reliable_buffer_available` initialises the `ucdrBuffer` over the
+FIRST fragment only —
 
-Refuse on `body_len >= MTU`. One reliable slot is exactly one MTU here, so that
-bound rejects precisely the payloads the client is supposed to fragment —
-trading a delivery bug for a capability regression. Any pre-check belongs
-against the fragmentation capacity (`available_block_size * remaining_blocks`),
-not the datagram size.
+```c
+ucdr_init_buffer(ub, internal_buffer + fragment_offset, (uint32_t)(length - fragment_offset));
+ucdr_set_on_full_buffer_callback(ub, on_full_input_buffer, stream);
+```
+
+— and installs `on_full_input_buffer`, which swaps in the next fragment when a
+read crosses the end. `read_format_data` then deliberately propagates that
+callback onto the buffer it hands our callback. The client is telling us, in
+code: read this through ucdr, not by pointer.
+
+Our three receive callbacks did
+
+```c
+memcpy(dst + XRCE_CDR_HEADER_LEN, ub->iterator, len);
+```
+
+which cannot cross a fragment boundary. `ub->iterator` addresses one fragment
+and `ucdr_buffer_remaining()` measures one fragment, so for any fragmented
+message the copy read past the fragment into whatever followed it. That is the
+original symptom exactly: the tail arrived as zeros, `entry->len` reported the
+declared length, and only a payload-validating application could tell.
+
+`ucdr_buffer_to_array` — reached via `ucdr_deserialize_array_uint8_t` — is the
+read that walks the chain. Its fast path is the same `memcpy`, which is how the
+open-coded version looked correct: it is the correct code with its slow path
+deleted.
+
+**Fixed by `xrce_stage_inbound`** (declared in `internal.h`, defined in
+`session.c`): one staging path — bound against the slot, write the CDR
+encapsulation header, copy through `ucdr_deserialize_array_uint8_t`. All THREE
+receive sites had the identical defect and all three now call it:
+`xrce_topic_callback` (`subscriber.c`), the service request inbox and the reply
+inbox (`service.c`). The class, not the reported site.
+
+Sweep that finds every sibling:
+
+```
+git grep -n 'iterator' -- packages/rmw/xrce/nros-rmw-xrce/src
+```
+
+The remaining hits are the SEND side (`publisher.c`), which is a different
+question — see below.
+
+Measured on `nros-bench/stress-xrce`, `NROS_XRCE_BUFFER_SIZE=8192`, local agent,
+10 messages per size:
+
+| payload | before | after |
+| --- | --- | --- |
+| 3584 (one fragment) | `received=10 valid=10` | `received=10 valid=10` |
+| 4096 | `received=0` + 10x `MessageTooLarge` | `received=10 valid=10` |
+| 6000 | not measured | `received=10 valid=10` |
+| 8000 (several fragments) | not measured | `received=10 valid=10` |
+
+## On the interim guard, which this replaces
+
+Between the report and this fix, the callback was changed to compare `len`
+against `ucdr_buffer_remaining(ub)` and flag `overflow` when it fell short,
+turning the silent truncation into a loud `MESSAGE_TOO_LARGE`. That is what
+changed the signature from `received=10 valid=0` to `received=0`, and it is why
+this issue's own "Symptom" section no longer described what the code did.
+
+It was the right move on incomplete information — a loud wrong answer beats a
+silent one — but it was a diagnosis as much as a guard, and the diagnosis was
+wrong: `ucdr_buffer_remaining` is a per-FRAGMENT quantity, so the comparison
+could only ever be true for a message that was going to be fine. This issue's
+own "What a fix must NOT do" section had already ruled the shape out ("rejects
+precisely the payloads the client is supposed to fragment"), one level up. Both
+bounds are now gone; the only bound left is `len + 4 > dst_cap`, which is a real
+capacity limit on a real buffer.
+
+## Not fixed here
+
+* **Fragmented SEND.** `xrce_publisher_publish_raw` still returns
+  `MESSAGE_TOO_LARGE` when `uxr_buffer_topic` refuses, and
+  `xrce_publisher_publish_streamed` refuses outright when the payload exceeds one
+  output slot (`TODO 115.K.2.x`, `uxr_prepare_output_stream_fragmented`). Neither
+  corrupts anything — they decline — and neither was implicated here, because
+  `uxr_buffer_topic` fragments internally and accepted every size tested.
+* **The unusable error signals** described above. `req` still cannot represent a
+  short serialization and `uxr_run_session_time`'s return is still discarded.
+  That analysis stands on its own and is worth keeping: it was how a publish path
+  reported success for messages that never arrived. It is now latent rather than
+  live, since the bug it masked is gone.
+* **A use-after-free at teardown**, seen in every run of the repro: an entity
+  whose `Drop` runs after `executor.close()` dereferences the freed session
+  state. Payload-independent, unrelated to this issue, filed as **#0847**.
+
+## Test
+
+`xrce_payload_at_the_mtu_is_refused_not_truncated` asserted the interim guard and
+is now `xrce_fragmented_payload_is_delivered_intact`, asserting delivery AND
+validity at 4096 with the ring raised. Both wrong states are named in its
+doc-comment, because each looks like a pass to the other's assertion: a
+count-only check passes through the truncation, a `MessageTooLarge`-only check
+passes through the refusal.

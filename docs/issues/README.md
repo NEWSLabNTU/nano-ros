@@ -76,7 +76,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0814** (rmw) — The whole zero-copy surface sits behind `feature = \"lending\"`, which only a posix test crate ever enables See `0814-*`.
 - **#0815** (tooling) — The static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure See `0815-*`.
 - **#0816** (tooling) — The book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property See `0816-*`.
-- **#0819** (rmw) — XRCE payloads at/above the transport MTU are DELIVERED CORRUPTED rather than refused See `0819-*`.
+- **#0847** (rmw) — An XRCE entity whose `Drop` runs after `executor.close()` segfaults in its own destructor — close frees the session state and all four entity kinds still dereference it See `0847-*`.
 - **#0820** (cmake, testing) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no dependency edge on the Rust world, and hardcoded `--release` past a miscompile carve-out See `0820-*`.
 - **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
 - **#0828** (testing) — Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is green only while an earlier `lane=all` build is still fresh See `0828-*`.
@@ -145,6 +145,22 @@ here was wrong and recorded as a hypothesis rather than a cause: the parallel `m
 SUCCESS line (`built: …`) last in the log, make's own exit 2 read as a bespoke status, and ~180 lines
 of benign newlib `_read is not implemented` warnings ended the stderr — so the inputsig stamp step
 looked responsible. It exits 0. See `archived/0833-*`. (2026-08-27)
+
+Recently resolved (2026-08-27): **#0819** (rmw) — XRCE payloads spanning several transport fragments were
+delivered corrupted (zeroed tail) and later, under an interim guard, not at all. SEND was never at fault:
+the cause is that a fragmented message does NOT arrive contiguous. `uxr_next_input_reliable_buffer_available`
+initialises the `ucdrBuffer` over the FIRST fragment and installs `on_full_input_buffer` to swap in the next
+one mid-read, and `read_format_data` propagates that callback onto the buffer handed to our callback — the
+client saying, in code, read this through ucdr and not by pointer. All three receive callbacks instead did
+`memcpy(dst, ub->iterator, len)`, which cannot cross a fragment boundary, so the tail was whatever followed
+fragment one. `ucdr_deserialize_array_uint8_t` walks the chain; its FAST path is that same memcpy, which is
+why the open-coded version looked right — it was the correct code with its slow path deleted. Fixed by one
+shared `xrce_stage_inbound` (bound + CDR header + fragment-aware copy) at all three sites: topic, service
+request inbox, reply inbox. 4096/6000/8000-byte payloads now 10/10 valid where 4096 was 0/10. The interim
+`ucdr_buffer_remaining` guard is GONE — a per-fragment quantity, so it could only fire on messages that were
+going to be fine, and this issue's own "what a fix must NOT do" had ruled the shape out one level up. Test
+renamed from `..._is_refused_not_truncated` to `xrce_fragmented_payload_is_delivered_intact` because refusal
+was the workaround, not the fix. See `archived/0819-*`. (2026-08-27)
 
 Recently resolved (2026-08-27): **#0824** (rmw) — a service server on the board was invisible to
 `ros2 service list` and every call hung. TWO defects, found in sequence. First, all SEVEN
