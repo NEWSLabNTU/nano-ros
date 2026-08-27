@@ -55,15 +55,60 @@ that works fits in one datagram.
 * **The clock.** Fixed separately and independently (the image had no wall
   clock at all); the trajectory behaviour is identical before and after.
 
+## Measured 2026-08-28 — the fragments DO reach lwIP
+
+Re-checked at main `60b4e0c1e` (the 100+ commits since the report changed
+nothing here): still open, still reproduces.
+
+Instrumenting BOTH ends of the suspect path in one run — a frame/byte counter
+inside `lan9118_lwip_poll()`, and an arrival counter in the consumer's
+trajectory callback — splits the two halves the issue could not choose between:
+
+```
+RXSTAT frames=3200 bytes=1762696 big=1148     <- NIC, frames >800 B counted as "big"
+TRAJ arrivals: 5                              <- samples the subscriber actually got
+```
+
+So the wire and the NIC are NOT innocent bystanders and NOT the whole story:
+
+* **Fragments do arrive.** 1148 large frames reached lwIP. The earlier
+  hypothesis that the burst never got past the NIC is wrong.
+* **But most are missing.** A 13 KiB sample at 10 Hz is ~100 large frames per
+  second; over a ~100 s run that is ~10,000. We saw 1148 — roughly **11%**.
+* **Which is why samples almost never complete.** With ~89% of a burst missing,
+  a reliable reader spends its time NACKing rather than delivering: 5 samples
+  in a run, against ~1000 published.
+
+The loss is therefore between the wire and the driver's drain — the NIC's RX
+FIFO, or the cadence that empties it — not in Cyclone's reassembly of frames it
+already holds.
+
+### The drain path, and what did not fix it
+
+`lan9118_lwip_poll()` drains a bounded 16 frames per call; the FreeRTOS poll
+task calls it every `poll_interval_ms` (5 ms on this board). One 10-fragment
+burst therefore has to survive in the LAN9118's RX FIFO (~10 KB after the 5 KB
+TX allocation) until the next poll.
+
+Raising the budget 16 -> 128 did NOT help: that run recorded FEWER frames (600)
+and zero arrivals. Do not read that as "128 is worse" — run-to-run variance on
+this lane is large enough (3200 vs 600 frames across two runs of the same
+length) that single runs cannot separate a real effect from noise. **Any future
+attempt here needs repeated runs, not one.**
+
+### Next
+
+Read the LAN9118's own dropped-frame counters (`RX_DROP`) to confirm FIFO
+overflow directly rather than inferring it from the deficit, and if confirmed,
+compare interrupt-driven RX against faster polling. The board registers its
+netif in POLL mode (`nros_board_poll_netif`), which was the cheapest shape for
+bring-up and may simply not survive a real ROS burst.
+
 ## Still unknown
 
-Where the sample dies between the NIC and the reader: lwIP pbuf exhaustion
-mid-burst, Cyclone's defragmentation buffers
-(`Internal/DefragReliableMaxSamples`, `Sizing/ReceiveBufferSize`), or the
-reliable repair path failing to make progress over this link. The next
-measurement is a fragment-level count at `lan9118_lwip_poll()` compared
-against Cyclone's `dds_get_status` / rejected-sample counters — establishing
-whether the fragments reach lwIP at all decides which half to look in.
+WHY ~89% of each burst is lost below the driver. The fragment count above
+settled the half-question this section used to pose — they do reach lwIP — so
+what remains is the RX FIFO / drain cadence, not Cyclone's defragmentation.
 
 ## Why it matters
 
