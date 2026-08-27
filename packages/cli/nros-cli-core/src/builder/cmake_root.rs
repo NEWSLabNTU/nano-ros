@@ -187,8 +187,15 @@ pub fn render(
         "project({}_nros_workspace LANGUAGES C CXX)\n\n",
         sanitize(&spec.system)
     ));
-    out.push_str("find_package(nano_ros REQUIRED COMPONENTS workspace)\n\n");
-
+    // BOARD and PLATFORM before `find_package(nano_ros)`, not after.
+    //
+    // A hand-written root receives them on the command line, so they are set
+    // before anything runs; the package config and the netstack resolution read
+    // them. Emitting them AFTER the find_package meant nros-cpp was configured
+    // without knowing the board: the `freertos-posix` image built zenoh-pico's
+    // freertos/lwip backend instead of its POSIX one, and the failure surfaced
+    // only at link, as a wall of `undefined reference to lwip_*` from an
+    // archive that had no business containing lwIP code at all.
     out.push_str(&format!(
         "set(NANO_ROS_PLATFORM {} CACHE STRING \"\" FORCE)\n",
         spec.platform
@@ -198,6 +205,9 @@ pub fn render(
             "set(NANO_ROS_BOARD {board} CACHE STRING \"\" FORCE)\n"
         ));
     }
+    out.push('\n');
+
+    out.push_str("find_package(nano_ros REQUIRED COMPONENTS workspace)\n");
     out.push('\n');
 
     // Relative like every other path here, so the file stays byte-identical

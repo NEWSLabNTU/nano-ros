@@ -431,6 +431,25 @@ fn write_if_changed(path: &Path, body: &str) -> Result<(), String> {
 mod tests {
 
     #[test]
+    fn a_board_the_macro_table_does_not_know_falls_through() {
+        // This function answers for the RUST macro, whose board table is keyed
+        // on deploy tokens like `freertos` and knows nothing of
+        // `mps2-an385-freertos`. So a specific board id falls through to the
+        // one the macro can actually resolve.
+        //
+        // The CMAKE entry must NOT use this: `nano_ros_add_executable(DEPLOY …)`
+        // resolves against the board CATALOG, which does know the specific id,
+        // and the hand-written entry said `DEPLOY mps2-an385-freertos`. Routing
+        // it through here picked the generic `freertos` board and the mps2
+        // board's lwIP glue was simply absent at link time —
+        // `undefined reference to lwip_setsockopt` (phase-383 W10.a).
+        assert_eq!(
+            macro_deploy_token(&["mps2-an385-freertos", "freertos", "freertos"]),
+            "freertos"
+        );
+    }
+
+    #[test]
     fn the_deploy_token_falls_back_when_the_image_is_not_a_board_name() {
         // phase-383 W9.b, found by migrating `examples/workspaces/rust`.
         // `[image.native_service_server]` is a perfectly good image id and not a
@@ -438,10 +457,10 @@ mod tests {
         // "unknown board `native_service_server`". `[image.native]` hid it,
         // because there the id and the token coincide.
         assert_eq!(
-            macro_deploy_token(&["native_service_server", "native", "posix"]),
+            macro_deploy_token(&["native", "native_service_server", "posix"]),
             "native"
         );
-        assert_eq!(macro_deploy_token(&["native", "native", "posix"]), "native");
+        assert_eq!(macro_deploy_token(&["", "native_robot1", "posix"]), "posix");
     }
 
     #[test]

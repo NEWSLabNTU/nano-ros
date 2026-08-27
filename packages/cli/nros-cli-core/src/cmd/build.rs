@@ -403,11 +403,23 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                             // The SAME candidate search the Rust entry uses:
                             // DEPLOY is what the macro looks up, and an image is
                             // not always named after a board.
-                            deploy: crate::builder::entry::macro_deploy_token(&[
-                                id.as_str(),
-                                b.as_str(),
-                                platform.as_str(),
-                            ]),
+                            // The BOARD, verbatim — not `macro_deploy_token`.
+                            //
+                            // That function answers for the RUST macro's board
+                            // table, which is keyed on tokens like `freertos`
+                            // and does not know `mps2-an385-freertos`.
+                            // `nano_ros_add_executable(DEPLOY …)` resolves
+                            // against the board CATALOG, which does, and the
+                            // hand-written entry said exactly the board id.
+                            // Routing it through the macro's table picked the
+                            // GENERIC freertos board, and nothing failed until
+                            // the link, where the mps2 board's lwIP glue was
+                            // absent: `undefined reference to lwip_setsockopt`.
+                            deploy: if b.is_empty() {
+                                platform.clone()
+                            } else {
+                                b.clone()
+                            },
                             name,
                         })
                     })
@@ -655,7 +667,20 @@ fn generate_entry(
     // resolves the crate FROM the token: two searches could disagree, and the
     // disagreement is a generated entry that does not compile.
     let board_name = image.board.clone().unwrap_or_default();
-    let candidates = [image_id, board_name.as_str(), platform];
+    // BOARD first, then the image id, then the platform.
+    //
+    // The board is what the user DECLARED; the image id is a label that may or
+    // may not happen to be a board token. Taking the id first resolved
+    // `[image.freertos] board = "mps2-an385-freertos"` to the generic
+    // `freertos` board — a real board, so nothing failed until the link, where
+    // the mps2 board's lwIP glue was simply absent:
+    //
+    //   undefined reference to `lwip_setsockopt' … `lwip_socket_thread_init'
+    //
+    // The hand-written entry said `DEPLOY mps2-an385-freertos`. A generated one
+    // must not quietly pick a different board than the image names — that is
+    // issue 0798 with the roles reversed.
+    let candidates = [board_name.as_str(), image_id, platform];
 
     let spec = EntrySpec {
         image_id: image_id.to_string(),

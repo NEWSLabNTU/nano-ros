@@ -178,7 +178,6 @@ probe selected by `--lang rust` while `is_cargo_row` is builder-keyed, so twelve
 `cargo build` that could never succeed. See `0835-*`.
 =======
 
-<<<<<<< HEAD
 **#0837** (testing, open 2026-08-27) — a submodule bump leaves fixtures the BUILD side calls fresh and the TEST
 side calls stale. `git submodule update` on cyclonedds rewrote `atomics.c` (11:31); thirteen cyclonedds fixtures
 built at 10:01 were left alone by a `lane=all` at 13:38 that reported `== threadx_linux == OK`, while the
@@ -188,7 +187,7 @@ running nothing. Rebuilding the thirteen by hand took native_api + c_xrce_api fr
 0196's rule with the two sides disagreeing about a whole submodule. See `0837-*`.
 
 >>>>>>> af5dbdd9f (docs(#0837): a submodule bump strands fixtures the build side calls fresh)
-=======
+
 >>>>>>> ed0edeb7d (docs(#0837): correct the diagnosis in place and close it)
 **#0834** (cmake, open 2026-08-27) — the per-build `nros_cpp_config_generated.h` mirror can reach a state NO
 re-run repairs: mirror dir holds the `.stamp` and not the header, the producing custom command runs, cargo prints
@@ -205,6 +204,16 @@ live one layer up — `workspace-rust-native-cyclonedds` builds an artifact with
 only by `cmake_defs()` (cmake rows), `row_coord()` and the label printer; the driver never mentions it. Predates
 phase-383, which only made it visible. `nros build` now REFUSES a divergent per-image rmw rather than lying. See
 `0831-*`.
+<<<<<<< HEAD
+=======
+
+**#0842** (cmake, open 2026-08-27) — a generated cmake root picks the WRONG NETSTACK for a board whose platform
+shares a `[deploy.<target>.nros]` block with another board. `examples/workspaces/c` has two FreeRTOS boards
+(mps2-an385 lwIP, freertos-posix sockets) and one `[deploy.freertos.nros] netstack = "lwip"`, so building the
+POSIX one compiled zenoh-pico's lwIP backend into `libnros_cpp.a` and failed with 63 `undefined reference to
+lwip_*`. The hand-written root escaped it by gating SUBDIRS on `NANO_ROS_BOARD` — one entry per configure. The
+pre-migration binary has ZERO lwip strings, so the artifact settles it. Blocks the embedded half of every
+remaining cmake workspace migration. See `0842-*`.
 **#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an
 out-of-lane fixture only when it can ATTRIBUTE it, and 47 rows share one `build_subdir`
 (`build-workspace-fixtures`, 14 of them in `examples/workspaces/c` alone), so issue 0517's ambiguity makes them
