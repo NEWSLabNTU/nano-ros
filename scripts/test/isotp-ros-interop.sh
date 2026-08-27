@@ -4,7 +4,12 @@
 #   ZENOHC_ISOTP_LIB=<dir with the isotp libzenohc.so> \
 #   NANO_ROS_SERVER=<built nano-ros service-server> \
 #   NANO_ROS_CLIENT=<built nano-ros service-client> \
-#   ./scripts/test/isotp-ros-interop.sh [--role server|client|both]
+#   NANO_ROS_ACTION_SERVER=<built nano-ros action-server> \
+#   NANO_ROS_ACTION_CLIENT=<built nano-ros action-client> \
+#   ./scripts/test/isotp-ros-interop.sh [--role <role>]
+#
+#   --role service-server | service-client | action-server | action-client
+#          both (the two service roles, the default) | all (all four)
 #
 # Build the library with:
 #   scripts/can/build-zenohc-can.sh --link isotp --zenoh <fork on a 1.8.0 branch>
@@ -158,7 +163,7 @@ report_bus() {
 # dials out, because the pico ISO-TP link registers on the connect side only.
 # `ros2 service call` waits for the service to appear, which is what gives the
 # node time to come up and connect.
-if [ "$ROLE" = both ] || [ "$ROLE" = server ]; then
+if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-server ]; then
     SERVER=${NANO_ROS_SERVER:?set NANO_ROS_SERVER to the built nano-ros service-server}
     say "role SERVER: nano-ros serves /add_two_ints, ros2 calls it"
     start_candump "$OUT/dump-server.log"
@@ -181,7 +186,7 @@ fi
 
 # ---------------------------------------------------------------- role: client
 # The mirror image: a ROS 2 node serves and the nano-ros node calls it.
-if [ "$ROLE" = both ] || [ "$ROLE" = client ]; then
+if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-client ]; then
     CLIENT=${NANO_ROS_CLIENT:?set NANO_ROS_CLIENT to the built nano-ros service-client}
     say "role CLIENT: ros2 serves /add_two_ints, nano-ros calls it"
     start_candump "$OUT/dump-client.log"
@@ -209,6 +214,77 @@ if [ "$ROLE" = both ] || [ "$ROLE" = client ]; then
         FAILED=1; say "  FAIL"
         echo "--- nano-ros client ---"; tail -25 "$OUT/client.log"
         echo "--- ros2 server ---";     tail -20 "$OUT/ros-server.log"
+    fi
+fi
+
+# ------------------------------------------------------- role: action-server
+# nano-ros SERVES the action; the ROS 2 CLI drives it. Actions are the harder
+# case than services and the reason they are tested separately: one goal is a
+# whole conversation -- goal request, accept, a stream of feedback, a result
+# request, and a status topic -- so it exercises queries, replies AND pushed
+# data across the same ISO-TP face at once.
+if [ "$ROLE" = all ] || [ "$ROLE" = action-server ]; then
+    ASERVER=${NANO_ROS_ACTION_SERVER:?set NANO_ROS_ACTION_SERVER to the built nano-ros action-server}
+    say "role ACTION-SERVER: nano-ros serves /fibonacci, ros2 sends a goal"
+    start_candump "$OUT/dump-aserver.log"
+    run_bg timeout 90 ros2 action send_goal --feedback /fibonacci \
+        example_interfaces/action/Fibonacci "{order: 5}" >"$OUT/asend.log" 2>&1
+    ASEND_PID=${PIDS[-1]}
+    sleep 3
+    NROS_LOCATOR="$NODE_EP" run_bg "$ASERVER" >"$OUT/aserver.log" 2>&1
+    wait "$ASEND_PID" 2>/dev/null
+    kill_all
+    # Match the terminal status on the ROS side AND the server's own completion:
+    # a goal that is accepted and then never finishes would still print a goal
+    # id, and that must not read as a pass.
+    #
+    # NOT a formatted sequence string. `ros2 action send_goal` prints the result
+    # as a YAML BLOCK LIST ("sequence:" then "- 0", "- 1", ...), not
+    # `sequence=[0, 1, ...]`; asserting the latter failed a run that had in fact
+    # completed correctly, which is worse than no assertion at all.
+    if [ "$(count_in "$OUT/asend.log" 'Goal finished with status: SUCCEEDED')" -gt 0 ] \
+       && [ "$(count_in "$OUT/aserver.log" 'Goal succeeded')" -gt 0 ]; then
+        say "  PASS: ros2 -> CAN -> nano-ros action server -> CAN -> ros2, [0,1,1,2,3,5]"
+        report_bus "$OUT/dump-aserver.log"
+    else
+        FAILED=1; say "  FAIL"
+        echo "--- ros2 action send_goal ---"; tail -25 "$OUT/asend.log"
+        echo "--- nano-ros action server ---"; tail -25 "$OUT/aserver.log"
+    fi
+fi
+
+# ------------------------------------------------------- role: action-client
+# The mirror image: a ROS 2 node serves and the nano-ros node drives the goal.
+if [ "$ROLE" = all ] || [ "$ROLE" = action-client ]; then
+    ACLIENT=${NANO_ROS_ACTION_CLIENT:?set NANO_ROS_ACTION_CLIENT to the built nano-ros action-client}
+    say "role ACTION-CLIENT: ros2 serves /fibonacci, nano-ros sends a goal"
+    start_candump "$OUT/dump-aclient.log"
+    # The node binary directly, not `ros2 run` -- see the SERVER role above.
+    AROS_BIN="$ROS_DISTRO_DIR/lib/examples_rclcpp_minimal_action_server/action_server_member_functions"
+    [ -x "$AROS_BIN" ] || die "$AROS_BIN is not executable"
+    run_bg "$AROS_BIN" >"$OUT/aros-server.log" 2>&1
+    sleep 6
+    NROS_LOCATOR="$NODE_EP" run_bg timeout 90 "$ACLIENT" >"$OUT/aclient.log" 2>&1
+    ACLIENT_PID=${PIDS[-1]}
+    wait "$ACLIENT_PID" 2>/dev/null
+    kill_all
+    # The example sends order = 10 and Zephyr's/ROS's minimal action server
+    # emits ELEVEN terms, ending 55 -- not twelve ending 89. Assert the exact
+    # sequence rather than a lone number: it is self-documenting, and an
+    # off-by-one in either implementation shows up as a failure instead of
+    # passing on a substring.
+    #
+    # Assert the RESULT, never feedback alone: feedback without a result is a
+    # goal that started and never finished, which is the failure worth catching.
+    if [ "$(count_in "$OUT/aclient.log" 'Result received: \[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55\]')" -gt 0 ]; then
+        say "  PASS: nano-ros action client -> CAN -> ros2 action server -> CAN -> nano-ros"
+        printf '    %s\n' "$(grep -o 'Result received: .*' "$OUT/aclient.log" | tail -1)"
+        printf '    feedback samples: %s\n' "$(count_in "$OUT/aclient.log" 'Next number in sequence received')"
+        report_bus "$OUT/dump-aclient.log"
+    else
+        FAILED=1; say "  FAIL"
+        echo "--- nano-ros action client ---"; tail -30 "$OUT/aclient.log"
+        echo "--- ros2 action server ---"; tail -20 "$OUT/aros-server.log"
     fi
 fi
 

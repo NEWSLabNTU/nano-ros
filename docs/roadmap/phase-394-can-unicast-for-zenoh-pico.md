@@ -222,6 +222,35 @@ An early version of that guard grepped the config for `"tcp/` without stripping
 comments and killed a good run: the stock json5 is heavily documented and its
 own prose contains `"tcp/10.10.10.10:7447"` as an example.
 
+### Actions, both roles
+
+W6's criteria name a service call, but a service is the easy case. An **action**
+is a whole conversation — goal request, accept, a stream of feedback, a result
+request, and a status topic — so it drives queries, replies **and** pushed data
+across the same ISO-TP face at once. Both roles pass, on
+`example_interfaces/action/Fibonacci` against ROS 2's own minimal action nodes:
+
+| role | result | bus |
+| --- | --- | --- |
+| nano-ros **serves** `/fibonacci`, `ros2 action send_goal` drives it | `Goal finished with status: SUCCEEDED`, `[0,1,1,2,3,5]`, 6 feedback samples | 534 frames, 35 FF/FC pairs |
+| ROS 2 serves, nano-ros **client** drives it | `Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`, 9 feedback samples | 536 frames, 26 FF/FC pairs |
+
+`--role action-server` / `--role action-client`; `--role all` runs all four.
+
+Both action assertions were wrong on their first outing and reported FAIL on
+runs that had in fact completed correctly — worse than no assertion:
+
+* `ros2 action send_goal` prints the result as a **YAML block list**
+  (`sequence:` then `- 0`, `- 1`, …), not `sequence=[0, 1, ...]`. The role now
+  matches the terminal status plus the server's own `Goal succeeded`.
+* order = 10 yields **eleven** terms ending **55**, not twelve ending 89. The
+  role now matches the exact expected sequence, so an off-by-one in either
+  implementation fails instead of passing on a substring.
+
+One operational note: the action roles are minutes long, and a leftover peer
+from an earlier run on the same identifier pair will stall them. Check the bus
+is clear before believing a hang.
+
 **This is what RFC-0080 could not do.** zenoh routes queries to unicast faces
 only, so a service call over the multicast CAN link never reaches a queryable
 at all. It is not a CAN limitation and never was — it is a property of zenoh's
