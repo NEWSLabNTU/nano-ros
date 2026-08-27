@@ -624,6 +624,58 @@ Per-class static cost is visible, not hidden: each class pays
 `instances x size_of::<TypedSlot<C>>()` in `.bss` under its own symbol, which is
 exactly the granularity `nros-mem-report` attributes.
 
+### STOPPED before the cell rework (2026-08-28) — the cell is ~20 KB and that is a fork, not a detail
+
+The heapless registry conversion LANDED (all 35 `String` -> `IdStr` =
+`heapless::String<128>`, all registries `heapless::Vec<_, CELL_REG_CAP = 32>`,
+every overflow a registration error). It is also what surfaced the blocker.
+
+**`ComponentCell` is now ~19.5 KB, ANALYTIC, not measured**: 4 registries x 32
+entries x (~136 B IdStr + <=16 B payload), plus the slot ref and counters. (The
+sizeof probe could not be run: the crate's TEST target's fingerprint refuses to
+rebuild while the lib target rebuilds fine — noted, not chased. The bound is
+arithmetic over the field types and cannot be off by enough to change the
+decision below.)
+
+Two consequences, one immediate:
+
+* **INC-1 itself changed the heap profile TODAY.** `Arc::new(ComponentCell)`
+  used to allocate a small struct whose four `Vec`s grew on demand;
+  it now allocates the full worst-case ~20 KB per component up front. On the
+  128 KiB bare-metal arena, four components is ~80 KiB — the campaign's own
+  issue-0810 shape ("sized by worst-case shape") introduced by the campaign.
+  `CELL_REG_CAP = 32` (borrowed from the metadata twin) is per-PLAN-shaped, not
+  per-component-shaped, and is probably 4-8x too big for a typical component.
+* **Static-izing cells multiplies it per CLASS.** The per-emit static cell —
+  the planned Arc replacement — would bake ~20 KB x instances for every
+  component class in the image, before any component registers.
+
+So the Arc rework is BLOCKED on a sizing decision, and it is the same decision
+issue 0827 poses one layer down ("pools sized at the backend"):
+
+1. **Per-class exact sizing via the macro.** Codegen knows each class's entity
+   count; the macro already monomorphises the trampolines per class, so it can
+   emit a per-class cell type with exactly-sized registries. Costs: the cell
+   stops being ONE concrete type, so `dispatch_into_cell` and friends go
+   generic and the tick/drop trampolines must be emitted per class (they can
+   be — they are macro output already). Zero waste; the FFI boundary stays
+   `*mut c_void`.
+2. **Shrink `CELL_REG_CAP` to a per-component default (4-8) + knob.** One-line,
+   uniform, keeps the cell concrete; still worst-case-shaped, just a smaller
+   worst case.
+3. **Registries as slices into a runtime-owned pool** (the entity registries
+   join the slot pool). Exact-ish, keeps one cell type, adds carve complexity.
+
+(2) can land immediately and independently improves TODAY's heap profile; (1)
+is the honest endpoint for the static-cell design. They compose: do (2) now,
+(1) when the cells move. Neither is chosen here — the trade is RAM vs a
+per-class generic cell, and it belongs with the same review that set
+`CELL_REG_CAP` in the first place.
+
+The Box-leaked ctxs ride the same fork: their storage lands wherever the cells
+do, and per-class emission sizes them exactly too (a class with no actions pays
+zero action-ctx bytes).
+
 **Acceptance (unchanged):** an image that CALLS runtime code links at tier
 `heap-free` and passes the W1 gate with `symbols read` well above 1. Three
 probes have already passed that gate vacuously at `symbols read: 1`.
