@@ -162,6 +162,20 @@ jobs:
 
       # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
       # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
+      # Phase-395 W4 — this job already runs `check-fast` (push) and `check`
+      # (PR). Adding `test-unit` makes the PR gate exactly L1, the lane an agent
+      # is told to run before pushing (CLAUDE.md, AGENTS.md).
+      #
+      # It needs NO fixtures: only `test`/`test-all` depend on
+      # `_require-fixtures-ready`, and 74 of 163 test files call no fixture
+      # resolver at all. So this costs a unit-test run, not a fixture build, and
+      # it closes the compile-tier gap that issue 0840's `pre-push` hook
+      # deliberately leaves open — the gap that let three clippy `-D warnings`
+      # errors and an unregenerated pool inventory reach main on 2026-08-27.
+      - name: just test-unit (completes L1)
+        if: ${{ github.event_name != 'push' && !cancelled() }}
+        run: just test-unit
+
       - name: just check-decoupling (advisory until Phase 104.A)
         if: ${{ github.event_name != 'push' && !cancelled() }}
         continue-on-error: true
