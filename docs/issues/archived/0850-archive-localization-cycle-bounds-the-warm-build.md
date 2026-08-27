@@ -170,3 +170,42 @@ The prologue's four `fixtures-build.sh` group calls remain sequential at 2-7 of
 32 cores. That was ~40 s of a 240 s wall; against a 54 s wall it is now the
 LARGEST remaining term, and worth revisiting with `sample-build-leaves.sh` rather
 than assumed — the whole point of this issue is that the bound moves.
+
+## Follow-up (2026-08-28): the prologue is NOT worth parallelising — the bound is gone
+
+The section above left the four sequential `fixtures-build.sh` group calls as
+"the LARGEST remaining term" and said to re-measure rather than assume. Done, and
+the assumption would have been wrong twice over.
+
+**The 54 s figure was itself a first-run artifact.** That run populated the memo
+as it went, so it still did the work once. Fully warm, repeated:
+
+```
+warm rebuild   9 s, 10 s, 10 s      rc=0, 29 binaries present
+configures 0   compiles 0   archive re-processings 0   cargo invocations 70
+```
+
+So the warm rebuild is **~10 s**, not 54 s, and it is now nothing but 70 no-op
+cargo freshness checks (~0.07 s each) plus ninja's own up-to-date walk.
+
+Against that, the prologue's four group calls are a couple of seconds. Making
+them concurrent would buy little and cost something real: each group already runs
+`make -j8`, so four at once is 32 concurrent leaves each with its own ninja — the
+`N x ninja_jobs` oversubscription the zephyr driver explicitly warns about, on a
+lane whose leaves are disk-heavy. Not worth it.
+
+### Warm floor, final
+
+| stage | wall |
+| --- | --- |
+| before issue 0805 | 459 s |
+| after the cargo fingerprint fix | 362 s |
+| after the archive skip-stamp | 331 s |
+| after parallel rust dispatch | 227 s |
+| after the content memo | **~10 s** |
+
+**46x.** Five hypotheses were measured across this work — cargo recompilation,
+cargo lock waits, CPU saturation, this issue's copy/localize framing, and finally
+the prologue. Four were wrong. Every correction came from an instrument, never
+from re-reading the code, and the last one cost nothing precisely because it was
+measured before it was fixed.
