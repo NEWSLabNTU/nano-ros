@@ -821,6 +821,16 @@ zero, and per-board lwIP receive sizing got autonomous mode to ENGAGE - neither 
 Still unknown whether the fragments reach lwIP at all. Last blocker for the emulated-R52 closed loop.
 See `0836-*`. (2026-08-27)
 
+**#0845** (build, open 2026-08-27) — `just zephyr build-fixtures` cannot build its C zenoh leaves: 32 ×
+`gcc: fatal error: cannot specify '-o' with '-c' … with multiple files`, from a WIPED build dir, because the
+libc-compat header arrives as a BARE PATH with no `-include` in front of it. Those TUs run under `/usr/bin/ccache`
+even though the fixture record passes `-DUSE_CCACHE=0` plus an sccache launcher — so either that flag never reaches
+the picolibc module, or ccache is eating the `-include`. Neither confirmed; the leaf definitely cannot build. Hidden
+because `just zephyr build-c` builds the SAME six examples through `build-one` and works (337 s, rc=0) — two
+builders for one set of leaves, and only the CI one is broken (issue 0549's divergence, inverted). Found while
+landing 0805's delegation of the dev loops onto the fixture path; that delegation was REVERTED rather than ship a
+working command routed into a broken lane. See `0845-*`. (2026-08-27)
+
 **#0830** (boards, open 2026-08-27) - a QEMU net hub holding ONLY the board NIC and a tap never
 delivers host-to-guest frames; `mps3-an536` guests transmit fine and receive nothing. Not our bug and not
 the host's: attaching to the tap directly (`TUNSETIFF`) shows the host emitting ARP and RTPS normally, and
