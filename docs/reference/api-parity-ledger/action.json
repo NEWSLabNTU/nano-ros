@@ -206,8 +206,13 @@
     "why": "rcl's goal id + acceptance timestamp. Ours carries the id alone (`nros_goal_uuid_t`) at the C boundary: the stamp is filled by the arena when it publishes status, and an image with no clock source (RFC-0036: time is a board capability) cannot be asked to supply one at accept time. `nros_core::GoalInfo` keeps both fields for the wire."
   },
   "c:action_goal_state_t": {
-    "verdict": "rename",
-    "why": "rcl's name for what we call `nros_goal_status_t`, and both mirror `action_msgs/msg/GoalStatus`. rclcpp_action and our C++ and Rust all say STATUS (`GoalStatus`), rcl alone says STATE; ours agrees with the majority and with the message. Recorded as a rename so the pair is visible, but this is one where THEIRS is the odd spelling -- see `c:goal_status_t` for our half."
+    "verdict": "declined",
+    "why": "RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). The row's own evidence settles it: rcl is the odd speller. `action_msgs/msg/GoalStatus` is the wire type, and rclcpp_action, our C (`nros_goal_status_t`), our C++ (`nros::GoalStatus`) and our Rust (`GoalStatus`) all say STATUS; `rcl_action_goal_state_t` says STATE alone. `rename` means OURS is the one that should change, which is false here, so the verdict was wrong even though the prose was right. Declined: rcl has this spelling, we deliberately do not, and the reason is that ours follows the message. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rcl's name for what we call `nros_goal_status_t`, and both mirror `action_msgs/msg/GoalStatus`. rclcpp_action and our C++ and Rust all say STATUS (`GoalStatus`), rcl alone says STATE; ours agrees with the majority and with the message. Recorded as a rename so the pair is visible, but this is one where THEIRS is the odd spelling -- see `c:goal_status_t` for our half.",
+    "rename": {
+      "category": "C",
+      "status": "resolved",
+      "resolution": "Not a rename. Theirs-only, and theirs is the outlier — ours already agrees with rclcpp_action and with `action_msgs/msg/GoalStatus`. Re-verdicted to `declined`."
+    }
   },
   "c:action_goal_status_array_*": {
     "verdict": "divergence",
@@ -254,12 +259,12 @@
   },
   "c:action_server_active_goal_count_raw": {
     "verdict": "rename",
-    "why": "the second spelling; see `c:action_server_get_active_goal_count`.",
+    "why": "the polling-tier half; see `c:action_server_get_active_goal_count`, which now carries the established facts and the recommendation. Short version: this is NOT the second name of one function. It reads `PollingServerCore` directly where its sibling reads the executor arena, it is selected by `nros_action_server_t::state`, its `i32` return doubles as an error channel the `size_t` sibling cannot carry, and its `_raw` suffix is the systematic polling-tier marker shared with 23 other functions — all of which are ledgered `extension`. Its own name needs no change.",
     "rename": {
       "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DUPLICATE API — same pair"
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "same pair; see `c:action_server_get_active_goal_count`."
     }
   },
   "c:action_server_get_action_name": {
@@ -268,12 +273,13 @@
   },
   "c:action_server_get_active_goal_count": {
     "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, and inside one language: the C API ships this query TWICE. `nros_action_server_get_active_goal_count` returns `size_t` for the callback tier and `nros_action_server_active_goal_count_raw` returns `int32_t` for the polling tier, and both read the same arena field through the same `ActionServerRawHandle::active_goal_count`. One says `get_`, the other does not. Rust spells it `active_goal_count` on all four of its action types, agreeing with the `_raw` half; C's `get_` form is the outlier, and C++ has no count at all (only `for_each_active_goal`). Same shape as the service stage's `c:client_server_available` / `c:client_service_is_ready`. Phase 379 W5.",
+    "why": "FACTS ESTABLISHED 2026-08-27 (phase-379 W5), and the row's premise was partly wrong. The two functions do NOT read the same field through the same handle: they are TIER-DISJOINT and select on `nros_action_server_t::state`. `nros_action_server_get_active_goal_count` (server.rs:703) requires `NROS_ACTION_SERVER_STATE_INITIALIZED` and reads the arena through `ActionServerRawHandle::active_goal_count(executor)` -> `as_raw_active_goal_count` -> `entry.core.active_goal_count()`; `nros_action_server_active_goal_count_raw` (server.rs:1466) requires `NROS_ACTION_SERVER_STATE_POLLING` and reads the `PollingServerCore` living in `_opaque` directly, with no executor and no arena indirection, behind `#[cfg(feature = \"rmw-cffi\")]`. Same COUNTER, two storage paths the caller picks by construction verb. ERROR CHANNEL: the `_raw` half's `i32` is tri-state -- >=0 count, `NROS_RET_INVALID_ARGUMENT` for null-or-not-a-polling-server, `NROS_RET_NOT_INIT` when built without `rmw-cffi` -- and the `usize` half cannot carry it (it answers 0 for every one of those). CONSUMERS: there are none, in either direction. A repo-wide grep for both symbols outside build output finds the two definitions, the two `nros_generated.h` declarations, one nros-c unit test (`action_server_active_goal_count_null`) and prose. No example, fixture or C++ shim calls either, so nothing would notice the merge -- and nothing is exercising the tri-state either. RECOMMENDATION: keep BOTH, change NEITHER name, and re-verdict this pair away from `rename`. (1) Do not merge: the merged function would have to branch on `state` to pick between the arena and `PollingServerCore`, and then pick ONE return type -- `usize` deletes the tri-state, `i32` changes the callback-tier signature. A public C signature should not be changed to delete an error channel that a polling-tier user is entitled to read, on the evidence that nobody in OUR tree reads it. (2) Do not drop `get_`, which is the part this row proposed as safe. Checked: `nros_action_server_active_goal_count` is a free symbol, so there is no COLLISION -- but there is no case for the move either. C's `get_` is not the outlier; it is the convention. Our C API's only other two count queries are `nros_executor_get_handle_count` and `nros_parameter_server_get_count`, both `get_`, and 49 `nros_*_get_*` functions ship in `nros_generated.h`; W5 group A ADDED `get_` to C on purpose (`nros_lifecycle_get_state` -> `nros_lifecycle_get_current_state`) to match rclcpp. The only argument for dropping it is Rust's RFC-430, which is a RUST convention and does not reach C -- that is why Rust says `active_goal_count` and is also correct. And `_raw` is a systematic polling-tier suffix on 24 functions (`nros_publish_raw`, `nros_client_send_request_raw`, ...), most with no non-`_raw` sibling at all, so it constrains no callback-tier name. Dropping `get_` would leave two public functions differing only by `_raw`, returning different types for different tiers -- more confusable than today, not less. (3) The verdict that fits both rows is `extension`: rcl/rclc has no active-goal count, C++ has none either (`for_each_active_goal` only), so both are ours-only in both directions, and the other 23 `_raw` polling-tier functions are already ledgered `extension`. Left as `rename` and BLOCKED rather than re-verdicted unilaterally, because 'delete one of two shipped public C functions' is a maintainer's call. ORIGINAL ROW: OUR LANGUAGES DISAGREE, and inside one language: the C API ships this query TWICE. `nros_action_server_get_active_goal_count` returns `size_t` for the callback tier and `nros_action_server_active_goal_count_raw` returns `int32_t` for the polling tier, and both read the same arena field through the same `ActionServerRawHandle::active_goal_count`. One says `get_`, the other does not. Rust spells it `active_goal_count` on all four of its action types, agreeing with the `_raw` half; C's `get_` form is the outlier, and C++ has no count at all (only `for_each_active_goal`). Same shape as the service stage's `c:client_server_available` / `c:client_service_is_ready`. Phase 379 W5.",
     "rename": {
       "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DUPLICATE API — two exported fns over one arena field, usize vs i32, and the i32 doubles as an error channel, so no naive merge"
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "DUPLICATE API, and a merge deletes an error channel — verified against the source 2026-08-27; NOT EXECUTED. The two functions serve DIFFERENT TIERS off different storage (`state == INITIALIZED` -> arena via `ActionServerRawHandle`; `state == POLLING` -> `PollingServerCore` in `_opaque`), and the polling half's `i32` doubles as `NROS_RET_INVALID_ARGUMENT` / `NROS_RET_NOT_INIT`, which a `size_t` cannot carry. Neither has a caller anywhere in the tree, so the tri-state is unexercised — an argument for deleting it, not evidence that it is safe to delete. THE CHOICE A HUMAN HAS TO MAKE: (a) keep both and re-verdict the pair `extension` (recommended — see `why`); (b) delete `_raw` and give the survivor the polling tier's error channel, i.e. change the callback tier's return type; or (c) delete the callback-tier one and let `_raw` serve both, which means a callback-tier caller reads a count through a name that says `raw`. The `get_` question is NOT part of it and is settled: `get_` stays.",
+      "recommendation": "(a) — keep both names and both functions, re-verdict this row and `c:action_server_active_goal_count_raw` to `extension`, and record the tier split in the doc comments so the next reader does not re-open it as a duplicate. No rename, no deletion, no invented name."
     }
   },
   "c:action_server_get_goal_handles": {
@@ -318,8 +324,13 @@
     "why": "the QoS-taking form; the profile applies to the three underlying service servers while feedback and status keep their ROS-mandated profiles. See the pubsub stage's `c:publisher_init_with_qos`."
   },
   "c:action_server_is_available": {
-    "verdict": "rename",
-    "why": "rcl's client-side probe -- despite the name it takes `(node, action_client, bool*)` and asks whether a SERVER has been discovered. rclcpp_action says `Client::action_server_is_ready`; ours says `nros_action_client_action_server_is_ready`, which agrees with rclcpp and with our own `nros_client_service_is_ready`. rcl's free-function spelling is the odd one; recorded so the pair is visible. Our half is `c:action_client_action_server_is_ready`, which also records that this probe exists in C ALONE."
+    "verdict": "declined",
+    "why": "RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). Same shape as `c:action_goal_state_t`: the row already concluded that rcl's free-function spelling is the odd one, which makes `rename` (ours should change) the wrong verdict. Ours is `nros_action_client_action_server_is_ready`, agreeing with rclcpp_action's `Client::action_server_is_ready` and with our own `nros_client_service_is_ready`; rcl's `rcl_action_server_is_available` is a client-side probe whose name says server. Declined: rcl has this spelling, we deliberately do not. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rcl's client-side probe -- despite the name it takes `(node, action_client, bool*)` and asks whether a SERVER has been discovered. rclcpp_action says `Client::action_server_is_ready`; ours says `nros_action_client_action_server_is_ready`, which agrees with rclcpp and with our own `nros_client_service_is_ready`. rcl's free-function spelling is the odd one; recorded so the pair is visible. Our half is `c:action_client_action_server_is_ready`, which also records that this probe exists in C ALONE.",
+    "rename": {
+      "category": "C",
+      "status": "resolved",
+      "resolution": "Not a rename. Theirs-only and theirs is the outlier; our half (`c:action_client_action_server_is_ready`) is already verdicted `extension` and already carries rclcpp_action's word. Re-verdicted to `declined`."
+    }
   },
   "c:action_server_is_valid": {
     "verdict": "extension",
@@ -485,8 +496,8 @@
     "why": "cancels every goal accepted before a timestamp. It needs each goal's acceptance stamp, which our arena does not keep -- see `c:action_goal_info_t`: time is a board capability (RFC-0036) and the accept path has no clock to read. A user loses bulk cancellation by age and must cancel by goal id."
   },
   "cpp:Client::wait_for_action_server": {
-    "verdict": "rename",
-    "why": "we HAVE this -- `nros::ActionClient<A>::wait_for_action_server(timeout_ms)`, same name, same meaning. It reports as theirs-only only because the owning type is spelled differently; rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. Recorded so the pair is visible: the method needs no change, the TYPE name is the open question."
+    "verdict": "divergence",
+    "why": "RE-VERDICTED rename -> divergence 2026-08-27 (phase-379 W5). The METHOD name does not differ at all — `nros::ActionClient<A>::wait_for_action_server(timeout_ms)` is the same word with the same meaning — so `rename` (ours is the one that should change) has no referent, and the row itself says 'the method needs no change'. What differs is the owning TYPE, and that is already ledgered: `cpp:ActionServer` records the one-namespace constraint (rclcpp_action gets its own namespace and can say `Client<ActionT>`; we ship only `nros`, where `Client` is the service client), `cpp:ActionClient` inherits from it, and our half of THIS pair reports `divergence*` inherited from those. This row is the theirs-only mirror and now carries the same verdict, so the pair reads consistently. The open TYPE-name question stays open and stays where it belongs, on `cpp:ActionServer`; no name is proposed here. See `cpp:ActionServer`. ORIGINAL ROW (verdict was `rename`): we HAVE this -- `nros::ActionClient<A>::wait_for_action_server(timeout_ms)`, same name, same meaning. It reports as theirs-only only because the owning type is spelled differently; rclcpp_action puts the action entities in their OWN namespace, so they can be called `Client<ActionT>` and `Server<ActionT>` beside `rclcpp::Client`. We ship one namespace, `nros`, where `Client` is already the service client -- so ours are `nros::ActionClient<A>` / `nros::ActionServer<A>` and every rclcpp_action member correlates as theirs-only even where we have it. Recorded so the pair is visible: the method needs no change, the TYPE name is the open question."
   },
   "cpp:ClientGoalHandle": {
     "verdict": "divergence",
@@ -529,8 +540,13 @@
     "why": "RFC-0022's polling tier for actions: an entity a task drains itself instead of receiving a callback, for code that owns its own loop. See the pubsub stage's `cpp:PollingSubscription`."
   },
   "cpp:ResultCode": {
-    "verdict": "rename",
-    "why": "rclcpp_action's client-side terminal code (SUCCEEDED / CANCELED / ABORTED / UNKNOWN). Ours is `nros::GoalStatus` in C++, `nros_goal_status_t` in C and `GoalStatus` in Rust -- one enum covering both the active and the terminal states, as `action_msgs/msg/GoalStatus` does. rclcpp_action is the one that splits the enum in two; recorded so the pair is visible rather than because ours should move."
+    "verdict": "declined",
+    "why": "RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). The row's last sentence already said it: rclcpp_action is the one that splits the enum in two, and it is recorded 'so the pair is visible rather than because ours should move'. That is `declined`, not `rename` — rclcpp_action has a separate client-side terminal code, we deliberately do not, because one `GoalStatus` covering the active and the terminal states is what `action_msgs/msg/GoalStatus` defines and what all three of our languages already ship. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rclcpp_action's client-side terminal code (SUCCEEDED / CANCELED / ABORTED / UNKNOWN). Ours is `nros::GoalStatus` in C++, `nros_goal_status_t` in C and `GoalStatus` in Rust -- one enum covering both the active and the terminal states, as `action_msgs/msg/GoalStatus` does. rclcpp_action is the one that splits the enum in two; recorded so the pair is visible rather than because ours should move.",
+    "rename": {
+      "category": "C",
+      "status": "resolved",
+      "resolution": "Not a rename. Theirs-only, and ours is one enum where theirs is two — a shape difference, not a spelling. Re-verdicted to `declined`."
+    }
   },
   "cpp:Server": {
     "verdict": "divergence",
@@ -621,8 +637,8 @@
     "why": "the typed action client a Rust image holds: `send_goal` / `cancel_goal` / `get_result` each return a `Promise` the caller drives with the executor (RFC-0021 -- no futures and no runtime to await one), plus `try_recv_feedback` and `feedback_stream`. rclrs 0.5.1 ships NO action API at all -- the recorded surface has zero action, goal or feedback items -- so every action item in our Rust API is ours-only by construction rather than by an RTOS need. Ours mirror rclcpp_action's and `action_msgs`' concepts and are shared with our C and C++ surfaces. The convergence point is whenever rclrs grows actions. Sized by const generics (goal / result / feedback buffers, MAX_GOALS) because the storage is static -- there is no allocator to grow a goal set with, so the bound is part of the type. rclcpp_action's equivalents allocate per goal. The `reset_*_in_flight` members are the escape hatch for a dropped promise: one request per channel may be outstanding because the reply buffer is a single static slot."
   },
   "rust:ActionClient::action_server_is_ready": {
-    "verdict": "rename",
-    "why": "one of TWO spellings of this predicate in our Rust alone -- see `rust:ActionClientCore::is_server_ready` and `c:action_client_action_server_is_ready`."
+    "verdict": "extension",
+    "why": "RE-VERDICTED rename -> extension 2026-08-27 (phase-379 W5). This is the SURVIVING spelling of the pair, so `rename` — ours is the one that should change — is wrong for this item: `action_server_is_ready` is rclcpp_action's word (`Client::action_server_is_ready`) and our C's (`nros_action_client_action_server_is_ready`, itself verdicted `extension`). The defect the pair records lives on the other half, `rust:ActionClientCore::is_server_ready`, which keeps `rename`. Extension for the reason every Rust action row gives: rclrs 0.5.1 ships no action API at all, so this is ours-only by construction. No code change. ORIGINAL ROW (verdict was `rename`): one of TWO spellings of this predicate in our Rust alone -- see `rust:ActionClientCore::is_server_ready` and `c:action_client_action_server_is_ready`."
   },
   "rust:ActionClient::cancel_all_goals": {
     "verdict": "divergence",
@@ -718,7 +734,12 @@
   },
   "rust:ActionClientCore::is_server_ready": {
     "verdict": "rename",
-    "why": "the second Rust spelling of `rust:ActionClient::action_server_is_ready`, on the type one layer below. The service stage recorded the same defect for clients (`rust:ClientTrait::is_server_ready` beside `ClientTrait::server_available` beside `Client::service_is_ready`); actions repeat it. Phase 379 W5."
+    "why": "TARGET SETTLED 2026-08-27 (phase-379 W5), not executed. Verdict stays `rename`: this is the half of the pair that should move, and the surviving spelling is `action_server_is_ready` — rclcpp_action's word, our C's word (`nros_action_client_action_server_is_ready`) and the word our own outer type already uses (`rust:ActionClient::action_server_is_ready`, now re-verdicted `extension` as the survivor). So `ActionClientCore::is_server_ready` (packages/core/nros-node/src/executor/action_core.rs:1144) -> `action_server_is_ready`. NOT executed here: `nros-node` is outside this work item's ownership, and the rename has in-tree callers (`handles.rs:2180`, `:2825`). NOTE the entanglement, which is why this is not a one-line edit: the body forwards to `send_goal_client.is_server_ready()`, which is `ClientTrait::is_server_ready` (nros-rmw/src/traits.rs:2404) — the trait method whose own naming is BLOCKED at `rust:ClientTrait::server_available` on the tri-state question. Renaming the action-side wrapper does not touch the trait and does not depend on that decision, but whoever executes it should say so in the commit or the next reader will assume it did. ORIGINAL ROW: the second Rust spelling of `rust:ActionClient::action_server_is_ready`, on the type one layer below. The service stage recorded the same defect for clients (`rust:ClientTrait::is_server_ready` beside `ClientTrait::server_available` beside `Client::service_is_ready`); actions repeat it. Phase 379 W5.",
+    "rename": {
+      "from": "is_server_ready",
+      "to": "action_server_is_ready",
+      "category": "A"
+    }
   },
   "rust:ActionClientHandle": {
     "verdict": "divergence",

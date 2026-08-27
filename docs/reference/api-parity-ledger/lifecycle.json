@@ -411,12 +411,13 @@
   },
   "cpp:LifecycleNode::trigger_transition": {
     "verdict": "rename",
-    "why": "rclcpp's public `trigger_transition(id)` is how a ported node drives a transition it does not have a named helper for. Ours exists but is spelled `trigger(uint8_t)` and is `protected`, so it is not callable from outside the class at all -- a user gets only the five named helpers (`configure()`...`shutdown()`, which DO match rclcpp). OUR LANGUAGES DISAGREE: C says `nros_lifecycle_change_state` (rclc's word), Rust says `LifecyclePollingNode::trigger_transition` (rclcpp's word, and public), C++ says `trigger` and hides it. Phase 379 W3.",
+    "why": "LANDED 2026-08-27 (phase-379 W5) — `LifecycleNode::trigger(uint8_t)` is now the PUBLIC `LifecycleNode::trigger_transition(uint8_t)` (lifecycle.hpp). The rename alone would have changed nothing a caller can observe, because the member was `protected`: the fix is the visibility, with the rename riding along. The five named helpers (`configure()`…`shutdown()`) were the only callers in the tree — no example, test or subclass touched it — and were repointed at the new name; they keep their rclcpp spellings. A `[[deprecated]]` `protected` forwarder named `trigger` is kept, NOT because an external caller can exist (none can) but because inheriting `LifecycleNode` is the class's whole purpose and a user subclass calling `trigger(id)` is a real case; being `protected` it is outside the extracted surface, so it grows no ledger row of its own. C and Rust did NOT move: C's `nros_lifecycle_change_state` is rclc's own word and correct for that language, and Rust's `LifecyclePollingNode::trigger_transition` was already public and already correctly named. The paragraph that follows is the row's ORIGINAL reasoning and describes the PRE-change tree. rclcpp's public `trigger_transition(id)` is how a ported node drives a transition it does not have a named helper for. Ours exists but is spelled `trigger(uint8_t)` and is `protected`, so it is not callable from outside the class at all -- a user gets only the five named helpers (`configure()`...`shutdown()`, which DO match rclcpp). OUR LANGUAGES DISAGREE: C says `nros_lifecycle_change_state` (rclc's word), Rust says `LifecyclePollingNode::trigger_transition` (rclcpp's word, and public), C++ says `trigger` and hides it. Phase 379 W3.",
     "rename": {
-      "to": null,
+      "from": "trigger",
+      "to": "trigger_transition",
       "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "VISIBILITY — trigger() is protected at lifecycle.hpp:163; renaming alone leaves a ported node just as unable to call it"
+      "status": "landed",
+      "actual_change": "VISIBILITY, with a rename riding along — `trigger()` was `protected` at lifecycle.hpp:163, so renaming alone would have left a ported node just as unable to call it. Moved to the public section AND spelled `trigger_transition`; deprecated `protected` forwarder retained for derived classes. No C or Rust change."
     }
   },
   "cpp:LifecyclePublisher": {

@@ -153,16 +153,37 @@ class LifecycleNode {
     }
 
     // Programmatic transitions (REP-2002 transition ids).
-    Result configure() { return trigger(1); }
-    Result activate() { return trigger(2); }
-    Result deactivate() { return trigger(3); }
-    Result cleanup() { return trigger(4); }
-    Result shutdown() { return trigger(5); }
+    Result configure() { return trigger_transition(1); }
+    Result activate() { return trigger_transition(2); }
+    Result deactivate() { return trigger_transition(3); }
+    Result cleanup() { return trigger_transition(4); }
+    Result shutdown() { return trigger_transition(5); }
 
-  protected:
-    Result trigger(uint8_t transition_id) {
+    /// Drive an arbitrary REP-2002 transition by id — rclcpp's
+    /// `LifecycleNode::trigger_transition(uint8_t)`, and PUBLIC for the same
+    /// reason: it is how a ported node reaches a transition that has no named
+    /// helper above. The five helpers are this call with the id filled in.
+    ///
+    /// Phase 379 W5: this was the `protected` `trigger(uint8_t)`, which a
+    /// ported rclcpp node could not call at all.
+    Result trigger_transition(uint8_t transition_id) {
         return Result(nros_cpp_lifecycle_change_state(exec_, transition_id));
     }
+
+  protected:
+    /// @deprecated Use `trigger_transition(uint8_t)`, which is public.
+    ///
+    /// Kept only for a DERIVED class written against the old name: `trigger`
+    /// was `protected`, so no caller outside the hierarchy can exist, but
+    /// inheriting from `LifecycleNode` is the whole point of the class, so a
+    /// user subclass calling `trigger(6)` is a real (if narrow) case. Nothing
+    /// in this tree calls it.
+    [[deprecated("LifecycleNode::trigger(uint8_t) is deprecated; use "
+                 "LifecycleNode::trigger_transition(uint8_t)")]] Result
+    trigger(uint8_t transition_id) {
+        return trigger_transition(transition_id);
+    }
+
     void* exec_;
 
   private:
