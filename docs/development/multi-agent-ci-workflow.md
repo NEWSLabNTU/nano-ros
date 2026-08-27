@@ -601,6 +601,73 @@ green catches that. Three retractions in this session — a wrong root cause in
 Everything above assumes an agent or maintainer with push access. An outside
 contributor works from a fork, and three things change.
 
+### The contribution flow, end to end
+
+Six stages. Humans and agents follow the same one; the differences are called
+out where they exist.
+
+| stage | contributor does | project provides |
+| --- | --- | --- |
+| **0 find** | pick an issue labelled `help wanted` / `good first issue`; comment to claim | labels already exist; a maintainer assigns |
+| **1 set up** | `git clone`, `source ./activate.sh`, `just doctor` | `doctor` reports which lanes this host can run |
+| **2 work** | one issue per PR; follow `AGENTS.md` | `AGENTS.md` is the machine-readable contract |
+| **3 verify** | `just ci` — this is the WHOLE obligation | L0–L2 must run on a fresh clone, no SDK |
+| **4 submit** | fork, PR, fill the template, sign off | template asks what ran and what could not |
+| **5 review** | respond | maintainer reads the diff, approves CI, enqueues |
+| **6 land** | — | queue runs L3; failures are triaged by a maintainer |
+
+**Stage 0 — claiming without push access.** `just claim` writes to
+`refs/claims/…` and needs write access, so outsiders claim by commenting and a
+maintainer assigns the issue. That makes issue assignment the visible half of
+the claim system, and it is why an agent with push access must check **both**
+before starting.
+
+**Stage 1 — `just doctor` should answer "what can I run?"** Today it reports
+install status per tier. For an outside contributor the useful output is one
+line: *you can run L0–L2; L3–L4 need an SDK you do not have and the CI will run
+them for you.* Without that, a contributor either over-provisions or assumes
+their green means more than it does.
+
+**Stage 3 — state the ceiling, so nobody fakes it.** The verification contract
+is exactly `just ci`. A contributor cannot run the cross lanes and **must not
+claim to have**. This matters more for agents than humans: an agent asked to
+"make sure it works on Zephyr" will otherwise report success from a lane that
+never built for Zephyr. The PR template should ask what was run as a question
+with a wrong answer, not as a checkbox.
+
+**Stage 4 — the PR template asks three things.**
+
+1. Which lanes did you run, and what was the result?
+2. What could you not verify, and why?
+3. Was this authored with AI assistance?
+
+The third is not a filter. This project is itself largely agent-built, so the
+answer changes nothing about the bar — but it changes *review emphasis*, because
+the failure mode of agent work is confident-and-wrong rather than broken, and
+reviewers should read the reasoning rather than only the diff.
+
+A DCO sign-off (`git commit -s`) is the lightweight provenance mechanism; it
+does not require a CLA process to administer.
+
+**Stage 5 — what the maintainer actually checks.** Beyond correctness: does the
+diff touch `build.rs`, `justfile`, `.github/`, or any script the CI executes? A
+fork PR that edits the build is the one shape that can attack a self-hosted
+runner once enqueued.
+
+### Rules that exist because contributors may be agents
+
+- **One open PR until the first lands.** An agent can generate PRs faster than
+  humans can review, and an unreviewed backlog is worse than no contribution.
+- **Incidental fixes go in their own PR.** Two agents in this project
+  independently fixed the same red while doing unrelated work. If a contributor
+  hits a broken gate, that fix is a separate one-line PR — it lands in a batch
+  cycle and everyone else rebases onto it instead of re-solving it.
+- **Do not re-push a reverted change.** If post-submit reverts your commit,
+  reclaim and reproduce; a re-push without a new diagnosis will be reverted
+  again.
+- **Report tiers honestly.** "`just ci` passed" is a complete and respectable
+  answer. "CI passed" is not, when four of six lanes were never run.
+
 ### The trust boundary is ENQUEUEING, not merging
 
 A fork PR runs on hosted runners with a read-only token and no secrets. That is
