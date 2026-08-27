@@ -1,6 +1,6 @@
 # Phase 393 — CAN unicast for zenoh-rs: ROS services over a CAN bus
 
-**Status (2026-08-27). W0-W6 DONE, W6 with one gap. W7 remains.**
+**Status (2026-08-27). W0-W7 DONE. Phase complete.**
 
 **A ROS 2 service call completes over a CAN bus.**
 
@@ -53,8 +53,8 @@ can be tested without a bus are tested without one.
 | **W3** | `LinkKind::Isotp`, `LinkAuthId::Isotp`, `transport_isotp` feature plumbing | a zenoh session accepts an `isotp/...` endpoint | **done** |
 | **W4** | E2E on `vcan0`: two zenoh-rs peers, a **unicast** transport, payload past the MTU | the link carries a zenoh session at all | **done** |
 | **W5** | **`ros2 run demo_nodes_cpp add_two_ints_client` succeeds over CAN** | the reason this phase exists | **done** |
-| **W6** | Graph introspection, actions, parameters; negative control on the multicast link | the full ROS surface, and that the contrast is real | **done, one gap** |
-| **W7** | `prio_classes`: one ISO-TP socket per priority, identifiers priority-major | per-message bus arbitration, which W7 of phase-378 could not reach | |
+| **W6** | Graph introspection, actions, parameters; negative control on the multicast link | the full ROS surface, and that the contrast is real | **done** |
+| **W7** | `prio_classes`: one ISO-TP socket per priority, identifiers priority-major | per-message bus arbitration, which W7 of phase-378 could not reach | **done** |
 
 **W5 is the gate.** Everything before it is machinery; if a service call does not
 complete, the premise of RFC-0083 is wrong and the rest should not be built.
@@ -93,6 +93,39 @@ looked like a structural gap in the link — until the same topology over **TCP
 with the stock library** was tried and worked. That is what turned "our link is
 broken" into "something here is timing-dependent", and it is the check that
 should be reached for first rather than fifth.
+
+### W7 results: priority classes
+
+`prio_classes=8` opens eight ISO-TP sockets; class *k* uses `tx_id + k` and
+`rx_id + k`, so the most urgent class holds the lowest identifier and wins the
+wire. zenoh numbers `Control` at 0 and `Background` at 7, and CAN gives the bus
+to the lowest identifier, so the two orderings already agree.
+
+Observed on `vcan0` with an eight-class link: traffic on **`0x205`** (Data, the
+default priority) and **`0x207`** (Background), from base `0x200`. Distinct
+zenoh priorities really do leave on distinct CAN identifiers.
+
+**Only 1 or 8 are accepted**, not every divisor of 8, and the reason is in
+zenoh rather than in CAN: when a link reports `supports_priorities`, the
+transport spawns **one receive task per priority**, each reading its own class.
+With fewer classes than priorities, several of those tasks would sit on one
+socket racing for the same PDUs. So a class owns exactly one socket, or there is
+one socket for everything.
+
+**This is what phase-378 W7 could not reach.** There, priority could not even be
+seen by the link, and enabling multicast QoS to expose it made `Join` 99 bytes
+against a 63-byte MTU. Here the unicast trait carries the priority natively and
+there is no `Join` problem.
+
+**A version constraint worth stating.** The `LinkUnicastTrait` at the revision
+rmw_zenoh pins (`2687c5135`) has **no priority argument at all**, so per-message
+CAN priority is impossible there regardless of this link. It exists only on the
+`main` line. Anything the island wants from priority classes waits on rmw_zenoh
+moving forward.
+
+**And what it cannot show.** `vcan` has no arbitration, so "an urgent message
+overtakes a bulk one" remains a hardware claim rather than a measured one — the
+same gap phase-378 W7 had, for the same reason.
 
 ### The "parameter flake" was a one-shot listener, and it was mine
 
