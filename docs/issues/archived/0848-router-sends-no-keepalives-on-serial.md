@@ -1,12 +1,44 @@
 ---
 id: 848
-title: "The router's serial keepalive is a 1-byte write that never lands as a
-  parseable frame — board never resets its lease and expires at 2 x lease"
-status: open
+title: "NOT a router defect — the board's polled UART overruns and drops the
+  keepalive frame (see #0852)"
+status: resolved
 type: bug
 area: rmw
-related: [issue-0839, issue-0821]
+resolved_in: not-a-router-defect
+related: [issue-0852, issue-0839, issue-0821]
 ---
+
+## OUTCOME: the router is exonerated — see [issue 0852](../0852-zephyr-serial-rx-is-polled-and-overruns.md)
+
+This issue accused the router across several successive framings. All of them
+were wrong. The defect is in **nano-ros' own Zephyr serial receive path**.
+
+The board's UART RX is polled (`uart_poll_in` with `k_yield()`),
+`CONFIG_UART_INTERRUPT_DRIVEN` is not set, and `uart_err_check` was never
+called. Instrumenting it produced the flag on exactly the frame that failed:
+
+```
+DIAG-RX: frame rb=9  ok hdr=0x03  uart_err=0x0    <- handshake, board idle
+DIAG-RX: timeout, rb=4  uart_err=0x1 OVERRUN      <- keepalive, truncated
+DIAG-RX: timeout, rb=0  uart_err=0x0  x many
+```
+
+The router does everything right: its timer fires, the keepalive arm fires,
+`write_all` + `flush` both succeed, and the frames are well formed.
+
+**The "1-byte write" that this issue's previous title blamed was a red
+herring.** 1 byte is the payload handed to the link; z-serial frames it as
+`header(1) + len(2) + payload + crc32(4)` and COBS-encodes it, so ~10 bytes
+reach the wire. The board caught 4 and overran. The small write was never the
+anomaly — the receiver was.
+
+Kept open below: the full chain of wrong hypotheses, each with the measurement
+that killed it. Six of them were external measurements of a closed binary; the
+thing that actually settled it was building the router from source and
+instrumenting both ends in one run.
+
+## The evidence that led there (kept — accurate, wrongly attributed)
 
 ## ROOT CAUSE (2026-08-28) — both sides on one timeline
 
@@ -287,7 +319,7 @@ arriving for it to be starved of.
 
 ## This corrects an earlier claim
 
-[Issue 0839](0839-action-image-session-expires-every-20s.md) records the router
+[Issue 0839](../0839-action-image-session-expires-every-20s.md) records the router
 keepalive cadence as "verified on the wire at 10.0 s" and therefore ruled out.
 **That measurement was the TALKER image**, not this one, and it does not
 generalise. For the action image the router emits no keepalives at all. 0839
@@ -304,7 +336,7 @@ Same router, same config file, same board, same transport, same baud. A
 zenoh's keepalive is emitted by the transport's TX task when the link has been
 idle for the keepalive period
 (`io/zenoh-transport/src/unicast/universal/link.rs`, read while chasing
-[issue 0821](archived/0821-zenoh-pico-faults-at-lease-expiry-on-zephyr.md)):
+[issue 0821](0821-zenoh-pico-faults-at-lease-expiry-on-zephyr.md)):
 
 ```rust
 _ = keep_alive_tracker.wait_if(write_priority.unwrap_or(Priority::Control) == Priority::Control) => {
@@ -337,7 +369,7 @@ non-idle.
 
 ## Impact
 
-Blocks [issue 0839](0839-action-image-session-expires-every-20s.md), and with
+Blocks [issue 0839](../0839-action-image-session-expires-every-20s.md), and with
 it any action over serial: the session cannot outlive `2 x
 Z_TRANSPORT_LEASE`. `CONFIG_NROS_ZENOH_LEASE_MS` mitigates by moving the
 deadline, but the link is still one-way after the handshake.

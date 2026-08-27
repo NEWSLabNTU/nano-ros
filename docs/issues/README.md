@@ -51,6 +51,25 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0852** (rmw, open 2026-08-28) — zenoh-pico's Zephyr serial RX is polled (`uart_poll_in` +
+`k_yield()`), `CONFIG_UART_INTERRUPT_DRIVEN` is not set, and `uart_err_check` was never called, so the
+S32K344's small LPUART FIFO overruns under load and drops frames SILENTLY. Proved by instrumenting the
+read loop against a locally built, instrumented zenoh router: `uart_err=0x1 OVERRUN` appears on exactly
+the truncated frame and nowhere else. Explains why it looked load-dependent — the handshake survives
+(board idle), keepalives die (3 queryables + 2 publishers competing), and a talker soaks for five
+minutes. Fix wants interrupt-driven or async/DMA RX; calling `uart_err_check` at all is a cheap interim
+step, since the overruns are currently invisible. See `0852-*`.
+
+Recently resolved (2026-08-28): **#0848** (rmw) — filed against the router and WRONG in every successive
+framing: "router sends no keepalives" (the count grepped `tx: Scheduled`, which logs pipeline pushes
+while the keepalive arm bypasses the pipeline), "the arm never fires" (instrumented: it fires), "the
+board's read path is broken" (it decodes every frame it is handed), "the tx task is blocked" (profiled:
+parked in `ep_poll`). The router is exonerated — timer fires, arm fires, `write_all` + `flush` succeed,
+frames are well formed. The real defect is #0852. The "1-byte write" the final title blamed was a red
+herring: 1 byte is the payload, z-serial frames it to ~10 bytes on the wire, and the board overran after
+4. Six external measurements of a closed binary chased this; building the router from source and
+instrumenting both ends in one run settled it. See `archived/0848-*`. (2026-08-28)
+
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
 32 open. One line each — the detail lives in the issue file,
