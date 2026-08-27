@@ -19,13 +19,16 @@
 
 #include "nros/log.hpp"
 #include "nros/result.hpp"
-#include "nros/qos.hpp"
 // Issue 0789 — the clock / time / duration surface. `node.now()` and
 // `node.get_clock()->now()` are what a ported rclcpp publisher calls to
-// stamp a header, so the umbrella carries all three.
+// stamp a header, so the umbrella carries all three. Phase 379 W5 moved
+// `duration.hpp` ABOVE `qos.hpp`: the QoS deadline / lifespan / lease
+// accessors take and return `nros::Duration`. `qos.hpp` also includes it
+// directly, so this order is legibility rather than load-bearing.
 #include "nros/duration.hpp"
 #include "nros/time.hpp"
 #include "nros/clock.hpp"
+#include "nros/qos.hpp"
 #include "nros/options.hpp"
 #include "nros/future.hpp"
 #include "nros/stream.hpp"

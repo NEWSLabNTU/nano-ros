@@ -471,21 +471,6 @@
     "verdict": "declined",
     "why": "rclcpp spawns a dedicated thread to service the `/clock` subscription so simulated time advances even while callbacks run. RFC-0002 gives one executor per RTOS task and does not spawn; ROS time would advance on the executor that subscribes to it."
   },
-  "cpp:QoS::liveliness_lease_duration": {
-    "verdict": "rename",
-    "why": "rclcpp's `QoS::liveliness_lease_duration`; ours is `QoS::liveliness_lease_ms` (`packages/api/nros-cpp/include/nros/qos.hpp`, setter :151, getter :200). The `_ms` suffix was chosen when C++ had no duration type. CORRECTED 2026-08-26 (phase-379 W5, group B): the premise `C++ has no Duration type here` -- and the cross-reference `cpp:Duration::Duration`, a key that exists in no shard -- are both dead. `nros::Duration` landed 2026-08-25 (issue 0789, commit 2b58bbd38, `packages/api/nros-cpp/include/nros/duration.hpp`) and is in this report's surface via `nros.hpp:26`. So the name no longer `follows whatever W3 decides about cpp:Duration`: W3's dependency is satisfied, and what remains is a family decision the QOS stage owns. Recorded here because the topic classifier files it here on the word `duration`, while its two siblings (`cpp:QoS::deadline`, `cpp:QoS::lifespan`) and its own ours-only half (`cpp:QoS::liveliness_lease_ms`) sit in qos.json.",
-    "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "depends_on": {
-        "item": "cpp:Duration",
-        "state": "SATISFIED 2026-08-25",
-        "evidence": "`nros::Duration` in packages/api/nros-cpp/include/nros/duration.hpp, issue 0789, commit 2b58bbd38; exported by nros.hpp:26; correlated in this shard as cpp:Duration::from_nanoseconds / to_chrono / to_msg / from_rmw_time / to_rmw_time."
-      },
-      "blocker": "The dependency this row recorded is satisfied and is no longer what blocks it. Three things still do, and none is a spelling. (1) FAMILY, SPLIT ACROSS SHARDS: `nros::QoS` has three millisecond accessors -- `deadline_ms` / `lifespan_ms` / `liveliness_lease_ms` (setters qos.hpp:132/138/151, getters :196/198/200). Their rows are `cpp:QoS::deadline`, `cpp:QoS::lifespan` and this one, and the first two live in qos.json. Renaming one third of a family from the timer stage leaves `liveliness_lease_duration(Duration)` beside `deadline_ms(uint32_t)` on the same class. (2) TYPE, NOT SPELLING: `uint32_t` milliseconds -> `nros::Duration`. Both the setter and the getter are `constexpr` so a profile is buildable in a `static`; `nros::Duration` is `constexpr` throughout, so that survives -- but it must be shown to, not assumed. (3) INCLUDE ORDER: `qos.hpp` today includes only `<stdint.h>` plus the FFI fallback block, and `nros.hpp` pulls `qos.hpp` (line 22) BEFORE `duration.hpp` (line 26). A `Duration`-taking accessor makes qos.hpp depend on duration.hpp, which in turn includes the C header `nros/clock.h` -- so the umbrella order changes or qos.hpp gains the include. Also note the C ABI does not move: the value crosses as `nros_qos_t.liveliness_lease_ms`, a `uint32_t` millisecond field (`nros_generated.h:1535`) shared with the C and Rust lanes, so any `Duration` on the C++ side is a boundary conversion, and the row that lands this must say where the conversion happens and what it does with `Duration`s finer than a millisecond. DECISION OWNER: the qos stage, which holds the other two thirds."
-    }
-  },
   "cpp:Rate": {
     "verdict": "declined",
     "why": "rclcpp's `Rate` blocks the calling thread in a sleep loop to hold a fixed frequency. RFC-0021 forbids a blocking helper that does not drive the executor -- a `Rate::sleep` on a single-threaded executor stops the transport for the whole period. The periodic work shape here is a timer, which the executor drives."

@@ -271,17 +271,7 @@ namespace nros {
 template <typename M>
 Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& qos) {
     if (!initialized_) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos;
-    ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-    ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-    ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-    ffi_qos.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
-    ffi_qos.depth = qos.depth();
-    ffi_qos.deadline_ms = qos.deadline_ms();
-    ffi_qos.lifespan_ms = qos.lifespan_ms();
-    ffi_qos.liveliness_lease_ms = qos.liveliness_lease_ms();
-    ffi_qos.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
-    ffi_qos.tx_express = qos.tx_express() ? 1 : 0;
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
                                                    ffi_qos, out.storage_);
     if (ret == 0) {

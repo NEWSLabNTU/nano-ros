@@ -4706,6 +4706,43 @@ check-cpp: check-cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/action_callback_tier.cpp
+    # phase-379 W5 — the QoS surface under its rclcpp names. The policy enums
+    # are namespace-scope and public, the getters return them instead of `int`,
+    # and the three time windows take/return `nros::Duration`. This TU asserts
+    # the RETURN TYPES and the millisecond boundary, not just that the names
+    # resolve: a `deadline()` that came back as `uint32_t` would pass a name
+    # check and re-introduce the ledgered defect. It also static_asserts that
+    # `nros_cpp_qos_t`'s `*_ms` FIELDS are still `uint32_t` milliseconds — the
+    # same token is a struct field (ABI, must not move) and was a class method
+    # (renamed), so a textual sweep is exactly what this catches (issue 0160).
+    # `-Wno-deprecated-declarations` because the TU names the old spellings
+    # deliberately; the probe below is what proves they still warn.
+    echo "  - QoS policy accessors + ms boundary (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/qos_policy_accessors.cpp
+    # ...and the old spellings must WARN. A deprecation nobody is told about is
+    # an alias. NEGATIVE assertion, the C half's shape one language over
+    # (`param_deprecation_probe.c`): with `-Werror=deprecated-declarations` the
+    # old spelling must FAIL to compile. Written as an expected-failure because
+    # a passing compile is exactly what a silently-dropped attribute looks like.
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/qos_deprecation_probe.cpp 2>/dev/null; then \
+        echo "ERROR: qos_deprecation_probe.cpp compiled clean under -Werror=deprecated-declarations." >&2; \
+        echo "       The [[deprecated]] attributes on QoS::*_raw() / QoS::*_ms() /" >&2; \
+        echo "       QoS::Liveliness in nros/qos.hpp are not reaching callers, so the" >&2; \
+        echo "       rename ships with no migration warning at all." >&2; \
+        exit 1; \
+    fi
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level

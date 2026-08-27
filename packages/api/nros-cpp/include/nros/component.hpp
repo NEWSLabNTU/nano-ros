@@ -43,24 +43,6 @@
 
 namespace nros {
 
-namespace detail {
-/// QoS → FFI struct (the 9-field copy `Node::create_subscription` does inline).
-inline nros_cpp_qos_t component_qos_to_ffi(const QoS& qos) {
-    nros_cpp_qos_t f;
-    f.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
-    f.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
-    f.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
-    f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness_raw());
-    f.depth = qos.depth();
-    f.deadline_ms = qos.deadline_ms();
-    f.lifespan_ms = qos.lifespan_ms();
-    f.liveliness_lease_ms = qos.liveliness_lease_ms();
-    f.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
-    f.tx_express = qos.tx_express() ? 1 : 0;
-    return f;
-}
-} // namespace detail
-
 /// Register a **raw, zero-copy** subscription on the executor: the callback
 /// borrows the wire bytes (`data`, `len`) directly — no copy, no deserialize, no
 /// typed header. `ctx` is carried through to the callback. The executor owns the
@@ -71,7 +53,7 @@ inline Result create_subscription_raw(Node& node, const char* topic, const char*
                                       void* ctx, const QoS& qos = QoS::default_profile()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     size_t handle = static_cast<size_t>(-1);
     nros_cpp_ret_t ret = nros_cpp_subscription_register(h, topic, type_name, "", ffi_qos, callback,
                                                         ctx, /*sched_context=*/0, &handle,
@@ -144,7 +126,7 @@ inline Result create_service_raw(Node& node, const char* service, const char* ty
                                  const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     size_t handle = static_cast<size_t>(-1);
     nros_cpp_ret_t ret = nros_cpp_service_server_register(
         h, service, type_name, "", ffi_qos, callback, ctx, /*sched_context=*/0, &handle);
@@ -226,7 +208,7 @@ inline Result create_action_server_raw(Node& node, void* storage, const char* ac
     const nros_cpp_node_t* h = node.ffi_handle();
     void* exec = node.executor_handle();
     if (h == nullptr || exec == nullptr) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret =
         nros_cpp_action_server_create(h, action_name, type_name, "", ffi_qos, storage);
     if (ret != 0) return Result(ret);
@@ -269,7 +251,7 @@ inline Result create_service_client_raw(Node& node, void* storage, const char* s
                                         const char* type_name, const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     return Result(nros_cpp_service_client_create(h, service, type_name, "", ffi_qos, storage));
 }
 
@@ -287,7 +269,7 @@ inline Result create_action_client_raw(Node& node, void* storage, const char* ac
                                        const char* type_name, const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
-    nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+    nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     return Result(nros_cpp_action_client_create(h, action_name, type_name, "", ffi_qos, storage));
 }
 

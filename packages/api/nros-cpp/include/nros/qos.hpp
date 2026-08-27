@@ -12,12 +12,25 @@
 
 #include <stdint.h>
 
+// Phase 379 W5 — the deadline / lifespan / lease accessors take and return
+// `nros::Duration`, so this header names it. `nros.hpp` includes `qos.hpp`
+// before `duration.hpp`, so the dependency is spelled HERE rather than left to
+// the umbrella's ordering: a header that names a type must be able to be
+// included first.
+#include "nros/duration.hpp"
+
 // FFI struct definition — mirrors `nros_cpp_qos_t` in
 // nros_cpp_ffi.h. Phase 118.D: guarded by `NROS_CPP_FFI_H`. If
 // `nros_cpp_ffi.h` was included earlier (it sets that guard), the
 // canonical types are already in scope; otherwise emit local
 // definitions so this header stays self-contained for callers that
 // don't pull the cbindgen header directly.
+//
+// The FIELD names below are ABI. `deadline_ms` / `lifespan_ms` /
+// `liveliness_lease_ms` are `uint32_t` milliseconds and are mirrored again in
+// `nros/component.h` (issue 0160, gated by `check-ffi-struct-mirrors`). The
+// `_ms` suffix on a `QoS` METHOD was renamed in phase-379 W5; the suffix on a
+// STRUCT FIELD was not, and must not be — the C ABI carries milliseconds.
 #ifndef NROS_CPP_FFI_H
 extern "C" {
 enum nros_cpp_qos_reliability_t {
@@ -55,6 +68,93 @@ struct nros_cpp_qos_t {
 
 namespace nros {
 
+// -- Policy enums (phase 379 W5) ------------------------------------------
+//
+// At NAMESPACE scope and public, under rclcpp's names, because that is where a
+// ported node looks for them (`rclcpp::ReliabilityPolicy`, `qos.hpp:34-58`).
+// Three of these were PRIVATE members of `QoS` until phase-379 W5, which is why
+// the getters had to hand back `int` — a public getter cannot name a private
+// type. Ledger: `cpp:ReliabilityPolicy` and its three siblings.
+//
+// Two deliberate differences from rclcpp survive the rename, both ledgered:
+//   * no `SystemDefault` — it means "defer to the middleware" and there is
+//     none to defer to; the backend is linked at build time (RFC-0036).
+//   * no `Unknown` — it is a discovery artefact for a policy read off a remote
+//     endpoint, and we do no dynamic discovery.
+//
+// These are UNSCOPED enums, not rclcpp's `enum class`. Both spellings work as a
+// result: `nros::Reliable` (ours, historical) and `nros::ReliabilityPolicy::
+// Reliable` (rclcpp's). Switching to `enum class` would break the first and is
+// its own decision, which no ledger row makes — see the qos.json rows.
+
+/// Reliability policy. Matches DDS `RELIABILITY_QOS_POLICY`.
+enum ReliabilityPolicy {
+    Reliable = 0,
+    BestEffort = 1,
+};
+
+/// Durability policy. Matches DDS `DURABILITY_QOS_POLICY`.
+enum DurabilityPolicy {
+    Volatile = 0,
+    TransientLocal = 1,
+};
+
+/// History policy. Matches DDS `HISTORY_QOS_POLICY`.
+enum HistoryPolicy {
+    KeepLast = 0,
+    KeepAll = 1,
+};
+
+/// Liveliness policy kind. Matches DDS `LIVELINESS_QOS_POLICY`.
+///
+/// The enumerators keep their `Liveliness` prefix because these are UNSCOPED
+/// enums at namespace scope: a bare `Automatic` / `None` in `nros::` would be
+/// far worse names than the redundancy costs. `nros::LivelinessPolicy::
+/// LivelinessAutomatic` also works, so a qualified rclcpp-shaped spelling
+/// compiles. `LivelinessManualByNode` is ours-only — rmw deprecated it, so
+/// rclcpp's `LivelinessPolicy` does not list it.
+enum LivelinessPolicy {
+    LivelinessNone = 0,
+    LivelinessAutomatic = 1,
+    LivelinessManualByTopic = 2,
+    LivelinessManualByNode = 3,
+};
+
+class QoS;
+
+namespace detail {
+
+/// Milliseconds one QoS window is worth, at the `Duration` → C-ABI boundary.
+///
+/// The C ABI is `uint32_t` milliseconds (`nros_cpp_qos_t.deadline_ms` and
+/// siblings) and `0` there means INFINITE, so truncation is not a rounding
+/// question — a 500 µs deadline truncated to `0` would silently mean "no
+/// deadline at all". So:
+///
+///   * `<= 0` → `0`. A non-positive window is the "unset" spelling
+///     (`Duration()` / `Duration::zero()`), and `0` is the ABI's infinity.
+///   * otherwise ROUND UP to the next whole millisecond. A sub-millisecond
+///     window becomes 1 ms rather than infinity, and rounding up is the
+///     lenient direction for all three policies (a longer deadline, lifespan
+///     or lease never turns a working profile into a violated one).
+///   * above `UINT32_MAX` ms (~49.7 days) → `UINT32_MAX`, saturating rather
+///     than wrapping into a short window.
+constexpr uint32_t qos_window_ms(const Duration& d) {
+    return d.nanoseconds() <= 0
+               ? 0u
+               : (d.nanoseconds() > static_cast<int64_t>(UINT32_MAX) * 1000000
+                      ? UINT32_MAX
+                      : static_cast<uint32_t>((d.nanoseconds() + 999999) / 1000000));
+}
+
+/// The inverse: the C ABI's milliseconds as a `Duration`. Exact, and exact in
+/// both directions — `qos_window_ms(qos_window_duration(ms)) == ms`.
+constexpr Duration qos_window_duration(uint32_t ms) {
+    return Duration::from_nanoseconds(static_cast<int64_t>(ms) * 1000000);
+}
+
+} // namespace detail
+
 /// QoS profile for publishers and subscriptions.
 ///
 /// Mirrors rclcpp::QoS with chainable setters and predefined profiles.
@@ -65,21 +165,41 @@ namespace nros {
 /// Backends advertise per-policy support; entities created with a
 /// profile the active backend can't honour return
 /// `NROS_CPP_RET_INCOMPATIBLE_QOS` synchronously at create time.
+///
+/// Phase 379 W5 — the policy enums moved to namespace scope, the getters
+/// return them instead of `int`, and the three time windows take and return
+/// `nros::Duration` instead of carrying an `_ms` suffix. Every old spelling
+/// still compiles and is `[[deprecated]]`.
 class QoS {
   public:
-    /// Liveliness policy kind. Matches DDS `LIVELINESS_QOS_POLICY`.
-    enum Liveliness {
-        LivelinessNone = 0,
-        LivelinessAutomatic = 1,
-        LivelinessManualByTopic = 2,
-        LivelinessManualByNode = 3,
-    };
+    /// Deprecated spelling of `nros::LivelinessPolicy`.
+    using Liveliness [[deprecated("QoS::Liveliness is deprecated; use nros::LivelinessPolicy")]] =
+        LivelinessPolicy;
+
+    // The four liveliness enumerators were reachable as `QoS::Liveliness*`
+    // while the enum was a member. They still are, deprecated, so no source
+    // that named one stops compiling. The enumerator SPELLING did not change —
+    // only its scope — so `nros::LivelinessAutomatic` is the live name.
+    [[deprecated("QoS::LivelinessNone is deprecated; use "
+                 "nros::LivelinessNone")]] static constexpr LivelinessPolicy LivelinessNone =
+        ::nros::LivelinessNone;
+    [[deprecated(
+        "QoS::LivelinessAutomatic is deprecated; use "
+        "nros::LivelinessAutomatic")]] static constexpr LivelinessPolicy LivelinessAutomatic =
+        ::nros::LivelinessAutomatic;
+    [[deprecated("QoS::LivelinessManualByTopic is deprecated; use "
+                 "nros::LivelinessManualByTopic")]] static constexpr LivelinessPolicy
+        LivelinessManualByTopic = ::nros::LivelinessManualByTopic;
+    [[deprecated(
+        "QoS::LivelinessManualByNode is deprecated; use "
+        "nros::LivelinessManualByNode")]] static constexpr LivelinessPolicy LivelinessManualByNode =
+        ::nros::LivelinessManualByNode;
 
     /// Default QoS: reliable, volatile, keep-last(10), automatic
     /// liveliness, no deadline / lifespan / lease.
     constexpr QoS()
         : reliability_(Reliable), durability_(Volatile), history_(KeepLast),
-          liveliness_(LivelinessAutomatic), depth_(10), deadline_ms_(0), lifespan_ms_(0),
+          liveliness_(::nros::LivelinessAutomatic), depth_(10), deadline_ms_(0), lifespan_ms_(0),
           liveliness_lease_ms_(0), avoid_ros_namespace_conventions_(0), tx_express_(0) {}
 
     /// rclcpp-shape depth ctor: `QoS(1)` == default profile with
@@ -128,28 +248,35 @@ class QoS {
     }
 
     /// Subscriber max-inter-arrival / publisher offered-rate.
-    /// `0` = infinite (no deadline check).
-    constexpr QoS& deadline_ms(uint32_t ms) {
-        deadline_ms_ = ms;
+    /// A zero or negative duration = infinite (no deadline check).
+    ///
+    /// The C ABI underneath is `uint32_t` milliseconds, so a sub-millisecond
+    /// window ROUNDS UP to 1 ms — it never truncates to `0`, which the ABI
+    /// reads as infinity. Above ~49.7 days it saturates. See
+    /// `detail::qos_window_ms`.
+    constexpr QoS& deadline(const Duration& d) {
+        deadline_ms_ = detail::qos_window_ms(d);
         return *this;
     }
 
-    /// Sample expiry. `0` = infinite.
-    constexpr QoS& lifespan_ms(uint32_t ms) {
-        lifespan_ms_ = ms;
+    /// Sample expiry. A zero or negative duration = infinite.
+    /// Same millisecond boundary as `deadline()`.
+    constexpr QoS& lifespan(const Duration& d) {
+        lifespan_ms_ = detail::qos_window_ms(d);
         return *this;
     }
 
-    /// Liveliness kind. Pair with `liveliness_lease_ms()` for
+    /// Liveliness kind. Pair with `liveliness_lease_duration()` for
     /// `MANUAL_BY_TOPIC` / `MANUAL_BY_NODE`. AUTOMATIC is the default.
-    constexpr QoS& liveliness(Liveliness kind) {
+    constexpr QoS& liveliness(LivelinessPolicy kind) {
         liveliness_ = kind;
         return *this;
     }
 
-    /// Liveliness lease duration. `0` = infinite.
-    constexpr QoS& liveliness_lease_ms(uint32_t ms) {
-        liveliness_lease_ms_ = ms;
+    /// Liveliness lease duration. A zero or negative duration = infinite.
+    /// Same millisecond boundary as `deadline()`.
+    constexpr QoS& liveliness_lease_duration(const Duration& d) {
+        liveliness_lease_ms_ = detail::qos_window_ms(d);
         return *this;
     }
 
@@ -169,6 +296,32 @@ class QoS {
         return *this;
     }
 
+    // -- Deprecated millisecond setters (phase 379 W5) --
+
+    /// @deprecated Use `deadline(nros::Duration)`.
+    [[deprecated("QoS::deadline_ms(uint32_t) is deprecated; use "
+                 "QoS::deadline(nros::Duration)")]] constexpr QoS&
+    deadline_ms(uint32_t ms) {
+        deadline_ms_ = ms;
+        return *this;
+    }
+
+    /// @deprecated Use `lifespan(nros::Duration)`.
+    [[deprecated("QoS::lifespan_ms(uint32_t) is deprecated; use "
+                 "QoS::lifespan(nros::Duration)")]] constexpr QoS&
+    lifespan_ms(uint32_t ms) {
+        lifespan_ms_ = ms;
+        return *this;
+    }
+
+    /// @deprecated Use `liveliness_lease_duration(nros::Duration)`.
+    [[deprecated("QoS::liveliness_lease_ms(uint32_t) is deprecated; use "
+                 "QoS::liveliness_lease_duration(nros::Duration)")]] constexpr QoS&
+    liveliness_lease_ms(uint32_t ms) {
+        liveliness_lease_ms_ = ms;
+        return *this;
+    }
+
     // -- Predefined profiles (match rclcpp named constructors) --
 
     /// Default profile: `RELIABLE` + `VOLATILE` + `KEEP_LAST(10)`.
@@ -182,22 +335,24 @@ class QoS {
 
     // -- Accessors --
 
-    /// Reliability as a raw int (0 = Reliable, 1 = BestEffort).
-    constexpr int reliability_raw() const { return static_cast<int>(reliability_); }
-    /// Durability as a raw int (0 = Volatile, 1 = TransientLocal).
-    constexpr int durability_raw() const { return static_cast<int>(durability_); }
-    /// History as a raw int (0 = KeepLast, 1 = KeepAll).
-    constexpr int history_raw() const { return static_cast<int>(history_); }
-    /// Liveliness kind as a raw int (0..3).
-    constexpr int liveliness_raw() const { return static_cast<int>(liveliness_); }
+    /// The reliability policy.
+    constexpr ReliabilityPolicy reliability() const { return reliability_; }
+    /// The durability policy.
+    constexpr DurabilityPolicy durability() const { return durability_; }
+    /// The history policy.
+    constexpr HistoryPolicy history() const { return history_; }
+    /// The liveliness policy kind.
+    constexpr LivelinessPolicy liveliness() const { return liveliness_; }
     /// Configured queue depth (only meaningful for `KEEP_LAST`).
     constexpr int depth() const { return depth_; }
-    /// Deadline in ms (`0` = infinite).
-    constexpr uint32_t deadline_ms() const { return deadline_ms_; }
-    /// Lifespan in ms (`0` = infinite).
-    constexpr uint32_t lifespan_ms() const { return lifespan_ms_; }
-    /// Liveliness lease in ms (`0` = infinite).
-    constexpr uint32_t liveliness_lease_ms() const { return liveliness_lease_ms_; }
+    /// The deadline window. `Duration()` (zero) = infinite.
+    constexpr Duration deadline() const { return detail::qos_window_duration(deadline_ms_); }
+    /// The lifespan window. `Duration()` (zero) = infinite.
+    constexpr Duration lifespan() const { return detail::qos_window_duration(lifespan_ms_); }
+    /// The liveliness lease window. `Duration()` (zero) = infinite.
+    constexpr Duration liveliness_lease_duration() const {
+        return detail::qos_window_duration(liveliness_lease_ms_);
+    }
     /// Whether to skip the `/rt/` ROS topic-name prefix.
     constexpr bool avoid_ros_namespace_conventions() const {
         return avoid_ros_namespace_conventions_ != 0;
@@ -205,11 +360,56 @@ class QoS {
     /// Whether this publisher's samples bypass transport tx batching.
     constexpr bool tx_express() const { return tx_express_ != 0; }
 
+    // -- Deprecated accessors (phase 379 W5) --
+    //
+    // The `_raw()` four existed only because their enums were private; the
+    // `_ms()` three only because C++ had no `Duration`. Both reasons are gone.
+
+    /// @deprecated Use `reliability()`, which returns `ReliabilityPolicy`.
+    [[deprecated("QoS::reliability_raw() is deprecated; use QoS::reliability()")]] constexpr int
+    reliability_raw() const {
+        return static_cast<int>(reliability_);
+    }
+    /// @deprecated Use `durability()`, which returns `DurabilityPolicy`.
+    [[deprecated("QoS::durability_raw() is deprecated; use QoS::durability()")]] constexpr int
+    durability_raw() const {
+        return static_cast<int>(durability_);
+    }
+    /// @deprecated Use `history()`, which returns `HistoryPolicy`.
+    [[deprecated("QoS::history_raw() is deprecated; use QoS::history()")]] constexpr int
+    history_raw() const {
+        return static_cast<int>(history_);
+    }
+    /// @deprecated Use `liveliness()`, which returns `LivelinessPolicy`.
+    [[deprecated("QoS::liveliness_raw() is deprecated; use QoS::liveliness()")]] constexpr int
+    liveliness_raw() const {
+        return static_cast<int>(liveliness_);
+    }
+    /// @deprecated Use `deadline()`, which returns `nros::Duration`.
+    [[deprecated("QoS::deadline_ms() is deprecated; use QoS::deadline()")]] constexpr uint32_t
+    deadline_ms() const {
+        return deadline_ms_;
+    }
+    /// @deprecated Use `lifespan()`, which returns `nros::Duration`.
+    [[deprecated("QoS::lifespan_ms() is deprecated; use QoS::lifespan()")]] constexpr uint32_t
+    lifespan_ms() const {
+        return lifespan_ms_;
+    }
+    /// @deprecated Use `liveliness_lease_duration()`, which returns `nros::Duration`.
+    [[deprecated("QoS::liveliness_lease_ms() is deprecated; use "
+                 "QoS::liveliness_lease_duration()")]] constexpr uint32_t
+    liveliness_lease_ms() const {
+        return liveliness_lease_ms_;
+    }
+
   private:
-    enum Reliability { Reliable = 0, BestEffort = 1 } reliability_;
-    enum Durability { Volatile = 0, TransientLocal = 1 } durability_;
-    enum History { KeepLast = 0, KeepAll = 1 } history_;
-    Liveliness liveliness_;
+    // The private members keep their `_ms_` spelling: they hold exactly what
+    // the C ABI carries (`uint32_t` milliseconds), and renaming them would say
+    // the storage changed when only the accessors did.
+    ReliabilityPolicy reliability_;
+    DurabilityPolicy durability_;
+    HistoryPolicy history_;
+    LivelinessPolicy liveliness_;
     int depth_;
     uint32_t deadline_ms_;
     uint32_t lifespan_ms_;
@@ -217,6 +417,41 @@ class QoS {
     uint8_t avoid_ros_namespace_conventions_;
     uint8_t tx_express_;
 };
+
+namespace detail {
+
+/// `QoS` → the by-value C ABI record, in ONE place.
+///
+/// Ten call sites across `publisher.hpp` / `subscription.hpp` / `service.hpp` /
+/// `client.hpp` / `action_{server,client}.hpp` / `component.hpp` open-coded
+/// this ten-field copy. A field appended to `nros_cpp_qos_t` then has ten
+/// places to be missed, which is the hand-mirror class issue 0160 records;
+/// phase-379 W5 folded them into this one function while renaming the
+/// accessors they called.
+/// `constexpr` so a fixed profile's marshalled form is checkable at compile
+/// time (`qos_policy_accessors.cpp` static_asserts the millisecond fields);
+/// value-initialised because C++14 forbids an uninitialised local in a
+/// `constexpr` function, and zeroing ten fields we then overwrite costs
+/// nothing.
+constexpr nros_cpp_qos_t qos_to_ffi(const QoS& qos) {
+    nros_cpp_qos_t f{};
+    f.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability());
+    f.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability());
+    f.history = static_cast<nros_cpp_qos_history_t>(qos.history());
+    f.liveliness_kind = static_cast<nros_cpp_qos_liveliness_t>(qos.liveliness());
+    f.depth = qos.depth();
+    // The FFI FIELDS are milliseconds and keep their `_ms` names; only the
+    // accessors changed. `qos_window_ms` is the exact inverse of the
+    // `Duration` the getter built, so this round-trip loses nothing.
+    f.deadline_ms = qos_window_ms(qos.deadline());
+    f.lifespan_ms = qos_window_ms(qos.lifespan());
+    f.liveliness_lease_ms = qos_window_ms(qos.liveliness_lease_duration());
+    f.avoid_ros_namespace_conventions = qos.avoid_ros_namespace_conventions() ? 1 : 0;
+    f.tx_express = qos.tx_express() ? 1 : 0;
+    return f;
+}
+
+} // namespace detail
 
 } // namespace nros
 

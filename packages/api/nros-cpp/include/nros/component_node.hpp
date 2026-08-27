@@ -397,7 +397,7 @@ class ComponentNode {
             set_error("create_subscription_in", -3);
             return;
         }
-        nros_cpp_qos_t ffi_qos = detail::component_qos_to_ffi(qos);
+        nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
         C* self = static_cast<C*>(this);
         size_t handle = static_cast<size_t>(-1);
         nros_cpp_ret_t ret = nros_cpp_subscription_register(
