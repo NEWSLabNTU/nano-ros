@@ -6,6 +6,13 @@
 //!  - `on_cancel` always accepts.
 //!  - `on_accepted` is a no-op (the per-spin work runs in `tick()`).
 //!  - `tick()` walks every active goal, publishes feedback, completes.
+//!
+//! phase-394 / issue 0856 — `tick()` also serves the CANCEL path: a goal in
+//! `GoalStatus::Canceling` completes as `Canceled` carrying whatever was
+//! computed before the cancel arrived, rather than reporting success it did
+//! not achieve. `NROS_FIB_STEP_TICKS` paces the loop at one term per N ticks
+//! so a cancel has a window to land in at all — unpaced, order 10 finishes in
+//! about four milliseconds and every cancel arrives after the goal is done.
 
 #![no_std]
 
