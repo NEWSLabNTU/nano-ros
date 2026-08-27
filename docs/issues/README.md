@@ -94,6 +94,16 @@ add_two_ints_server` and capturing the key IT declares
 Verified on mr_canhubk3/s32k344 over serial: `ros2 service call` returns sum=7 and sum=99. Left
 recorded, not changed: the QoS field still differs from native (`1:2:1,10:` vs `::,10:`) and blocks
 nothing. See `archived/0824-*`. (2026-08-27)
+**#0846** (zephyr, RESOLVED 2026-08-28) - `zephyr_compile_options(-include <C header>)` reaches ASSEMBLY
+targets, so every image with `CONFIG_NROS_CPP_API` failed on Zephyr's own arch assembly
+(`early_mem_funcs.S`: "unknown mnemonic `typedef'"). The minimal-libc shim added in 44bdc2157 is fine; its
+REACH was not - `.S` sources go through the same driver, and the shim's `#ifdef _IONBF` guard cannot help
+because the file is fed to the assembler either way. Fixed by gating on `$<COMPILE_LANGUAGE:C,CXX>` (flag
+and argument as SEPARATE list elements - a space inside a generator expression makes them one argument).
+Caught by the ASI consumer on fvp_baser_aemv8r_smp, where it broke the image build outright; the
+introducing commit verified only native_sim, whose arch layer contributes no assembly here.
+See `0846-*`. (2026-08-28)
+
 **#0843** (core/platform, open 2026-08-27) — `nros::node_runtime` is gated `#[cfg(feature = "rmw-cffi")]`
 while using `alloc`/`Box`/`Vec`, so ANY image linking `nros` with the cffi path needs a global allocator
 regardless of the `alloc` feature: a `no_std` bin fails to link with "no global memory allocator found".

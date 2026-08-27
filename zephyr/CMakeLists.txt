@@ -384,7 +384,17 @@ if(CONFIG_NROS_CPP_API)
     # minimal libc they all fail to build. Force-included rather than shipped as
     # a `<stdio.h>` override so it cannot disturb the include_next chain, and
     # keyed on `_IONBF` inside so it is inert on picolibc and newlib.
-    zephyr_compile_options(-include ${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h)
+    # C and C++ ONLY. zephyr_compile_options() reaches EVERY target including
+    # assembly, and `-include <C header>` on a .S file feeds the assembler C
+    # declarations: Zephyr's own arch/arm64/core/early_mem_funcs.S then dies
+    # with "unknown mnemonic `typedef'". Found by the ASI consumer on
+    # fvp_baser_aemv8r_smp, where it broke the image build outright.
+    #
+    # The flag and its argument are separate list elements: inside a generator
+    # expression a space would make them one argument, which gcc rejects.
+    zephyr_compile_options(
+        "$<$<COMPILE_LANGUAGE:C,CXX>:-include>"
+        "$<$<COMPILE_LANGUAGE:C,CXX>:${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h>")
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the
