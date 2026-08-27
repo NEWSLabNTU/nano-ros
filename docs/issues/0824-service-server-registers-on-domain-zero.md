@@ -53,6 +53,50 @@ Allocating interest for (10/chatter/std_msgs::msg::dds_::String_/…)
 So this is not a board or transport problem, and not a general domain-plumbing
 problem: pub/sub is right and services are not, in the same image shape.
 
+## Root cause found and half-fixed (2026-08-27)
+
+All **seven** `ServiceInfo::new` sites in
+`packages/core/nros-node/src/executor/spin.rs` set `.with_namespace()` and
+`.with_node_name()` and **never** `.with_domain()`. The identical defect
+[issue 0801](archived/0801-domain-id-split-across-entities.md) fixed for
+`TopicInfo`, in the service path. `executor/action.rs` already had it right on
+all three of its `ServiceInfo`s, so these were simply missed.
+
+Fixed. All four keys are now on domain 10 and `ros2 node list` reports
+`/add_two_ints_server` where it previously reported nothing.
+
+### The false trail, recorded so it is not re-walked
+
+nros-cpp's `nros_cpp_service_server_create` *does* carry
+`.with_domain(ctx.domain_id)`, and so does the publisher — which is why pub/sub
+worked and made the whole C++ layer look innocent. The example calls
+`nros_cpp_service_server_register`, a **different entry point** at
+`service.rs:176` that delegates to `Executor::register_service_raw_sized*` and
+lets the executor build the `ServiceInfo`. That is the path with no domain on
+it. Two rebuild-and-flash cycles were spent instrumenting the wrong function
+before a probe that never fired showed the live path was elsewhere.
+
+## STILL BROKEN: the service type name is not DDS-mangled
+
+`ros2 service list` still shows nothing and calls still hang. Compare the keys
+now that the domain is right:
+
+```
+service  …/SS/%/%/add_two_ints_server/%add_two_ints/example_interfaces/srv/AddTwoInts/…
+topic    …/MP/%/%/talker/%chatter/std_msgs::msg::dds_::String_/…
+```
+
+The topic type is mangled to the DDS form (`::msg::dds_::`); the **service type
+is not**, so it reaches the key as `example_interfaces/srv/AddTwoInts` — and
+`/` is a zenoh keyexpr **separator**. The service type therefore splits the key
+into three extra segments and cannot match what rmw_zenoh expects at those
+positions.
+
+Expected shape is presumably `example_interfaces::srv::dds_::AddTwoInts_`,
+matching how message types are handled, but that has NOT been confirmed against
+rmw_zenoh's own parser — do that before fixing, rather than assuming the
+mangling rule is identical for srv.
+
 ## Where it is NOT
 
 Read but not confirmed as the cause, recorded so the next person does not
