@@ -77,16 +77,25 @@ Inserted after W0.2 measured that every signal-bearing workflow is red. Nothing
 downstream matters while results are ignored, and this is the cheapest wave in
 the plan.
 
-1. **`check-subtree-guard`** — done. Recycled-PGID counting, fixed by asking
-   about its own PIDs.
-2. **`host-tests`: provision the zenoh router in the CI image**, or skip the
-   lanes that need it with an explicit capability probe rather than a hard
-   failure. RFC-0075 resolves via `NROS_RMW_ZENOHD` → `AMENT_PREFIX_PATH` →
-   `$ROS_DISTRO`; the container satisfies none of them. `nros_router_hint`
-   already exists to tell a user what to install — the image should just have
-   it.
-3. **`nightly`: root-cause the qemu and freertos failures.** Not yet diagnosed.
-4. **Then keep it green**: a red required check that persists for days is the
+All six red jobs are now root-caused and fixed. **Not one was a code
+regression** — every single one was wiring, provisioning, or a gate that could
+not see its own rule. That is the finding, more than the individual fixes.
+
+| job | defect |
+| --- | --- |
+| `pr-checks` | `check-subtree-guard` counted a RECYCLED PGID, not its own PIDs. Passed locally and in a quiet container; failed only where 4 vCPUs run gates 32-way parallel. |
+| `host-tests` | `just zenohd setup` built the VENDORED router, deleted by RFC-0075 / phase-362. `zenohd` takes a LOCATOR, so `setup` was one — the step could never work. |
+| nightly `qemu` | ran `test-wcet`, which deliberately refuses under emulation (no DWT counter). Red by construction. Also silently narrowed: `build-all`/`build-examples` did not exist for this module alone, so the `\|\|` chain fell through to the lightest build. |
+| nightly `nuttx`, `threadx_linux` | a nextest `-E` filter cannot survive just's UNQUOTED variadic interpolation — `args=(-E test(Nuttx))` is a bash syntax error. The only two callers with parens; exactly the two failures. |
+| nightly `freertos` | the platform job never installed cross targets; `armv8r-none-eabihf` (s32z270, Cortex-R52) was absent, so cmake configure died. |
+
+Three of these were invisible to gates that exist for the class:
+`check-just-recipe-refs` read `just/*.just` and never `.github/workflows/`
+(widened — but it still cannot see `just ${{ matrix.plat }} build-all`, because
+it skips any line containing `{{`); and the recycled-identity lesson was already
+written down as `group_ledger::start_time()` but never applied to PGIDs.
+
+**Then keep it green**: a red required check that persists for days is the
    condition this wave exists to prevent, and issue 0840's `pre-push`
    `check-fast` hook is the complementary half — it stops reds being *created*,
    this stops them being *tolerated*.
