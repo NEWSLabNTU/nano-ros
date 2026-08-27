@@ -121,5 +121,4 @@ rustflags = [
 # `packages/boards/nros-board-nuttx-qemu/nros-board.toml`; edit the board, not
 # this row.
 [patch.crates-io]
-libc = { path = "../../../third-party/nuttx/libc" }  # nros-managed
 nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed

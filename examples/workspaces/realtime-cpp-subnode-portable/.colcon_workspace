@@ -1,0 +1,5 @@
+# This directory is a workspace ROOT (pkg-index marker #2).
+#
+# phase-383 W10.a — the root here is GENERATED under `build/<coord>/` and
+# gitignored, so it is absent in a fresh clone. Without this marker a package
+# resolves its root to the REPOSITORY and indexes every package in the tree.

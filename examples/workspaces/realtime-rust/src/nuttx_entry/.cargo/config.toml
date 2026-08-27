@@ -1,7 +1,0 @@
-include = ["../../../../../../nros-patch.toml", "nros-board.toml"]
-
-
-
-
-[patch.crates-io]
-libc = { path = "../../../../../third-party/nuttx/libc" }

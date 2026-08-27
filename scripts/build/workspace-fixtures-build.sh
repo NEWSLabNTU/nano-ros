@@ -302,7 +302,10 @@ build_workspace() {
                 # fixture keeps its own profile and target-dir: the image
                 # deliberately declares no `profile`, so there is exactly one
                 # `--profile` on the command line.
-                local nros_args=(build "$image" --workspace . --offline --)
+                # QUALIFIED — see the note in the cargo branch below: an image
+                # id can be declared by more than one bringup in a workspace.
+                local qual_image="$(basename "$bringup"):$image"
+                local nros_args=(build "$qual_image" --workspace . --offline --)
                 nros_args+=("${profile_args[@]}")
                 if [ -n "$target_dir" ]; then
                     nros_args+=(--target-dir "$target_dir")
@@ -363,7 +366,14 @@ build_workspace() {
                 # knows — `NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330"` is the QEMU
                 # host address this fixture's peer listens on, which is a
                 # property of the TEST, not of the program.
-                local nros_args=(build "$image" --workspace . --offline)
+                # QUALIFIED `<bringup>:<image>`. A workspace may declare the
+                # same image id in more than one bringup — `realtime-c` has
+                # `demo_bringup:native` and `smp_bringup:native` — and an
+                # unqualified name is then ambiguous and refused. The row
+                # already names its bringup, so qualifying costs nothing and is
+                # unambiguous everywhere, including single-bringup workspaces.
+                local qual_image="$(basename "$bringup"):$image"
+                local nros_args=(build "$qual_image" --workspace . --offline)
                 if [ -n "$defs" ]; then
                     local def_args=()
                     read -r -a def_args <<< "$defs"

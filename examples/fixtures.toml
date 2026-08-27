@@ -223,7 +223,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 target_dir = "target-fixtures"
 
 # phase-263 B1 (Track D) — the cross-process E2E-safety demo. In-process node-to-node
@@ -408,7 +408,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
-entry = "riscv_nuttx_entry"
+image = "riscv_nuttx"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx-riscv"
 target = "riscv32imac-unknown-nuttx-elf.json"
@@ -425,7 +425,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
-entry = "nuttx_entry"
+image = "nuttx"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx"
 target = "armv7a-nuttx-eabihf"
@@ -450,7 +450,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
-entry = "threadx_entry"
+image = "threadx"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/threadx-linux"
 env = { NROS_LOCATOR = "tcp/127.0.0.1:9091", NROS_DOMAIN_ID = "0" }
@@ -676,8 +676,8 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "nuttx_entry"
-build_subdir = "build-workspace-fixtures-nuttx"
+image = "nuttx"
+build_subdir = "build/nuttx-zenoh-nuttx-qemu-arm/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
 
 # #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
@@ -691,8 +691,8 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "riscv_nuttx_entry"
-build_subdir = "build-workspace-fixtures-nuttx-riscv"
+image = "riscv_nuttx"
+build_subdir = "build/nuttx-zenoh-nuttx-qemu-riscv/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
@@ -709,8 +709,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
-entry = "nuttx_entry"
-build_subdir = "build-workspace-fixtures-nuttx"
+image = "nuttx"
+build_subdir = "build/nuttx-zenoh-nuttx-qemu-arm/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
 
 # #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
@@ -726,8 +726,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
-entry = "riscv_nuttx_entry"
-build_subdir = "build-workspace-fixtures-nuttx-riscv"
+image = "riscv_nuttx"
+build_subdir = "build/nuttx-zenoh-nuttx-qemu-riscv/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
 
 [[workspace_fixture]]
@@ -824,9 +824,9 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # Phase 269 W4 — 2-tier sched-context C++ workspace. [tiers.high]/[tiers.low] + [[node_overrides]]
 # bake nros_cpp_create_sched_context + NodeBuilder::sched() calls into the generated entry;
@@ -839,9 +839,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # Phase 272 W3 (RFC-0047, issue #124) — rclcpp-shape variant of realtime-cpp.
 # Same 2-tier scheduling (ctrl_node → high 10 ms, telem_node → low 100 ms) but
@@ -855,9 +855,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "native_rclcpp_entry"
+image = "native_rclcpp"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # Phase 273 W4 (RFC-0047) — sub-node 2-group realtime workspace. ONE component
 # (subnode_pkg::SubNode) with TWO callback groups: "ctrl" (10 ms, high tier) and
@@ -871,9 +871,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "native_subnode_entry"
+image = "native_subnode"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # Phase 273 W4 (RFC-0047) — portability fixture. Same subnode_pkg::SubNode but
 # deployed with "fast"/"bulk" tier names instead of "high"/"low". No change to the
@@ -887,9 +887,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp-subnode-portable"
 bringup = "src/deploy_bringup"
-entry = "native_entry"
+image = "native"
 codegen_out = "build-workspace-codegen/deploy_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # Phase 274.W3 (RFC-0015 Model 1 embedded) — 2-tier C++ realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU). The codegen gate (board_is_freertos_embedded) emits
@@ -926,7 +926,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-rust"
 bringup = "src/demo_bringup"
-entry = "freertos_realtime_entry"
+image = "freertos_realtime"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/freertos"
 target = "thumbv7m-none-eabi"
@@ -940,8 +940,8 @@ dir = "examples/workspaces/realtime-cpp"
 # issue 0395 — W6 renamed the dir but pointed this at a bringup that does not
 # exist here (`deploy_bringup` belongs to realtime-cpp-subnode-portable).
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-freertos"
+image = "freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8091", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the Rust tiers
@@ -962,8 +962,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-freertos"
+image = "freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7991", CMAKE_BUILD_TYPE = "Release" }
 # CMAKE_BUILD_TYPE=Release (#126): a -O0 zenoh-pico on the emulated Cortex-M3 is
 # too slow to finish the session handshake in the e2e budget; the C++ tiers
@@ -3555,9 +3555,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/managed"
 bringup = "src/demo_bringup"
-entry = "native_managed_entry"
+image = "native_managed"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 env = { NROS_EXECUTOR_MAX_CBS = "8" }
 
 [[workspace_fixture]]
