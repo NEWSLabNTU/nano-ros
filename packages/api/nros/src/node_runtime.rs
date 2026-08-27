@@ -195,6 +195,12 @@ pub struct ComponentSlotStorage<
     const N: usize = { crate::config::MAX_CLASS_INSTANCES },
 > {
     slots: [UnsafeCell<MaybeUninit<TypedSlot<C>>>; N],
+    /// W5-endgame step 2b (issue 0857) — the per-instance CELL lives here too,
+    /// so the whole component (state + registries) is `.bss`, not heap. Handed
+    /// out pairwise with its slot by `take`; the cell's `slot` field then
+    /// borrows the sibling region, which is sound because the two arrays are
+    /// distinct `UnsafeCell`s claimed by the same monotonic index.
+    cells: [UnsafeCell<MaybeUninit<ComponentCell>>; N],
     next: AtomicUsize,
 }
 
@@ -208,6 +214,7 @@ impl<C: ExecutableNode, const N: usize> ComponentSlotStorage<C, N> {
     pub const fn new() -> Self {
         Self {
             slots: [const { UnsafeCell::new(MaybeUninit::uninit()) }; N],
+            cells: [const { UnsafeCell::new(MaybeUninit::uninit()) }; N],
             next: AtomicUsize::new(0),
         }
     }
@@ -221,15 +228,21 @@ impl<C: ExecutableNode, const N: usize> ComponentSlotStorage<C, N> {
     /// and `i >= N` bounds it. Allowed rather than restructured — the lint
     /// cannot see the atomic, and the invariant is the point of the type.
     #[allow(clippy::mut_from_ref)]
-    fn take(&'static self) -> Option<&'static mut MaybeUninit<TypedSlot<C>>> {
+    fn take(
+        &'static self,
+    ) -> Option<(
+        &'static mut MaybeUninit<TypedSlot<C>>,
+        &'static mut MaybeUninit<ComponentCell>,
+    )> {
         let i = self.next.fetch_add(1, Ordering::Relaxed);
         if i >= N {
             return None;
         }
-        // SAFETY: `i` was claimed exactly once by the fetch_add above, so this
-        // is the only reference that will ever exist to `slots[i]`'s contents;
-        // the storage is a `static`, so `'static` is honest.
-        Some(unsafe { &mut *self.slots[i].get() })
+        // SAFETY: `i` was claimed exactly once by the fetch_add above, so these
+        // are the only references that will ever exist to `slots[i]`'s /
+        // `cells[i]`'s contents; the storage is a `static`, so `'static` is
+        // honest.
+        Some(unsafe { (&mut *self.slots[i].get(), &mut *self.cells[i].get()) })
     }
 }
 
@@ -250,8 +263,23 @@ where
     })
 }
 
+/// phase-391 W5-endgame step 2b (issue 0857) — the NON-GENERIC head of every
+/// `ComponentCell<..>`, guaranteed FIRST FIELD by the cell's `#[repr(C)]`.
+///
+/// The executor's enrolled-component state is a thin pointer to a cell whose
+/// const parameters only the enrolling monomorphization knows. The tick/drop
+/// trampolines are monomorphized alongside it and cast back to the concrete
+/// type; the one consumer that iterates ALL enrolled states regardless of
+/// class — the dispatch-stats fold — casts to this header instead. Both casts
+/// are sound because the header is the first field of a `repr(C)` struct, so
+/// a cell pointer IS a header pointer.
+struct CellHeader {
+    callback_dispatches: AtomicUsize,
+    message_dispatches: AtomicUsize,
+}
+
 /// Shared per-component cell. Subscription / timer closures registered
-/// against the executor hold an `Arc` clone so they can dispatch +
+/// against the executor hold a [`CellHandle`] so they can dispatch +
 /// publish back through the resolver.
 ///
 /// phase-391 W5-endgame step 2a (issue 0857) — generic over the four registry
@@ -260,12 +288,15 @@ where
 /// per-class macro emission names tighter bounds; everything downstream of
 /// construction consumes the cell through the non-generic [`CellView`], so
 /// the const params never cross an FFI or public signature.
+#[repr(C)]
 struct ComponentCell<
     const PUBS: usize = { crate::config::MAX_CELL_ENTITIES },
     const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
+    /// W5-endgame step 2b — MUST stay first; see [`CellHeader`].
+    header: CellHeader,
     /// phase-391 W5.3b — BORROWED from per-class or pool storage, not boxed.
     /// The storage is `'static` (macro-emitted static / caller backing), so the
     /// reference outlives every closure that dispatches through it.
@@ -281,11 +312,9 @@ struct ComponentCell<
     service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), SVCS>>,
     action_clients: RefCell<heapless::Vec<(IdStr, usize), ACTC>>,
     action_servers: RefCell<heapless::Vec<(IdStr, crate::ActionServerRawHandle), ACTS>>,
-    callback_dispatches: AtomicUsize,
-    message_dispatches: AtomicUsize,
     // Phase 264 W4c — raw pointer to the executor's volatile parameter store, so a
     // subscription/timer/service/action callback can read `ctx.parameter::<T>(name)`.
-    // The callback closures + leaked trampolines hold only an `Arc<ComponentCell>` (the
+    // The callback closures + leaked trampolines hold only a `CellHandle` (the
     // executor is unreachable when they fire), so the store address is threaded HERE by
     // `apply_param_services`' post-pass (mirrors the `run_ticks` disjoint borrow). Null
     // until param services are registered. Stable for the executor's life: the server
@@ -302,8 +331,9 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
     fn drop(&mut self) {
         // phase-391 W5.3b — the slot is BORROWED from one-shot storage, so the
         // component state's destructor no longer rides a `Box` drop. Run it
-        // here instead: the cell drops exactly once (it is `Arc`-managed, and
-        // the executor's drop trampoline releases the last clone), and the
+        // here instead: the cell drops exactly once (the executor's drop
+        // trampoline runs it in place on the enrolled path; the dynamic
+        // path's `Arc` drops it on runtime drop), and the
         // storage slot is never handed out again (`take`/`next_slot` counters
         // are monotonic), so nothing can observe the dropped bytes.
         let slot: &mut &'static mut dyn ComponentSlot = self.slot.get_mut();
@@ -368,16 +398,69 @@ trait CellView {
     /// threads it in.
     #[cfg(feature = "param-services")]
     fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>>;
+    /// The `(callbacks, messages)` dispatch counters.
+    fn dispatch_counts(&self) -> (usize, usize);
+    /// Registration-time registry appends. `Err(())` = registry full — the
+    /// component declared more entities of that kind than its cell's bound,
+    /// which the caller reports loudly (never a silent drop).
+    fn push_publisher(&self, id: IdStr, handle: EmbeddedRawPublisher) -> Result<(), ()>;
+    fn push_service_client(&self, id: IdStr, handle: crate::HandleId) -> Result<(), ()>;
+    fn push_action_client(&self, id: IdStr, entry_index: usize) -> Result<(), ()>;
+    fn push_action_server(&self, id: IdStr, handle: crate::ActionServerRawHandle)
+    -> Result<(), ()>;
 }
 
 impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize> CellView
     for ComponentCell<PUBS, SVCS, ACTC, ACTS>
 {
     fn note_dispatch(&self, message: bool) {
-        self.callback_dispatches.fetch_add(1, Ordering::Relaxed);
+        self.header
+            .callback_dispatches
+            .fetch_add(1, Ordering::Relaxed);
         if message {
-            self.message_dispatches.fetch_add(1, Ordering::Relaxed);
+            self.header
+                .message_dispatches
+                .fetch_add(1, Ordering::Relaxed);
         }
+    }
+
+    fn dispatch_counts(&self) -> (usize, usize) {
+        (
+            self.header.callback_dispatches.load(Ordering::Relaxed),
+            self.header.message_dispatches.load(Ordering::Relaxed),
+        )
+    }
+
+    fn push_publisher(&self, id: IdStr, handle: EmbeddedRawPublisher) -> Result<(), ()> {
+        self.publishers
+            .borrow_mut()
+            .push((id, handle))
+            .map_err(|_| ())
+    }
+
+    fn push_service_client(&self, id: IdStr, handle: crate::HandleId) -> Result<(), ()> {
+        self.service_clients
+            .borrow_mut()
+            .push((id, handle))
+            .map_err(|_| ())
+    }
+
+    fn push_action_client(&self, id: IdStr, entry_index: usize) -> Result<(), ()> {
+        self.action_clients
+            .borrow_mut()
+            .push((id, entry_index))
+            .map_err(|_| ())
+    }
+
+    fn push_action_server(
+        &self,
+        id: IdStr,
+        handle: crate::ActionServerRawHandle,
+    ) -> Result<(), ()> {
+        self.action_servers
+            .borrow_mut()
+            .push((id, handle))
+            .map_err(|_| ())
     }
 
     fn publisher(&self, entity_id: &str) -> Option<Ref<'_, EmbeddedRawPublisher>> {
@@ -408,6 +491,31 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
     #[cfg(feature = "param-services")]
     fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>> {
         self.param_server()
+    }
+}
+
+/// phase-391 W5-endgame step 2b — the two ways a cell is held, one spelling.
+///
+/// The macro/FFI install path places its cell in per-class static storage and
+/// holds `&'static`; the dynamic `register_node` path (alloc-gated, hosted)
+/// keeps the `Arc` it always had — its cells are not 0857's embedded heap
+/// cost, and `Arc` gives them the drop-on-runtime-drop lifetime the dynamic
+/// path needs. Closures and leaked ctxs clone the HANDLE (a ref copy or an
+/// `Arc` bump) and dispatch through [`CellHandle::view`].
+#[derive(Clone)]
+enum CellHandle {
+    Static(&'static dyn CellView),
+    #[cfg(feature = "alloc")]
+    Pooled(Arc<ComponentCell>),
+}
+
+impl CellHandle {
+    fn view(&self) -> &dyn CellView {
+        match self {
+            CellHandle::Static(v) => *v,
+            #[cfg(feature = "alloc")]
+            CellHandle::Pooled(cell) => cell.as_ref(),
+        }
     }
 }
 
@@ -645,8 +753,10 @@ impl ExecutorNodeRuntime {
             service_clients: RefCell::new(heapless::Vec::new()),
             action_clients: RefCell::new(heapless::Vec::new()),
             action_servers: RefCell::new(heapless::Vec::new()),
-            callback_dispatches: AtomicUsize::new(0),
-            message_dispatches: AtomicUsize::new(0),
+            header: CellHeader {
+                callback_dispatches: AtomicUsize::new(0),
+                message_dispatches: AtomicUsize::new(0),
+            },
             // W4c — set by `apply_param_services` once the store exists.
             #[cfg(feature = "param-services")]
             param_server: core::cell::Cell::new(core::ptr::null()),
@@ -656,7 +766,7 @@ impl ExecutorNodeRuntime {
 
         let mut sink = ExecutorSink {
             executor: &mut self.executor,
-            cell: cell.clone(),
+            cell: CellHandle::Pooled(cell.clone()),
             nodes: Vec::new(),
             node_identity: None, // direct API — no launch injection
             remaps: &[],         // direct API — no launch remaps
@@ -840,30 +950,35 @@ fn tick_one_cell(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
 /// [`ComponentCell`] — see [`register_node_borrowed`]'s enroll).
 ///
 /// # Safety
-/// `state` must be the leaked `Arc<ComponentCell>` enrolled via
-/// [`Executor::enroll_component`] from [`register_node_borrowed`] (borrowed
-/// here, **not** consumed); `exec_ctx` must be the live `*mut Executor<'static>` the
-/// executor passes itself.
+/// `state` must be the placed `ComponentCell` enrolled via
+/// [`Executor::enroll_component`] from [`register_node_borrowed`] (per-class
+/// static storage or the alloc convenience's leaked box — live until
+/// `component_drop_trampoline`); `exec_ctx` must be the live
+/// `*mut Executor<'static>` the executor passes itself.
 unsafe extern "C" fn component_tick_trampoline(
     state: *mut core::ffi::c_void,
     exec_ctx: *mut core::ffi::c_void,
 ) {
-    // SAFETY: `state` is a live, leaked `Arc<ComponentCell>` ptr (kept alive
-    // until `component_drop_trampoline`); borrow it without taking ownership.
+    // SAFETY: `state` is a live placed `ComponentCell` (kept in place until
+    // `component_drop_trampoline`); borrow it without taking ownership.
     let cell = unsafe { &*(state as *const ComponentCell) };
     tick_one_cell(cell, exec_ctx as *mut Executor<'static>);
 }
 
-/// Phase 258 (Track 2, 2a) — executor `ComponentSlot.drop` trampoline.
-/// Reconstitutes + drops the leaked `Arc<ComponentCell>` enrolled by
-/// [`register_node_borrowed`]. Run exactly once on `Executor::drop`.
+/// Phase 258 (Track 2, 2a; W5-endgame step 2b) — executor `ComponentSlot.drop`
+/// trampoline. Drops the placed `ComponentCell` (which drops the component
+/// state through its borrowed slot) IN PLACE — the storage itself is a
+/// `static` (or the alloc convenience's leaked box, whose bytes are never
+/// freed, matching its slot's documented leak). Run exactly once on
+/// `Executor::drop`; the storage's monotonic `take` never re-hands the
+/// region out, so nothing can observe the dropped bytes.
 ///
 /// # Safety
-/// `state` must be the leaked `Arc<ComponentCell>` enrolled via
-/// [`Executor::enroll_component`], not yet reclaimed.
+/// `state` must be the placed `ComponentCell` enrolled via
+/// [`Executor::enroll_component`], not yet dropped.
 unsafe extern "C" fn component_drop_trampoline(state: *mut core::ffi::c_void) {
-    // SAFETY: reclaim the one leaked Arc clone the enroll handed the executor.
-    drop(unsafe { Arc::from_raw(state as *const ComponentCell) });
+    // SAFETY: enroll's contract above; dropped exactly once by the executor.
+    unsafe { core::ptr::drop_in_place(state as *mut ComponentCell) };
 }
 
 // =============================================================================
@@ -952,10 +1067,8 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
             .components
             .iter()
             .fold((0, 0), |(callbacks, messages), cell| {
-                (
-                    callbacks + cell.callback_dispatches.load(Ordering::Relaxed),
-                    messages + cell.message_dispatches.load(Ordering::Relaxed),
-                )
+                let (c, m) = cell.dispatch_counts();
+                (callbacks + c, messages + m)
             });
         // issue #140 — install-seam components (`nros::node!` →
         // `install_node_typed*` → `register_node_borrowed`) never enter
@@ -973,10 +1086,10 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
                 // from `register_node_borrowed` (the only enroll site); the
                 // executor keeps it alive until `Executor::drop`, and we only
                 // read its atomic counters here.
-                let cell = unsafe { &*(state as *const ComponentCell) };
+                let header = unsafe { &*(state as *const CellHeader) };
                 (
-                    callbacks + cell.callback_dispatches.load(Ordering::Relaxed),
-                    messages + cell.message_dispatches.load(Ordering::Relaxed),
+                    callbacks + header.callback_dispatches.load(Ordering::Relaxed),
+                    messages + header.message_dispatches.load(Ordering::Relaxed),
                 )
             })
     }
@@ -989,7 +1102,7 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
 
 struct ExecutorSink<'a> {
     executor: &'a mut Executor<'static>,
-    cell: Arc<ComponentCell>,
+    cell: CellHandle,
     /// Per-registration node mapping: stable id → executor `NodeId` plus the
     /// EFFECTIVE `(name, namespace)` the node was created with (launch identity
     /// or the `NodeOptions` default) — phase-306 W3 needs it to expand
@@ -1118,9 +1231,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                 // Registry full = this component declared more entities than
                 // CELL_REG_CAP — a registration error, never a silent drop.
                 self.cell
-                    .publishers
-                    .borrow_mut()
-                    .push((id_owned, handle))
+                    .view()
+                    .push_publisher(id_owned, handle)
                     .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
@@ -1146,7 +1258,12 @@ impl NodeRuntime for ExecutorSink<'_> {
                             metadata.type_name,
                             metadata.type_hash,
                             move |payload: &[u8], status: &nros_node::IntegrityStatus| {
-                                dispatch_into_cell_with_integrity(&*cell_s, &cb_s, payload, status);
+                                dispatch_into_cell_with_integrity(
+                                    cell_s.view(),
+                                    &cb_s,
+                                    payload,
+                                    status,
+                                );
                             },
                         )
                         .map_err(decl_err_from_node)?;
@@ -1162,7 +1279,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         metadata.type_hash,
                         metadata.qos,
                         move |payload: &[u8]| {
-                            dispatch_into_cell(&*cell, &cb_id_owned, payload);
+                            dispatch_into_cell(cell.view(), &cb_id_owned, payload);
                         },
                     )
                     .map_err(decl_err_from_node)?;
@@ -1185,7 +1302,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 let cell = self.cell.clone();
                 self.executor
                     .register_timer(period, move || {
-                        dispatch_into_cell(&*cell, &cb_id_owned, &[]);
+                        dispatch_into_cell(cell.view(), &cb_id_owned, &[]);
                     })
                     .map_err(decl_err_from_node)?;
                 Ok(())
@@ -1233,9 +1350,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                     )
                     .map_err(decl_err_from_node)?;
                 self.cell
-                    .service_clients
-                    .borrow_mut()
-                    .push((id_str(metadata.id.as_str())?, hid))
+                    .view()
+                    .push_service_client(id_str(metadata.id.as_str())?, hid)
                     .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
@@ -1276,9 +1392,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                     )
                     .map_err(decl_err_from_node)?;
                 self.cell
-                    .action_servers
-                    .borrow_mut()
-                    .push((id_str(metadata.id.as_str())?, handle))
+                    .view()
+                    .push_action_server(id_str(metadata.id.as_str())?, handle)
                     .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
@@ -1324,9 +1439,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                     )
                     .map_err(decl_err_from_node)?;
                 self.cell
-                    .action_clients
-                    .borrow_mut()
-                    .push((id_str(metadata.id.as_str())?, handle.entry_index()))
+                    .view()
+                    .push_action_client(id_str(metadata.id.as_str())?, handle.entry_index())
                     .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
@@ -1470,14 +1584,14 @@ fn dispatch_into_cell_with_integrity(
 
 /// Leaked context for a service-server arena callback.
 struct ServiceServerCtx {
-    cell: Arc<ComponentCell>,
+    cell: CellHandle,
     callback_id: IdStr,
 }
 
 /// Leaked context for an action-server arena callback (goal + cancel + the
 /// optional accepted hook all share one).
 struct ActionServerCtx {
-    cell: Arc<ComponentCell>,
+    cell: CellHandle,
     goal_callback_id: IdStr,
     cancel_callback_id: IdStr,
     accepted_callback_id: Option<IdStr>,
@@ -1485,7 +1599,7 @@ struct ActionServerCtx {
 
 /// Leaked context for an action-CLIENT result + feedback callbacks.
 struct ActionClientCtx {
-    cell: Arc<ComponentCell>,
+    cell: CellHandle,
     result_callback_id: IdStr,
     feedback_callback_id: Option<IdStr>,
 }
@@ -1502,7 +1616,7 @@ unsafe extern "C" fn action_result_trampoline(
 ) {
     let actx = unsafe { &*(ctx as *const ActionClientCtx) };
     let result_slice = unsafe { core::slice::from_raw_parts(result_data, result_len) };
-    dispatch_into_cell(&*actx.cell, &actx.result_callback_id, result_slice);
+    dispatch_into_cell(actx.cell.view(), &actx.result_callback_id, result_slice);
 }
 
 /// Action-client feedback callback: route each feedback CDR into the
@@ -1518,7 +1632,7 @@ unsafe extern "C" fn action_feedback_trampoline(
         return;
     };
     let feedback_slice = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
-    dispatch_into_cell(&*actx.cell, cb_id, feedback_slice);
+    dispatch_into_cell(actx.cell.view(), cb_id, feedback_slice);
 }
 
 /// Service-server request callback: deserialize-side runs in the component's
@@ -1536,16 +1650,13 @@ unsafe extern "C" fn service_server_trampoline(
     let req_slice = unsafe { core::slice::from_raw_parts(req, req_len) };
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp, resp_cap) };
     let mut written = 0usize;
-    let resolver = CellResolver {
-        cell: sctx.cell.as_ref(),
-    };
+    let view = sctx.cell.view();
+    let resolver = CellResolver { cell: view };
     let mut cb = CallbackCtx::with_reply(req_slice, &resolver, resp_slice, &mut written);
     // W4c — service-server callback can read `ctx.parameter::<T>(name)` too.
     #[cfg(feature = "param-services")]
-    cb.set_param_server(sctx.cell.param_server());
-    if let Ok(mut slot) = sctx.cell.slot.try_borrow_mut() {
-        slot.dispatch(&sctx.callback_id, &mut cb);
-    }
+    cb.set_param_server(view.view_param_server());
+    view.try_with_slot_mut(&mut |slot| slot.dispatch(&sctx.callback_id, &mut cb));
     unsafe { *resp_len = written };
     true
 }
@@ -1560,16 +1671,13 @@ unsafe extern "C" fn action_goal_trampoline(
     let actx = unsafe { &*(ctx as *const ActionServerCtx) };
     let goal_slice = unsafe { core::slice::from_raw_parts(goal_data, goal_len) };
     let mut resp = crate::GoalResponse::Reject;
-    let resolver = CellResolver {
-        cell: actx.cell.as_ref(),
-    };
+    let view = actx.cell.view();
+    let resolver = CellResolver { cell: view };
     let mut cb = CallbackCtx::with_goal_decision(goal_slice, &resolver, &mut resp);
     // W4c — action goal callback can read `ctx.parameter::<T>(name)` too.
     #[cfg(feature = "param-services")]
-    cb.set_param_server(actx.cell.param_server());
-    if let Ok(mut slot) = actx.cell.slot.try_borrow_mut() {
-        slot.dispatch(&actx.goal_callback_id, &mut cb);
-    }
+    cb.set_param_server(view.view_param_server());
+    view.try_with_slot_mut(&mut |slot| slot.dispatch(&actx.goal_callback_id, &mut cb));
     resp
 }
 
@@ -1582,16 +1690,13 @@ unsafe extern "C" fn action_cancel_trampoline(
 ) -> crate::CancelResponse {
     let actx = unsafe { &*(ctx as *const ActionServerCtx) };
     let mut resp = crate::CancelResponse::Reject;
-    let resolver = CellResolver {
-        cell: actx.cell.as_ref(),
-    };
+    let view = actx.cell.view();
+    let resolver = CellResolver { cell: view };
     let mut cb = CallbackCtx::with_cancel_decision(&[], &resolver, &mut resp);
     // W4c — action cancel callback can read `ctx.parameter::<T>(name)` too.
     #[cfg(feature = "param-services")]
-    cb.set_param_server(actx.cell.param_server());
-    if let Ok(mut slot) = actx.cell.slot.try_borrow_mut() {
-        slot.dispatch(&actx.cancel_callback_id, &mut cb);
-    }
+    cb.set_param_server(view.view_param_server());
+    view.try_with_slot_mut(&mut |slot| slot.dispatch(&actx.cancel_callback_id, &mut cb));
     resp
 }
 
@@ -1605,7 +1710,7 @@ unsafe extern "C" fn action_accepted_trampoline(
     let Some(cb_id) = actx.accepted_callback_id.as_ref() else {
         return;
     };
-    dispatch_into_cell(&*actx.cell, cb_id, &[]);
+    dispatch_into_cell(actx.cell.view(), cb_id, &[]);
 }
 
 /// Tick-side service/action CLIENT dispatch — the single-node runtime's mirror
@@ -1761,7 +1866,7 @@ impl ActionExecutor for RuntimeActions<'_> {
 /// [`ComponentCell`].
 ///
 /// Unlike [`ExecutorNodeRuntime::register_node`] this owns neither the executor nor a
-/// components list: the executor's per-entity callbacks hold `Arc<ComponentCell>`
+/// components list: the executor's per-entity callbacks hold `CellHandle`s
 /// clones (see [`ExecutorSink`]), so the cell stays alive for the executor's lifetime
 /// via dispatch alone — the caller may drop the returned cell (pub/sub/timer nodes, the
 /// W0-B target) or stash it to drive `tick` (service-client/action nodes; phase-257 D2).
@@ -1809,18 +1914,27 @@ fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     remaps: &'p [(&'p str, &'p str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
     slot_mu: &'static mut MaybeUninit<TypedSlot<C>>,
-) -> NodeResult<Arc<ComponentCell>>
+    cell_mu: &'static mut MaybeUninit<ComponentCell>,
+) -> NodeResult<&'static ComponentCell>
 where
     C::State: 'static,
 {
-    let cell = Arc::new(ComponentCell {
+    // W5-endgame step 2b (issue 0857) — the cell is PLACED into caller
+    // storage (the per-class static's paired region, or the alloc
+    // convenience's leaked box), never `Arc`'d: 0857 measured the Arc'd cell
+    // at ~17.5 KiB of heap per component. Closures and leaked ctxs hold a
+    // `CellHandle::Static` copy; the executor's drop trampoline runs the
+    // cell's destructor in place.
+    let cell: &'static ComponentCell = cell_mu.write(ComponentCell {
         slot: RefCell::new(place_slot::<C>(slot_mu)),
         publishers: RefCell::new(heapless::Vec::new()),
         service_clients: RefCell::new(heapless::Vec::new()),
         action_clients: RefCell::new(heapless::Vec::new()),
         action_servers: RefCell::new(heapless::Vec::new()),
-        callback_dispatches: AtomicUsize::new(0),
-        message_dispatches: AtomicUsize::new(0),
+        header: CellHeader {
+            callback_dispatches: AtomicUsize::new(0),
+            message_dispatches: AtomicUsize::new(0),
+        },
         // W4c — set by `apply_param_services` once the store exists (it runs after this).
         #[cfg(feature = "param-services")]
         param_server: core::cell::Cell::new(core::ptr::null()),
@@ -1829,7 +1943,7 @@ where
         // Reborrow so `executor` stays usable for `enroll_component` after the
         // sink (which holds `&mut Executor<'static>`) is dropped below.
         executor: &mut *executor,
-        cell: cell.clone(),
+        cell: CellHandle::Static(cell),
         nodes: Vec::new(),
         // Phase 268 W1 — thread the per-component identity bake (RFC-0046).
         node_identity,
@@ -1848,22 +1962,18 @@ where
     // Phase 258 (Track 2, 2a) — enroll the cell in the executor's component
     // tick registry so `install`'d nodes tick (closes phase-257 D2: poll-only
     // service-client/action nodes have no callbacks keeping the cell alive AND
-    // never ran `tick`). Leak one `Arc` clone for the executor to own; it runs
-    // `tick` each `spin_once` and drops the clone on `Executor::drop`. Harmless
-    // for pub/sub/timer-only nodes — their tick body is a no-op. Registry-full
-    // (`MAX_NODES`) reclaims the clone and proceeds without a tick slot.
-    let raw = Arc::into_raw(cell.clone()) as *mut core::ffi::c_void;
-    // SAFETY: `raw` is a freshly-leaked `Arc<ComponentCell>`; the trampolines
-    // match its provenance (borrow on tick, reclaim on drop).
-    if unsafe {
+    // never ran `tick`). The executor runs `tick` each `spin_once` and runs
+    // the cell's destructor in place on `Executor::drop`. Harmless for
+    // pub/sub/timer-only nodes — their tick body is a no-op. Registry-full
+    // (`MAX_NODES`) proceeds without a tick slot; the placed cell then simply
+    // lives (and leaks its component state's destructor) with its storage,
+    // which a monotonic `take` never re-hands out.
+    let raw = cell as *const ComponentCell as *mut core::ffi::c_void;
+    // SAFETY: `raw` is the freshly placed cell; the trampolines match its
+    // provenance (borrow on tick, drop_in_place on executor drop).
+    let _ = unsafe {
         executor.enroll_component(raw, component_tick_trampoline, component_drop_trampoline)
-    }
-    .is_err()
-    {
-        // SAFETY: enroll rejected the slot, so the executor never took `raw`;
-        // reclaim the leaked clone here to avoid a permanent leak.
-        drop(unsafe { Arc::from_raw(raw as *const ComponentCell) });
-    }
+    };
 
     // W4c — capture the executor's volatile param store on the cell so this node's
     // callbacks can read `ctx.parameter::<T>(name)`. Non-null only when `nros::main!`
@@ -1880,9 +1990,10 @@ where
 /// Phase 257 (W0-B) — C-ABI typed component install. Recovers the shared `Executor`
 /// from the foreign typed entry's handle (`global_handle()` / `Node::executor_handle()`
 /// = the `_opaque` `*mut Executor<'static>`; cf. nros-c `get_executor_from_ptr`) and registers
-/// `C` on it via `register_node_borrowed` (private helper). The component's `ComponentCell` is kept
-/// alive by the executor's own callback `Arc` clones (phase-257 D1), so this drops the
-/// returned cell. Returns `0` on success, `-1` on a null handle or a registration error.
+/// `C` on it via `register_node_borrowed` (private helper). The component's `ComponentCell`
+/// is PLACED in caller/leaked storage (W5-endgame step 2b) and dropped in place by the
+/// executor on `Executor::drop`. Returns `0` on success, `-1` on a null handle or a
+/// registration error.
 ///
 /// This backs the `__nros_component_<pkg>_install(node, executor, self)` symbol
 /// `nros::node!()` emits — the uniform cross-language install seam (phase-257 D6).
@@ -1967,7 +2078,19 @@ where
     // instead, so GENERATED images do not take this branch.
     let slot_mu: &'static mut MaybeUninit<TypedSlot<C>> =
         Box::leak(Box::new(MaybeUninit::uninit()));
-    match register_node_borrowed::<C>(exec, params, node_identity, remaps, qos_overrides, slot_mu) {
+    // W5-endgame step 2b — the cell leaks the same way; its destructor still
+    // runs (executor drop trampoline, in place), only the bytes stay.
+    let cell_mu: &'static mut MaybeUninit<ComponentCell> =
+        Box::leak(Box::new(MaybeUninit::uninit()));
+    match register_node_borrowed::<C>(
+        exec,
+        params,
+        node_identity,
+        remaps,
+        qos_overrides,
+        slot_mu,
+        cell_mu,
+    ) {
         Ok(_cell) => 0,
         // Issue 0095 — distinct code for executor-table exhaustion so the macro
         // register seam can name `NROS_EXECUTOR_MAX_CBS` instead of an opaque
@@ -2004,12 +2127,20 @@ where
     if executor.is_null() {
         return -1;
     }
-    let Some(slot_mu) = store.take() else {
+    let Some((slot_mu, cell_mu)) = store.take() else {
         return -3;
     };
     // SAFETY: per the fn contract, `executor` is the live handle.
     let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
-    match register_node_borrowed::<C>(exec, params, node_identity, remaps, qos_overrides, slot_mu) {
+    match register_node_borrowed::<C>(
+        exec,
+        params,
+        node_identity,
+        remaps,
+        qos_overrides,
+        slot_mu,
+        cell_mu,
+    ) {
         Ok(_cell) => 0,
         Err(NodeDeclError::ExecutorFull) => -2,
         Err(_) => -1,
