@@ -96,7 +96,62 @@ All four action type names already matched a native
 `action_tutorials_cpp fibonacci_action_server` byte for byte after
 `a4abcccde`/`6d2b67bff`.
 
-## STILL OPEN: goals do not complete
+## Fixed: the stack-slot LEAK (2026-08-27)
+
+With the loud diagnostic in place, an 8-slot run showed the real shape:
+
+```
+63.515  handshake completes
+63.539  OUT OF THREAD SLOTS (NROS_ZEPHYR_MAX_THREADS=8) -- task not created
+63.539  ERROR ::_zp_unicast_failed] Reopen failed: -79
+```
+
+Slots ran out at the **third and fourth reconnect**, not at boot. Raising the
+count only moves that wall: `nros_thread_index` only ever ROSE, so every
+reconnect spent slots permanently and the image eventually could not reopen at
+all.
+
+Replaced with a claim/release table. Release is on **join** and never on
+detach, for the same reason as
+[issue 0822](archived/0822-zephyr-thread-stack-slots-unbounded.md): a returned
+`pthread_join` proves the thread is gone, whereas a detached one may still be
+running and handing its stack to the next task would be worse than the leak.
+
+Measured effect, same build, same harness:
+
+| | before | after |
+| --- | --- | --- |
+| `OUT OF THREAD SLOTS` | 2 | **0** |
+| transports opened / closed | 5 / 5 | **1 / 1** |
+
+So the reconnect cascade and the `Reopen failed: -79` dead end are gone.
+
+## STILL OPEN: the first session is starved on receive
+
+This is the actual core of the issue and it is NOT fixed. From the very first
+session, before any reconnect or slot pressure:
+
+| | first 25 s |
+| --- | --- |
+| `_z_transport_tx_send_n_msg` | 26 |
+| receive-side events | **2, plus the handshake decodes** |
+
+The board transmits freely and receives essentially nothing, so its lease
+expires at `2 x Z_TRANSPORT_LEASE` and it closes with reason 5. A **talker** on
+the identical board, router and transport holds its session for a five-minute
+soak, so this is specific to the heavier image rather than to the link.
+
+What is now ruled out: slot exhaustion at boot (the diagnostic is silent for
+the first session), the router's keepalive cadence (tapped at 10.0 s), the
+domain, and the type names.
+
+What is not established: whether the router's keepalives physically reach the
+board during that window. The socat tap attempt for this image produced a
+zero-byte capture and was not retried — that measurement is still the fork in
+the road, and it now has a much smaller haystack: one session, 20 s, no
+reconnect noise.
+
+## Previously open, now superseded
 
 `ros2 action send_goal` still fails:
 

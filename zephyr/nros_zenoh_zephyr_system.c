@@ -34,8 +34,19 @@ z_result_t _z_task_init(_z_task_t *task,
     return nros_zephyr_task_create(task, fun, arg) == 0 ? 0 : -1;
 }
 
+extern void nros_zephyr_task_slot_release(pthread_t owner);
+
 z_result_t _z_task_join(_z_task_t *task) {
-    return pthread_join(*task, NULL) == 0 ? 0 : -1;
+    pthread_t owner = *task;
+    if (pthread_join(owner, NULL) != 0) {
+        return -1;
+    }
+    /* The join RETURNED, so the thread is gone and its stack slot can be
+     * handed out again. This is the only safe release point -- `_z_task_detach`
+     * deliberately does NOT release, because a detached thread may still be
+     * running (issue 0839; same rule as issue 0822 upstream). */
+    nros_zephyr_task_slot_release(owner);
+    return 0;
 }
 
 z_result_t _z_task_detach(_z_task_t *task) {

@@ -330,6 +330,7 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 #if defined(CONFIG_POSIX_API) || defined(CONFIG_PTHREAD)
 
 #include <zephyr/posix/pthread.h>
+#include <string.h>
 #include <zephyr/sys/printk.h>
 
 #ifndef NROS_ZEPHYR_MAX_THREADS
@@ -341,10 +342,82 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 #endif
 
 K_THREAD_STACK_ARRAY_DEFINE(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS, NROS_ZEPHYR_STACK_SIZE);
-static int nros_thread_index;
+
+/* Stack slots are CLAIMED and RELEASED. The counter this replaces
+ * (`static int nros_thread_index`, used as `nros_thread_stacks[idx++]`) only
+ * ever ROSE, so a slot was spent for the life of the image even after its task
+ * had exited. A steady session never noticed -- it creates its tasks once. A
+ * RECONNECT is what spends them, and zenoh-pico reconnects on every lease
+ * expiry, so the image walked out of slots and then could not reopen at all:
+ *
+ *     OUT OF THREAD SLOTS (NROS_ZEPHYR_MAX_THREADS=8) -- task not created
+ *     ERROR ::_zp_unicast_failed] Reopen failed: -79
+ *
+ * observed on the action-server image at the third and fourth reconnect
+ * (issue 0839). Raising the count only moves that wall further out.
+ *
+ * RELEASE IS ON JOIN, NOT ON CREATE-FAILURE-OR-EXIT, and that is deliberate:
+ * `pthread_join` returning is proof the thread is gone, so its stack cannot
+ * still be in use. A teardown that DETACHES instead of joining does not
+ * release -- handing a live thread's stack to the next task would be a worse
+ * bug than the leak. Same rule, and same reasoning, as the zenoh-pico fix in
+ * issue 0822. */
+static struct {
+    pthread_t owner;
+    bool in_use;
+} nros_thread_slots[NROS_ZEPHYR_MAX_THREADS];
+static K_MUTEX_DEFINE(nros_thread_slots_lock);
+
+static int nros_claim_thread_slot(void) {
+    int slot = -1;
+    (void) k_mutex_lock(&nros_thread_slots_lock, K_FOREVER);
+    for (int i = 0; i < NROS_ZEPHYR_MAX_THREADS; i++) {
+        if (!nros_thread_slots[i].in_use) {
+            nros_thread_slots[i].in_use = true;
+            /* Clear the previous occupant before dropping the lock: the
+             * matcher keys on owner, and a claimed-but-not-yet-owned slot
+             * carrying a dead tid could be matched by a concurrent join. */
+            (void) memset(&nros_thread_slots[i].owner, 0,
+                          sizeof(nros_thread_slots[i].owner));
+            slot = i;
+            break;
+        }
+    }
+    (void) k_mutex_unlock(&nros_thread_slots_lock);
+    return slot;
+}
+
+static void nros_set_thread_slot_owner(int slot, pthread_t owner) {
+    (void) k_mutex_lock(&nros_thread_slots_lock, K_FOREVER);
+    nros_thread_slots[slot].owner = owner;
+    (void) k_mutex_unlock(&nros_thread_slots_lock);
+}
+
+static void nros_free_thread_slot(int slot) {
+    (void) k_mutex_lock(&nros_thread_slots_lock, K_FOREVER);
+    nros_thread_slots[slot].in_use = false;
+    (void) k_mutex_unlock(&nros_thread_slots_lock);
+}
+
+/* Called from `_z_task_join` once the join has RETURNED. */
+void nros_zephyr_task_slot_release(pthread_t owner) {
+    pthread_t none;
+    (void) memset(&none, 0, sizeof(none));
+    (void) k_mutex_lock(&nros_thread_slots_lock, K_FOREVER);
+    for (int i = 0; i < NROS_ZEPHYR_MAX_THREADS; i++) {
+        if (nros_thread_slots[i].in_use &&
+            pthread_equal(nros_thread_slots[i].owner, none) == 0 &&
+            pthread_equal(nros_thread_slots[i].owner, owner) != 0) {
+            nros_thread_slots[i].in_use = false;
+            break;
+        }
+    }
+    (void) k_mutex_unlock(&nros_thread_slots_lock);
+}
 
 int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg) {
-    if (nros_thread_index >= NROS_ZEPHYR_MAX_THREADS) {
+    int slot = nros_claim_thread_slot();
+    if (slot < 0) {
         /* Say so. This used to return -1 silently, and the caller that loses
          * is usually zenoh-pico's READ task -- so the image comes up, declares
          * every entity, transmits happily, and then simply never receives
@@ -364,12 +437,16 @@ int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg)
 
     pthread_attr_t attr;
     (void)pthread_attr_init(&attr);
-    (void)pthread_attr_setstack(&attr, &nros_thread_stacks[nros_thread_index++],
-                                NROS_ZEPHYR_STACK_SIZE);
+    (void)pthread_attr_setstack(&attr, &nros_thread_stacks[slot], NROS_ZEPHYR_STACK_SIZE);
 
     int ret = pthread_create(thread, &attr, entry, arg);
     (void)pthread_attr_destroy(&attr);
-    return ret;
+    if (ret != 0) {
+        nros_free_thread_slot(slot);
+        return ret;
+    }
+    nros_set_thread_slot_owner(slot, *thread);
+    return 0;
 }
 
 #endif /* CONFIG_POSIX_API || CONFIG_PTHREAD */
