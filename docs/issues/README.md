@@ -207,6 +207,7 @@ phase-383, which only made it visible. `nros build` now REFUSES a divergent per-
 <<<<<<< HEAD
 =======
 
+<<<<<<< HEAD
 **#0842** (cmake, open 2026-08-27) — a generated cmake root picks the WRONG NETSTACK for a board whose platform
 shares a `[deploy.<target>.nros]` block with another board. `examples/workspaces/c` has two FreeRTOS boards
 (mps2-an385 lwIP, freertos-posix sockets) and one `[deploy.freertos.nros] netstack = "lwip"`, so building the
@@ -214,6 +215,8 @@ POSIX one compiled zenoh-pico's lwIP backend into `libnros_cpp.a` and failed wit
 lwip_*`. The hand-written root escaped it by gating SUBDIRS on `NANO_ROS_BOARD` — one entry per configure. The
 pre-migration binary has ZERO lwip strings, so the artifact settles it. Blocks the embedded half of every
 remaining cmake workspace migration. See `0842-*`.
+=======
+>>>>>>> d70a8833c (docs(#0842): correct the diagnosis in place and close it)
 **#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an
 out-of-lane fixture only when it can ATTRIBUTE it, and 47 rows share one `build_subdir`
 (`build-workspace-fixtures`, 14 of them in `examples/workspaces/c` alone), so issue 0517's ambiguity makes them
@@ -232,6 +235,14 @@ at 15:45 with `cmake --build` exiting 0. The composition sites now record what t
 `nano_ros_link_rmw` turns it into `LINK_DEPENDS`, so a third archive is covered by existing. Touch-the-submodule
 then `lane=all`: 0 of 36 cells stale, where it left 13. NOTE the first diagnosis in this issue ("the build leg
 skips cells") was wrong and is corrected in place. See `archived/0837-*`.
+
+Recently resolved (2026-08-27): **#0842** (cmake) — NOT the netstack, which the first diagnosis here blamed and
+which `nros ws board-facts` cleared in one command. The migrated `[image.freertos_posix]` inherited the DEFAULT
+`rmw = "zenoh"` while the row it replaced built cyclonedds, and zenoh-pico's FreeRTOS backend is lwIP-only — so a
+board with no lwIP got 63 `undefined reference to lwip_*`. Fix: declare the rmw on the image. Reading the row
+being replaced would have been faster than reasoning about what selects an lwIP backend. Three more fell out of
+finishing the migration: dropped row `cmake_defs`, the `NUTTX_DIR` promotion W4.a documents and never emitted,
+and two platform vocabularies (`threadx-linux` vs `threadx_linux`). See `archived/0842-*`.
 
 Recently resolved (2026-08-27): **#0838** (testing) — two ways concurrent tests landed on one Cyclone domain.
 (1) `alloc::domain_of` BAKES domain 107 into the (threadx-linux, c, pubsub) image, so the four tests that talk to
