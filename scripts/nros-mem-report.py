@@ -346,13 +346,16 @@ def report(res, top, baseline=None):
             "   artifact, so every number below describes code that is no longer"
         )
         add(
-            "   in the tree. Rebuild before quoting any of it:"
+            "   in the tree. Rebuild before quoting any of it — with the recipe"
         )
-        add("     just build-test-fixtures lane=native")
         add(
-            "   and measure under build/cargo-fixtures/, not examples/**/target-*/"
+            "   that PRODUCES this artifact, which differs by lane:"
         )
-        add("   (the pre-phase-340 layout, which nothing rewrites).")
+        add("     native fixtures      just build-test-fixtures lane=native")
+        add("                          (measure under build/cargo-fixtures/, NOT")
+        add("                           examples/**/target-*/ — the pre-phase-340")
+        add("                           layout, which nothing rewrites)")
+        add("     cross link-check     just rust-rtos-link-check")
         add("")
     ram_sym, ram_sec = res["ram_symbol_total"], res["section_ram_total"]
     add(f"RAM (.bss + .data), by section:  {fmt(ram_sec)} bytes")

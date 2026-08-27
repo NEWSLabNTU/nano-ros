@@ -3395,6 +3395,54 @@ rust-rtos-link-check: _require-leaf-includes
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
 
+# L3 — cross build + link + SYMBOL checks. No QEMU.
+#
+# The insight this lane rests on: `rust-rtos-link-check` already BUILDS
+# 32-bit/cross ELFs and then throws them away, having only checked that linking
+# succeeded. Those artifacts can answer far more, at no extra build cost.
+#
+# What a cross ELF proves without ever booting (design doc, "cheapest witness
+# per defect class"):
+#   * 32-bit layout — the sizes-header mirror class, 0088 -> 0114 -> 0122 ->
+#     0123 -> 0245 -> 0268. A host build cannot see it; a 64-bit literal in
+#     generated code breaks a 32-bit target and nothing on this machine notices.
+#   * linker sections and staticlib DCE — 0155, 0163.
+#   * static RAM ceilings — the whole of phase 392, which is meaningless where
+#     RAM is unbounded.
+#   * allocation-freedom — 0816, via the symbol table.
+#
+# QEMU is needed for scheduling, timing and real transport behaviour. It is not
+# needed for any of the above, which is most of what has actually bitten here.
+[group("main")]
+ci-l3: rust-rtos-link-check
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    echo "== L3 — interrogating the cross ELFs the link check just built =="
+    checked=0
+    for elf in \
+        "examples/qemu-arm-freertos/rust/talker/target-link-check/thumbv7m-none-eabi/$(nros_cargo_platform_profile freertos)/talker" \
+        "examples/qemu-arm-nuttx/rust/talker/target-link-check/armv7a-nuttx-eabihf/$(nros_cargo_platform_profile nuttx)/talker" \
+        "examples/threadx-linux/rust/talker/target-zenoh/$(nros_cargo_platform_profile threadx-linux)/talker"
+    do
+        if [ ! -f "$elf" ]; then
+            # Not a skip to paper over: the link check reports its own SKIP when
+            # a cross toolchain is absent, and this loop must not turn that into
+            # a silent pass. Say which artifact is missing and why that is fine.
+            echo "  [absent] $elf — its toolchain was skipped upstream"
+            continue
+        fi
+        echo "  mem-report --check: $elf"
+        python3 scripts/nros-mem-report.py "$elf" --check
+        checked=$((checked + 1))
+    done
+    if [ "$checked" -eq 0 ]; then
+        echo "L3: no cross ELF was available to check — install a cross toolchain" >&2
+        echo "    (`just setup freertos` / `just setup nuttx`) or this lane proves nothing." >&2
+        exit 1
+    fi
+    echo "L3 passed — $checked cross ELF(s) checked without booting anything."
+
 # L1 — compile, lint and unit tests. No fixtures, no platforms, no QEMU.
 [group("main")]
 ci-l1:
