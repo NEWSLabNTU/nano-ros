@@ -95,7 +95,7 @@ fn parse_gated_modules(lib_rs: &str) -> std::collections::BTreeMap<String, Vec<S
 /// which links only `libnros_cpp.a`). rustc's staticlib emission dead-code-eliminates
 /// no_mangle symbols from a dependency rlib that the root crate does not reference, so
 /// a C++ binary calling a C-API function the C++ FFI itself never touches (e.g.
-/// `nros_param_server_fini`) fails at link with `undefined reference`. The anchor —
+/// `nros_parameter_server_fini`) fails at link with `undefined reference`. The anchor —
 /// `#[used]`, so it survives DCE in every consumer — takes the address of each entry
 /// point, keeping the whole C surface in the archive. (We never call through it; the
 /// extern declarations only name the symbols, so their argument types are irrelevant.)
@@ -134,7 +134,7 @@ fn generate_c_surface_anchor() {
             // Anchor it only if that block has `#[unsafe(no_mangle)]` AND no
             // `#[cfg(...)]` — a feature-gated fn may not be compiled in the umbrella's
             // feature set, so referencing it would create an undefined symbol. Ungated
-            // entry points (the always-present C surface, e.g. nros_param_server_fini)
+            // entry points (the always-present C surface, e.g. nros_parameter_server_fini)
             // are exactly what a C++ binary may call but the C++ FFI never references.
             let mut has_no_mangle = false;
             let mut has_cfg = false;

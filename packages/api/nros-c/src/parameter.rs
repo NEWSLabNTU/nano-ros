@@ -55,7 +55,7 @@ pub enum nros_parameter_type_t {
 /// For string arrays, `data` points to an array of `*const c_char` pointers.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct nros_param_array_t {
+pub struct nros_parameter_array_t {
     /// Pointer to caller-owned array data
     pub data: *const c_void,
     /// Number of elements
@@ -75,7 +75,7 @@ pub union nros_parameter_value_t {
     /// String value (fixed-size buffer)
     pub string_value: [u8; NROS_MAX_PARAM_STRING_LEN],
     /// Array value (pointer + length)
-    pub array_value: nros_param_array_t,
+    pub array_value: nros_parameter_array_t,
 }
 
 impl Default for nros_parameter_value_t {
@@ -113,7 +113,7 @@ impl Default for nros_parameter_t {
 /// Parameter server state.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_param_server_state_t {
+pub enum nros_parameter_server_state_t {
     /// Not initialized
     NROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -123,7 +123,7 @@ pub enum nros_param_server_state_t {
 }
 
 /// Parameter change callback type.
-pub type nros_param_callback_t = Option<
+pub type nros_parameter_callback_t = Option<
     unsafe extern "C" fn(
         name: *const c_char,
         param: *const nros_parameter_t,
@@ -133,9 +133,9 @@ pub type nros_param_callback_t = Option<
 
 /// Parameter server structure.
 #[repr(C)]
-pub struct nros_param_server_t {
+pub struct nros_parameter_server_t {
     /// Current state
-    pub state: nros_param_server_state_t,
+    pub state: nros_parameter_server_state_t,
     /// Maximum number of parameters
     pub capacity: usize,
     /// Current number of parameters
@@ -143,15 +143,15 @@ pub struct nros_param_server_t {
     /// Parameter storage (pointer to user-provided array)
     parameters: *mut nros_parameter_t,
     /// Parameter change callback
-    callback: nros_param_callback_t,
+    callback: nros_parameter_callback_t,
     /// Callback context
     callback_context: *mut c_void,
 }
 
-impl Default for nros_param_server_t {
+impl Default for nros_parameter_server_t {
     fn default() -> Self {
         Self {
-            state: nros_param_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED,
+            state: nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED,
             capacity: 0,
             count: 0,
             parameters: ptr::null_mut(),
@@ -218,14 +218,14 @@ unsafe fn cstr_eq_buffer(cstr: *const c_char, buffer: &[u8]) -> bool {
 
 /// Get a zero-initialized parameter server.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_param_server_get_zero_initialized() -> nros_param_server_t {
-    nros_param_server_t::default()
+pub extern "C" fn nros_parameter_server_get_zero_initialized() -> nros_parameter_server_t {
+    nros_parameter_server_t::default()
 }
 
 /// Initialize a parameter server with user-provided storage.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_server_init(
-    server: *mut nros_param_server_t,
+pub unsafe extern "C" fn nros_parameter_server_init(
+    server: *mut nros_parameter_server_t,
     storage: *mut nros_parameter_t,
     capacity: usize,
 ) -> nros_ret_t {
@@ -235,7 +235,7 @@ pub unsafe extern "C" fn nros_param_server_init(
 
     let server = &mut *server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
         return NROS_RET_ALREADY_EXISTS;
     }
 
@@ -249,16 +249,16 @@ pub unsafe extern "C" fn nros_param_server_init(
     server.count = 0;
     server.callback = None;
     server.callback_context = ptr::null_mut();
-    server.state = nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY;
+    server.state = nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY;
 
     NROS_RET_OK
 }
 
 /// Set a parameter change callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_server_set_callback(
-    server: *mut nros_param_server_t,
-    callback: nros_param_callback_t,
+pub unsafe extern "C" fn nros_parameter_server_set_callback(
+    server: *mut nros_parameter_server_t,
+    callback: nros_parameter_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
     if server.is_null() {
@@ -267,7 +267,7 @@ pub unsafe extern "C" fn nros_param_server_set_callback(
 
     let server = &mut *server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return NROS_RET_NOT_INIT;
     }
 
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn nros_param_server_set_callback(
 }
 
 /// Find a parameter by name. Returns the index or None if not found.
-unsafe fn find_parameter(server: &nros_param_server_t, name: *const c_char) -> Option<usize> {
+unsafe fn find_parameter(server: &nros_parameter_server_t, name: *const c_char) -> Option<usize> {
     if name.is_null() || server.parameters.is_null() {
         return None;
     }
@@ -295,7 +295,7 @@ unsafe fn find_parameter(server: &nros_param_server_t, name: *const c_char) -> O
 
 /// Internal function to declare a parameter.
 unsafe fn declare_parameter_internal(
-    server: *mut nros_param_server_t,
+    server: *mut nros_parameter_server_t,
     name: *const c_char,
     param_type: nros_parameter_type_t,
     value: nros_parameter_value_t,
@@ -306,7 +306,7 @@ unsafe fn declare_parameter_internal(
 
     let server = &mut *server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return NROS_RET_NOT_INIT;
     }
 
@@ -342,8 +342,8 @@ macro_rules! impl_param_scalar {
         paste::paste! {
             #[doc = "Declare " $doc " parameter."]
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_param_declare_ $name>](
-                server: *mut nros_param_server_t,
+            pub unsafe extern "C" fn [<nros_parameter_declare_ $name>](
+                server: *mut nros_parameter_server_t,
                 name: *const c_char,
                 default_value: $T,
             ) -> nros_ret_t {
@@ -358,8 +358,8 @@ macro_rules! impl_param_scalar {
 
             #[doc = "Get " $doc " parameter value."]
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_param_get_ $name>](
-                server: *const nros_param_server_t,
+            pub unsafe extern "C" fn [<nros_parameter_get_ $name>](
+                server: *const nros_parameter_server_t,
                 name: *const c_char,
                 value: *mut $T,
             ) -> nros_ret_t {
@@ -367,7 +367,7 @@ macro_rules! impl_param_scalar {
                     return NROS_RET_INVALID_ARGUMENT;
                 }
                 let server = &*server;
-                if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+                if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
                     return NROS_RET_NOT_INIT;
                 }
                 match find_parameter(server, name) {
@@ -385,8 +385,8 @@ macro_rules! impl_param_scalar {
 
             #[doc = "Set " $doc " parameter value."]
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_param_set_ $name>](
-                server: *mut nros_param_server_t,
+            pub unsafe extern "C" fn [<nros_parameter_set_ $name>](
+                server: *mut nros_parameter_server_t,
                 name: *const c_char,
                 value: $T,
             ) -> nros_ret_t {
@@ -408,8 +408,8 @@ impl_param_scalar!(name: double, ty: f64, variant: DOUBLE, union_field: double_v
 
 /// Declare a string parameter.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_declare_string(
-    server: *mut nros_param_server_t,
+pub unsafe extern "C" fn nros_parameter_declare_string(
+    server: *mut nros_parameter_server_t,
     name: *const c_char,
     default_value: *const c_char,
 ) -> nros_ret_t {
@@ -432,8 +432,8 @@ pub unsafe extern "C" fn nros_param_declare_string(
 
 /// Get a string parameter value.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_get_string(
-    server: *const nros_param_server_t,
+pub unsafe extern "C" fn nros_parameter_get_string(
+    server: *const nros_parameter_server_t,
     name: *const c_char,
     value: *mut c_char,
     max_len: usize,
@@ -444,7 +444,7 @@ pub unsafe extern "C" fn nros_param_get_string(
 
     let server = &*server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return NROS_RET_NOT_INIT;
     }
 
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn nros_param_get_string(
 
 /// Internal function to set a parameter value.
 unsafe fn set_parameter_internal(
-    server: *mut nros_param_server_t,
+    server: *mut nros_parameter_server_t,
     name: *const c_char,
     param_type: nros_parameter_type_t,
     new_value: nros_parameter_value_t,
@@ -488,7 +488,7 @@ unsafe fn set_parameter_internal(
 
     let server = &mut *server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return NROS_RET_NOT_INIT;
     }
 
@@ -528,8 +528,8 @@ unsafe fn set_parameter_internal(
 
 /// Set a string parameter value.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_set_string(
-    server: *mut nros_param_server_t,
+pub unsafe extern "C" fn nros_parameter_set_string(
+    server: *mut nros_parameter_server_t,
     name: *const c_char,
     value: *const c_char,
 ) -> nros_ret_t {
@@ -557,9 +557,9 @@ pub unsafe extern "C" fn nros_param_set_string(
 /// Macro to generate declare/get/set functions for array parameter types.
 ///
 /// For each array type, generates three `#[unsafe(no_mangle)]` extern "C" functions:
-/// - `nros_param_declare_{name}_array`: Declare with initial data
-/// - `nros_param_get_{name}_array`: Get stored pointer + length
-/// - `nros_param_set_{name}_array`: Update stored pointer + length
+/// - `nros_parameter_declare_{name}_array`: Declare with initial data
+/// - `nros_parameter_get_{name}_array`: Get stored pointer + length
+/// - `nros_parameter_set_{name}_array`: Update stored pointer + length
 macro_rules! impl_param_array {
     (
         name: $name:ident,
@@ -572,8 +572,8 @@ macro_rules! impl_param_array {
             #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
             #[doc = "`data` may be NULL only if `len` is 0."]
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_param_declare_ $name _array>](
-                server: *mut nros_param_server_t,
+            pub unsafe extern "C" fn [<nros_parameter_declare_ $name _array>](
+                server: *mut nros_parameter_server_t,
                 name: *const c_char,
                 data: *const $T,
                 len: usize,
@@ -582,7 +582,7 @@ macro_rules! impl_param_array {
                     return NROS_RET_INVALID_ARGUMENT;
                 }
                 let value = nros_parameter_value_t {
-                    array_value: nros_param_array_t {
+                    array_value: nros_parameter_array_t {
                         data: data as *const c_void,
                         len,
                     },
@@ -598,8 +598,8 @@ macro_rules! impl_param_array {
             #[doc = "Get " $doc " parameter value.\n\n"]
             #[doc = "Returns the stored pointer and element count via out-parameters."]
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_param_get_ $name _array>](
-                server: *const nros_param_server_t,
+            pub unsafe extern "C" fn [<nros_parameter_get_ $name _array>](
+                server: *const nros_parameter_server_t,
                 name: *const c_char,
                 data: *mut *const $T,
                 len: *mut usize,
@@ -610,7 +610,7 @@ macro_rules! impl_param_array {
 
                 let server = &*server;
 
-                if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+                if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
                     return NROS_RET_NOT_INIT;
                 }
 
@@ -634,8 +634,8 @@ macro_rules! impl_param_array {
             #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
             #[doc = "`data` may be NULL only if `len` is 0."]
             #[unsafe(no_mangle)]
-            pub unsafe extern "C" fn [<nros_param_set_ $name _array>](
-                server: *mut nros_param_server_t,
+            pub unsafe extern "C" fn [<nros_parameter_set_ $name _array>](
+                server: *mut nros_parameter_server_t,
                 name: *const c_char,
                 data: *const $T,
                 len: usize,
@@ -644,7 +644,7 @@ macro_rules! impl_param_array {
                     return NROS_RET_INVALID_ARGUMENT;
                 }
                 let new_value = nros_parameter_value_t {
-                    array_value: nros_param_array_t {
+                    array_value: nros_parameter_array_t {
                         data: data as *const c_void,
                         len,
                     },
@@ -672,8 +672,8 @@ impl_param_array!(name: string, elem: *const c_char, variant: STRING_ARRAY, doc:
 
 /// Check if a parameter exists.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_has(
-    server: *const nros_param_server_t,
+pub unsafe extern "C" fn nros_parameter_has(
+    server: *const nros_parameter_server_t,
     name: *const c_char,
 ) -> bool {
     if server.is_null() || name.is_null() {
@@ -682,7 +682,7 @@ pub unsafe extern "C" fn nros_param_has(
 
     let server = &*server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return false;
     }
 
@@ -691,8 +691,8 @@ pub unsafe extern "C" fn nros_param_has(
 
 /// Get the type of a parameter.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_get_type(
-    server: *const nros_param_server_t,
+pub unsafe extern "C" fn nros_parameter_get_type(
+    server: *const nros_parameter_server_t,
     name: *const c_char,
 ) -> nros_parameter_type_t {
     if server.is_null() || name.is_null() {
@@ -701,7 +701,7 @@ pub unsafe extern "C" fn nros_param_get_type(
 
     let server = &*server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return nros_parameter_type_t::NROS_PARAMETER_NOT_SET;
     }
 
@@ -713,14 +713,16 @@ pub unsafe extern "C" fn nros_param_get_type(
 
 /// Get the number of declared parameters.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_server_get_count(server: *const nros_param_server_t) -> usize {
+pub unsafe extern "C" fn nros_parameter_server_get_count(
+    server: *const nros_parameter_server_t,
+) -> usize {
     if server.is_null() {
         return 0;
     }
 
     let server = &*server;
 
-    if server.state != nros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+    if server.state != nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return 0;
     }
 
@@ -729,18 +731,20 @@ pub unsafe extern "C" fn nros_param_server_get_count(server: *const nros_param_s
 
 /// Finalize a parameter server.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_param_server_fini(server: *mut nros_param_server_t) -> nros_ret_t {
+pub unsafe extern "C" fn nros_parameter_server_fini(
+    server: *mut nros_parameter_server_t,
+) -> nros_ret_t {
     if server.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state == nros_param_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
+    if server.state == nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
-    server.state = nros_param_server_state_t::NROS_PARAM_SERVER_STATE_SHUTDOWN;
+    server.state = nros_parameter_server_state_t::NROS_PARAM_SERVER_STATE_SHUTDOWN;
     server.parameters = ptr::null_mut();
     server.capacity = 0;
     server.count = 0;
@@ -755,7 +759,7 @@ pub unsafe extern "C" fn nros_param_server_fini(server: *mut nros_param_server_t
 // ============================================================================
 //
 // These functions operate on the `nros-params::ParameterServer` owned by
-// the Executor. Unlike the legacy `nros_param_server_t` API above, a
+// the Executor. Unlike the legacy `nros_parameter_server_t` API above, a
 // parameter declared here is visible to `ros2 param list /<node>` once
 // `nros_executor_register_parameter_services` is called.
 //
@@ -1017,28 +1021,32 @@ mod tests {
     use core::ffi::c_char;
 
     /// Helper to create an initialized parameter server with storage.
-    unsafe fn setup_server(server: &mut nros_param_server_t, storage: &mut [nros_parameter_t]) {
-        *server = nros_param_server_get_zero_initialized();
-        let ret = nros_param_server_init(server, storage.as_mut_ptr(), storage.len());
+    unsafe fn setup_server(server: &mut nros_parameter_server_t, storage: &mut [nros_parameter_t]) {
+        *server = nros_parameter_server_get_zero_initialized();
+        let ret = nros_parameter_server_init(server, storage.as_mut_ptr(), storage.len());
         assert_eq!(ret, NROS_RET_OK);
     }
 
     #[test]
     fn test_declare_and_get_integer_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let values: [i64; 3] = [10, 20, 30];
             let name = c"int_arr".as_ptr();
-            let ret =
-                nros_param_declare_integer_array(&mut server, name, values.as_ptr(), values.len());
+            let ret = nros_parameter_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const i64 = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_integer_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_integer_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 3);
             assert_eq!(*data, 10);
@@ -1049,20 +1057,24 @@ mod tests {
 
     #[test]
     fn test_declare_and_get_double_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let values: [f64; 2] = [1.5, 2.5];
             let name = c"dbl_arr".as_ptr();
-            let ret =
-                nros_param_declare_double_array(&mut server, name, values.as_ptr(), values.len());
+            let ret = nros_parameter_declare_double_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const f64 = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_double_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_double_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 2);
             assert_eq!(*data, 1.5);
@@ -1072,7 +1084,7 @@ mod tests {
 
     #[test]
     fn test_declare_and_get_bool_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
@@ -1080,12 +1092,12 @@ mod tests {
             let values: [bool; 3] = [true, false, true];
             let name = c"bool_arr".as_ptr();
             let ret =
-                nros_param_declare_bool_array(&mut server, name, values.as_ptr(), values.len());
+                nros_parameter_declare_bool_array(&mut server, name, values.as_ptr(), values.len());
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const bool = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_bool_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_bool_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 3);
             assert!(*data);
@@ -1096,7 +1108,7 @@ mod tests {
 
     #[test]
     fn test_declare_and_get_byte_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
@@ -1104,12 +1116,12 @@ mod tests {
             let values: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
             let name = c"byte_arr".as_ptr();
             let ret =
-                nros_param_declare_byte_array(&mut server, name, values.as_ptr(), values.len());
+                nros_parameter_declare_byte_array(&mut server, name, values.as_ptr(), values.len());
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const u8 = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_byte_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_byte_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 4);
             assert_eq!(
@@ -1121,7 +1133,7 @@ mod tests {
 
     #[test]
     fn test_declare_and_get_string_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
@@ -1130,13 +1142,17 @@ mod tests {
             let s2 = c"world".as_ptr();
             let strings: [*const c_char; 2] = [s1, s2];
             let name = c"str_arr".as_ptr();
-            let ret =
-                nros_param_declare_string_array(&mut server, name, strings.as_ptr(), strings.len());
+            let ret = nros_parameter_declare_string_array(
+                &mut server,
+                name,
+                strings.as_ptr(),
+                strings.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const *const c_char = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_string_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_string_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 2);
             assert_eq!(*data, s1);
@@ -1146,14 +1162,14 @@ mod tests {
 
     #[test]
     fn test_set_integer_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let initial: [i64; 2] = [1, 2];
             let name = c"int_arr".as_ptr();
-            let ret = nros_param_declare_integer_array(
+            let ret = nros_parameter_declare_integer_array(
                 &mut server,
                 name,
                 initial.as_ptr(),
@@ -1162,13 +1178,17 @@ mod tests {
             assert_eq!(ret, NROS_RET_OK);
 
             let updated: [i64; 3] = [10, 20, 30];
-            let ret =
-                nros_param_set_integer_array(&mut server, name, updated.as_ptr(), updated.len());
+            let ret = nros_parameter_set_integer_array(
+                &mut server,
+                name,
+                updated.as_ptr(),
+                updated.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const i64 = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_integer_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_integer_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 3);
             assert_eq!(*data, 10);
@@ -1177,18 +1197,18 @@ mod tests {
 
     #[test]
     fn test_empty_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let name = c"empty".as_ptr();
-            let ret = nros_param_declare_integer_array(&mut server, name, ptr::null(), 0);
+            let ret = nros_parameter_declare_integer_array(&mut server, name, ptr::null(), 0);
             assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const i64 = ptr::null();
             let mut len: usize = 99;
-            let ret = nros_param_get_integer_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_integer_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 0);
         }
@@ -1196,18 +1216,18 @@ mod tests {
 
     #[test]
     fn test_null_data_nonzero_len_rejected() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let name = c"bad".as_ptr();
-            let ret = nros_param_declare_integer_array(&mut server, name, ptr::null(), 5);
+            let ret = nros_parameter_declare_integer_array(&mut server, name, ptr::null(), 5);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
 
             // Also test set path
             let initial: [i64; 1] = [1];
-            let ret = nros_param_declare_integer_array(
+            let ret = nros_parameter_declare_integer_array(
                 &mut server,
                 name,
                 initial.as_ptr(),
@@ -1215,47 +1235,55 @@ mod tests {
             );
             assert_eq!(ret, NROS_RET_OK);
 
-            let ret = nros_param_set_integer_array(&mut server, name, ptr::null(), 3);
+            let ret = nros_parameter_set_integer_array(&mut server, name, ptr::null(), 3);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
 
     #[test]
     fn test_type_mismatch_array_get() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let values: [i64; 2] = [1, 2];
             let name = c"int_arr".as_ptr();
-            let ret =
-                nros_param_declare_integer_array(&mut server, name, values.as_ptr(), values.len());
+            let ret = nros_parameter_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             // Try to get as double array
             let mut data: *const f64 = ptr::null();
             let mut len: usize = 0;
-            let ret = nros_param_get_double_array(&server, name, &mut data, &mut len);
+            let ret = nros_parameter_get_double_array(&server, name, &mut data, &mut len);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
 
     #[test]
     fn test_type_mismatch_set_scalar_on_array() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let values: [i64; 2] = [1, 2];
             let name = c"int_arr".as_ptr();
-            let ret =
-                nros_param_declare_integer_array(&mut server, name, values.as_ptr(), values.len());
+            let ret = nros_parameter_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             // Try to set as scalar integer
-            let ret = nros_param_set_integer(&mut server, name, 42);
+            let ret = nros_parameter_set_integer(&mut server, name, 42);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -1263,18 +1291,22 @@ mod tests {
     #[test]
     #[allow(clippy::approx_constant)]
     fn test_get_type_returns_array_type() {
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
             let values: [f64; 1] = [3.14];
             let name = c"dbl_arr".as_ptr();
-            let ret =
-                nros_param_declare_double_array(&mut server, name, values.as_ptr(), values.len());
+            let ret = nros_parameter_declare_double_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
-            let ptype = nros_param_get_type(&server, name);
+            let ptype = nros_parameter_get_type(&server, name);
             assert_eq!(ptype, nros_parameter_type_t::NROS_PARAMETER_DOUBLE_ARRAY);
         }
     }
@@ -1294,24 +1326,33 @@ mod tests {
             true
         }
 
-        let mut server = nros_param_server_t::default();
+        let mut server = nros_parameter_server_t::default();
         let mut storage = [nros_parameter_t::default(); 4];
         unsafe {
             setup_server(&mut server, &mut storage);
 
-            let ret = nros_param_server_set_callback(&mut server, Some(on_change), ptr::null_mut());
+            let ret =
+                nros_parameter_server_set_callback(&mut server, Some(on_change), ptr::null_mut());
             assert_eq!(ret, NROS_RET_OK);
 
             let values: [i64; 2] = [1, 2];
             let name = c"int_arr".as_ptr();
-            let ret =
-                nros_param_declare_integer_array(&mut server, name, values.as_ptr(), values.len());
+            let ret = nros_parameter_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
 
             CALLBACK_CALLED = false;
             let updated: [i64; 1] = [99];
-            let ret =
-                nros_param_set_integer_array(&mut server, name, updated.as_ptr(), updated.len());
+            let ret = nros_parameter_set_integer_array(
+                &mut server,
+                name,
+                updated.as_ptr(),
+                updated.len(),
+            );
             assert_eq!(ret, NROS_RET_OK);
             assert!(CALLBACK_CALLED);
         }

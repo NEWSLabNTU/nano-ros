@@ -43,7 +43,7 @@ struct nros_lifecycle_state_machine_t;
 struct nros_support_t;
 struct nros_clock_t;
 struct nros_parameter_t;
-struct nros_param_server_t;
+struct nros_parameter_server_t;
 struct nros_goal_handle_t;
 struct nros_goal_uuid_t;
 #ifdef __cplusplus
@@ -135,7 +135,7 @@ clean = true
 
 # NOTE: `[parse.expand]` would let cbindgen expand `paste!` macros so the
 # `unsafe extern "C" fn` declarations they generate (e.g.
-# nros_param_set_{bool,integer,double}) appear in the C header. It
+# nros_parameter_set_{bool,integer,double}) appear in the C header. It
 # requires nightly Rust (`-Zunpretty=expanded`), so we leave it disabled
 # and keep those specific function declarations hand-written in
 # parameter.h. Re-enable here if the project ever moves to nightly.

@@ -6,7 +6,7 @@
  * @ingroup grp_parameter
  * @brief `nros::ParameterServer<Cap>` — node-local typed parameter store.
  *
- * Wraps the C `nros_param_server_t` (see `nros/parameter.h`) with a
+ * Wraps the C `nros_parameter_server_t` (see `nros/parameter.h`) with a
  * fixed-capacity storage array and rclcpp-shape `declare_parameter<T>` /
  * `get_parameter<T>` / `set_parameter<T>` template methods.
  *
@@ -32,7 +32,7 @@
  * error code, never UB.
  *
  * **Storage split (issue #226).** The C array-parameter FFI
- * (`nros_param_*_array`) stores a *borrowed* pointer + length — the
+ * (`nros_parameter_*_array`) stores a *borrowed* pointer + length — the
  * caller must own stable bytes. This wrapper's inline pool IS that stable
  * owner: element bytes live in the pool (each allocation prefixed by its
  * element capacity), while the RECORDS (name → type → pointer/len) live
@@ -68,24 +68,24 @@ extern "C" {
 // (paste! expansion), which cbindgen cannot expand into nros_generated.h.
 // Declare the six entry points used below locally (client.hpp precedent).
 extern "C" {
-nros_ret_t nros_param_declare_double_array(nros_param_server_t* server, const char* name,
+nros_ret_t nros_parameter_declare_double_array(nros_parameter_server_t* server, const char* name,
+                                               const double* data, size_t len);
+nros_ret_t nros_parameter_declare_integer_array(nros_parameter_server_t* server, const char* name,
+                                                const int64_t* data, size_t len);
+nros_ret_t nros_parameter_declare_bool_array(nros_parameter_server_t* server, const char* name,
+                                             const bool* data, size_t len);
+nros_ret_t nros_parameter_get_double_array(const nros_parameter_server_t* server, const char* name,
+                                           const double** data, size_t* len);
+nros_ret_t nros_parameter_get_integer_array(const nros_parameter_server_t* server, const char* name,
+                                            const int64_t** data, size_t* len);
+nros_ret_t nros_parameter_get_bool_array(const nros_parameter_server_t* server, const char* name,
+                                         const bool** data, size_t* len);
+nros_ret_t nros_parameter_set_double_array(nros_parameter_server_t* server, const char* name,
                                            const double* data, size_t len);
-nros_ret_t nros_param_declare_integer_array(nros_param_server_t* server, const char* name,
+nros_ret_t nros_parameter_set_integer_array(nros_parameter_server_t* server, const char* name,
                                             const int64_t* data, size_t len);
-nros_ret_t nros_param_declare_bool_array(nros_param_server_t* server, const char* name,
+nros_ret_t nros_parameter_set_bool_array(nros_parameter_server_t* server, const char* name,
                                          const bool* data, size_t len);
-nros_ret_t nros_param_get_double_array(const nros_param_server_t* server, const char* name,
-                                       const double** data, size_t* len);
-nros_ret_t nros_param_get_integer_array(const nros_param_server_t* server, const char* name,
-                                        const int64_t** data, size_t* len);
-nros_ret_t nros_param_get_bool_array(const nros_param_server_t* server, const char* name,
-                                     const bool** data, size_t* len);
-nros_ret_t nros_param_set_double_array(nros_param_server_t* server, const char* name,
-                                       const double* data, size_t len);
-nros_ret_t nros_param_set_integer_array(nros_param_server_t* server, const char* name,
-                                        const int64_t* data, size_t len);
-nros_ret_t nros_param_set_bool_array(nros_param_server_t* server, const char* name,
-                                     const bool* data, size_t len);
 } // extern "C"
 
 // Issue #229 pin (cross-space, C half): ErrorCode must stay value-identical
@@ -239,11 +239,11 @@ template <::size_t Capacity, ::size_t SeqSlots /* unused, see above */ = 4,
           ::size_t SeqPoolBytes = 256>
 class ParameterServer {
   public:
-    ParameterServer() : server_(nros_param_server_get_zero_initialized()) {
-        nros_param_server_init(&server_, storage_, Capacity);
+    ParameterServer() : server_(nros_parameter_server_get_zero_initialized()) {
+        nros_parameter_server_init(&server_, storage_, Capacity);
     }
 
-    ~ParameterServer() { nros_param_server_fini(&server_); }
+    ~ParameterServer() { nros_parameter_server_fini(&server_); }
 
     ParameterServer(const ParameterServer&) = delete;
     ParameterServer& operator=(const ParameterServer&) = delete;
@@ -306,7 +306,7 @@ class ParameterServer {
     /// @param out       Output buffer (null-terminated on success).
     /// @param max_len   Buffer capacity in bytes.
     Result get_parameter(const char* name, char* out, ::size_t max_len) const {
-        return Result(nros_param_get_string(&server_, name, out, max_len));
+        return Result(nros_parameter_get_string(&server_, name, out, max_len));
     }
 
     /// Get a sequence parameter into a caller `Seq<T, N>` (Phase 242.3).
@@ -382,52 +382,52 @@ class ParameterServer {
 
     /// Check whether a parameter has been declared (scalar or sequence —
     /// both live in the C server since issue #226).
-    bool has_parameter(const char* name) const { return nros_param_has(&server_, name); }
+    bool has_parameter(const char* name) const { return nros_parameter_has(&server_, name); }
 
     /// Number of declared parameters (scalars + sequences).
-    ::size_t parameter_count() const { return nros_param_server_get_count(&server_); }
+    ::size_t parameter_count() const { return nros_parameter_server_get_count(&server_); }
 
     /// Get the underlying C server pointer.
     ///
     /// Useful for handing the server to C-API helpers (e.g. ROS 2
     /// service registration when the `param-services` feature is on).
     /// Since issue #226 sequence parameters are recorded here too.
-    nros_param_server_t* raw() { return &server_; }
-    const nros_param_server_t* raw() const { return &server_; }
+    nros_parameter_server_t* raw() { return &server_; }
+    const nros_parameter_server_t* raw() const { return &server_; }
 
   private:
     /* declare overloads dispatch by argument type */
     Result declare_impl(const char* name, bool v) {
-        return Result(nros_param_declare_bool(&server_, name, v));
+        return Result(nros_parameter_declare_bool(&server_, name, v));
     }
     Result declare_impl(const char* name, int64_t v) {
-        return Result(nros_param_declare_integer(&server_, name, v));
+        return Result(nros_parameter_declare_integer(&server_, name, v));
     }
     Result declare_impl(const char* name, double v) {
-        return Result(nros_param_declare_double(&server_, name, v));
+        return Result(nros_parameter_declare_double(&server_, name, v));
     }
     Result declare_impl(const char* name, const char* v) {
-        return Result(nros_param_declare_string(&server_, name, v));
+        return Result(nros_parameter_declare_string(&server_, name, v));
     }
     /* int / uint literals collapse to int64_t */
     Result declare_impl(const char* name, int v) {
-        return Result(nros_param_declare_integer(&server_, name, static_cast<int64_t>(v)));
+        return Result(nros_parameter_declare_integer(&server_, name, static_cast<int64_t>(v)));
     }
 
     Result get_impl(const char* name, bool& out) const {
-        return Result(nros_param_get_bool(&server_, name, &out));
+        return Result(nros_parameter_get_bool(&server_, name, &out));
     }
     Result get_impl(const char* name, int64_t& out) const {
-        return Result(nros_param_get_integer(&server_, name, &out));
+        return Result(nros_parameter_get_integer(&server_, name, &out));
     }
     Result get_impl(const char* name, double& out) const {
-        return Result(nros_param_get_double(&server_, name, &out));
+        return Result(nros_parameter_get_double(&server_, name, &out));
     }
     /* int reads go through the int64_t slot, then narrow — symmetric with the
        int declare_impl/set_impl above (rclcpp nodes declare_parameter<int>). */
     Result get_impl(const char* name, int& out) const {
         int64_t v = 0;
-        Result r(nros_param_get_integer(&server_, name, &v));
+        Result r(nros_parameter_get_integer(&server_, name, &v));
         if (r.ok()) {
             out = static_cast<int>(v);
         }
@@ -435,19 +435,19 @@ class ParameterServer {
     }
 
     Result set_impl(const char* name, bool v) {
-        return Result(nros_param_set_bool(&server_, name, v));
+        return Result(nros_parameter_set_bool(&server_, name, v));
     }
     Result set_impl(const char* name, int64_t v) {
-        return Result(nros_param_set_integer(&server_, name, v));
+        return Result(nros_parameter_set_integer(&server_, name, v));
     }
     Result set_impl(const char* name, double v) {
-        return Result(nros_param_set_double(&server_, name, v));
+        return Result(nros_parameter_set_double(&server_, name, v));
     }
     Result set_impl(const char* name, const char* v) {
-        return Result(nros_param_set_string(&server_, name, v));
+        return Result(nros_parameter_set_string(&server_, name, v));
     }
     Result set_impl(const char* name, int v) {
-        return Result(nros_param_set_integer(&server_, name, static_cast<int64_t>(v)));
+        return Result(nros_parameter_set_integer(&server_, name, static_cast<int64_t>(v)));
     }
 
 #ifdef NROS_CPP_STD
@@ -462,7 +462,7 @@ class ParameterServer {
     Result set_impl(const char* name, const ::std::string& v) { return set_impl(name, v.c_str()); }
     Result get_impl(const char* name, ::std::string& out) const {
         char buf[128];
-        Result r(nros_param_get_string(&server_, name, buf, sizeof(buf)));
+        Result r(nros_parameter_get_string(&server_, name, buf, sizeof(buf)));
         if (r.ok()) {
             out.assign(buf);
         }
@@ -483,41 +483,41 @@ class ParameterServer {
     static ::size_t align_up(::size_t off, ::size_t a) { return (off + (a - 1)) & ~(a - 1); }
 
     /* C-FFI dispatch by element type (double / int64 / bool). */
-    static nros_ret_t seq_declare_ffi(nros_param_server_t* s, const char* n, const double* d,
+    static nros_ret_t seq_declare_ffi(nros_parameter_server_t* s, const char* n, const double* d,
                                       ::size_t l) {
-        return nros_param_declare_double_array(s, n, d, l);
+        return nros_parameter_declare_double_array(s, n, d, l);
     }
-    static nros_ret_t seq_declare_ffi(nros_param_server_t* s, const char* n, const int64_t* d,
+    static nros_ret_t seq_declare_ffi(nros_parameter_server_t* s, const char* n, const int64_t* d,
                                       ::size_t l) {
-        return nros_param_declare_integer_array(s, n, d, l);
+        return nros_parameter_declare_integer_array(s, n, d, l);
     }
-    static nros_ret_t seq_declare_ffi(nros_param_server_t* s, const char* n, const bool* d,
+    static nros_ret_t seq_declare_ffi(nros_parameter_server_t* s, const char* n, const bool* d,
                                       ::size_t l) {
-        return nros_param_declare_bool_array(s, n, d, l);
+        return nros_parameter_declare_bool_array(s, n, d, l);
     }
-    static nros_ret_t seq_get_ffi(const nros_param_server_t* s, const char* n, const double** d,
+    static nros_ret_t seq_get_ffi(const nros_parameter_server_t* s, const char* n, const double** d,
                                   ::size_t* l) {
-        return nros_param_get_double_array(s, n, d, l);
+        return nros_parameter_get_double_array(s, n, d, l);
     }
-    static nros_ret_t seq_get_ffi(const nros_param_server_t* s, const char* n, const int64_t** d,
+    static nros_ret_t seq_get_ffi(const nros_parameter_server_t* s, const char* n,
+                                  const int64_t** d, ::size_t* l) {
+        return nros_parameter_get_integer_array(s, n, d, l);
+    }
+    static nros_ret_t seq_get_ffi(const nros_parameter_server_t* s, const char* n, const bool** d,
                                   ::size_t* l) {
-        return nros_param_get_integer_array(s, n, d, l);
+        return nros_parameter_get_bool_array(s, n, d, l);
     }
-    static nros_ret_t seq_get_ffi(const nros_param_server_t* s, const char* n, const bool** d,
-                                  ::size_t* l) {
-        return nros_param_get_bool_array(s, n, d, l);
-    }
-    static nros_ret_t seq_set_ffi(nros_param_server_t* s, const char* n, const double* d,
+    static nros_ret_t seq_set_ffi(nros_parameter_server_t* s, const char* n, const double* d,
                                   ::size_t l) {
-        return nros_param_set_double_array(s, n, d, l);
+        return nros_parameter_set_double_array(s, n, d, l);
     }
-    static nros_ret_t seq_set_ffi(nros_param_server_t* s, const char* n, const int64_t* d,
+    static nros_ret_t seq_set_ffi(nros_parameter_server_t* s, const char* n, const int64_t* d,
                                   ::size_t l) {
-        return nros_param_set_integer_array(s, n, d, l);
+        return nros_parameter_set_integer_array(s, n, d, l);
     }
-    static nros_ret_t seq_set_ffi(nros_param_server_t* s, const char* n, const bool* d,
+    static nros_ret_t seq_set_ffi(nros_parameter_server_t* s, const char* n, const bool* d,
                                   ::size_t l) {
-        return nros_param_set_bool_array(s, n, d, l);
+        return nros_parameter_set_bool_array(s, n, d, l);
     }
 
     template <typename T>
@@ -559,9 +559,9 @@ class ParameterServer {
         /* issue 0340 — the capacity word sits immediately BEFORE the block
            (see `declare_seq_impl`'s layout comment), and reading it via
            `cur[-1]` is only valid because `cur` is the very pointer this
-           header handed the C server: `nros_param_declare_*_array` stores the
+           header handed the C server: `nros_parameter_declare_*_array` stores the
            caller's pointer verbatim (borrow semantics, stated in
-           `nros/parameter.h`) and `nros_param_get_*_array` returns it
+           `nros/parameter.h`) and `nros_parameter_get_*_array` returns it
            unchanged.
            That contract is now documented on the C side, but documentation
            does not stop a future change from copying arrays or returning
@@ -587,7 +587,7 @@ class ParameterServer {
         return Result(seq_set_ffi(&server_, name, dst, len));
     }
 
-    nros_param_server_t server_;
+    nros_parameter_server_t server_;
     nros_parameter_t storage_[Capacity];
 
     alignas(8) unsigned char seq_pool_[SeqPoolBytes];

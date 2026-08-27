@@ -4497,6 +4497,33 @@ check-c: check-c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/executor_verb_aliases.c
+    echo "  - parameter name spelling + deprecated forwarders (phase 379 W5)"
+    # The parameter family is `nros_parameter_*`; the old `nros_param_*` names
+    # survive one release as NROS_DEPRECATED_MSG `static inline` forwarders. The
+    # TU takes function POINTERS with the DECLARED signatures, so a forwarder
+    # whose argument list drifted from the function it forwards to fails here.
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/param_name_aliases.c
+    # ...and the forwarders must WARN. A deprecation nobody is told about is an
+    # alias, and the whole reason this family used forwarders instead of issue
+    # 0338's macros was to get the diagnostic. So the assertion is a NEGATIVE
+    # one: with `-Werror=deprecated-declarations` the old spelling must FAIL to
+    # compile. Written as an expected-failure because a passing compile is
+    # exactly what a silently-dropped attribute looks like.
+    if cc -fsyntax-only -std=c11 -Werror=deprecated-declarations \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/param_deprecation_probe.c 2>/dev/null; then \
+        echo "ERROR: param_deprecation_probe.c compiled clean under -Werror=deprecated-declarations." >&2; \
+        echo "       The NROS_DEPRECATED_MSG on the nros_param_* forwarders in" >&2; \
+        echo "       nros/parameter.h is not reaching callers, so the rename ships" >&2; \
+        echo "       with no migration warning at all." >&2; \
+        exit 1; \
+    fi
     echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
     # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
     # must stay compatible with cbindgen's canonical nros_cpp_ffi.h (the
@@ -4557,7 +4584,7 @@ check-cpp: check-cpp-fmt
     set -e
     echo "Checking C++ headers (build + syntax + clippy)..."
     echo "  - freestanding syntax (c++14)"
-    # parameter.hpp re-exposes the C-side `nros_param_*` API from
+    # parameter.hpp re-exposes the C-side `nros_parameter_*` API from
     # nros-c, so the syntax probe needs nros-c on the include path too.
     # The per-variant `<nros/nros_cpp_config_generated.h>` (defining
     # `NROS_CPP_EXECUTOR_STORAGE_SIZE` and friends, referenced by

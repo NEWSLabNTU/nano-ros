@@ -31,17 +31,17 @@ static int run(void) {
     // Parameter server backed by static storage (no heap). The server struct
     // must start zero-initialized — `init` rejects one that looks live.
     static nros_parameter_t storage[8];
-    nros_param_server_t params = nros_param_server_get_zero_initialized();
-    if (nros_param_server_init(&params, storage, 8) != NROS_RET_OK) {
+    nros_parameter_server_t params = nros_parameter_server_get_zero_initialized();
+    if (nros_parameter_server_init(&params, storage, 8) != NROS_RET_OK) {
         fprintf(stderr, "param server init failed\n");
         return 1;
     }
 
     // Declare parameters with default values.
-    if (nros_param_declare_bool(&params, "verbose", false) != NROS_RET_OK) return 1;
-    if (nros_param_declare_integer(&params, "publish_rate_hz", 1) != NROS_RET_OK) return 1;
-    if (nros_param_declare_double(&params, "scale_factor", 1.0) != NROS_RET_OK) return 1;
-    if (nros_param_declare_string(&params, "topic_name", "/chatter") != NROS_RET_OK) return 1;
+    if (nros_parameter_declare_bool(&params, "verbose", false) != NROS_RET_OK) return 1;
+    if (nros_parameter_declare_integer(&params, "publish_rate_hz", 1) != NROS_RET_OK) return 1;
+    if (nros_parameter_declare_double(&params, "scale_factor", 1.0) != NROS_RET_OK) return 1;
+    if (nros_parameter_declare_string(&params, "topic_name", "/chatter") != NROS_RET_OK) return 1;
 
     // Read back and display parameter values.
     bool verbose = true;
@@ -49,10 +49,10 @@ static int run(void) {
     double scale = 0.0;
     char topic[64] = {0};
 
-    if (nros_param_get_bool(&params, "verbose", &verbose) != NROS_RET_OK) return 2;
-    if (nros_param_get_integer(&params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 2;
-    if (nros_param_get_double(&params, "scale_factor", &scale) != NROS_RET_OK) return 2;
-    if (nros_param_get_string(&params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK) {
+    if (nros_parameter_get_bool(&params, "verbose", &verbose) != NROS_RET_OK) return 2;
+    if (nros_parameter_get_integer(&params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 2;
+    if (nros_parameter_get_double(&params, "scale_factor", &scale) != NROS_RET_OK) return 2;
+    if (nros_parameter_get_string(&params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK) {
         return 2;
     }
 
@@ -65,25 +65,25 @@ static int run(void) {
     if (strcmp(topic, "/chatter") != 0) return 3;
 
     // Update values and read them back.
-    if (nros_param_set_bool(&params, "verbose", true) != NROS_RET_OK) return 4;
-    if (nros_param_get_bool(&params, "verbose", &verbose) != NROS_RET_OK) return 4;
+    if (nros_parameter_set_bool(&params, "verbose", true) != NROS_RET_OK) return 4;
+    if (nros_parameter_get_bool(&params, "verbose", &verbose) != NROS_RET_OK) return 4;
     if (verbose != true) return 4;
     printf("After set: verbose=%s\n", verbose ? "true" : "false");
 
-    if (nros_param_set_integer(&params, "publish_rate_hz", 10) != NROS_RET_OK) return 4;
-    if (nros_param_get_integer(&params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 4;
+    if (nros_parameter_set_integer(&params, "publish_rate_hz", 10) != NROS_RET_OK) return 4;
+    if (nros_parameter_get_integer(&params, "publish_rate_hz", &rate_hz) != NROS_RET_OK) return 4;
     if (rate_hz != 10) return 4;
 
-    if (nros_param_set_string(&params, "topic_name", "/rosout") != NROS_RET_OK) return 4;
-    if (nros_param_get_string(&params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK) {
+    if (nros_parameter_set_string(&params, "topic_name", "/rosout") != NROS_RET_OK) return 4;
+    if (nros_parameter_get_string(&params, "topic_name", topic, sizeof(topic)) != NROS_RET_OK) {
         return 4;
     }
     if (strcmp(topic, "/rosout") != 0) return 4;
 
     // Unknown parameters must be rejected, not invented.
-    if (nros_param_get_bool(&params, "missing", &verbose) == NROS_RET_OK) return 5;
+    if (nros_parameter_get_bool(&params, "missing", &verbose) == NROS_RET_OK) return 5;
 
-    (void)nros_param_server_fini(&params);
+    (void)nros_parameter_server_fini(&params);
 
     printf("OK verbose=%s rate=%lld topic=%s\n", verbose ? "true" : "false", (long long)rate_hz,
            topic);

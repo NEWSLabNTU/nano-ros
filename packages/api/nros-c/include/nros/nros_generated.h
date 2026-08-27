@@ -40,7 +40,7 @@ struct nros_lifecycle_state_machine_t;
 struct nros_support_t;
 struct nros_clock_t;
 struct nros_parameter_t;
-struct nros_param_server_t;
+struct nros_parameter_server_t;
 struct nros_goal_handle_t;
 struct nros_goal_uuid_t;
 #ifdef __cplusplus
@@ -259,7 +259,7 @@ typedef enum nros_clock_state_t {
 /**
  * Parameter server state.
  */
-typedef enum nros_param_server_state_t {
+typedef enum nros_parameter_server_state_t {
   /**
    * Not initialized
    */
@@ -272,7 +272,7 @@ typedef enum nros_param_server_state_t {
    * Shutdown
    */
   NROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
-} nros_param_server_state_t;
+} nros_parameter_server_state_t;
 
 /**
  * Parameter type enumeration.
@@ -875,7 +875,7 @@ typedef struct nros_duration_t {
  * The caller must keep the array data valid for the lifetime of the parameter.
  * For string arrays, `data` points to an array of `*const c_char` pointers.
  */
-typedef struct nros_param_array_t {
+typedef struct nros_parameter_array_t {
   /**
    * Pointer to caller-owned array data
    */
@@ -884,7 +884,7 @@ typedef struct nros_param_array_t {
    * Number of elements
    */
   size_t len;
-} nros_param_array_t;
+} nros_parameter_array_t;
 
 /**
  * Parameter value union.
@@ -909,7 +909,7 @@ typedef union nros_parameter_value_t {
   /**
    * Array value (pointer + length)
    */
-  struct nros_param_array_t array_value;
+  struct nros_parameter_array_t array_value;
 } nros_parameter_value_t;
 
 /**
@@ -933,18 +933,18 @@ typedef struct nros_parameter_t {
 /**
  * Parameter change callback type.
  */
-typedef bool (*nros_param_callback_t)(const char *name,
-                                      const struct nros_parameter_t *param,
-                                      void *context);
+typedef bool (*nros_parameter_callback_t)(const char *name,
+                                          const struct nros_parameter_t *param,
+                                          void *context);
 
 /**
  * Parameter server structure.
  */
-typedef struct nros_param_server_t {
+typedef struct nros_parameter_server_t {
   /**
    * Current state
    */
-  enum nros_param_server_state_t state;
+  enum nros_parameter_server_state_t state;
   /**
    * Maximum number of parameters
    */
@@ -960,12 +960,12 @@ typedef struct nros_param_server_t {
   /**
    * Parameter change callback
    */
-  nros_param_callback_t callback;
+  nros_parameter_callback_t callback;
   /**
    * Callback context
    */
   void *callback_context;
-} nros_param_server_t;
+} nros_parameter_server_t;
 
 /**
  * Support context structure.
@@ -3138,70 +3138,70 @@ NROS_PUBLIC int nros_time_compare(struct nros_time_t a, struct nros_time_t b);
 /**
  * Get a zero-initialized parameter server.
  */
-NROS_PUBLIC struct nros_param_server_t nros_param_server_get_zero_initialized(void);
+NROS_PUBLIC struct nros_parameter_server_t nros_parameter_server_get_zero_initialized(void);
 
 /**
  * Initialize a parameter server with user-provided storage.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_server_init(struct nros_param_server_t *server,
-                                  struct nros_parameter_t *storage,
-                                  size_t capacity);
+nros_ret_t nros_parameter_server_init(struct nros_parameter_server_t *server,
+                                      struct nros_parameter_t *storage,
+                                      size_t capacity);
 
 /**
  * Set a parameter change callback.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_server_set_callback(struct nros_param_server_t *server,
-                                          nros_param_callback_t callback,
-                                          void *context);
+nros_ret_t nros_parameter_server_set_callback(struct nros_parameter_server_t *server,
+                                              nros_parameter_callback_t callback,
+                                              void *context);
 
 /**
  * Declare a string parameter.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_declare_string(struct nros_param_server_t *server,
-                                     const char *name,
-                                     const char *default_value);
+nros_ret_t nros_parameter_declare_string(struct nros_parameter_server_t *server,
+                                         const char *name,
+                                         const char *default_value);
 
 /**
  * Get a string parameter value.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_get_string(const struct nros_param_server_t *server,
-                                 const char *name,
-                                 char *value,
-                                 size_t max_len);
+nros_ret_t nros_parameter_get_string(const struct nros_parameter_server_t *server,
+                                     const char *name,
+                                     char *value,
+                                     size_t max_len);
 
 /**
  * Set a string parameter value.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_set_string(struct nros_param_server_t *server,
-                                 const char *name,
-                                 const char *value);
+nros_ret_t nros_parameter_set_string(struct nros_parameter_server_t *server,
+                                     const char *name,
+                                     const char *value);
 
 /**
  * Check if a parameter exists.
  */
-NROS_PUBLIC bool nros_param_has(const struct nros_param_server_t *server, const char *name);
+NROS_PUBLIC bool nros_parameter_has(const struct nros_parameter_server_t *server, const char *name);
 
 /**
  * Get the type of a parameter.
  */
 NROS_PUBLIC
-enum nros_parameter_type_t nros_param_get_type(const struct nros_param_server_t *server,
-                                               const char *name);
+enum nros_parameter_type_t nros_parameter_get_type(const struct nros_parameter_server_t *server,
+                                                   const char *name);
 
 /**
  * Get the number of declared parameters.
  */
-NROS_PUBLIC size_t nros_param_server_get_count(const struct nros_param_server_t *server);
+NROS_PUBLIC size_t nros_parameter_server_get_count(const struct nros_parameter_server_t *server);
 
 /**
  * Finalize a parameter server.
  */
-NROS_PUBLIC nros_ret_t nros_param_server_fini(struct nros_param_server_t *server);
+NROS_PUBLIC nros_ret_t nros_parameter_server_fini(struct nros_parameter_server_t *server);
 
 /**
  * Register the 6 ROS 2 parameter services on the executor's node.

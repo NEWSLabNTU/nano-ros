@@ -37,7 +37,7 @@
   ],
   "c:add_parameter": {
     "verdict": "declined",
-    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. rclc declares a parameter with `rclc_add_parameter(server, name, TYPE)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_param_declare_<type>(server, name, DEFAULT)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The two are not one call under two names: rclc's third argument is a TYPE (`rclc_parameter_type_t`, confirmed in the recorded rclc surface), ours is a VALUE. So no target name exists for this row to carry -- which is exactly why it sat blocked, and a row that endorses our shape and can name no destination is a DECLINE, not a rename. What a user loses: the two-step idiom; a ported rclc node rewrites `rclc_add_parameter(s, \"x\", RCLC_PARAMETER_INT)` + `rclc_parameter_set_int(s, \"x\", 5)` as one `nros_param_declare_int(s, \"x\", 5)`. The reader's other complaint -- that nothing here is spelled `add` -- is really the `param` vs `parameter` PREFIX question, and that is a DIFFERENT row: `c:parameter_server_t` owns it. Ours half: the `c:param_declare_*` family.",
+    "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. rclc declares a parameter with `rclc_add_parameter(server, name, TYPE)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_parameter_declare_<type>(server, name, DEFAULT)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The two are not one call under two names: rclc's third argument is a TYPE (`rclc_parameter_type_t`, confirmed in the recorded rclc surface), ours is a VALUE. So no target name exists for this row to carry -- which is exactly why it sat blocked, and a row that endorses our shape and can name no destination is a DECLINE, not a rename. What a user loses: the two-step idiom; a ported rclc node rewrites `rclc_add_parameter(s, \"x\", RCLC_PARAMETER_INT)` + `rclc_parameter_set_int(s, \"x\", 5)` as one `nros_parameter_declare_integer(s, \"x\", 5)`. The reader's other complaint -- that nothing here is spelled `add` -- is really the `param` vs `parameter` PREFIX question, and that is a DIFFERENT row: `c:parameter_server_t` owns it. Ours half: the `c:parameter_declare_*` family.",
     "rename": {
       "status": "resolved",
       "resolution": "re-verdicted `declined` -- the declare/set fold means rclc's call and ours take different arguments, so no rename target exists; the prefix question is c:parameter_server_t's, not this row's"
@@ -73,16 +73,16 @@
   },
   "c:executor_add_parameter_server": {
     "verdict": "divergence",
-    "why": "rclc attaches a CALLER-OWNED `rclc_parameter_server_t` to the executor. Ours is `nros_executor_register_parameter_services(executor)`, which takes no server because the executor owns the only one there is -- static entity storage, no allocator to make a second. Ledgered as an extension in the service stage. Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. What a user additionally loses is rclc's on-modification callback, which this call is where you pass: see `c:executor_add_parameter_server_with_context`."
+    "why": "rclc attaches a CALLER-OWNED `rclc_parameter_server_t` to the executor. Ours is `nros_executor_register_parameter_services(executor)`, which takes no server because the executor owns the only one there is -- static entity storage, no allocator to make a second. Ledgered as an extension in the service stage. Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. What a user additionally loses is rclc's on-modification callback, which this call is where you pass: see `c:executor_add_parameter_server_with_context`."
   },
   "c:executor_add_parameter_server_with_context": {
     "verdict": "gap",
-    "why": "the `void* context` form -- and the row that matters, because BOTH rclc forms take the on-modification callback and ours takes none. So a `ros2 param set` reaching the executor-owned store notifies nobody: the C callback that does exist, `nros_param_server_set_callback`, is on the legacy standalone `nros_param_server_t`, which is not the object the services write to. Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. NOTE FOR RFC-0036: line 91 says \"No parameter callbacks; parameters are read/write only\", and that is now wrong in both directions -- C ships an accept/reject set-callback on one store, and has none on the store `ros2 param` talks to. Phase 379 W3."
+    "why": "the `void* context` form -- and the row that matters, because BOTH rclc forms take the on-modification callback and ours takes none. So a `ros2 param set` reaching the executor-owned store notifies nobody: the C callback that does exist, `nros_parameter_server_set_callback`, is on the legacy standalone `nros_parameter_server_t`, which is not the object the services write to. Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. NOTE FOR RFC-0036: line 91 says \"No parameter callbacks; parameters are read/write only\", and that is now wrong in both directions -- C ships an accept/reject set-callback on one store, and has none on the store `ros2 param` talks to. Phase 379 W3."
   },
   "c:executor_declare_param_*": {
     "verdict": "divergence",
     "bucket": "ours-only",
-    "why": "the service-backed parameter API: it operates on the `nros_params::ParameterServer` the EXECUTOR owns, which is the store `nros_executor_register_parameter_services` exposes to `ros2 param`. rclc has no equivalent spelling because rclc hands the executor a caller-owned server instead (`c:executor_add_parameter_server`); with static entity storage and no allocator there is one server and the executor holds it, so the executor is the handle. Gated on the `param-services` Cargo feature, which needs `alloc`. SCALARS ONLY -- bool/integer/double/string -- where the local `c:param_declare_*` family covers all ten `rcl_interfaces` types, so no C caller can publish an array parameter to `ros2 param`. Phase 379 W3."
+    "why": "the service-backed parameter API: it operates on the `nros_params::ParameterServer` the EXECUTOR owns, which is the store `nros_executor_register_parameter_services` exposes to `ros2 param`. rclc has no equivalent spelling because rclc hands the executor a caller-owned server instead (`c:executor_add_parameter_server`); with static entity storage and no allocator there is one server and the executor holds it, so the executor is the handle. Gated on the `param-services` Cargo feature, which needs `alloc`. SCALARS ONLY -- bool/integer/double/string -- where the local `c:parameter_declare_*` family covers all ten `rcl_interfaces` types, so no C caller can publish an array parameter to `ros2 param`. Phase 379 W3."
   },
   "c:executor_get_param_*": {
     "verdict": "divergence",
@@ -103,91 +103,95 @@
     "why": "one node's slice of a parsed parameter file. `rcl_yaml_param_parser` exists to parse a `--params-file` off a FILESYSTEM at node start and hand rcl a tree of overrides. A device image has no filesystem and no YAML parser; parameter defaults are baked into the image at build time (RFC-0045) and changed afterwards over `~/set_parameters`. What a user loses is `--params-file` and everything that reads one."
   },
   "c:param_array_t": {
-    "verdict": "extension",
-    "why": "pointer + length for the six array parameter types. The pointer is BORROWED -- the server records the caller's buffer verbatim and never copies (issue 0340, documented at `nros/parameter.h`'s \"Array parameter pointer identity\") -- because there is no allocator to own the elements. rcl's parsed arrays (`c:double_array_t` and friends) own their memory."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_array_t`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_array_t`; this one survives as a plain `typedef` in `nros/parameter.h`. It compiles SILENTLY -- C has no portable way to attach a deprecation attribute to a typedef (MSVC rejects `__declspec(deprecated)` there and `[[deprecated]]` on one is C23), so unlike the function forwarders this alias is a grace period rather than a warning, and this row is where the deprecation is actually recorded. It aliases the TYPE NAME only: `struct nros_param_array_t` no longer names anything, because the tag moved with the type. Removal is the follow-up. Substantive verdict moved to `c:parameter_array_t`."
   },
   "c:param_callback_t": {
     "verdict": "rename",
-    "why": "the ours-only half of `c:parameter_callback_t`."
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_callback_t`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_callback_t`; this one survives as a plain `typedef` in `nros/parameter.h`. It compiles SILENTLY -- C has no portable way to attach a deprecation attribute to a typedef (MSVC rejects `__declspec(deprecated)` there and `[[deprecated]]` on one is C23), so unlike the function forwarders this alias is a grace period rather than a warning, and this row is where the deprecation is actually recorded. It aliases the TYPE NAME only: `struct nros_param_callback_t` no longer names anything, because the tag moved with the type. Removal is the follow-up. Substantive verdict moved to `c:parameter_callback_t`."
   },
   "c:param_declare_*": {
-    "verdict": "extension",
+    "verdict": "rename",
     "bucket": "ours-only",
-    "why": "declare-with-default, one entry point per `rcl_interfaces` type. Two things are ours-only here. The FOLD of rclc's `add` + `set` into one call is deliberate and matches rclcpp/rclrs -- see `c:add_parameter`. The six ARRAY types (`byte_array`, `bool_array`, `integer_array`, `double_array`, `string_array`) have no rclc counterpart at all: rclc's parameter server handles bool/int/double scalars only. Scenario: a controller whose parameter is a calibration vector or an MPC weight matrix, stored by borrowed pointer (`c:param_array_t`) because there is no heap. Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. So an array declared here is invisible to `ros2 param get`: `nros_executor_declare_param_*` covers the four SCALARS only, and there is no C entry point that puts an array in the store the services read. Phase 379 W3."
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_declare_*`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_declare_*`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_declare_*` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_declare_*`."
   },
   "c:param_get_*": {
-    "verdict": "extension",
+    "verdict": "rename",
     "bucket": "ours-only",
-    "why": "the getters for `c:param_declare_*`; scalars are rclc's `rclc_parameter_get_*` renamed (see `c:parameter_get_bool`) and the array forms are ours-only. An array get returns the BORROWED pointer unchanged, which `nros/parameter.hpp` depends on -- issue 0340."
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_get_*`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_get_*`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_get_*` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_get_*`."
   },
   "c:param_get_type": {
-    "verdict": "extension",
-    "why": "OUR LANGUAGES DISAGREE: C and Rust can ask a parameter its type -- `nros_param_get_type` here, `ParameterServer::get_type` there -- and C++ cannot: `nros::ParameterServer` wraps `nros_param_has` and `nros_param_server_get_count` and skips this one, so a C++ node has no type accessor at all. Ours-only against rclc because rclc has no type accessor either; rclcpp's nearest is `Node::get_parameter_types`, which returns a vector, where a single-name accessor returning `NROS_PARAMETER_NOT_SET` for absent needs no allocation."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_get_type`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_get_type`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_get_type` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_get_type`."
   },
   "c:param_has": {
-    "verdict": "extension",
-    "why": "an existence predicate, so a C node can branch instead of treating `NROS_RET_NOT_FOUND` as fatal. rclc has none; rclcpp spells it `Node::has_parameter`, which we do have in C++ (`ParameterServer::has_parameter`) and Rust (`ParameterServer::has`)."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_has`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_has`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_has` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_has`."
   },
   "c:param_server_fini": {
     "verdict": "rename",
-    "why": "the ours-only half of `c:parameter_server_fini`."
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_fini`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_fini`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_server_fini` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_fini`."
   },
   "c:param_server_get_count": {
-    "verdict": "extension",
-    "why": "how many parameters are declared. rclc exposes the count as a struct field on its server; ours is behind an accessor because `nros_param_server_t`'s storage fields are not part of the documented ABI. rclcpp's nearest is `list_parameters().names.size()`."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_get_count`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_get_count`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_server_get_count` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_get_count`."
   },
   "c:param_server_get_zero_initialized": {
-    "verdict": "extension",
-    "why": "rcl's zero-init idiom under our naming; see the pubsub stage's `c:publisher_get_zero_initialized`. rclc has no equivalent because `rclc_parameter_server_init_default` allocates."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_get_zero_initialized`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_get_zero_initialized`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_server_get_zero_initialized` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_get_zero_initialized`."
   },
   "c:param_server_init": {
-    "verdict": "divergence",
-    "why": "the ours-only half of `c:parameter_server_init_default` -- caller-owned storage array plus an explicit capacity, because there is no allocator."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_init`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_init`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_server_init` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_init`."
   },
   "c:param_server_set_callback": {
-    "verdict": "extension",
-    "why": "OUR LANGUAGES DISAGREE: C has a parameter-change callback and neither C++ nor Rust does -- `nros::ParameterServer` wraps every other C entry point and skips this one, and `nros_params::ParameterServer` has no callback field at all (`grep -c callback server.rs` is 0). It is an accept/reject callback invoked before a set is applied -- the `bool` return VETOES the change, which is exactly rclcpp's `add_on_set_parameters_callback` contract. Scenario: a device that must refuse a control-loop period outside its actuator's safe band before it takes effect, with no allocator for rclcpp's handle-per-registration. rclc passes the same callback to `rclc_executor_add_parameter_server` instead, which is why this shows as ours-only. TWO CAVEATS. (1) It is registered on the LEGACY standalone server, not on the executor-owned store the parameter services write to, so it does NOT fire for `ros2 param set` -- see `c:executor_add_parameter_server_with_context`. (2) RFC-0036 line 91 (\"No parameter callbacks\") predates it and should be corrected. Phase 379 W3."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_set_callback`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_set_callback`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_server_set_callback` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_set_callback`."
   },
   "c:param_server_state_t": {
-    "verdict": "extension",
-    "why": "explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined; see the pubsub stage's `c:publisher_state_t`."
+    "verdict": "rename",
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_state_t`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_state_t`; this one survives as a plain `typedef` in `nros/parameter.h`. It compiles SILENTLY -- C has no portable way to attach a deprecation attribute to a typedef (MSVC rejects `__declspec(deprecated)` there and `[[deprecated]]` on one is C23), so unlike the function forwarders this alias is a grace period rather than a warning, and this row is where the deprecation is actually recorded. It aliases the TYPE NAME only: `struct nros_param_server_state_t` no longer names anything, because the tag moved with the type. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_state_t`."
   },
   "c:param_server_t": {
     "verdict": "rename",
-    "why": "the ours-only half of `c:parameter_server_t`."
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_server_t`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_server_t`; this one survives as a plain `typedef` in `nros/parameter.h`. It compiles SILENTLY -- C has no portable way to attach a deprecation attribute to a typedef (MSVC rejects `__declspec(deprecated)` there and `[[deprecated]]` on one is C23), so unlike the function forwarders this alias is a grace period rather than a warning, and this row is where the deprecation is actually recorded. It aliases the TYPE NAME only: `struct nros_param_server_t` no longer names anything, because the tag moved with the type. Removal is the follow-up. Substantive verdict moved to `c:parameter_server_t`."
   },
   "c:param_set_*": {
-    "verdict": "extension",
+    "verdict": "rename",
     "bucket": "ours-only",
-    "why": "the setters for `c:param_declare_*`; see `c:param_get_*`."
+    "why": "the deprecated `nros_param_*` spelling of `c:parameter_set_*`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_set_*`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_set_*` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_set_*`."
   },
   "c:parameter_callback_t": {
     "verdict": "rename",
-    "why": "rclc's `rclc_parameter_callback_t`; ours is `nros_param_callback_t` with the same accept/reject `bool` return. Same `param`/`parameter` split as `c:parameter_server_t`. Ours half: `c:param_callback_t`."
+    "why": "rclc's `rclc_parameter_callback_t`; ours is `nros_parameter_callback_t` with the same accept/reject `bool` return. Same `param`/`parameter` split as `c:parameter_server_t`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_callback_t`."
   },
   "c:parameter_get_bool": {
     "verdict": "rename",
-    "why": "rclc spells it `rclc_parameter_get_bool`; ours is `nros_param_get_bool`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours half: `c:param_get_bool`."
+    "why": "rclc spells it `rclc_parameter_get_bool`; ours is `nros_parameter_get_bool`. See `c:parameter_server_t` for the `param`/`parameter` split. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_get_bool`."
   },
   "c:parameter_get_double": {
     "verdict": "rename",
-    "why": "rclc spells it `rclc_parameter_get_double`; ours is `nros_param_get_double`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours half: `c:param_get_double`."
+    "why": "rclc spells it `rclc_parameter_get_double`; ours is `nros_parameter_get_double`. See `c:parameter_server_t` for the `param`/`parameter` split. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_get_double`."
   },
   "c:parameter_get_int": {
-    "verdict": "rename",
-    "why": "rclc spells it `rclc_parameter_get_int`; ours is `nros_param_get_integer`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours also spells the 64-bit integer `integer` where rclc says `int`, matching `rcl_interfaces` and our own `ParameterType::Integer`. Ours half: `c:param_get_integer`."
+    "verdict": "declined",
+    "why": "rclc spells it `rclc_parameter_get_int`; ours is `nros_parameter_get_integer`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours also spells the 64-bit integer `integer` where rclc says `int`, matching `rcl_interfaces` and our own `ParameterType::Integer`. RE-VERDICTED 2026-08-27 (phase-379 W5), was `rename`. The `param` -> `parameter` half of this row LANDED: ours is `nros_parameter_get_integer` now. What is left is the only thing this row can still be about, and it is a difference we KEEP: rclc abbreviates the 64-bit integer to `int`, and we spell it `integer` because that is what `rcl_interfaces` calls the type and what our own `ParameterType::Integer`, `nros_parameter_type_t::NROS_PARAMETER_INTEGER` and the C++/Rust surfaces call it. Renaming ours to `int` would make the C surface disagree with our other two languages and with the message definitions, to match one abbreviation. So there is no destination left for this row to carry, which -- exactly as for `c:add_parameter` -- makes it a DECLINE rather than a rename. What a user loses: nothing but the spelling; `rclc_parameter_get_int(s, \"x\", &v)` is `nros_parameter_get_integer(s, \"x\", &v)`. Ours: `c:parameter_get_integer`.",
+    "rename": {
+      "status": "resolved",
+      "resolution": "the `param` -> `parameter` prefix half landed in phase-379 W5; the remaining `int` vs `integer` difference is one we decline to make, so no rename target is left and the row was re-verdicted `declined`"
+    }
   },
   "c:parameter_options_t": {
     "verdict": "divergence",
-    "why": "`rclc_parameter_options_t` carries `notify_changed_over_dds`, `allow_undeclared_parameters`, `low_mem_mode` and `max_params` as RUNTIME fields. All four are compile-time here: the table size is the `capacity` argument to `nros_param_server_init` over caller storage, undeclared access is not offered, and there is no `/parameter_events` publisher to toggle (see `cpp:ParameterEventHandler`). Same `compile-time-options` collapse as the node stage's `c:node_options_*`."
+    "why": "`rclc_parameter_options_t` carries `notify_changed_over_dds`, `allow_undeclared_parameters`, `low_mem_mode` and `max_params` as RUNTIME fields. All four are compile-time here: the table size is the `capacity` argument to `nros_parameter_server_init` over caller storage, undeclared access is not offered, and there is no `/parameter_events` publisher to toggle (see `cpp:ParameterEventHandler`). Same `compile-time-options` collapse as the node stage's `c:node_options_*`. LANDED 2026-08-27 (phase-379 W5): the name half is done -- ours is `nros_parameter_server_init`. What remains is the caller-owned-storage divergence, which is the verdict."
   },
   "c:parameter_server_fini": {
     "verdict": "rename",
-    "why": "rclc's `rclc_parameter_server_fini`; ours is `nros_param_server_fini`. See `c:parameter_server_t`."
+    "why": "rclc's `rclc_parameter_server_fini`; ours is `nros_parameter_server_fini`. See `c:parameter_server_t`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `systematic` under the `handle-owns-node` rule (rclc's fini also takes the node; ours does not, which is that rule, not a naming difference) and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_server_fini`."
   },
   "c:parameter_server_init_default": {
     "verdict": "divergence",
-    "why": "rclc's `rclc_parameter_server_init_default(server, node)` allocates the parameter table from `rcl_get_default_allocator()` and creates the six services in the same call. Ours is `nros_param_server_init(server, storage, capacity)`: the caller owns the `nros_parameter_t[]` and the count is an argument, because there is no allocator to size a table from. The service half is a separate explicit call (`c:executor_register_parameter_services`, service stage). The NAME should still change -- see `c:parameter_server_t`."
+    "why": "rclc's `rclc_parameter_server_init_default(server, node)` allocates the parameter table from `rcl_get_default_allocator()` and creates the six services in the same call. Ours is `nros_parameter_server_init(server, storage, capacity)`: the caller owns the `nros_parameter_t[]` and the count is an argument, because there is no allocator to size a table from. The service half is a separate explicit call (`c:executor_register_parameter_services`, service stage). The NAME should still change -- see `c:parameter_server_t`. LANDED 2026-08-27 (phase-379 W5): the name half is done -- ours is `nros_parameter_server_init`. What remains is the caller-owned-storage divergence, which is the verdict."
   },
   "c:parameter_server_init_with_option": {
     "verdict": "divergence",
@@ -195,19 +199,23 @@
   },
   "c:parameter_server_t": {
     "verdict": "rename",
-    "why": "rclc spells the parameter server `rclc_parameter_server_t`; ours is `nros_param_server_t`. The abbreviation is ours alone and it is not even consistent inside our own C header: the FUNCTIONS say `param` (`nros_param_declare_bool`) while the TYPES they operate on say `parameter` (`nros_parameter_t`, `nros_parameter_value_t`, `nros_parameter_type_t`), so `nros_param_get_type()` returns an `nros_parameter_type_t`. C++ and Rust both spell it out (`nros::ParameterServer`, `nros_params::ParameterServer`). Nothing about an RTOS needs the five saved characters. Ours half: `c:param_server_t`. Phase 379 W3."
+    "why": "rclc spells the parameter server `rclc_parameter_server_t`; ours was `nros_param_server_t`. The abbreviation was ours alone and it was not even consistent inside our own C header: the FUNCTIONS said `param` (`nros_param_declare_bool`) while the TYPES they operate on said `parameter` (`nros_parameter_t`, `nros_parameter_value_t`, `nros_parameter_type_t`), so `nros_param_get_type()` returned an `nros_parameter_type_t`. (Past tense as of the LANDED note below; the old spellings in this sentence are the pre-rename ones, quoted deliberately.) C++ and Rust both spell it out (`nros::ParameterServer`, `nros_params::ParameterServer`). Nothing about an RTOS needs the five saved characters. Phase 379 W3. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_server_t`."
   },
   "c:parameter_set_bool": {
     "verdict": "rename",
-    "why": "the setter half; see `c:parameter_get_bool`. Ours: `c:param_set_bool`."
+    "why": "the setter half; see `c:parameter_get_bool`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_set_bool`."
   },
   "c:parameter_set_double": {
     "verdict": "rename",
-    "why": "the setter half; see `c:parameter_get_double`. Ours: `c:param_set_double`."
+    "why": "the setter half; see `c:parameter_get_double`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_set_double`."
   },
   "c:parameter_set_int": {
-    "verdict": "rename",
-    "why": "the setter half; see `c:parameter_get_int`. Ours: `c:param_set_integer`."
+    "verdict": "declined",
+    "why": "the setter half; see `c:parameter_get_int`. RE-VERDICTED 2026-08-27 (phase-379 W5), was `rename`. The `param` -> `parameter` half of this row LANDED: ours is `nros_parameter_set_integer` now. What is left is the only thing this row can still be about, and it is a difference we KEEP: rclc abbreviates the 64-bit integer to `int`, and we spell it `integer` because that is what `rcl_interfaces` calls the type and what our own `ParameterType::Integer`, `nros_parameter_type_t::NROS_PARAMETER_INTEGER` and the C++/Rust surfaces call it. Renaming ours to `int` would make the C surface disagree with our other two languages and with the message definitions, to match one abbreviation. So there is no destination left for this row to carry, which -- exactly as for `c:add_parameter` -- makes it a DECLINE rather than a rename. What a user loses: nothing but the spelling; `rclc_parameter_set_int(s, \"x\", &v)` is `nros_parameter_set_integer(s, \"x\", &v)`. Ours: `c:parameter_set_integer`.",
+    "rename": {
+      "status": "resolved",
+      "resolution": "the `param` -> `parameter` prefix half landed in phase-379 W5; the remaining `int` vs `integer` difference is one we decline to make, so no rename target is left and the row was re-verdicted `declined`"
+    }
   },
   "c:parameter_t": {
     "verdict": "extension",
@@ -252,7 +260,7 @@
   },
   "cpp:Node::add_on_set_parameters_callback": {
     "verdict": "gap",
-    "why": "rclcpp's accept/reject hook: the callback returns a `SetParametersResult` and a `false` REFUSES the change. Our C has exactly this contract already -- `nros_param_server_set_callback` with a `bool` return -- and C++ does not wrap it, so RFC-0036 line 91 (\"No parameter callbacks\") is stale for C and accurate for C++ by accident. rclcpp returns an owning `ParameterCallbackHandle` shared_ptr, which we cannot; a single fn-pointer slot per server, as C already has, is the no-allocator form. Phase 379 W3; see `c:param_server_set_callback`."
+    "why": "rclcpp's accept/reject hook: the callback returns a `SetParametersResult` and a `false` REFUSES the change. Our C has exactly this contract already -- `nros_parameter_server_set_callback` with a `bool` return -- and C++ does not wrap it, so RFC-0036 line 91 (\"No parameter callbacks\") is stale for C and accurate for C++ by accident. rclcpp returns an owning `ParameterCallbackHandle` shared_ptr, which we cannot; a single fn-pointer slot per server, as C already has, is the no-allocator form. Phase 379 W3; see `c:parameter_server_set_callback`."
   },
   "cpp:Node::declare_parameter": {
     "verdict": "gap",
@@ -284,7 +292,7 @@
   },
   "cpp:Node::get_parameter_types": {
     "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: we serve `~/get_parameter_types` and our C (`nros_param_get_type`) and Rust (`ParameterServer::get_type`) both answer it locally; C++ has no type accessor on either `Node` or `ParameterServer`. See `c:param_get_type`."
+    "why": "OUR LANGUAGES DISAGREE: we serve `~/get_parameter_types` and our C (`nros_parameter_get_type`) and Rust (`ParameterServer::get_type`) both answer it locally; C++ has no type accessor on either `Node` or `ParameterServer`. See `c:parameter_get_type`."
   },
   "cpp:Node::get_parameters": {
     "verdict": "gap",
@@ -300,11 +308,11 @@
   },
   "cpp:Node::remove_on_set_parameters_callback": {
     "verdict": "gap",
-    "why": "the unregister half; C's form is `nros_param_server_set_callback(server, NULL, NULL)`. See `cpp:Node::add_on_set_parameters_callback`."
+    "why": "the unregister half; C's form is `nros_parameter_server_set_callback(server, NULL, NULL)`. See `cpp:Node::add_on_set_parameters_callback`."
   },
   "cpp:Node::set_parameter": {
     "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: a C++ node can declare and read its parameters and cannot CHANGE one. `nros::ComponentNode` has `declare_parameter<T>` and `get_parameter<T>` and no setter at all -- not even a typed one -- while C has `nros_param_set_*` and `nros_executor_set_param_*` and Rust has `ParameterServer::set`/`set_bool`/`set_integer`/`set_double`/`set_string`. rclcpp's own setter additionally takes an `rclcpp::Parameter` value object we do not have (`cpp:Parameter`). OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3."
+    "why": "OUR LANGUAGES DISAGREE: a C++ node can declare and read its parameters and cannot CHANGE one. `nros::ComponentNode` has `declare_parameter<T>` and `get_parameter<T>` and no setter at all -- not even a typed one -- while C has `nros_parameter_set_*` and `nros_executor_set_param_*` and Rust has `ParameterServer::set`/`set_bool`/`set_integer`/`set_double`/`set_string`. rclcpp's own setter additionally takes an `rclcpp::Parameter` value object we do not have (`cpp:Parameter`). OUR LANGUAGES DISAGREE: our C++ DOES have this method -- `nros::ComponentNode` carries rclcpp's exact value-returning `declare_parameter<T>(name, default)` / `get_parameter<T>(name)` / `has_parameter(name)` (RFC-0044, component_node.hpp:418-545) -- but `component_node.hpp` is NOT included by `nros/nros.hpp`, the umbrella that defines the public C++ surface; only the generated entry reaches it (`emit_cpp.rs` emits the include). Through `nros/nros.hpp` a ported rclcpp node gets `nros::Node`, which has no parameter method at all, and `nros::ParameterServer<Cap>`, a standalone store the node cannot see. Phase 379 W3."
   },
   "cpp:Node::set_parameters": {
     "verdict": "gap",
@@ -344,7 +352,7 @@
   },
   "cpp:ParameterServer": {
     "verdict": "divergence",
-    "why": "a fixed-capacity, node-local typed parameter store: `nros::ParameterServer<Capacity, SeqSlots, SeqPoolBytes>`, storage inline, no heap. rclcpp has no such object because rclcpp's parameters live ON the node and the node allocates. Constraints: no allocator (capacity is a template argument and the `nros_parameter_t[]` is a member), and -fno-exceptions (RFC-0018) so every method returns `nros::Result` instead of throwing `ParameterTypeException`). The methods keep rclcpp's names -- `declare_parameter<T>`, `get_parameter<T>`, `set_parameter<T>`, `has_parameter`, and `parameter_count` for `list_parameters().names.size()`. TWO THINGS TO KNOW. It wraps the LEGACY standalone C server, so its parameters are NOT what `ros2 param` sees -- Note which of our TWO C parameter stores this is. `nros_param_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_param_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. And `raw()` is documented as being \"useful for handing the server to C-API helpers (e.g. ROS 2 service registration)\", but no such helper takes an `nros_param_server_t*`: `nros_executor_register_parameter_services` takes only the executor. Phase 379 W3."
+    "why": "a fixed-capacity, node-local typed parameter store: `nros::ParameterServer<Capacity, SeqSlots, SeqPoolBytes>`, storage inline, no heap. rclcpp has no such object because rclcpp's parameters live ON the node and the node allocates. Constraints: no allocator (capacity is a template argument and the `nros_parameter_t[]` is a member), and -fno-exceptions (RFC-0018) so every method returns `nros::Result` instead of throwing `ParameterTypeException`). The methods keep rclcpp's names -- `declare_parameter<T>`, `get_parameter<T>`, `set_parameter<T>`, `has_parameter`, and `parameter_count` for `list_parameters().names.size()`. TWO THINGS TO KNOW. It wraps the LEGACY standalone C server, so its parameters are NOT what `ros2 param` sees -- Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. And `raw()` is documented as being \"useful for handing the server to C-API helpers (e.g. ROS 2 service registration)\", but no such helper takes an `nros_parameter_server_t*`: `nros_executor_register_parameter_services` takes only the executor. Phase 379 W3."
   },
   "cpp:ParameterService": {
     "verdict": "divergence",
@@ -368,7 +376,7 @@
   },
   "cpp:Seq": {
     "verdict": "divergence",
-    "why": "`nros::Seq<T, N>` -- a fixed-capacity inline sequence, the `no_std` stand-in for `std::vector<T>` at the parameter surface, so a ported rclcpp node that declares a `std::vector<double>` weight matrix (RFC-0044 Q3, phase 242.3) compiles with no heap. Constraint: no allocator. Over-capacity is rejected or flagged (`overflowed()`), never UB. Under `NROS_CPP_STD` it converts to and from `std::vector<T>` so hosted source is unchanged. rclcpp needs no counterpart because `std::vector` is always available to it. Element types are `double`/`int64_t`/`bool` only -- there is no `Seq` path for the `byte_array` or `string_array` parameter types the C layer underneath does support (`nros_param_declare_byte_array`, `nros_param_declare_string_array`), so C++ reaches 8 of the 10 `rcl_interfaces` types. Phase 379 W3."
+    "why": "`nros::Seq<T, N>` -- a fixed-capacity inline sequence, the `no_std` stand-in for `std::vector<T>` at the parameter surface, so a ported rclcpp node that declares a `std::vector<double>` weight matrix (RFC-0044 Q3, phase 242.3) compiles with no heap. Constraint: no allocator. Over-capacity is rejected or flagged (`overflowed()`), never UB. Under `NROS_CPP_STD` it converts to and from `std::vector<T>` so hosted source is unchanged. rclcpp needs no counterpart because `std::vector` is always available to it. Element types are `double`/`int64_t`/`bool` only -- there is no `Seq` path for the `byte_array` or `string_array` parameter types the C layer underneath does support (`nros_parameter_declare_byte_array`, `nros_parameter_declare_string_array`), so C++ reaches 8 of the 10 `rcl_interfaces` types. Phase 379 W3."
   },
   "cpp:SyncParametersClient": {
     "verdict": "declined",
@@ -589,5 +597,52 @@
   "rust:default_initial_value_discriminator": {
     "verdict": "declined",
     "why": "the default choice function over `rust:AvailableValues`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  },
+  "c:parameter_get_type": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_get_type`, which survives as the deprecated alias row. OUR LANGUAGES DISAGREE: C and Rust can ask a parameter its type -- `nros_parameter_get_type` here, `ParameterServer::get_type` there -- and C++ cannot: `nros::ParameterServer` wraps `nros_parameter_has` and `nros_parameter_server_get_count` and skips this one, so a C++ node has no type accessor at all. Ours-only against rclc because rclc has no type accessor either; rclcpp's nearest is `Node::get_parameter_types`, which returns a vector, where a single-name accessor returning `NROS_PARAMETER_NOT_SET` for absent needs no allocation."
+  },
+  "c:parameter_has": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_has`, which survives as the deprecated alias row. an existence predicate, so a C node can branch instead of treating `NROS_RET_NOT_FOUND` as fatal. rclc has none; rclcpp spells it `Node::has_parameter`, which we do have in C++ (`ParameterServer::has_parameter`) and Rust (`ParameterServer::has`)."
+  },
+  "c:parameter_server_get_count": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_get_count`, which survives as the deprecated alias row. how many parameters are declared. rclc exposes the count as a struct field on its server; ours is behind an accessor because `nros_parameter_server_t`'s storage fields are not part of the documented ABI. rclcpp's nearest is `list_parameters().names.size()`."
+  },
+  "c:parameter_server_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_get_zero_initialized`, which survives as the deprecated alias row. rcl's zero-init idiom under our naming; see the pubsub stage's `c:publisher_get_zero_initialized`. rclc has no equivalent because `rclc_parameter_server_init_default` allocates."
+  },
+  "c:parameter_server_init": {
+    "verdict": "divergence",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_init`, which survives as the deprecated alias row. the ours-only half of `c:parameter_server_init_default` -- caller-owned storage array plus an explicit capacity, because there is no allocator."
+  },
+  "c:parameter_server_set_callback": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_set_callback`, which survives as the deprecated alias row. OUR LANGUAGES DISAGREE: C has a parameter-change callback and neither C++ nor Rust does -- `nros::ParameterServer` wraps every other C entry point and skips this one, and `nros_params::ParameterServer` has no callback field at all (`grep -c callback server.rs` is 0). It is an accept/reject callback invoked before a set is applied -- the `bool` return VETOES the change, which is exactly rclcpp's `add_on_set_parameters_callback` contract. Scenario: a device that must refuse a control-loop period outside its actuator's safe band before it takes effect, with no allocator for rclcpp's handle-per-registration. rclc passes the same callback to `rclc_executor_add_parameter_server` instead, which is why this shows as ours-only. TWO CAVEATS. (1) It is registered on the LEGACY standalone server, not on the executor-owned store the parameter services write to, so it does NOT fire for `ros2 param set` -- see `c:executor_add_parameter_server_with_context`. (2) RFC-0036 line 91 (\"No parameter callbacks\") predates it and should be corrected. Phase 379 W3."
+  },
+  "c:parameter_declare_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_declare_*`, which survives as the deprecated alias row. declare-with-default, one entry point per `rcl_interfaces` type. Two things are ours-only here. The FOLD of rclc's `add` + `set` into one call is deliberate and matches rclcpp/rclrs -- see `c:add_parameter`. The six ARRAY types (`byte_array`, `bool_array`, `integer_array`, `double_array`, `string_array`) have no rclc counterpart at all: rclc's parameter server handles bool/int/double scalars only. Scenario: a controller whose parameter is a calibration vector or an MPC weight matrix, stored by borrowed pointer (`c:parameter_array_t`) because there is no heap. Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. So an array declared here is invisible to `ros2 param get`: `nros_executor_declare_param_*` covers the four SCALARS only, and there is no C entry point that puts an array in the store the services read. Phase 379 W3."
+  },
+  "c:parameter_get_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_get_*`, which survives as the deprecated alias row. the getters for `c:parameter_declare_*`; scalars are rclc's `rclc_parameter_get_*` renamed (see `c:parameter_get_bool`) and the array forms are ours-only. An array get returns the BORROWED pointer unchanged, which `nros/parameter.hpp` depends on -- issue 0340."
+  },
+  "c:parameter_set_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_set_*`, which survives as the deprecated alias row. the setters for `c:parameter_declare_*`; see `c:parameter_get_*`."
+  },
+  "c:parameter_array_t": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_array_t`, which survives as the deprecated alias row. pointer + length for the six array parameter types. The pointer is BORROWED -- the server records the caller's buffer verbatim and never copies (issue 0340, documented at `nros/parameter.h`'s \"Array parameter pointer identity\") -- because there is no allocator to own the elements. rcl's parsed arrays (`c:double_array_t` and friends) own their memory."
+  },
+  "c:parameter_server_state_t": {
+    "verdict": "extension",
+    "why": "LANDED 2026-08-27 (phase-379 W5): the C parameter family is now spelled `nros_parameter_*`. Renamed here from `c:param_server_state_t`, which survives as the deprecated alias row. explicit entity lifecycle so double-init and use-after-fini return a code instead of being undefined; see the pubsub stage's `c:publisher_state_t`."
   }
 }

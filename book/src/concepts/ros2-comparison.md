@@ -242,7 +242,7 @@ launch file or CLI, and a service-backed remote-introspection surface
 (`/<node>/get_parameters`, `/<node>/set_parameters`, …).
 
 nano-ros's `nros::ParameterServer<Cap>` (C++) and the equivalent C
-`nros_param_server_t` keep the **vocabulary** (`declare_parameter<T>`,
+`nros_parameter_server_t` keep the **vocabulary** (`declare_parameter<T>`,
 `get_parameter<T>`, `set_parameter<T>`, `has_parameter`) but trim the
 surface aggressively for embedded use.
 
@@ -250,7 +250,7 @@ surface aggressively for embedded use.
 
 - Same five scalar types: `bool`, `int64_t`, `double`, string, plus the
   `bool` / `int64_t` / `double` / `byte` / `string` array variants on the
-  C side (`nros_param_*_array`).
+  C side (`nros_parameter_*_array`).
 - Same lifecycle: declare → get → set, with declare-once-then-typed-get
   semantics.
 - Optional service-backed exposure (`~/get_parameters` /
@@ -264,7 +264,7 @@ surface aggressively for embedded use.
 | Upstream feature | nano-ros status | Why dropped |
 |---|---|---|
 | `ParameterDescriptor` (description, ranges, read-only, dynamic_typing) | not exposed | descriptor metadata is host-side concern; embedded server enforces type at declare-time, range checks belong in `set` callbacks (deferred — see below) |
-| `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one combined `nros_param_callback_t` (server-wide, fires after set) | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
+| `add_pre_set_parameters_callback` / `add_on_set_parameters_callback` / `add_post_set_parameters_callback` | one combined `nros_parameter_callback_t` (server-wide, fires after set) | three callbacks → three indirection slots × N subscribers; one callback covers the safety-island validation use case (`reject if out of range`) |
 | `set_parameter` returning `SetParametersResult` (`successful: bool`, `reason: string`) | returns `nros_ret_t` | string `reason` would force heap or fixed-buffer; ret code captures the binary outcome |
 | `set_parameters_atomically` | not exposed | atomic multi-set requires transaction log; not justified by current embedded use |
 | `declare_parameters` (multi-declare with namespace) | not exposed | one-by-one declare is fine for compile-time-known parameter sets |
@@ -305,7 +305,7 @@ templating `Node` on capacity, which propagates through every
 `ParameterServer<N>` alongside the node keeps `Node` non-templated and
 matches the rest of the freestanding C++14 surface (callers own
 storage). `params.raw()` exposes the underlying
-`nros_param_server_t*` for future ROS 2 service-backed registration.
+`nros_parameter_server_t*` for future ROS 2 service-backed registration.
 
 **Why no `Box<dyn FnMut>` callback yet.** The same constraint that
 shapes the QoS event callbacks applies here: nano-ros's

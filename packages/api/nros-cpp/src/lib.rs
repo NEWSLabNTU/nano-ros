@@ -91,7 +91,7 @@ mod rmw_backend;
 
 // Phase 241.D3-rev — pull nros-c's FULL `#[no_mangle]` C surface into libnros_cpp.a.
 // nros-cpp bundles nros-c as an rlib and links only libnros_cpp.a, so rustc DCEs any
-// C entry point the C++ FFI itself never references (e.g. nros_param_server_fini) —
+// C entry point the C++ FFI itself never references (e.g. nros_parameter_server_fini) —
 // yet a C++ binary may call it via the C ABI. nros-c's own `#[used]` anchor is DCE'd
 // as a dependency; referencing it from THIS staticlib root keeps it + the entry
 // points it names.

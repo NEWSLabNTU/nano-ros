@@ -142,7 +142,7 @@ typedef struct {
 static struct {
     nros_clock_t clock;
     nros_parameter_t param_storage[4];
-    nros_param_server_t params;
+    nros_parameter_server_t params;
     nros_support_t support;
     nros_node_t node;
     nros_publisher_t publisher;
@@ -209,7 +209,7 @@ int nros_app_main(int argc, char** argv) {
      *    Active RMW backend (zenoh-pico) routes every wire frame
      *    through our ops above. */
     (void)nros_clock_init(&app.clock, NROS_CLOCK_SYSTEM_TIME);
-    (void)nros_param_server_init(&app.params, app.param_storage, 4);
+    (void)nros_parameter_server_init(&app.params, app.param_storage, 4);
     NROS_CHECK_RET(nros_support_init(&app.support, "custom://loopback", 0), 1);
     NROS_CHECK_RET(nros_node_init(&app.node, &app.support, "loopback_demo", "/"), 1);
 
