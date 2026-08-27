@@ -47,6 +47,126 @@ here is indistinguishable from a code defect until someone wipes the directory.
 Verify with the 0475 recipe: `ninja -C <build-dir> -t query <exe>` — the RMW
 `.a` must appear under `|`, not `||`, and touching a backend source must relink.
 
+## Where the 0475 gap actually is (measured 2026-08-27)
+
+`ninja -C examples/qemu-riscv-nuttx/c/talker/build-zenoh -t query c_talker`, on a
+freshly built tree:
+
+```
+c_talker:
+    | libbuiltin_interfaces__nano_ros_c.a     <- real edge
+    | libstd_msgs__nano_ros_c.a               <- real edge
+    || c_talker_build                         <- ORDER-ONLY, phony
+```
+
+The message archives carry 0475's `LINK_DEPENDS`. The backend does not appear at
+ALL. `nros_rmw_zenoh` is not a cmake target in this build (`ninja -t targets`
+confirms), so `nano_ros_link_rmw`'s
+
+```cmake
+if(TARGET nros_rmw_${_chosen})
+    set_property(... LINK_DEPENDS "$<TARGET_FILE:nros_rmw_${_chosen}>")
+endif()
+```
+
+takes the silent `else` branch. The archive arrives instead through a cargo
+CUSTOM_COMMAND (`cargo-target/riscv32imac-unknown-nuttx-elf/release/
+nros-nuttx-ffi`) reached only via the phony, order-only `c_talker_build`.
+
+**That absence is not itself the bug, and this is the part worth getting right.**
+Per `cmake/NanoRosRmwDispatch.cmake`, only some backends expose a cmake target:
+
+| rmw | `NROS_RMW_EXTRA_LINK_LIBS` | `nros_rmw_<x>` target |
+| --- | --- | --- |
+| cyclonedds | `nros_rmw_cyclonedds;ddsc;stdc++` | YES — 0475 was verified here |
+| uorb | `nros_rmw_uorb` | YES |
+| zenoh | `""` (RLIB_DEP `nros-rmw-zenoh`) | NO, by design |
+| xrce | `""` (RLIB_DEP `nros-rmw-xrce-cffi`) | NO, by design |
+
+zenoh and xrce compile the backend INTO the nros-c umbrella staticlib, so there
+is no separate archive to depend on and the edge has to come from however the
+UMBRELLA is linked. 0475 was diagnosed, fixed and verified on the cyclonedds
+leaf, which is exactly the arm that HAS a target — so the fix is correct where it
+was tested and simply does not reach the other two shapes.
+
+So the open question is narrower than "0475 regressed": **does the umbrella
+staticlib have a file-level edge on each platform, for zenoh and xrce?** On
+nuttx it demonstrably does not (order-only phony, above). Whether a NATIVE
+zenoh/xrce leaf has one is NOT yet measured, and it decides whether this is a
+nuttx wiring bug or a two-backend hole.
+
+A first attempt at a fix — warning from `nano_ros_link_rmw` whenever the target
+is absent — was written and REVERTED before commit: it would fire on every
+native zenoh/xrce build, where the absence is by design and there may be no
+hazard at all. A warning that cries on correct builds gets muted, which would
+leave this worse than it is now. Fix the umbrella edge, or detect the
+order-only case specifically.
+
+## ROOT CAUSE of the museum binary, located (2026-08-27)
+
+`packages/api/nros-c/cmake/nros-nuttx.cmake:274`, the command that runs
+`cargo build` to produce the NuttX kernel ELF:
+
+```cmake
+add_custom_command(
+    OUTPUT "${_output_binary}"
+    ... cargo build --release
+    DEPENDS "${_NNBE_MAIN_SOURCE}" ${_NNBE_SOURCES} ${_NNBE_INTERFACE_SOURCES}
+            "${_includes_file}" "${_ffi_libs_file}"
+            "${_NNBE_FFI_CRATE_DIR}/build.rs"
+            "${_NNBE_FFI_CRATE_DIR}/Cargo.toml"
+```
+
+The DEPENDS list carries the app's C sources and the FFI crate's `build.rs` /
+`Cargo.toml`. **It names no nano-ros Rust source and no nano-ros archive.** So
+an edit to `packages/core/nros-node`, `packages/api/nros-c` or any backend
+leaves this command up to date, cmake skips it, cargo is never invoked, and the
+ELF keeps the previous build's Rust code with a fresh mtime. Museum binary.
+
+The `add_dependencies` calls immediately below do not save it, twice over:
+
+* `add_dependencies` is ORDER-ONLY by construction — 0475's whole lesson.
+* `foreach(_dep cargo-build_nros_c cargo-build_nros_cpp)` is guarded by
+  `if(TARGET ${_dep})`, and **neither target exists in this build**
+  (`ninja -t targets` in the riscv build dir lists no `cargo-build_nros_*` and no
+  `libnros_c.a`). On NuttX the whole nano-ros Rust side is compiled INSIDE the
+  `nros-nuttx-ffi` cargo build, so there are no separate archives to depend on.
+
+## The native leaf is correctly wired — this is NOT a zenoh/xrce-wide hole
+
+Measured, because an earlier revision of this issue speculated it might be:
+
+```
+$ ninja -C examples/native/c/talker/build -t query c_talker
+    | nano_ros/packages/api/nros-cpp/libnros_cpp.a          <- real edge
+    | nano_ros/nros_platform_posix_build/libnros_platform_posix.a
+    || nano_ros/packages/api/nros-c/cargo-build_nros_c      <- order-only
+```
+
+The archive the native C talker actually links is `libnros_cpp.a` (it defines
+`nros_support_init`; confirmed with `nm`), and it HAS a file-level edge. A
+backend change rebuilds it and relinks the example. So zenoh/xrce on native are
+fine, and the defect is specific to the NuttX seam above.
+
+## Suggested fix, and why it is not applied here
+
+Cargo is authoritative about its own inputs and is fast when up to date. The
+structural fix is to stop asking cmake to predict them: attach the cargo
+invocation to the always-run custom TARGET rather than gating it behind an
+OUTPUT whose DEPENDS list has to enumerate the Rust world (which is what went
+wrong — the list is a hand-maintained approximation of a dependency graph cargo
+already computes).
+
+Not applied in this commit because it makes cargo (and the NuttX kernel build
+behind it) run on every build of every NuttX example, and that cost needs
+measuring before it is imposed on the freertos/threadx/esp-idf seams that
+likely share the shape. Whoever takes it should check those three first — the
+bug is a missing edge, and missing edges are rarely one-of-a-kind.
+
+Verify any fix with: touch a `packages/core/nros-node` source, rebuild WITHOUT
+wiping, and confirm the ELF changes (`strings`/`sha256sum`), not merely that the
+build exits 0.
+
 ## The staleness probe cannot see this class, and I asserted otherwise
 
 An earlier revision of this issue said "**Not a stale fixture**" and justified it
