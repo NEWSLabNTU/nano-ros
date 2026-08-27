@@ -465,7 +465,7 @@ check-fast-parallel:
 check-fast: _check-skip-reset \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
-    check-rmw-force-link-anchor check-rmw-required-slots check-board-tiers check-tier-priority-plan \
+    check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \
     check-subtree-guard \
     check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-generated-schema-coverage \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
@@ -1274,6 +1274,16 @@ check-rmw-required-slots:
 # claimed ARM FVP was "Tested" (legend: "boots in CI") for a license-walled
 # target, and matrix.rs carried FVP `Runtime` cells whose tests always skip.
 # Also checks the generated support table is not stale. Buildless.
+# issue 0826 — RFC-0035's slot table is GENERATED from `rmw_vtable.h` plus
+# `first_missing_vtable_slot`'s `require!()` list, the same source
+# `check-rmw-required-slots` reads, so the table and that gate cannot disagree.
+# It had drifted to describing a 33-slot ABI that was really 74: 17 dead names,
+# 61 slots unmentioned. Buildless.
+[private]
+check-rmw-slot-table:
+    @python3 scripts/gen-rmw-slot-table.py --self-test
+    @python3 scripts/gen-rmw-slot-table.py --check
+
 [private]
 check-board-tiers:
     @python3 scripts/check-board-tiers.py

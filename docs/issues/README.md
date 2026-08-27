@@ -51,15 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-**#0826** (rmw/docs, open 2026-08-27) — RFC-0035's numbered slot table documents a **33-slot** vtable
-that is now **80 slots**: 17 of the 36 names it lists no longer exist (mostly phase-376 W3.b's move to
-upstream's `rmw_*` vocabulary — `publish_raw`->`publish`, `send_reply`->`send_response`,
-`pub_loan`->`borrow_loaned_message`, …) and **61 real slots are never mentioned**. Filed rather than
-swept ON PURPOSE: renaming the 17 would make the table read as authoritative while still being silent
-about 61 slots, whereas today it is visibly stale and at least warns the reader. Needs regenerating
-from the header, with a `--check` gate like the other generated reference tables. The sharper sibling
-— `custom-rmw.md`'s C vtable example assigning 6 nonexistent slots, so the porting guide could not
-compile — is fixed in `9b574e974`. See `0826-*`.
+Recently resolved (2026-08-27): **#0826** (rmw/docs) — RFC-0035's numbered slot table documented a
+33-slot vtable that is really **74 slots**: 17 of the 36 names it listed no longer existed (mostly
+phase-376 W3.b's move to upstream's `rmw_*` vocabulary) and most real slots were never mentioned.
+Filed rather than swept on purpose — renaming the 17 would have made the table read as authoritative
+while staying silent about the rest, where visibly stale at least warns the reader. Fixed by
+GENERATING it (`scripts/gen-rmw-slot-table.py`, gated by `check-rmw-slot-table`) from two code
+sources: the header's declaration order and section markers, and `first_missing_vtable_slot`'s
+`require!()` list — the same one `check-rmw-required-slots` reads, so table and gate cannot disagree.
+Note the issue's own "80 slots" was wrong: a whole-file regex swept in visitor typedefs and three
+callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shape; the generator
+rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
+See `archived/0826-*`. (2026-08-27)
 
 Recently resolved (2026-08-27): **#0821** (rmw/platform) — the S32K344 took a USAGE FAULT at exactly
 2 x Z_TRANSPORT_LEASE with an exception frame of ALL ZEROES (pc, lr, xpsr, every FPU register). xpsr=0

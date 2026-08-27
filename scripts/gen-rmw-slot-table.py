@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""Generate RFC-0035's vtable slot table from the header that defines it.
+
+Issue 0826 — the hand-written table documented a 33-slot ABI that had become
+80 slots: 17 of the 36 names it listed no longer existed and 61 real slots were
+absent. Most of that drift was phase-376 W3.b renaming the vtable to upstream's
+`rmw_*` vocabulary; the header moved and the table did not.
+
+Renaming the seventeen would have been WORSE than leaving it: a table naming
+only live slots reads as authoritative while staying silent about 61 of 80.
+Visibly stale at least warns the reader. So the table is generated, and this
+script is the thing that keeps it true.
+
+TWO INPUTS, BOTH CODE. Nothing here is inferred from prose:
+
+  * slot NAME and ORDER      `rmw_vtable.h`, the struct's declaration order,
+                             which IS the ABI's slot numbering
+  * GROUP                    the header's own `/* ---- ... ---- */` section
+                             markers, so a new section names itself
+  * REQUIRED vs OPTIONAL     `first_missing_vtable_slot`'s `require!(...)` list
+                             in `packages/rmw/cffi/src/lib.rs` -- the same
+                             source `check-rmw-required-slots.sh` uses, so this
+                             table and that gate cannot disagree
+
+That last point is the reason optionality is not read out of the doc comments:
+a heuristic over prose ("says optional", "says NULL") would be a THIRD opinion
+about a fact two things already agree on, and issue 0349 is what it costs when
+the required set is wrong in either direction.
+
+Usage:
+    python3 scripts/gen-rmw-slot-table.py            # rewrite the table
+    python3 scripts/gen-rmw-slot-table.py --check    # fail if it drifted
+    python3 scripts/gen-rmw-slot-table.py --self-test
+"""
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+HEADER = ROOT / "packages/core/nros-rmw-abi/include/nros/rmw_vtable.h"
+CFFI = ROOT / "packages/rmw/cffi/src/lib.rs"
+RFC = ROOT / "docs/design/0035-rmw-vtable-abi.md"
+
+BEGIN = "<!-- BEGIN GENERATED SLOT TABLE -->"
+END = "<!-- END GENERATED SLOT TABLE -->"
+
+
+def vtable_struct_body(header_text):
+    """The `NrosRmwVtable` struct body only.
+
+    Anchored on the struct, not the whole file: the header also declares
+    standalone visitor typedefs (`rmw_node_visitor_t` and friends) whose
+    `(*name)(` shape is identical, and counting those as slots would inflate
+    the table with things that are not in the vtable at all.
+    """
+    # The real tag is `nros_rmw_vtable_t`; match the typedef'd name rather than
+    # a guessed CamelCase one, and accept either spelling so a future rename of
+    # the tag does not silently yield an empty table.
+    for pat in (
+        r"typedef struct\s+\w*vtable\w*\s*\{(.*?)\n\}\s*\w*vtable\w*\s*;",
+        r"typedef struct\s*\{(.*?)\n\}\s*\w*vtable\w*\s*;",
+    ):
+        m = re.search(pat, header_text, re.S | re.I)
+        if m:
+            return m.group(1)
+    raise SystemExit("gen-rmw-slot-table: cannot find the vtable struct body")
+
+
+def parse_slots(header_text):
+    """[(index, name, group)] in declaration order -- which is slot order.
+
+    Depth-tracked, not indentation-guessed. A slot declaration sits at paren
+    depth 0 inside the struct body; a callback PARAMETER has the identical
+    `(*name)(` shape but lives inside another slot's argument list, i.e. at
+    depth >= 1. `void (*cb)(void *ctx)` appears twice in this header, and
+    counting those added phantom slots AND shifted every subsequent slot
+    NUMBER -- the one column a reader actually trusts.
+    """
+    body = vtable_struct_body(header_text)
+    group = "(ungrouped)"
+    out = []
+    depth = 0
+    for line in body.split("\n"):
+        sec = re.match(r"\s*/\*\s*-+\s*(.*?)\s*-+\s*(\*/)?\s*$", line)
+        if sec and sec.group(1) and depth == 0:
+            group = re.sub(r"\s+", " ", sec.group(1)).strip()
+            continue
+        pos = 0
+        for m in re.finditer(r"\(\s*\*\s*([a-z_0-9]+)\s*\)\s*\(|[()]", line):
+            tok = m.group(0)
+            if m.group(1) is not None:
+                if depth == 0:
+                    out.append((len(out) + 1, m.group(1), group))
+                # the construct opens one paren that its own `)` will close
+                depth += 1
+                continue
+            depth += 1 if tok == "(" else -1
+            depth = max(depth, 0)
+        _ = pos
+    return out
+
+
+def parse_required(cffi_text):
+    """The `require!(...)` set -- the same one check-rmw-required-slots.sh reads."""
+    m = re.search(r"fn first_missing_vtable_slot.*?require!\((.*?)\);", cffi_text, re.S)
+    if not m:
+        raise SystemExit("gen-rmw-slot-table: cannot find first_missing_vtable_slot's require!()")
+    return {s.strip() for s in m.group(1).split(",") if s.strip()}
+
+
+def render(slots, required):
+    lines = [
+        BEGIN,
+        "",
+        "<!-- Generated by scripts/gen-rmw-slot-table.py from rmw_vtable.h and",
+        "     first_missing_vtable_slot's require!() list. Do not hand-edit:",
+        "     `just check-rmw-slot-table` fails on drift (issue 0826). -->",
+        "",
+        f"{len(slots)} slots, {len(required)} of them required.",
+        "",
+        "| # | slot | group | required |",
+        "|---|------|-------|----------|",
+    ]
+    for idx, name, group in slots:
+        mark = "**yes**" if name in required else "optional"
+        lines.append(f"| {idx} | `{name}` | {group} | {mark} |")
+    lines += ["", END]
+    return "\n".join(lines)
+
+
+def splice(doc_text, table):
+    if BEGIN in doc_text and END in doc_text:
+        pre = doc_text.split(BEGIN)[0]
+        post = doc_text.split(END, 1)[1]
+        return pre + table + post
+    # First run: replace the hand-written table (the `| # | slot |` block).
+    m = re.search(r"\n\| # \| slot \|.*?(?=\n\n)", doc_text, re.S)
+    if not m:
+        raise SystemExit("gen-rmw-slot-table: no generated markers and no legacy table to replace")
+    return doc_text[: m.start()] + "\n" + table + doc_text[m.end():]
+
+
+def self_test():
+    """The extractor must not count visitor typedefs, and must track groups."""
+    sample = """
+/** A visitor typedef that is NOT a vtable slot. */
+typedef bool (*rmw_node_visitor_t)(const char *name, void *ctx);
+
+typedef struct NrosRmwVtableTag {
+    /* ---- Session lifecycle ---- */
+    rmw_ret_t (*create_session)(void *a);
+    rmw_ret_t (*destroy_session)(void *a);
+    /* ---- Phase 108 — status events (optional) ---- */
+    rmw_ret_t (*subscription_event_init)(void *a);
+} NrosRmwVtable;
+"""
+    slots = parse_slots(sample)
+    names = [n for _, n, _ in slots]
+    fails = 0
+    if names != ["create_session", "destroy_session", "subscription_event_init"]:
+        print(f"  FAIL: slot names {names}"); fails += 1
+    if "rmw_node_visitor_t" in names:
+        print("  FAIL: counted a visitor typedef as a slot"); fails += 1
+    if slots[0][2] != "Session lifecycle":
+        print(f"  FAIL: group {slots[0][2]!r}"); fails += 1
+    if slots[2][2] != "Phase 108 — status events (optional)":
+        print(f"  FAIL: second group {slots[2][2]!r}"); fails += 1
+    req = parse_required(
+        "fn first_missing_vtable_slot(v: &V) -> Option<&str> {\n"
+        "    require!(\n        create_session,\n        destroy_session,\n    );\n}"
+    )
+    if req != {"create_session", "destroy_session"}:
+        print(f"  FAIL: required {req}"); fails += 1
+    print(f"gen-rmw-slot-table self-test: {fails} check(s) failed")
+    return 1 if fails else 0
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--self-test", action="store_true")
+    args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
+
+    slots = parse_slots(HEADER.read_text())
+    required = parse_required(CFFI.read_text())
+
+    missing = sorted(required - {n for _, n, _ in slots})
+    if missing:
+        raise SystemExit(
+            "gen-rmw-slot-table: require!() names slots the header does not declare: "
+            + ", ".join(missing)
+        )
+
+    table = render(slots, required)
+    doc = RFC.read_text()
+    new = splice(doc, table)
+
+    if args.check:
+        if new != doc:
+            print(
+                f"ERROR: {RFC.relative_to(ROOT)}'s slot table is stale — regenerate with\n"
+                "  python3 scripts/gen-rmw-slot-table.py\n"
+                "and commit. The header is the SSoT (issue 0826).",
+                file=sys.stderr,
+            )
+            subprocess.run(["git", "--no-pager", "diff", "--stat", "--", str(RFC)], cwd=ROOT)
+            return 1
+        print(f"rmw slot table OK ({len(slots)} slots, {len(required)} required).")
+        return 0
+
+    RFC.write_text(new)
+    print(f"wrote {RFC.relative_to(ROOT)} — {len(slots)} slots, {len(required)} required")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
