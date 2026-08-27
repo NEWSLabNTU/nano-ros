@@ -194,13 +194,16 @@ pub use cffi_register::{RegisterError, nros_rmw_zenoh_register, register};
 //   - `NrosRmwPublisher::backend_data` was set by `create_publisher`
 //     to `Box::into_raw(Box<ZenohPublisher>)`. Trampolines cast back
 //     to `&ZenohPublisher`.
-//   - The loan trampoline boxes a lifetime-erased `ZenohSlot<'static>`
-//     and stows the raw pointer in `*out_token`. Commit / discard /
-//     drop reclaim the box.
+//   - Issue 0812 — the loan token is the loan's LENGTH, tagged, NOT a
+//     heap pointer. It used to be `Box::into_raw` of a lifetime-erased
+//     `ZenohSlot<'static>`, which put a malloc + free on the zero-copy
+//     publish path (and made the whole `lending` surface depend on a
+//     global allocator). The arena is single-slot per publisher and the
+//     publisher comes back as a parameter on both commit and discard, so
+//     the length is the only thing the token has to carry;
+//     `ZenohSlot::from_outstanding_loan` rebuilds the slot from it.
 #[cfg(feature = "lending")]
 mod loan_trampolines {
-    extern crate alloc;
-    use alloc::boxed::Box;
     use core::ffi::c_void;
 
     use nros_rmw::SlotLending;
@@ -214,12 +217,46 @@ mod loan_trampolines {
     type ZenohPublisher =
         <<ZenohRmw as nros_rmw::Rmw>::Session as nros_rmw::Session>::PublisherHandle;
 
-    /// Static-lifetime alias backing the boxed token. The cffi
-    /// runtime guarantees the publisher outlives every outstanding
-    /// loan (commit / discard / Drop all run before publisher
-    /// destruction); `'static` is the cheapest way to erase the
-    /// borrow checker's perspective.
-    type StaticSlot = ZenohSlot<'static>;
+    /// Top bit of the loan token. Two jobs: it keeps the token non-NULL
+    /// for a zero-length loan (the cffi runtime rejects a NULL token), and
+    /// it makes a token that came from anywhere else — a stale pointer, a
+    /// token minted by a different backend — fail the decode instead of
+    /// being read as a length.
+    const TOKEN_TAG: usize = 1usize << (usize::BITS - 1);
+
+    /// Encode a granted loan length as the opaque `void *` token the cffi
+    /// runtime hands back at commit / discard. Never dereferenced.
+    fn encode_token(len: usize) -> *mut c_void {
+        (len | TOKEN_TAG) as *mut c_void
+    }
+
+    /// Recover the granted length, or `None` when `token` did not come
+    /// from [`encode_token`].
+    fn decode_token(token: *mut c_void) -> Option<usize> {
+        let raw = token as usize;
+        if (raw & TOKEN_TAG) == 0 {
+            return None;
+        }
+        Some(raw & !TOKEN_TAG)
+    }
+
+    /// Resolve the `ZenohPublisher` behind a vtable publisher view.
+    ///
+    /// # Safety
+    /// `publisher`, when non-NULL, must point at a live `NrosRmwPublisher`
+    /// whose `backend_data` this backend created.
+    unsafe fn publisher_handle<'a>(
+        publisher: *const NrosRmwPublisher,
+    ) -> Option<&'a ZenohPublisher> {
+        if publisher.is_null() {
+            return None;
+        }
+        let backend_data = unsafe { (*publisher).backend_data };
+        if backend_data.is_null() {
+            return None;
+        }
+        Some(unsafe { &*(backend_data as *const ZenohPublisher) })
+    }
 
     unsafe extern "C" fn zenoh_pub_loan(
         publisher: *const NrosRmwPublisher,
@@ -228,32 +265,28 @@ mod loan_trampolines {
         out_cap: *mut usize,
         out_token: *mut *mut c_void,
     ) -> NrosRmwRet {
-        if publisher.is_null()
-            || out_buf.is_null()
-            || out_cap.is_null()
-            || out_token.is_null()
-            || requested_len == 0
-        {
+        if out_buf.is_null() || out_cap.is_null() || out_token.is_null() || requested_len == 0 {
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
         }
-        let backend_data = unsafe { (*publisher).backend_data };
-        if backend_data.is_null() {
+        // SAFETY: cffi-runtime contract — the view describes a live
+        // publisher this backend created.
+        let Some(pub_handle) = (unsafe { publisher_handle(publisher) }) else {
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-        let pub_handle = unsafe { &*(backend_data as *const ZenohPublisher) };
+        };
         match pub_handle.try_lend_slot(requested_len) {
             Ok(Some(mut slot)) => {
                 let buf_ptr = slot.as_mut().as_mut_ptr();
                 let cap = slot.as_mut().len();
-                // SAFETY: erase lifetime — cffi-runtime contract
-                // guarantees the publisher outlives the loan.
-                let static_slot: StaticSlot =
-                    unsafe { core::mem::transmute::<ZenohSlot<'_>, StaticSlot>(slot) };
-                let boxed = Box::new(static_slot);
+                // Issue 0812 — no box. Forgetting the slot is what keeps
+                // the loan OUTSTANDING (dropping it would release the
+                // arena immediately); `zenoh_pub_commit` /
+                // `zenoh_pub_discard` rebuild it from `cap`, which is the
+                // whole content of the token.
+                core::mem::forget(slot);
                 unsafe {
                     *out_buf = buf_ptr;
                     *out_cap = cap;
-                    *out_token = Box::into_raw(boxed) as *mut c_void;
+                    *out_token = encode_token(cap);
                 }
                 NROS_RMW_RET_OK
             }
@@ -267,35 +300,44 @@ mod loan_trampolines {
         token: *mut c_void,
         actual_len: usize,
     ) -> NrosRmwRet {
-        if publisher.is_null() || token.is_null() {
+        let Some(len) = decode_token(token) else {
+            // A NULL or foreign token is a caller bug, not a no-op: the
+            // loan it names was never granted here.
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-        let backend_data = unsafe { (*publisher).backend_data };
-        if backend_data.is_null() {
+        };
+        // SAFETY: cffi-runtime contract — the view describes a live
+        // publisher this backend created.
+        let Some(pub_handle) = (unsafe { publisher_handle(publisher) }) else {
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-        let pub_handle = unsafe { &*(backend_data as *const ZenohPublisher) };
-        let mut slot: Box<StaticSlot> = unsafe { Box::from_raw(token as *mut StaticSlot) };
+        };
+        // SAFETY: the runtime consumes a token exactly once, so the loan
+        // `token` names is still outstanding and this is its only holder.
+        let mut slot = unsafe { ZenohSlot::from_outstanding_loan(pub_handle, len) };
         slot.truncate(actual_len);
-        match pub_handle.commit_slot(*slot) {
+        match pub_handle.commit_slot(slot) {
             Ok(()) => NROS_RMW_RET_OK,
             Err(_) => NROS_RMW_RET_ERROR,
         }
     }
 
     unsafe extern "C" fn zenoh_pub_discard(
-        _publisher: *const NrosRmwPublisher,
+        publisher: *const NrosRmwPublisher,
         token: *mut c_void,
     ) -> NrosRmwRet {
-        if token.is_null() {
-            // A null token is a caller bug, not a no-op: the loan it names
-            // was never granted. `void` could only shrug; say so.
+        let Some(len) = decode_token(token) else {
+            // A NULL or foreign token is a caller bug, not a no-op: the
+            // loan it names was never granted here.
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
-        }
-        // SAFETY: token came from `Box::into_raw(Box<StaticSlot>)` in
-        // `zenoh_pub_loan`. Reconstitute and drop — ZenohSlot::drop
-        // releases the arena.
-        let _slot: Box<StaticSlot> = unsafe { Box::from_raw(token as *mut StaticSlot) };
+        };
+        // The publisher is load-bearing now, where the boxed token made it
+        // ignorable: releasing the arena is the publisher's own operation.
+        // SAFETY: cffi-runtime contract, as above.
+        let Some(pub_handle) = (unsafe { publisher_handle(publisher) }) else {
+            return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
+        };
+        // SAFETY: as in commit. Dropping the rebuilt slot is what releases
+        // the arena — `ZenohSlot::drop` does it.
+        drop(unsafe { ZenohSlot::from_outstanding_loan(pub_handle, len) });
         NROS_RMW_RET_OK
     }
 

@@ -10,6 +10,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_SIZE_THRESHOLD");
     println!("cargo:rerun-if-env-changed=ZPICO_MAX_LARGE_SUBSCRIBERS");
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
+    println!("cargo:rerun-if-env-changed=ZPICO_PUBLISHER_TX_BUFFER_SIZE");
 
     // Phase 214.C.3 — default coordinated with
     // `packages/core/nros-node/build.rs::NROS_SUBSCRIPTION_BUFFER_SIZE`
@@ -48,6 +49,14 @@ fn main() {
     // sync — set the same env var for both. `.max(1)` so a session always has
     // room for its own primary node.
     let max_nodes: usize = env_usize("NROS_EXECUTOR_MAX_NODES", 4).max(1);
+    // Issue 0813 — per-publisher TX arena capacity for the zero-copy loan path
+    // (`SlotLending`). This was a bare `const` in `shim/publisher.rs`, so its
+    // 1 KiB ceiling was neither raisable by a consumer nor visible to
+    // `scripts/gen-pool-inventory.py`. It is the publisher-side twin of
+    // `ZPICO_SUBSCRIBER_BUFFER_SIZE` and shares its default. The arena is
+    // per-publisher, so the cost is `ZPICO_MAX_PUBLISHERS` × this — priced in
+    // the inventory via the `nros-pool:` annotation beside `LendArena`.
+    let publisher_tx_size: usize = env_usize("ZPICO_PUBLISHER_TX_BUFFER_SIZE", 1024);
 
     let out_dir = std::env::var("OUT_DIR").unwrap();
     let path = std::path::Path::new(&out_dir).join("buffer_config.rs");
@@ -81,7 +90,10 @@ fn main() {
              /// Phase 268 — per-session per-node NN liveliness token cap, tracking\n\
              /// `nros-node`'s NROS_EXECUTOR_MAX_NODES (default 4): one session hosts\n\
              /// at most that many graph nodes.\n\
-             pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n",
+             pub const MAX_PER_NODE_LIVELINESS: usize = {max_nodes};\n\
+             /// Issue 0813 — per-publisher TX arena capacity for the zero-copy\n\
+             /// loan path (set via ZPICO_PUBLISHER_TX_BUFFER_SIZE, default 1024).\n\
+             pub const PUBLISHER_TX_BUFFER_SIZE: usize = {publisher_tx_size};\n",
             keyexpr_buf_size = keyexpr_string_size + 1,
         ),
     )

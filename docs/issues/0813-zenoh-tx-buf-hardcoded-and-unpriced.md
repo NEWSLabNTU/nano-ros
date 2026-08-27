@@ -37,3 +37,48 @@ The arena is `LendArena { busy: AtomicBool, buf: UnsafeCell<[u8; ZENOH_TX_BUF]> 
 allocated **per publisher**. Raising the constant multiplies by the publisher
 count, so making it a knob and pricing it in the inventory belong in the same
 change — a knob nobody can see the cost of is how 0271 happened.
+
+## Fix
+
+`ZENOH_TX_BUF` is now generated, not literal:
+
+* **knob** `ZPICO_PUBLISHER_TX_BUFFER_SIZE`, default **1024** — read by
+  `packages/rmw/zenoh/nros-rmw-zenoh/build.rs` through the same `env_usize`
+  helper as its subscriber-side twin `ZPICO_SUBSCRIBER_BUFFER_SIZE`, emitted
+  into `buffer_config.rs` as `PUBLISHER_TX_BUFFER_SIZE`, and re-exported from
+  `shim` beside `SUBSCRIBER_BUFFER_SIZE`. `shim::publisher::ZENOH_TX_BUF` keeps
+  its name and is now an alias of that const, so no consumer spelling moves.
+* **price** — `// nros-pool: PUBLISHER_TX_ARENAS = ZPICO_MAX_PUBLISHERS *
+  ZPICO_PUBLISHER_TX_BUFFER_SIZE` beside `LendArena`. At defaults that is
+  8 × 1024 = **8,192 bytes**, which is what the inventory now reports instead
+  of nothing.
+
+Env-only, like eight of the ten knobs that build script reads. It is not
+forwarded from Kconfig: `_nros_resolve_knob` in
+`zephyr/cmake/nros_cargo_build.cmake` carries only the two knobs with a
+`KCONFIG_KNOBS` row, and adding a third means a `CONFIG_NROS_*` symbol plus a
+cmake row — a separate change, and `check-kconfig-knob-forwarding` is
+one-directional (cmake → reader), so an env-only knob does not trip it. A
+Zephyr image that needs a bigger loan arena sets the env var at build time.
+
+### Amendment — the knob is priced, the pool row is not (2026-08-27)
+
+The first version of this fix also annotated `LendArena` with
+`// nros-pool: PUBLISHER_TX_ARENAS = ZPICO_MAX_PUBLISHERS * ZPICO_PUBLISHER_TX_BUFFER_SIZE`,
+which the inventory priced at 8,192 bytes. That row was removed before landing.
+
+The arena exists only under the `lending` feature. Per
+[issue 0814](0814-lending-never-exercised-on-hardware.md) that feature is
+enabled by exactly one posix test crate and by no shipped image, and `nm` on a
+built zenoh example confirms it: zero symbols matching `LendArena` or
+`TX_ARENA`. Publishing 8,192 bytes of cost in the page people use to rightsize a
+board, for storage their image does not contain, is the failure mode the
+inventory exists to prevent — the same "a number that is right for one build and
+wrong for the rest" that made [issue 0739](0739-static-pool-inventory-not-enumerable.md)
+decline to annotate `MESSAGE_INFO_TABLE`.
+
+The knob itself is enumerated, which is what this issue asked for: the ceiling is
+now tunable and visible. Annotate the pool when `lending` reaches a shipped
+image, and verify the figure against a real one with `just mem-report` rather
+than trusting the arithmetic — see
+[phase 394](../roadmap/phase-394-memory-campaign-ledger.md).

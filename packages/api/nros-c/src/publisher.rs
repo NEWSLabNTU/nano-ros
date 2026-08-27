@@ -568,21 +568,17 @@ pub unsafe extern "C" fn nros_publisher_loan(
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
 
-    use nros_rmw::SlotLending;
+    // Issue 0812 — `try_lend_raw` hands back the BACKEND's own token, so
+    // nothing has to be stored on this side of the FFI boundary. This used
+    // to `Box` a lifetime-erased slot per loan: a malloc on the path whose
+    // entire purpose is removing copies, and a hard `alloc` dependency on a
+    // surface a heap-free image is meant to be able to use.
     let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
-    match pub_handle.try_lend_slot(requested_len) {
-        Ok(Some(slot)) => {
-            // SAFETY: erase the lifetime — caller is contractually
-            // responsible for commit/discard before the publisher
-            // dies. Box the slot so we have a stable token across
-            // the FFI boundary.
-            let mut slot: nros::internals::RmwSlot<'static> = core::mem::transmute(slot);
-            let buf_ptr = slot.as_mut().as_mut_ptr();
-            let cap = slot.as_mut().len();
-            let boxed = alloc::boxed::Box::new(slot);
+    match pub_handle.try_lend_raw(requested_len) {
+        Ok(Some((buf_ptr, cap, token))) => {
             *out_buf = buf_ptr;
             *out_cap = cap;
-            *out_token = alloc::boxed::Box::into_raw(boxed) as *mut core::ffi::c_void;
+            *out_token = token;
             NROS_RET_OK
         }
         Ok(None) => NROS_RET_TRY_AGAIN,
@@ -612,12 +608,11 @@ pub unsafe extern "C" fn nros_publisher_commit(
         publisher,
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
-    use nros_rmw::SlotLending;
     let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
-    let mut slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
-        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>);
-    slot.set_len(actual_len);
-    match pub_handle.commit_slot(*slot) {
+    // SAFETY: `token` is the backend token a prior `nros_publisher_loan`
+    // handed out on this publisher; the caller's contract is that it is
+    // still outstanding and is consumed here exactly once.
+    match pub_handle.commit_raw(token, actual_len) {
         Ok(()) => NROS_RET_OK,
         Err(_) => NROS_RET_PUBLISH_FAILED,
     }
@@ -643,13 +638,15 @@ pub unsafe extern "C" fn nros_publisher_discard(
         publisher,
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
-    // SAFETY: token was a Box::into_raw of `RmwSlot<'static>` from a
-    // prior `nros_publisher_loan`. Reconstitute it and drop —
-    // CffiSlot::drop fires the backend's pub_discard (or reclaims the
-    // arena staging buffer).
-    let _slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
-        alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>);
-    NROS_RET_OK
+    // SAFETY: `token` is the backend token a prior `nros_publisher_loan`
+    // handed out on this publisher. `discard_raw` fires the backend's
+    // pub_discard (or reclaims the arena staging buffer) — issue 0812
+    // retired the per-loan Box this used to reconstitute.
+    let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
+    match pub_handle.discard_raw(token) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Finalize a publisher.

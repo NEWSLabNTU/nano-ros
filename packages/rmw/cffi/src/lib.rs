@@ -2455,6 +2455,123 @@ impl nros_rmw::SlotLending for CffiPublisher {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Issue 0812 — the loan path across the C / C++ boundary, without a heap.
+//
+// `SlotLending` hands back a `CffiSlot`, which is a Rust value with a `Drop`
+// impl. An FFI entry point has to keep that value alive between `_loan` and
+// `_commit` / `_discard` and has nowhere to put it, so `nros-c` / `nros-cpp`
+// each boxed one per loan: a `malloc` on the path whose whole purpose is to
+// remove copies and, worse, a hard `alloc` dependency on a surface that a
+// heap-free image is supposed to be able to use.
+//
+// None of that state has to cross the boundary. Commit and discard are handed
+// the publisher back as a parameter; whether the loan took the staging
+// fallback is a property of that publisher's vtable, not of the individual
+// loan; and the backend already minted a stable token of its own. So the FFI
+// layers pass the BACKEND's token straight through and store nothing at all.
+//
+// One implementation, not two: `commit_raw` / `discard_raw` rebuild the
+// `CffiSlot` and delegate to `commit_slot` / `Drop`, so the loan lifecycle
+// keeps exactly one body and cannot drift from the `SlotLending` path.
+// ---------------------------------------------------------------------------
+#[cfg(feature = "lending")]
+impl CffiPublisher {
+    /// `true` when loans on this publisher take the runtime's staging
+    /// fallback rather than the backend's own slot. A property of the
+    /// vtable, so every loan on a given publisher answers the same — which
+    /// is why the per-loan `fallback` bit need not travel in the token.
+    #[inline]
+    fn loan_is_fallback(&self) -> bool {
+        self.vtable.borrow_loaned_message.is_none()
+    }
+
+    /// Rebuild the [`CffiSlot`] describing an outstanding loan from its
+    /// token, so the shared commit / discard bodies can run on it.
+    ///
+    /// `buf` and `cap` are only ever read by `as_mut` / `set_len`, neither of
+    /// which runs on the commit or discard path (the fallback arm reads the
+    /// staging buffer back out of `token`, the native arm hands `token` to
+    /// the backend), so the rebuilt slot deliberately carries no buffer.
+    ///
+    /// # Safety
+    /// `token` must be the token of a loan that is still outstanding on
+    /// `self`, and the returned slot must be committed or dropped exactly
+    /// once.
+    unsafe fn slot_from_token(&self, token: *mut c_void, len: usize) -> CffiSlot<'_> {
+        CffiSlot {
+            buf: core::ptr::null_mut(),
+            cap: len,
+            cursor: len,
+            token,
+            publisher: Some(self),
+            fallback: self.loan_is_fallback(),
+        }
+    }
+
+    /// Allocation-free loan: reserve a slot and hand back the backend's own
+    /// opaque token instead of a Rust value the caller would have to store.
+    ///
+    /// Returns `(buf, cap, token)`. `Ok(None)` means no slot is available
+    /// right now — the same meaning `SlotLending::try_lend_slot` gives it.
+    ///
+    /// The loan stays outstanding until [`commit_raw`](Self::commit_raw) or
+    /// [`discard_raw`](Self::discard_raw) consumes `token` — exactly one of
+    /// them, exactly once. Callers that can hold a Rust value across the
+    /// whole loan should use `SlotLending` instead and let `Drop` do it.
+    pub fn try_lend_raw(
+        &self,
+        len: usize,
+    ) -> Result<Option<(*mut u8, usize, *mut c_void)>, TransportError> {
+        use nros_rmw::SlotLending as _;
+        let Some(mut slot) = self.try_lend_slot(len)? else {
+            return Ok(None);
+        };
+        let buf = slot.as_mut().as_mut_ptr();
+        let cap = slot.as_mut().len();
+        let token = slot.token;
+        // Keep the loan outstanding — dropping the slot here would hand it
+        // straight back to the backend.
+        core::mem::forget(slot);
+        Ok(Some((buf, cap, token)))
+    }
+
+    /// Commit a loan taken with [`try_lend_raw`](Self::try_lend_raw).
+    ///
+    /// `actual_len` is the number of bytes written. On the native path it
+    /// reaches the backend's own commit, which is the layer that knows the
+    /// slot's capacity and is responsible for clamping; the staging fallback
+    /// clamps to the staging buffer here.
+    ///
+    /// # Safety
+    /// `token` must come from a prior `try_lend_raw` on THIS publisher, must
+    /// still be outstanding, and must not be used again after this call.
+    pub unsafe fn commit_raw(
+        &self,
+        token: *mut c_void,
+        actual_len: usize,
+    ) -> Result<(), TransportError> {
+        use nros_rmw::SlotLending as _;
+        // SAFETY: forwarded from this function's own contract.
+        let slot = unsafe { self.slot_from_token(token, actual_len) };
+        self.commit_slot(slot)
+    }
+
+    /// Abandon a loan taken with [`try_lend_raw`](Self::try_lend_raw)
+    /// without sending it.
+    ///
+    /// # Safety
+    /// `token` must come from a prior `try_lend_raw` on THIS publisher, must
+    /// still be outstanding, and must not be used again after this call.
+    pub unsafe fn discard_raw(&self, token: *mut c_void) -> Result<(), TransportError> {
+        // SAFETY: forwarded from this function's own contract. Dropping the
+        // rebuilt slot is what fires the backend's discard (or reclaims the
+        // staging buffer).
+        drop(unsafe { self.slot_from_token(token, 0) });
+        Ok(())
+    }
+}
+
 impl Publisher for CffiPublisher {
     type Error = TransportError;
 

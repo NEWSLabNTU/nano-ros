@@ -229,25 +229,17 @@ pub unsafe extern "C" fn nros_cpp_publisher_loan(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    use nros_rmw::SlotLending;
+    // Issue 0812 — `try_lend_raw` hands back the BACKEND's own token, so
+    // nothing has to be stored on this side of the FFI boundary. This used
+    // to `Box` a lifetime-erased slot per loan: a malloc on the path whose
+    // entire purpose is removing copies.
     let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
-    match publisher.try_lend_slot(requested_len) {
-        Ok(Some(slot)) => {
-            // SAFETY: erase lifetime — caller's contract ensures commit
-            // / discard happens before publisher destruction.
-            let mut slot: nros::internals::RmwSlot<'static> = unsafe {
-                core::mem::transmute::<
-                    nros::internals::RmwSlot<'_>,
-                    nros::internals::RmwSlot<'static>,
-                >(slot)
-            };
-            let buf_ptr = slot.as_mut().as_mut_ptr();
-            let cap = slot.as_mut().len();
-            let boxed = alloc::boxed::Box::new(slot);
+    match publisher.try_lend_raw(requested_len) {
+        Ok(Some((buf_ptr, cap, token))) => {
             unsafe {
                 *out_buf = buf_ptr;
                 *out_cap = cap;
-                *out_token = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
+                *out_token = token;
             }
             NROS_CPP_RET_OK
         }
@@ -272,12 +264,11 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
     if storage.is_null() || token.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    use nros_rmw::SlotLending;
     let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
-    let mut slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
-        unsafe { alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>) };
-    slot.set_len(actual_len);
-    match publisher.commit_slot(*slot) {
+    // SAFETY: `token` is the backend token a prior `nros_cpp_publisher_loan`
+    // handed out on this publisher; the caller's contract is that it is
+    // still outstanding and is consumed here exactly once.
+    match unsafe { publisher.commit_raw(token, actual_len) } {
         Ok(()) => NROS_CPP_RET_OK,
         Err(e) => crate::transport_error_to_cpp_ret(e),
     }
@@ -298,9 +289,15 @@ pub unsafe extern "C" fn nros_cpp_publisher_discard(
     if storage.is_null() || token.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
-    let _slot: alloc::boxed::Box<nros::internals::RmwSlot<'static>> =
-        unsafe { alloc::boxed::Box::from_raw(token as *mut nros::internals::RmwSlot<'static>) };
-    NROS_CPP_RET_OK
+    let publisher = unsafe { &*(storage as *const nros::internals::RmwPublisher) };
+    // SAFETY: `token` is the backend token a prior `nros_cpp_publisher_loan`
+    // handed out on this publisher. `discard_raw` fires the backend's
+    // pub_discard (or reclaims the arena staging buffer) — issue 0812
+    // retired the per-loan Box this used to reconstitute.
+    match unsafe { publisher.discard_raw(token) } {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(e) => crate::transport_error_to_cpp_ret(e),
+    }
 }
 
 /// Destroy a publisher (drop in place, no free).

@@ -484,11 +484,27 @@ mod lending {
         sync::atomic::{AtomicBool, Ordering as CoreOrdering},
     };
 
-    /// Per-publisher TX arena slot capacity.
-    pub const ZENOH_TX_BUF: usize = 1024;
+    /// Per-publisher TX arena slot capacity — set at build time via
+    /// `ZPICO_PUBLISHER_TX_BUFFER_SIZE` (default 1024). It is the ceiling
+    /// `try_claim` enforces: a loan longer than this is `TooLarge`, so a
+    /// consumer publishing images or scans through the zero-copy path raises
+    /// this knob rather than editing the crate (issue 0813).
+    pub const ZENOH_TX_BUF: usize = crate::config::PUBLISHER_TX_BUFFER_SIZE;
 
     /// Backend-owned arena for a `ZenohPublisher`. Single-slot;
     /// concurrent loans return Err(WouldBlock).
+    ///
+    /// issue 0813 — the arena is embedded in each `ZenohPublisher`, and a
+    /// session holds at most `ZPICO_MAX_PUBLISHERS` of them, so the knob's cost
+    /// is that product. It carries NO `// nros-pool:` annotation, deliberately:
+    /// the arena exists only under the `lending` feature, which issue 0814
+    /// measured as enabled by exactly one posix test crate and by no shipped
+    /// image. `nm` on a built zenoh example finds zero of these. A pool row
+    /// would publish 8,192 bytes of cost that no consumer's image actually
+    /// pays, in the one page people use to rightsize a board — the opposite of
+    /// what the inventory is for. The KNOB is enumerated either way, which is
+    /// what issue 0813 asked for; annotate the pool when `lending` reaches a
+    /// shipped image, and verify the figure with `just mem-report` then.
     #[allow(dead_code)]
     pub(crate) struct LendArena {
         busy: AtomicBool,
@@ -564,6 +580,41 @@ mod lending {
             // for the lifetime of `self`.
             let ptr = self.bytes.as_mut_ptr();
             self.bytes = unsafe { core::slice::from_raw_parts_mut(ptr, actual_len) };
+        }
+
+        /// Issue 0812 — re-materialise a publisher's outstanding loan
+        /// from nothing but its length.
+        ///
+        /// The arena is single-slot and `try_claim` always hands out a
+        /// prefix of the same buffer, so a LIVE loan is fully described
+        /// by its publisher plus the length it was granted. The cffi
+        /// loan trampolines use that to carry a loan across the C
+        /// boundary as an INTEGER token rather than a heap-allocated
+        /// slot; this is the other half of that encoding.
+        ///
+        /// Dropping the returned slot releases the arena, exactly as
+        /// dropping the original would have.
+        ///
+        /// # Safety
+        /// * `publisher` must have exactly one loan outstanding — a
+        ///   `try_lend_slot` that returned `Some` and has since been
+        ///   neither committed nor discarded, so the busy flag is still
+        ///   set and no other `ZenohSlot` for it exists.
+        /// * `len` must be the length that loan was granted with.
+        pub unsafe fn from_outstanding_loan(
+            publisher: &'a ZenohPublisher,
+            len: usize,
+        ) -> ZenohSlot<'a> {
+            // SAFETY: the busy flag is still set (the loan is
+            // outstanding and this is its only holder), which is the
+            // same grant of exclusivity `try_claim` mints its `&mut`
+            // under.
+            let buf: &'a mut [u8; ZENOH_TX_BUF] = unsafe { &mut *publisher.lend_arena.buf.get() };
+            let end = len.min(ZENOH_TX_BUF);
+            ZenohSlot {
+                bytes: &mut buf[..end],
+                publisher,
+            }
         }
     }
 

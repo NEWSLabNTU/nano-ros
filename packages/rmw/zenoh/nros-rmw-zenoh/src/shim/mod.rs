@@ -149,9 +149,13 @@ pub(crate) const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE;
 #[cfg(feature = "safety-e2e")]
 pub(crate) const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 
+// `PUBLISHER_TX_BUFFER_SIZE` is re-exported unconditionally, like its
+// subscriber-side twins — the publisher TX arena that consumes it is behind the
+// `lending` feature, but the knob's value is a build fact either way and a
+// feature-gated re-export would hide it from anyone sizing an image (issue 0813).
 pub use crate::config::{
-    MAX_LARGE_SUBSCRIBERS, SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE, SUBSCRIBER_LARGE_SIZE,
-    SUBSCRIBER_RING_DEPTH, SUBSCRIBER_SIZE_THRESHOLD,
+    MAX_LARGE_SUBSCRIBERS, PUBLISHER_TX_BUFFER_SIZE, SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE,
+    SUBSCRIBER_LARGE_SIZE, SUBSCRIBER_RING_DEPTH, SUBSCRIBER_SIZE_THRESHOLD,
 };
 
 // ============================================================================
