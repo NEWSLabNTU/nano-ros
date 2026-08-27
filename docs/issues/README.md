@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0826** (rmw/docs, open 2026-08-27) — RFC-0035's numbered slot table documents a **33-slot** vtable
+that is now **80 slots**: 17 of the 36 names it lists no longer exist (mostly phase-376 W3.b's move to
+upstream's `rmw_*` vocabulary — `publish_raw`->`publish`, `send_reply`->`send_response`,
+`pub_loan`->`borrow_loaned_message`, …) and **61 real slots are never mentioned**. Filed rather than
+swept ON PURPOSE: renaming the 17 would make the table read as authoritative while still being silent
+about 61 slots, whereas today it is visibly stale and at least warns the reader. Needs regenerating
+from the header, with a `--check` gate like the other generated reference tables. The sharper sibling
+— `custom-rmw.md`'s C vtable example assigning 6 nonexistent slots, so the porting guide could not
+compile — is fixed in `9b574e974`. See `0826-*`.
+
 Recently resolved (2026-08-27): **#0821** (rmw/platform) — the S32K344 took a USAGE FAULT at exactly
 2 x Z_TRANSPORT_LEASE with an exception frame of ALL ZEROES (pc, lr, xpsr, every FPU register). xpsr=0
 is impossible for a real frame, so the CPU unstacked one out of dead memory: a blown stack, not a bad
