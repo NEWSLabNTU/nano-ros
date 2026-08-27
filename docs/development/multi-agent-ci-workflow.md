@@ -163,6 +163,44 @@ runs `NROS_TEST_SCOPE=native` and gets none of it.
 L5 gets its own lane specifically because it is the flakiest and would
 otherwise poison merge-queue batches.
 
+### Correction — "host-executable" is about RUN cost, not BUILD cost
+
+**Measured 2026-08-28, and it invalidates this section's cost estimate.** The
+lane table above put L2 at "10–20 min" on the reasoning that the
+host-executable platforms need no cross toolchain and no QEMU. That is true of
+RUNNING them and says nothing about BUILDING them, which is where the time is.
+
+Fixture rows per platform:
+
+| platform | rows |
+| --- | ---: |
+| `linux` | 196 |
+| `zephyr` | 68 |
+| `threadx-linux` | 43 |
+| `freertos-posix` | 2 |
+
+309 of the manifest's 314 rows. An L2 defined as "the four host-executable
+platforms" therefore builds essentially the ENTIRE fixture set — roughly double
+what tier 1 builds today, so an hour or two, not ten minutes.
+
+**Consequence: L2 cannot be a pre-merge lane until the fixture cache exists.**
+W10 moves ahead of putting L2 in the queue, rather than last. This is the second
+time measurement has re-ordered this plan; the first was discovering CI is red
+rather than slow.
+
+### Correction — `check-build` is not a compile tier
+
+L1 was specified as "affected crates: check, clippy, unit tests". In this tree
+`check-build` also runs per-backend TEST SUITES — `check-c`, `check-cpp`,
+`check-rmw-cyclonedds`, `check-cli-tests`, `check-required-features-tests`. That
+is deliberate (issue 0319 moved the Cyclone suite into a `check-*` lane
+precisely so `just check` would run it), but it means L1 as first defined is not
+a minutes-long compile tier.
+
+Either L1 decomposes — compile and lint in L1, backend suites in L2 — or the
+lane table's L1 budget is wrong. Decomposing is the better answer and is not yet
+done; the budget in the table above should be read as aspirational until it is.
+
 ## Test methods: pick the cheapest witness per defect class
 
 The important question is not "which platforms do we run" but "what is the

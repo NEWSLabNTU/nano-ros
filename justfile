@@ -3376,6 +3376,32 @@ rust-rtos-link-check: _require-leaf-includes
 # tier-1 coordinates would leave the remaining native binaries absent and the
 # run would mass-fail "Binary not found". The build set has to cover the run
 # set, not the gate set.
+# Phase-395 W2 — the lanes, named. See
+# docs/development/multi-agent-ci-workflow.md for why they are cut by EXECUTION
+# COST rather than by combinatorial coverage.
+#
+# L0 and L1 need NO FIXTURES. That is not a new property, it is one this tree
+# already had and did not expose: only `test` and `test-all` depend on
+# `_require-fixtures-ready`, while `check-fast`, `check-build` and `test-unit`
+# do not. Measured 2026-08-28: 89 of 163 test FILES call a fixture resolver and
+# 74 do not, so a large share of the suite was gated behind a precondition it
+# never needed.
+#
+# An agent or an outside contributor can run L0+L1 on a fresh clone with no SDK,
+# no QEMU and no cross toolchain.
+
+# L0 is `just ci-fast`, which already exists (`check-fast check-no-std`). It is
+# NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
+# spellings" defect this tree keeps paying for, and the map from lane to verb
+# belongs in the doc, not in a duplicate recipe.
+
+# L1 — compile, lint and unit tests. No fixtures, no platforms, no QEMU.
+[group("main")]
+ci-l1:
+    @just check-cli-fresh check-fast check-build check-api-parity
+    @just test-unit
+    @echo "CI L1 passed (compile + unit; no fixtures were built or needed)."
+
 [group("ci")]
 ci:
     @NROS_FIXTURE_LANE=native bash scripts/check-tier-preconditions.sh

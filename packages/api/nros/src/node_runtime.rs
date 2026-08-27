@@ -212,6 +212,14 @@ impl<C: ExecutableNode, const N: usize> ComponentSlotStorage<C, N> {
     }
 
     /// Hand out the next uninitialised slot, or `None` past the instance cap.
+    ///
+    /// `clippy::mut_from_ref` fires because a `&mut` derived from a `&self` is
+    /// usually unsound. It is not here, and the reason is already written down
+    /// on the `unsafe impl Sync` above: the monotonic `fetch_add` hands each
+    /// index out at most once, so no two `&mut` to one `UnsafeCell` can coexist,
+    /// and `i >= N` bounds it. Allowed rather than restructured — the lint
+    /// cannot see the atomic, and the invariant is the point of the type.
+    #[allow(clippy::mut_from_ref)]
     fn take(&'static self) -> Option<&'static mut MaybeUninit<TypedSlot<C>>> {
         let i = self.next.fetch_add(1, Ordering::Relaxed);
         if i >= N {
@@ -542,7 +550,7 @@ impl ExecutorNodeRuntime {
         // a truncation.
         let raw = self.pool.next_slot().ok_or(NodeDeclError::ExecutorFull)?;
         if raw.len() < core::mem::size_of::<TypedSlot<C>>()
-            || (raw.as_ptr() as usize) % core::mem::align_of::<TypedSlot<C>>() != 0
+            || !(raw.as_ptr() as usize).is_multiple_of(core::mem::align_of::<TypedSlot<C>>())
         {
             return Err(NodeDeclError::Runtime);
         }

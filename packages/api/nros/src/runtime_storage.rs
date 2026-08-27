@@ -81,7 +81,7 @@ impl Slot<'_> {
     /// as "raise NROS_RUNTIME_COMPONENT_SLOT_BYTES".
     pub fn fits<T>(&self) -> bool {
         self.storage.len() >= core::mem::size_of::<T>()
-            && (self.storage.as_ptr() as usize) % core::mem::align_of::<T>() == 0
+            && (self.storage.as_ptr() as usize).is_multiple_of(core::mem::align_of::<T>())
     }
 
     /// Pointer to the slot's storage, for an in-place write of `TypedSlot<C>`.
