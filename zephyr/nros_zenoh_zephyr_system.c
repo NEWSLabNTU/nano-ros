@@ -12,6 +12,8 @@
 #include <zenoh-pico/system/common/system_error.h>
 #include <zenoh-pico/system/platform.h>
 
+#include <nros/platform.h>
+
 #include <zephyr/kernel.h>
 #include <zephyr/posix/pthread.h>
 
@@ -26,12 +28,37 @@ int nros_zephyr_task_create(pthread_t *thread,
                             void *(*entry)(void *),
                             void *arg);
 
+/* issue 0852 — `attr` is READ, not discarded.
+ *
+ * The pointer is an `nros_platform_task_attr_t *`, not a `pthread_attr_t *`,
+ * despite the `z_task_attr_t *` in the signature. That is the contract
+ * `zpico_set_task_config` states and issue 0803 already relied on:
+ *
+ *     g_default_read_task_opts.task_attributes =
+ *         (z_task_attr_t *) &g_default_read_nros_attr;
+ *
+ * zenoh-pico's core never dereferences the pointer -- `_zp_start_read_task`
+ * forwards it here untouched -- so the port at the other end decides the type,
+ * and on this platform that type is the nros attr.
+ *
+ * This function used to be `(void)attr;`. Everything above it worked: the
+ * Kconfig knob, the CMake wiring, the RAW encoding, issue 0626's fix to
+ * `zpico_set_task_config`. The priority reached this line and stopped, so the
+ * zenoh READ task was born inheriting the executor's priority and the polled
+ * serial RX lost a full timeslice to it on every `k_yield()`. */
 z_result_t _z_task_init(_z_task_t *task,
                         z_task_attr_t *attr,
                         void *(*fun)(void *),
                         void *arg) {
-    (void)attr;
-    return nros_zephyr_task_create(task, fun, arg) == 0 ? 0 : -1;
+    /* NULL is the documented "every default" case, and it must stay
+     * indistinguishable from the pre-issue behaviour. */
+    if (attr == NULL) {
+        return nros_zephyr_task_create(task, fun, arg) == 0 ? 0 : -1;
+    }
+    return nros_platform_task_init((void *)task, (void *)attr, fun, arg)
+                   == NROS_PLATFORM_RET_OK
+               ? 0
+               : -1;
 }
 
 extern void nros_zephyr_task_slot_release(pthread_t owner);

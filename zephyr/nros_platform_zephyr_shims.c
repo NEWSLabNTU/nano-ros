@@ -330,6 +330,7 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 #if defined(CONFIG_POSIX_API) || defined(CONFIG_PTHREAD)
 
 #include <zephyr/posix/pthread.h>
+#include <zephyr/posix/sched.h>
 #include <string.h>
 #include <zephyr/sys/printk.h>
 
@@ -415,7 +416,25 @@ void nros_zephyr_task_slot_release(pthread_t owner) {
     (void) k_mutex_unlock(&nros_thread_slots_lock);
 }
 
-int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg) {
+/* issue 0852 — the native SCHED_FIFO priority to be born with, or < 0 for
+ * "inherit the creator's", which is what every caller got before this issue.
+ *
+ * `PTHREAD_EXPLICIT_SCHED` is the load-bearing half. Zephyr's
+ * `pthread_attr_init` sets `PTHREAD_INHERIT_SCHED`
+ * (zephyr/lib/posix/options/pthread.c), under which the policy and param set
+ * here are IGNORED and the child silently takes the creator's priority. That
+ * silent inheritance is the whole of issue 0852: the zenoh READ task was born
+ * at `CONFIG_MAIN_STACK_PRIORITY` because the executor started it, landing it
+ * at the executor's own priority, where `k_yield()` in the polled serial read
+ * loop costs a full `CONFIG_TIMESLICE_SIZE` (20 ms, ~230 bytes at 115200)
+ * instead of returning promptly. The UART overran and the frames it dropped
+ * were the router's keepalives.
+ *
+ * Issue 0626 fixed the same drop one layer up, in `zpico_set_task_config`, and
+ * its comment says a quietly-dropped scheduling attribute "must not be
+ * reintroduced one layer down". It was, here. */
+int nros_zephyr_task_create_prio(pthread_t* thread, void* (*entry)(void*), void* arg,
+                                 int native_priority) {
     int slot = nros_claim_thread_slot();
     if (slot < 0) {
         /* Say so. This used to return -1 silently, and the caller that loses
@@ -439,6 +458,24 @@ int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg)
     (void)pthread_attr_init(&attr);
     (void)pthread_attr_setstack(&attr, &nros_thread_stacks[slot], NROS_ZEPHYR_STACK_SIZE);
 
+    /* Best-effort, and deliberately so: a kernel that declines the policy
+     * leaves the task at the inherited priority, which is exactly what it did
+     * before this existed. A refusal must not turn into a spawn failure. */
+    if (native_priority >= 0) {
+        struct sched_param sp;
+        (void)memset(&sp, 0, sizeof(sp));
+        sp.sched_priority = native_priority;
+        /* SCHED_RR, not SCHED_FIFO: on Zephyr SCHED_FIFO selects the
+         * COOPERATIVE band, and a cooperative busy-poller starves every
+         * preemptible thread. See `nros_zephyr_native_priority` in
+         * nros-platform-zephyr/src/platform.c, which computes the value
+         * passed in here against this same policy. */
+        if (pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED) == 0 &&
+            pthread_attr_setschedpolicy(&attr, SCHED_RR) == 0) {
+            (void)pthread_attr_setschedparam(&attr, &sp);
+        }
+    }
+
     int ret = pthread_create(thread, &attr, entry, arg);
     (void)pthread_attr_destroy(&attr);
     if (ret != 0) {
@@ -447,6 +484,12 @@ int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg)
     }
     nros_set_thread_slot_owner(slot, *thread);
     return 0;
+}
+
+/* The pre-issue-0852 spelling. Kept so callers that have no priority to state
+ * do not have to invent one; "inherit" is what they always got. */
+int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg) {
+    return nros_zephyr_task_create_prio(thread, entry, arg, -1);
 }
 
 #endif /* CONFIG_POSIX_API || CONFIG_PTHREAD */

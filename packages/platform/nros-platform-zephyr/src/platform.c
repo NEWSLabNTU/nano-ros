@@ -33,6 +33,7 @@
 #include <zephyr/random/random.h>
 #ifdef CONFIG_POSIX_API
 #include <zephyr/posix/pthread.h>
+#include <zephyr/posix/sched.h>
 #endif
 
 #include <errno.h>
@@ -287,6 +288,73 @@ void nros_platform_task_attr_init(nros_platform_task_attr_t *attr) {
     attr->core = -1;
 }
 
+/* issue 0852 — the band -> native map for this port, and the ONLY place this
+ * port decides a direction (per the `priority` contract in <nros/platform.h>).
+ *
+ * SCHED_RR, NOT SCHED_FIFO, and that is the load-bearing choice.
+ *
+ * Zephyr's POSIX layer splits the two policies across its two priority bands
+ * (`lib/posix/options/pthread_sched.h`):
+ *
+ *     SCHED_FIFO           -> COOPERATIVE, max CONFIG_NUM_COOP_PRIORITIES - 1
+ *     SCHED_RR/SCHED_OTHER -> PREEMPTIBLE, max CONFIG_NUM_PREEMPT_PRIORITIES - 1
+ *
+ * A cooperative thread is never preempted. The task this issue is about spends
+ * its life in a `uart_poll_in` busy-poll, so making it cooperative would hand
+ * it the CPU until it blocks — `k_yield()` from a coop thread does not drop
+ * below its own priority, so the executor (preemptible) would not run at all
+ * between frames. Trading a 20 ms starvation of the reader for an unbounded
+ * starvation of everything else is not a fix. The posix port picks SCHED_FIFO
+ * because on Linux that is simply "the real-time policy"; on Zephyr the same
+ * constant means something different, which is exactly the per-port direction
+ * decision this function exists to make.
+ *
+ * Within SCHED_RR the direction matches the band: higher is more urgent, and
+ * `posix_to_zephyr_priority` inverts it into Zephyr's lower-is-more-urgent
+ * numbering. So the map is a plain linear scale onto what the policy reports.
+ *
+ * A RAW value is clamped rather than passed through to fail. Zephyr validates
+ * `sched_priority` against the policy's range and rejects anything outside it,
+ * so an out-of-range raw number does not arrive as a loud error — it arrives as
+ * a silently inherited priority, which is the very failure mode issue 0852 was.
+ * `zpico_posix_set_priority` already clamps for the same reason.
+ *
+ * Returns < 0 for "no priority requested", read by the caller as "leave it
+ * inherited". */
+static int nros_zephyr_native_priority(int32_t priority) {
+    if (priority == NROS_PLATFORM_PRIORITY_INHERIT) {
+        return -1;
+    }
+#if defined(CONFIG_POSIX_PRIORITY_SCHEDULING)
+    int lo = sched_get_priority_min(SCHED_RR);
+    int hi = sched_get_priority_max(SCHED_RR);
+    if (lo < 0 || hi <= lo) {
+        return -1;
+    }
+    int want;
+    if (NROS_PLATFORM_PRIORITY_IS_RAW(priority)) {
+        want = (int) NROS_PLATFORM_PRIORITY_RAW_VALUE(priority);
+    } else if (priority >= 0) {
+        int32_t band =
+            priority > NROS_PLATFORM_PRIORITY_MAX ? NROS_PLATFORM_PRIORITY_MAX : priority;
+        want = lo + (int) (((int64_t) band * (hi - lo)) / NROS_PLATFORM_PRIORITY_MAX);
+    } else {
+        return -1;
+    }
+    if (want < lo) want = lo;
+    if (want > hi) want = hi;
+    return want;
+#else
+    /* No POSIX scheduling option in this image: nothing can be asked for, and
+     * pretending otherwise would put us back to a silently dropped attribute. */
+    (void) priority;
+    return -1;
+#endif
+}
+
+int nros_zephyr_task_create_prio(pthread_t *thread, void *(*entry)(void *), void *arg,
+                                 int native_priority);
+
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     /* phase-364 W1 — see the posix port: INVALID for a caller-side
@@ -305,9 +373,18 @@ int8_t nros_platform_task_init(void *task, void *attr,
      * silently pretended to be. A caller needing an exact Zephyr stack should
      * declare the thread in the image, which is the Zephyr-native answer. */
     const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
-    (void) a;
 
-    return nros_zephyr_task_create((pthread_t *) task, entry, arg) == 0
+    /* issue 0852 — `priority` IS honoured. It used to be discarded along with
+     * `stack_bytes`, under the one comment above, but the reasoning that
+     * justifies dropping the stack does not reach the priority: this port goes
+     * through Zephyr's POSIX layer, `CONFIG_POSIX_PRIORITY_SCHEDULING` gives it
+     * `pthread_attr_setschedparam`, and there is no alignment constraint in the
+     * way. Accepting a priority and silently dropping it is the failure
+     * RFC-0079 is about, and it cost issue 0852 six wrong hypotheses. */
+    int native = nros_zephyr_native_priority(a != NULL ? a->priority
+                                                       : NROS_PLATFORM_PRIORITY_INHERIT);
+
+    return nros_zephyr_task_create_prio((pthread_t *) task, entry, arg, native) == 0
                ? NROS_PLATFORM_RET_OK
                : NROS_PLATFORM_RET_NOMEM;
 }
