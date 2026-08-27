@@ -314,6 +314,39 @@ is missing is a registry and the does-not-block half.
    prevents accidental duplication between cooperating agents; it does not
    prevent a determined collision, and no ref scheme will.
 
+   **When an agent dies holding a claim.** The ref is the least of it. Work
+   through what death actually leaves:
+
+   | leftover | who notices | what to do |
+   | --- | --- | --- |
+   | claim ref only | the next claimant | steal after TTL; nothing lost |
+   | claim + pushed branch, no PR | nobody, unless looked for | **look for `fix/<id>` before starting fresh** — silently discarding it loses real work |
+   | claim + open PR | everyone; it is visible | the PR supersedes the claim — take it over or close it |
+   | partially landed work | nobody | `git log --grep=<id>` — this repo names issues in commit messages, so landed work is discoverable |
+   | uncommitted worktree on an unreachable host | nobody | lost, and acceptable; only the CLAIM must not outlive it |
+   | leaked processes, a stuck runner job | later jobs, as flakes | `runner-sweep.sh`; the queue has its own timeouts |
+
+   **An open PR supersedes the claim, and that bounds how much TTL matters.**
+   The claim only governs the window between "I started" and "I pushed
+   something visible" — which should be short anyway (finding 3: long-lived
+   branches are the real hazard). So the TTL is not "how long is the task", it
+   is "how long before first push". Hours, not days.
+
+   **Renew by liveness, not by intent.** If renewal is something the agent
+   remembers to do between steps, a 40-minute fixture build looks like death. A
+   supervisor process that renews while the agent's process is alive stops
+   within one interval of an actual kill and never misfires on a slow step.
+   This is the difference between "dead" and "quiet", and TTL alone cannot tell
+   them apart.
+
+   **Bias the TTL long and make stealing loud.** A stuck claim wastes one
+   agent's time; two agents silently working the same issue wastes both and
+   produces a conflict. Stealing should comment on the issue, so a human sees
+   that an agent died there — otherwise the failure is invisible and recurs.
+
+   **Release on completion**, do not wait for expiry, or every finished task
+   leaves an hour of phantom occupancy.
+
 2. **Isolate**: one git worktree per agent, always.
 3. **Verify locally: T0 + T1 only.** No agent runs `just ci`.
 4. **Push a branch, open a PR, enqueue.** Never push to `main`.
