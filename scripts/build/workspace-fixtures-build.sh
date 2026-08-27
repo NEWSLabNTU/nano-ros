@@ -336,6 +336,29 @@ build_workspace() {
                 "-D_NANO_ROS_CODEGEN_TOOL=$nros_cli"
             )
 
+            if [ -n "$image" ]; then
+                # phase-383 W10.a — a MIGRATED cmake row. `nros build` writes
+                # the root (with the entry EMITTED into it, W4.b), configures
+                # and builds. The row's `build_subdir` names where that lands,
+                # `build/<coord>/cmake`, so the artifact locator below and the
+                # test-side resolver keep reading one manifest fact.
+                echo "     nros build $image --workspace . --offline"
+                "$nros_cli" build "$image" --workspace . --offline
+                if [ -x "$build_subdir/$entry" ]; then
+                    echo "     built: $dir/$build_subdir/$entry"
+                else
+                    # A generated entry lands at the TOP of the cmake binary
+                    # dir, not under `src/<entry>/` — it is emitted by the root
+                    # rather than being a subdirectory package. Missing means
+                    # the emit did not happen, which is silent otherwise: the
+                    # node libraries still build and the lane still goes green
+                    # over a fixture with no executable (W4.b was checked off in
+                    # exactly that state).
+                    echo "  !! $id: nros build produced no '$entry' in $dir/$build_subdir" >&2
+                    return 2
+                fi
+            else
+
             echo "     cmake -S . -B $build_subdir ${cmake_args[*]}"
             nros_cmake_configure_if_needed . "$build_subdir" "${cmake_args[@]}"
 
@@ -386,6 +409,7 @@ build_workspace() {
                 return 2
             else
                 echo "     built target: $entry under $dir/$build_subdir"
+            fi
             fi
         fi
 

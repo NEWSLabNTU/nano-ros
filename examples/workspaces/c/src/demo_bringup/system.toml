@@ -205,6 +205,17 @@ launch = "action_client.launch.xml"
 board = "native"
 launch = "action_server.launch.xml"
 
+# RMW variants of the default topology. On the CMAKE driver an image's `rmw`
+# genuinely configures the build (it becomes `-DNROS_RMW`), unlike the cargo
+# driver where it only names a directory — issue 0831.
+[image.native_cyclonedds]
+board = "native"
+rmw = "cyclonedds"
+
+[image.native_xrce]
+board = "native"
+rmw = "xrce"
+
 [image.native_robot1]
 board = "native"
 launch = "multihost.launch.xml"

@@ -264,7 +264,10 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     let plans = plan_builds(&args(tmp.path(), &["native"])).expect("resolves");
     assert_eq!(plans[0].driver, Driver::CMake, "cmake wins a mixed graph");
 
-    let generated = tmp.path().join("build/posix-zenoh/CMakeLists.txt");
+    // The cmake coordinate carries the BOARD as well as the platform (W10.a):
+    // one board per CMake cache, and `examples/workspaces/c` has two boards on
+    // the freertos platform.
+    let generated = tmp.path().join("build/posix-zenoh-linux/CMakeLists.txt");
     assert!(generated.is_file(), "root written under build/");
     let body = std::fs::read_to_string(&generated).unwrap();
     assert!(body.contains("nano_ros_workspace("), "{body}");
@@ -280,12 +283,12 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
     // configure — so `nros build` on a cmake workspace produced no binary at
     // all. CMake cannot do both in one invocation at the 3.22 floor.
     let cfg = plans[0].configure.as_ref().expect("configure").display();
-    assert!(cfg.starts_with("cmake -S build/posix-zenoh"), "{cfg}");
-    assert!(cfg.contains("-B build/posix-zenoh/cmake"), "{cfg}");
+    assert!(cfg.starts_with("cmake -S build/posix-zenoh-linux"), "{cfg}");
+    assert!(cfg.contains("-B build/posix-zenoh-linux/cmake"), "{cfg}");
 
     let shown = plans[0].handoff.as_ref().expect("handoff").display();
     assert!(
-        shown.starts_with("cmake --build build/posix-zenoh/cmake"),
+        shown.starts_with("cmake --build build/posix-zenoh-linux/cmake"),
         "the handoff must BUILD, not configure: {shown}"
     );
 
@@ -450,7 +453,7 @@ fn entries_for_other_boards_are_not_listed() {
     assert_eq!(plans[0].driver, Driver::CMake);
 
     let body =
-        std::fs::read_to_string(tmp.path().join("build/posix-zenoh/CMakeLists.txt")).unwrap();
+        std::fs::read_to_string(tmp.path().join("build/posix-zenoh-linux/CMakeLists.txt")).unwrap();
     assert!(
         body.contains("posix_entry"),
         "the board's own entry: {body}"
@@ -603,5 +606,46 @@ fn only_west_entries_are_excluded_from_the_generated_root() {
     assert_eq!(
         !Driver::West.needs_generated_root(),
         Driver::West.excluded_from_cargo_root()
+    );
+}
+
+/// A cmake root separates BOARDS, not just platforms.
+///
+/// phase-383 W10.a. `examples/workspaces/c` declares `freertos`
+/// (mps2-an385-freertos, cross arm-none-eabi) and `freertos_posix`
+/// (freertos-posix, host cc) on the same platform token. A platform-only
+/// coordinate put both in `build/freertos-zenoh/`, and CMake pins the compiler
+/// at the first configure and will not swap it on reconfigure — issue 0391's
+/// subject, whose symptom is a host-cc-poisoned cache that survives until
+/// someone wipes the directory.
+#[test]
+fn two_boards_on_one_platform_get_separate_cmake_roots() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    // A C package makes the graph cmake-driven.
+    write(&tmp.path().join("src/talker_pkg/CMakeLists.txt"), "# c\n");
+    let sys = concat!(
+        "[system]\n",
+        "name = \"demo\"\n",
+        "rmw = \"zenoh\"\n",
+        "domain_id = 0\n\n",
+        "[image_defaults]\n",
+        "rmw = \"zenoh\"\n\n",
+        "[image.a]\n",
+        "board = \"mps2-an385-freertos\"\n\n",
+        "[image.b]\n",
+        "board = \"freertos-posix\"\n",
+    );
+    write(&tmp.path().join("src/demo_bringup/system.toml"), sys);
+
+    let a = plan_builds(&args(tmp.path(), &["a"])).expect("a plans");
+    let b = plan_builds(&args(tmp.path(), &["b"])).expect("b plans");
+    let (a, b) = (
+        a[0].handoff.as_ref().unwrap().display(),
+        b[0].handoff.as_ref().unwrap().display(),
+    );
+    assert_ne!(
+        a, b,
+        "two boards on one platform must not share a cmake build dir"
     );
 }

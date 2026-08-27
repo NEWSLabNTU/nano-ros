@@ -1797,14 +1797,36 @@ pub fn build_workspace_cmake_entry_in(
     // can drift, and the failure mode is the expensive one — the binary is simply
     // "not there", which reads as an absent toolchain and SKIPS.
     let build_dir = crate::fixtures::groups::workspace_artifact_dir(fixture_id)?;
-    if !build_dir.ends_with(build_subdir) {
+    // A MIGRATED row (phase-383 W10.a) builds through `nros build` into
+    // `build/<coord>/cmake`, a path the caller has no business restating: the
+    // coordinate is derived from the image's board and RMW, so the literal
+    // would be a fourth place for one fact to drift. The manifest is the SSoT
+    // this assertion exists to defend — for a generated row it IS the answer,
+    // so there is nothing to cross-check it against.
+    let generated = current_workspace_fixture_record(fixture_id)
+        .ok()
+        .and_then(|r| r.split('\x1f').nth(13).map(|f| !f.is_empty()))
+        .unwrap_or(false);
+    if !generated && !build_dir.ends_with(build_subdir) {
         return Err(TestError::BuildFailed(format!(
             "fixture {fixture_id:?} resolves build dir {build_dir:?} but the caller \
              passed build_subdir {build_subdir:?} — examples/fixtures.toml is the SSoT \
              for where a workspace fixture builds (issue 0517)"
         )));
     }
-    let binary_path = build_dir.join(format!("src/{binary_name}/{binary_name}"));
+    // A GENERATED entry lands at the TOP of the cmake binary dir; a
+    // hand-written one is a subdirectory package and lands under
+    // `src/<entry>/`. Decided from the manifest row (its `image` field), not
+    // from probing both, because "try one then the other" is how a fixture that
+    // was never built reads as one that moved — and the failure is the
+    // expensive one this function already guards against twice above: a binary
+    // that is simply "not there" SKIPS the cell and leaves the lane green over
+    // a coordinate that never ran (issue 0411).
+    let binary_path = if generated {
+        build_dir.join(binary_name)
+    } else {
+        build_dir.join(format!("src/{binary_name}/{binary_name}"))
+    };
     require_prebuilt_workspace_binary(
         fixture_id,
         &binary_path,
@@ -2150,7 +2172,14 @@ pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static P
 pub fn build_native_workspace_c_entry_robot1() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_ROBOT1_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-c-native-robot1", "c", "native_entry_robot1")
+            build_workspace_cmake_entry(
+                "workspace-c-native-robot1",
+                "c",
+                // phase-383 W10.a — GENERATED entry: the row names
+                // `[image.native_robot1]` and the name is derived
+                // (`<image>_entry`), not the pre-migration `native_entry_robot1`.
+                "native_robot1_entry",
+            )
         })
         .map(|p| p.as_path())
 }
@@ -2500,7 +2529,12 @@ pub fn build_native_workspace_mixed_action_client_entry() -> TestResult<&'static
 pub fn build_native_workspace_c_entry_robot2() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_C_ENTRY_ROBOT2_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-c-native-robot2", "c", "native_entry_robot2")
+            build_workspace_cmake_entry(
+                "workspace-c-native-robot2",
+                "c",
+                // phase-383 W10.a — see robot1 above.
+                "native_robot2_entry",
+            )
         })
         .map(|p| p.as_path())
 }

@@ -344,7 +344,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             Driver::CMake => {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
                 // this root DOES live under build/<coord> (RFC-0065 D8).
-                let manifest_dir = root.join("build").join(coordinate(&platform, &image));
+                let manifest_dir = root.join("build").join(cmake_coordinate(&platform, &image));
                 // W4.b — every image that lands on THIS coordinate.
                 //
                 // They share `build/<coord>/`, so emitting only the image being
@@ -357,7 +357,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // nothing — it is a discovered SUBDIR, and a second target of
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
-                let coord = coordinate(&platform, &image);
+                let coord = cmake_coordinate(&platform, &image);
                 let has_cpp = found.packages.iter().any(|p| {
                     p.dir
                         .read_dir()
@@ -375,7 +375,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                                 .map(|d| {
                                     plan::driver_for(d.platform.kebab(), has_non_rust)
                                         == Driver::CMake
-                                        && coordinate(d.platform.kebab(), img) == coord
+                                        && cmake_coordinate(d.platform.kebab(), img) == coord
                                 })
                                 .unwrap_or(false)
                     })
@@ -832,6 +832,28 @@ fn coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -
     match image.rmw.as_deref() {
         Some(rmw) => format!("{platform}-{rmw}"),
         None => platform.to_string(),
+    }
+}
+
+/// The coordinate for a CMAKE root, which must also separate BOARDS.
+///
+/// A CMake workspace is one board per configure — CMake pins the compiler at
+/// the first configure and will not swap it on reconfigure, which is issue
+/// 0391's whole subject. `examples/workspaces/c` declares `freertos`
+/// (mps2-an385-freertos, cross arm-none-eabi) and `freertos_posix`
+/// (freertos-posix, host cc) on the SAME platform token, so a platform-only
+/// coordinate put two toolchains in one `build/freertos-zenoh/` and whichever
+/// configured first would poison the cache for the other.
+///
+/// Cargo needs no such split: it separates by `--target` inside one dir, and
+/// widening its coordinate would rename every generated entry directory for no
+/// gain. So this is the cmake driver's own rule, not a change to
+/// [`coordinate`].
+fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBlock) -> String {
+    let base = coordinate(platform, image);
+    match image.board.as_deref() {
+        Some(b) if b != platform => format!("{base}-{}", b.replace(['/', '.'], "-")),
+        _ => base,
     }
 }
 
