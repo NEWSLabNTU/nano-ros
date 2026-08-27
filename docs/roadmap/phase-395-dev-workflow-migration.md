@@ -238,13 +238,60 @@ GitHub issue assignees, because outside contributors cannot write refs.
 
 ## W10 — Content-addressed fixture cache
 
-Key on (input hash, coordinate) using `row_coord()` and the `hashFiles` pattern
-`nightly.yml` already uses for `packages/cli/target`. Shared on the runner's
-persistent disk.
+Key on (input hash, coordinate) using `row_coord()`, shared on the runner's
+persistent disk. This is the term multiplied by N agents, and it dissolves the
+treadmill class: a rebase that does not change a fixture's inputs stops
+invalidating it.
 
-This is the term multiplied by N agents, and it also dissolves the treadmill
-class: a rebase that does not change a fixture's inputs stops invalidating it,
-and museum binaries become impossible because the key *is* the input hash.
+**Promoted ahead of putting L2 in the queue** (2026-08-28). The four
+host-executable platforms own 309 of the manifest's 314 fixture rows, so an L2
+pre-merge lane builds nearly everything. L2 is not affordable until this exists.
+
+### Most of the machinery is already here
+
+`fixtures/staleness.rs` already content-hashes: it hashes the artifact, collects
+the input files, and stores a baseline of `<mtime> <size> <hash> <path>` per
+input. The input set is not hand-maintained either — it comes from
+`dep_file_newer_than_for(binary.with_extension("d"))`, the **compiler's own `.d`
+dep file**, which is authoritative for what the compiler read.
+
+### The blocker is the inputs the compiler cannot see
+
+A `.d` file covers sources and headers. It does not cover the inputs this
+tree's issue history is largely *about*:
+
+| input | invisible because | issue |
+| --- | --- | --- |
+| a whole-archived `.a` behind `-Wl,…` | CMake cannot see a file inside a flag string | 0475 |
+| env vars as build inputs | `rerun-if-env-changed` compares TEXT, and one directory has three spellings | 0491 |
+| Kconfig knobs | reach the C lane and not the Rust one | 0460 |
+| the CLI's own source closure | a textual `path =` walk was wrong in BOTH directions | 0627 |
+
+For a **staleness probe** an incomplete set is survivable: it errs toward
+rebuilding, and the code returns `None` rather than "fresh" when it examined
+nothing, deferring to the stricter mtime verdict. That fallback is what makes
+the current design safe.
+
+For a **cache** there is no fallback. A hit skips the build, so an incomplete
+key does not cause a redundant rebuild — it **silently serves a wrong
+artifact**. That is the museum-binary failure mode with its one safeguard
+removed, and museum binaries have cost this tree a bisect more than once.
+
+### So: shadow mode first
+
+Do not let a hit skip work until the key has earned it.
+
+1. Compute the key. Build anyway. Compare the built artifact against what the
+   cache would have served, and record every mismatch with the input that
+   differed.
+2. Run that way across a real spread of changes — a rebase, a Kconfig edit, an
+   env change, a linker-flag change, a toolchain bump. Those are the four rows
+   above; each one is a test the key has to pass.
+3. Only when shadow mode is quiet does a hit get to skip a build.
+
+This turns "is the key complete?" from an argument into a measurement, which is
+the discipline that has already corrected this plan three times (CI was red not
+slow; host-executable is not cheap; `check-build` is not a compile tier).
 
 ## Not in scope
 
