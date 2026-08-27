@@ -177,6 +177,14 @@ ALLOWLIST = {
         "reason echo is not exempted: a bypass hidden in a heredoc would be "
         "invisible",
 
+    # --- hand-run interop scripts: shell, so `RosEnv` is unreachable ----------
+    "scripts/test/isotp-ros-params.sh":
+        "hand-run ISO-TP/CAN interop script; shell, so the RosEnv remedy is not "
+        "reachable from it. It sources ROS to get `ros2` and the stock "
+        "rmw_zenoh router config on PATH, and exports the one RMW the script is "
+        "about. The distro is NOT hardcoded — it reads `${ROS_DISTRO:-humble}`, "
+        "so it stays correct on a jazzy host",
+
     # --- one-off developer / provisioning scripts, not test machinery ---------
     "scripts/debug/capture-ros2-keyexpr.sh":
         "hand-run debug script; the match is an `echo` telling the operator "

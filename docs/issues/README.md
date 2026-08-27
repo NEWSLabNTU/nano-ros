@@ -80,6 +80,13 @@ add_two_ints_server` and capturing the key IT declares
 Verified on mr_canhubk3/s32k344 over serial: `ros2 service call` returns sum=7 and sum=99. Left
 recorded, not changed: the QoS field still differs from native (`1:2:1,10:` vs `::,10:`) and blocks
 nothing. See `archived/0824-*`. (2026-08-27)
+**#0839** (rmw, open 2026-08-27) — the `action-server` image on mr_canhubk3/s32k344 (zenoh over serial)
+declares every entity correctly and then loses its zenoh session on a ~20 s cycle —
+`_zp_unicast_lease_task: Closing session because it has expired after 10000ms` — against the router config
+this repo ships (`keep_alive: 6`, one keepalive every 10 s), while a talker session on the same router stays
+up for minutes. Filed by another session; indexed here so `check-issue-index` is green. See `0839-*`.
+(2026-08-27)
+
 **#0829** (api/rmw, open 2026-08-27) — the same QoS profile ships TWICE with different depths:
 `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` queues **1**, `nros::qos::SYSTEM_DEFAULT` queues **10**, two
 callers each, so neither is obviously the live one. Depth is how many samples the history keeps before

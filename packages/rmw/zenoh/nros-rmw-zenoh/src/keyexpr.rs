@@ -29,7 +29,9 @@ impl TopicKeyExpr for TopicInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/TypeHashNotSupported",
-                self.domain_id, topic_stripped, DdsTypeName(self.type_name)
+                self.domain_id,
+                topic_stripped,
+                DdsTypeName(self.type_name)
             ),
         );
         #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
@@ -37,7 +39,10 @@ impl TopicKeyExpr for TopicInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/{}",
-                self.domain_id, topic_stripped, DdsTypeName(self.type_name), self.type_hash
+                self.domain_id,
+                topic_stripped,
+                DdsTypeName(self.type_name),
+                self.type_hash
             ),
         );
         key
@@ -48,7 +53,12 @@ impl TopicKeyExpr for TopicInfo<'_> {
         let topic_stripped = self.name.trim_matches('/');
         let _ = core::fmt::write(
             &mut key,
-            format_args!("{}/{}/{}/*", self.domain_id, topic_stripped, DdsTypeName(self.type_name)),
+            format_args!(
+                "{}/{}/{}/*",
+                self.domain_id,
+                topic_stripped,
+                DdsTypeName(self.type_name)
+            ),
         );
         key
     }

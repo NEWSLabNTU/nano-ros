@@ -17,20 +17,26 @@
 # looks: an MCU on the bus, a router on the vehicle computer. The node's ONLY
 # link is still ISO-TP, so the parameter traffic still crosses CAN.
 OUT=$(mktemp -d); rm -rf "$OUT"; mkdir -p "$OUT"
-. /opt/ros/humble/setup.bash
+. /opt/ros/${ROS_DISTRO:-humble}/setup.bash
 export LD_LIBRARY_PATH=${ZENOHC_ISOTP_LIB:?set ZENOHC_ISOTP_LIB}:${LD_LIBRARY_PATH:-}
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
 sed 's|"tcp/\[::\]:7447"|"tcp/[::]:7447", "isotp/vcan0#tx_id=0x201;rx_id=0x200"|' \
-    /opt/ros/humble/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5 \
+    /opt/ros/${ROS_DISTRO:-humble}/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5 \
     > "$OUT/router.json5"
 grep -q 'isotp/vcan0' "$OUT/router.json5" || { echo "FAIL: no CAN endpoint injected"; exit 1; }
 
 ros2 daemon stop >/dev/null 2>&1 || true
 stdbuf -o0 candump -ta vcan0 >"$OUT/dump.log" 2>&1 &
 CD=$!
+# Located through ament, not a literal prefix (issues 0653/0654): the
+# `/opt/ros/<distro>/lib/...` spelling is the THIRD of the resolver's three
+# steps, so it is wrong on a host whose ROS is a colcon overlay. Shell cannot
+# reach `nros_zenohd_bin`; `ros2 pkg prefix` asks the same question
+# path-independently.
+ZENOHD="$(ros2 pkg prefix rmw_zenoh_cpp)/lib/rmw_zenoh_cpp/rmw_zenohd"
 ZENOH_ROUTER_CONFIG_URI="$OUT/router.json5" \
-  stdbuf -o0 /opt/ros/humble/lib/rmw_zenoh_cpp/rmw_zenohd >"$OUT/router.log" 2>&1 &
+  stdbuf -o0 "$ZENOHD" >"$OUT/router.log" 2>&1 &
 RTR=$!
 sleep 5
 # NROS_ENTRY_SPIN_MS=forever: the LAUNCH arm of `nros::main!` runs an env-gated
