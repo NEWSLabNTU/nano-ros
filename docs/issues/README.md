@@ -128,13 +128,6 @@ hand a live thread's stack to the next task. Residue recorded rather than hidden
 still retires its slot for the life of the image. Found while chasing #0821 and did NOT fix it — that
 fault reproduces with slots to spare. See `archived/0822-*`. (2026-08-27)
 
-**#0824** (rmw, open 2026-08-27) — a service server registers its queryable and liveliness tokens on
-domain 0 regardless of `CONFIG_NROS_DOMAIN_ID`. `examples/zephyr/c/service-server` on
-mr_canhubk3/s32k344 with domain 10 boots, prints `Waiting for service requests` and brings its serial
-transport up, but a host on domain 10 sees nothing: `ros2 node list` empty, no `/add_two_ints`, and a
-`ros2 service call` waits forever. Same split-brain class as the phase-180 cyclone domain default.
-See `0824-*`. (2026-08-27)
-
 **#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
 
 **#0811** (platform, open 2026-08-26) — `ep->iptcp` is allocated by two different allocators and always freed by one of them. See `0811-*`.
@@ -943,13 +936,6 @@ compiles: 494 s to decide nothing was needed, across 70 cargo freshness scans at
 **runnable 0.05 of 32**. NOT threadx-specific (native has more per-leaf dirs and was faster) and NOT
 0491 churn or the 0648 package-cache lock — both checked and excluded. Answers 0726's priority 3.
 See `0805-*`. (2026-08-26)
-
-**#0824** (rmw, open 2026-08-27) — a service server registers its queryable and BOTH liveliness tokens on
-domain **0** while the same image's boot node token is on the configured domain. On mr_canhubk3 with
-`CONFIG_NROS_DOMAIN_ID=10`, three of the four declared keys read `@ros2_lv/0/…` against one `@ros2_lv/10/…`,
-so a host on domain 10 matches none of them: `ros2 service list` never shows `/add_two_ints`. Indexed here by
-a passing session to unblock `check-issue-index`; the hook is derived from the issue's own text, so refine it
-if it undersells the finding. See `0824-*`. (2026-08-27)
 
 Recently resolved (2026-08-20): **#0721** — gate scripts walked built trees to find tracked files, and the
 gate forbidding it could not read Python. Closed after RE-MEASURING: five of the seven scripts in the
