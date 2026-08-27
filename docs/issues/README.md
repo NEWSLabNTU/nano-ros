@@ -76,6 +76,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0814** (rmw) — The whole zero-copy surface sits behind `feature = \"lending\"`, which only a posix test crate ever enables See `0814-*`.
 - **#0815** (tooling) — The static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure See `0815-*`.
 - **#0816** (tooling) — The book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property See `0816-*`.
+- **#0849** (cli) — `nros sync` bakes the INVOCATION's path spelling into every leaf `[patch.crates-io]` row, so working through a symlink to the checkout makes cargo resolve every core crate twice and refuse on `links` See `0849-*`.
 - **#0847** (rmw) — An XRCE entity whose `Drop` runs after `executor.close()` segfaults in its own destructor — close frees the session state and all four entity kinds still dereference it See `0847-*`.
 - **#0820** (cmake, testing) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no dependency edge on the Rust world, and hardcoded `--release` past a miscompile carve-out See `0820-*`.
 - **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
