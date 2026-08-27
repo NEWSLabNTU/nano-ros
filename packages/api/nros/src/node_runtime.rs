@@ -52,7 +52,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use core::{
     cell::{RefCell, UnsafeCell},
     marker::PhantomData,
@@ -60,8 +60,30 @@ use core::{
     time::Duration,
 };
 
+// Via nros-core's re-export rather than a new direct dependency — every graph
+// containing `nros` would otherwise move (16 leaf lockfiles, measured on W5.1).
+use nros_core::heapless;
 use portable_atomic::{AtomicUsize, Ordering};
 use portable_atomic_util::Arc;
+
+/// phase-391 W5 — entity/callback identifier, fixed-capacity.
+///
+/// Same bound as `nros_node::names::ResolvedName` (`MAX_RESOLVED_NAME_LEN` =
+/// 128): every string these registries hold is a resolved entity id, callback
+/// id, node name or namespace, i.e. name-shaped. An id that does not fit is a
+/// REGISTRATION error, never a truncation.
+type IdStr = heapless::String<{ nros_node::names::MAX_RESOLVED_NAME_LEN }>;
+
+/// phase-391 W5 — per-cell registry bound. The same figure the metadata twin
+/// uses for the same shape (`DEFAULT_MAX_METADATA_ENTITIES`): entities declared
+/// by ONE component.
+const CELL_REG_CAP: usize = crate::node_metadata::DEFAULT_MAX_METADATA_ENTITIES;
+
+/// Owned copy of a name-shaped `&str`, or the registration error that says
+/// which knob-less bound it burst.
+fn id_str(s: &str) -> Result<IdStr, NodeDeclError> {
+    IdStr::try_from(s).map_err(|_| NodeDeclError::Runtime)
+}
 
 use crate::{
     EmbeddedRawPublisher, Executor, GoalId, GoalStatus,
@@ -224,7 +246,7 @@ struct ComponentCell {
     /// The storage is `'static` (macro-emitted static / caller backing), so the
     /// reference outlives every closure that dispatches through it.
     slot: RefCell<&'static mut dyn ComponentSlot>,
-    publishers: RefCell<Vec<(String, EmbeddedRawPublisher)>>,
+    publishers: RefCell<heapless::Vec<(IdStr, EmbeddedRawPublisher), CELL_REG_CAP>>,
     // Phase 212.M-F.23 — declarative service/action CLIENT + action-SERVER
     // handles, keyed by stable entity id, resolved during tick dispatch.
     // Mirror of the orchestration `GenClientDispatch`/`GenActionExec` arrays,
@@ -232,9 +254,9 @@ struct ComponentCell {
     // action-SERVER request/goal dispatch is owned by the executor (the
     // trampolines registered in `create_entity`); only the action-server
     // handle is kept here so the tick can complete goals / publish feedback.
-    service_clients: RefCell<Vec<(String, crate::HandleId)>>,
-    action_clients: RefCell<Vec<(String, usize)>>,
-    action_servers: RefCell<Vec<(String, crate::ActionServerRawHandle)>>,
+    service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), CELL_REG_CAP>>,
+    action_clients: RefCell<heapless::Vec<(IdStr, usize), CELL_REG_CAP>>,
+    action_servers: RefCell<heapless::Vec<(IdStr, crate::ActionServerRawHandle), CELL_REG_CAP>>,
     callback_dispatches: AtomicUsize,
     message_dispatches: AtomicUsize,
     // Phase 264 W4c — raw pointer to the executor's volatile parameter store, so a
@@ -527,10 +549,10 @@ impl ExecutorNodeRuntime {
             unsafe { &mut *(raw.as_mut_ptr() as *mut MaybeUninit<TypedSlot<C>>) };
         let cell = Arc::new(ComponentCell {
             slot: RefCell::new(place_slot::<C>(slot_mu)),
-            publishers: RefCell::new(Vec::new()),
-            service_clients: RefCell::new(Vec::new()),
-            action_clients: RefCell::new(Vec::new()),
-            action_servers: RefCell::new(Vec::new()),
+            publishers: RefCell::new(heapless::Vec::new()),
+            service_clients: RefCell::new(heapless::Vec::new()),
+            action_clients: RefCell::new(heapless::Vec::new()),
+            action_servers: RefCell::new(heapless::Vec::new()),
             callback_dispatches: AtomicUsize::new(0),
             message_dispatches: AtomicUsize::new(0),
             // W4c — set by `apply_param_services` once the store exists.
@@ -900,10 +922,10 @@ struct ExecutorSink<'a> {
 }
 
 struct SinkNode {
-    stable_id: String,
+    stable_id: IdStr,
     node_id: nros_node::executor::NodeId,
-    name: String,
-    namespace: String,
+    name: IdStr,
+    namespace: IdStr,
 }
 
 impl ExecutorSink<'_> {
@@ -938,10 +960,10 @@ impl NodeRuntime for ExecutorSink<'_> {
                 .set_node_qos_overrides(node_id, self.qos_overrides);
         }
         self.nodes.push(SinkNode {
-            stable_id: String::from(id.as_str()),
+            stable_id: id_str(id.as_str())?,
             node_id,
-            name: String::from(name),
-            namespace: String::from(ns),
+            name: id_str(name)?,
+            namespace: id_str(ns)?,
         });
         Ok(())
     }
@@ -1002,8 +1024,14 @@ impl NodeRuntime for ExecutorSink<'_> {
                         metadata.qos,
                     )
                     .map_err(decl_err_from_node)?;
-                let id_owned = String::from(metadata.id.as_str());
-                self.cell.publishers.borrow_mut().push((id_owned, handle));
+                let id_owned = id_str(metadata.id.as_str())?;
+                // Registry full = this component declared more entities than
+                // CELL_REG_CAP — a registration error, never a silent drop.
+                self.cell
+                    .publishers
+                    .borrow_mut()
+                    .push((id_owned, handle))
+                    .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
             EntityKind::Subscription => {
@@ -1011,7 +1039,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .callback_id
                     .as_ref()
                     .ok_or(NodeDeclError::Runtime)?;
-                let cb_id_owned = String::from(cb_id.as_str());
+                let cb_id_owned = id_str(cb_id.as_str())?;
                 let cell = self.cell.clone();
                 // Phase 250 (Wave 2b) — a `.safety()` subscription registers via
                 // the integrity-aware generic path so `CallbackCtx::integrity()`
@@ -1055,7 +1083,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .callback_id
                     .as_ref()
                     .ok_or(NodeDeclError::Runtime)?;
-                let cb_id_owned = String::from(cb_id.as_str());
+                let cb_id_owned = id_str(cb_id.as_str())?;
                 // Issue #505 — prefer the microsecond field; fall back to
                 // the millisecond one only for metadata that predates it.
                 let period = match metadata.period_us {
@@ -1086,7 +1114,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .ok_or(NodeDeclError::Runtime)?;
                 let ctx = Box::into_raw(Box::new(ServiceServerCtx {
                     cell: self.cell.clone(),
-                    callback_id: String::from(cb_id.as_str()),
+                    callback_id: id_str(cb_id.as_str())?,
                 })) as *mut core::ffi::c_void;
                 self.executor
                     .register_service_raw_sized_on::<1024, 1024>(
@@ -1117,7 +1145,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .service_clients
                     .borrow_mut()
-                    .push((String::from(metadata.id.as_str()), hid));
+                    .push((id_str(metadata.id.as_str())?, hid))
+                    .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
             EntityKind::ActionServer => {
@@ -1132,11 +1161,12 @@ impl NodeRuntime for ExecutorSink<'_> {
                 let accepted_cb = metadata
                     .action_accepted_callback_id
                     .as_ref()
-                    .map(|c| String::from(c.as_str()));
+                    .map(|c| id_str(c.as_str()))
+                    .transpose()?;
                 let ctx = Box::into_raw(Box::new(ActionServerCtx {
                     cell: self.cell.clone(),
-                    goal_callback_id: String::from(goal_cb.as_str()),
-                    cancel_callback_id: String::from(cancel_cb.as_str()),
+                    goal_callback_id: id_str(goal_cb.as_str())?,
+                    cancel_callback_id: id_str(cancel_cb.as_str())?,
                     accepted_callback_id: accepted_cb,
                 })) as *mut core::ffi::c_void;
                 let handle = self
@@ -1158,7 +1188,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .action_servers
                     .borrow_mut()
-                    .push((String::from(metadata.id.as_str()), handle));
+                    .push((id_str(metadata.id.as_str())?, handle))
+                    .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
             EntityKind::ActionClient => {
@@ -1175,10 +1206,11 @@ impl NodeRuntime for ExecutorSink<'_> {
                         let feedback_cb = metadata
                             .action_accepted_callback_id
                             .as_ref()
-                            .map(|c| String::from(c.as_str()));
+                            .map(|c| id_str(c.as_str()))
+                            .transpose()?;
                         let ctx = Box::into_raw(Box::new(ActionClientCtx {
                             cell: self.cell.clone(),
-                            result_callback_id: String::from(result_cb.as_str()),
+                            result_callback_id: id_str(result_cb.as_str())?,
                             feedback_callback_id: feedback_cb.clone(),
                         })) as *mut core::ffi::c_void;
                         let fb = feedback_cb.map(|_| action_feedback_trampoline as _);
@@ -1204,7 +1236,8 @@ impl NodeRuntime for ExecutorSink<'_> {
                 self.cell
                     .action_clients
                     .borrow_mut()
-                    .push((String::from(metadata.id.as_str()), handle.entry_index()));
+                    .push((id_str(metadata.id.as_str())?, handle.entry_index()))
+                    .map_err(|_| NodeDeclError::Runtime)?;
                 Ok(())
             }
             EntityKind::Parameter => {
@@ -1362,23 +1395,23 @@ fn dispatch_into_cell_with_integrity(
 /// Leaked context for a service-server arena callback.
 struct ServiceServerCtx {
     cell: Arc<ComponentCell>,
-    callback_id: String,
+    callback_id: IdStr,
 }
 
 /// Leaked context for an action-server arena callback (goal + cancel + the
 /// optional accepted hook all share one).
 struct ActionServerCtx {
     cell: Arc<ComponentCell>,
-    goal_callback_id: String,
-    cancel_callback_id: String,
-    accepted_callback_id: Option<String>,
+    goal_callback_id: IdStr,
+    cancel_callback_id: IdStr,
+    accepted_callback_id: Option<IdStr>,
 }
 
 /// Leaked context for an action-CLIENT result + feedback callbacks.
 struct ActionClientCtx {
     cell: Arc<ComponentCell>,
-    result_callback_id: String,
-    feedback_callback_id: Option<String>,
+    result_callback_id: IdStr,
+    feedback_callback_id: Option<IdStr>,
 }
 
 /// Action-client result callback: the executor's spin auto-drives the goal to
@@ -1507,8 +1540,8 @@ unsafe extern "C" fn action_accepted_trampoline(
 /// disjoint fields).
 struct RuntimeClientDispatch<'a> {
     executor: *mut Executor<'static>,
-    services: &'a [(String, crate::HandleId)],
-    actions: &'a [(String, usize)],
+    services: &'a [(IdStr, crate::HandleId)],
+    actions: &'a [(IdStr, usize)],
 }
 
 impl RuntimeClientDispatch<'_> {
@@ -1585,7 +1618,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
 /// its `tick` via `TickCtx`.
 struct RuntimeActions<'a> {
     executor: *mut Executor<'static>,
-    handles: &'a [(String, crate::ActionServerRawHandle)],
+    handles: &'a [(IdStr, crate::ActionServerRawHandle)],
 }
 
 impl RuntimeActions<'_> {
@@ -1706,10 +1739,10 @@ where
 {
     let cell = Arc::new(ComponentCell {
         slot: RefCell::new(place_slot::<C>(slot_mu)),
-        publishers: RefCell::new(Vec::new()),
-        service_clients: RefCell::new(Vec::new()),
-        action_clients: RefCell::new(Vec::new()),
-        action_servers: RefCell::new(Vec::new()),
+        publishers: RefCell::new(heapless::Vec::new()),
+        service_clients: RefCell::new(heapless::Vec::new()),
+        action_clients: RefCell::new(heapless::Vec::new()),
+        action_servers: RefCell::new(heapless::Vec::new()),
         callback_dispatches: AtomicUsize::new(0),
         message_dispatches: AtomicUsize::new(0),
         // W4c — set by `apply_param_services` once the store exists (it runs after this).
