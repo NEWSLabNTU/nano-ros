@@ -262,6 +262,27 @@ Still manual, because GitHub exposes no REST API for the merge-queue settings
 themselves: the `Settings -> Branches -> main -> Require merge queue` panel. The
 script prints the exact values to enter.
 
+**Blocked on issue 0853, and the reason generalises.** `check (fast on push;
+full on PR/nightly)` is in the required set and is DETERMINISTICALLY RED on the
+runner — `check-subtree-guard` fails on every GitHub run and passes everywhere
+reproducible locally. Enabling the queue against an always-red required check
+freezes merging exactly as surely as the always-pending case does; they are the
+same failure wearing different clothes.
+
+So the precondition for W7 is not "the workflows exist" but **every required
+check must be able to go green on the runner**. Two ways to satisfy it, and only
+one is honest:
+
+* fix 0853 — the guard exists to stop a killed build orphaning its descendants
+  (issue 0762), and 71 orphaned `add_two_ints_server` processes, oldest 10 days,
+  are what its failure looks like when nobody is watching; or
+* narrow the required set to checks that are green, and say which coverage that
+  gives up.
+
+Quarantining it is NOT one of them: the flake registry is for a test that passes
+solo, and this one fails REPRODUCIBLY in one environment. That is a defect, and
+0853 says so.
+
 ## W8 — Claims
 
 `just claim` / `claim-renew` / `claim-release`, modelled on
