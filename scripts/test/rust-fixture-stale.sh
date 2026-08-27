@@ -55,6 +55,52 @@ if [ -n "$tdir_flag" ]; then
     cargo_args="$(nros_fixture_strip_authored_target_dir "$cargo_args")"
 fi
 
+# Decide from the ARTIFACT, not from cargo's `"fresh":false` — issue 0835.
+#
+# `"fresh":false` means cargo re-ran a UNIT, which is not the same as "the
+# artifact was out of date". These fixtures share one `--target-dir` per platform
+# (the phase-340 group), and rows in one group EVICT each other: build row A,
+# probe A again → fresh; build sibling row B; probe A again → stale. Measured,
+# and the produced binaries are byte-identical the whole way through:
+#
+#   A fresh, artifacts: 78ecc91a b11f4d7c
+#   after B:            78ecc91a b11f4d7c
+#   A stale again? [examples/qemu-arm-baremetal/rust/talker]
+#   after A rebuild:    78ecc91a b11f4d7c
+#
+# So ~22 rows reported stale on EVERY run, forever, with nothing to fix — a
+# large share of the ~190 fixture-stale test failures on every `just ci-matrix`.
+# The mutual eviction is worth its own look (a shared `--target-dir` across
+# separate workspace roots is issue 0616's territory), but it is a waste of
+# CPU, not a correctness problem: the bytes never change. The probe should not
+# have been reporting it as staleness.
+#
+# Scoped to THIS ROW's binaries rather than the whole profile directory: probes
+# run under `parallel` against a shared group dir, so a sibling's concurrent
+# build would otherwise register as this row's change.
+_row_bins() {
+    # `[[bin]] name = "..."` lines, else the package name. A leaf with neither
+    # yields nothing and the caller falls back.
+    local m="$dir/Cargo.toml"
+    [ -f "$m" ] || return 0
+    local bins
+    bins="$(sed -n 's/^[[:space:]]*name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$m")"
+    printf '%s\n' "$bins" | sort -u
+}
+
+_row_artifacts() {
+    local td="${tdir_flag#*--target-dir }"
+    td="${td%% *}"
+    [ -n "$td" ] || td="$dir/target"
+    local b
+    for b in $(_row_bins); do
+        # `<td>/<triple>/<profile>/<bin>` and `<td>/<profile>/<bin>` — the
+        # triple comes from the leaf's own .cargo/config.toml for most of these
+        # rows, so glob rather than trying to re-derive it.
+        md5sum "$td"/*/*/"$b" "$td"/*/"$b" 2>/dev/null
+    done | sort -u
+}
+
 # issue 0466 — a probe build that FAILS must not read as fresh.
 #
 # This used to be `( cargo build … 2>/dev/null ) | grep -q '"fresh":false'`,
@@ -76,10 +122,21 @@ fi
 #
 # $cargo_args / $prof_args / $tdir_flag are intentionally word-split into cargo
 # flags; $envstr ("KEY=VAL ...") is exported into the build subshell when present.
+art_before="$(_row_artifacts)"
+
 # shellcheck disable=SC2086
 build_out="$( cd "$dir"; [ -n "$envstr" ] && export $envstr; \
         cargo build $prof_args $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
 build_rc=$?
+
+if [ -z "$art_before" ] && [ -z "$(_row_artifacts)" ]; then
+    # Nothing to compare — an unbuilt row, or a leaf whose bins this cannot
+    # name. Fall back to cargo's own signal rather than passing blindly.
+    if [ "$build_rc" -eq 0 ] && printf '%s\n' "$build_out" | grep -q '"fresh":false'; then
+        echo "$dir${cargo_args:+ ($cargo_args)}"
+        exit 0
+    fi
+fi
 
 if [ "$build_rc" -ne 0 ]; then
     # `--message-format=json` puts diagnostics on stdout as JSON too, so prefer a
@@ -87,6 +144,6 @@ if [ "$build_rc" -ne 0 ]; then
     reason="$(printf '%s\n' "$build_out" | grep -m1 -E '^error' || true)"
     printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}" \
         "${reason:-cargo exited $build_rc}"
-elif printf '%s\n' "$build_out" | grep -q '"fresh":false'; then
+elif [ "$(_row_artifacts)" != "$art_before" ]; then
     echo "$dir${cargo_args:+ ($cargo_args)}"
 fi
