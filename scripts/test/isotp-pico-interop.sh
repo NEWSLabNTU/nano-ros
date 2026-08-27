@@ -16,6 +16,17 @@
 # are built on.
 set -o pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/grep-q.sh
+. "$script_dir/../lib/grep-q.sh"
+
+die() { echo "isotp-pico-interop: $*" >&2; exit 2; }
+
+# zenoh-rs is a separate upstream checkout the developer builds themselves. It
+# defines no nros-* profile, so `release/` here is ITS profile dir, not one of
+# ours to propagate. `ZENOH_RS_EXAMPLES` is the real interface; the default is
+# only a convenience for the common clone location.
+# profile-literal-ok: vendored
 RS=${ZENOH_RS_EXAMPLES:-$HOME/repos/zenoh/target/release/examples}
 PICO=${PICO_EXAMPLES:?set PICO_EXAMPLES to the built zenoh-pico examples directory}
 OUT=$(mktemp -d)
@@ -25,9 +36,11 @@ PICO_EP="isotp/$DEV#tx_id=0x200;rx_id=0x201"
 PIDS=()
 FAILED=0
 
-# `grep -c` prints 0 AND exits 1 when there is no match, so `|| echo 0` would
-# emit "0\n0". Swallow the status instead.
-count_in() { grep -c "$2" "$1" 2>/dev/null || true; }
+# Counting goes through the shared helper, not `grep -c … || true`. That idiom
+# handles no-match (prints 0, exits 1) and silently swallows a tool FAILURE
+# (prints nothing, exits >=2) as the same thing — so a log that was never
+# created reads as "zero messages received", i.e. a delivery failure this test
+# would then report as its own finding. See scripts/lib/grep-q.sh.
 
 # Children are killed by PID. `pkill -f` on a pattern as broad as the example
 # names once took the whole run down before its first line of output.
@@ -45,13 +58,33 @@ trap 'kill_all; rm -rf "$OUT"' EXIT
 # debugging cycle once already.
 run_bg() { stdbuf -o0 -e0 "$@" & PIDS+=($!); }
 
+# Preconditions FAIL, loudly and by name. Without these the harness still
+# "runs": the examples never exec, both counts come back 0, and the report is
+# two FAILs that look exactly like an ISO-TP regression. A test that cannot run
+# must say so rather than produce a verdict (CLAUDE.md, "tests must fail on
+# unmet preconditions") — the sibling isotp-ros-interop.sh already does this and
+# this script did not.
+[ -d "$RS" ]   || die "zenoh-rs examples not found at $RS (set ZENOH_RS_EXAMPLES)"
+[ -x "$RS/z_sub" ] && [ -x "$RS/z_queryable" ] ||
+    die "$RS has no z_sub/z_queryable — build zenoh-rs examples first"
+[ -x "$PICO/z_pub" ] && [ -x "$PICO/z_get" ] ||
+    die "$PICO has no z_pub/z_get — build the zenoh-pico examples first"
+ip link show "$DEV" >/dev/null 2>&1 || die "$DEV is not up; run scripts/test/vcan-setup.sh"
+# The link is ISO-TP, not raw CAN: without the can-isotp module every endpoint
+# fails to open and the symptom is, again, silence on both tests.
+if [ -r /proc/net/protocols ]; then
+    nros_grep_count _isotp '^CAN_ISOTP' /proc/net/protocols
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    [ "$_isotp" -gt 0 ] || die "the can-isotp kernel module is not loaded (modprobe can-isotp)"
+fi
+
 echo "### Test 1: pico z_pub  ->  zenoh-rs z_sub"
 run_bg "$RS/z_sub" -m peer -l "$RS_EP" --no-multicast-scouting -k 'demo/**' >"$OUT/sub.log" 2>&1
 sleep 3
 run_bg "$PICO/z_pub" -m client -e "$PICO_EP" -k demo/example/pico -v hello-from-pico >"$OUT/pub.log" 2>&1
 sleep 12
 kill_all
-N=$(count_in "$OUT/sub.log" hello-from-pico)
+nros_grep_count N hello-from-pico "$OUT/sub.log"
 echo "  subscriber received: $N"
 if [ "$N" -gt 0 ]; then echo "  PASS"; else
     FAILED=1; echo "  FAIL"; echo "--- sub ---"; tail -20 "$OUT/sub.log"; echo "--- pub ---"; tail -20 "$OUT/pub.log"
@@ -65,7 +98,7 @@ sleep 3
 run_bg "$PICO/z_get" -m client -e "$PICO_EP" -k demo/example/zenoh-rs-queryable >"$OUT/get.log" 2>&1
 sleep 15
 kill_all
-M=$(count_in "$OUT/get.log" reply-from-zenoh-rs)
+nros_grep_count M reply-from-zenoh-rs "$OUT/get.log"
 echo "  replies received by pico: $M"
 if [ "$M" -gt 0 ]; then echo "  PASS"; else
     FAILED=1; echo "  FAIL"; echo "--- get ---"; tail -25 "$OUT/get.log"; echo "--- queryable ---"; tail -15 "$OUT/qable.log"

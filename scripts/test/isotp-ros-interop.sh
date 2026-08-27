@@ -42,9 +42,17 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/grep-q.sh
+. "$script_dir/../lib/grep-q.sh"
+
 say() { echo "[isotp-ros] $*"; }
 die() { echo "[isotp-ros] error: $*" >&2; exit 1; }
-count_in() { grep -c "$2" "$1" 2>/dev/null || true; }
+# Counting goes through the shared helper: `grep -c … || true` cannot tell
+# no-match (prints 0, exits 1) from a tool FAILURE (prints nothing, exits >=2),
+# so a log that was never written reads as "the reply never arrived" — this
+# script's own failure verdict, produced from missing evidence.
+# See scripts/lib/grep-q.sh.
 
 # Kill the process GROUP, resolved from the child with `ps` rather than assumed
 # to equal its pid: `setsid` may fork, in which case `$!` is setsid's pid and
@@ -99,6 +107,11 @@ fi
 [ -f "$LIB/libzenohc.so" ] || die "$LIB/libzenohc.so does not exist"
 # NOT `strings | grep -q`: grep -q exits on the first match, strings takes
 # SIGPIPE, and under `pipefail` the pipeline reports failure ON A MATCH.
+# Deliberately NOT `nros_grep_count` either: that helper reads files, and here
+# the haystack is a PIPE whose producer status is the thing being managed. The
+# `|| true` is load-bearing rather than the swallow-everything idiom the helper
+# replaces — and the very next line `die`s when the count is 0, so a tool
+# failure still stops the run instead of passing silently.
 [ "$(strings "$LIB/libzenohc.so" | grep -c 'ISO-TP: no such interface' || true)" -gt 0 ] ||
     die "$LIB/libzenohc.so has no ISO-TP link in it"
 ip link show "$DEV" >/dev/null 2>&1 || die "$DEV is not up; run scripts/test/vcan-setup.sh"
@@ -111,10 +124,15 @@ NODE_EP="isotp/$DEV#tx_id=0x200;rx_id=0x201"
 
 # Derive the session config from the installed default, matched on content
 # rather than line numbers so an rmw_zenoh update cannot silently no-op it.
-python3 - "$OUT/session.json5" "$ROS_EP" <<'PY' || die "could not derive the session config"
+# `$ROS_DISTRO_DIR` is passed IN rather than spelled again inside the heredoc.
+# The shell half already resolves `${ROS_DISTRO:-humble}`; a second literal
+# `humble` in here is the precise failure this repo's ROS-env gate exists to
+# stop -- on a jazzy host it reads a path that does not exist and the harness
+# dies deriving a config, with nothing pointing at the distro as the cause.
+python3 - "$OUT/session.json5" "$ROS_EP" "$ROS_DISTRO_DIR" <<'PY' || die "could not derive the session config"
 import sys
-src = "/opt/ros/humble/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
-out, endpoint = sys.argv[1], sys.argv[2]
+out, endpoint, distro_dir = sys.argv[1], sys.argv[2], sys.argv[3]
+src = f"{distro_dir}/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5"
 text = open(src).read()
 # No router: the default's single connect endpoint is the local rmw_zenohd.
 assert '"tcp/localhost:7447"' in text, "default config changed; connect endpoint not found"
@@ -134,7 +152,9 @@ PY
 # stock file's own prose contains `"tcp/10.10.10.10:7447"` as an example -- a
 # naive grep matches those and kills a perfectly good run.
 sed 's|//.*||' "$OUT/session.json5" > "$OUT/session.stripped"
-if [ "$(grep -c '"tcp/' "$OUT/session.stripped" || true)" -ne 0 ]; then
+nros_grep_count _tcp_left '"tcp/' "$OUT/session.stripped"
+# shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+if [ "$_tcp_left" -ne 0 ]; then
     grep -n '"tcp/' "$OUT/session.stripped" >&2
     die "a TCP endpoint survived in the session config; the run would not prove CAN carried it"
 fi
@@ -155,7 +175,10 @@ ros2 daemon stop >/dev/null 2>&1 || true
 start_candump() { : >"$1"; command -v candump >/dev/null 2>&1 && run_bg candump -ta "$DEV" >"$1" 2>&1; }
 report_bus() {
     [ -s "$1" ] || { say "  (candump not installed; no bus capture)"; return; }
-    say "  bus: $(wc -l <"$1") frames, $(grep -cE '\[8\]  1[0-9A-F] ' "$1" || true) FirstFrames, $(grep -cE '\[3\]  3[0-9A-F] ' "$1" || true) FlowControls"
+    nros_grep_count _ff '\[8\]  1[0-9A-F] ' "$1"
+    nros_grep_count _fc '\[3\]  3[0-9A-F] ' "$1"
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    say "  bus: $(wc -l <"$1") frames, $_ff FirstFrames, $_fc FlowControls"
 }
 
 # ---------------------------------------------------------------- role: server
@@ -174,7 +197,9 @@ if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-server ]; then
     NROS_LOCATOR="$NODE_EP" run_bg "$SERVER" >"$OUT/server.log" 2>&1
     wait "$CALL_PID" 2>/dev/null
     kill_all
-    if [ "$(count_in "$OUT/call.log" 'sum=42')" -gt 0 ]; then
+    nros_grep_count _hits 'sum=42' "$OUT/call.log"
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    if [ "$_hits" -gt 0 ]; then
         say "  PASS: ros2 -> CAN -> nano-ros server -> CAN -> ros2, sum=42"
         report_bus "$OUT/dump-server.log"
     else
@@ -207,7 +232,9 @@ if [ "$ROLE" = both ] || [ "$ROLE" = all ] || [ "$ROLE" = service-client ]; then
     # -- the number the OTHER role uses -- and passed on a substring of a
     # liveliness keyexpr, which is random hex. This example sends 2 + 3, so 5 is
     # the only correct answer and the label has to be part of the match.
-    if [ "$(count_in "$OUT/client.log" 'Result of add_two_ints: 5')" -gt 0 ]; then
+    nros_grep_count _hits 'Result of add_two_ints: 5' "$OUT/client.log"
+    # shellcheck disable=SC2154  # set by nros_grep_count via printf -v
+    if [ "$_hits" -gt 0 ]; then
         say "  PASS: nano-ros client -> CAN -> ros2 server -> CAN -> nano-ros, 2 + 3 = 5"
         report_bus "$OUT/dump-client.log"
     else

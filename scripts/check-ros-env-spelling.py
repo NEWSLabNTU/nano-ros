@@ -142,6 +142,21 @@ ALLOWLIST = {
         "shell e2e for the cyclone lane; exports the one RMW the lane names",
     "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_srv_e2e.sh":
         "shell e2e for the cyclone lane; exports the one RMW the lane names",
+    "scripts/test/isotp-ros-interop.sh":
+        "RFC-0083 / phase-394 W6 manual harness: shell, so `RosEnv` is "
+        "unreachable, and it is a hand-run bring-up (needs vcan0, the "
+        "can-isotp module and a purpose-built isotp libzenohc.so), not a lane. "
+        "It exports one RMW, rmw_zenoh_cpp, which is the only one that can "
+        "load the ISO-TP libzenohc.so the test is about. Distro is "
+        "`${ROS_DISTRO:-humble}`, a fallback rather than a hardcode, and the "
+        "sourcing step `die`s if it does not yield `ros2`. KNOWN GAP: it pins "
+        "no ROS_DOMAIN_ID, so it runs on domain 0 — the second hazard this "
+        "gate names. It stops the daemon to blunt that, but a developer with "
+        "their own graph up on domain 0 will still see the peers. Left as-is "
+        "deliberately: the nano-ros side takes its domain from its own baked "
+        "config, so moving only the ROS side would break a harness that cannot "
+        "be re-run without vcan0 and a custom libzenohc. Porting it to a cell "
+        "(RFC-0051) retires this entry and the gap together",
 
     # --- container runtime: the IMAGE pins the distro -------------------------
     "docker/can-demo/entrypoint.sh":
