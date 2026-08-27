@@ -77,10 +77,30 @@ Deliberate limits, stated so nobody reads the hook as more than it is:
 
 ## Measured
 
-`just check-fast`, idle host, two consecutive runs: **64 s** and **63 s**, both
-green. Stable because the tier is buildless — there is no compile cache to warm,
-so the usual "second run is free" effect does not apply and the number is what a
-contributor actually pays.
+**CORRECTED 2026-08-27, after the hook shipped.** The number first recorded
+here was 63-64 s, from two consecutive `just check-fast` runs on an idle host,
+described as "stable". It is right, and it is the wrong measurement.
+
+`check-fast` costs 64 s on a SETTLED tree. The hook does not run on a settled
+tree: it runs immediately after a rebase, because that is what a push follows.
+Timed in that condition — the real one — a push took **267 s**. A `check-fast`
+run on the same tree minutes later was 64 s again, so the 4x is the rebase, not
+load: a rebase rewrites source mtimes, and the gates that shell out to cargo
+re-fingerprint everything they touch.
+
+This is phase-371's lesson repeating, in the same session that recorded it:
+*repeating a measurement is not varying its preconditions.* Two runs agreeing
+tells you the variance is low; it tells you nothing about whether you measured
+the case that matters. Both runs shared one precondition — a settled tree — and
+that precondition is exactly the one the hook never has.
+
+**So the affordability argument this issue makes for itself does not hold.**
+4.5 minutes per push is the "gets `--no-verify`'d within a week" range this
+issue explicitly designed against. The mechanism is correct and stays; the
+COSTING was wrong, and a follow-up owes either a per-gate breakdown of what the
+rebase actually re-fingerprints (a small number of gates likely dominate) or a
+narrower trigger. Until then the hook is honest but more expensive than
+advertised, and `--no-verify` is the documented escape.
 
 Measured AFTER the tier-2 fixture build finished, deliberately. An earlier
 timing in this repo (phase-371's 481 s gate phase) was taken under contention
