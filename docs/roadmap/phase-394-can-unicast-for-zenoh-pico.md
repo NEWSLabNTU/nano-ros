@@ -251,6 +251,45 @@ One operational note: the action roles are minutes long, and a leftover peer
 from an earlier run on the same identifier pair will stall them. Check the bus
 is clear before believing a hang.
 
+### Parameters
+
+`ros2 param` is **six services** (get / set / list / describe / get_types /
+set_atomically) plus the `/parameter_events` topic — the widest service surface
+in ROS, and none of it exists on a multicast face. Full round trip against a
+nano-ros node whose only link is ISO-TP:
+
+```
+ros2 node list      -> /param_talker
+ros2 param list     -> publish_period_ms
+ros2 param get      -> Integer value is: 120
+ros2 param set 250  -> Set parameter successful
+ros2 param get      -> Integer value is: 250
+```
+
+834 frames, 50 FirstFrame–FlowControl pairs. `scripts/test/isotp-ros-params.sh`
+asserts the **round trip** rather than any single call: a `get` alone would pass
+against a node that ignores `set` entirely.
+
+Two things this test needs that the service and action ones do not:
+
+* **A router on the CAN side.** Every `ros2 param` invocation is a short-lived
+  process with its own session. Pointing those straight at the identifier pair
+  makes each one a new listener on it while the node is still reconnecting to
+  the last, and the handshake collides — `Received invalid message instead of an
+  OpenSyn`. ISO-TP addresses a peer by a *directed pair*, so exactly one peer may
+  own an end; a persistent router is what provides that. It is also how a real
+  deployment looks: an MCU on the bus, a router on the vehicle computer. The
+  node's only link is still ISO-TP, so the parameter traffic still crosses CAN.
+* **`NROS_ENTRY_SPIN_MS=forever`.** The launch arm of `nros::main!` runs an
+  env-gated *bounded* spin, prints `nros: application complete` and exits. Without
+  it the node is gone before any `ros2 param` call arrives, and the only symptom
+  is an empty graph — which reads like a transport failure and is not one.
+
+The node is `native_rust_params_entry` from `examples/workspaces/features`,
+whose `system.toml` already declares `features = ["param_services"]`; it gained
+a `link-isotp` passthrough so the CAN link can be switched on from the command
+line.
+
 **This is what RFC-0080 could not do.** zenoh routes queries to unicast faces
 only, so a service call over the multicast CAN link never reaches a queryable
 at all. It is not a CAN limitation and never was — it is a property of zenoh's
