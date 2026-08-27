@@ -60,7 +60,14 @@ fi
 # --- 2. --core-only still narrows -----------------------------------------
 # Every platform any caller passes with --core-only. Derived from the tree, not
 # a literal, so a new caller joins the check automatically.
-consumed="$(grep -rhoE '[a-z0-9-]+ +[a-z]+ +--core-only' just/ scripts/ 2>/dev/null \
+# `git grep`, never `grep -r`: `scripts/` holds the gitignored Zephyr SDK
+# (`scripts/zephyr/sdk/` + `downloads/`, 9.2 GB here), so the recursive form
+# walks the whole toolchain looking for a flag that only ever appears in tracked
+# source. Measured on this tree: 37+ minutes and still going, against 0.33 s for
+# the index lookup — the same 7m36s -> 0.8s class `check-no-tracked-file-find`
+# was written for. An untracked match could only be inside the SDK, which is not
+# a caller, so scoping to the index loses nothing.
+consumed="$(git grep -hoE '[a-z0-9-]+ +[a-z]+ +--core-only' -- just/ scripts/ 2>/dev/null \
     | awk '{print $1}' | sort -u)"
 [ -n "$consumed" ] || { echo "FAIL: no --core-only caller found — has the flag been removed?" >&2; exit 1; }
 
