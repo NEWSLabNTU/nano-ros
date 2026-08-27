@@ -534,3 +534,72 @@ the genuinely-orphaned ones stayed.
 
 A tool that decides what to delete needs to know every way a thing can be
 referenced. One consumer was added after it, and that was enough.
+
+## zephyr (2026-08-27): sharing is the WRONG fix here, and the real mass is elsewhere
+
+Investigated with the intent of wiring it like the others. The evidence says do
+not, and it is specific rather than cautious:
+
+* **The per-image generated headers live INSIDE the target dir.**
+  `<target>/nros-c-generated/nros/nros_config_generated.h` is a byproduct of
+  this very build, and it differs by image — a zenoh leaf carries
+  `NROS_EXECUTOR_STORAGE_SIZE 308976`, a cyclonedds leaf `89512`. A shared
+  directory hands one image the other's sizes. That is the mirror class this
+  repo has been burned by six times (0088, 0114, 0122, 0123, 0245, 0268), and it
+  fails as a wrong runtime, not a build error.
+* **There is little to reuse.** 199 `libnros_c*.a` across the workspace are
+  **147 distinct**. Unlike NuttX — where the per-example difference was confined
+  to a 736 KB final crate over 715 MB of identical deps — here it goes deep.
+* **A key cannot be shown complete.** Kconfig reaches deep crates' build scripts
+  through `$DOTCONFIG` and does NOT reliably reach cargo's fingerprint (issue
+  0460). An incomplete key is the failure mode, not the fallback.
+* **The file already records a MEASURED decision not to share it.**
+  `nros_cargo_build.cmake` carries an issue-0616 guard whose comment says
+  sharing "bought nothing" and "produced only the collision", with the
+  measurement attached.
+
+Four independent reasons pointing the same way is enough. Zephyr keeps per-leaf
+target dirs.
+
+### What the duplication actually is
+
+141 west build dirs, **358 GB**. But the mass is not one leaf duplicating
+another — it is each leaf accumulating **one cargo directory per profile** and
+never dropping the ones a later configure stopped naming. A single build dir held
+four: `nros-fast-release` 3.8 GB, `nros-relwithdebinfo` 1.2 GB, `release`
+220 MB, plus 4.7 GB under the host triple.
+
+`just gc-zephyr-builds [--prune]` reclaims them. Live profile is read from that
+build dir's own `NROS_CARGO_PROFILE_DIR`; everything else under `nros-rust/` is
+stale by definition, since a profile the current configure does not name cannot
+be feeding the current build. 32 dirs with no readable profile are SKIPPED
+rather than guessed at.
+
+**Reported: 88 stale trees, 149.2 GB.** Reporting is the default — deleting that
+much build output is the maintainer's call, not a tool's.
+
+### A measurement bug worth recording
+
+The first version identified profile directories by NAME, excluding anything
+with two or more dashes as "probably a target triple". `nros-fast-release` has
+three. It was skipped — and it is the single largest stale tree on this host. The
+tool reported **3.9 GB** where the real figure is **149.2 GB**, a 38x undercount
+that looked entirely plausible.
+
+Fixed structurally: a profile directory is one that contains `deps/`. That also
+finds stale profiles nested under a triple dir, which the name test missed
+entirely. Name shape is not evidence; layout is.
+
+### Lanes, final
+
+| lane | mechanism | outcome |
+| --- | --- | --- |
+| `threadx_riscv64` | Corrosion | shared, 29 -> 0, 1706 s -> 898 s |
+| `native` | Corrosion | shared, 59 -> 0, 186 GB -> 61 GB |
+| `threadx-linux` | Corrosion | shared, converts on wipe |
+| `freertos` | Corrosion | shared, 12 -> 1 |
+| `nuttx` | own cargo driver | shared with `--artifact-dir`, 12 -> 0, 502 MB |
+| `zephyr` | own cargo driver | **NOT shared, deliberately** — GC instead, 149 GB |
+| esp32 | cargo direct | nothing to share |
+
+Left: the warm floor, which no target-dir change can touch.

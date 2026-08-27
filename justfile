@@ -3644,6 +3644,14 @@ check-cmake-find-program-shadowed:
 gc-shared-cargo *ARGS:
     @python3 scripts/build/gc-shared-cargo.py {{ARGS}}
 
+# Issue 0805 — zephyr keeps ONE CARGO DIRECTORY PER PROFILE inside every west
+# build dir and never removes the ones a later configure stopped using. Deliberately
+# NOT the shared-target-dir treatment the other lanes got: the per-image generated
+# headers live inside that directory and differ by RMW, so sharing it is the
+# sizes-header class. Reports by default; `--prune` deletes.
+gc-zephyr-builds *ARGS:
+    @python3 scripts/build/gc-zephyr-builds.py {{ARGS}}
+
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #
 # `just` resolves a recipe reference only when the recipe RUNS, so deleting a
