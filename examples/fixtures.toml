@@ -3302,10 +3302,19 @@ builder = "cmake-configure"
 dir = "packages/testing/nros-tests/fixtures/cmake_add_subdirectory_smoke"
 output = "smoke"
 
+# phase-383 W10.a — retargeted off `examples/workspaces/cpp`, whose root is now
+# GENERATED under `build/<coord>/`. This fixture is about the metadata EMISSION
+# — that a cmake workspace configure writes `nros-metadata.json` — not about
+# that particular workspace, and a compile-check must configure from SOURCE, so
+# pointing it at build output would be wrong twice over.
+#
+# The template keeps a hand-written root by design (it is what `nros new`
+# scaffolds and what a user copies), so this holds after every example workspace
+# has migrated.
 [[compile_check_fixture]]
 id = "metadata_cpp"
 builder = "cmake-configure"
-dir = "examples/workspaces/cpp"
+dir = "examples/templates/multi-node-workspace-cpp"
 output = "nros-metadata.json"
 
 [[compile_check_fixture]]
