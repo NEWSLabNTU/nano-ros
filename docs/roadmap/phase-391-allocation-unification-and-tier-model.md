@@ -324,6 +324,76 @@ whose two-allocators-one-free-path is survivable only while both bottom out in
 input; the W1 gate reads it. `heap-free` gets at least one lane that actually
 builds and links.
 
+**W5 — a static component pool in `node_runtime`, so the `heap-free` tier is
+USEFUL rather than merely reachable.**
+[Issue 0843](../issues/0843-node-runtime-forces-alloc-on-every-cffi-image.md)
+decoupled the allocation gate from the transport gate, so a cffi image now links
+without `alloc`. What it did not do is leave anything useful behind: with
+`alloc` off, `node_runtime` is gated out entirely, and it is the only path to a
+running `Executor`. This wave removes the reason it needs a heap.
+
+*Why this is nano-ros's problem and not a vendor's.* All four backends reach the
+executor through ONE cffi seam, the seam allocates nothing, and the executor's
+dispatch algorithm links heap-free. Every allocation between here and a working
+heap-free image is ours:
+
+| site | uses | why it allocates |
+| --- | --- | --- |
+| `node_runtime` registries | 35 `String`, 6 `Vec` | owned names + unbounded entity lists |
+| `node_runtime` cells | 17 `Arc<ComponentCell>` | closures must outlive the executor |
+| `node_runtime` slots | 3 `Box<dyn ComponentSlot>` | type-erased per-component state |
+| `executor/spin.rs` | `leak_default_backing()` | leaks an arena when the caller supplies none |
+| `executor/handles.rs` | `EventRegs` | boxed event callbacks |
+
+*The count is not known at compile time; the BOUND is* — and that is all a pool
+needs. `register_node::<C>()` is a runtime call, but the tree already answers
+this shape twice, and `node_runtime` is the outlier:
+
+| layer | bound | on overflow |
+| --- | --- | --- |
+| executor node table | `NROS_EXECUTOR_MAX_NODES` (build.rs, default 4) -> `config::MAX_NODES` | `NodeError::NodeTableFull` |
+| `node_metadata` | `DEFAULT_MAX_METADATA_NODES` = 8, const-generic | bounded |
+| **`node_runtime`** | **none** — `Vec<Arc<ComponentCell>>` grows without limit | — |
+
+*Capacity comes from a BUILD-SCRIPT KNOB, not a const generic, and the reason is
+FFI.* `node_runtime` carries nine `extern "C"` sites and backs
+`__nros_component_<pkg>_install`, the uniform cross-language component-install
+seam. A const generic would put a type parameter on a type that crosses into
+C/C++; a baked `pub const` is invisible at the ABI. The tree already follows this
+rule without stating it: `node_metadata` has ZERO `extern "C"` sites and uses
+const generics freely; `node_runtime` has nine and uses none. So:
+`NROS_RUNTIME_MAX_COMPONENTS`, emitted as a `pub const` exactly as
+`NROS_EXECUTOR_MAX_NODES` is.
+
+*What the pool buys, beyond the heap.* Cells in a `'static` pool outlive every
+closure by construction, so the `Arc` refcount is proving a lifetime the pool
+already guarantees. Closures and trampolines hold a `ComponentId` index instead.
+All 17 `Arc` uses go, and they go because the ownership model got simpler, not
+because they were worked around.
+
+**Acceptance:** an image that CALLS runtime code — not one that names types —
+links at tier `heap-free` and passes the W1 gate with `symbols read` well above
+1. Three probes have already passed that gate vacuously at `symbols read: 1`
+(`qos::DEFAULT`, `DEFAULT_MAX_METADATA_NODES`, and
+`size_of::<internals::RmwSession>()`, which pulls no code even for a real type).
+A pass without that symbol count is not evidence.
+
+**OPEN, and it decides whether this is a port or a redesign: `Box<dyn
+ComponentSlot>`.** The pool is heterogeneous — `TypedSlot<C>` is generic over
+`C` — so cell storage cannot simply be `[ComponentCell; N]`. Two candidates,
+neither chosen:
+
+* caller-supplied `&'static mut dyn ComponentSlot` per slot, the shape
+  `Executor::open_in` / `ExecutorSizing` already uses, which keeps storage with
+  the caller and off the heap;
+* slot storage sized to the largest `C::State` in the image, which codegen knows
+  and a hand-written `main` does not — the same split W2 of
+  [phase 392](phase-392-static-memory-space-campaign.md) hit, where generated
+  entries can be sized statically and hand-written ones need a measured
+  high-water mark.
+
+Settle that before writing code. The rest of this wave is determined.
+
 ## Related, not owned here
 
 - [issue 0812](../issues/0812-publisher-loan-heap-allocates-per-loan.md) —
