@@ -176,6 +176,17 @@ fail on staleness and every one passes solo afterwards. Two runs either side of 
 IDENTICAL 92-test failure set, which is how it gets blamed on whatever landed last. Fixed on the way: the rust
 probe selected by `--lang rust` while `is_cargo_row` is builder-keyed, so twelve threadx cmake rows got a bare
 `cargo build` that could never succeed. See `0835-*`.
+=======
+
+**#0837** (testing, open 2026-08-27) — a submodule bump leaves fixtures the BUILD side calls fresh and the TEST
+side calls stale. `git submodule update` on cyclonedds rewrote `atomics.c` (11:31); thirteen cyclonedds fixtures
+built at 10:01 were left alone by a `lane=all` at 13:38 that reported `== threadx_linux == OK`, while the
+test-side probe — which walks 13351 inputs including the submodule — failed them with the exact newer file. The
+STALE verdict is absorbing (0445): "6th consecutive stale verdict, first 3h ago", three hours of that coordinate
+running nothing. Rebuilding the thirteen by hand took native_api + c_xrce_api from 6 failures to 41/41. Issue
+0196's rule with the two sides disagreeing about a whole submodule. See `0837-*`.
+
+>>>>>>> af5dbdd9f (docs(#0837): a submodule bump strands fixtures the build side calls fresh)
 **#0834** (cmake, open 2026-08-27) — the per-build `nros_cpp_config_generated.h` mirror can reach a state NO
 re-run repairs: mirror dir holds the `.stamp` and not the header, the producing custom command runs, cargo prints
 `Finished` without re-emitting the byproduct, and ninja records the output as built. Deleting the stamp, and
@@ -199,7 +210,6 @@ fail closed — in the run set at every lane. `lane=tier2` builds the 14-coordin
 reported 190 stale-fixture failures. Green today only because older `lane=all` residue was still fresh — so a
 tier-2 green is conditional on a build the lane does not name. See `0828-*`.
 <<<<<<< HEAD
-=======
 
 Recently resolved (2026-08-27): **#0838** (testing) — two ways concurrent tests landed on one Cyclone domain.
 (1) `alloc::domain_of` BAKES domain 107 into the (threadx-linux, c, pubsub) image, so the four tests that talk to
@@ -209,8 +219,6 @@ RESOURCE, so a fifth sharer joins by existing; native_api 32/36 -> 36/36. (2) Th
 `101/4 = 25` slots and `domain_in_slot`'s own doc prescribes capping `test-threads` — never applied, so on a
 32-core host slots 25..31 aliased onto 0..6 deterministically. Now `test-threads = 25`, with a test that reads
 `.config/nextest.toml` so the constants and the cap cannot drift. See `archived/0838-*`.
-
->>>>>>> cad788e03 (fix(#0838): serialize the tests sharing a baked Cyclone domain, and cap test-threads at the partition's slot count)
 Recently resolved (2026-08-27): **#0825** (build) — a stale model under `$OUT_DIR` OUTRANKED a
 bringup's own committed model, so one run poisoned every later test using a bringup of the same
 NAME. `model_search_paths` keyed that rung on the bringup DIRECTORY NAME (`demo_bringup` — nearly
