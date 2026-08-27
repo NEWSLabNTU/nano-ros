@@ -1,13 +1,38 @@
 # Phase 394 — CAN unicast for zenoh-pico: nano-ros talks ROS 2 services over CAN
 
-**Status (2026-08-27). PROPOSED — nothing started.**
+**Status (2026-08-27). COMPLETE — all eight waves done, on `vcan0`.**
 
 Implements [RFC-0083](../design/0083-can-unicast-over-isotp.md), the zenoh-pico
-half. Ends with a nano-ros node and a ROS 2 node exchanging a **service call**
-across a CAN bus.
+half. A nano-ros node and a ROS 2 node exchange **services, actions, action
+cancellation and parameters** across a CAN bus, in both roles.
 
-**Depends on** phase-393, which must reach its W5 gate first: if a service does
-not complete between two Linux peers, nothing here can work either.
+Services, actions and cancellation run with **no router and no TCP endpoint
+anywhere in the path**. Parameters need a persistent peer on the CAN side and so
+use a router there — the nano-ros node's only link is still ISO-TP, and §7
+records why (`ros2 param` is a series of short-lived processes, and ISO-TP
+addresses a peer by a directed pair that exactly one peer may own).
+
+| | over ISO-TP, nano-ros ↔ ROS 2 | bus |
+| --- | --- | --- |
+| service, nano-ros serves | `sum=42` | 140 frames |
+| service, nano-ros calls | `2 + 3 = 5` | 135 frames |
+| action, nano-ros serves | `SUCCEEDED`, `[0,1,1,2,3,5]` | 534 frames |
+| action, nano-ros calls | `[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]` | 536 frames |
+| action **cancel** | both ends agree | 526 frames |
+| parameters (via a router on the bus) | `list` + `get 120` + `set 250` + `get 250` | 834 frames |
+
+**The claim this phase set out to test.** "ROS services do not work over CAN"
+was never true of CAN. It is a property of zenoh's **multicast** transport:
+queries route to unicast faces only, so the RFC-0080 link carries topics and
+nothing built on a query. The same failure reproduces on stock ROS over UDP
+multicast. Give CAN a real unicast face — ISO 15765-2 — and services, actions,
+cancellation, parameters and graph introspection all come back.
+
+**What is NOT tested: timing.** Everything here ran on `vcan`, which has no bit
+rate and no arbitration. See §5 — this is the one open risk and it is now
+supported by two independent sources.
+
+**Depends on** phase-393, the zenoh-rs half, which is complete.
 
 ---
 
@@ -116,15 +141,22 @@ no bit rate at all, cannot exercise even in principle.
 
 ## 5. Risks
 
-**`vcan` cannot test flow control honestly.** `STmin`, `BS` and the `N_Bs`/`N_Cr`
-timers exist to pace a real bus. On a zero-latency virtual interface they are
-nearly no-ops, so a conformance bug can survive every Tier 1 test. This is the
-strongest argument yet for hardware, and it should be said plainly rather than
-discovered later.
+**`vcan` cannot test flow control honestly. CONFIRMED, and it is the one risk
+this phase did not retire.** `STmin`, `BS` and the `N_Bs`/`N_Cr` timers exist to
+pace a real bus; on a zero-latency virtual interface they are nearly no-ops, so
+a conformance bug in the timing behaviour survives every test available here.
+Two independent sources now say so:
 
-**Zephyr's ISO-TP is marked experimental.** W5 runs its own test suites rather
-than assuming; if they are thin, that is a finding the island needs before it
-depends on services.
+* every Tier 1 result in this document ran on `vcan`, which has no bit rate;
+* **Zephyr's own conformance suite skips `stmin` in all four configurations**
+  (§10) — its authors reached the same conclusion about simulated buses.
+
+Tier 3 hardware is the only thing that closes this. Nothing in this phase should
+be read as evidence about latency, bandwidth or arbitration.
+
+**Zephyr's ISO-TP is marked experimental. RESOLVED, with a caveat.** Its
+conformance and implementation suites pass, 77 of 85 cases, 0 failures (§10).
+The caveat is the 8 skips, and `stmin` is among them — see above.
 
 **Two implementations of `unix` is deliberate duplication.** It is a testing
 oracle, not an accident, and the phase should keep both rather than delete the
@@ -550,3 +582,50 @@ by deliberate choice (documented in the script — a single spelling of "which S
 does this host need" was worth more than the speed). On this connection that ran
 at roughly 5 MB/min. Fetching the same tarball with `aria2c -x16` took 90
 seconds, and the checksum in `nros-sdk-index.toml` verifies it either way.
+
+---
+
+## 11. Close-out — what is proven, what is not, what is next
+
+### Proven
+
+* The zenoh-pico ISO-TP link, on **three** platform backends: the Linux kernel
+  `CAN_ISOTP` socket, the vendored `isotp-c` on a raw SocketCAN socket, and
+  Zephyr's `subsys/canbus/isotp`. The first is the oracle the second is judged
+  against; the third is the island's real platform.
+* Every ROS 2 semantic that RFC-0080's multicast link could not carry:
+  services, actions, action cancellation, parameters, graph introspection —
+  nano-ros ↔ ROS 2, both roles.
+* The reason the multicast link cannot carry them, demonstrated rather than
+  asserted: `docker/can-demo/run.sh --unicast` runs the same service call over
+  both links in one container and asserts the multicast one returns nothing.
+* The vendored library is MIT, uses no allocator, and builds for a bare-metal
+  Cortex-M4 (`scripts/can/isotp-c-mcu-check.sh`).
+
+### Not proven
+
+* **Anything about timing.** See §5. `vcan` has no bit rate; Zephyr's own suite
+  skips `stmin`. No latency, bandwidth or arbitration claim in this phase is
+  supported by evidence.
+* **A complete Zephyr image.** The link compiles for `native_sim`, but the C
+  talker example fails to link on this host inside Zephyr's own
+  `lib/posix/options/sysconf.c` — pre-existing, and the same example with the
+  ISO-TP overlay removed fails identically. Tier 2 is open.
+* **More than one peer per bus.** ISO-TP addresses a peer by a directed
+  identifier pair; nothing here tests several pairs sharing one physical bus,
+  where arbitration and bus load start to matter.
+* **Anything upstream.** No issue filed, no PR opened, ECA and `Signed-off-by`
+  outstanding.
+
+### Next, in the order that retires the most risk
+
+1. **Tier 3 hardware.** MR-CANHUBK344 to a Linux host, on a real bit rate. This
+   is the only item that closes the one open risk, and everything else is
+   waiting behind an assumption it would test.
+2. **Fix the Zephyr `sysconf` breakage and finish Tier 2** — `native_sim`
+   talking to a Linux peer over `vcan0`. Small, and it unblocks the island's
+   actual platform.
+3. **Several peers on one bus.** Two identifier pairs first, then contention.
+4. **Upstream.** An issue on `eclipse-zenoh/zenoh` describing the multicast
+   query limitation, and PRs for the two link crates. The branches are pushed;
+   the ECA and sign-off are the author's to give.
