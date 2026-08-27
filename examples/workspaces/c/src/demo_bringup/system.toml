@@ -183,6 +183,11 @@ sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 [image_defaults]
 rmw = "zenoh"
 
+# `args` carries over from the entry each image was derived from. It is how an
+# image selects a MACHINE — `native_entry_robot1` and `_robot2` differ ONLY in
+# `LAUNCH_ARGS host=`, so an image without it resolves the whole system instead
+# of one host and the two would be the same program. The same gap phase-383
+# W9.a left in `workspaces/rust`.
 [image.freertos]
 board = "mps2-an385-freertos"
 
@@ -199,6 +204,16 @@ launch = "action_client.launch.xml"
 [image.native_action_server]
 board = "native"
 launch = "action_server.launch.xml"
+
+[image.native_robot1]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot1" }
+
+[image.native_robot2]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot2" }
 
 [image.native_service_client]
 board = "native"

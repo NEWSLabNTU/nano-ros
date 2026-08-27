@@ -48,6 +48,31 @@ use std::{
 
 use super::discover::Discovered;
 
+/// The `nano_ros_add_executable(...)` call a generated root emits (W4.b).
+///
+/// A C/C++ entry package is that ONE call: `SOURCES` is optional when `LAUNCH`
+/// is present, because the verb generates the TU that carries `main`. So unlike
+/// the Rust side there is no package to write — no `CMakeLists.txt`, no
+/// `main.c`, no `package.xml`, which is exactly what W4.b says ("deletes the
+/// package and emits its one call").
+///
+/// `BOARD` and `DEPLOY` come from the resolved image rather than being written
+/// as literals, which is what closes issue 0798: a generated entry cannot
+/// disagree with the board it was generated for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CmakeEntry {
+    /// Target name — `<image>_entry`, the same derivation the Rust side uses.
+    pub name: String,
+    /// `LAUNCH` — a launch file name, or `default` for the bringup's own.
+    pub launch: String,
+    /// `LAUNCH_ARGS k=v` — how an image selects a machine.
+    pub args: Vec<(String, String)>,
+    /// `LANG` — `c` or `cpp`, from the workspace's own packages.
+    pub lang: String,
+    /// `DEPLOY` — the board token the macro resolves against.
+    pub deploy: String,
+}
+
 /// Everything the emitted root needs that is not in [`Discovered`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CmakeRootSpec {
@@ -68,6 +93,19 @@ pub struct CmakeRootSpec {
     pub nano_ros_root: PathBuf,
     /// Package dirs to omit — west/idf entries, and entries for other boards.
     pub excluded: BTreeSet<PathBuf>,
+    /// The entries this root must EMIT (W4.b).
+    ///
+    /// EVERY image that lands on this coordinate, not just the one being built:
+    /// they share `build/<coord>/`, so a root carrying one image's entry is
+    /// rewritten by the next image's build and the workspace never has more
+    /// than one executable declared at a time. Same defect the cargo root had
+    /// (its member list changed per image, which made `Cargo.lock` churn), and
+    /// the same answer — the root is a property of the WORKSPACE.
+    ///
+    /// An image whose hand-written package still exists contributes nothing: it
+    /// is a discovered SUBDIR and a second target of that name would collide.
+    /// That is what makes D13's migration incremental.
+    pub entries: Vec<CmakeEntry>,
 }
 
 /// Render the root `CMakeLists.txt` written to `manifest_dir`.
@@ -182,6 +220,38 @@ pub fn render(
         out.push_str(&format!("        \"{rel}\"   # {name}\n"));
     }
     out.push_str(")\n");
+
+    for e in &spec.entries {
+        let bringup_rel = super::paths::relative_or_err(
+            manifest_dir,
+            &spec.workspace.join("src").join(&spec.system),
+        )?;
+        out.push_str("\n# GENERATED entry (phase-383 W4.b) — the package this replaces was\n");
+        out.push_str("# three files, and only this call carried information. `SOURCES` is\n");
+        out.push_str("# omitted deliberately: it is optional when LAUNCH is present, and the\n");
+        out.push_str("# verb generates the TU that carries `main`.\n");
+        out.push_str("#\n");
+        out.push_str("# BOARD and DEPLOY come from the resolved image, so this entry cannot\n");
+        out.push_str("# disagree with the board it was generated for (issue 0798).\n");
+        out.push_str(&format!("nano_ros_add_executable({}\n", e.name));
+        if let Some(b) = &spec.board {
+            out.push_str(&format!("    BOARD   {b}\n"));
+        }
+        out.push_str(&format!(
+            "    BRINGUP \"${{CMAKE_CURRENT_SOURCE_DIR}}/{bringup_rel}\"\n"
+        ));
+        out.push_str(&format!("    LAUNCH  {}\n", e.launch));
+        for (k, v) in &e.args {
+            out.push_str(&format!("    LAUNCH_ARGS {k}={v}\n"));
+        }
+        out.push_str(&format!("    LANG    {}\n", e.lang));
+        // Every one of the 57 C/C++ entries in this tree is TYPED — it routes
+        // each launch node to the real executor through its component object.
+        // An untyped generated entry would be a different program.
+        out.push_str("    TYPED\n");
+        out.push_str(&format!("    DEPLOY  {})\n", e.deploy));
+    }
+
     Ok(out)
 }
 
@@ -246,6 +316,7 @@ mod tests {
             toolchain_file: None,
             nano_ros_root: PathBuf::from("/nros"),
             excluded: Default::default(),
+            entries: Vec::new(),
         }
     }
 
@@ -322,6 +393,80 @@ mod tests {
         let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
         assert!(body.contains("c_pkg"), "{body}");
         assert!(!body.contains("rust_pkg"), "{body}");
+    }
+
+    #[test]
+    #[test]
+    fn a_generated_root_emits_the_entry_call_when_the_package_is_gone() {
+        // W4.b. A C/C++ entry package is ONE `nano_ros_add_executable` call —
+        // `SOURCES` is optional when `LAUNCH` is present because the verb
+        // generates the TU carrying `main` — so there is no package to write.
+        //
+        // This wave was marked complete while the emitter never emitted it. The
+        // existing test passed anyway, because it asserted the root MENTIONS
+        // `native_entry`, which it did as a discovered SUBDIR. Deleting the
+        // hand-written package produced a workspace that built its node
+        // libraries and no executable at all.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
+        let mut sp = spec(root);
+        sp.board = Some("native".to_string());
+        sp.entries = vec![CmakeEntry {
+            name: "native_robot1_entry".to_string(),
+            launch: "multihost.launch.xml".to_string(),
+            args: vec![("host".to_string(), "robot1".to_string())],
+            lang: "c".to_string(),
+            deploy: "native".to_string(),
+        }];
+        let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
+
+        assert!(
+            body.contains("nano_ros_add_executable(native_robot1_entry"),
+            "{body}"
+        );
+        assert!(body.contains("LAUNCH  multihost.launch.xml"), "{body}");
+        assert!(
+            body.contains("LAUNCH_ARGS host=robot1"),
+            "how an image selects a machine: {body}"
+        );
+        assert!(body.contains("BOARD   native"), "{body}");
+        assert!(body.contains("DEPLOY  native"), "{body}");
+        assert!(
+            body.contains("TYPED"),
+            "all 57 entries in this tree are TYPED: {body}"
+        );
+        // Non-comment lines only. The emitted text EXPLAINS that SOURCES is
+        // omitted, so a bare `contains` matches the explanation and passes for
+        // the wrong reason — the trap this phase hit twice already.
+        let code: String = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            !code.contains("SOURCES"),
+            "SOURCES is optional under LAUNCH and the verb writes the main: {code}"
+        );
+        assert!(
+            !body.contains(root.to_str().unwrap()),
+            "no absolute path (W3.c): {body}"
+        );
+    }
+
+    #[test]
+    fn no_entry_is_emitted_while_the_package_still_exists() {
+        // The property that makes D13's migration incremental: two targets of
+        // one name would collide, so the emitter stays silent until the
+        // hand-written package is deleted.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "native_entry", true)]);
+        let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
+        assert!(
+            !body.contains("nano_ros_add_executable"),
+            "a hand-written entry is a SUBDIR; do not emit a second one: {body}"
+        );
     }
 
     #[test]

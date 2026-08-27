@@ -345,7 +345,76 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
                 // this root DOES live under build/<coord> (RFC-0065 D8).
                 let manifest_dir = root.join("build").join(coordinate(&platform, &image));
+                // W4.b — every image that lands on THIS coordinate.
+                //
+                // They share `build/<coord>/`, so emitting only the image being
+                // built means the root is rewritten on every image switch and
+                // the workspace never declares more than one executable at a
+                // time. Same shape as the cargo root's member list, same
+                // answer: the root is a property of the WORKSPACE.
+                //
+                // An image still carrying a hand-written package contributes
+                // nothing — it is a discovered SUBDIR, and a second target of
+                // that name would collide. Delete the package and the next
+                // build emits its call (D13, incremental).
+                let coord = coordinate(&platform, &image);
+                let has_cpp = found.packages.iter().any(|p| {
+                    p.dir
+                        .read_dir()
+                        .map(|rd| {
+                            rd.flatten()
+                                .any(|e| e.file_name().to_string_lossy().ends_with(".cpp"))
+                        })
+                        .unwrap_or(false)
+                });
+                let cmake_entries = plan::all_images(&bringups)
+                    .into_iter()
+                    .filter(|(b, _, _, img)| {
+                        b == &bringup
+                            && crate::orchestration::image::resolve_image_board(&catalog, "", img)
+                                .map(|d| {
+                                    plan::driver_for(d.platform.kebab(), has_non_rust)
+                                        == Driver::CMake
+                                        && coordinate(d.platform.kebab(), img) == coord
+                                })
+                                .unwrap_or(false)
+                    })
+                    .filter_map(|(_, _, id, img)| {
+                        let name = crate::builder::entry::package_name(&id);
+                        if root
+                            .join("src")
+                            .join(&name)
+                            .join("CMakeLists.txt")
+                            .is_file()
+                        {
+                            return None;
+                        }
+                        let b = img.board.clone().unwrap_or_default();
+                        Some(crate::builder::cmake_root::CmakeEntry {
+                            launch: img.launch.clone().unwrap_or_else(|| "default".to_string()),
+                            args: img
+                                .args
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect(),
+                            // The workspace's own language: the generated TU has
+                            // to compile against what it links.
+                            lang: if has_cpp { "cpp" } else { "c" }.to_string(),
+                            // The SAME candidate search the Rust entry uses:
+                            // DEPLOY is what the macro looks up, and an image is
+                            // not always named after a board.
+                            deploy: crate::builder::entry::macro_deploy_token(&[
+                                id.as_str(),
+                                b.as_str(),
+                                platform.as_str(),
+                            ]),
+                            name,
+                        })
+                    })
+                    .collect();
+
                 let spec = crate::builder::cmake_root::CmakeRootSpec {
+                    entries: cmake_entries,
                     workspace: root.clone(),
                     system: bringup.clone(),
                     platform: platform.clone(),
