@@ -368,3 +368,54 @@ absent from routine builds, and the gate reported green throughout.
 
 Both were found by checking a claim instead of building on it, which is the
 habit this phase should be judged on more than the two stub fixes.
+
+
+## W3b LANDED — un-runnable coverage rows are now reported
+
+`check-weak-symbols-image.sh` reported `warn=0`. It now reports **`warn=4`** on
+this tree, and the four were never verified by any previous green run:
+
+```
+weak-image: WARN — coverage row(s) matched no image, so these symbols
+  were NOT verified in this run (build the fixtures to cover them):
+  examples/qemu-arm-freertos/rust (freertos_rs_*entry): nros_board_register_netif nros_board_poll_netif
+  build/cargo-fixtures/qemu-arm-freertos (freertos_rs_*entry): nros_board_register_netif nros_board_poll_netif
+  examples/qemu-arm-baremetal/rust (qemu-serial-talker): _z_open_serial_from_dev _z_close_serial …
+  examples/qemu-arm-baremetal/rust (qemu-serial-listener): _z_open_serial_from_dev _z_close_serial …
+```
+
+**Wider than W3 predicted.** The investigation found the netif rows; the fix
+shows the zpico **serial aliases** were equally unverified — the same symbols W2
+had just corrected from `0` to `SIZE_MAX`, whose override was being checked by
+nobody.
+
+### The defect
+
+```sh
+[ -d "$base" ] || continue      # missing base: row vanishes
+```
+
+plus a `find` that matches nothing. The global `any_artifact` guard only fires
+when EVERY row is empty, so a **partial** build — some images present, others
+absent — printed `checked=N fail=0` while verifying nothing for the missing
+rows. Green meant "nothing I could reach is broken", and read as "the guarantee
+holds".
+
+### WARN, not FAIL — deliberately
+
+Not every lane builds every image. A red here would make the gate unrunnable
+outside a full sweep, and a gate that cannot pass in normal use gets disabled —
+which would cost more coverage than the hole it closed. The symbols are NAMED so
+an empty row is legible as "this guarantee went unchecked", which is the thing
+that was missing.
+
+Verified both directions: removing the four uncovered rows drops `warn` to 0 and
+restoring returns it to 4, with `checked=18 fail=0` unchanged throughout — so
+the count tracks uncovered rows and nothing else.
+
+### What this leaves
+
+The warning is now visible, but **the guarantee is still unverified** until
+those fixtures are built in a lane that runs this gate. W3b makes the gap
+legible; closing it is a fixture-coverage question for whoever owns the FreeRTOS
+and baremetal-serial lanes.

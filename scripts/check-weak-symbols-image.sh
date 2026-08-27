@@ -149,18 +149,50 @@ else
 fi
 
 any_artifact=0
+# phase-386 W3b — a row that matched NO image is reported, not skipped.
+#
+# `[ -d "$base" ] || continue` plus a `find` that matches nothing used to drop a
+# row silently. The global `any_artifact` guard below only fires when EVERY row
+# is empty, so a partial build — some images present, others not — printed
+# `checked=N fail=0` while verifying nothing at all for the absent ones.
+#
+# That is how `nros_board_register_netif` came to be unverified: its two
+# FreeRTOS rows (above) name images that are not built in a routine tree, and
+# the gate said nothing either way while reporting green. The same shape as
+# issue 0445's absorbing STALE verdict and the `required-features` targets
+# nobody builds — a check that CANNOT RUN must say so instead of passing.
+#
+# Reported as a WARN, not a FAIL: not every lane builds every image, so a red
+# here would make the gate unrunnable outside a full sweep and it would simply
+# be disabled. The symbols are named so an empty row is legible as "this
+# guarantee went unchecked", which is the thing that was missing.
+uncovered_rows=""
 for row in "${COVERAGE[@]}"; do
     IFS='|' read -r base glob syms <<<"$row"
-    [ -d "$base" ] || continue
-    # Final images only: skip object/archive/intermediate artifacts.
-    while IFS= read -r artifact; do
-        case "$artifact" in *.a|*.o|*.rlib|*.rmeta|*.d) continue ;; esac
-        any_artifact=1
-        echo "== $artifact =="
-        check_artifact "$artifact" $syms
-    done < <(find "$base" -type f -name "$glob" 2>/dev/null \
-                 ! -path '*/deps/*' ! -path '*/.fingerprint/*' ! -path '*/incremental/*')
+    row_artifact=0
+    if [ -d "$base" ]; then
+        # Final images only: skip object/archive/intermediate artifacts.
+        while IFS= read -r artifact; do
+            case "$artifact" in *.a|*.o|*.rlib|*.rmeta|*.d) continue ;; esac
+            any_artifact=1
+            row_artifact=1
+            echo "== $artifact =="
+            check_artifact "$artifact" $syms
+        done < <(find "$base" -type f -name "$glob" 2>/dev/null \
+                     ! -path '*/deps/*' ! -path '*/.fingerprint/*' ! -path '*/incremental/*')
+    fi
+    if [ "$row_artifact" = 0 ]; then
+        uncovered_rows="$uncovered_rows  $base ($glob): $syms"$'\n'
+        warns=$((warns + 1))
+    fi
 done
+
+if [ -n "$uncovered_rows" ]; then
+    echo
+    echo "weak-image: WARN — coverage row(s) matched no image, so these symbols"
+    echo "  were NOT verified in this run (build the fixtures to cover them):"
+    printf '%s' "$uncovered_rows"
+fi
 
 echo
 if [ "$ssot_fail" -gt 0 ]; then
