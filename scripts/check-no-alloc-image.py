@@ -470,10 +470,20 @@ def check_image(path, tier, allows):
 
 
 def expand_objects(paths):
-    """Every `.o` and `.a` under the given files/dirs, sorted, deduped."""
+    """Every `.o` and `.a` under the given files/dirs, sorted, deduped.
+
+    The caller passes a BUILD directory (a cargo `build/<pkg>-*/out`, a cmake
+    object dir). Object files are untracked build output, so `git ls-files`
+    cannot see them and a walk is the only way to enumerate them --- which is
+    the case check-no-tracked-file-find explicitly permits, provided the walk is
+    scoped to a build dir rather than to packages/ or examples/. Scope is the
+    caller's: pass an output directory, never a source tree.
+    """
     out = []
     for p in paths:
         if os.path.isdir(p):
+            # walk-ok: enumerating UNTRACKED .o/.a build output under a
+            # caller-supplied build dir; git ls-files cannot see these.
             for base, _dirs, files in os.walk(p):
                 for f in files:
                     if f.endswith((".o", ".a", ".obj", ".lib")):
