@@ -1,6 +1,6 @@
 # Phase 393 — CAN unicast for zenoh-rs: ROS services over a CAN bus
 
-**Status (2026-08-27). W0-W5 DONE — the gate is passed.**
+**Status (2026-08-27). W0-W6 DONE, W6 with one gap. W7 remains.**
 
 **A ROS 2 service call completes over a CAN bus.**
 
@@ -12,7 +12,10 @@
 No router, no TCP: each session has exactly one active endpoint and it is
 `isotp/vcan0`. 1141 CAN frames across the pair, including 13 flow-control
 frames and visible first frames (`10 19` = FF of 25 bytes), so the kernel's
-ISO-TP segmentation is genuinely carrying it. W6 and W7 remain.
+ISO-TP segmentation is genuinely carrying it.
+
+W6 adds actions and graph introspection to that; **parameters are the one
+thing that does not work**, and the reason is latency rather than capability.
 
 Implements [RFC-0083](../design/0083-can-unicast-over-isotp.md), the zenoh-rs
 half. Delivers what the multicast link cannot: **ROS 2 services, actions,
@@ -50,7 +53,7 @@ can be tested without a bus are tested without one.
 | **W3** | `LinkKind::Isotp`, `LinkAuthId::Isotp`, `transport_isotp` feature plumbing | a zenoh session accepts an `isotp/...` endpoint | **done** |
 | **W4** | E2E on `vcan0`: two zenoh-rs peers, a **unicast** transport, payload past the MTU | the link carries a zenoh session at all | **done** |
 | **W5** | **`ros2 run demo_nodes_cpp add_two_ints_client` succeeds over CAN** | the reason this phase exists | **done** |
-| **W6** | Graph introspection, actions, parameters; negative control on the multicast link | the full ROS surface, and that the contrast is real | |
+| **W6** | Graph introspection, actions, parameters; negative control on the multicast link | the full ROS surface, and that the contrast is real | **done, one gap** |
 | **W7** | `prio_classes`: one ISO-TP socket per priority, identifiers priority-major | per-message bus arbitration, which W7 of phase-378 could not reach | |
 
 **W5 is the gate.** Everything before it is machinery; if a service call does not
@@ -66,6 +69,53 @@ complete, the premise of RFC-0083 is wrong and the rest should not be built.
 | W3 | `LinkKind::Isotp` registered; default and `--no-default-features` builds unchanged |
 | W4 | **unicast** transport over `vcan0`, MTU 4095, asserted rather than inferred |
 | W5 | **`Result of add_two_ints: 5`** over CAN |
+
+### W6 results (2026-08-27)
+
+Everything measured against the ISO-TP unicast link, with the multicast link as
+the control.
+
+| ROS 2 feature | over ISO-TP CAN | evidence |
+| --- | --- | --- |
+| Service call | **works** | `Result of add_two_ints: 5` |
+| **Action** | **works** | goal accepted, then `Result received: 0 1 1 2 3 5 8 13 21 34 55` |
+| `ros2 node list` | **works** | the remote node is listed |
+| `ros2 service list` | **works** | all 7 services |
+| `ros2 node info` | **works** | Subscribers, Publishers **and Service Servers** |
+| `ros2 param set/get` | **does not** | see below |
+
+**The negative control is what makes the rest mean anything.** The same service
+call over the **multicast** CAN link gets 0 results and 17 "service not
+available". Unicast is the variable, exactly as RFC-0083 §1 predicted.
+
+A second control mattered too. When `ros2 service list` first came back empty it
+looked like a structural gap in the link — until the same topology over **TCP
+with the stock library** was tried and worked. That is what turned "our link is
+broken" into "something here is timing-dependent", and it is the check that
+should be reached for first rather than fifth.
+
+### The parameter gap, and what it actually is
+
+`ros2 param set` reports `Node not found` with the default discovery window. With
+`--spin-time 10` the node **is** found and the failure moves to
+`Wait for service timed out`. So the graph the other tools read successfully is
+there; the parameter call itself is too slow to complete inside rclpy's default
+timeout. It is latency, not a missing capability, and the same command over TCP
+returns `Set parameter successful`.
+
+That is worth stating precisely because it is the first place the cost of ISO-TP
+shows up in a user-visible way: flow control, `STmin` pacing and per-PDU round
+trips add latency that a tool with a short default deadline notices.
+
+### A non-fix, recorded so it is not retried
+
+Graph convergence was **intermittent**: `ros2 service list` returned empty on two
+early runs and all seven on four consecutive later runs, with no code change in
+between. A larger socket receive buffer was the obvious suspect — that exact
+defect cost 31% of messages on the multicast link — but it made **no difference**
+here and was reverted rather than left in as an unexplained change. The
+intermittency is **not isolated**, and on `vcan`, which has no bit rate, it is
+unlikely to be the same phenomenon that would appear on a real bus.
 
 **Three ABI traps**, found by transcribing the kernel header rather than working
 from memory, all now handled in code:
