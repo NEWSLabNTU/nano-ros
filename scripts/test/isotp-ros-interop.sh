@@ -41,10 +41,24 @@ say() { echo "[isotp-ros] $*"; }
 die() { echo "[isotp-ros] error: $*" >&2; exit 1; }
 count_in() { grep -c "$2" "$1" 2>/dev/null || true; }
 
+# Kill the process GROUP, resolved from the child with `ps` rather than assumed
+# to equal its pid: `setsid` may fork, in which case `$!` is setsid's pid and
+# not the session leader's, so `kill -- -$!` hits nothing and a `ros2 run`
+# wrapper's child survives. One did, for eleven minutes, and answered a later
+# test's flow control.
 kill_all() {
-    for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done
+    local p pg
+    for p in "${PIDS[@]}"; do
+        pg=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')
+        [ -n "$pg" ] && kill -- "-$pg" 2>/dev/null
+        kill "$p" 2>/dev/null || true
+    done
     sleep 1
-    for p in "${PIDS[@]}"; do kill -9 "$p" 2>/dev/null || true; done
+    for p in "${PIDS[@]}"; do
+        pg=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')
+        [ -n "$pg" ] && kill -9 -- "-$pg" 2>/dev/null
+        kill -9 "$p" 2>/dev/null || true
+    done
     PIDS=()
 }
 cleanup() {
@@ -58,7 +72,14 @@ trap cleanup EXIT
 # Everything below is KILLED rather than allowed to exit, and block-buffered
 # stdout is DISCARDED on SIGTERM -- a run that worked then logs nothing, which
 # reads exactly like a lost message. It cost a debugging cycle once.
-run_bg() { stdbuf -o0 -e0 "$@" & PIDS+=($!); }
+#
+# `setsid` + killing the process GROUP, not the pid: `ros2 run` is a wrapper
+# that execs the node as a child, so killing the wrapper leaves the node alive
+# holding an ISO-TP session on the bus. A survivor from this script sat on
+# vcan0 for eleven minutes and answered a LATER, unrelated test's flow control
+# -- every frame acknowledged twice, which reads exactly like a bug in the
+# implementation under test.
+run_bg() { setsid stdbuf -o0 -e0 "$@" & PIDS+=($!); }
 
 # Source ROS here rather than trusting the caller's shell. Note there is
 # deliberately no `set -u` anywhere: ROS's setup.bash dereferences unset
@@ -164,16 +185,25 @@ if [ "$ROLE" = both ] || [ "$ROLE" = client ]; then
     CLIENT=${NANO_ROS_CLIENT:?set NANO_ROS_CLIENT to the built nano-ros service-client}
     say "role CLIENT: ros2 serves /add_two_ints, nano-ros calls it"
     start_candump "$OUT/dump-client.log"
-    run_bg ros2 run demo_nodes_cpp add_two_ints_server >"$OUT/ros-server.log" 2>&1
+    # The node binary DIRECTLY, not `ros2 run`. The wrapper starts the node in
+    # its own session, so neither the pid nor the process group this script can
+    # see reaches it, and the node outlives the run holding an ISO-TP session on
+    # the bus -- where it then answers a later test's flow control and makes a
+    # perfectly good implementation look like it duplicates every frame.
+    ROS_SERVER_BIN="$ROS_DISTRO_DIR/lib/demo_nodes_cpp/add_two_ints_server"
+    [ -x "$ROS_SERVER_BIN" ] || die "$ROS_SERVER_BIN is not executable"
+    run_bg "$ROS_SERVER_BIN" >"$OUT/ros-server.log" 2>&1
     sleep 6
     NROS_LOCATOR="$NODE_EP" run_bg timeout 45 "$CLIENT" >"$OUT/client.log" 2>&1
     CLIENT_PID=${PIDS[-1]}
     wait "$CLIENT_PID" 2>/dev/null
     kill_all
-    # The example prints the sum it got back; accept either the bare value or a
-    # labelled form so a cosmetic change to the example does not fail the gate.
-    if [ "$(count_in "$OUT/client.log" '42')" -gt 0 ]; then
-        say "  PASS: nano-ros client -> CAN -> ros2 server -> CAN -> nano-ros, got 42"
+    # Match the example's own result line. An earlier version grepped for `42`
+    # -- the number the OTHER role uses -- and passed on a substring of a
+    # liveliness keyexpr, which is random hex. This example sends 2 + 3, so 5 is
+    # the only correct answer and the label has to be part of the match.
+    if [ "$(count_in "$OUT/client.log" 'Result of add_two_ints: 5')" -gt 0 ]; then
+        say "  PASS: nano-ros client -> CAN -> ros2 server -> CAN -> nano-ros, 2 + 3 = 5"
         report_bus "$OUT/dump-client.log"
     else
         FAILED=1; say "  FAIL"

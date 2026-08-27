@@ -33,11 +33,11 @@ implementation to disagree with, before it is trusted on one without.
 
 | | What | Proves | State |
 | --- | --- | --- | --- |
-| **W0** | Vendor `SimonCahill/isotp-c` at a pinned commit, with its MIT licence; wire into the build | the dependency is present, attributed and reproducible | |
+| **W0** | Vendor `SimonCahill/isotp-c` at a pinned commit, with its MIT licence; wire into the build | the dependency is present, attributed and reproducible | **done** |
 | **W1** | `unix` platform: implement the link over the **kernel** `CAN_ISOTP` socket | the pico link works where the kernel is the reference implementation | **done** |
 | **W2** | `src/link/unicast/isotp.c` + config; register in `_z_open_link` **only** | pico connects out and never touches the accept path | **done** |
 | **W3** | zenoh-pico ↔ zenoh-rs over `vcan0`: session, pub/sub, and a **query** | the two implementations agree on the wire | **done** |
-| **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | |
+| **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | **done** |
 | **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | |
 | **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | **done** |
 | **W7** | Extend the demo container to show it | the artifact reviewers can run | **done** |
@@ -212,6 +212,12 @@ survived, rather than asserting it in a comment.
 `candump` over one run of each: 140 frames / 11 FirstFrame–FlowControl pairs
 for the server role, 135 / 9 for the client role.
 
+The client role checks for the example's own result line, `Result of
+add_two_ints: 5`. An earlier version grepped the client log for `42` — the
+number the *server* role uses — and passed on a substring of a liveliness
+keyexpr, which is random hex. It reported a pass on a run whose real result it
+had never looked at.
+
 An early version of that guard grepped the config for `"tcp/` without stripping
 comments and killed a good run: the stock json5 is heavily documented and its
 own prose contains `"tcp/10.10.10.10:7447"` as an example.
@@ -241,6 +247,80 @@ on the bus after the test. And the harness sources ROS itself rather than
 trusting the caller's shell, with no `set -u` anywhere, because `setup.bash`
 dereferences unset variables and aborts under it.
 
+## 8. W0 and W4 result — the vendored library and its oracle
+
+**W0.** `SimonCahill/isotp-c` at `abb9e552df0e7ca0148c146124795341d57124fe`,
+MIT, vendored to `zenoh-pico/third_party/isotp-c/` with provenance and the
+licence verbatim in `VENDOR.md`. Only the six library files are taken; upstream's
+build system, tests and submodules are not.
+
+`scripts/can/isotp-c-mcu-check.sh` builds it for a bare-metal Cortex-M4 and
+fails if an allocator appears. It does not: the caller supplies both buffers to
+`isotp_init_link`. What it does need from outside is the three hooks plus
+`memcpy`, `memset`, `__assert_func` and `snprintf` — the last two from the
+assert and debug paths, both removable with `-DNDEBUG` and a discarding
+`isotp_user_debug`, neither on a hot path.
+
+`isotp_config.h` is the one vendored file that is edited, because it is
+upstream's designated configuration point: `ISO_TP_USER_SEND_CAN_ARG` is turned
+on so the send hook knows which socket to use. `isotp.c` and `isotp.h` stay
+verbatim. The vendored translation unit is also exempted from this project's
+`-Werror=conversion` — it assigns `uint8_t` into 4-bit bitfields deliberately,
+and patching upstream to silence that would make the copy non-verbatim and have
+to be redone at every bump.
+
+**W4.** `src/system/unix/isotp_vendored.c` implements the same four platform
+functions on a **raw** SocketCAN socket plus the vendored library, selected by
+`Z_FEATURE_LINK_ISOTP_VENDORED=1`. The W3 tests pass unchanged against it:
+pub/sub delivered, and a query returned a reply, with a kernel-ISO-TP zenoh-rs
+on the other end as the reference implementation.
+
+### The one behavioural difference, characterised
+
+Same workload, same peer, `candump` on both:
+
+| | frames | flow control pico sends |
+| --- | --- | --- |
+| kernel `CAN_ISOTP` | 80 | `BS=0x00 STmin=0x00` |
+| vendored `isotp-c` | 81 | `BS=0x08 STmin=0x00` |
+
+Both are conformant. They differ in the **block size** a receiver asks for:
+the kernel says `BS=0`, meaning "send the rest of the PDU without stopping",
+while the library's `ISO_TP_DEFAULT_BLOCK_SIZE` is 8, meaning "eight
+consecutive frames, then wait for me again". The cost is one extra round trip
+per eight frames — for a full 4095-byte PDU, roughly 73 of them.
+
+This is left at 8 rather than matched to the kernel. On the platforms the
+vendored library actually serves, the receiver is an MCU with a small buffer and
+a slow CPU, and being able to pace the sender every eight frames is the point of
+the mechanism. Set `ISO_TP_DEFAULT_BLOCK_SIZE` to 0 in `isotp_config.h` to match
+the kernel where the receiver can take it.
+
+### N_As
+
+`isotp_user_send_can` returns when the frame has been handed to the driver, not
+when the bus has confirmed it, so the ISO 15765-2 `N_As` timer cannot be
+measured from inside it. RFC-0083 §3 records that no portable ISO-TP library
+supplies this. The `unix` port does **not** add a timer: a `write()` to a
+SocketCAN socket either queues the frame or fails, and the failure it can
+actually produce — `ENOBUFS`, a full transmit queue — is reported back as
+`ISOTP_RET_NOSPACE` so the library retries. A port on a platform with a genuinely
+asynchronous transmit must block in the hook until transmit-confirm or add its
+own timer; this is written here so that port does not have to rediscover it.
+
+### A stray process, again
+
+The first W4 run failed with every frame acknowledged twice: two flow-control
+frames for one first frame, two first frames back. That reads exactly like a
+duplicate-send bug in the library under test. It was not. An
+`add_two_ints_server` left over from the W6 client role had been sitting on
+`vcan0` for eleven minutes answering flow control on the same identifier pair.
+
+`ros2 run` is a wrapper that execs the node as a child, so killing the pid it
+returns leaves the node alive. The harness now `setsid`s each child and kills
+the process **group**. This is the third time in this campaign that a stray
+process has produced a convincing false result; the lesson that keeps paying is
+to check what else is on the bus before believing a finding about the code.
 ## 9. W7 result — the demo container
 
 `docker/can-demo/` now carries **both** links in one `libzenohc.so`, built from
