@@ -10,6 +10,17 @@
 # The `runner` below is what makes `cargo run` and the fixture lane work.
 # Semihosting is enabled because the family's console (`_write`,
 # `nros_board_freertos_console_write` in nros-board-freertos) goes through it.
+#
+# To talk to a ROS 2 stack on the HOST, put the guest on a tap device — and
+# note the third hub port, which is not optional:
+#
+#   -net nic -net tap,ifname=tap1,script=no,downscript=no \
+#   -netdev hubport,id=h0,hubid=0
+#
+# With only the NIC and the tap on the hub, QEMU never delivers host-to-guest
+# frames: the guest transmits fine and receives nothing, which reads like a
+# driver or a discovery bug and is neither. The unpeered hub port is the whole
+# fix (issue 0830).
 
 [[board]]
 names = ["mps3-an536-freertos", "an536", "AN536"]

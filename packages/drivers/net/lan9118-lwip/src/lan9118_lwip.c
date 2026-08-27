@@ -83,6 +83,7 @@
 /* MAC CR bits */
 #define MAC_CR_TXEN  (1u << 3)
 #define MAC_CR_RXEN  (1u << 2)
+#define MAC_CR_BCAST (1u << 11)   /* SET disables broadcast reception */
 #define MAC_CR_PRMS  (1u << 18)
 #define MAC_CR_MCPAS (1u << 19)
 
@@ -286,7 +287,13 @@ reset_done:
     /* Enable RX + pass-all-multicast so IGMP-joined groups
      * (e.g. RTPS SPDP 239.255.0.1) reach lwIP. Without MCPAS the
      * LAN9118 hardware filter drops multicast frames whose dest MAC
-     * doesn't match the unicast ADDRH/ADDRL pair. */
+     * doesn't match the unicast ADDRH/ADDRL pair.
+     *
+     * BCAST is inverted logic: setting it DISABLES broadcast reception, which
+     * silently kills ARP (and therefore every unicast peer) while multicast
+     * still flows. Clear it explicitly rather than inheriting whatever the
+     * reset value happens to be. */
+    mac_cr &= ~MAC_CR_BCAST;
     if (mac_write(base, MAC_CSR_MAC_CR,
                   mac_cr | MAC_CR_RXEN | MAC_CR_MCPAS) != 0) return -1;
 

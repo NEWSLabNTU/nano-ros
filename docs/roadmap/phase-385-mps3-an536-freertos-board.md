@@ -159,42 +159,51 @@ in the ASI repo.
   `pgrep -a qemu-system-arm`, and use a distinct multicast group per
   experiment.
 
-  **Guest-to-HOST is a separate, still-open question** (investigated
-  2026-08-27 with a tap up, so the root-access blocker is gone). What is now
-  measured:
+  **Guest-to-HOST is RESOLVED** (2026-08-27). A host ROS 2 stack and the
+  emulated Cortex-R52 now exchange data in both directions over `tap1`:
 
-  * The tap path WORKS. With `tap1` at `192.0.3.1/24` and the guest on
-    `-net tap,ifname=tap1`, frames cross in both directions
-    (`/sys/class/net/tap1/statistics`: rx 68, tx 7 for one short run).
-  * The guest DOES send RTPS discovery. A plain Python listener joined to
-    `239.255.0.1:7400` on `192.0.3.1` captured its packets:
-    `408B from 192.0.3.10:58376 magic=b'RTPS'`, repeatedly.
-  * The host CycloneDDS binds the right interface. Its own config trace
-    reports `selected interfaces: tap1 (index … priority 0)`,
-    `ownip: udp/192.0.3.1`, `SPDP MC: udp/239.255.0.1`.
-  * And yet **neither direction matches**: `ros2 topic echo /chatter` sees
-    nothing while the guest publishes (49 samples in one run), and a host
-    `ros2 topic pub` of a distinctive value never reaches the guest's
-    listener.
+  * host `ros2 topic echo /chatter` receives **39** of the guest's samples;
+  * the guest logs the host's published `12345` **20** times;
+  * `ping 192.0.3.10` from the host: 0% loss, neighbour `REACHABLE`.
 
-  So this is NOT a network problem — packets flow and both ends are on the
-  right interface. It is an endpoint-matching problem, and the open lead is
-  topic naming: ROS 2 mangles `/chatter` to the DDS topic `rt/chatter`, and
-  on this RMW the `rt/` prefix is the CALLER's job — the repo's own Cyclone
-  tests spell it explicitly (`sub.topic_name = "rt/data_roundtrip"`), while
-  the XRCE RMW adds it in `session.c`. Two nros guests agree with each other
-  whatever the convention, which is exactly why guest-to-guest passed and
-  ROS interop did not.
+  The cause was NOT nano-ros. QEMU's net hub, when it holds only the board NIC
+  and the tap, never delivers host-to-guest frames — see **issue 0830**. The
+  fix is one extra flag on the QEMU line:
 
-  That is a HYPOTHESIS, not a finding — it was not confirmed, because
-  confirming it needs to read the topic name off SEDP (unicast between
-  discovered participants, so the multicast sniffer above cannot see it) or
-  a raw Cyclone reader on the unmangled name. Worth an hour with `ddsls` or
-  a small C reader before changing anything.
+  ```
+  -net nic -net tap,ifname=tap1,script=no,downscript=no \
+  -netdev hubport,id=h0,hubid=0
+  ```
 
-  Note the ASI consumer's Zephyr island DOES interoperate with a real ROS
-  stack over Cyclone (its tap demo drives Autoware), so whatever that lane
-  does differently is the answer to this question.
+  Measured back to back, twice each: two ports gives 0 frames at the driver
+  and 100% ping loss; three ports gives 19-20 frames and 0% loss.
+
+  **Two hypotheses recorded here earlier were WRONG, and are corrected rather
+  than quietly dropped:**
+
+  * *"It is an endpoint-matching problem; the lead is `rt/` topic mangling."*
+    Disproved. The same host `ros2 topic echo /chatter` now matches the
+    guest's writer with no naming change on either side. The guest-to-guest
+    result never implied a naming convention mismatch; it only meant both ends
+    agreed, which a working ROS peer now also does.
+  * *"The host cannot transmit on tap1."* This came from watching
+    `/sys/class/net/tap1/statistics/tx_packets`, which stayed frozen while the
+    interface was demonstrably sending. Attaching to the tap directly
+    (`TUNSETIFF`, in place of QEMU) showed the ARP requests and RTPS multicast
+    leaving normally. On a tun/tap device that counter is not evidence of what
+    reached the wire — read the frames.
+
+  What actually localised it was instrumenting `lan9118_lwip_poll()` to print
+  every frame the driver received, then running the SAME binary against a
+  `-net socket,mcast` backend as a control: non-zero there, zero on tap. That
+  put the loss between QEMU's tap reader and the NIC model, which is the only
+  place neither the host nor our driver could be blamed for.
+
+  Also landed here: the driver now clears `MAC_CR.BCAST` explicitly. The bit is
+  inverted (SET disables broadcast), so inheriting an unknown reset value could
+  kill ARP while leaving multicast working — exactly this symptom's shape. It
+  is hardening, not the fix; clearing it changed nothing on QEMU, and neither
+  did full promiscuous mode.
 
 ## Correction carried in from the consumer's scoping
 

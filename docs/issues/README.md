@@ -727,6 +727,16 @@ first revision wrongly cited mtime as proof it was "not stale" — every conclus
 mismatch, an issue-0801 comparison, a suspected `support_domain != 0` sentinel defect) was wrong with it.
 See `0820-*`. (2026-08-27)
 
+**#0830** (boards, open 2026-08-27) - a QEMU net hub holding ONLY the board NIC and a tap never
+delivers host-to-guest frames; `mps3-an536` guests transmit fine and receive nothing. Not our bug and not
+the host's: attaching to the tap directly (`TUNSETIFF`) shows the host emitting ARP and RTPS normally, and
+the SAME binary receives on a `-net socket,mcast` backend, so the loss sits between QEMU's tap reader and
+the NIC model. Workaround is one flag - add an unpeered third hub port, `-netdev hubport,id=h0,hubid=0`.
+Measured twice each: two ports = 0 driver RX frames and 100% ping loss; three ports = 19-20 frames, 0%
+loss, and bidirectional ROS 2 interop (39 samples host-ward, 20 guest-ward). Two wrong hypotheses were
+recorded before the wiring was suspected - `rt/` topic mangling (disproved) and "host egress is dead" (a
+tun/tap `tx_packets` counter that stays frozen while the interface transmits). See `0830-*`. (2026-08-27)
+
 **#0819** (rmw, open 2026-08-26, measured 2026-08-27) — XRCE payloads near the transport MTU are DELIVERED
 with a ZEROED TAIL rather than refused. Instrumented: `len` is the full 4096, header/`seq`/`size_marker` all
 survive, the pattern matches to offset 4080, and the last 16 bytes are 0x00 — deterministic, 10/10 samples,
