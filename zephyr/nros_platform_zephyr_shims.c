@@ -330,6 +330,7 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 #if defined(CONFIG_POSIX_API) || defined(CONFIG_PTHREAD)
 
 #include <zephyr/posix/pthread.h>
+#include <zephyr/sys/printk.h>
 
 #ifndef NROS_ZEPHYR_MAX_THREADS
 #define NROS_ZEPHYR_MAX_THREADS 8
@@ -344,7 +345,21 @@ static int nros_thread_index;
 
 int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg) {
     if (nros_thread_index >= NROS_ZEPHYR_MAX_THREADS) {
-        return -1; /* no more stack slots */
+        /* Say so. This used to return -1 silently, and the caller that loses
+         * is usually zenoh-pico's READ task -- so the image comes up, declares
+         * every entity, transmits happily, and then simply never receives
+         * anything. The first visible symptom is the session expiring one
+         * lease later, which points the reader at keepalives and the link
+         * rather than at a task that was never created (issue 0839, where an
+         * action image needed more tasks than the default four slots and the
+         * only clue was 26 transmits against 4 receives).
+         *
+         * printk, not LOG_ERR: this runs before any log backend is guaranteed
+         * up, and a silent failure here costs hours. */
+        printk("nros: OUT OF THREAD SLOTS (NROS_ZEPHYR_MAX_THREADS=%d) -- task not created.\n"
+               "nros: raise CONFIG_NROS_ZEPHYR_TASK_SLOTS; expect missing rx and session expiry.\n",
+               (int) NROS_ZEPHYR_MAX_THREADS);
+        return -1;
     }
 
     pthread_attr_t attr;

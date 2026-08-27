@@ -54,6 +54,67 @@ symptom of the reconnect:
 [41.615000 DEBUG ::_z_serial_msg_deserialize] decoded frame too small
 ```
 
+## Measured: the board was not RECEIVING at all (2026-08-27)
+
+Counting the board's own debug log over the 0 -> 20.095 s window before the
+first expiry:
+
+| direction | events |
+| --- | --- |
+| `_z_transport_tx_send_n_msg` (transmit) | 26 |
+| `_z_keep_alive_encode` (keepalives SENT) | 5 |
+| **anything receive-side** | **4 — and all four are handshake decodes** |
+
+So after the handshake the board received nothing. It was not that keepalives
+arrived late; none were being processed at all. That rules out "the router is
+not sending" as the interesting half — the board had no working receive path.
+
+## Cause: it ran out of thread stack slots, silently
+
+`nros_zephyr_task_create` hands out stacks from a fixed array and returns `-1`
+once `nros_thread_index >= NROS_ZEPHYR_MAX_THREADS` (effectively **4** by
+default). The action image needs more tasks than the talker — three queryables
+and two publishers' worth of machinery — and the task that lost the race is
+zenoh-pico's **read** task. The image therefore came up, declared every entity
+correctly, transmitted happily, and never received anything.
+
+**The failure was silent**, which is the reason this looked like a keepalive or
+link problem for as long as it did. Fixed: exhaustion now prints
+`nros: OUT OF THREAD SLOTS (NROS_ZEPHYR_MAX_THREADS=n)` and names the knob.
+
+## Effect of raising the slots
+
+`CONFIG_NROS_ZEPHYR_TASK_SLOTS=8` (with `TASK_STACK_SIZE=6144` to stay inside
+RAM):
+
+- receive-side events 4 -> 12
+- `ros2 node list` -> `/fibonacci_action_server`
+- `ros2 action list` -> `/fibonacci`
+- `ros2 action info /fibonacci` -> **`Action servers: 1`** (was 0)
+
+All four action type names already matched a native
+`action_tutorials_cpp fibonacci_action_server` byte for byte after
+`a4abcccde`/`6d2b67bff`.
+
+## STILL OPEN: goals do not complete
+
+`ros2 action send_goal` still fails:
+
+```
+Waiting for an action server to become available...
+Failed to check if action server is available: rcl node's context is invalid, at ./src/rcl/node.c:428
+```
+
+and the session still churns — **5 serial links, 8 opened, 7 closed** in one
+run, even with `CONFIG_NROS_ZENOH_LEASE_MS=60000`. So more slots fixed the
+*discovery* half but something still drops the session. Whether the remaining
+churn is a second starvation (more tasks still needed), a host-side CLI issue,
+or genuine loss on a loaded 115200 link is **not established**.
+
+Next: re-run with `NROS_ZENOH_DEBUG=3` at `TASK_SLOTS=8` and read what the
+board says at each close — the expiry message names its own lease, so it
+distinguishes "expired again" from "closed for another reason" immediately.
+
 ## Suggested next measurements
 
 - Tap the line (socat PTY, as in 0821) and confirm the router's keepalives are
