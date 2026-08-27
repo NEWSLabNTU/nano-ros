@@ -166,6 +166,53 @@ mod tests {
         toml::from_str(src).expect("parses")
     }
 
+    /// The `examples/workspaces/safety` shape: one bringup, three languages.
+    /// The workspace-wide "does it cross languages" answer was true for every
+    /// image there, which routed the Rust ones through cmake.
+    #[test]
+    fn launch_node_pkgs_reads_the_pkgs_this_image_actually_names() {
+        let dir = std::env::temp_dir().join(format!(
+            "nros-launch-pkgs-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let launch = dir.join("launch");
+        std::fs::create_dir_all(&launch).expect("mkdir");
+        std::fs::write(
+            launch.join("rust_only.launch.xml"),
+            r#"<launch>
+  <node pkg="rust_safety_listener_pkg" exec="safe_listener"/>
+  <node pkg='rust_safety_talker_pkg' exec="talker"/>
+  <node pkg="rust_safety_listener_pkg" exec="second_instance"/>
+</launch>"#,
+        )
+        .expect("write");
+
+        let img = ImageBlock {
+            launch: Some("rust_only.launch.xml".to_string()),
+            ..ImageBlock::default()
+        };
+        assert_eq!(
+            launch_node_pkgs(&img, &dir),
+            vec![
+                "rust_safety_listener_pkg".to_string(),
+                "rust_safety_talker_pkg".to_string()
+            ],
+            "both quote styles read, duplicates collapsed, sorted"
+        );
+
+        // No launch, and a launch naming no file, are both "nothing known" —
+        // the caller falls back to the workspace answer rather than guessing.
+        assert!(launch_node_pkgs(&ImageBlock::default(), &dir).is_empty());
+        let missing = ImageBlock {
+            launch: Some("nonesuch.launch.xml".to_string()),
+            ..ImageBlock::default()
+        };
+        assert!(launch_node_pkgs(&missing, &dir).is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     #[test]
     fn parses_a_minimal_embedded_image() {
         let b = parse(r#"board = "mps2-an385-freertos""#);
@@ -469,6 +516,39 @@ pub fn validate_image_launch(
          the bringup's default.",
         path.display()
     ))
+}
+
+/// The node packages an image's launch names, as written in the XML.
+///
+/// A `<node pkg="…" exec="…"/>` names its package; that set — not the
+/// workspace — is the image's graph. Nested `<include>` is deliberately NOT
+/// followed: the caller uses this to pick a DRIVER, and a mis-picked driver
+/// fails loudly at configure with the package named, whereas a resolver that
+/// silently walks includes would need the whole play_launch stack to run
+/// before the first driver decision. When the file cannot be read the answer
+/// is "nothing known", which the caller reads as "no evidence".
+#[must_use]
+pub fn launch_node_pkgs(image: &ImageBlock, bringup_dir: &std::path::Path) -> Vec<String> {
+    let Some(launch) = image.launch.as_deref() else {
+        return Vec::new();
+    };
+    let Ok(xml) = std::fs::read_to_string(bringup_dir.join("launch").join(launch)) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for rest in xml.split("pkg=").skip(1) {
+        let mut it = rest.chars();
+        let Some(quote) = it.next() else { continue };
+        if quote != '"' && quote != '\'' {
+            continue;
+        }
+        let value: String = it.take_while(|c| *c != quote).collect();
+        if !value.is_empty() && !out.contains(&value) {
+            out.push(value);
+        }
+    }
+    out.sort();
+    out
 }
 
 pub fn resolve_image_board<'c>(

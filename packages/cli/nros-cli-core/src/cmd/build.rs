@@ -168,11 +168,47 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // failed on a workspace with no C or C++ in it at all. A framework entry's
     // build file is its framework's, not evidence about the graph.
     let framework_entries = framework_entry_dirs(&found, &catalog);
-    let has_non_rust = found
+    let ws_non_rust: Vec<&str> = found
         .packages
         .iter()
         .filter(|p| !framework_entries.contains(&p.dir))
-        .any(|p| p.dir.join("CMakeLists.txt").is_file());
+        .filter(|p| p.dir.join("CMakeLists.txt").is_file())
+        .map(|p| p.name.as_str())
+        .collect();
+
+    // Does THIS IMAGE's graph cross languages? Not the workspace's.
+    //
+    // `examples/workspaces/safety` is the case the workspace-wide answer got
+    // wrong: it holds C, C++ AND Rust node packages against one bringup, so
+    // `has_non_rust` was true for every image and the two Rust images were
+    // emitted as `nano_ros_add_executable` calls. That failed one layer down,
+    // in the typed-entry codegen, with the Rust package named:
+    //
+    //     typed entry: launch node pkg `rust_safety_listener_pkg` exec
+    //     `safe_listener` has no matching component in nros-metadata.json
+    //
+    // — correct, and about the wrong thing. It is the same refinement W8.a
+    // already made once for framework entries ("a framework entry's build file
+    // is its framework's, not evidence about the graph"), taken one level
+    // finer: a C package the image never links is not evidence either.
+    //
+    // Evidence, not assumption: an image whose launch names NO known package
+    // (unreadable file, `<include>`-only, a pkg outside this workspace) falls
+    // back to the workspace answer rather than guessing Rust, because guessing
+    // wrong toward cargo drops the C half of a graph silently, while guessing
+    // wrong toward cmake fails loudly at configure.
+    let image_has_non_rust = |image: &crate::orchestration::image::ImageBlock,
+                              bringup_dir: &std::path::Path| {
+        let pkgs = crate::orchestration::image::launch_node_pkgs(image, bringup_dir);
+        let known: Vec<&String> = pkgs
+            .iter()
+            .filter(|n| found.packages.iter().any(|p| &p.name == *n))
+            .collect();
+        if known.is_empty() {
+            return !ws_non_rust.is_empty();
+        }
+        known.iter().any(|n| ws_non_rust.contains(&n.as_str()))
+    };
 
     let mut out = Vec::new();
     for (bringup, bringup_dir, image_id, image) in resolved {
@@ -189,7 +225,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 .map_err(|e| eyre::eyre!("{e}"))?;
         let platform = descriptor.platform.kebab().to_string();
         let board = image.board.clone().unwrap_or_default();
-        let driver = plan::driver_for(&platform, has_non_rust);
+        let driver = plan::driver_for(&platform, image_has_non_rust(&image, &bringup_dir));
 
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
@@ -290,7 +326,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     &bringup,
                     &root,
                     &catalog,
-                    has_non_rust,
+                    &image_has_non_rust,
                     nano_ros_root.as_deref(),
                     entry_dir.clone(),
                 )?;
@@ -427,12 +463,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 });
                 let cmake_entries = plan::all_images(&bringups)
                     .into_iter()
-                    .filter(|(b, _, _, img)| {
+                    .filter(|(b, bd, _, img)| {
                         b == &bringup
                             && crate::orchestration::image::resolve_image_board(&catalog, "", img)
                                 .map(|d| {
-                                    plan::driver_for(d.platform.kebab(), has_non_rust)
-                                        == Driver::CMake
+                                    plan::driver_for(
+                                        d.platform.kebab(),
+                                        image_has_non_rust(img, bd),
+                                    ) == Driver::CMake
                                         && cmake_coordinate(d.platform.kebab(), img) == coord
                                 })
                                 .unwrap_or(false)
@@ -821,7 +859,7 @@ fn all_cargo_entry_dirs(
     bringup: &str,
     root: &std::path::Path,
     catalog: &crate::orchestration::board_descriptor::BoardCatalog,
-    has_non_rust: bool,
+    image_has_non_rust: &dyn Fn(&crate::orchestration::image::ImageBlock, &std::path::Path) -> bool,
     nano_ros_root: Option<&std::path::Path>,
     already: Option<PathBuf>,
 ) -> Result<Vec<PathBuf>> {
@@ -842,7 +880,7 @@ fn all_cargo_entry_dirs(
             continue;
         };
         let platform = descriptor.platform.kebab().to_string();
-        if plan::driver_for(&platform, has_non_rust) != Driver::Cargo {
+        if plan::driver_for(&platform, image_has_non_rust(&image, &bringup_dir)) != Driver::Cargo {
             continue;
         }
         let Some(dir) = generate_entry(

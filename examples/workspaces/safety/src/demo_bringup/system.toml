@@ -103,11 +103,11 @@ launch = "cpp_safety_talker.launch.xml"
 
 [image.native_rust_safety_listener]
 board = "native"
-launch = "safety_listener.launch.xml"
+launch = "rust_safety_listener.launch.xml"
 
 [image.native_rust_safety_talker]
 board = "native"
-launch = "safety_talker.launch.xml"
+launch = "rust_safety_talker.launch.xml"
 
 [image.zephyr_rust_safety]
 board = "zephyr"

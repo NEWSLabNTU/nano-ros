@@ -2145,8 +2145,8 @@ pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Pat
             build_workspace_cmake_entry_in(
                 "workspace-safety-c-talker",
                 "safety",
-                "build-workspace-fixtures",
-                "native_c_safety_talker_entry",
+                "build/posix-zenoh-native/cmake",
+                "native_c_safety_talker",
             )
         })
         .map(|p| p.as_path())
@@ -2161,8 +2161,8 @@ pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static P
             build_workspace_cmake_entry_in(
                 "workspace-safety-c-listener",
                 "safety",
-                "build-workspace-fixtures",
-                "native_c_safety_listener_entry",
+                "build/posix-zenoh-native/cmake",
+                "native_c_safety_listener",
             )
         })
         .map(|p| p.as_path())
@@ -3011,8 +3011,8 @@ pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static P
             build_workspace_cmake_entry_in(
                 "workspace-safety-cpp-talker",
                 "safety",
-                "build-workspace-fixtures",
-                "native_cpp_safety_talker_entry",
+                "build/posix-zenoh-native/cmake",
+                "native_cpp_safety_talker",
             )
         })
         .map(|p| p.as_path())
@@ -3027,8 +3027,8 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
             build_workspace_cmake_entry_in(
                 "workspace-safety-cpp-listener",
                 "safety",
-                "build-workspace-fixtures",
-                "native_cpp_safety_listener_entry",
+                "build/posix-zenoh-native/cmake",
+                "native_cpp_safety_listener",
             )
         })
         .map(|p| p.as_path())

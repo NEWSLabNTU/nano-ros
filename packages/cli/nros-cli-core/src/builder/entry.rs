@@ -497,11 +497,12 @@ mod tests {
         );
     }
 
+    use super::*;
+
     #[test]
     fn an_unresolvable_candidate_list_still_names_what_the_author_wrote() {
         assert_eq!(macro_deploy_token(&["", "nonesuch", ""]), "nonesuch");
     }
-    use super::*;
 
     fn spec() -> EntrySpec {
         EntrySpec {
@@ -522,6 +523,7 @@ mod tests {
             ],
             nano_ros_root: PathBuf::from("/nros"),
             facade_dir: Some(PathBuf::from("/ws/build/nros/nros-selection/native_entry")),
+            bringup_deps: Vec::new(),
         }
     }
 

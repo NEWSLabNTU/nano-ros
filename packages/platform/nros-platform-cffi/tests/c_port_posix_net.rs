@@ -27,6 +27,42 @@ struct PosixSocket {
     fd: i32,
 }
 
+/// A port the kernel has just told us is free, NUL-terminated for the C API.
+///
+/// issue 0855 — the two tests used to name literals (`56301`, `56302`), and
+/// both sat inside this host's ephemeral range (`/proc/sys/net/ipv4/
+/// ip_local_port_range` = 32768–60999). The kernel hands those numbers out to
+/// anything asking for an ephemeral port, so an unrelated process — a ROS
+/// `component_node` from someone else's run, in the case that found this —
+/// reds the test with `nros_platform_udp_listen` returning `-1`, which reads
+/// as a product failure in the platform port.
+///
+/// Binding port 0 and reading `local_addr()` back asks the kernel for a port
+/// nobody holds instead of asserting one. `SO_REUSEADDR` is deliberately not
+/// set on the probe: the answer is only useful if it means "free". The
+/// remaining window is between the probe closing and the C port binding —
+/// microseconds, against "as long as that other process lives".
+///
+/// A fixed port outside the ephemeral range was the alternative and is worse:
+/// it swaps a rare collision with any process for a permanent one with
+/// anything else that picks the same constant, and there is no registry to
+/// check a constant against.
+fn free_port(proto: &str) -> Vec<u8> {
+    let port = match proto {
+        "udp" => std::net::UdpSocket::bind("127.0.0.1:0")
+            .expect("probe udp bind")
+            .local_addr()
+            .expect("probe udp local_addr")
+            .port(),
+        _ => std::net::TcpListener::bind("127.0.0.1:0")
+            .expect("probe tcp bind")
+            .local_addr()
+            .expect("probe tcp local_addr")
+            .port(),
+    };
+    format!("{port}\0").into_bytes()
+}
+
 unsafe extern "C" {
     fn nros_platform_tcp_create_endpoint(ep: *mut c_void, addr: *const u8, port: *const u8) -> i8;
     fn nros_platform_tcp_free_endpoint(ep: *mut c_void);
@@ -58,11 +94,7 @@ const ERR: usize = usize::MAX;
 #[test]
 fn tcp_loopback_roundtrip() {
     let addr = b"127.0.0.1\0";
-    // Port 0 lets the OS assign — but our endpoint API takes a port
-    // *string*; using ephemeral selection here would force a getsockname
-    // dance. Use a fixed high port instead and accept the slight
-    // collision risk between concurrent test runs.
-    let port = b"56301\0";
+    let port = free_port("tcp");
 
     unsafe {
         let mut ep = MaybeUninit::<PosixEndpoint>::zeroed();
@@ -136,7 +168,7 @@ fn tcp_loopback_roundtrip() {
 #[test]
 fn udp_loopback_roundtrip() {
     let addr = b"127.0.0.1\0";
-    let port = b"56302\0";
+    let port = free_port("udp");
 
     unsafe {
         let mut ep = MaybeUninit::<PosixEndpoint>::zeroed();
