@@ -451,6 +451,69 @@ error in a generic the FFI seam would have to name.
 
 Steps 1-2 are inert and independently verifiable; 3 is the behavioural one.
 
+### Steps 1 and 2 are LANDED (2026-08-27)
+
+* **W5.1** — `packages/api/nros/build.rs` emits `config::MAX_COMPONENTS` (knob
+  `NROS_RUNTIME_MAX_COMPONENTS`, default 4) and `config::COMPONENT_SLOT_BYTES`
+  (default 512) via `nros_zephyr_build::knob_usize`. Verified the knob reaches
+  the constant, not just that the script runs: a build with
+  `NROS_RUNTIME_MAX_COMPONENTS=9` emitted `MAX_COMPONENTS: usize = 9`. Moved 16
+  leaf lockfiles (one line each, `nros-zephyr-build`), all via `just lock-update`.
+* **W5.2** — `packages/api/nros/src/runtime_storage.rs`: `RuntimeSizing
+  { components, slot_bytes }`, `DEFAULT`, `u64_len()`. Four tests; the rounding
+  test was verified to FAIL against the buggy spelling (rounding the total
+  rather than each slot gives 5 words where 6 are needed).
+
+### Step 3 — hand-off notes, because it is the unsafe one
+
+Step 3 is deliberately NOT a tail-end-of-session change. It rewrites lifetime
+invariants across the FFI seam, and **its failure mode is use-after-free, not a
+compile error**. Start here:
+
+**Baseline, captured 2026-08-27 and green:**
+
+```
+cargo nextest run -p nros-tests --features component-runtime-test \
+    -E 'binary(component_runtime)'
+  3 tests run: 3 passed
+    runtime_registers_single_component_and_spins_once
+    runtime_creates_publisher_for_declared_entity
+    runtime_propagates_init_failure
+```
+
+**Note the `required-features`.** `component_runtime`, `component_dispatch` and
+`component_param` are all behind `component-runtime-test`; without it cargo
+skips them SILENTLY and a bare `nextest run` reports "0 tests run" while looking
+successful. That is the issue-0652 class, and it is easy to mistake for "there
+are no tests for this".
+
+**The `Arc` lifecycle to be replaced** (`node_runtime.rs`):
+
+| site | what it does |
+| --- | --- |
+| ~1566 | `Arc::into_raw(cell.clone())` -> `executor.enroll_component(raw, tick, drop)` |
+| `component_tick_trampoline` | BORROWS that pointer each `spin_once` |
+| `component_drop_trampoline` | RECLAIMS it on `Executor::drop` |
+| ~905 / ~954 / ~997 | `Box::into_raw` of `ServiceServerCtx` / `ActionServerCtx` / `ActionClientCtx`, each holding its own `Arc<ComponentCell>` |
+
+So the refcount is doing two jobs: keeping the cell alive behind four raw
+pointers, and sharing it. A `'static` pool answers the first by construction —
+which is the point — but every one of those provenance pairings has to be
+re-established by hand as an index. The three tests above spin briefly and tear
+down cleanly, so they would plausibly stay green over a latent
+use-after-free; they are a floor, not the acceptance.
+
+**`new_in` lands WITH step 3, not before.** W5.2 deliberately stopped at the
+sizing arithmetic: a constructor that accepts backing and ignores it, because
+the pool does not exist yet, would be an API that lies. So step 3 introduces the
+constructor, the pool and the index migration together.
+
+**Acceptance (unchanged):** an image that CALLS runtime code links at tier
+`heap-free` and passes the W1 gate with `symbols read` well above 1. Three
+probes have already passed that gate vacuously at `symbols read: 1`.
+
+
+
 ## Related, not owned here
 
 - [issue 0812](../issues/0812-publisher-loan-heap-allocates-per-loan.md) —

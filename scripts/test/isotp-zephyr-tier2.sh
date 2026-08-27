@@ -15,6 +15,9 @@
 # Getting that wrong fails at session open with no frames and no clue.
 set -o pipefail
 ZIMAGE=${ZEPHYR_IMAGE:?set ZEPHYR_IMAGE to a built native_sim zephyr.exe}
+# profile-literal-ok: vendored — this is UPSTREAM zenoh's own build tree, not
+# ours, so `release` there is zenoh's cargo profile and is outside nano-ros's
+# profile-propagation graph entirely. Overridable with $ZENOH_RS_EXAMPLES.
 RS=${ZENOH_RS_EXAMPLES:-$HOME/repos/zenoh/target/release/examples}
 OUT=$(mktemp -d); rm -rf "$OUT"; mkdir -p "$OUT"
 PIDS=()
