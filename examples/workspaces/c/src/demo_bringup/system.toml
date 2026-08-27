@@ -193,6 +193,12 @@ board = "mps2-an385-freertos"
 
 [image.freertos_posix]
 board = "freertos-posix"
+# NOT the `[image_defaults]` zenoh. zenoh-pico's FreeRTOS backend is lwIP-only
+# (`system/freertos/lwip/network.c`), and this board has no lwIP — so a zenoh
+# build of it compiles that TU and dies at link with 63 `undefined reference to
+# lwip_*`. The pre-migration fixture row built cyclonedds for exactly this
+# reason; the RMW is a property of the image, so it belongs here.
+rmw = "cyclonedds"
 
 [image.native]
 board = "native"

@@ -342,8 +342,19 @@ build_workspace() {
                 # and builds. The row's `build_subdir` names where that lands,
                 # `build/<coord>/cmake`, so the artifact locator below and the
                 # test-side resolver keep reading one manifest fact.
-                echo "     nros build $image --workspace . --offline"
-                "$nros_cli" build "$image" --workspace . --offline
+                # The row's `cmake_defs` reach the generated configure as
+                # native args. They carry facts no image declares and no board
+                # knows — `NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330"` is the QEMU
+                # host address this fixture's peer listens on, which is a
+                # property of the TEST, not of the program.
+                local nros_args=(build "$image" --workspace . --offline)
+                if [ -n "$defs" ]; then
+                    local def_args=()
+                    read -r -a def_args <<< "$defs"
+                    nros_args+=(-- "${def_args[@]}")
+                fi
+                echo "     nros ${nros_args[*]}"
+                "$nros_cli" "${nros_args[@]}"
                 if [ -x "$build_subdir/$entry" ]; then
                     echo "     built: $dir/$build_subdir/$entry"
                 else

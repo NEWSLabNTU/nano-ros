@@ -555,8 +555,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
-entry = "threadx_entry"
-build_subdir = "build-workspace-fixtures-threadx-linux"
+image = "threadx"
+build_subdir = "build/threadx-linux-zenoh/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9130" }
 
 # phase-263 C2b (issue 0097) — the FIRST QEMU-cross embedded C workspace entry:
@@ -585,8 +585,8 @@ lang = "c"
 rmw = "cyclonedds"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
-entry = "freertos_posix_entry"
-build_subdir = "build-workspace-fixtures-freertos-posix"
+image = "freertos_posix"
+build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix" }
 
 [[workspace_fixture]]
@@ -607,8 +607,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-freertos"
+image = "freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7930" }
 
 # phase-372 W2 — the S32Z270 RTU (Cortex-R52) link-completeness witness: no
@@ -657,8 +657,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
-entry = "nuttx_entry"
-build_subdir = "build-workspace-fixtures-nuttx"
+image = "nuttx"
+build_subdir = "build/nuttx-zenoh-nuttx-qemu-arm/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
