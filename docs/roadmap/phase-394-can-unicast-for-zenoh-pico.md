@@ -34,9 +34,9 @@ implementation to disagree with, before it is trusted on one without.
 | | What | Proves | State |
 | --- | --- | --- | --- |
 | **W0** | Vendor `SimonCahill/isotp-c` at a pinned commit, with its MIT licence; wire into the build | the dependency is present, attributed and reproducible | |
-| **W1** | `unix` platform: implement the link over the **kernel** `CAN_ISOTP` socket | the pico link works where the kernel is the reference implementation | |
-| **W2** | `src/link/unicast/isotp.c` + config; register in `_z_open_link` **only** | pico connects out and never touches the accept path | |
-| **W3** | zenoh-pico ↔ zenoh-rs over `vcan0`: session, pub/sub, and a **query** | the two implementations agree on the wire | |
+| **W1** | `unix` platform: implement the link over the **kernel** `CAN_ISOTP` socket | the pico link works where the kernel is the reference implementation | **done** |
+| **W2** | `src/link/unicast/isotp.c` + config; register in `_z_open_link` **only** | pico connects out and never touches the accept path | **done** |
+| **W3** | zenoh-pico ↔ zenoh-rs over `vcan0`: session, pub/sub, and a **query** | the two implementations agree on the wire | **done** |
 | **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | |
 | **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | |
 | **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | |
@@ -130,3 +130,55 @@ depends on services.
 oracle, not an accident, and the phase should keep both rather than delete the
 kernel path once the library works — the day the library regresses, the oracle
 is what finds it.
+
+## 6. W1–W3 result
+
+Done, on branch `phase-394-can-unicast-over-isotp` in the zenoh-pico submodule
+(`ca7ce9a9`). zenoh-pico opened a session to zenoh-rs over `vcan0`, delivered
+pub/sub, and **a query returned a reply** — the capability the multicast CAN
+link of RFC-0080 cannot provide.
+
+`candump` during the query shows ISO 15765-2 exactly as specified:
+
+```
+vcan0  200   [8]  10 18 C1 09 F2 32 F5 35     FirstFrame, FF_DL = 0x018 = 24
+vcan0  201   [3]  30 00 00                    FlowControl, CTS, BS=0, STmin=0
+vcan0  200   [8]  21 17 AC D2 78 DD 5C 42     ConsecutiveFrame, SN=1
+vcan0  200   [8]  22 2B C1 F0 0A FF DD 0A     ConsecutiveFrame, SN=2
+vcan0  200   [5]  23 00 08 27 01              ConsecutiveFrame, SN=3
+```
+
+Two bugs, both from taking the multicast CAN link as the template when the
+relevant difference is that this link is **unicast**:
+
+* `_z_link_get_socket` had no `_Z_LINK_TYPE_ISOTP` case, so it fell to
+  `default:` and returned `NULL`. CAN and IVC return `NULL` legitimately — they
+  have no descriptor to wait on — but the *unicast* transport dereferences the
+  result without a NULL check (`_z_new_transport_client`), so this was a
+  segfault during session open, after a handshake that had otherwise succeeded.
+* `_z_f_link_read_socket_isotp` was a stub that logged and returned `SIZE_MAX`,
+  again copied from CAN, where a read must filter on the receive identifier and
+  so cannot go through a bare descriptor. ISO-TP binds the identifier pair into
+  the socket, and the unicast transport reads through `_read_socket_f` on every
+  inbound batch. Fixed by adding `_z_read_isotp_socket`, an fd-only entry point
+  that `_z_read_isotp` also delegates to.
+
+One trap worth recording, because it cost a debugging cycle and will recur:
+**`include/zenoh-pico/config.h` is generated into the source tree and is also
+checked in.** Configuring the build rewrites it, so `git checkout -- config.h`
+to tidy the worktree silently removes `Z_FEATURE_LINK_ISOTP`, and the next
+`cmake --build` — which does not re-run configure — compiles the link out. The
+symptom is `Unable to open session!` with no ISO-TP logging at all, which reads
+like a link bug. Re-run `cmake -S . -B <dir>` before each build and revert the
+generated files only at commit time. The same applies to `library.json`,
+`zenohpico.pc` and `include/zenoh-pico.h`, which configuring also rewrites —
+in this tree it reverted a deliberate Zephyr socket-timeout carve-out that had
+nothing to do with this phase.
+
+A second trap, recorded because it briefly looked like a bug in the link. The
+reply to a query appeared to arrive only 1 run in 5, with the zenoh-rs queryable
+logging `Responding` every time — a convincing "the reply is lost on the way
+back". It was not: the harness kills its children rather than letting them exit,
+and **block-buffered stdout is discarded on SIGTERM**, so a run that worked
+perfectly logged nothing. Under `stdbuf -o0` it is 3/3. `scripts/test/isotp-pico-interop.sh`
+runs everything unbuffered for this reason.
