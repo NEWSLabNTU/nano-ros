@@ -15,13 +15,40 @@ real workspace: `examples/workspaces/rust` built with its hand-written root and
 entry deleted and the generated pair compiling. That proof found three more
 defects (all fixed) and was then reverted — the tree is unchanged.
 
+**W9.c update (2026-08-27).** Two blockers found and cleared, neither of them
+the migration:
+
+* **Issue 0825 (FIXED, c7fa5cb3d).** Three `codegen_system` tests had been red
+  all session. `model_search_paths` keyed its `$OUT_DIR` rung on the bringup's
+  NAME, cargo sets `$OUT_DIR` when running the tests of a package with a build
+  script, and that directory is shared by every test target — so this phase's
+  own `tests/build_verb_pipeline.rs` wrote a model that three sibling tests
+  read as theirs. Reader and writer now share one path-keyed helper.
+* **Issue 0828 (FILED, open).** `lane=tier2` is NOT the build tier 2 needs. A
+  row the resolver cannot attribute fails closed, so it is in the run set at
+  every lane while no lane builds it; 47 rows share one `build_subdir`. After a
+  core-crate edit the lane gate passes and the run reports ~190 stale-fixture
+  failures. Tier 2 is green today only on residue from an older `lane=all`.
+  W9.c therefore runs against a `lane=all` build until 0828 lands.
+
+**W9.a is not as complete as it was marked.** All 16 bringups declare
+`[image.*]` and every image resolves, but two keys were never carried over from
+the entries they were derived from: **zero images declare `panic`** (6 entries
+do — `esp32_entry`, `freertos_entry`, `nuttx_entry` in `workspaces/rust`;
+`nuttx_entry`, `riscv_nuttx_entry`, `freertos_realtime_entry` in
+`workspaces/realtime-rust`) and **zero declare `args`**, so the three
+args-bearing entries (`native_entry_robot1`, `native_entry_robot2`,
+`zephyr_entry_robot1`) have no image at all. Nine declarations missing. A
+generated entry would silently lose its panic policy or its machine binding —
+which is a build that succeeds and is wrong, the worst shape. Fix belongs with
+the first workspace migration.
+
 **What remains needs a validated build cycle, not more code:** W9.b (retarget
 `examples/fixtures.toml`'s rows at `nros build`), W9.c (`just build-test-fixtures
-lane=tier2` then `just ci-matrix`), and W10.a–W10.c (delete nine roots and ~100
-entry packages, then add the gate that keeps them gone). Those are one
-irreversible sweep gated on a multi-hour tier-2 run, and starting it blind is
-how a tree ends up half-migrated. W10.d (the docs sweep) is independent and
-still open.
+lane=all` — see 0828 — then `just ci-matrix`), and W10.a–W10.c (delete nine roots
+and ~100 entry packages, then add the gate that keeps them gone). Those are one
+irreversible sweep gated on a multi-hour run, and starting it blind is how a tree
+ends up half-migrated.
 
 ## Goal
 
@@ -395,8 +422,14 @@ found only because these trees are not uniform the way ours are.
 
 ## W9 — Migrate the nine (RFC-0065 D13, stage 2)
 
-- [x] **W9.a** Migrate all nine workspace roots and their entry packages, one
+- [~] **W9.a** Migrate all nine workspace roots and their entry packages, one
       commit per workspace so a regression bisects to one.
+
+      **Images declared, but nine declarations are missing** — see the status
+      note at the top. No image carries `panic` (6 entries declare one) and
+      none carries `args` (so the 3 args-bearing entries have no image). Both
+      would generate an entry that builds and is WRONG. Close with the first
+      workspace migration.
 - [ ] **W9.b** Update `examples/fixtures.toml` rows to invoke `nros build`.
       **Not started deliberately.** 337 rows drive every fixture build in the
       repo; retargeting them is only verifiable by the tier-2 run in W9.c, and
@@ -404,8 +437,13 @@ found only because these trees are not uniform the way ours are.
       A row already describes `(image, board)`, so it becomes an invocation
       rather than a description of one.
 - [ ] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
-      `cmake/` and codegen, so **`just ci-matrix`** at minimum, with
-      `just build-test-fixtures lane=tier2` first.
+      `cmake/` and codegen, so **`just ci-matrix`** at minimum.
+
+      **`lane=all`, not `lane=tier2`** (issue 0828): tier 2's run set contains
+      rows no lane builds, so `lane=tier2` leaves them stale, the lane gate
+      passes anyway, and the run fails ~190 tests on freshness. Cleared issue
+      0825 on the way — three `codegen_system` tests that had been red all
+      session, and this phase's own test target was the writer.
 
 ---
 
