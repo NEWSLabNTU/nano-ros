@@ -267,7 +267,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    /* take_request / has_request / send_reply / send_request_raw
+    /* take_request / has_request / send_response / send_request_raw
      * on NULL backend_data also reach the backend. */
     int64_t seq = 0;
     size_t tr_len = 0;

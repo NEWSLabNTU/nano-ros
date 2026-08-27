@@ -91,7 +91,7 @@ int main() {
                 put_le64(reply + 4, a + b);
                 if (g_vt->send_response(&srv, seq, reply, sizeof(reply))
                     != NROS_RMW_RET_OK) {
-                    std::fprintf(stderr, "send_reply failed\n");
+                    std::fprintf(stderr, "send_response failed\n");
                     return 4;
                 }
                 std::printf("REPLIED a=%lld b=%lld sum=%lld\n",

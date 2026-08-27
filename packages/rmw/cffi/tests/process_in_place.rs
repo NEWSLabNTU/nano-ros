@@ -148,7 +148,7 @@ unsafe extern "C" fn stub_has_request(
     unsafe { *out_has_request = false };
     NROS_RMW_RET_OK
 }
-unsafe extern "C" fn stub_send_reply(
+unsafe extern "C" fn stub_send_response(
     _: *const NrosRmwService,
     _: i64,
     _: *const u8,
@@ -241,7 +241,7 @@ fn base_vtable() -> NrosRmwVtable {
         destroy_service: Some(stub_destroy_service),
         take_request: Some(stub_take_request),
         has_request: Some(stub_has_request),
-        send_response: Some(stub_send_reply),
+        send_response: Some(stub_send_response),
         create_client: Some(stub_create_client),
         destroy_client: Some(stub_destroy_client),
         subscription_event_init: Some(stub_reg_sub_event),

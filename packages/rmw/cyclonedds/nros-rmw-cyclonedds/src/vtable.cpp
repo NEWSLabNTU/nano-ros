@@ -49,7 +49,7 @@ const nros_rmw_vtable_t kVtable = {
     /*destroy_service*/           service_destroy,
     /*take_request*/             service_take_request,
     /*has_request*/               service_has_request,
-    /*send_response*/                service_send_reply,
+    /*send_response*/                service_send_response,
 
     /* ---- Client ---- */
     /*create_client*/             client_create,

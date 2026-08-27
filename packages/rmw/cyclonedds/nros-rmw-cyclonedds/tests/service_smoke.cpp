@@ -3,7 +3,7 @@
 // Verifies service_server_create / service_client_create succeed
 // when both `<svc>_Request` and `<svc>_Response` descriptors are
 // registered, fail cleanly with UNSUPPORTED when they aren't.
-// Data plane stubs (`try_recv_request` / `send_reply` /
+// Data plane stubs (`try_recv_request` / `send_response` /
 // `send_request_raw`) are still UNSUPPORTED until the raw-CDR
 // follow-up lands.
 

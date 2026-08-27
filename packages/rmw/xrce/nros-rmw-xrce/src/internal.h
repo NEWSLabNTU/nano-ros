@@ -170,7 +170,7 @@ typedef struct xrce_subscriber_slot {
 
 /* Phase 237 — seq-keyed reply token. Holds the `SampleIdentity` of a received
  * request whose reply may be deferred; `try_recv_request` allocates one and
- * returns its index as the runtime `sequence_number`, `send_reply` consumes it. */
+ * returns its index as the runtime `sequence_number`, `send_response` consumes it. */
 typedef struct xrce_reply_token {
     SampleIdentity sample_id;
     bool in_use;
@@ -377,7 +377,7 @@ rmw_ret_t xrce_service_destroy(rmw_service_t* server);
 rmw_ret_t xrce_service_take_request(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
                                          int64_t* seq_out, size_t* out_len, bool* taken);
 rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request);
-rmw_ret_t xrce_service_send_reply(const rmw_service_t* server, int64_t seq,
+rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len);
 
 rmw_ret_t xrce_client_create(const rmw_node_t* node, const char* service_name,

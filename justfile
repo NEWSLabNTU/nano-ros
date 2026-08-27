@@ -4524,6 +4524,31 @@ check-c: check-c-fmt
         echo "       with no migration warning at all." >&2; \
         exit 1; \
     fi
+    echo "  - service reply verb spelling + deprecated forwarders (phase 379 W5)"
+    # `send_reply` -> `send_response`, same shape as the parameter family one
+    # slot up. TWO old spellings forward to `nros_service_send_response_raw`:
+    # `nros_service_send_reply_raw` (the plain rename) and
+    # `nros_service_send_response` (a permanent NROS_RET_NOT_INIT stub from
+    # before the polling API, kept so the un-suffixed name cannot read like a
+    # second, working entry point). Function POINTERS again, so a forwarder
+    # whose argument list drifted fails here.
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/service_name_aliases.c
+    # ...and they must WARN, asserted as the same expected-failure compile.
+    if cc -fsyntax-only -std=c11 -Werror=deprecated-declarations \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/service_deprecation_probe.c 2>/dev/null; then \
+        echo "ERROR: service_deprecation_probe.c compiled clean under -Werror=deprecated-declarations." >&2; \
+        echo "       The NROS_DEPRECATED_MSG on the send_reply forwarders in" >&2; \
+        echo "       nros/service.h is not reaching callers, so the rename ships" >&2; \
+        echo "       with no migration warning at all." >&2; \
+        exit 1; \
+    fi
     echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
     # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
     # must stay compatible with cbindgen's canonical nros_cpp_ffi.h (the

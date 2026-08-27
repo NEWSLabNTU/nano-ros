@@ -54,7 +54,7 @@ FEATURES = [
     ("Publish / subscribe", ["create_publisher", "create_subscription"],
      r"fn (create_publisher|publish_raw)"),
     ("Services (server side)", ["create_service", "take_request", "send_response"],
-     r"fn (create_service|send_reply)"),
+     r"fn (create_service|send_response)"),
     ("Service clients", ["create_client", "send_request", "take_response"],
      r"fn (create_client|send_request)"),
     ("Server-availability probe", ["service_server_is_available"],

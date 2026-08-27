@@ -19,7 +19,7 @@ Six, found across four stages:
 
 | concept | C | C++ | Rust | ROS 2 |
 | --- | --- | --- | --- | --- |
-| reply to a service request | `nros_service_send_response` **and** `nros_service_send_reply_raw` | `Service::send_reply` | `ServiceTrait::send_reply` | `send_response` |
+| reply to a service request | `nros_service_send_response_raw` (phase-379 W5, 2026-08-27) | `Service::send_response` | `ServiceTrait::send_response` | `send_response` |
 | is the server up? | `nros_client_service_is_ready` **and** `nros_client_server_available` | `Client::server_available` | `ClientTrait::is_server_ready` **and** `ClientTrait::server_available` | `service_is_ready` |
 | non-blocking receive | `nros_service_take_request` but `nros_client_try_recv_response` | `try_recv*` throughout | `try_recv*` throughout | `take` |
 | cancelled timer | (no predicate at all) | `Timer::is_cancelled` → `is_canceled` (phase-379 W5, 2026-08-26) | `Timer::is_canceled` | `is_canceled` |
@@ -30,6 +30,22 @@ Two rows are worse than a mismatch: **one library ships both spellings.**
 `nros_service_send_response` sits beside `nros_service_send_reply_raw` in the same
 header, and `ClientTrait` declares `is_server_ready` and `server_available` in the
 same trait.
+
+**The service-reply row LANDED 2026-08-27 (phase-379 W5).** All three languages
+say `send_response`: C exports one symbol, `nros_service_send_response_raw`
+(`_raw` being the family convention for the byte-buffer entry points, not a
+distinction from a typed twin), and both old C spellings plus
+`Service::send_reply` survive only as deprecated forwarders. The C duplicate is
+gone in the strong sense — `nros_service_send_response` was a permanent
+`NROS_RET_NOT_INIT` stub, so its export was deleted rather than kept. The Rust
+trait method was renamed with no forwarder: it is required, so the rename breaks
+implementors, and a compile error is the right answer for them. Rows in
+`docs/reference/api-parity-ledger/service.json`
+(`cpp:Service::send_response` carries the history).
+
+The `non-blocking receive` row is deliberately still open: `nros_service_take_request`
+is the unimplemented twin of the working `nros_service_try_recv_request_raw`, and
+settling it is `c:take_request`'s job, not the reply verb's.
 
 ## Why it matters
 

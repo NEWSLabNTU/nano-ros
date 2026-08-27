@@ -1318,10 +1318,10 @@ nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void *storage,
  * # Safety
  * `storage` must be valid. `data` must point to `len` readable bytes.
  */
-nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void *storage,
-                                                      int64_t sequence_number,
-                                                      const uint8_t *data,
-                                                      size_t len);
+nros_cpp_ret_t nros_cpp_service_server_send_response_raw(void *storage,
+                                                         int64_t sequence_number,
+                                                         const uint8_t *data,
+                                                         size_t len);
 
 /**
  * Destroy a service server (drop in place, no free).

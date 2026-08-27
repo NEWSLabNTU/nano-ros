@@ -99,13 +99,13 @@ pub struct RawActiveGoal {
 /// A `get_result` request held until its goal terminates (Phase 237).
 ///
 /// `sequence_number` is the service-backend reply-correlation token; the backend
-/// must be able to `send_reply(sequence_number, …)` after the handler returned
+/// must be able to `send_response(sequence_number, …)` after the handler returned
 /// (Cyclone native; XRCE/Zenoh via the Phase 237 seq-keyed reply tables).
 #[derive(Clone, Copy)]
 pub struct PendingGetResult {
     /// Goal whose terminal result the requester is waiting for.
     pub goal_id: GoalId,
-    /// Backend reply-correlation token for the deferred `send_reply`.
+    /// Backend reply-correlation token for the deferred `send_response`.
     pub sequence_number: i64,
 }
 
@@ -226,7 +226,7 @@ pub struct ActionServerCore<
     /// acceptance and expects the reply only once the goal terminates, so we
     /// hold the request's correlation token (`sequence_number`) here and flush
     /// it in [`Self::complete_goal_raw`]. Deferral relies on the service
-    /// backend honoring `send_reply(seq)` after the handler returns — the
+    /// backend honoring `send_response(seq)` after the handler returns — the
     /// seq-keyed reply contract (Cyclone native; XRCE/Zenoh per Phase 237).
     pub(crate) pending_get_results: heapless::Vec<PendingGetResult, MAX_GOALS>,
     /// Slab storage for completed result CDR bytes.
@@ -373,7 +373,7 @@ impl<
 
         if self
             .send_goal_server
-            .send_reply(seq, &self.cancel_buffer[..reply_len])
+            .send_response(seq, &self.cancel_buffer[..reply_len])
             .is_err()
         {
             // The client never learned it was accepted, so un-record it —
@@ -410,7 +410,7 @@ impl<
         let reply_len = writer.position();
 
         self.send_goal_server
-            .send_reply(seq, &self.cancel_buffer[..reply_len])
+            .send_response(seq, &self.cancel_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)
     }
 
@@ -822,7 +822,7 @@ impl<
         let reply_len = writer.position();
 
         self.cancel_goal_server
-            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .send_response(sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)?;
 
         if !accepted.is_empty() {
@@ -895,7 +895,7 @@ impl<
         let reply_len = writer.position();
 
         self.cancel_goal_server
-            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .send_response(sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)?;
 
         Ok(Some((goal_id, response)))
@@ -1017,7 +1017,7 @@ impl<
             .copy_from_slice(&self.result_slab[slab_offset..slab_offset + slab_len]);
         let reply_len = pos + slab_len;
         self.get_result_server
-            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .send_response(sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)
     }
 
@@ -1040,7 +1040,7 @@ impl<
         self.goal_buffer[pos..pos + bytes.len()].copy_from_slice(bytes);
         let reply_len = pos + bytes.len();
         self.get_result_server
-            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
+            .send_response(sequence_number, &self.goal_buffer[..reply_len])
             .map_err(|_| NodeError::ServiceReplyFailed)
     }
 

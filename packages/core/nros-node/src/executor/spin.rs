@@ -1266,7 +1266,7 @@ pub struct Executor<'s> {
     /// (XRCE-DDS-Client, current Cyclone/dust-DDS shims) leave
     /// this `false`; the wait then becomes a no-op sleep that
     /// starves reliable retransmission (Phase 127.C.4 root
-    /// cause: server's `send_reply` flushes 100 ms once, then a
+    /// cause: server's `send_response` flushes 100 ms once, then a
     /// blind `wait_ms(100)` sleeps with zero session activity, so
     /// the agent's ACK arrives into a stalled session and reliable
     /// redelivery never fires).
@@ -5455,7 +5455,7 @@ impl<'s> Executor<'s> {
         // Cyclone) leave the vtable slot NULL → `has_async_wake == false` →
         // drive_io for the caller's full timeout instead of sleeping in a
         // never-signaled wait that starves reliable retransmission (Phase
-        // 127.C.4 root cause: the server's `send_reply` flushes 100 ms once,
+        // 127.C.4 root cause: the server's `send_response` flushes 100 ms once,
         // then a blind `wait_ms(100)` sleeps with zero session activity, so the
         // agent's ACK arrives into a stalled session and reliable redelivery
         // never fires).

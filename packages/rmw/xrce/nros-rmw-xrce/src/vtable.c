@@ -38,7 +38,7 @@ static const nros_rmw_vtable_t kVtable = {
     .destroy_service            = xrce_service_destroy,
     .take_request               = xrce_service_take_request,
     .has_request                = xrce_service_has_request,
-    .send_response                 = xrce_service_send_reply,
+    .send_response                 = xrce_service_send_response,
 
     /* ---- Client ---- */
     .create_client              = xrce_client_create,

@@ -875,7 +875,7 @@ unsafe extern "C" fn send_response_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let slice = unsafe { core::slice::from_raw_parts(data, len) };
-    match ServiceTrait::send_reply(s, seq, slice) {
+    match ServiceTrait::send_response(s, seq, slice) {
         Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }

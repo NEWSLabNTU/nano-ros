@@ -79,7 +79,7 @@ client, allocated at create time) plus a monotonic `seq` (per
 client, atomic). The server stores `(client_id, client_seq)` in a
 32-slot table when it takes a request, returns the slot index as
 the runtime-visible `seq`, and echoes the original
-`(client_id, seq)` on the matching `service_send_reply`. The
+`(client_id, seq)` on the matching `service_send_response`. The
 client's `service_call_raw` poll filters incoming replies on
 `(client_id, seq) == (mine, my_seq)`. Concurrent calls from
 parallel clients no longer interleave.
@@ -103,7 +103,7 @@ add_two_ints_server`.
 **Caveat — cap:** the server-side slot table is fixed at 32. A
 server with more than 32 outstanding requests will report
 `NROS_RMW_RET_WOULD_BLOCK` from `try_recv_request` until the
-application drains via `send_reply`. Tune by editing
+application drains via `send_response`. Tune by editing
 `kRequestSlots` in `src/service.cpp`.
 
 **Caveat — Cyclone same-participant local-delivery race:**

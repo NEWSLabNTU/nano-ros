@@ -35,7 +35,7 @@ a static library + a single public header carrying the
   from the per-session pool of `XRCE_MAX_SERVICE_SERVERS=4`.
   Per-session `request_callback` (registered at session_open)
   dispatches by replier id; the captured `SampleIdentity` rides in
-  the slot for `xrce_service_send_reply` to feed
+  the slot for `xrce_service_send_response` to feed
   `uxr_buffer_reply`. Symmetric REQUESTER path on the client side;
   `xrce_service_call_raw` busy-waits via `uxr_run_session_time` for
   up to `XRCE_SERVICE_REPLY_TOTAL_MS=5000 ms`. Single-slot inbox

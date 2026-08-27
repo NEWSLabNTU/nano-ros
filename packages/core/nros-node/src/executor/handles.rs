@@ -1603,7 +1603,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
 ///
 /// Holds the transport handle plus an inline request buffer. The
 /// caller polls [`try_recv_request_raw`](Self::try_recv_request_raw)
-/// and sends replies via [`send_reply_raw`](Self::send_reply_raw)
+/// and sends replies via [`send_response_raw`](Self::send_response_raw)
 /// with raw CDR bytes.
 pub struct RawServiceServer<
     const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
@@ -1642,7 +1642,7 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     /// available — the raw CDR bytes live in
     /// [`req_buffer`](Self::req_buffer) at `&req_buffer()[..len]`
     /// until the next call. The sequence number is required by
-    /// [`send_reply_raw`](Self::send_reply_raw).
+    /// [`send_response_raw`](Self::send_response_raw).
     pub fn try_recv_request_raw(&mut self) -> Result<Option<(usize, i64)>, NodeError> {
         match self.handle.try_recv_request(&mut self.req_buffer) {
             Ok(Some(req)) => Ok(Some((req.data.len(), req.sequence_number))),
@@ -1660,9 +1660,13 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     /// Send a reply with raw CDR bytes. `sequence_number` must match
     /// the value returned by the most recent
     /// [`try_recv_request_raw`](Self::try_recv_request_raw).
-    pub fn send_reply_raw(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), NodeError> {
+    pub fn send_response_raw(
+        &mut self,
+        sequence_number: i64,
+        data: &[u8],
+    ) -> Result<(), NodeError> {
         self.handle
-            .send_reply(sequence_number, data)
+            .send_response(sequence_number, data)
             .map_err(|_| NodeError::ServiceReplyFailed)
     }
 }

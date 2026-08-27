@@ -37,7 +37,7 @@
 //                       → split: (header, user payload)
 //                       → stash header in slot, return slot index.
 //
-//   service_send_reply: lookup slot → build wire CDR
+//   service_send_response: lookup slot → build wire CDR
 //                       `[encap][header from slot][user reply]`
 //                       → dds_stream_read_sample → dds_write.
 //
@@ -1021,7 +1021,7 @@ static int32_t service_try_recv_request_len(const rmw_service_t* server, uint8_t
     if (wire_is_status(user_len)) return user_len;
 
     // Allocate a slot to remember the (writer_guid, seq) pair so the
-    // matching `service_send_reply` can echo it back.
+    // matching `service_send_response` can echo it back.
     for (std::size_t i = 0; i < kRequestSlots; ++i) {
         if (!state->slots[i].in_use) {
             state->slots[i].id = id;
@@ -1102,7 +1102,7 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t service_send_reply(const rmw_service_t* server, int64_t seq,
+rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
                                   const uint8_t* data, size_t len) {
     if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
         static_cast<std::size_t>(seq) >= kRequestSlots) {

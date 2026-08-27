@@ -150,7 +150,7 @@ int64_t seq;
 if (srv.try_recv_request(req, seq)) {
     AddTwoInts::Response resp;
     resp.sum = req.a + req.b;
-    srv.send_reply(seq, resp);
+    srv.send_response(seq, resp);
 }
 ```
 

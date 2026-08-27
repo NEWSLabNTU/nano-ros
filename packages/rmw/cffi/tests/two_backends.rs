@@ -195,7 +195,7 @@ unsafe extern "C" fn noop_has_request(
     unsafe { *out_has_request = false };
     NROS_RMW_RET_OK
 }
-unsafe extern "C" fn noop_send_reply(
+unsafe extern "C" fn noop_send_response(
     _: *const NrosRmwService,
     _: i64,
     _: *const u8,
@@ -254,7 +254,7 @@ static A_VTABLE: NrosRmwVtable = NrosRmwVtable {
     destroy_service: Some(noop_destroy_srv),
     take_request: Some(noop_take_request),
     has_request: Some(noop_has_request),
-    send_response: Some(noop_send_reply),
+    send_response: Some(noop_send_response),
     create_client: Some(noop_create_client),
     destroy_client: Some(noop_destroy_client),
     subscription_event_init: Some(noop_reg_sub_event),
@@ -278,7 +278,7 @@ static B_VTABLE: NrosRmwVtable = NrosRmwVtable {
     destroy_service: Some(noop_destroy_srv),
     take_request: Some(noop_take_request),
     has_request: Some(noop_has_request),
-    send_response: Some(noop_send_reply),
+    send_response: Some(noop_send_response),
     create_client: Some(noop_create_client),
     destroy_client: Some(noop_destroy_client),
     subscription_event_init: Some(noop_reg_sub_event),

@@ -154,7 +154,7 @@
   },
   "c:send_response": {
     "verdict": "rename",
-    "why": "rcl's free-function spelling; ours is the method-style `nros_service_send_response`. Same shape as `c:publish` -- the word matches, the spelling is ours to align."
+    "why": "rcl's free-function spelling; ours is the method-style `nros_service_send_response_raw` (phase-379 W5 renamed it from `nros_service_send_reply_raw` on 2026-08-27; the un-suffixed `nros_service_send_response` is now a deprecated forwarder, see that row). Same shape as `c:publish` -- the word matches, the spelling is ours to align."
   },
   "c:service_callback_t": {
     "verdict": "divergence",
@@ -206,11 +206,25 @@
   },
   "c:service_send_reply_raw": {
     "verdict": "rename",
-    "why": "the raw form, spelled `reply` while its own sibling `nros_service_send_response` says `response`. See `cpp:Service::send_response`."
+    "why": "the deprecated `send_reply` spelling of `c:service_send_response_raw`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_service_send_response_raw`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/service.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic naming its replacement -- the same shape, and the same reasoning, as `c:param_declare_*`. Source compatibility only: the forwarder has no external linkage, so `nros_service_send_response_raw` is the sole exported symbol and an object file built against the old one must be recompiled. Both halves are pinned by `packages/api/nros-c/tests/compile/service_name_aliases.c` (the old spellings still resolve, with the same signature) and `service_deprecation_probe.c` (they still WARN -- compiled under `-Werror=deprecated-declarations` and required to FAIL), both on the `just check-c` lane. Removal is deferred on purpose: the tree's deprecated items retire together on a version boundary, not as parity work (see `rust:BoardConfig::zenoh_locator` in boot.json). Substantive verdict moved to `c:service_send_response_raw`.",
+    "rename": {
+      "from": "nros_service_send_reply_raw",
+      "to": "nros_service_send_response_raw",
+      "status": "landed",
+      "category": "A",
+      "residue": "the `NROS_DEPRECATED_MSG` forwarder is retained ON PURPOSE, in the retire-later batch."
+    }
   },
   "c:service_send_response": {
-    "verdict": "extension",
-    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides."
+    "verdict": "rename",
+    "why": "DEPRECATED ALIAS, phase-379 W5 (2026-08-27) -- and the odd member of the pair, because it was never an alias. It was a permanent `NROS_RET_NOT_INIT` stub (\"service servers are callback-only through the executor\"), left over from before `nros_service_init_polling` and the `_raw` polling pair existed, so no caller can ever have had it succeed. That made it worse than dead once the rename landed: it would have sat on the MORE OBVIOUS name beside the working `nros_service_send_response_raw`, and a consumer migrating off `send_reply` to the name that looks right would have got a runtime NOT_INIT instead of a compile error. So the `#[no_mangle]` export was DELETED and the spelling kept as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/service.h` beside `c:service_send_reply_raw` -- which also makes the call WORK, strictly better than what it did. An object file that referenced the old export must be recompiled; it cannot have been relying on the return value. Its unimplemented twin `nros_service_take_request` was deliberately left alone: which of `take_request` / `try_recv_request_raw` survives is `c:take_request`, still open, and settling half of it here would have pre-empted that row. Substantive verdict moved to `c:service_send_response_raw`.",
+    "rename": {
+      "from": "nros_service_send_response (permanent NROS_RET_NOT_INIT stub)",
+      "to": "nros_service_send_response_raw",
+      "status": "landed",
+      "category": "A",
+      "residue": "`nros_service_take_request`, the stub's twin, is still an exported `NROS_RET_NOT_INIT` symbol; it belongs to `c:take_request`."
+    }
   },
   "c:service_set_on_new_request_callback": {
     "verdict": "divergence",
@@ -523,11 +537,25 @@
   },
   "cpp:Service::send_reply": {
     "verdict": "rename",
-    "why": "the ours-only half of `cpp:Service::send_response`."
+    "why": "the deprecated `send_reply` spelling of `cpp:Service::send_response`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). `Service::send_response()` is the live name; this one survives as a `[[deprecated]]` forwarder in `nros/service.hpp` whose message names the replacement, the shape `nros::QoS`'s `*_raw()` / `*_ms()` established. Header-only and inline, so there is no ABI cost and no second definition. Removal is deferred on purpose with the rest of the tree's deprecated items (see `rust:BoardConfig::zenoh_locator` in boot.json). Substantive verdict on the row it forwards to.",
+    "rename": {
+      "from": "Service::send_reply",
+      "to": "Service::send_response",
+      "status": "landed",
+      "category": "A",
+      "residue": "the `[[deprecated]]` forwarder is retained ON PURPOSE, in the retire-later batch."
+    }
   },
   "cpp:Service::send_response": {
-    "verdict": "rename",
-    "why": "rcl, rclcpp and rclrs all say send_response. Our C says `nros_service_send_response` -- correctly -- while our C++ says `Service::send_reply` and our Rust says `ServiceTrait::send_reply`. Worse, C contradicts ITSELF: `nros_service_send_response` sits beside `nros_service_send_reply_raw`. Three languages, two words, and one of them uses both. Nothing about an RTOS prefers either. Settle on `send_response` and move `send_reply`, `send_reply_raw` and `ServiceTrait::send_reply` to it. Phase 379 W5."
+    "verdict": "divergence",
+    "why": "LANDED 2026-08-27 (phase-379 W5). THE RENAME IS DONE and this row is retained for its history. What it recorded: rcl, rclcpp and rclrs all say `send_response`, our C already said it, and our C++ and Rust said `send_reply` -- with C contradicting ITSELF, `nros_service_send_response` sitting beside `nros_service_send_reply_raw`. Three languages, two words, one of them using both, and nothing about an RTOS preferring either. `send_reply`, `send_reply_raw` and `ServiceTrait::send_reply` all moved to `send_response`; the two C spellings and `Service::send_reply` survive as deprecated forwarders (their own rows), and the Rust trait method did not, because a required trait method is implemented by every backend and a defaulted forwarder there would turn a compile error into a runtime surprise.\n\nWHAT STILL DIFFERS, and it is not the name: the correlation token. Ours is `send_response(int64_t seq_id, const ResponseType& resp)`; rclcpp's is `send_response(rmw_request_id_t& req_id, ServiceT::Response& response)`. Two arguments each, which is why the correlator now reports this arity-only rather than as a rename. `rmw_request_id_t` is a 16-byte writer GUID plus a sequence number, so a reply can be correlated across a client restart; ours is the bare sequence number, because the entity table is STATIC and a request cannot outlive its client, and because a DDS writer GUID does not generalise to the zenoh query id or the XRCE request id our other backends correlate with. Cheaper, and it cannot express a reply to a client that has been recreated. Same constraint, written up once, at `rust:RequestId`; see also `cpp:Client::create_request_header`.",
+    "rename": {
+      "from": "Service::send_reply / send_reply_raw / ServiceTrait::send_reply",
+      "to": "send_response",
+      "status": "landed",
+      "category": "A",
+      "residue": "the residual difference is the correlation token (`int64_t` vs `rmw_request_id_t`), which is the divergence this row now carries. The RMW-ABI layer's own prose still says `send_reply` in `nros-rmw-abi/docs/mainpage.md`, `rmw_entity.h`, `rmw_vtable.h` and the `docs/design/0035` slot table -- pre-existing phase-376 W3.b drift (the vtable SLOT has been `send_response` since then), left alone here because touching `rmw_entity.h` forces a bindgen regeneration of `nros-rmw-cffi/src/generated.rs`."
+    }
   },
   "cpp:Service::set_on_new_request_callback": {
     "verdict": "divergence",
@@ -1024,10 +1052,6 @@
     "verdict": "extension",
     "why": "see `c:client_set_wake_callback`."
   },
-  "rust:ServiceTrait::send_reply": {
-    "verdict": "rename",
-    "why": "see `cpp:Service::send_response` -- the third of our three languages, and the second to say `reply`."
-  },
   "rust:Session::create_client": {
     "verdict": "divergence",
     "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
@@ -1059,5 +1083,13 @@
   "rust:rmw_request_id_t": {
     "verdict": "divergence",
     "why": "see `rust:RequestId`."
+  },
+  "c:service_send_response_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides. LANDED 2026-08-27 (phase-379 W5): this is the renamed `nros_service_send_reply_raw`, and it is now the ONE exported symbol of the reply verb in C. `_raw` is the family convention for the byte-buffer entry points (`nros_publish_raw`, `nros_client_send_request_raw`, the `nros_action_*_raw` family) -- not a marker that a typed non-raw twin exists, because in C there is none. Reached on a server created with `nros_service_init_polling`; `sequence_number` is the value the matching `nros_service_try_recv_request_raw` returned (see `rust:RequestId` for why that token is a bare integer)."
+  },
+  "rust:ServiceTrait::send_response": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint. RENAMED from `ServiceTrait::send_reply` 2026-08-27 (phase-379 W5, key moved from that spelling); see `cpp:Service::send_response`. No `#[deprecated]` forwarder, deliberately: this is a REQUIRED trait method, so the rename breaks implementors rather than callers, and a defaulted forwarder that panicked or silently did nothing would convert a compile error every backend author wants into a runtime failure. The five in-tree implementors moved with it (zenoh shim, cffi adapter, metadata, the node mock, the cffi test doubles)."
   }
 }

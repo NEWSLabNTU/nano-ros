@@ -963,7 +963,7 @@ mod tests {
 
         // (a) byte identity against the generated encoder. Both buffers carry
         // the same CDR encapsulation header (`tx_writer`), so this compares
-        // the framed reply exactly as `send_reply` would put it on the wire.
+        // the framed reply exactly as `send_response` would put it on the wire.
         let mut oracle_writer = crate::tx_writer(&mut oracle_buf).expect("oracle writer");
         oracle
             .serialize(&mut oracle_writer)

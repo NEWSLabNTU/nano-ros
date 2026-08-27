@@ -36,7 +36,7 @@ Most methods have default implementations. The required methods per trait are:
 | `Session` | `create_publisher()`, `create_subscription()`, `create_service()`, `create_client()`, `close()` |
 | `Publisher` | `publish_raw()`, `buffer_error()`, `serialization_error()` |
 | `Subscription` | `try_recv_raw()`, `deserialization_error()` |
-| `ServiceTrait` | `try_recv_request()`, `send_reply()` |
+| `ServiceTrait` | `try_recv_request()`, `send_response()` |
 | `ClientTrait` | `send_request_raw()`, `try_recv_reply_raw()` |
 
 For full trait signatures and associated types, see
@@ -126,7 +126,7 @@ impl ServiceTrait for MyProtoServer {
     type Error = TransportError;
     fn try_recv_request<'a>(&mut self, buf: &'a mut [u8])
         -> Result<Option<ServiceRequest<'a>>, TransportError> { todo!() }
-    fn send_reply(&mut self, seq: i64, data: &[u8])
+    fn send_response(&mut self, seq: i64, data: &[u8])
         -> Result<(), TransportError> { todo!() }
 }
 

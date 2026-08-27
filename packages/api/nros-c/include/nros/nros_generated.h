@@ -700,7 +700,7 @@ typedef enum nros_service_state_t {
    * Phase 122.3.c.4 — L1 polling-mode: transport entity lives inline
    * in `_opaque`; caller drains via
    * `nros_service_try_recv_request_raw` and replies via
-   * `nros_service_send_reply_raw`. No executor registration.
+   * `nros_service_send_response_raw`. No executor registration.
    */
   NROS_SERVICE_STATE_POLLING = 3,
 } nros_service_state_t;
@@ -5383,7 +5383,7 @@ NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t *service);
  * Creates the underlying RMW server immediately and stores it inline
  * in the service's `_opaque` field. The caller drains received
  * requests via `nros_service_try_recv_request_raw` and sends replies
- * via `nros_service_send_reply_raw`.
+ * via `nros_service_send_response_raw`.
  *
  * # Parameters
  * * `service` - Pointer to a zero-initialized service
@@ -5474,10 +5474,10 @@ int32_t nros_service_try_recv_request_raw(struct nros_service_t *service,
  * bytes.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_send_reply_raw(struct nros_service_t *service,
-                                       int64_t sequence_number,
-                                       const uint8_t *data,
-                                       size_t len);
+nros_ret_t nros_service_send_response_raw(struct nros_service_t *service,
+                                          int64_t sequence_number,
+                                          const uint8_t *data,
+                                          size_t len);
 
 /**
  * Take a service request (non-blocking).
@@ -5494,22 +5494,6 @@ nros_ret_t nros_service_take_request(struct nros_service_t *service,
                                      size_t _request_capacity,
                                      size_t *_request_len,
                                      int64_t *_sequence_number);
-
-/**
- * Send a service response.
- *
- * Currently not supported — service servers are callback-only through
- * the executor. The callback's return value and response buffer are used
- * to send the response automatically.
- *
- * # Returns
- * * `NROS_RET_NOT_INIT` always (manual poll not supported)
- */
-NROS_PUBLIC
-nros_ret_t nros_service_send_response(struct nros_service_t *service,
-                                      int64_t _sequence_number,
-                                      const uint8_t *_response_data,
-                                      size_t _response_len);
 
 /**
  * Get the service name.

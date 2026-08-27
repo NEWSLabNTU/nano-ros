@@ -53,7 +53,7 @@ namespace nros {
 /// if (srv.try_recv_request(req, seq)) {
 ///     typename decltype(srv)::ResponseType resp;
 ///     resp.sum = req.a + req.b;
-///     srv.send_reply(seq, resp);
+///     srv.send_response(seq, resp);
 /// }
 /// ```
 template <typename S> class Service {
@@ -95,14 +95,24 @@ template <typename S> class Service {
     /// @param seq_id  Sequence number from try_recv_request().
     /// @param resp    Response to send.
     /// @return Result indicating success or failure.
-    Result send_reply(int64_t seq_id, const ResponseType& resp) {
+    Result send_response(int64_t seq_id, const ResponseType& resp) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[ResponseType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         if (ResponseType::ffi_serialize(&resp, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_service_server_send_reply_raw(storage_, seq_id, buf, len));
+        return Result(nros_cpp_service_server_send_response_raw(storage_, seq_id, buf, len));
+    }
+
+    /// @deprecated Use `send_response()`.
+    ///
+    /// Phase-379 W5: rcl, rclcpp and rclrs all say `send_response`, and our
+    /// own C already used that word. Kept as a forwarder so an out-of-tree
+    /// node on the old spelling still compiles and is told what to move to.
+    [[deprecated("Service::send_reply() is deprecated; use Service::send_response()")]] Result
+    send_reply(int64_t seq_id, const ResponseType& resp) {
+        return send_response(seq_id, resp);
     }
 
     /// Check if the service is initialized and valid.

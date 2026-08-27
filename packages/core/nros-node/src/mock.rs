@@ -80,7 +80,7 @@ impl Subscription for MockSubscriber {
 /// tests can drive a service callback through `spin_once` (Phase 189.M3.3.d).
 ///
 /// Phase 237 — `try_recv_request` hands out a distinct, monotonically increasing
-/// `sequence_number` per request (the reply-correlation token), and `send_reply`
+/// `sequence_number` per request (the reply-correlation token), and `send_response`
 /// records `(seq, data)` so tests can assert deferred replies route to the right
 /// requester — the concurrent-safety the seq-keyed backends guarantee.
 pub struct MockServiceServer {
@@ -88,7 +88,7 @@ pub struct MockServiceServer {
     pub pending: Cell<Option<([u8; 256], usize)>>,
     /// Next correlation token `try_recv_request` will return (then increments).
     pub next_seq: Cell<i64>,
-    /// Replies recorded by `send_reply`: `(seq, data, len)`.
+    /// Replies recorded by `send_response`: `(seq, data, len)`.
     pub sent: core::cell::RefCell<heapless::Vec<(i64, [u8; 256], usize), 8>>,
 }
 
@@ -132,7 +132,7 @@ impl ServiceTrait for MockServiceServer {
         }
     }
 
-    fn send_reply(&mut self, seq: i64, data: &[u8]) -> Result<(), TransportError> {
+    fn send_response(&mut self, seq: i64, data: &[u8]) -> Result<(), TransportError> {
         let mut rec = [0u8; 256];
         let len = data.len().min(rec.len());
         rec[..len].copy_from_slice(&data[..len]);

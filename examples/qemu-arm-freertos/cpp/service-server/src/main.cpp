@@ -77,7 +77,7 @@ int nros_app_main(int argc, char** argv) {
             printf("Incoming request\na: %lld b: %lld\n", static_cast<long long>(req.a),
                    static_cast<long long>(req.b));
 
-            ret = srv.send_reply(seq_id, resp);
+            ret = srv.send_response(seq_id, resp);
             if (!ret.ok()) {
                 fprintf(stderr, "Failed to send reply: %d\n", ret.raw());
             }

@@ -47,7 +47,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # fragile and must be gone before the values flip.
 STATUS_ONLY = {
     "create_session", "destroy_session", "drive_io", "create_publisher",
-    "publish_raw", "create_subscription", "create_service", "send_reply",
+    "publish_raw", "create_subscription", "create_service", "send_response",
     "create_client", "send_request_raw", "register_subscription_event",
     "register_publisher_event", "assert_publisher_liveliness",
     "set_wake_callback", "pub_loan", "pub_commit", "publish_streamed",

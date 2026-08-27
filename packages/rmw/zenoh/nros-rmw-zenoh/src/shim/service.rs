@@ -467,7 +467,7 @@ impl ServiceTrait for ZenohServiceServer {
         }))
     }
 
-    fn send_reply(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error> {
+    fn send_response(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error> {
         if self.reply_keyexpr_len == 0 {
             return Err(TransportError::ServiceReplyFailed);
         }

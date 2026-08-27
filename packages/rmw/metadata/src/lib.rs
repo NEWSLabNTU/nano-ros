@@ -195,7 +195,7 @@ impl ServiceTrait for MetadataService {
         Ok(None)
     }
 
-    fn send_reply(&mut self, _sequence_number: i64, _data: &[u8]) -> Result<(), Self::Error> {
+    fn send_response(&mut self, _sequence_number: i64, _data: &[u8]) -> Result<(), Self::Error> {
         Ok(())
     }
 }

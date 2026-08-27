@@ -369,7 +369,7 @@ pub trait ServiceServer {
     fn has_request(&self) -> bool;
     fn try_recv_request<'a>(&self, buf: &'a mut [u8])
         -> Result<Option<ServiceRequest<'a>>, RmwError>;
-    fn send_reply(&self, sequence: i64, data: &[u8]) -> Result<(), RmwError>;
+    fn send_response(&self, sequence: i64, data: &[u8]) -> Result<(), RmwError>;
 }
 
 pub trait ServiceClient {

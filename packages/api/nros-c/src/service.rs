@@ -130,7 +130,7 @@ pub enum nros_service_state_t {
     /// Phase 122.3.c.4 — L1 polling-mode: transport entity lives inline
     /// in `_opaque`; caller drains via
     /// `nros_service_try_recv_request_raw` and replies via
-    /// `nros_service_send_reply_raw`. No executor registration.
+    /// `nros_service_send_response_raw`. No executor registration.
     NROS_SERVICE_STATE_POLLING = 3,
 }
 
@@ -435,7 +435,7 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 // during `nros_service_init_polling` and stored inline in
 // `service._opaque`; caller drains requests via
 // `nros_service_try_recv_request_raw` and replies via
-// `nros_service_send_reply_raw`. No executor registration. Used by
+// `nros_service_send_response_raw`. No executor registration. Used by
 // RTIC / embassy / FreeRTOS-task-per-entity patterns and the C/C++
 // FFI shims for callers that drive their own poll loops.
 
@@ -444,7 +444,7 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 /// Creates the underlying RMW server immediately and stores it inline
 /// in the service's `_opaque` field. The caller drains received
 /// requests via `nros_service_try_recv_request_raw` and sends replies
-/// via `nros_service_send_reply_raw`.
+/// via `nros_service_send_response_raw`.
 ///
 /// # Parameters
 /// * `service` - Pointer to a zero-initialized service
@@ -721,7 +721,7 @@ pub unsafe extern "C" fn nros_service_try_recv_request_raw(
 /// `service` must be in `POLLING` state. `data` readable for `len`
 /// bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_send_reply_raw(
+pub unsafe extern "C" fn nros_service_send_response_raw(
     service: *mut nros_service_t,
     sequence_number: i64,
     data: *const u8,
@@ -744,7 +744,7 @@ pub unsafe extern "C" fn nros_service_send_reply_raw(
                 { crate::config::MESSAGE_BUFFER_SIZE },
             >);
         let slice = core::slice::from_raw_parts(data, len);
-        match raw.send_reply_raw(sequence_number, slice) {
+        match raw.send_response_raw(sequence_number, slice) {
             Ok(()) => NROS_RET_OK,
             Err(_) => NROS_RET_ERROR,
         }
@@ -773,27 +773,6 @@ pub unsafe extern "C" fn nros_service_take_request(
 ) -> nros_ret_t {
     validate_not_null!(service);
     // Service server handles live in the executor arena — manual poll
-    // is not supported. Use executor callbacks instead.
-    NROS_RET_NOT_INIT
-}
-
-/// Send a service response.
-///
-/// Currently not supported — service servers are callback-only through
-/// the executor. The callback's return value and response buffer are used
-/// to send the response automatically.
-///
-/// # Returns
-/// * `NROS_RET_NOT_INIT` always (manual poll not supported)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_send_response(
-    service: *mut nros_service_t,
-    _sequence_number: i64,
-    _response_data: *const u8,
-    _response_len: usize,
-) -> nros_ret_t {
-    validate_not_null!(service);
-    // Service server handles live in the executor arena — manual send
     // is not supported. Use executor callbacks instead.
     NROS_RET_NOT_INIT
 }

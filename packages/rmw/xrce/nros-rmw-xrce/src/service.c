@@ -1,7 +1,7 @@
 /* Phase 115.K.2.3 — service server / client paths.
  *
  * Mirrors the Rust impl's `XrceSession::create_service_server` /
- * `XrceServiceServer::send_reply` / `XrceServiceClient::send_request_raw`
+ * `XrceServiceServer::send_response` / `XrceServiceClient::send_request_raw`
  * shape. Bin profile only — no QoS XML; service requests/replies
  * use the services-default QoS (reliable / volatile / keep-last(10)).
  *
@@ -284,7 +284,7 @@ static rmw_ret_t xrce_service_try_recv_request_len(const rmw_service_t* server, 
     /* Phase 237 — move the request's `SampleIdentity` into a seq-keyed reply
      * token so the reply can be sent after later requests (deferred action
      * `get_result`). Return the token index as the runtime `sequence_number`;
-     * `send_reply(seq)` reads it back. WOULD_BLOCK (leaving the request in the
+     * `send_response(seq)` reads it back. WOULD_BLOCK (leaving the request in the
      * ring) if the token table is full so the runtime retries on a later spin
      * rather than losing the correlation. */
     int reply_idx = -1;
@@ -355,7 +355,7 @@ rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request)
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_service_send_reply(const rmw_service_t* server, int64_t seq,
+rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
                                        const uint8_t* data, size_t len) {
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -426,7 +426,7 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
     slot->has_reply = false;
     slot->overflow = false;
     /* XRCE-DDS interop: strip the 4-byte CDR encapsulation header (see
-     * send_reply / publish_raw). */
+     * send_response / publish_raw). */
     const uint8_t* body = request;
     size_t body_len = req_len;
     if (body_len >= XRCE_CDR_HEADER_LEN) {
@@ -445,7 +445,7 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
         *sequence_id = (int64_t)req;
     }
     /* Flush the reliable output stream so the request actually
-     * leaves the session — matches the publisher / send_reply
+     * leaves the session — matches the publisher / send_response
      * paths' explicit flush. Subsequent `drive_io` calls drive
      * reliable retransmission. */
     (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);

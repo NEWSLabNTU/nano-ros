@@ -2031,7 +2031,7 @@ pub trait SlotBorrowing: Subscription {
 ///
 /// # Threading
 ///
-/// `&mut self` on `try_recv_request` and `send_reply` — the executor
+/// `&mut self` on `try_recv_request` and `send_response` — the executor
 /// owns the server while a request is being handled. Handler bodies
 /// run synchronously on the executor thread; long handlers should
 /// dispatch work to a worker queue and reply later via the recorded
@@ -2041,7 +2041,7 @@ pub trait SlotBorrowing: Subscription {
 ///
 /// 1. Executor calls `try_recv_request(buf)`.
 /// 2. If `Some(req)` returned, decode, run handler, encode reply.
-/// 3. `send_reply(req.sequence_number, &reply_buf)`.
+/// 3. `send_response(req.sequence_number, &reply_buf)`.
 ///
 /// `sequence_number` is the canonical request → reply correlation
 /// token; backends derive it from the wire-level metadata (zenoh
@@ -2071,8 +2071,8 @@ pub trait ServiceTrait {
     ///
     /// On success returns a `ServiceRequest` that borrows from
     /// `buf`. The borrow is released when the returned struct is
-    /// dropped — typically before `send_reply` is called, since
-    /// `send_reply` takes `&mut self`.
+    /// dropped — typically before `send_response` is called, since
+    /// `send_response` takes `&mut self`.
     fn try_recv_request<'a>(
         &mut self,
         buf: &'a mut [u8],
@@ -2081,7 +2081,7 @@ pub trait ServiceTrait {
     /// Send a reply for the given sequence number. Non-blocking
     /// from the application's perspective; the backend may queue
     /// the reply for transport-level transmission.
-    fn send_reply(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error>;
+    fn send_response(&mut self, sequence_number: i64, data: &[u8]) -> Result<(), Self::Error>;
 
     /// Handle a service request with typed messages
     fn handle_request<S: RosService>(
@@ -2131,7 +2131,7 @@ pub trait ServiceTrait {
         let len = writer.position();
 
         // Send reply (now we can borrow self mutably again)
-        self.send_reply(sequence_number, &reply_buf[..len])?;
+        self.send_response(sequence_number, &reply_buf[..len])?;
         Ok(true)
     }
 
@@ -2175,7 +2175,7 @@ pub trait ServiceTrait {
             .map_err(|_| TransportError::SerializationError)?;
         let len = writer.position();
 
-        self.send_reply(sequence_number, &reply_buf[..len])?;
+        self.send_response(sequence_number, &reply_buf[..len])?;
         Ok(true)
     }
 
@@ -2246,7 +2246,7 @@ pub trait ServiceTrait {
         handler(&mut reader, &mut writer)?;
         let len = writer.position();
 
-        self.send_reply(sequence_number, &reply_buf[..len])?;
+        self.send_response(sequence_number, &reply_buf[..len])?;
         Ok(true)
     }
 }

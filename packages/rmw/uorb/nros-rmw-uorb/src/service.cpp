@@ -36,19 +36,19 @@ rmw_ret_t service_destroy(rmw_service_t* /*server*/) {
 rmw_ret_t service_take_request(const rmw_service_t* /*server*/, uint8_t* /*buf*/,
                                     size_t /*buf_len*/, int64_t* /*seq_out*/,
                                     size_t* /*out_len*/, bool* /*taken*/) {
-    /* uORB has no service transport — see service_send_reply. */
+    /* uORB has no service transport — see service_send_response. */
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
 rmw_ret_t service_has_request(rmw_service_t* /*server*/, bool* out_has_request) {
-    // uORB has no service transport at all — see `service_send_reply`, which
+    // uORB has no service transport at all — see `service_send_response`, which
     // returns UNSUPPORTED. "Never a request" is the honest answer, not an error.
     if (out_has_request == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_has_request = false;
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t service_send_reply(const rmw_service_t* /*server*/, int64_t /*seq*/,
+rmw_ret_t service_send_response(const rmw_service_t* /*server*/, int64_t /*seq*/,
                                   const uint8_t* /*data*/, size_t /*len*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }

@@ -72,7 +72,7 @@ timeout)`.
 - init: `nros_executor_init`, `nros_node_init`, `nros_support_init`.
 - pub/sub: `nros_publisher_init[_with_qos|_with_options]`, `nros_publish_raw`,
   `nros_subscription_init[_with_qos|_polling]`.
-- services/clients: `nros_service_init[_polling]`, `nros_service_send_reply_raw`,
+- services/clients: `nros_service_init[_polling]`, `nros_service_send_response_raw`,
   `nros_client_init`, `nros_client_send_request_raw`, `nros_client_call`;
   callback receive (RFC-0041): `nros_client_set_response_callback` +
   `nros_client_send_request_async` (reply dispatched at `nros_executor_spin_some`).

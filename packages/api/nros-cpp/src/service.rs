@@ -304,7 +304,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_try_recv_raw(
 /// # Safety
 /// `storage` must be valid. `data` must point to `len` readable bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_service_server_send_reply_raw(
+pub unsafe extern "C" fn nros_cpp_service_server_send_response_raw(
     storage: *mut c_void,
     sequence_number: i64,
     data: *const u8,
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_send_reply_raw(
     let server = unsafe { &mut *(storage as *mut nros::internals::RmwServiceServer) };
     let data_slice = unsafe { core::slice::from_raw_parts(data, len) };
 
-    match server.send_reply(sequence_number, data_slice) {
+    match server.send_response(sequence_number, data_slice) {
         Ok(_seq) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }

@@ -1951,7 +1951,7 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
     };
     if ok && resp_len > 0 {
         handle
-            .send_reply(seq_num, &reply_buffer[..resp_len])
+            .send_response(seq_num, &reply_buffer[..resp_len])
             .map_err(|_| TransportError::ServiceReplyFailed)?;
     }
     Ok(true)

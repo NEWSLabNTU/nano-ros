@@ -1,7 +1,7 @@
 // Phase 117.7 service request/reply data-plane round-trip.
 //
 // Drives a full send_request_raw → server.take_request →
-// server.send_reply → client take_response chain on the
+// server.send_response → client take_response chain on the
 // AddTwoInts test type.
 //
 // Wire format (CDR-LE, XCDR1):

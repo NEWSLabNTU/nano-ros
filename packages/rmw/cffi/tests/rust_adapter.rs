@@ -360,7 +360,7 @@ impl ServiceTrait for NoopServer {
             data: &buf[..n],
         }))
     }
-    fn send_reply(&mut self, _sequence_number: i64, _data: &[u8]) -> Result<(), Self::Error> {
+    fn send_response(&mut self, _sequence_number: i64, _data: &[u8]) -> Result<(), Self::Error> {
         SEND_REPLY_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
