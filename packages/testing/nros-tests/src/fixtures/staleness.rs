@@ -240,26 +240,7 @@ fn ledger_dir() -> PathBuf {
 /// nextest resolves fixtures from many processes at once and a single file
 /// would need a lock for no benefit.
 fn ledger_path(binary: &Path) -> PathBuf {
-    let root = project_root();
-    let rel = binary.strip_prefix(&root).unwrap_or(binary);
-    let key: String = rel
-        .to_string_lossy()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    // Long paths (workspace fixtures nest deeply) would blow past NAME_MAX.
-    let key = if key.len() > 180 {
-        format!("{}__{:x}", &key[key.len() - 140..], fnv1a(key.as_bytes()))
-    } else {
-        key
-    };
-    ledger_dir().join(format!("{key}.stale"))
+    ledger_dir().join(format!("{}.stale", flatten_path_key(binary)))
 }
 
 // ── Content-aware staleness (#147 / phase-286 W2) ───────────────────────────
@@ -552,7 +533,137 @@ pub(crate) fn candidates_changed_content_policy(
     Some(false)
 }
 
-fn fnv1a(bytes: &[u8]) -> u64 {
+// ---------------------------------------------------------------------------
+// The MEASURED input sets, one spelling each.
+// ---------------------------------------------------------------------------
+//
+// phase-395 W10. Both of these were written inline inside a probe arm, with the
+// mtime comparison interleaved into the parse. That is fine while the probe is
+// the only consumer; it stops being fine the moment a SECOND consumer needs the
+// same set, because the second consumer then either re-parses (a second idiom,
+// which is issue 0442's shape) or inherits an mtime verdict it does not want.
+//
+// The shadow cache key ([`crate::fixtures::cache_key`]) is that second
+// consumer. It needs the input PATHS and nothing else, so the parse lives here
+// and each caller applies its own policy — the same split
+// `candidates_changed_content_policy` already makes for `first_sight_is_fresh`.
+
+/// Split a cargo dep-info dependency list (`DEP DEP …`) into paths, honouring
+/// make-style backslash escapes (`\ ` for a space in a path, `\\` for a
+/// literal backslash). Cargo emits every dependency on the single rule line
+/// after `TARGET: `.
+pub(crate) fn split_dep_info_line(deps: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut chars = deps.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let Some(&next) = chars.peek() {
+                    cur.push(next);
+                    chars.next();
+                }
+            }
+            c if c.is_whitespace() => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+            }
+            c => cur.push(c),
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Every dependency path a make-style `.d` dep-info file lists, in file order.
+///
+/// The COMPILER's own record of what it read — authoritative in a way no hand
+/// list is. No exemption rule and no mtime comparison is applied here; a caller
+/// that wants those applies them itself (the probe calls [`note_candidate`] per
+/// path, the cache key applies [`exempt_probe_input`] with a different policy).
+/// Missing or unreadable `.d` → an EMPTY vec, which every caller must treat as
+/// "nothing was measured" rather than "nothing changed".
+pub(crate) fn dep_file_paths(dep_file: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let Ok(content) = fs::read_to_string(dep_file) else {
+        return out;
+    };
+    for line in content.lines() {
+        let Some((_target, deps)) = line.split_once(": ") else {
+            continue;
+        };
+        out.extend(split_dep_info_line(deps).into_iter().map(PathBuf::from));
+    }
+    out
+}
+
+/// Every repo-local dependency path ninja recorded for a build dir, in the
+/// order `ninja -t deps` prints them.
+///
+/// ninja folds the compiler's `-MD` lists into the binary `.ninja_deps` log (no
+/// text `.d` survives), so this reads them back with a pure QUERY that dumps
+/// the log and never builds. Paths outside the repo (system headers) are
+/// dropped: they never change and would only add noise.
+///
+/// Empty when there is no `.ninja_deps`, `ninja` is unavailable, or the query
+/// fails — again "nothing was measured", never "nothing changed".
+pub(crate) fn ninja_dep_paths(build_dir: &Path) -> Vec<PathBuf> {
+    if !build_dir.join(".ninja_deps").exists() {
+        return Vec::new();
+    }
+    let Ok(output) = std::process::Command::new("ninja")
+        .arg("-C")
+        .arg(build_dir)
+        .args(["-t", "deps"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    if !output.status.success() {
+        return Vec::new();
+    }
+    let root = project_root();
+    let text = String::from_utf8_lossy(&output.stdout);
+    // Indented lines are dependency paths; unindented lines are the per-object
+    // `<obj>: #deps …` headers.
+    text.lines()
+        .filter_map(|l| l.strip_prefix("    "))
+        .map(PathBuf::from)
+        .filter(|p| p.starts_with(&root))
+        .collect()
+}
+
+/// Flatten a repo-relative path into one filesystem-safe component.
+///
+/// Shared by the staleness ledger and the shadow-cache store so a coordinate
+/// has ONE on-disk name in both. Long paths (workspace fixtures nest deeply)
+/// would blow past `NAME_MAX`, so they are tail-truncated and disambiguated by
+/// a hash of the whole thing.
+pub(crate) fn flatten_path_key(binary: &Path) -> String {
+    let root = project_root();
+    let rel = binary.strip_prefix(&root).unwrap_or(binary);
+    let key: String = rel
+        .to_string_lossy()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if key.len() > 180 {
+        format!("{}__{:x}", &key[key.len() - 140..], fnv1a(key.as_bytes()))
+    } else {
+        key
+    }
+}
+
+pub(crate) fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in bytes {
         h ^= *b as u64;

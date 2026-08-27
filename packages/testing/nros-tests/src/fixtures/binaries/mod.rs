@@ -651,35 +651,11 @@ fn gate_promised_fixtures() -> bool {
     std::env::var_os("NROS_TEST_SCOPE").is_some() || std::env::var_os("NROS_TEST_COORDS").is_some()
 }
 
-/// Split a cargo dep-info dependency list (`DEP DEP …`) into paths, honouring
-/// make-style backslash escapes (`\ ` for a space in a path, `\\` for a
-/// literal backslash). Cargo emits every dependency on the single rule line
-/// after `TARGET: `.
-fn split_dep_info_line(deps: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    let mut chars = deps.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => {
-                if let Some(&next) = chars.peek() {
-                    cur.push(next);
-                    chars.next();
-                }
-            }
-            c if c.is_whitespace() => {
-                if !cur.is_empty() {
-                    out.push(std::mem::take(&mut cur));
-                }
-            }
-            c => cur.push(c),
-        }
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
-}
+// The dep-info PARSE (`split_dep_info_line` / `dep_file_paths`) moved to
+// `fixtures::staleness` in phase-395 W10, so the shadow cache key reads the
+// compiler's recorded input set through the same reader this probe does rather
+// than growing a second parser beside it. The mtime policy stays HERE, where it
+// belongs — see `dep_file_newer_than_for`.
 
 /// Detect-only staleness probe (issue #147 / phase-278). Reads cargo's
 /// `<binary>.d` dep-info file — the make-style `TARGET: DEP DEP …` list of
@@ -806,24 +782,15 @@ fn dep_file_newer_than_for(
     reference: std::time::SystemTime,
 ) -> (Option<PathBuf>, Vec<PathBuf>) {
     let mut walked: Vec<PathBuf> = Vec::new();
-    let Ok(content) = fs::read_to_string(dep_file) else {
-        return (None, walked);
-    };
-    for line in content.lines() {
-        let Some((_target, deps)) = line.split_once(": ") else {
+    for dep_path in staleness::dep_file_paths(dep_file) {
+        if staleness::note_candidate(&dep_path) {
             continue;
-        };
-        for dep in split_dep_info_line(deps) {
-            let dep_path = PathBuf::from(&dep);
-            if staleness::note_candidate(&dep_path) {
-                continue;
-            }
-            walked.push(dep_path.clone());
-            if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
-                && dep_mtime > reference
-            {
-                return (Some(dep_path), walked);
-            }
+        }
+        walked.push(dep_path.clone());
+        if let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
+            && dep_mtime > reference
+        {
+            return (Some(dep_path), walked);
         }
     }
     (None, walked)
@@ -856,6 +823,12 @@ pub(crate) fn require_prebuilt_row_binary_fresh(
         ));
     }
     staleness::record_fresh(&resolved);
+    // phase-395 W10 — shadow-mode cache observation, OFF unless
+    // `NROS_FIXTURE_CACHE_SHADOW` is set. It records; it cannot skip anything,
+    // it cannot serve anything, and it cannot fail this resolution. This arm
+    // already HAS the row, so the coordinate comes from `row.coord` rather than
+    // from re-attributing a path the shared group dir cannot attribute.
+    crate::fixtures::cache_key::observe_row_and_record_if_enabled(row, &resolved);
     Ok(resolved)
 }
 
@@ -872,6 +845,10 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
     // no `.d`, report `None`, and treat every redirected fixture as fresh
     // forever — a museum binary with a passing freshness check, which is issue
     // 0196 in the resolver.
+    // The AUTHORED path is what the manifest can attribute to a row (a shared
+    // group dir names a platform, not a row), so the shadow observer below
+    // keeps it while the probe uses the resolved one.
+    let authored = binary_path;
     let binary_path: &Path = &resolved;
     if let Some(newer) = dep_info_newer_source(binary_path) {
         return Err(staleness::stale_error(
@@ -883,6 +860,10 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
         ));
     }
     staleness::record_fresh(binary_path);
+    // phase-395 W10 — shadow-mode cache observation, OFF unless
+    // `NROS_FIXTURE_CACHE_SHADOW` is set. It records; it cannot skip anything,
+    // it cannot serve anything, and it cannot fail this resolution.
+    crate::fixtures::cache_key::observe_and_record_if_enabled(authored);
     Ok(resolved)
 }
 
@@ -1133,17 +1114,6 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
         return None;
     }
     let bin_mtime = fs::metadata(binary_path).ok()?.modified().ok()?;
-    let root = project_root();
-    let output = Command::new("ninja")
-        .arg("-C")
-        .arg(build_dir)
-        .args(["-t", "deps"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
     // issue 0764 — gather the WHOLE candidate set before deciding, instead of
     // returning on the first newer mtime. The bytes get the last word (below),
     // and the content helper must be called ONCE with every input: called
@@ -1151,17 +1121,11 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
     // which is the divergence issue 0442 records.
     let mut candidates: Vec<PathBuf> = Vec::new();
     let mut newer: Option<PathBuf> = None;
-    // Indented lines are dependency paths; unindented lines are the per-object
-    // `<obj>: #deps …` headers.
-    for line in text.lines() {
-        let Some(dep) = line.strip_prefix("    ") else {
-            continue;
-        };
-        let dep_path = PathBuf::from(dep);
-        // Only repo-local sources — skip /usr system headers.
-        if !dep_path.starts_with(&root) {
-            continue;
-        }
+    // The `ninja -t deps` QUERY and its repo-local filter live in
+    // `staleness::ninja_dep_paths` since phase-395 W10 — one reader, so the
+    // shadow cache key measures the same set this arm probes. The mtime policy
+    // and the exemption accounting stay here.
+    for dep_path in staleness::ninja_dep_paths(build_dir) {
         if staleness::note_candidate(&dep_path) {
             continue;
         }
@@ -1445,6 +1409,10 @@ pub(crate) fn require_prebuilt_binary_fresh_cmake(binary_path: &Path) -> TestRes
         ));
     }
     staleness::record_fresh(binary_path);
+    // phase-395 W10 — shadow-mode cache observation, OFF unless
+    // `NROS_FIXTURE_CACHE_SHADOW` is set. It records; it cannot skip anything,
+    // it cannot serve anything, and it cannot fail this resolution.
+    crate::fixtures::cache_key::observe_and_record_if_enabled(binary_path);
     Ok(resolved)
 }
 

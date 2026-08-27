@@ -3463,6 +3463,43 @@ runner-register labels *ARGS:
 runner-sweep *ARGS:
     @scripts/ci/runner-sweep.sh {{ARGS}}
 
+# phase-395 W10 — the fixture cache in SHADOW MODE. It computes the key, lets
+# the build happen anyway, and records whether the key PREDICTED the artifact.
+#
+# There is no lookup verb and no restore verb, deliberately. For a staleness
+# PROBE an incomplete input set is survivable: it errs toward rebuilding. For a
+# CACHE there is no fallback — a hit skips the build, so an incomplete key does
+# not cost a redundant rebuild, it silently serves a WRONG artifact. That is the
+# museum-binary failure mode with its one safeguard removed.
+#
+# Two of the four known-invisible input classes are NOT in the key. Run
+# `just fixture-cache-coverage` before believing a quiet report.
+[group("test")]
+fixture-cache-shadow *args:
+    cargo run -q -p nros-tests --bin fixture-cache-shadow -- {{args}}
+
+# Re-observe every artifact already in the shadow store, then report. Run this
+# after each change the W10 spec names — a rebase, a Kconfig edit, an env
+# change, a linker-flag change, a toolchain bump — because each is a test the
+# key has to pass. Seed the store first, either with
+# `just fixture-cache-shadow record <artifact>...` or by running a sweep under
+# NROS_FIXTURE_CACHE_SHADOW=1, which makes the resolvers record what they
+# resolve FRESH.
+[group("test")]
+fixture-cache-shadow-sweep:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    # `record` exits non-zero when an artifact REFUSED to be observed; that is
+    # information for the report, not a reason to skip it.
+    cargo run -q -p nros-tests --bin fixture-cache-shadow -- record --all-known
+    cargo run -q -p nros-tests --bin fixture-cache-shadow -- report
+
+# Which known-invisible build inputs the key covers, and which it records as
+# UNCOVERED with the reason (issues 0475 / 0491 / 0460 / 0627).
+[group("test")]
+fixture-cache-coverage:
+    cargo run -q -p nros-tests --bin fixture-cache-shadow -- coverage
+
 # Re-run the failures from the last run ALONE, which is the evidence that
 # separates a flake from a defect — phase-395 W5.
 #

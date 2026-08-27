@@ -239,7 +239,40 @@ def self_test():
             sys.exit(2)
 
 
+def declared_env_names(sources, manifests):
+    """Every env var name either producer declares as a build input.
+
+    The gate above classifies these; this returns them ALL, path-shaped or not.
+    Split out for phase-395 W10's shadow fixture cache, which has to witness the
+    values of exactly this set: the enumeration of "which env vars are build
+    inputs" already lives here, in the one place that knows about BOTH
+    producers, and issue 0491 is the record of what consulting only one of them
+    costs. A second enumerator would be that bug with a new spelling.
+    """
+    names = set()
+    for rel in sources:
+        try:
+            text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        names.update(DIRECTIVE.findall(text))
+    for rel in manifests:
+        try:
+            text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for m in re.finditer(r"rerun_if_env_changed\s*=\s*\[(.*?)\]", text, re.S):
+            names.update(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', m.group(1)))
+    return sorted(names)
+
+
 def main():
+    if "--list-env-names" in sys.argv[1:]:
+        for name in declared_env_names(
+            tracked_rust_sources(), tracked_platform_manifests()
+        ):
+            print(name)
+        return
     self_test()
     sources = tracked_rust_sources()
     manifests = tracked_platform_manifests()

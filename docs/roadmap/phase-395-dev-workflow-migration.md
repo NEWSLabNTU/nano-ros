@@ -367,6 +367,55 @@ This turns "is the key complete?" from an argument into a measurement, which is
 the discipline that has already corrected this plan three times (CI was red not
 slow; host-executable is not cheap; `check-build` is not a compile tier).
 
+### What landed (shadow mode only, 2026-08-28)
+
+`nros_tests::fixtures::cache_key` + the `fixture-cache-shadow` bin. **There is
+no lookup verb and no restore verb**, so nothing here can make a build skip
+work; step 3 above is deliberately not implemented.
+
+* **Key** = `fnv1a` over a canonical preimage of `(row_coord() coordinate,
+  provenance, every COVERED class witness, every measured input's content
+  hash)`. The input set is the toolchain's own record, read through the shared
+  readers now in `fixtures::staleness` (`dep_file_paths` for cargo's `.d`,
+  `ninja_dep_paths` for `ninja -t deps`) — the same readers the freshness probe
+  walks, so there is one reading of the dep graph rather than two.
+* **Refusals, never degradation.** No dep record, an empty input set, an
+  unreadable artifact, or a path that attributes to no row (or an ambiguous one
+  — issue 0517) all REFUSE. A key over an unmeasured input set matches
+  everything, which is the object this design exists to keep out of a cache.
+* **Recording** is one file per observation under
+  `target/nros-fixture-cache-shadow/` (gitignored by `**/target/`), atomically
+  written; `NROS_FIXTURE_CACHE_SHADOW=1` turns the fixture resolvers into
+  recorders, off by default.
+* **Report**: per coordinate, observations / novel / predicted / correct /
+  mismatches, plus every mismatch with the input that differed and the issue
+  that predicted it. `--check` exits 1 on any mismatch.
+
+Coverage of the four rows above, as the tool itself reports it
+(`fixture-cache-shadow coverage`) — this table IS the "record explicitly that it
+is not covered" half of the deliverable:
+
+| class | issue | in the key? | why |
+| --- | --- | --- | --- |
+| `link-archives` | 0475 | **NO** | an archive under a build root is an OUTPUT; a key must be computable before the build. Covering it needs the archive's own inputs resolved transitively. Witnessed by hashing every `.a` under the artifact's build root. |
+| `env-vars` | 0491 | **NO** | the recorder's env is not necessarily the build's env — that is 0491's point — and cargo's per-unit env fingerprints are an internal format. Witnessed with the declared names' values as seen by the recorder, labelled as such. Names come from `check-path-env-fingerprints.py --list-env-names`, the tree's one enumerator of BOTH producers. |
+| `kconfig` | 0460 | **yes**, when observable | the resolved `<build>/[zephyr/].config` is the knob set and is one file; hashed into the key. `not-observable` (recorded per observation) when the artifact has none. |
+| `cli-closure` | 0627 | **yes** | `nros source-stamp` over the GENERATED `cli-source-dirs.txt` closure, which is 0627's fix. Deliberately over-broad: a CLI edit invalidates every key, and over-broad is the safe direction. |
+
+Two classes uncovered means **shadow mode is not close to done** — a hit must
+not skip a build until a real spread of changes has been observed and each
+uncovered class has actually been exercised. Read the `predicted` column before
+believing a green report: a key that has never been re-seen has never been
+tested.
+
+Also measured while building this: **8 of 221 fixture artifact roots carry rows
+at more than one coordinate** (33 of 256 rows — every native rust
+talker/listener/service/action leaf, whose zenoh/xrce/cyclonedds rows all land
+in `<leaf>/target` since the `target_dir` column was dropped).
+`lane::attribute_path` fails closed on those per issue 0517, so path attribution
+alone cannot key them; the caller names the coordinate (`--coord`), or the
+resolver passes its already-selected `GroupRow`.
+
 ## Not in scope
 
 - Replacing GitHub's merge queue with a third-party tool. The native one has
