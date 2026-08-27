@@ -82,7 +82,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
 - **#0828** (testing) — Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is green only while an earlier `lane=all` build is still fresh See `0828-*`.
 - **#0829** (api, rmw) — Two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on depth — 1 in `nros-rmw`, 10 in the `nros::qos` façade, each with two callers See `0829-*`.
-- **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames; a third hub port fixes it See `0830-*`.
+- **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX See `0830-*`.
 - **#0831** (build) — `[image.<id>].rmw` configures nothing on the cargo driver — and a workspace fixture row's `rmw` does not either, so two tier-2 coordinates test zenoh while claiming cyclonedds and XRCE See `0831-*`.
 - **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
 - **#0834** (cmake) — The per-build `nros_cpp_config_generated.h` mirror can reach a state no re-run repairs — only wiping the west build dir recovers it See `0834-*`.
