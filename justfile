@@ -3401,6 +3401,42 @@ rust-rtos-link-check: _require-leaf-includes
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
 
+# --- self-hosted runner (phase-395 W6) ---------------------------------------
+# Thin callers for scripts/ci/runner-*.sh. These are OPERATOR verbs, not CI
+# steps: none run inside a workflow.
+
+# Verify a self-hosted runner HAS what its labels claim. Read-only.
+#
+# A runner labelled `nros-sdk-zephyr` without the SDK wins jobs it cannot run,
+# and the red lands on the PR author's change looking like a code failure. That
+# is the most expensive kind of CI red, because it sends the wrong person
+# looking in the wrong place.
+[group("setup")]
+runner-doctor labels *ARGS:
+    @scripts/ci/runner-doctor.sh {{labels}} {{ARGS}}
+
+# Make a runner's labels TRUE, reusing `just setup <platform>` so a runner and a
+# contributor provision identically. `nros-ros2` is not provisionable here — it
+# needs root, and nothing in this repo sudos; the script prints the command and
+# fails honestly rather than pretending.
+[group("setup")]
+runner-provision labels *ARGS:
+    @scripts/ci/runner-provision.sh {{labels}} {{ARGS}}
+
+# Register this machine as an EPHEMERAL self-hosted runner (needs `gh` auth).
+# Runs the doctor FIRST and refuses a host that fails it. Installing the systemd
+# service is opt-in (`--with-service`) because it is the only sudo in these
+# scripts — the default registers and prints the commands for a human.
+[group("setup")]
+runner-register labels *ARGS:
+    @scripts/ci/runner-register.sh {{labels}} {{ARGS}}
+
+# Between jobs: reap orphaned process groups and run budgeted disk GC.
+# On a shared runner one leaked peer is every later job's flake. Takes --check.
+[group("setup")]
+runner-sweep *ARGS:
+    @scripts/ci/runner-sweep.sh {{ARGS}}
+
 # Re-run the failures from the last run ALONE, which is the evidence that
 # separates a flake from a defect — phase-395 W5.
 #

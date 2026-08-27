@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-32 open. One line each — the detail lives in the issue file,
+33 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -89,6 +89,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
 - **#0852** (rmw) — zenoh-pico's Zephyr serial RX is polled with no interrupt buffering and no error check, so it silently drops bytes under load See `0852-*`.
 - **#0853** (testing) — The subtree guard's SIGTERM path fails only on the GitHub runner, and the survivors are genuine — three hypotheses ruled out, cause still unknown See `0853-*`.
+- **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 
 <!-- END GENERATED open-issue list -->
 

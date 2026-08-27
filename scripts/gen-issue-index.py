@@ -57,10 +57,17 @@ def field(fm, name):
 
 
 def open_issues():
+    # `--others --exclude-standard` as well as the cached set: a just-filed
+    # issue is UNTRACKED until it is staged, and that is precisely the moment
+    # this runs. Listing only tracked files made the generated index stale at
+    # the one moment it is regenerated, so `check-issue-index` failed on the
+    # new issue while the generator reported it had written the list.
     out = subprocess.run(
-        ["git", "ls-files", "docs/issues/0*.md"],
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard",
+         "docs/issues/0*.md"],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
+    out = sorted(set(out))
     rows = []
     for rel in sorted(out):
         with open(os.path.join(ROOT, rel), encoding="utf8") as fh:
