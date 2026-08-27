@@ -556,15 +556,50 @@ behaviour survives every test available here — Zephyr's own included. Tier 3
 hardware is the only thing that closes it, and this is now the second
 independent source saying so.
 
-### What still is not done
+### Tier 2 — done
 
-A **complete Zephyr image** carrying the link has not been linked. The C talker
-example fails to build on this host in Zephyr's own
-`lib/posix/options/sysconf.c` (`ARG_MAX`, `CHILD_MAX`, `IOV_MAX` undeclared).
-That is pre-existing and unrelated: the **same example with the ISO-TP overlay
-removed fails identically**, which is the control that says so. Tier 2 — the
-`native_sim` image talking to a Linux peer over `vcan0` — is therefore still
-open, and is the next thing to do once that breakage is fixed.
+A `native_sim` image and a Linux zenoh-rs peer share a host `vcan0` over ISO-TP.
+`scripts/test/isotp-zephyr-tier2.sh`:
+
+```
+[tier2] PASS: 59 /chatter messages Zephyr -> CAN -> Linux zenoh peer
+        741 frames, 68 FirstFrame-FlowControl pairs
+```
+
+The Zephyr side's only link is the bus. `native_sim`'s devicetree chooses a
+loopback CAN controller that never leaves the process, so
+`cmake/zephyr/native-sim-can-host.overlay` enables the
+`zephyr,native-linux-can` node instead and points it at `vcan0`.
+
+Three things had to be fixed first, and **none of them were about CAN**:
+
+* **Zephyr 3.7's `posix_features.h` omits `ARG_MAX`, `CHILD_MAX` and
+  `IOV_MAX`** while `sysconf.h` references them, so
+  `lib/posix/options/sysconf.c` does not compile. The Kconfig default is
+  `POSIX_SYSCONF_IMPL_FULL if CPP`, so this hits every C++ Zephyr app with
+  `POSIX_SINGLE_PROCESS` — an upstream bug, not ours. It was pre-existing here
+  too: the same example with every CAN option removed failed identically.
+  `cmake/zephyr/posix-sysconf-minimal-libc.conf` selects the macro
+  implementation, which does not reference them.
+* **`setvbuf` and `_IO*BF` do not exist in Zephyr's minimal libc**, and 35
+  files call `setvbuf(stdout, NULL, _IONBF, 0)`. Minimal libc's stdout is a
+  per-character hook, so it is already unbuffered and the call is a no-op there.
+  `zephyr/libc-compat/nros_libc_compat.h` supplies both, force-included, keyed
+  on `_IONBF` so picolibc and newlib are untouched. (`CONFIG_PICOLIBC` was tried
+  first: it is not selectable on `native_sim` here, and neither gap closes.)
+* **The Zephyr ISO-TP port never called `can_start()`.** Ours, and the one that
+  cost the most. A Zephyr CAN controller does not transmit until it is started,
+  and a send on a stopped controller surfaces no error the ISO-TP layer can see:
+  `isotp_send` queues the first frame, nothing reaches the bus, and the only
+  symptom is `Reception of next FC has timed out` once a second while `candump`
+  shows an idle interface. It reads like a missing peer rather than a local
+  fault. The multicast CAN port had always started its controller, refcounted
+  per device; the ISO-TP port now does the same.
+
+One more trap, for whoever builds this next: **the locator address is the
+Zephyr DEVICE name from the devicetree (`can`), not the host interface**. The
+overlay is what maps that device onto `vcan0`. Getting it wrong fails at session
+open with no frames and no diagnostic.
 
 ### A note on the working environment
 
@@ -601,16 +636,15 @@ seconds, and the checksum in `nros-sdk-index.toml` verifies it either way.
   both links in one container and asserts the multicast one returns nothing.
 * The vendored library is MIT, uses no allocator, and builds for a bare-metal
   Cortex-M4 (`scripts/can/isotp-c-mcu-check.sh`).
+* **Tier 2**: a Zephyr `native_sim` image and a Linux zenoh-rs peer exchanging
+  ROS topic traffic over ISO-TP on a shared `vcan0`
+  (`scripts/test/isotp-zephyr-tier2.sh`).
 
 ### Not proven
 
 * **Anything about timing.** See §5. `vcan` has no bit rate; Zephyr's own suite
   skips `stmin`. No latency, bandwidth or arbitration claim in this phase is
   supported by evidence.
-* **A complete Zephyr image.** The link compiles for `native_sim`, but the C
-  talker example fails to link on this host inside Zephyr's own
-  `lib/posix/options/sysconf.c` — pre-existing, and the same example with the
-  ISO-TP overlay removed fails identically. Tier 2 is open.
 * **More than one peer per bus.** ISO-TP addresses a peer by a directed
   identifier pair; nothing here tests several pairs sharing one physical bus,
   where arbitration and bus load start to matter.
@@ -622,11 +656,8 @@ seconds, and the checksum in `nros-sdk-index.toml` verifies it either way.
 1. **Tier 3 hardware.** MR-CANHUBK344 to a Linux host, on a real bit rate. This
    is the only item that closes the one open risk, and everything else is
    waiting behind an assumption it would test.
-2. **Fix the Zephyr `sysconf` breakage and finish Tier 2** — `native_sim`
-   talking to a Linux peer over `vcan0`. Small, and it unblocks the island's
-   actual platform.
-3. **Several peers on one bus.** Two identifier pairs first, then contention.
-4. **Upstream.** An issue on `eclipse-zenoh/zenoh` describing the multicast
+2. **Several peers on one bus.** Two identifier pairs first, then contention.
+3. **Upstream.** An issue on `eclipse-zenoh/zenoh` describing the multicast
    query limitation, and PRs for the two link crates. The branches are pushed;
    the ECA and sign-off are the author's to give.
 ---
