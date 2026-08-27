@@ -3163,7 +3163,7 @@ pub fn build_native_workspace_mixed_entry_robot1() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-mixed-native-robot1",
                 "mixed",
-                "native_entry_robot1",
+                "native_robot1_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3176,7 +3176,7 @@ pub fn build_native_workspace_mixed_entry_robot2() -> TestResult<&'static Path> 
             build_workspace_cmake_entry(
                 "workspace-mixed-native-robot2",
                 "mixed",
-                "native_entry_robot2",
+                "native_robot2_entry",
             )
         })
         .map(|p| p.as_path())

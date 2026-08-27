@@ -143,6 +143,19 @@ board = "mps2-an385-freertos"
 [image.native]
 board = "native"
 
+# The multihost pair: these differ ONLY in `LAUNCH_ARGS host=`, so an image
+# without `args` resolves the whole system instead of one host and the two
+# become the same program. The gap W9.a left in every workspace it touched.
+[image.native_robot1]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot1" }
+
+[image.native_robot2]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot2" }
+
 [image.native_action_client]
 board = "native"
 launch = "action_client.launch.xml"

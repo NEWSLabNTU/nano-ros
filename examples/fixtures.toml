@@ -1009,9 +1009,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-263 A1 (services, MIXED) — cross-language AddTwoInts round-trip: a C server + a C++
 # client, as two entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_service cell).
@@ -1028,9 +1028,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_service_server_entry"
+image = "native_service_server"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-service-client"
@@ -1045,9 +1045,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_service_client_entry"
+image = "native_service_client"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-263 A4 (actions, MIXED) — Fibonacci action round-trip: a C server + a C client, as two
 # entries (issue 0096). Consumed by tests/roundtrip_xprocess_e2e.rs (native_mixed_action cell).
@@ -1064,9 +1064,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_action_server_entry"
+image = "native_action_server"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-action-client"
@@ -1081,9 +1081,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_action_client_entry"
+image = "native_action_client"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-326 — per-host mixed entries for the multihost demo. robot1 bakes the C
 # talker + Rust heartbeat, robot2 the C++ listener (per-host models
@@ -1101,9 +1101,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_entry_robot1"
+image = "native_robot1"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-mixed-native-robot2"
@@ -1118,9 +1118,9 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "native_entry_robot2"
+image = "native_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-263 C2c — the MIXED (C talker + C++ listener + Rust heartbeat) embedded workspace
 # entry on threadx-linux. The Rust node links via the `nros_ws_runtime` umbrella, which on
@@ -1140,8 +1140,8 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "threadx_entry"
-build_subdir = "build-workspace-fixtures-threadx"
+image = "threadx"
+build_subdir = "build/threadx-linux-zenoh/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9330" }
 
 # phase-263 C2c — the MIXED (C + C++ + no_std Rust) entry on FreeRTOS QEMU. Unlike the
@@ -1163,8 +1163,8 @@ builder = "cmake"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-freertos"
+image = "freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8130" }
 
 # ===========================================================================
