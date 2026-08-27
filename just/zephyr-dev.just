@@ -125,48 +125,50 @@ build-one example rmw="zenoh" board="native_sim/native/64":
 check-copy-out example="c/talker" rmw="zenoh" board="native_sim/native/64":
     ./scripts/zephyr/check-copy-out.sh "{{example}}" "{{rmw}}" "{{board}}"
 
+# issue 0805 — these four recipes DELEGATE to the fixture driver instead of
+# looping `build-one` per example, which is what they used to do.
+#
+# The loops were 24 serial `just zephyr build-one` invocations. They resemble the
+# serial-dispatch defect fixed on threadx_riscv64, but that fix does NOT transfer
+# — fanning these out would be wrong for reasons already written down here:
+#
+#   * `build-one` passes no `-j` to `west build`, so each leaf's ninja already
+#     takes full `nproc`. N-wide dispatch is N x nproc; the fixture driver bounds
+#     total concurrency with a shared fifo jobserver and says outright that the
+#     naive form "would oversubscribe to N x ninja_jobs".
+#   * The issue-0086 rustup race: `zephyr-ci.just` pre-adds the rust-std targets
+#     SERIALLY before its fan-out because concurrent cargo collides on
+#     `~/.rustup/downloads/<hash>.partial`. `build-one` has no such guard.
+#   * `build-one` pins no toolchain-capability cache dir and takes no repo-level
+#     flock; the fixture path does both.
+#
+# So the answer is not a fan-out but the driver, which is correctly parallel and
+# already owns every leaf these loops built. Coverage verified as SETS, not
+# counts: each filter below selects exactly the six examples its loop named, and
+# `build-fixtures` also applies the same cortex-a9 patch and workspace check the
+# loops did.
+#
+# This delegation was written once, REVERTED because the fixture path could not
+# build anything (issue 0845 — a de-duplicated `-include` plus a shim that was
+# not inert inside picolibc's own build), and re-landed after that was fixed.
+# Same shape as issue 0549 below: a second builder for fixtures the manifest
+# already owns is a divergence waiting to happen — and it happened, with only the
+# CI-facing one broken.
 # Build Zephyr Rust examples (all Rust examples for native_sim)
 [group("examples")]
 build-rust-examples:
     #!/usr/bin/env bash
     set -e
-    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    if [ ! -d "$WORKSPACE/zephyr" ]; then
-        echo "Error: Zephyr workspace not found at $WORKSPACE"
-        echo "Run: ./scripts/zephyr/setup.sh"
-        exit 1
-    fi
-    # Apply Cortex-A9 patches (idempotent; no-op if already applied).
-    bash ./scripts/zephyr/cortex-a9-rust-patch.sh "$WORKSPACE"
-    echo "Building Zephyr Rust examples in $WORKSPACE..."
-    # Delegate each role to the maintained single-example builder
-    # (`build-one` owns the west-invocation + workspace setup; run from
-    # the repo root, so do NOT cd into the workspace here).
-    for ex in talker listener service-server service-client action-server action-client; do
-        just zephyr build-one "rust/$ex" zenoh
-    done
-    echo "Zephyr Rust examples built successfully!"
+    # Coverage verified as a SET against the loop this replaced.
+    NROS_ZEPHYR_FIXTURE_FILTER='build-rust-.*-zenoh' just zephyr build-fixtures
 
 # Build Zephyr C examples
 [group("examples")]
 build-c:
     #!/usr/bin/env bash
     set -e
-    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    if [ ! -d "$WORKSPACE/zephyr" ]; then
-        echo "Error: Zephyr workspace not found at $WORKSPACE"
-        echo "Run: ./scripts/zephyr/setup.sh"
-        exit 1
-    fi
-    echo "Building Zephyr C examples in $WORKSPACE..."
-    # Delegate each role to the maintained single-example builder, exactly as
-    # build-rust-examples does. `build-one` owns the west invocation and the
-    # workspace setup and must run from the repo root — do NOT cd into the
-    # workspace here.
-    for ex in talker listener service-server service-client action-server action-client; do
-        just zephyr build-one "c/$ex" zenoh
-    done
-    echo "Zephyr C examples built successfully!"
+    # Coverage verified as a SET against the loop this replaced.
+    NROS_ZEPHYR_FIXTURE_FILTER='build-c-.*-zenoh' just zephyr build-fixtures
 
 # issue 0549 — the `build-logging-smoke` recipe lived here and is GONE. It was
 # a SECOND builder for a fixture the manifest already declares: it wrote
@@ -179,45 +181,16 @@ build-c:
 build-cpp:
     #!/usr/bin/env bash
     set -e
-    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    if [ ! -d "$WORKSPACE/zephyr" ]; then
-        echo "Error: Zephyr workspace not found at $WORKSPACE"
-        echo "Run: ./scripts/zephyr/setup.sh"
-        exit 1
-    fi
-    echo "Building Zephyr C++ examples in $WORKSPACE..."
-    for ex in talker listener service-server service-client action-server action-client; do
-        just zephyr build-one "cpp/$ex" zenoh
-    done
-    echo "Zephyr C++ examples built successfully!"
+    # Coverage verified as a SET against the loop this replaced.
+    NROS_ZEPHYR_FIXTURE_FILTER='build-cpp-.*-zenoh' just zephyr build-fixtures
 
 # Build Zephyr C + C++ examples against the XRCE-DDS backend
 [group("examples")]
 build-xrce:
     #!/usr/bin/env bash
     set -e
-    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    if [ ! -d "$WORKSPACE/zephyr" ]; then
-        echo "Error: Zephyr workspace not found at $WORKSPACE"
-        echo "Run: ./scripts/zephyr/setup.sh"
-        exit 1
-    fi
-    echo "Building Zephyr XRCE examples in $WORKSPACE..."
-    # The XRCE backend is selected by build-one's `rmw` argument. nano-ros has
-    # no per-RMW directory level (examples/README.md "Tree shape"); the old
-    # second loop referenced a `cpp/xrce` 6-example set that never existed
-    # post-phase-168.
-    #
-    # The Rust roles are NOT built here: examples/zephyr/rust/* currently fails
-    # to resolve the `zephyr-build` crate under BOTH backends, so it is a
-    # pre-existing breakage independent of the XRCE selection (issue 0314).
-    for ex in talker listener service-server service-client action-server action-client; do
-        just zephyr build-one "c/$ex" xrce
-    done
-    for ex in talker listener service-server service-client action-server action-client; do
-        just zephyr build-one "cpp/$ex" xrce
-    done
-    echo "Zephyr XRCE examples built successfully!"
+    # Coverage verified as a SET against the loop this replaced.
+    NROS_ZEPHYR_FIXTURE_FILTER='build-(c|cpp)-.*-xrce' just zephyr build-fixtures
 
 # Build all Zephyr examples (Rust + C + C++ + XRCE)
 [group("main")]

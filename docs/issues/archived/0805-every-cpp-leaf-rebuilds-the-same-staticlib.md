@@ -1,10 +1,10 @@
 ---
 id: 805
 title: "Every C/C++ example leaf drives its own cargo build of the same staticlib, and sccache cannot dedupe it"
-status: open
+status: resolved
 type: performance
 area: build
-related: [issue-0726, issue-0616, issue-0500, issue-0488, phase-340, phase-371]
+related: [issue-0726, issue-0616, issue-0500, issue-0488, issue-0845, issue-0549, phase-340, phase-371]
 ---
 
 # 0805 — one staticlib, twenty-one builds
@@ -949,3 +949,65 @@ before calling `fixtures-build.sh` — which then pre-syncs every row itself in
 The repo already measured concurrent same-directory syncs as SAFE and chose to
 hoist rather than parallelise, so the fix shape is deletion, not a fan-out. Small
 (~0.1 s per sync), so recorded rather than done.
+
+## zephyr dev loops delegated (2026-08-28) — the last item, after #845 unblocked it
+
+The lane sweep above concluded that `zephyr-dev.just`'s five `build-one` loops
+should be DELETED in favour of the fixture driver rather than fanned out, and
+that a naive fan-out would be actively wrong (each `west build` already takes
+full `nproc` with no shared token pool; no issue-0086 rustup pre-add; no
+toolchain-cache pinning; no repo flock). That is now done.
+
+Four recipes — `build-rust-examples`, `build-c`, `build-cpp`, `build-xrce` —
+keep their names and doc comments (they are referenced from the book and
+AGENTS.md) and delegate their bodies:
+
+```
+NROS_ZEPHYR_FIXTURE_FILTER='build-c-.*-zenoh' just zephyr build-fixtures
+```
+
+Coverage re-verified as SETS against the current manifest, not carried over from
+the earlier attempt: each filter selects exactly the six examples its loop named
+(xrce: 12, c+cpp). `build-fixtures` is also a strict superset of the loops'
+preamble — it applies the same cortex-a9 patch and workspace check.
+
+| | |
+| --- | --- |
+| `just zephyr build-c` | rc=0, 182 s, **6 leaves** built |
+| `just zephyr build-cpp` | rc=0, 164 s, **6 leaves** built |
+| serial `build-one` loops remaining | **0** |
+
+The 182 s is NOT a clean speedup claim against the 337 s recorded earlier: that
+number was taken on a partly-cold tree right after the 149 GB prune, this one is
+warm. What the run does establish is that the delegation builds the right leaves
+and is green. The reason to make this change was never wall clock — it was
+removing the second builder.
+
+### Why this took two attempts
+
+The first attempt was reverted the same day: the fixture path could not build
+ANYTHING (issue 0845 — a de-duplicated `-include` orphaning its path, plus a
+libc shim that was not inert inside picolibc's own build). Landing the
+delegation then would have routed four working developer commands into a broken
+lane.
+
+That is also the strongest argument FOR the change. Two builders existed for one
+set of leaves; only the CI-facing one was broken, and it stayed broken because
+the developer-facing one still worked. Issue 0549 closed the same divergence in
+the other direction. One builder means one thing to keep working.
+
+## #805 closed
+
+| priority | outcome |
+| --- | --- |
+| shared cargo dirs | 4 Corrosion lanes + nuttx, all byte-identity verified |
+| zephyr | NOT shared (deliberate, 4 reasons) — GC instead, 149 GB reclaimed |
+| esp32 | shape present, would not pay — shared target dir + rustup race |
+| the warm floor | 459 s -> 227 s: cargo fingerprint churn, archive post-processing, and a serial `for` loop that was 77% of the wall |
+| lane sweep | threadx was the only lane with the serial-dispatch defect |
+| zephyr dev loops | delegated to the driver |
+
+Left open elsewhere, not here: the duplicate `nros sync` between native/freertos
+and `fixtures-build.sh` (a deletion, ~0.1 s each), and whatever the new
+concurrency profile makes the next bound — which should be measured with
+`sample-build-leaves.sh` rather than guessed.
