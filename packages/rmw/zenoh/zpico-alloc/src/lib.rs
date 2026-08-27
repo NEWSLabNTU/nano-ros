@@ -392,7 +392,17 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
         // `ptr - 8` were a block header; under rlsf it would corrupt a block
         // header just the same. Dropping a foreign pointer leaks at worst.
         if !self.is_in_heap(ptr as *mut u8) {
-            self.foreign_frees.fetch_add(1, Ordering::Relaxed);
+            // issue 0851 — load+store, not `fetch_add`. This counter is
+            // DIAGNOSTIC (`foreign_frees()` at line 233 is its only reader), and
+            // the ESP32-C3 fixture target `riscv32imc-unknown-none-elf` has no
+            // atomic CAS, so `fetch_add` does not exist there. The sibling
+            // increment in `realloc` already uses exactly this idiom; this site
+            // was the one that did not, and it broke the whole esp32 fixture
+            // lane. A lost increment under contention costs an inaccurate
+            // diagnostic, which is the right trade for a counter nothing
+            // allocates against.
+            let n = self.foreign_frees.load(Ordering::Relaxed);
+            self.foreign_frees.store(n + 1, Ordering::Relaxed);
             return;
         }
 

@@ -51,6 +51,16 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-28): **#0851** (memory) — `zpico-alloc` called `fetch_add` on
+`riscv32imc-unknown-none-elf`, which has no atomic CAS, so the esp32 fixture lane could not build at
+all. `foreign_frees` is a DIAGNOSTIC counter and the sibling increment in `realloc` already used the
+portable load+store idiom; line 395 was the one site that did not. Note how it stayed hidden: the
+leaf failed EARLIER at dependency resolution (a gitignored lock pinning `rlsf 0.2.2` against a
+`^0.2.3` requirement), and I cleared that and called it "stale lock residue, nothing to file" — the
+conflict was MASKING this. Clearing a first failure is not a no-op; it is how the second becomes
+reachable, same as #0845's two layers. Verified by building the leaf for the target. See
+`archived/0851-*`. (2026-08-28)
+
 **#0852** (rmw, open 2026-08-28) — zenoh-pico's Zephyr serial RX is polled (`uart_poll_in` +
 `k_yield()`), `CONFIG_UART_INTERRUPT_DRIVEN` is not set, and `uart_err_check` was never called, so the
 S32K344's small LPUART FIFO overruns under load and drops frames SILENTLY. Proved by instrumenting the
@@ -106,7 +116,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
-- **#0848** (rmw) — The router's serial keepalive is a 1-byte write that never lands as a parseable frame — board never resets its lease and expires at 2 x lease See `0848-*`.
+- **#0852** (rmw) — zenoh-pico's Zephyr serial RX is polled with no interrupt buffering and no error check, so it silently drops bytes under load See `0852-*`.
 
 <!-- END GENERATED open-issue list -->
 
@@ -270,17 +280,6 @@ version-checked or ran — the same accumulating-store trap as 0500, where a sta
 pin. Found in phase-382 W2', whose proofs could only be run by downgrading to 0.62.0 by hand. Now
 pinned via `KANI_VERSION`, with install and `doctor` both asking the DRIVER instead of the
 filesystem and failing on a mismatch. See `archived/0802-*`. (2026-08-26)
-
-Recently resolved (2026-08-28): **#0850** — the warm `threadx_riscv64` rebuild was 85% disk-wait with `llvm-ar
-rq_qos_wait` the dominant blocker. The issue's own framing (a copy/localize cycle) was HALF RIGHT: that cycle explains
-17 re-processings, but reading the link wrapper found the larger half — a second, unstamped per-archive block running
-on every archive on every link, ~260 archive copies and ~1560 `llvm-ar` calls per warm build. A third hypothesis died
-too: that block is 0.07 s per archive alone, so the work is small and only becomes the bound when done hundreds of
-times concurrently against one disk. Fixed by memoising the whole pipeline on the archive's CONTENT — load-bearing,
-because the pipeline rewrites in place and Corrosion re-copies the same bytes with a new mtime, which is precisely
-what 0805's size+mtime stamp could not survive. Warm 227 s -> **54 s**, re-processings 17 -> 0, and all 29 binaries
-BYTE-IDENTICAL against a memo-purged rebuild. Warm floor end to end this session: 459 -> 54 s (8.5x). See
-`archived/0850-*`. (2026-08-28)
 
 Recently resolved (2026-08-28): **#0805** — every C/C++ example leaf drove its own cargo build of the same
 staticlib, and sccache could not dedupe it (`Non-cacheable reasons: crate-type` — it does not cache
