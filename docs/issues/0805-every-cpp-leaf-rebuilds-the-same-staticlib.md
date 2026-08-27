@@ -603,3 +603,27 @@ entirely. Name shape is not evidence; layout is.
 | esp32 | cargo direct | nothing to share |
 
 Left: the warm floor, which no target-dir change can touch.
+
+### Pruned (2026-08-27): 149 GB reclaimed, builds unaffected
+
+Ran with `--prune` on the maintainer's instruction.
+
+| | |
+| --- | --- |
+| removed | 88 stale profile trees |
+| reclaimed | **149 GB** (454 GB free -> 603 GB free) |
+| wall | 529 s |
+
+Matched the reported figure exactly, which is the first thing to check when a
+tool deletes at this scale — a prune that frees less than it promised has been
+looking at different files than it counted.
+
+Verified afterwards, in the order that matters:
+
+* **45 build dirs still hold their live profile, 0 missing.** This is the claim
+  the whole tool rests on.
+* Generated headers survived (`nros_config_generated.h` and its stamp) — they
+  live beside the profile trees, not inside them.
+* The GC re-reports clean.
+* **`just zephyr build-c` rc=0 in 337 s.** Structure surviving is not the same
+  as builds working, so this is the one that settles it.
