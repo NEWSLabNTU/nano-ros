@@ -70,7 +70,13 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     (phase-340 W3): the RUN narrows to the same coordinates at fixture
     RESOLUTION time, so an out-of-lane fixture SKIPS rather than failing. Between
     #482 and W3 this lane required `lane=all` — the ~26 % was the FRESHNESS gate,
-    not the build.
+    not the build. **Caveat, issue 0828: skipping needs ATTRIBUTION, and a row
+    whose `build_subdir` is shared fails CLOSED — so it is in the run set at
+    every lane while no lane builds it.** 47 rows share `build-workspace-
+    fixtures`. After a CORE-CRATE edit stales everything, `lane=tier2` leaves
+    those stale, `_lane-gate` still PASSES, and `test-all` reports ~190
+    stale-fixture failures. Until 0828 lands a core-crate diff needs
+    `lane=all`; a tier-2 green otherwise rides residue the lane never names.
   - `just ci-matrix-nightly` — the pairwise cover (~70 %). Where the
     platform×language and rmw×language classes actually surface (0268/0245 sizes
     headers, 0332 freestanding headers, 0331 vtable ABI). Tier 2 costs a day of

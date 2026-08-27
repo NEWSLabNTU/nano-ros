@@ -167,6 +167,13 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
+**#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an
+out-of-lane fixture only when it can ATTRIBUTE it, and 47 rows share one `build_subdir`
+(`build-workspace-fixtures`, 14 of them in `examples/workspaces/c` alone), so issue 0517's ambiguity makes them
+fail closed — in the run set at every lane. `lane=tier2` builds the 14-coordinate cover; `workspace-c-native` is
+`linux,c,zenoh` and the cover has `linux,c,cyclonedds`. After a core-crate edit the lane gate PASSED and test-all
+reported 190 stale-fixture failures. Green today only because older `lane=all` residue was still fresh — so a
+tier-2 green is conditional on a build the lane does not name. See `0828-*`.
 Recently resolved (2026-08-27): **#0825** (build) — a stale model under `$OUT_DIR` OUTRANKED a
 bringup's own committed model, so one run poisoned every later test using a bringup of the same
 NAME. `model_search_paths` keyed that rung on the bringup DIRECTORY NAME (`demo_bringup` — nearly
