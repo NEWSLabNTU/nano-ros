@@ -436,8 +436,27 @@ found only because these trees are not uniform the way ours are.
       an unverified change here breaks every lane at once.
       A row already describes `(image, board)`, so it becomes an invocation
       rather than a description of one.
-- [ ] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
+- [x] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
       `cmake/` and codegen, so **`just ci-matrix`** at minimum.
+
+      **GREEN** (2026-08-27): `just build-test-fixtures lane=all` all nine legs
+      OK, then `just ci-matrix` EXIT=0, "CI passed (tier 2)". The raw nextest
+      line reads "180 failed" — those are `skip!` panics before the junit
+      rewrite, and `check-skip-budget: 180 skip(s) — capability=13 lane=167`
+      accounts for every one.
+
+      Getting there cost five defects that had nothing to do with the migration,
+      each filed: 0825 ($OUT_DIR model shadow), 0828 (tier 2 runs rows no lane
+      builds), 0834 (a sizes-header mirror state no re-run repairs), 0835 (the
+      staleness probes reported build ACTIVITY as staleness — fixed, the gate
+      reaches a fixed point for the first time), 0837 (a submodule bump strands
+      fixtures the build side calls fresh), 0838 (four tests sharing one baked
+      Cyclone domain, plus an uncapped `test-threads` above the domain
+      partition's 25 slots — both fixed).
+
+      The migration itself introduced ZERO test failures: two `ci-matrix` runs
+      either side of the migration commit produced the identical 92-test failure
+      set.
 
       **`lane=all`, not `lane=tier2`** (issue 0828): tier 2's run set contains
       rows no lane builds, so `lane=tier2` leaves them stale, the lane gate
