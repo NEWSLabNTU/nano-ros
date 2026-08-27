@@ -236,11 +236,6 @@ function(nros_nuttx_build_example)
     endforeach()
     string(JOIN ";" _compile_defs_str ${_compile_defs})
 
-    # ── per-example cargo target dir ──────────────────────────────────
-    # Without this every example's cargo build lands at the same path
-    # under the FFI crate's `target/`, and concurrent / sequential
-    # builds from different examples silently clobber each other.
-    set(_cargo_target_dir "${CMAKE_CURRENT_BINARY_DIR}/cargo-target")
 
     # issue 0820 — the profile is a CARVE-OUT (`nuttx-rust`), not `--release`.
     #
@@ -258,8 +253,82 @@ function(nros_nuttx_build_example)
     # cmake still expects `release/`, and the guard below reports "produced no
     # kernel ELF" instead.
     nros_resolve_carve_out_profile(nuttx-rust _NROS_NUTTX)
-    set(_output_binary
-        "${_cargo_target_dir}/${_NNBE_TARGET_TRIPLE}/${_NROS_NUTTX_DIR}/nros-nuttx-ffi")
+
+    # Placed AFTER `nros_resolve_carve_out_profile` deliberately: that call is
+    # what defines `_NROS_NUTTX_PROFILE`, which the key below hashes. Computing
+    # a key before its inputs exist is the exact defect this mechanism hit on
+    # the native lane — the profile read empty on a fresh configure and
+    # `release` on the next, so one leaf produced two keys (issue 0805).
+    # ── cargo target dir: per-example, or SHARED when the lane asks ───
+    # Without a per-example dir every example's cargo build lands at the same
+    # path under the FFI crate's `target/`, and concurrent / sequential builds
+    # from different examples silently clobber each other.
+    #
+    # issue 0805 — that clobber argument is about the FINAL artifact, and it is
+    # correct: the per-example `nros-nuttx-ffi` binaries genuinely DIFFER
+    # (measured: three leaves, three distinct hashes), because build.rs compiles
+    # each app's own C sources in. What does NOT differ is everything else, and
+    # that is where the mass is:
+    #
+    #     nros-nuttx-ffi      736 KB   per-example
+    #     the rest           715 MB   deps + build scripts, identical
+    #
+    # 13 leaves x ~716 MB is ~9 GB of the same dependency graph. So share the
+    # target dir and keep the two per-example outputs out of it:
+    #
+    #   * the ARTIFACT via cargo's own `--artifact-dir`, so cargo places it
+    #     rather than a copy racing whatever runs next;
+    #   * the DEPFILE by copying it in the same command, immediately after.
+    #
+    # The key MUST separate the architectures. `<target>/release/build/` holds
+    # HOST build-script output and is NOT triple-separated inside one target
+    # dir, while NuttX's kernel tree is reconfigured in place between arm and
+    # rv-virt — so a dir shared across arches would serve build-script output
+    # compiled against the other arch's headers. Triple + profile + FFI crate
+    # keeps them apart (the two arches also use different FFI crates).
+    set(_shared_cargo_dir "")
+    if(COMMAND nros_shared_cargo_dir)
+        nros_shared_cargo_dir(_shared_cargo_dir KEY
+            "triple=${_NNBE_TARGET_TRIPLE}"
+            "profile=${_NROS_NUTTX_PROFILE}"
+            "ffi=${_NNBE_FFI_CRATE_DIR}"
+            "nuttx=${NUTTX_DIR}"
+            "defconfig=${NROS_NUTTX_DEFCONFIG}")
+    endif()
+    if(_shared_cargo_dir)
+        set(_cargo_target_dir "${_shared_cargo_dir}")
+        set(_artifact_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-nuttx-ffi-out")
+        file(MAKE_DIRECTORY "${_artifact_dir}")
+    else()
+        set(_cargo_target_dir "${CMAKE_CURRENT_BINARY_DIR}/cargo-target")
+        set(_artifact_dir "")
+    endif()
+    # Where cargo itself writes the artifact and its depfile.
+    set(_cargo_out_dir
+        "${_cargo_target_dir}/${_NNBE_TARGET_TRIPLE}/${_NROS_NUTTX_DIR}")
+    if(_artifact_dir)
+        # Shared target dir: the two PER-EXAMPLE outputs must leave it, or leaf
+        # N overwrites leaf N-1. The depfile is per-example too — measured: it
+        # names this leaf's own `*_includes.txt`, `*_ffi_libs.txt` and
+        # `src/main.c` — so a shared one would hand every other leaf the wrong
+        # rebuild triggers, which is issue 0820's museum-binary failure.
+        set(_output_binary "${_artifact_dir}/nros-nuttx-ffi")
+    else()
+        set(_output_binary "${_cargo_out_dir}/nros-nuttx-ffi")
+    endif()
+
+    # `--artifact-dir` is cargo's OWN copy, so nothing races it: it happens
+    # inside the cargo run rather than in a later command that another leaf's
+    # cargo could get between. It is unstable, which costs nothing here — this
+    # crate is already pinned to a nightly and already passes `-Z build-std`.
+    # It does NOT copy the depfile (verified), hence the explicit copy below.
+    set(_artifact_dir_arg "")
+    set(_depfile_copy_cmd "")
+    if(_artifact_dir)
+        set(_artifact_dir_arg -Z unstable-options --artifact-dir "${_artifact_dir}")
+        set(_depfile_copy_cmd COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_cargo_out_dir}/nros-nuttx-ffi.d" "${_output_binary}.d")
+    endif()
 
     # 194.4: self-provision the NuttX export before the example links it. The
     # shared script (scripts/nuttx/build-nuttx.sh via NROS_NUTTX_PROVISION_SCRIPT)
@@ -318,7 +387,8 @@ function(nros_nuttx_build_example)
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
-            cargo build --profile ${_NROS_NUTTX_PROFILE}
+            cargo build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
+        ${_depfile_copy_cmd}
         # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with
         # no kernel ELF (up-to-date skip edge / a sub-step whose failure isn't
         # propagated) must fail HERE, not only in the outer fixture script's

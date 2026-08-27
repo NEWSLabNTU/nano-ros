@@ -251,7 +251,7 @@ build-fixtures-arm:
     # socket/runtime port). Per-cell RMW + build-subdir come from the
     # manifest; the platform-wide toolchain / NuttX SDK / codegen-tool -D
     # defs are injected via the shared builder's NROS_CMAKE_EXTRA_DEFS.
-    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" nuttx) -DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
     # The cbindgen headers (nros_generated.h / nros_cpp_ffi.h) are committed to
     # the source tree, so the c/cpp message-lib compiles always find them on
     # `-I .../nros-c/include` (build.rs regenerates them with an atomic write).
@@ -403,7 +403,7 @@ build-riscv-c:
     codegen="$(nros_cargo_codegen_c_bin)"
     toolchain="$(pwd)/cmake/toolchain/riscv32imac-nuttx-elf.cmake"
     nuttx_ffi="$(pwd)/packages/boards/nros-board-nuttx-qemu/nros-nuttx-riscv-ffi"
-    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" nuttx-riscv) -DCMAKE_TOOLCHAIN_FILE=$toolchain -DNUTTX_DIR=$nuttx_dir -DNUTTX_FFI_CRATE_DIR=$nuttx_ffi -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
     NROS_CARGO_FRONTENDS=1 bash scripts/build/fixtures-build.sh nuttx-riscv c zenoh
     unset NROS_CMAKE_EXTRA_DEFS
     echo "NuttX riscv C examples built!"

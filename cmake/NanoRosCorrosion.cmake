@@ -413,13 +413,26 @@ endfunction()
 #
 # This is OFF unless a caller passes `-DNROS_SHARED_CARGO_ROOT=<dir>`; the
 # directory under it is chosen by KEY, which the caller must supply.
-function(nros_share_corrosion_cargo_dir)
-    # An EMPTY `-DNROS_SHARED_CARGO_ROOT=` is a caller whose shell variable did
-    # not expand, and it is indistinguishable from "not requested" unless asked
-    # separately — which is how a lane can carry this flag, look wired, and
-    # silently keep per-leaf dirs. That happened once (`nros_build_dir` was not
-    # in scope in `just/native.just`), so it is a hard error rather than a
-    # fallback: nobody passes this flag meaning nothing.
+# nros_shared_cargo_dir(<out_var> KEY <field>...)
+#
+# Issue 0805 — resolve `NROS_SHARED_CARGO_ROOT` + a KEY to a concrete shared
+# cargo directory, creating it and recording the key text beside it. Returns
+# empty in `<out_var>` when sharing was not requested.
+#
+# Factored out because there are TWO consumers with different plumbing and only
+# one keying rule is allowed to exist:
+#
+#  * `nros_share_corrosion_cargo_dir()` below — Corrosion computes its own
+#    `--target-dir` from `CMAKE_BINARY_DIR`, so that path has to be redirected
+#    with a symlink.
+#  * the NuttX FFI driver (`packages/api/nros-c/cmake/nros-nuttx.cmake`) — a
+#    hand-rolled cargo invocation that sets `CARGO_TARGET_DIR` itself, so it
+#    takes this path directly and needs no symlink at all.
+#
+# A second copy of the normalise-and-hash rule is how the two would drift apart,
+# and this file already records what an unstable key costs.
+function(nros_shared_cargo_dir out_var)
+    set(${out_var} "" PARENT_SCOPE)
     if(DEFINED CACHE{NROS_SHARED_CARGO_ROOT} AND NROS_SHARED_CARGO_ROOT STREQUAL "")
         message(FATAL_ERROR
             "nano-ros: -DNROS_SHARED_CARGO_ROOT was passed EMPTY. The caller's "
@@ -429,27 +442,18 @@ function(nros_share_corrosion_cargo_dir)
     if(NOT NROS_SHARED_CARGO_ROOT)
         return()
     endif()
-    cmake_parse_arguments(_SC "" "" "KEY" ${ARGN})
-    if(NOT _SC_KEY)
+    cmake_parse_arguments(_SD "" "" "KEY" ${ARGN})
+    if(NOT _SD_KEY)
         message(FATAL_ERROR
-            "nros_share_corrosion_cargo_dir: KEY is required. Sharing a cargo "
-            "directory between two configurations that differ is the defect "
-            "this function exists to avoid, so there is no default key.")
+            "nros_shared_cargo_dir: KEY is required. Sharing a cargo directory "
+            "between two configurations that differ is the defect this exists "
+            "to avoid, so there is no default key.")
     endif()
-    # NORMALISE before hashing. The key's inputs are cmake lists assembled by
-    # append, and this tree demonstrably produces both DUPLICATES and
-    # order-dependence in them — an observed capability list read
-    # `caps=safety,safety`, and one cargo invocation carried `panic-platform`
-    # SEVEN times because `corrosion_set_features` appends once per entry.
-    #
-    # None of that changes what gets BUILT (cargo dedupes), but all of it would
-    # change the HASH, and an unstable key makes two identical leaves stop
-    # sharing — or, worse, makes one leaf re-point on every configure. A key
-    # must be a function of the configuration, not of how the list was
-    # assembled. Sorting and de-duplicating each field is what makes that true.
+    # Normalise before hashing — see the long note on the wrapper below: the
+    # key must be a function of the CONFIGURATION, not of how its lists were
+    # assembled.
     set(_key_norm "")
-    foreach(_field IN LISTS _SC_KEY)
-        # Split `name=a,b,a` into its parts, sort + dedupe them, rebuild.
+    foreach(_field IN LISTS _SD_KEY)
         if(_field MATCHES "^([^=]+)=(.*)$")
             set(_fname "${CMAKE_MATCH_1}")
             set(_fval "${CMAKE_MATCH_2}")
@@ -464,28 +468,37 @@ function(nros_share_corrosion_cargo_dir)
             list(APPEND _key_norm "${_field}")
         endif()
     endforeach()
-    # The key is HASHED rather than spelled: it contains a capability list and
-    # a target triple, and the result is a path component.
     string(REPLACE ";" "|" _key_text "${_key_norm}")
     string(SHA1 _key_hash "${_key_text}")
     string(SUBSTRING "${_key_hash}" 0 12 _key_hash)
-    set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_ROOT}/${_key_hash}")
+    set(_dir "${NROS_SHARED_CARGO_ROOT}/${_key_hash}")
+    file(MAKE_DIRECTORY "${_dir}")
+    file(WRITE "${_dir}.key" "${_key_text}\n")
+    set(${out_var} "${_dir}" PARENT_SCOPE)
+    set(${out_var}_KEY_TEXT "${_key_text}" PARENT_SCOPE)
+endfunction()
+
+function(nros_share_corrosion_cargo_dir)
+    # Delegate the keying to `nros_shared_cargo_dir()` above — ONE normalise,
+    # hash and record. This function's own job is the part Corrosion forces:
+    # redirecting a `--target-dir` it computes itself, which only a symlink can
+    # do. See the safety notes above the helper.
+    nros_shared_cargo_dir(NROS_SHARED_CARGO_DIR ${ARGN})
+    if(NOT NROS_SHARED_CARGO_DIR)
+        return()
+    endif()
+    set(_key_text "${NROS_SHARED_CARGO_DIR_KEY_TEXT}")
     set(_link "${CMAKE_BINARY_DIR}/cargo")
     # Record the key text BEFORE the checks below, not after the symlink is
     # created. The mismatch branch used to fire first and print two HASHES with
     # no way to see what differed — the same "two hex strings nobody can compare
     # by eye" problem CLAUDE.md records for submodule pins. Both sides of a
     # mismatch must be readable on disk.
-    #
-    # Create the TARGET, not just the root, and do it before any branch below.
-    # Every branch — fresh link, matching link, re-pointed link — needs the
-    # target to exist, because a symlink to a missing directory is DANGLING and
-    # `mkdir` on one fails with EEXIST. Creating it in only some branches left
-    # `<build>/cargo` dangling and cargo reported
+    # The helper already created the target directory and recorded the key.
+    # Both matter here: a symlink to a MISSING directory is dangling, and
+    # `mkdir` on a dangling link fails with EEXIST — cargo then reports
     # `failed to create directory ... File exists (os error 17)`, naming the
     # link rather than the absent target.
-    file(MAKE_DIRECTORY "${NROS_SHARED_CARGO_DIR}")
-    file(WRITE "${NROS_SHARED_CARGO_DIR}.key" "${_key_text}\n")
 
     if(IS_SYMLINK "${_link}")
         # Re-configure of a build dir already sharing. Honour it only if it

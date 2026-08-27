@@ -12,10 +12,23 @@ grows. This is its GC.
 
 ## Reachability, not age
 
-A key directory is LIVE if and only if some leaf's `cargo` symlink resolves to
-it. That is exact — no heuristic about mtimes, no "probably unused". Everything
-else is unreachable by construction: nothing can find it, because the only way
-in is through a symlink a configure wrote.
+A key directory is LIVE if some leaf still refers to it. No heuristic about
+mtimes, no "probably unused".
+
+There are TWO ways a leaf refers to one, and counting only the first is a bug
+this tool shipped with:
+
+* **A `cargo` symlink** — the Corrosion consumers. Corrosion computes its own
+  `--target-dir` from `CMAKE_BINARY_DIR`, so the only way to redirect it is to
+  replace that path with a symlink.
+* **A path baked into the generated build files** — the NuttX FFI driver, which
+  sets `CARGO_TARGET_DIR` itself and needs no symlink. Its shared directory
+  appears in the leaf's `build.ninja` and nowhere else.
+
+The symlink-only version reported the live NuttX directory as unreachable, so
+`--prune` would have deleted 502 MB that twelve leaves were actively building
+against — not corruption, but a full rebuild for everyone and a tool that lies
+about what it is deleting.
 
 Reporting is the default. `--prune` deletes.
 """
@@ -24,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,24 +50,36 @@ def shared_root() -> Path:
     return ROOT / "build" / "corrosion-cargo"
 
 
-def live_targets() -> set[Path]:
-    """Every directory some leaf's `cargo` symlink currently resolves to."""
+def live_targets(root: Path) -> set[Path]:
+    """Directories still referenced by a leaf, by EITHER mechanism."""
     live: set[Path] = set()
+    root_s = str(root)
     for base in ("examples", "packages"):
         start = ROOT / base
         if not start.is_dir():
             continue
-        # walk-ok: hunts symlinks inside UNTRACKED build dirs — the git index
+        # walk-ok: hunts references inside UNTRACKED build dirs — the git index
         # cannot see build output, which is the whole point of this sweep.
-        for dirpath, dirnames, _ in os.walk(start):
-            # `cargo` is always directly inside a build dir; never descend into
-            # one, or this walks every object file in the tree.
+        for dirpath, dirnames, filenames in os.walk(start):
+            # 1. the Corrosion consumers: a `cargo` symlink.
             if "cargo" in dirnames:
                 p = Path(dirpath) / "cargo"
                 if p.is_symlink():
                     live.add(Path(os.path.realpath(p)))
                     dirnames.remove("cargo")
-            # Do not descend into the shared store itself.
+            # 2. the NuttX consumer: the path is baked into build.ninja. Read
+            #    only the generated build files, never the whole tree.
+            for name in ("build.ninja", "CMakeCache.txt"):
+                if name not in filenames:
+                    continue
+                try:
+                    text = (Path(dirpath) / name).read_text(errors="replace")
+                except OSError:
+                    continue
+                if root_s not in text:
+                    continue
+                for m in re.finditer(re.escape(root_s) + r"/([^/\s\"']+)/([0-9a-f]{12})", text):
+                    live.add(Path(root_s) / m.group(1) / m.group(2))
             dirnames[:] = [d for d in dirnames if d != ".git"]
     return live
 
@@ -68,7 +94,7 @@ def main() -> int:
         print("gc-shared-cargo: no shared store — nothing to do.")
         return 0
 
-    live = live_targets()
+    live = live_targets(root)
     total_freed = 0
     unreachable = []
     for platform_dir in sorted(root.iterdir()):

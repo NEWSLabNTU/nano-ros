@@ -449,3 +449,88 @@ wiring:
   `NROS_ENTRY_PANIC_POLICY`. De-duplicating the CALLS would risk skipping a
   target that only appears later in the configure, which is a real hazard traded
   for a cosmetic one.
+
+## nuttx fixed (2026-08-27) — a different mechanism, same keying discipline
+
+The survey above found nuttx does not reach the Corrosion path at all. Its
+duplication is real anyway and larger per leaf: a hand-rolled cargo build of
+`nros-nuttx-ffi` with `CARGO_TARGET_DIR` set per example at
+`packages/api/nros-c/cmake/nros-nuttx.cmake`.
+
+### What the existing comment got right, and what it hid
+
+> Without this every example's cargo build lands at the same path under the FFI
+> crate's `target/`, and concurrent / sequential builds from different examples
+> silently clobber each other.
+
+Correct, and measurably so: the per-example artifacts genuinely DIFFER — three
+leaves, three distinct hashes — because build.rs compiles each app's own C
+sources in. So this is NOT the nros-c case, where every leaf built the identical
+staticlib.
+
+What the comment does not say is the proportion:
+
+| | |
+| --- | --- |
+| `nros-nuttx-ffi` (per-example) | **736 KB** |
+| everything else (deps + build scripts) | **715 MB** |
+
+13 leaves x ~716 MB is ~9 GB of the same dependency graph, protected by a rule
+that only needed to protect 736 KB of it.
+
+### The split
+
+Share the target dir; keep the two per-example outputs out of it.
+
+* **The artifact** via cargo's own `--artifact-dir`. That matters over an
+  external copy: cargo places the file inside its own run, so no other leaf's
+  cargo can get between the build and the copy. Unstable, which costs nothing
+  here — the crate is already pinned to a nightly and already passes
+  `-Z build-std`.
+* **The depfile** by copying it in the same command. `--artifact-dir` does not
+  copy it (verified on a scratch crate), and it is per-example: measured, it
+  names this leaf's own `*_includes.txt`, `*_ffi_libs.txt` and `src/main.c`. A
+  shared depfile would give every other leaf the wrong rebuild triggers — issue
+  0820's museum binary, which that file's own comment records costing 90 s and
+  a long investigation.
+
+### The key must separate the ARCHES, and nearly did not
+
+`<target>/release/build/` holds HOST build-script output and is **not**
+triple-separated inside a target dir, while NuttX's kernel tree is reconfigured
+in place between arm and rv-virt. A dir shared across arches would hand one
+arch's build scripts output compiled against the other's headers. Key is
+triple + profile + FFI crate + NUTTX_DIR + defconfig.
+
+Same ordering trap as the native lane, avoided this time by remembering it: the
+key is computed AFTER `nros_resolve_carve_out_profile()`, because that call is
+what defines `_NROS_NUTTX_PROFILE`. Computed before, the profile field would
+read empty on a fresh configure and populated on the next — one leaf, two keys.
+
+The keying rule itself is now factored into `nros_shared_cargo_dir()` and shared
+by both consumers, rather than copied. Corrosion still needs its symlink; nuttx
+takes the path directly.
+
+### Verified
+
+| | |
+| --- | --- |
+| A/B, same leaf, sharing off vs on | `306f411dd134a63d` both — byte-identical |
+| all 12 arm leaves through ONE shared dir | **12 artifacts, 12 distinct** — no clobber |
+| depfiles | per-leaf, each naming its own leaf |
+| per-leaf `cargo-target/` dirs | 12 -> **0** |
+| shared dir | **502 MB** (was ~716 MB per leaf) |
+| rebuild of all 12 leaves against a warm shared dir | **68 s** |
+
+### The GC was wrong, and this found it
+
+`gc-shared-cargo` counted reachability by `cargo` symlinks only — the Corrosion
+mechanism. NuttX has no symlink; its path lives in the leaf's `build.ninja`. So
+the tool reported the LIVE nuttx directory as unreachable, and `--prune` would
+have deleted 502 MB that twelve leaves were building against. Not corruption,
+but a full rebuild plus a tool that lies about what it deletes. Reachability now
+counts both mechanisms, verified: the nuttx dir disappeared from the report and
+the genuinely-orphaned ones stayed.
+
+A tool that decides what to delete needs to know every way a thing can be
+referenced. One consumer was added after it, and that was enough.
