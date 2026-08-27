@@ -15,16 +15,18 @@ knob defaults, one row per (role, RMW):
 
 | role | zenoh | cyclonedds | xrce |
 | --- | ---: | ---: | ---: |
-| `talker` | 342,962 | 64,220 | 7,742 |
-| `listener` | 342,962 | 64,220 | 7,742 |
-| `service-server` | 342,962 | 64,220 | 7,742 |
-| `action-server` | 342,962 | 64,220 | 7,742 |
+| `talker` | 345,379 | 69,381 | 10,340 |
+| `listener` | 345,379 | 69,381 | 10,340 |
+| `service-server` | 345,379 | 69,381 | 10,340 |
+| `action-server` | 345,395 | 69,381 | 10,356 |
 
-(RAM attributed to symbols, bytes. Section totals differ by a few hundred bytes
-of the application's own data; the pools do not differ at all.)
+RAM attributed to symbols, bytes, `nros-relwithdebinfo`, measured on the
+fixtures `just build-test-fixtures lane=native` writes under
+`build/cargo-fixtures/linux*/nros-relwithdebinfo/`.
 
-**Every role costs the same static RAM, to the byte.** What the node does has no
-influence. A `talker` — one publisher, no subscription, no service, no action —
+**Every role costs within 16 bytes of every other, and three of the four are
+identical.** The 16 bytes on `action-server` are its own statics; no pool moves.
+What the node does has essentially no influence on what it reserves. A `talker` — one publisher, no subscription, no service, no action —
 reserves the same 144,128 bytes of `SERVICE_BUFFERS` as the service server, and
 the same 131,072 bytes of `LARGE_PAYLOADS` as a node that subscribes to point
 clouds.
@@ -38,7 +40,7 @@ For the talker, from `just mem-report`:
         24,416    6.8%  g_sessions
 ```
 
-275,200 of 342,962 bytes — **80% of the image's static RAM** — is two pools the
+275,200 of 345,379 bytes — **80% of the image's static RAM** — is two pools the
 node cannot reach. `SMALL_PAYLOADS` is the only one it can, and it uses one of
 its eight subscriber slots.
 
@@ -93,9 +95,21 @@ queryable one above, the runtime creates no large-payload subscriber of its own.
 ## Reproduce
 
 ```sh
-just mem-report examples/native/rust/talker/target-zenoh/nros-fast-release/talker
-just mem-report examples/native/rust/service-server/target-zenoh/nros-fast-release/service-server
+just build-test-fixtures lane=native
+just mem-report build/cargo-fixtures/linux-3263301353/nros-relwithdebinfo/talker
+just mem-report build/cargo-fixtures/linux-3263301353/nros-relwithdebinfo/service-server
 ```
 
-Both print the same pool figures. `--json` plus `--baseline` shows the delta
+Both print the same pool figures.
+
+**Measure the fixtures, not `examples/**/target-*/`.** The first draft of this
+issue took its numbers from
+`examples/native/rust/talker/target-zenoh/nros-fast-release/talker`, which was
+three weeks stale: phase 340 P2 moved fixture builds into the shared cargo group
+under `build/cargo-fixtures/`, and the per-leaf directories are leftovers that
+nothing rewrites. `just build-test-fixtures` reported success without touching
+them. The pool figures happened to be unchanged, so the conclusion survived, but
+the totals were wrong by 2,417–2,598 bytes and the "identical to the byte"
+claim was wrong by 16. Trust the group directory, and check an artifact's mtime
+against its sources before quoting it. `--json` plus `--baseline` shows the delta
 between any two images, which is how a fix should be reported.

@@ -192,6 +192,59 @@ def read_sections(elf):
     return sections
 
 
+def crate_ident_for(rel, inv):
+    """The Rust crate identifier that owns a source file, or None.
+
+    A pool is joined to its symbol by crate AND leaf name, never by leaf alone.
+    `SLOTS` is declared in `nros-rmw-cffi`, and `nros_log::early::SLOTS` is a
+    different 1,440-byte pool that merely shares the last path segment — joining
+    on the leaf reported a 6,752-byte "drift" in an image that contains neither
+    the crate nor the pool.
+    """
+    crate_dir = inv.crate_of(rel)
+    manifest = os.path.join(ROOT, crate_dir, "Cargo.toml")
+    try:
+        with open(manifest, encoding="utf8") as fh:
+            for line in fh:
+                m = re.match(r'\s*name\s*=\s*"([^"]+)"', line)
+                if m:
+                    return m.group(1).replace("-", "_")
+    except OSError:
+        return None
+    return None
+
+
+def newest_source_mtime():
+    """mtime of the newest tracked source under packages/, or None.
+
+    A number is only as good as the artifact it came from, and this tool is
+    pointed at a path typed by hand — which the harness's staleness probe does
+    not guard, because that probe covers fixtures the harness RESOLVES. Issue
+    0827's first draft was measured on a three-week-old binary in
+    `examples/**/target-*/`, the pre-phase-340 layout that `build-test-fixtures`
+    no longer writes; it reported success while touching nothing there. The
+    conclusion survived because the pool figures happened not to have moved.
+    Next time it would not.
+    """
+    try:
+        files = subprocess.run(
+            ["git", "ls-files", "packages/*.rs", "packages/*.c", "packages/*.cpp",
+             "packages/*.h", "packages/*.hpp"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout.split()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    newest = None
+    for rel in files:
+        try:
+            m = os.path.getmtime(os.path.join(ROOT, rel))
+        except OSError:
+            continue
+        if newest is None or m > newest:
+            newest = m
+    return newest
+
+
 def crate_of(name):
     """The crate that owns a symbol, or a bucket for the ones with no path."""
     m = CRATE.search(name)
@@ -219,7 +272,10 @@ def analyse(elf, pools_by_name):
     for size, _t, name in ram:
         leaf = name.rsplit("::", 1)[-1]
         if leaf in pools_by_name:
-            expr, declared, err, rel, line = pools_by_name[leaf]
+            expr, declared, err, rel, line, crate = pools_by_name[leaf]
+            # Same leaf in a different crate is a different pool.
+            if crate is not None and not name.startswith(crate + "::"):
+                continue
             matched.append(
                 {
                     "pool": leaf,
@@ -235,8 +291,19 @@ def analyse(elf, pools_by_name):
     section_ram = sum(
         v for k, v in sections.items() if k.startswith((".bss", ".data", ".sbss", ".sdata"))
     )
+    try:
+        elf_mtime = os.path.getmtime(elf)
+    except OSError:
+        elf_mtime = None
+    newest_src = newest_source_mtime()
+    stale = (
+        elf_mtime is not None and newest_src is not None and newest_src > elf_mtime
+    )
     return {
         "elf": os.path.relpath(elf, ROOT) if elf.startswith(ROOT) else elf,
+        "elf_mtime": elf_mtime,
+        "newest_source_mtime": newest_src,
+        "stale": stale,
         "ram_symbol_total": sum(s for s, _, _ in ram),
         "rodata_symbol_total": sum(s for s, _, _ in rom),
         "text_symbol_total": sum(s for s, _, _ in text),
@@ -259,6 +326,22 @@ def report(res, top, baseline=None):
     add = lines.append
     add(f"# static memory — {res['elf']}")
     add("")
+    if res.get("stale"):
+        add(
+            "!! STALE IMAGE — a tracked source under packages/ is NEWER than this"
+        )
+        add(
+            "   artifact, so every number below describes code that is no longer"
+        )
+        add(
+            "   in the tree. Rebuild before quoting any of it:"
+        )
+        add("     just build-test-fixtures lane=native")
+        add(
+            "   and measure under build/cargo-fixtures/, not examples/**/target-*/"
+        )
+        add("   (the pre-phase-340 layout, which nothing rewrites).")
+        add("")
     ram_sym, ram_sec = res["ram_symbol_total"], res["section_ram_total"]
     add(f"RAM (.bss + .data), by section:  {fmt(ram_sec)} bytes")
     add(f"RAM attributed to symbols:       {fmt(ram_sym)} bytes")
@@ -316,6 +399,13 @@ def report(res, top, baseline=None):
 
 def check(res):
     """Declared arithmetic must equal the measured symbol on a default build."""
+    if res.get("stale"):
+        print(
+            f"check-mem-report: {res['elf']} is STALE — a tracked source is newer\n"
+            "than the artifact, so comparing declared arithmetic against it proves\n"
+            "nothing about the current tree. Rebuild and re-run."
+        )
+        return 1
     priced = [p for p in res["pools"] if p["declared"] is not None]
     if not priced:
         # A check with nothing to check reads as coverage and is not. Every
@@ -395,6 +485,19 @@ def selftest():
         ],
     }
     empty = {"elf": "synthetic", "pools": []}
+    stale = {
+        "elf": "synthetic",
+        "stale": True,
+        "pools": [
+            {
+                "pool": "P",
+                "declared": 1024,
+                "measured": 1024,
+                "formula": "K * 8",
+                "declared_at": "x.rs:1",
+            }
+        ],
+    }
 
     def quiet(case):
         # The synthetic failures print their full operator report. Swallow it:
@@ -408,6 +511,7 @@ def selftest():
     assert quiet(drifted) == 1, "drifted pool must FAIL"
     assert quiet(unpriceable) == 1, "measured-only alone leaves nothing to check"
     assert quiet(empty) == 1, "a vacuous check must FAIL, not read as coverage"
+    assert quiet(stale) == 1, "an agreeing pool on a STALE image must still FAIL"
     print("selftest: ok — the check passes on agreement and fails on drift")
     return 0
 
@@ -438,7 +542,7 @@ def main():
     pools_by_name = {}
     for name, expr, rel, line in pools:
         b, err = inv.pool_bytes(expr, knobs)
-        pools_by_name[name] = (expr, b, err, rel, line)
+        pools_by_name[name] = (expr, b, err, rel, line, crate_ident_for(rel, inv))
 
     baseline = None
     if args.baseline:

@@ -56,9 +56,9 @@ talker, listener, service-server and action-server:
 
 | RMW | RAM in symbols |
 | --- | ---: |
-| zenoh | 342,962 |
-| cyclonedds | 64,220 |
-| xrce | 7,742 |
+| zenoh | 345,379 |
+| cyclonedds | 69,381 |
+| xrce | 10,340 |
 
 A talker reserves 144,128 bytes of `SERVICE_BUFFERS` and 131,072 bytes of
 `LARGE_PAYLOADS` it cannot reach: 80% of its static RAM. The pools are sized at
@@ -130,6 +130,21 @@ would have caught a change to them. That is the `check-required-features-reachab
 class one level out: the manifest gate asks whether a target with
 `required-features` is reachable, and says nothing about a cbindgen-exported
 surface behind a feature nobody enables.
+
+## Measure the fixtures, not the example leaves
+
+`examples/**/target-*/` is the pre-phase-340 layout. P2 moved fixture builds into
+the shared cargo group under `build/cargo-fixtures/<host-hash>/<profile>/`, and
+the per-leaf directories are leftovers nothing rewrites — the ones here were
+three weeks stale while `just build-test-fixtures` reported success, because it
+no longer writes there at all. Issue 0827's first draft was measured on them.
+The pool figures were unchanged so the conclusion held, but the totals were
+wrong by ~2.5 KB and a "to the byte" claim was wrong by 16.
+
+The staleness probe cannot help here: it guards fixtures the harness RESOLVES,
+and a path typed by hand into a tool is not one of those. So the rule is manual
+and belongs with the tool: **check the artifact's mtime against its sources
+before quoting a number from it.**
 
 ## Working rule for this campaign
 
