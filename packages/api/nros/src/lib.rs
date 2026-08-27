@@ -259,6 +259,7 @@ pub use node_metadata::{CallbackId, EntityId, NodeId};
 pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub use node_runtime::{
+    ComponentSlotStorage,
     ExecutorError,
     ExecutorNodeRuntime,
     RegisteredNode,
@@ -267,9 +268,11 @@ pub use node_runtime::{
     // shared executor a foreign typed entry hands in. (`register_node_borrowed` stays
     // crate-internal — it returns the private `ComponentCell`.)
     install_node_typed,
+    install_node_typed_in,
     // Phase 305 W3 (issue 0255) — same seam plus launch `<remap>` rules; the variant
     // `nros::node!()` emits.
     install_node_typed_with_launch,
+    install_node_typed_with_launch_in,
     // Phase 268 W1 — same seam with both `<param>` initials AND `<node name= namespace=>`
     // identity injection; the variant `nros::node!()` now emits (RFC-0046).
     install_node_typed_with_node_identity,
@@ -285,7 +288,7 @@ pub use node_runtime::{
 ///
 /// # Safety
 /// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
@@ -301,7 +304,7 @@ where
 ///
 /// # Safety
 /// The stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_params<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
@@ -318,7 +321,7 @@ where
 ///
 /// # Safety
 /// The stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_node_identity<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
@@ -331,12 +334,75 @@ where
     -1
 }
 
+/// phase-391 W5.3b — `ComponentSlotStorage` stub for builds without the cffi
+/// runtime (or without `alloc`): the macro emits a per-class
+/// `static ... = ComponentSlotStorage::new()` unconditionally, so the name must
+/// exist and be const-constructible + `Sync` in every cfg. Zero-sized.
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[doc(hidden)]
+pub struct ComponentSlotStorage<C, const N: usize = { crate::config::MAX_CLASS_INSTANCES }> {
+    _p: core::marker::PhantomData<fn() -> C>,
+}
+
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+impl<C, const N: usize> ComponentSlotStorage<C, N> {
+    #[doc(hidden)]
+    #[allow(clippy::new_without_default)]
+    pub const fn new() -> Self {
+        Self {
+            _p: core::marker::PhantomData,
+        }
+    }
+}
+
+/// phase-391 W5.3b — `install_node_typed_in` stub; returns `-1`.
+///
+/// # Safety
+/// Signature parity with the real impl; the stub dereferences nothing.
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[doc(hidden)]
+pub unsafe fn install_node_typed_in<C: node::ExecutableNode + 'static>(
+    _executor: *mut core::ffi::c_void,
+    _store: &'static ComponentSlotStorage<C>,
+) -> i32
+where
+    C::State: 'static,
+{
+    -1
+}
+
+/// phase-391 W5.3b — `install_node_typed_with_launch_in` stub; returns `-1`.
+///
+/// # Safety
+/// Signature parity with the real impl; the stub dereferences nothing.
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[doc(hidden)]
+pub unsafe fn install_node_typed_with_launch_in<C: node::ExecutableNode + 'static>(
+    _executor: *mut core::ffi::c_void,
+    _store: &'static ComponentSlotStorage<C>,
+    _params: &[(&str, &str)],
+    _node_identity: Option<(&'static str, &'static str)>,
+    _remaps: &[(&str, &str)],
+    // Spelled as the plain tuple rather than `QoSOverrideCode`: that alias
+    // lives behind nros-node's cffi gate and is unnameable in this cfg, but
+    // its definition is this tuple — the same spelling `RuntimeCtx` uses, so
+    // emitted calls typecheck identically against stub and real. (The OLDER
+    // with_launch stub above simply dropped this parameter, which is 4-vs-5
+    // signature drift against its real impl — not repeated here.)
+    _qos_overrides: &'static [(&'static str, u8, u8, u32)],
+) -> i32
+where
+    C::State: 'static,
+{
+    -1
+}
+
 /// Phase 305 W3 (issue 0255) — `install_node_typed_with_launch` stub for builds
 /// without the cffi runtime. Signature parity with the real impl; returns `-1`.
 ///
 /// # Safety
 /// The stub dereferences nothing.
-#[cfg(not(feature = "rmw-cffi"))]
+#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_launch<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,

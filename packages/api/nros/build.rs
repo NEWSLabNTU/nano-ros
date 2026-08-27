@@ -36,6 +36,13 @@ fn main() {
     // whose slot does not fit is a registration error, not a compile error.
     let component_slot_bytes = env_usize("NROS_RUNTIME_COMPONENT_SLOT_BYTES", 512);
 
+    // phase-391 W5.3b — instances of ONE component class the macro-emitted
+    // per-class store can hold. Multi-instance is real: the launch path bakes
+    // one identity per plan node and can name the same class twice. 2 covers
+    // the pair case without charging every class for more; install past the
+    // cap is a Full-style registration error, not silent reuse.
+    let max_class_instances = env_usize("NROS_RUNTIME_MAX_CLASS_INSTANCES", 2);
+
     let contents = format!(
         "/// Component pool slots (set via `NROS_RUNTIME_MAX_COMPONENTS`, default 4).\n\
          ///\n\
@@ -45,7 +52,11 @@ fn main() {
          \n\
          /// Per-slot storage for a type-erased `TypedSlot<C>`, in bytes\n\
          /// (set via `NROS_RUNTIME_COMPONENT_SLOT_BYTES`, default 512).\n\
-         pub const COMPONENT_SLOT_BYTES: usize = {component_slot_bytes};\n"
+         pub const COMPONENT_SLOT_BYTES: usize = {component_slot_bytes};\n\
+         \n\
+         /// Instances of one component class the per-class store holds\n\
+         /// (set via `NROS_RUNTIME_MAX_CLASS_INSTANCES`, default 2).\n\
+         pub const MAX_CLASS_INSTANCES: usize = {max_class_instances};\n"
     );
     std::fs::write(Path::new(&out_dir).join("nros_runtime_config.rs"), contents).unwrap();
 }

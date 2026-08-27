@@ -53,7 +53,12 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, string::String, vec::Vec};
-use core::{cell::RefCell, marker::PhantomData, time::Duration};
+use core::{
+    cell::{RefCell, UnsafeCell},
+    marker::PhantomData,
+    mem::MaybeUninit,
+    time::Duration,
+};
 
 use portable_atomic::{AtomicUsize, Ordering};
 use portable_atomic_util::Arc;
@@ -145,11 +150,80 @@ impl<C: ExecutableNode> ComponentSlot for TypedSlot<C> {
 // only remaining `ComponentSlot` impl is `TypedSlot<C>` above (used by
 // `register_node` / `register_node_borrowed` / `install_node_typed`).
 
+/// phase-391 W5.3b — per-class slot storage the `nros::node!` macro emits.
+///
+/// One `static` of this type per macro expansion, so `C` is CONCRETE at the
+/// emission site and the storage is sized `size_of::<TypedSlot<C>>()` exactly —
+/// no byte-budget guessing on the FFI install path. The type is public API for
+/// the MACRO EMIT only; it never crosses the C ABI (the trampoline keeps its
+/// `(ptr, ptr, ptr) -> i32` shape), which is what keeps the const-generic
+/// parameter legal under the "no const generics on FFI-visible types" rule.
+///
+/// `N` is the per-class INSTANCE cap: the launch path bakes one identity per
+/// plan node and can name the same class twice, so this is an array, not one
+/// slot. Taking past `N` is a registration error (`take` returns `None`), the
+/// same Full shape as the executor's node table. Slots are one-shot — `next`
+/// never rewinds — so storage is never re-initialised under a stale reference.
+pub struct ComponentSlotStorage<
+    C: ExecutableNode,
+    const N: usize = { crate::config::MAX_CLASS_INSTANCES },
+> {
+    slots: [UnsafeCell<MaybeUninit<TypedSlot<C>>>; N],
+    next: AtomicUsize,
+}
+
+// SAFETY: `take` hands each slot out at most once (monotonic `fetch_add`), so
+// no two references to the same `UnsafeCell` contents ever coexist.
+unsafe impl<C: ExecutableNode, const N: usize> Sync for ComponentSlotStorage<C, N> {}
+
+impl<C: ExecutableNode, const N: usize> ComponentSlotStorage<C, N> {
+    /// Const constructor — the macro emits `static STORE: ... = ...::new();`.
+    #[allow(clippy::new_without_default)]
+    pub const fn new() -> Self {
+        Self {
+            slots: [const { UnsafeCell::new(MaybeUninit::uninit()) }; N],
+            next: AtomicUsize::new(0),
+        }
+    }
+
+    /// Hand out the next uninitialised slot, or `None` past the instance cap.
+    fn take(&'static self) -> Option<&'static mut MaybeUninit<TypedSlot<C>>> {
+        let i = self.next.fetch_add(1, Ordering::Relaxed);
+        if i >= N {
+            return None;
+        }
+        // SAFETY: `i` was claimed exactly once by the fetch_add above, so this
+        // is the only reference that will ever exist to `slots[i]`'s contents;
+        // the storage is a `static`, so `'static` is honest.
+        Some(unsafe { &mut *self.slots[i].get() })
+    }
+}
+
+/// Placement-init a [`TypedSlot<C>`] into `slot` and erase it.
+///
+/// Both registration paths end here: the FFI path with a slot from the
+/// macro-emitted [`ComponentSlotStorage`], the dynamic path with one carved
+/// from the runtime's caller-supplied backing.
+fn place_slot<C: ExecutableNode>(
+    slot: &'static mut MaybeUninit<TypedSlot<C>>,
+) -> &'static mut dyn ComponentSlot
+where
+    C::State: 'static,
+{
+    slot.write(TypedSlot::<C> {
+        state: C::init(),
+        _phantom: PhantomData,
+    })
+}
+
 /// Shared per-component cell. Subscription / timer closures registered
 /// against the executor hold an `Arc` clone so they can dispatch +
 /// publish back through the resolver.
 struct ComponentCell {
-    slot: RefCell<Box<dyn ComponentSlot>>,
+    /// phase-391 W5.3b — BORROWED from per-class or pool storage, not boxed.
+    /// The storage is `'static` (macro-emitted static / caller backing), so the
+    /// reference outlives every closure that dispatches through it.
+    slot: RefCell<&'static mut dyn ComponentSlot>,
     publishers: RefCell<Vec<(String, EmbeddedRawPublisher)>>,
     // Phase 212.M-F.23 — declarative service/action CLIENT + action-SERVER
     // handles, keyed by stable entity id, resolved during tick dispatch.
@@ -174,6 +248,23 @@ struct ComponentCell {
     // declare never moves anything this pointer or a stored `&ParameterValue` names.
     #[cfg(feature = "param-services")]
     param_server: core::cell::Cell<*const nros_params::ParameterServer<'static>>,
+}
+
+impl Drop for ComponentCell {
+    fn drop(&mut self) {
+        // phase-391 W5.3b — the slot is BORROWED from one-shot storage, so the
+        // component state's destructor no longer rides a `Box` drop. Run it
+        // here instead: the cell drops exactly once (it is `Arc`-managed, and
+        // the executor's drop trampoline releases the last clone), and the
+        // storage slot is never handed out again (`take`/`next_slot` counters
+        // are monotonic), so nothing can observe the dropped bytes.
+        let slot: &mut &'static mut dyn ComponentSlot = self.slot.get_mut();
+        let p: *mut dyn ComponentSlot = &raw mut **slot;
+        // SAFETY: `p` targets storage uniquely owned by this cell (handed out
+        // at most once), reachable only through the reference being dropped
+        // with us; it is dropped at most once because the cell is.
+        unsafe { core::ptr::drop_in_place(p) };
+    }
 }
 
 impl ComponentCell {
@@ -255,14 +346,93 @@ impl PublisherResolver for CellResolver<'_> {
 pub struct ExecutorNodeRuntime {
     executor: Executor<'static>,
     components: Vec<Arc<ComponentCell>>,
+    /// phase-391 W5.3b — slot storage for [`register_node`](Self::register_node).
+    /// Always present: the leaking constructor allocates it once, `new_in`
+    /// carves the caller's backing.
+    pool: ComponentPool,
+}
+
+/// Bump view over the runtime's slot backing. Raw pointer, not a slice, so the
+/// runtime stays movable — the SLOTS never move; they live in the backing.
+struct ComponentPool {
+    base: *mut MaybeUninit<u8>,
+    len_bytes: usize,
+    per_slot: usize,
+    capacity: usize,
+    next: usize,
+}
+
+// SAFETY: the pool is confined to the runtime (`&mut self` on every use); the
+// raw pointer targets `'static` backing handed over at construction.
+unsafe impl Send for ComponentPool {}
+
+impl ComponentPool {
+    /// Next disjoint slot window, or `None` when the pool is full.
+    fn next_slot(&mut self) -> Option<&'static mut [MaybeUninit<u8>]> {
+        if self.next >= self.capacity {
+            return None;
+        }
+        let off = self.next * self.per_slot;
+        debug_assert!(off + self.per_slot <= self.len_bytes);
+        self.next += 1;
+        // SAFETY: `base` points at `'static` backing of `len_bytes`; the
+        // window is in-bounds by the checks above and DISJOINT from every
+        // earlier one because `next` only increases.
+        Some(unsafe { core::slice::from_raw_parts_mut(self.base.add(off), self.per_slot) })
+    }
 }
 
 impl ExecutorNodeRuntime {
-    /// Wrap an already-built [`Executor`].
+    /// Wrap an already-built [`Executor`], LEAKING the slot backing.
+    ///
+    /// The convenience constructor — allocates `RuntimeSizing::DEFAULT`'s
+    /// backing once and never frees it, exactly the relationship
+    /// `Executor::from_session` has to `Executor::open_in`. Use
+    /// [`new_in`](Self::new_in) on an image that must not allocate.
     pub fn from_executor(executor: Executor<'static>) -> Self {
+        let sizing = crate::runtime_storage::RuntimeSizing::DEFAULT;
+        let backing: &'static mut [MaybeUninit<u64>] =
+            Vec::leak(alloc::vec![MaybeUninit::uninit(); sizing.u64_len()]);
+        // SAFETY: freshly leaked — `'static`, uniquely owned, exactly
+        // `u64_len()` words.
+        unsafe { Self::new_in(executor, backing, sizing) }
+    }
+
+    /// Wrap an already-built [`Executor`] over CALLER-SUPPLIED slot storage.
+    ///
+    /// Size `backing` with [`RuntimeSizing::u64_len`]; a short one panics,
+    /// naming both sizes (fail-loud on every profile — a short backing is
+    /// silent corruption, the `executor::storage::carve` / issue #131 lesson).
+    ///
+    /// # Safety
+    /// `backing` must be uniquely owned by this runtime for its whole life:
+    /// slots carved from it are handed out as `&'static mut`, so aliasing it
+    /// anywhere else is undefined behaviour.
+    pub unsafe fn new_in(
+        executor: Executor<'static>,
+        backing: &'static mut [MaybeUninit<u64>],
+        sizing: crate::runtime_storage::RuntimeSizing,
+    ) -> Self {
+        let need = sizing.u64_len();
+        assert!(
+            backing.len() >= need,
+            "component pool backing too small: {} u64 words < {} required for {} slot(s) \
+             of {} bytes — size it with RuntimeSizing::u64_len()",
+            backing.len(),
+            need,
+            sizing.components,
+            sizing.slot_bytes,
+        );
         Self {
             executor,
             components: Vec::new(),
+            pool: ComponentPool {
+                base: backing.as_mut_ptr() as *mut MaybeUninit<u8>,
+                len_bytes: backing.len() * 8,
+                per_slot: (sizing.slot_bytes.div_ceil(8) * 8).max(1),
+                capacity: sizing.components,
+                next: 0,
+            },
         }
     }
 
@@ -340,11 +510,23 @@ impl ExecutorNodeRuntime {
     where
         C::State: 'static,
     {
+        // phase-391 W5.3b — draw slot storage from the runtime's pool instead
+        // of boxing. Full → the executor-table-Full class (raise
+        // NROS_RUNTIME_MAX_COMPONENTS); too big for `slot_bytes` → likewise a
+        // registration error (raise NROS_RUNTIME_COMPONENT_SLOT_BYTES), never
+        // a truncation.
+        let raw = self.pool.next_slot().ok_or(NodeDeclError::ExecutorFull)?;
+        if raw.len() < core::mem::size_of::<TypedSlot<C>>()
+            || (raw.as_ptr() as usize) % core::mem::align_of::<TypedSlot<C>>() != 0
+        {
+            return Err(NodeDeclError::Runtime);
+        }
+        // SAFETY: sized + aligned for `TypedSlot<C>` by the check above;
+        // uniquely owned (`next_slot` windows are disjoint); `'static` backing.
+        let slot_mu: &'static mut MaybeUninit<TypedSlot<C>> =
+            unsafe { &mut *(raw.as_mut_ptr() as *mut MaybeUninit<TypedSlot<C>>) };
         let cell = Arc::new(ComponentCell {
-            slot: RefCell::new(Box::new(TypedSlot::<C> {
-                state: C::init(),
-                _phantom: PhantomData,
-            })),
+            slot: RefCell::new(place_slot::<C>(slot_mu)),
             publishers: RefCell::new(Vec::new()),
             service_clients: RefCell::new(Vec::new()),
             action_clients: RefCell::new(Vec::new()),
@@ -1517,15 +1699,13 @@ fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &'p [(&'p str, &'p str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
+    slot_mu: &'static mut MaybeUninit<TypedSlot<C>>,
 ) -> NodeResult<Arc<ComponentCell>>
 where
     C::State: 'static,
 {
     let cell = Arc::new(ComponentCell {
-        slot: RefCell::new(Box::new(TypedSlot::<C> {
-            state: C::init(),
-            _phantom: PhantomData,
-        })),
+        slot: RefCell::new(place_slot::<C>(slot_mu)),
         publishers: RefCell::new(Vec::new()),
         service_clients: RefCell::new(Vec::new()),
         action_clients: RefCell::new(Vec::new()),
@@ -1672,7 +1852,13 @@ where
     }
     // SAFETY: per the fn contract, `executor` is the live `*mut Executor<'static>` handle.
     let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
-    match register_node_borrowed::<C>(exec, params, node_identity, remaps, qos_overrides) {
+    // phase-391 W5.3b — the alloc convenience: leak exactly-sized slot storage
+    // per call, the same relationship `from_executor` has to `new_in`. The
+    // macro-emitted entries call the `_in` twin with their per-class static
+    // instead, so GENERATED images do not take this branch.
+    let slot_mu: &'static mut MaybeUninit<TypedSlot<C>> =
+        Box::leak(Box::new(MaybeUninit::uninit()));
+    match register_node_borrowed::<C>(exec, params, node_identity, remaps, qos_overrides, slot_mu) {
         Ok(_cell) => 0,
         // Issue 0095 — distinct code for executor-table exhaustion so the macro
         // register seam can name `NROS_EXECUTOR_MAX_CBS` instead of an opaque
@@ -1680,6 +1866,61 @@ where
         Err(NodeDeclError::ExecutorFull) => -2,
         Err(_) => -1,
     }
+}
+
+/// phase-391 W5.3b — [`install_node_typed_with_launch`] over the CALLER's
+/// per-class slot storage: the heap-free FFI install path. The `nros::node!`
+/// macro emits one `static ComponentSlotStorage<C>` per expansion and calls
+/// this twin; the C ABI trampoline above it keeps its `(ptr, ptr, ptr) -> i32`
+/// shape, so nothing foreign changes.
+///
+/// Returns `-3` when the class's instance cap is exhausted — raise
+/// `NROS_RUNTIME_MAX_CLASS_INSTANCES`. (Distinct from `-2`, the executor
+/// callback-table Full.)
+///
+/// # Safety
+/// `executor` must be the live `*mut Executor<'static>` handle a typed entry
+/// passes, valid for the call.
+pub unsafe fn install_node_typed_with_launch_in<C: ExecutableNode + 'static>(
+    executor: *mut core::ffi::c_void,
+    store: &'static ComponentSlotStorage<C>,
+    params: &[(&str, &str)],
+    node_identity: Option<(&'static str, &'static str)>,
+    remaps: &[(&str, &str)],
+    qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
+) -> i32
+where
+    C::State: 'static,
+{
+    if executor.is_null() {
+        return -1;
+    }
+    let Some(slot_mu) = store.take() else {
+        return -3;
+    };
+    // SAFETY: per the fn contract, `executor` is the live handle.
+    let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
+    match register_node_borrowed::<C>(exec, params, node_identity, remaps, qos_overrides, slot_mu) {
+        Ok(_cell) => 0,
+        Err(NodeDeclError::ExecutorFull) => -2,
+        Err(_) => -1,
+    }
+}
+
+/// phase-391 W5.3b — [`install_node_typed`] over caller storage; see
+/// [`install_node_typed_with_launch_in`].
+///
+/// # Safety
+/// As [`install_node_typed_with_launch_in`].
+pub unsafe fn install_node_typed_in<C: ExecutableNode + 'static>(
+    executor: *mut core::ffi::c_void,
+    store: &'static ComponentSlotStorage<C>,
+) -> i32
+where
+    C::State: 'static,
+{
+    // SAFETY: forwarded per this fn's contract.
+    unsafe { install_node_typed_with_launch_in::<C>(executor, store, &[], None, &[], &[]) }
 }
 
 // Phase 258 (Track 2, w5) — `nros_run_components` (the BSP shim that registered

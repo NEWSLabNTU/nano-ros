@@ -262,6 +262,12 @@ fn node_impl(input: TokenStream) -> TokenStream {
     let dispatch_fn_name = quote::format_ident!("__nros_node_{}_dispatch_strategy", pkg_sym);
     // Phase 257 (W0-B / D6) — the uniform cross-language install seam.
     let component_install_fn_name = quote::format_ident!("__nros_component_{}_install", pkg_sym);
+    // phase-391 W5.3b — per-class slot storage. Emitted HERE, in the macro,
+    // because `#node_ty` is concrete at this site: the storage is sized
+    // `size_of::<TypedSlot<C>>()` exactly, and a `static` inside the generic
+    // install fn would be SHARED across every component class (one static per
+    // generic fn, not per monomorphisation — probed, not assumed).
+    let component_store_name = quote::format_ident!("__NROS_COMPONENT_{}_SLOT_STORE", pkg_sym);
     let component_present_name = quote::format_ident!("__NROS_NODE_PKG_{}_EXPORT_PRESENT", pkg_sym);
     let component_class_name = quote::format_ident!("__nros_component_{}_class_name", pkg_sym);
     let node_class_leaf = node_ty
@@ -341,6 +347,14 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // params are mandatory (the foreign typed entry hands in the executor
         // handle) and the body is `unsafe`. The deref-safety contract lives on
         // `install_node_typed`'s caller (the entry), not this thin trampoline.
+        // phase-391 W5.3b — this class's slot storage: heap-free on the FFI
+        // install path, exactly sized because the type is concrete here.
+        // Shared by the trampoline below and `register(runtime)`; capacity is
+        // the per-class instance cap (NROS_RUNTIME_MAX_CLASS_INSTANCES).
+        #[doc(hidden)]
+        static #component_store_name: ::nros::ComponentSlotStorage<#node_ty> =
+            ::nros::ComponentSlotStorage::new();
+
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         #[unsafe(no_mangle)]
         pub extern "C" fn #component_install_fn_name(
@@ -348,7 +362,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             executor: *mut ::core::ffi::c_void,
             _self: *mut ::core::ffi::c_void,
         ) -> i32 {
-            unsafe { ::nros::install_node_typed::<#node_ty>(executor) }
+            unsafe { ::nros::install_node_typed_in::<#node_ty>(executor, &#component_store_name) }
         }
 
         #[unsafe(no_mangle)]
@@ -499,8 +513,9 @@ fn node_impl(input: TokenStream) -> TokenStream {
             // overrides; `ExecutorSink::create_node` installs them on the node so
             // entity creation folds the matching ones in.
             match unsafe {
-                ::nros::install_node_typed_with_launch::<#node_ty>(
+                ::nros::install_node_typed_with_launch_in::<#node_ty>(
                     executor,
+                    &#component_store_name,
                     runtime.params,
                     runtime.node_identity,
                     runtime.remaps,
