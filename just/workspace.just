@@ -557,6 +557,44 @@ doctor:
         fail=1
     fi
 
+    # --- git hooks + settings (issue 0840) ---
+    # `core.hooksPath` is the one that matters: unset, git runs `.git/hooks`
+    # and every pre-push guarantee — duplicate issue id, submodule pin rewind,
+    # and #0840's fast gate tier — is silently INERT. This repo's own hooks had
+    # never been installed on the machine relying on them for a whole session,
+    # and nothing said so. That is #0840's shape one level down: a gate that
+    # exists, is correct, and never runs.
+    #
+    # Read from config/git-settings.txt, NOT a second copy of what setup-hooks
+    # applies — issue 0833 is what a checker with its own idea of the list does.
+    # shellcheck source=scripts/lib/git-settings.sh
+    source scripts/lib/git-settings.sh
+    hooks_missing=()
+    hooks_advisory=()
+    while IFS=$'\t' read -r key want sev; do
+        [ -n "$key" ] || continue
+        got="$(git config --get "$key" 2>/dev/null || true)"
+        [ "$got" = "$want" ] && continue
+        if [ "$sev" = "required" ]; then
+            hooks_missing+=("$key=${got:-<unset>} (want $want)")
+        else
+            hooks_advisory+=("$key=${got:-<unset>} (want $want)")
+        fi
+    done < <(nros_git_settings)
+    if [ ${#hooks_missing[@]} -ne 0 ]; then
+        echo "  [MISSING] git hooks: ${hooks_missing[*]} (run: just setup-hooks)"
+        echo "            Until then every pre-push guarantee is INERT, not merely unchecked:"
+        echo "            duplicate issue ids and submodule pin REWINDS can land, and the"
+        echo "            fast gate tier does not run on push (issue 0840)."
+        fail=1
+    elif [ ${#hooks_advisory[@]} -ne 0 ]; then
+        # Not a failure: these only make a pin move LEGIBLE. Saying so beats
+        # failing a host whose guarantees are all actually in place.
+        echo "  [OK] git hooks (core.hooksPath); note: ${hooks_advisory[*]} (run: just setup-hooks)"
+    else
+        echo "  [OK] git hooks + submodule legibility settings"
+    fi
+
     # --- cargo-tools ---
     # cargo-installed tools (nextest / llvm-cov / espflash) land in ~/.cargo/bin,
     # which rustup adds to PATH on install. `nros` is different: Phase 218

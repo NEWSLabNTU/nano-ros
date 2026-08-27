@@ -1039,13 +1039,20 @@ issue-new slug="":
 #                               on no remote (the "push the submodule FIRST" rule).
 [group("main")]
 setup-hooks:
-    @git config core.hooksPath .githooks
-    @git config diff.submodule log
-    @git config status.submoduleSummary true
-    @git config push.recurseSubmodules check
-    @echo "hooks installed: core.hooksPath -> .githooks"
-    @echo "submodule legibility: diff.submodule=log, status.submoduleSummary=true,"
-    @echo "                      push.recurseSubmodules=check"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Issue 0840 — the settings are DATA (config/git-settings.txt), applied here
+    # and verified by `just doctor` through the same reader. Two hand-authored
+    # copies of one list is precisely the pair that drifted in issue 0833 one
+    # day earlier, and the checker was the copy that lost.
+    # shellcheck source=scripts/lib/git-settings.sh
+    source scripts/lib/git-settings.sh
+    while IFS=$'\t' read -r key value _sev; do
+        [ -n "$key" ] || continue
+        git config "$key" "$value"
+        echo "  git config $key $value"
+    done < <(nros_git_settings)
+    echo "hooks installed: core.hooksPath -> .githooks"
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens

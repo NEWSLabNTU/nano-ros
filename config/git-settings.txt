@@ -1,0 +1,27 @@
+# Repo-local git settings `just setup-hooks` applies and `just doctor` verifies.
+#
+# Issue 0840 follow-on. This is DATA for the same reason config/rust-targets.txt
+# is (issue 0833, one day earlier): the installer and the checker were about to
+# be two hand-authored copies of one list, and that is the exact pair that
+# drifted last time — `just doctor` reported `[OK] rust-targets` on a host that
+# could not build, because its copy was missing an entry the installer had.
+#
+# `core.hooksPath` is the load-bearing row and the reason this check exists at
+# all: with it unset, git runs `.git/hooks` instead of `.githooks`, so the
+# pre-push guarantees (duplicate issue id, submodule pin rewind, and the fast
+# gate tier of #0840) are silently INERT. Measured 2026-08-27 — this repo's own
+# hooks had never been installed on the machine doing the work, through a whole
+# session of relying on them. Nothing said so, which is #0840's shape one level
+# down: a gate that exists, is correct, and never runs.
+#
+# The other three are git BUILTINS that make a submodule pin move legible. git
+# has no setting that REFUSES a rewind (that is the hook's job); it does know
+# how to describe one, and by default it does not.
+#
+# Columns: <git config key> <expected value> <severity>
+#   required  a guarantee is inert without it — doctor FAILS
+#   advisory  legibility only — doctor NOTES it, and does not fail the host
+core.hooksPath           .githooks  required
+diff.submodule           log        advisory
+status.submoduleSummary  true       advisory
+push.recurseSubmodules   check      advisory
