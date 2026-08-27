@@ -1,14 +1,55 @@
 ---
 id: 848
-title: "The board decodes nothing after the serial handshake — not even Declares
-  the router demonstrably queued — and then stack-overflows at expiry"
+title: "The router stops transmitting on serial ~200 ms after the handshake —
+  confirmed at the board's UART, not from router logs"
 status: open
 type: bug
 area: rmw
 related: [issue-0839, issue-0821]
 ---
 
-## CORRECTION (2026-08-28) — read this first
+## RESOLVED DIAGNOSIS (2026-08-28) — measured at the board's UART
+
+The original claim (router goes silent) was right; the *evidence* for it was
+not, and it was retracted below for that reason. It has now been re-established
+from the board side, which does not depend on router logging at all.
+
+`_z_read_serial_internal` on Zephyr polls per byte with a **1000 ms** deadline
+(`_Z_ZEPHYR_SERIAL_TIMEOUT_MS`), so consecutive calls give ~100% listening duty.
+Instrumented to report bytes-seen on every path:
+
+```
+DIAG-RX: got frame rb=9  -> deserialize=ok hdr=0x03    <- INIT|ACK
+DIAG-RX: got frame rb=83 -> deserialize=ok hdr=0x00    <- data
+DIAG-RX: got frame rb=15 -> deserialize=ok hdr=0x00    <- data
+DIAG-RX: timeout after 0 byte(s)   x19                 <- genuine silence
+DIAG-RX: timeout after 4 byte(s)   x1                  <- truncated frame
+```
+
+**Three frames arrive around the handshake, then nineteen one-second windows of
+absolute silence.** The board is listening the whole time and there is nothing
+on the wire. The receive path is healthy — it decodes every frame it is given,
+including two post-handshake data frames.
+
+That also explains the earlier "board decodes only init+open" reading: zenoh's
+`*_decode` DEBUG lines cover the handshake messages specifically, so the two
+data frames were received and processed without producing one.
+
+### Second, smaller finding: a truncated frame
+
+One timeout fired **after 4 bytes had already arrived** — a frame started and
+never completed within 1000 ms. Whether that is a dropped tail on the wire or a
+sender that stalled mid-frame is not established, but it is a distinct failure
+from the 19 zero-byte windows and should not be folded into them.
+
+### What remains unknown
+
+Why the router stops. The board-side measurement proves nothing arrives; it
+cannot say whether the router's tx task stopped, its keepalive arm never fires,
+or bytes are lost between the two. That still wants a working wire tap, and the
+socat approach failed twice here.
+
+## Earlier correction (kept — the reasoning still applies to router-log evidence)
 
 This issue was filed claiming **"router keepalives sent: 0"**, counted by
 grepping the router log for `KeepAlive` and finding only `rx:` lines. **That
