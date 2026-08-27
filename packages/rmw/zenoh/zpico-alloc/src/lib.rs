@@ -353,21 +353,43 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             return new_ptr;
         }
 
-        unsafe {
-            // Determine old size: slab slots are fixed SLAB_SLOT_SIZE,
-            // free-list blocks store size in the header.
-            let old_size = if self.is_in_slab(old_ptr as *mut u8) {
-                SLAB_SLOT_SIZE
-            } else {
-                let old_header = (old_ptr as *mut u8).sub(HEADER_SIZE) as *mut BlockHeader;
-                (*old_header).size
-            };
-            let copy_size = if old_size < size { old_size } else { size };
-            ptr::copy_nonoverlapping(old_ptr as *const u8, new_ptr as *mut u8, copy_size);
+        // phase-391 W2 follow-up — the heap branch used to read the OLD
+        // free-list `BlockHeader` at `old_ptr - 8` for the size. Heap pointers
+        // now come from rlsf, whose used-block header at that offset packs
+        // size WITH flag bits in a different layout, so that read returned a
+        // corrupted size and the copy ran out of bounds. Slab pointers are
+        // still fixed-size and safe; heap pointers now go through rlsf's own
+        // `reallocate`, which knows its own headers.
+        if self.is_in_slab(old_ptr as *mut u8) {
+            unsafe {
+                let copy_size = if SLAB_SLOT_SIZE < size {
+                    SLAB_SLOT_SIZE
+                } else {
+                    size
+                };
+                ptr::copy_nonoverlapping(old_ptr as *const u8, new_ptr as *mut u8, copy_size);
+            }
+            self.free(old_ptr);
+            return new_ptr;
         }
-
-        self.free(old_ptr);
-        new_ptr
+        // Heap pointer: undo the speculative alloc above and let rlsf move the
+        // block itself (it preserves the old block on failure).
+        self.free(new_ptr);
+        unsafe {
+            self.ensure_init();
+            let layout = match Layout::from_size_align(size, ALIGN) {
+                Ok(l) => l,
+                Err(_) => return ptr::null_mut(),
+            };
+            let tlsf = &mut *self.tlsf.get();
+            let Some(nn) = core::ptr::NonNull::new(old_ptr as *mut u8) else {
+                return ptr::null_mut();
+            };
+            match tlsf.reallocate(nn, layout) {
+                Some(p) => p.as_ptr() as *mut core::ffi::c_void,
+                None => ptr::null_mut(),
+            }
+        }
     }
 
     /// Return a block to the allocator.
@@ -710,5 +732,55 @@ mod tests {
 
         // Peak should reflect the maximum
         assert!(heap.peak() >= used_after_both);
+    }
+
+    // phase-391 W2 follow-up — realloc used to read the retired free-list
+    // BlockHeader under rlsf-owned pointers (an OOB read; not deterministically
+    // assertable without miri, so these pin the REPLACEMENT's contract).
+    #[test]
+    fn heap_realloc_grow_preserves_content() {
+        static H: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
+        let p = H.alloc(200) as *mut u8; // > SLAB_SLOT_SIZE -> heap
+        assert!(!p.is_null());
+        for i in 0..200u32 {
+            unsafe { *p.add(i as usize) = (i % 251) as u8 };
+        }
+        let q = H.realloc(p as *mut core::ffi::c_void, 1000) as *mut u8;
+        assert!(!q.is_null());
+        for i in 0..200u32 {
+            assert_eq!(unsafe { *q.add(i as usize) }, (i % 251) as u8, "byte {i}");
+        }
+        H.free(q as *mut core::ffi::c_void);
+    }
+
+    #[test]
+    fn heap_realloc_shrink_then_reuse() {
+        static H: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
+        let p = H.alloc(1000);
+        assert!(!p.is_null());
+        let q = H.realloc(p, 100);
+        assert!(!q.is_null());
+        // The allocator must still be coherent afterwards: a fresh large
+        // alloc succeeds and does not alias the live block.
+        let r = H.alloc(2000);
+        assert!(!r.is_null());
+        assert_ne!(q, r);
+        H.free(q);
+        H.free(r);
+    }
+
+    #[test]
+    fn slab_realloc_promotes_to_heap_with_content() {
+        static H: FreeListHeap<{ 32 * 1024 }> = FreeListHeap::new();
+        let p = H.alloc(32) as *mut u8; // slab
+        for i in 0..32u8 {
+            unsafe { *p.add(i as usize) = i };
+        }
+        let q = H.realloc(p as *mut core::ffi::c_void, 500) as *mut u8; // heap
+        assert!(!q.is_null());
+        for i in 0..32u8 {
+            assert_eq!(unsafe { *q.add(i as usize) }, i);
+        }
+        H.free(q as *mut core::ffi::c_void);
     }
 }
