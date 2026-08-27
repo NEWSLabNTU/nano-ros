@@ -866,3 +866,86 @@ Not claimed: that this is the floor. The next bound is whatever the new
 concurrency profile exposes, and it should be measured the same way rather than
 guessed. The same serial-loop shape may exist on other lanes; this measured only
 `threadx_riscv64`.
+
+## Swept the other lanes for the same serial loop (2026-08-27): threadx was the only one
+
+The previous section noted the shape might exist elsewhere and that only
+`threadx_riscv64` had been measured. Checked all of them. **It does not.**
+
+| lane | serial build loop? | why |
+| --- | --- | --- |
+| `threadx_riscv64` | **YES — fixed** | 12 rust leaves, 77% of wall |
+| native | no | the loops are `nros sync` prep, ~0.1 s each |
+| freertos | no | one `rm -rf` clean loop; one `nros sync` loop |
+| nuttx / threadx-linux / qemu | no | no build-dispatch loop at all |
+| esp32 | shape present, **not worth fixing** | see below |
+| zephyr | shape present, **wrong to fix** | see below |
+
+Every lane routes its C/C++ leaves through `scripts/build/fixtures-build.sh`,
+which is `make -j$(nros_cargo_frontend_jobs)`. The threadx rust leaves were the
+one set that bypassed it.
+
+### esp32 — real shape, two independent reasons it would not pay
+
+`just/esp32.just:107` loops twice over `fixtures-build.sh … --id <one-row>`, and
+because each `--id` selects exactly ONE record, `fixtures-build.sh` takes its
+serial branch rather than `run_with_make`. `build-logging-smoke` is a third such
+call over the same group. A single call without `--id` would fan all three out.
+
+But:
+
+* **All three rows share one cargo target dir** — `qemu-esp32-baremetal` is in
+  `NROS_FIXTURE_SHARED_PLATFORMS` (verified directly). These leaves are PURE
+  CARGO, so cargo's exclusive build-directory lock serialises them whatever the
+  dispatch does. This is the distinction from threadx, where ~20 s of each leaf
+  is cmake/ninja C compilation and cargo is 0.07 s — the lock is irrelevant
+  there and decisive here.
+* **No rustup pre-warm.** `just/nuttx.just` pins `NROS_CARGO_FRONTENDS=1`
+  precisely because concurrent `-Z build-std` cold starts race
+  `~/.rustup/downloads/<hash>.partial`. esp32 uses build-std with no such guard
+  and no documented serialisation intent, so making it concurrent would
+  reintroduce that race unprotected.
+
+Recorded, not fixed. A fix would mean un-sharing the target dir — trading back
+what this issue bought.
+
+### zephyr — the loops are not on any build path, and parallelising them is unsafe
+
+`just/zephyr-dev.just` has five loops (lines 145/166/189/214/217), 24
+`build-one` invocations. They are **developer-convenience recipes only**:
+nothing in CI or the fixture path calls them. `nightly.yml`'s runnable list
+excludes zephyr, and zephyr's CI calls `build-one` directly, one leaf per matrix
+cell. `just zephyr test` depends on `build-fixtures`, not on these.
+
+The fixture path is `scripts/build/zephyr-fixture-make-driver.sh` —
+`make -j --jobserver-style=fifo` over leaves enumerated from `fixtures.toml`,
+already parallel and a strict superset of what these loops build (68 zephyr rows
+vs 24 invocations).
+
+And a `jobs`-width fan-out would be actively wrong here, for reasons already
+written down in the tree:
+
+* `build-one` runs `west build` with **no `-j` and no
+  `CMAKE_BUILD_PARALLEL_LEVEL`**, so each leaf's ninja takes full `nproc`. N-wide
+  dispatch is N x nproc. The fixture driver solves exactly this with a shared
+  fifo token pool and warns that the naive form "would oversubscribe to N x
+  ninja_jobs".
+* Issue 0086's rustup race — `zephyr-ci.just` pre-adds rust-std targets SERIALLY
+  before its fan-out for this reason; `build-rust-examples` has no such guard.
+* `build-one` sets no `CCACHE_DIR` and no `--toolchain-cache-dir`, where the
+  fixture path pins a shared toolchain capability DB so concurrent leaves do not
+  contend on Zephyr's default.
+* The fixture driver takes a repo-level `flock`; `build-one` takes none.
+
+So the correct move for those loops is deletion in favour of the existing
+`build-fixtures --filter`, following issue 0549's precedent — not a fan-out.
+Not done here: it is a developer-UX change, not a build-performance one.
+
+### The one thing worth fixing, and it is not concurrency
+
+Both native and freertos run `nros sync` per example in a loop immediately
+before calling `fixtures-build.sh` — which then pre-syncs every row itself in
+`nros_presync_row_dirs`. Those directories are synced **twice per invocation**.
+The repo already measured concurrent same-directory syncs as SAFE and chose to
+hoist rather than parallelise, so the fix shape is deletion, not a fan-out. Small
+(~0.1 s per sync), so recorded rather than done.
