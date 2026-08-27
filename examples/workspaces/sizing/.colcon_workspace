@@ -1,0 +1,8 @@
+# This directory is a workspace ROOT (pkg-index marker #2).
+#
+# phase-383 W10.a — the cargo/cmake root here is GENERATED under
+# `build/<coord>/` and gitignored, so it is absent in a fresh clone and between
+# builds. `detect_workspace_root` walks up for a `Cargo.toml` carrying
+# `[workspace]` and otherwise falls back to `.git/`, which would make a package
+# here resolve its root to the REPOSITORY and index every package in the tree.
+# A workspace is a workspace whether or not anything has been built in it.

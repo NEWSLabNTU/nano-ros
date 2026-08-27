@@ -102,7 +102,7 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/sizing"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 target_dir = "target-fixtures"
 
 [[workspace_fixture]]

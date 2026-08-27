@@ -360,7 +360,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     // 0676 wants. `NROS_CARGO_FLAGS=` because the PATH shim
                     // injects `--locked` project-wide and would forbid this
                     // step too.
-                    if generated_root && !root.join("Cargo.lock").is_file() {
+                    // Whenever the root is ours — not only when the lock is
+                    // absent. A workspace migrated from a hand-written root
+                    // still carries that root's lock, and it does not describe
+                    // the generated member list, so `--frozen` refuses it just
+                    // the same. `generate-lockfile --offline` is a no-op when
+                    // the lock already satisfies the manifest, so the common
+                    // case costs nothing.
+                    if generated_root {
                         cargo_prepare = Some(
                             Handoff::new(
                                 "cargo",
@@ -734,6 +741,13 @@ fn generate_entry(
     // issue 0798 with the roles reversed.
     let candidates = [board_name.as_str(), image_id, platform];
 
+    // Where the entry will be written — needed to make its dependency paths
+    // relative, and computed before the spec because the spec carries them.
+    let entry_dir_for_deps = root
+        .join("build")
+        .join(coordinate(platform, image))
+        .join(crate::builder::entry::package_name(image_id));
+
     let spec = EntrySpec {
         image_id: image_id.to_string(),
         deploy: crate::builder::entry::macro_deploy_token(&candidates),
@@ -743,6 +757,32 @@ fn generate_entry(
         nodes,
         nano_ros_root: nros_root.to_path_buf(),
         facade_dir,
+        // A `[[bridge]]` in the bringup makes the macro emit a call into
+        // `nros_bridge`; nothing in the package graph implies it, and the
+        // hand-written bridge entries listed it by hand.
+        bringup_deps: {
+            let mut v = Vec::new();
+            let toml_path = bringup_dir.join("system.toml");
+            if std::fs::read_to_string(&toml_path)
+                .ok()
+                .and_then(|t| t.parse::<toml::Value>().ok())
+                .and_then(|d| {
+                    d.get("bridge")
+                        .map(|b| b.as_array().is_some_and(|a| !a.is_empty()))
+                })
+                .unwrap_or(false)
+            {
+                let rel = crate::builder::paths::relative_or_err(
+                    &entry_dir_for_deps,
+                    &nros_root.join("packages/rmw/bridge"),
+                )
+                .map_err(|e| eyre::eyre!("{e}"))?;
+                v.push(format!(
+                    "nros-bridge = {{ path = \"{rel}\", features = [\"std\", \"config\"] }}"
+                ));
+            }
+            v
+        },
     };
     let facts = BoardFacts::from_descriptor_for(descriptor, &candidates);
     let parent = root.join("build").join(coordinate(platform, image));

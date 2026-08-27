@@ -78,6 +78,19 @@ pub struct EntrySpec {
     pub nano_ros_root: PathBuf,
     /// The generated selection facade's directory, when one exists.
     pub facade_dir: Option<PathBuf>,
+    /// Dependencies the BRINGUP implies, as `name = { … }` manifest lines.
+    ///
+    /// A declaration in `system.toml` can make the macro emit code that needs a
+    /// crate no node package brings: `[[bridge]]` makes it call
+    /// `nros_bridge::run_from_config_str`, and without the dep the generated
+    /// entry fails with `cannot find module or crate` several frames inside the
+    /// macro. The hand-written bridge entries listed `nros-bridge` by hand;
+    /// nothing else in the graph would have told the emitter.
+    ///
+    /// Manifest lines rather than a structured type, for the same reason as
+    /// `crate_root_deps`: a dependency spec is already a small language and
+    /// re-modelling it here would be a second grammar to keep in step.
+    pub bringup_deps: Vec<String>,
 }
 
 /// Board facts the emitter needs, lifted out of [`BoardDescriptor`] so callers
@@ -326,6 +339,12 @@ pub fn render_manifest(
     // verbatim board text (`use panic_semihosting as _;`), so this file cannot
     // infer the crate from them without parsing Rust.
     for dep in &board.crate_root_deps {
+        out.push_str(dep);
+        out.push('\n');
+    }
+
+    // What the BRINGUP's own declarations require — see `bringup_deps`.
+    for dep in &spec.bringup_deps {
         out.push_str(dep);
         out.push('\n');
     }
