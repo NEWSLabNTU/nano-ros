@@ -289,7 +289,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 - **Fixture builds are LANE-SCOPED (#393):** `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>`
   narrows both the platform-family fan-out and the manifest rows; the `.fixtures-built` stamp
   records `lane=` + per-coordinate rows, and `_require-fixtures` checks COVERAGE against the run's
-  lane. Build the lane you'll test — tier 1 doesn't need all 337 rows.
+  lane. Build the lane you'll test — tier 1 doesn't need all 314 rows.
   **A lane answers TWO questions and they have different answers (#482):** which fixtures must be
   FRESH (its cell cover) vs which must EXIST (a property of the RUN). `nros_lane_build_lane` maps
   lane→required build and `CiLane::run_scope` declares it. Tier 1 narrows its run by NAME

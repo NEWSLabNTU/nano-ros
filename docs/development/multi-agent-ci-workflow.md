@@ -798,8 +798,14 @@ already runs the book's setup flow in a clean container (issue 0204), and `just
 doctor` reports install status; both should cover the L0–L2 path specifically,
 so "can a stranger verify their own change?" has a mechanical answer.
 
-There is no `CONTRIBUTING.md` today. It should say one thing loudly: run
-`just ci`, expect L0–L2, and do not attempt the cross lanes.
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md) now carries this (W9). Note it says
+`just ci-l1`, **not** `just ci`: W2's redefinition of `just ci` did not land, so
+`just ci` still calls `check-tier-preconditions` and still demands a
+`lane=native` fixture build. Pointing an outside contributor at it would hand
+them the treadmill this design exists to remove. And the contract is L0–L1, not
+L0–L2 — `ci-l2` does not exist, which is consistent with W10's correction that
+L2 is unaffordable pre-merge until the cache lands, but not with the stage table
+above.
 
 ### Claims do not work for them
 
