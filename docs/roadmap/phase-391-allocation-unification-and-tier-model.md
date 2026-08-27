@@ -787,8 +787,12 @@ registries sized exactly. Key structural facts, read from today's tree:
 * The dynamic path (`register_node`) keeps pool-backed cells at the knob caps —
   two cell layouts, ONE view type. The view is what `tick_one_cell` and the
   trampolines actually need, and it is what makes the split affordable.
-* `ComponentSlotStorage::take()`'s `fetch_add` must become load+store in the
-  same pass (riscv32imc has no CAS — issue 0851's precedent, 25d23e117).
+* ~~`ComponentSlotStorage::take()`'s `fetch_add` must become load+store in the
+  same pass~~ — VERIFIED UNNECESSARY (step 1): 0851's failure was zpico-alloc's
+  `Atomic<T>` shim lacking `fetch_add` on riscv32imc at COMPILE time;
+  `node_runtime` uses `portable_atomic::AtomicUsize`, whose riscv32imc polyfill
+  provides RMW, and the esp32c3 workspace entry builds and registers through
+  `take()` today. Leave it.
 
 Sequencing: view-struct refactor first (inert, all tests must stay green), then
 the macro emission of per-class cell+trampolines, then the Arc deletion, then

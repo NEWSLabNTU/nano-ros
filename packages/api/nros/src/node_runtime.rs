@@ -54,7 +54,7 @@ extern crate alloc;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::{
-    cell::{RefCell, UnsafeCell},
+    cell::{Ref, RefCell, UnsafeCell},
     marker::PhantomData,
     mem::MaybeUninit,
     time::Duration,
@@ -316,22 +316,85 @@ impl ComponentCell {
             Some(unsafe { &*ptr })
         }
     }
+}
 
-    fn lookup_publisher<R>(
-        &self,
-        entity_id: &str,
-        f: impl FnOnce(&EmbeddedRawPublisher) -> R,
-    ) -> Option<R> {
-        let pubs = self.publishers.borrow();
-        pubs.iter()
-            .find(|(id, _)| id == entity_id)
-            .map(|(_, p)| f(p))
+/// phase-391 W5-endgame step 1 (issue 0857) — the NON-GENERIC view every
+/// dispatch/tick path consumes instead of the concrete [`ComponentCell`].
+///
+/// Why a trait and not the cell: the endgame emits a per-class cell whose
+/// registries are sized to the class's DECLARED entity counts (const generics,
+/// which the "never public to other languages" rule confines to the macro
+/// emission), while the dynamic `register_node` path keeps pool-backed cells at
+/// the knob caps. Two cell layouts, ONE dispatch implementation — this trait is
+/// the seam that makes the split affordable. `Ref<'_, [T]>` erases the
+/// `heapless::Vec` capacity; `try_with_slot_mut` erases the slot's storage
+/// shape (borrowed `&'static mut dyn` today, fused inline in the per-class
+/// static tomorrow).
+///
+/// Object-safe on purpose: the FFI trampolines carry a THIN `*mut c_void`, so
+/// each concrete cell type casts back to itself and only then widens to
+/// `&dyn CellView`.
+trait CellView {
+    /// Bump the dispatch counters (`message` = payload was non-empty).
+    fn note_dispatch(&self, message: bool);
+    /// The publisher registered under `entity_id`, if this component declared
+    /// one. Holds the registry's shared borrow for the returned `Ref`'s life.
+    fn publisher(&self, entity_id: &str) -> Option<Ref<'_, EmbeddedRawPublisher>>;
+    fn service_clients(&self) -> Ref<'_, [(IdStr, crate::HandleId)]>;
+    fn action_clients(&self) -> Ref<'_, [(IdStr, usize)]>;
+    fn action_servers(&self) -> Ref<'_, [(IdStr, crate::ActionServerRawHandle)]>;
+    /// Run `f` over the component slot unless it is already mutably borrowed
+    /// (a re-entrant dispatch on the same cell) — in which case the dispatch
+    /// is dropped, exactly as the pre-trait `try_borrow_mut` spelled it.
+    fn try_with_slot_mut(&self, f: &mut dyn FnMut(&mut dyn ComponentSlot));
+    /// The executor's parameter store, or `None` until `apply_param_services`
+    /// threads it in.
+    #[cfg(feature = "param-services")]
+    fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>>;
+}
+
+impl CellView for ComponentCell {
+    fn note_dispatch(&self, message: bool) {
+        self.callback_dispatches.fetch_add(1, Ordering::Relaxed);
+        if message {
+            self.message_dispatches.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    fn publisher(&self, entity_id: &str) -> Option<Ref<'_, EmbeddedRawPublisher>> {
+        Ref::filter_map(self.publishers.borrow(), |pubs| {
+            pubs.iter().find(|(id, _)| id == entity_id).map(|(_, p)| p)
+        })
+        .ok()
+    }
+
+    fn service_clients(&self) -> Ref<'_, [(IdStr, crate::HandleId)]> {
+        Ref::map(self.service_clients.borrow(), |v| v.as_slice())
+    }
+
+    fn action_clients(&self) -> Ref<'_, [(IdStr, usize)]> {
+        Ref::map(self.action_clients.borrow(), |v| v.as_slice())
+    }
+
+    fn action_servers(&self) -> Ref<'_, [(IdStr, crate::ActionServerRawHandle)]> {
+        Ref::map(self.action_servers.borrow(), |v| v.as_slice())
+    }
+
+    fn try_with_slot_mut(&self, f: &mut dyn FnMut(&mut dyn ComponentSlot)) {
+        if let Ok(mut slot) = self.slot.try_borrow_mut() {
+            f(*slot);
+        }
+    }
+
+    #[cfg(feature = "param-services")]
+    fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>> {
+        self.param_server()
     }
 }
 
-/// `PublisherResolver` implementation backed by a `ComponentCell`.
+/// `PublisherResolver` implementation backed by a [`CellView`].
 struct CellResolver<'a> {
-    cell: &'a ComponentCell,
+    cell: &'a dyn CellView,
 }
 
 impl PublisherResolver for CellResolver<'_> {
@@ -342,11 +405,10 @@ impl PublisherResolver for CellResolver<'_> {
         // means the transport had the sample and refused it. Both used to
         // return `Runtime`, which is why a console full of "publish FAILED"
         // could not distinguish a wiring bug from a congested link.
-        self.cell
-            .lookup_publisher(entity_id, |p| {
-                p.publish_raw(data).map_err(|_| NodeDeclError::Runtime)
-            })
-            .unwrap_or(Err(NodeDeclError::UnknownPublisher))
+        match self.cell.publisher(entity_id) {
+            Some(p) => p.publish_raw(data).map_err(|_| NodeDeclError::Runtime),
+            None => Err(NodeDeclError::UnknownPublisher),
+        }
     }
 }
 
@@ -729,11 +791,11 @@ impl ExecutorNodeRuntime {
 /// the component (`&ComponentCell`) and the executor live at once — they are
 /// disjoint, and `RuntimeActions` / `RuntimeClientDispatch` reborrow `&mut`
 /// per call (see their docs).
-fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor<'static>) {
+fn tick_one_cell(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
     let resolver = CellResolver { cell };
-    let service_clients = cell.service_clients.borrow();
-    let action_clients = cell.action_clients.borrow();
-    let action_servers = cell.action_servers.borrow();
+    let service_clients = cell.service_clients();
+    let action_clients = cell.action_clients();
+    let action_servers = cell.action_servers();
     let mut actions = RuntimeActions {
         executor: exec_ptr,
         handles: &action_servers,
@@ -748,10 +810,8 @@ fn tick_one_cell(cell: &ComponentCell, exec_ptr: *mut Executor<'static>) {
     // (the store is a separate `Box<ParamState>` allocation, so this does NOT alias the
     // `&mut Executor<'static>` the action/client tick calls reborrow through `exec_ptr`).
     #[cfg(feature = "param-services")]
-    ctx.set_param_server(cell.param_server());
-    if let Ok(mut slot) = cell.slot.try_borrow_mut() {
-        slot.tick(&mut ctx);
-    }
+    ctx.set_param_server(cell.view_param_server());
+    cell.try_with_slot_mut(&mut |slot| slot.tick(&mut ctx));
 }
 
 /// Phase 258 (Track 2, 2a) — executor `ComponentSlot.tick` trampoline. Casts
@@ -1067,7 +1127,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             metadata.type_name,
                             metadata.type_hash,
                             move |payload: &[u8], status: &nros_node::IntegrityStatus| {
-                                dispatch_into_cell_with_integrity(&cell_s, &cb_s, payload, status);
+                                dispatch_into_cell_with_integrity(&*cell_s, &cb_s, payload, status);
                             },
                         )
                         .map_err(decl_err_from_node)?;
@@ -1083,7 +1143,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                         metadata.type_hash,
                         metadata.qos,
                         move |payload: &[u8]| {
-                            dispatch_into_cell(&cell, &cb_id_owned, payload);
+                            dispatch_into_cell(&*cell, &cb_id_owned, payload);
                         },
                     )
                     .map_err(decl_err_from_node)?;
@@ -1106,7 +1166,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                 let cell = self.cell.clone();
                 self.executor
                     .register_timer(period, move || {
-                        dispatch_into_cell(&cell, &cb_id_owned, &[]);
+                        dispatch_into_cell(&*cell, &cb_id_owned, &[]);
                     })
                     .map_err(decl_err_from_node)?;
                 Ok(())
@@ -1343,26 +1403,19 @@ fn infer_param_value(raw: &str) -> nros_params::ParameterValue {
     ParameterValue::from_string(raw).unwrap_or(ParameterValue::NotSet)
 }
 
-fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
-    cell.callback_dispatches.fetch_add(1, Ordering::Relaxed);
-    if !payload.is_empty() {
-        cell.message_dispatches.fetch_add(1, Ordering::Relaxed);
-    }
-    let resolver = CellResolver {
-        cell: cell.as_ref(),
-    };
+fn dispatch_into_cell(cell: &dyn CellView, cb_id: &str, payload: &[u8]) {
+    cell.note_dispatch(!payload.is_empty());
+    let resolver = CellResolver { cell };
     let mut ctx = CallbackCtx::new(payload, &resolver);
     // W4c — let the callback read `ctx.parameter::<T>(name)` from the executor's store
     // (threaded onto the cell by `apply_param_services`; `None` until then).
     #[cfg(feature = "param-services")]
-    ctx.set_param_server(cell.param_server());
+    ctx.set_param_server(cell.view_param_server());
     // If the slot is already borrowed (a re-entrant publish from a
-    // tick hook on the same cell, etc.) we drop this dispatch. In
-    // practice `try_borrow_mut` succeeds because subscription / timer
+    // tick hook on the same cell, etc.) the view drops this dispatch. In
+    // practice the borrow succeeds because subscription / timer
     // callbacks run sequentially under the single-threaded executor.
-    if let Ok(mut slot) = cell.slot.try_borrow_mut() {
-        slot.dispatch(cb_id, &mut ctx);
-    }
+    cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
 }
 
 /// Phase 250 (Wave 2b) — dispatch a `.safety()` subscription message into the
@@ -1370,25 +1423,18 @@ fn dispatch_into_cell(cell: &Arc<ComponentCell>, cb_id: &str, payload: &[u8]) {
 /// `CallbackCtx::integrity()`. The integrity-aware twin of [`dispatch_into_cell`].
 #[cfg(feature = "safety-e2e")]
 fn dispatch_into_cell_with_integrity(
-    cell: &Arc<ComponentCell>,
+    cell: &dyn CellView,
     cb_id: &str,
     payload: &[u8],
     status: &nros_node::IntegrityStatus,
 ) {
-    cell.callback_dispatches.fetch_add(1, Ordering::Relaxed);
-    if !payload.is_empty() {
-        cell.message_dispatches.fetch_add(1, Ordering::Relaxed);
-    }
-    let resolver = CellResolver {
-        cell: cell.as_ref(),
-    };
+    cell.note_dispatch(!payload.is_empty());
+    let resolver = CellResolver { cell };
     let mut ctx = CallbackCtx::new_with_integrity(payload, &resolver, status);
     // W4c — param store for a `.safety()` subscription callback too.
     #[cfg(feature = "param-services")]
-    ctx.set_param_server(cell.param_server());
-    if let Ok(mut slot) = cell.slot.try_borrow_mut() {
-        slot.dispatch(cb_id, &mut ctx);
-    }
+    ctx.set_param_server(cell.view_param_server());
+    cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
 }
 
 // =============================================================================
@@ -1437,7 +1483,7 @@ unsafe extern "C" fn action_result_trampoline(
 ) {
     let actx = unsafe { &*(ctx as *const ActionClientCtx) };
     let result_slice = unsafe { core::slice::from_raw_parts(result_data, result_len) };
-    dispatch_into_cell(&actx.cell, &actx.result_callback_id, result_slice);
+    dispatch_into_cell(&*actx.cell, &actx.result_callback_id, result_slice);
 }
 
 /// Action-client feedback callback: route each feedback CDR into the
@@ -1453,7 +1499,7 @@ unsafe extern "C" fn action_feedback_trampoline(
         return;
     };
     let feedback_slice = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
-    dispatch_into_cell(&actx.cell, cb_id, feedback_slice);
+    dispatch_into_cell(&*actx.cell, cb_id, feedback_slice);
 }
 
 /// Service-server request callback: deserialize-side runs in the component's
@@ -1540,7 +1586,7 @@ unsafe extern "C" fn action_accepted_trampoline(
     let Some(cb_id) = actx.accepted_callback_id.as_ref() else {
         return;
     };
-    dispatch_into_cell(&actx.cell, cb_id, &[]);
+    dispatch_into_cell(&*actx.cell, cb_id, &[]);
 }
 
 /// Tick-side service/action CLIENT dispatch — the single-node runtime's mirror
