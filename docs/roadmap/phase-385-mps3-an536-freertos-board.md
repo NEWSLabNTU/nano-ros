@@ -159,12 +159,42 @@ in the ASI repo.
   `pgrep -a qemu-system-arm`, and use a distinct multicast group per
   experiment.
 
-  What remains untested is a HOST CycloneDDS peer, which needs `tap`: the
-  baked network is `192.0.3.0/24` (only the last octet is configurable — the
-  base is hardcoded in `cmake/templates/freertos_app_config.c.in`) and
-  bringing a tap interface up requires root. Guest-to-guest is what the
-  acceptance asked for and is now met; guest-to-host is worth a follow-up
-  when someone wants the emulated closed loop against a real ROS stack.
+  **Guest-to-HOST is a separate, still-open question** (investigated
+  2026-08-27 with a tap up, so the root-access blocker is gone). What is now
+  measured:
+
+  * The tap path WORKS. With `tap1` at `192.0.3.1/24` and the guest on
+    `-net tap,ifname=tap1`, frames cross in both directions
+    (`/sys/class/net/tap1/statistics`: rx 68, tx 7 for one short run).
+  * The guest DOES send RTPS discovery. A plain Python listener joined to
+    `239.255.0.1:7400` on `192.0.3.1` captured its packets:
+    `408B from 192.0.3.10:58376 magic=b'RTPS'`, repeatedly.
+  * The host CycloneDDS binds the right interface. Its own config trace
+    reports `selected interfaces: tap1 (index … priority 0)`,
+    `ownip: udp/192.0.3.1`, `SPDP MC: udp/239.255.0.1`.
+  * And yet **neither direction matches**: `ros2 topic echo /chatter` sees
+    nothing while the guest publishes (49 samples in one run), and a host
+    `ros2 topic pub` of a distinctive value never reaches the guest's
+    listener.
+
+  So this is NOT a network problem — packets flow and both ends are on the
+  right interface. It is an endpoint-matching problem, and the open lead is
+  topic naming: ROS 2 mangles `/chatter` to the DDS topic `rt/chatter`, and
+  on this RMW the `rt/` prefix is the CALLER's job — the repo's own Cyclone
+  tests spell it explicitly (`sub.topic_name = "rt/data_roundtrip"`), while
+  the XRCE RMW adds it in `session.c`. Two nros guests agree with each other
+  whatever the convention, which is exactly why guest-to-guest passed and
+  ROS interop did not.
+
+  That is a HYPOTHESIS, not a finding — it was not confirmed, because
+  confirming it needs to read the topic name off SEDP (unicast between
+  discovered participants, so the multicast sniffer above cannot see it) or
+  a raw Cyclone reader on the unmangled name. Worth an hour with `ddsls` or
+  a small C reader before changing anything.
+
+  Note the ASI consumer's Zephyr island DOES interoperate with a real ROS
+  stack over Cyclone (its tap demo drives Autoware), so whatever that lane
+  does differently is the answer to this question.
 
 ## Correction carried in from the consumer's scoping
 
