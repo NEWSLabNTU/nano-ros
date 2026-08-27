@@ -94,6 +94,16 @@ add_two_ints_server` and capturing the key IT declares
 Verified on mr_canhubk3/s32k344 over serial: `ros2 service call` returns sum=7 and sum=99. Left
 recorded, not changed: the QoS field still differs from native (`1:2:1,10:` vs `::,10:`) and blocks
 nothing. See `archived/0824-*`. (2026-08-27)
+**#0843** (core/platform, open 2026-08-27) — `nros::node_runtime` is gated `#[cfg(feature = "rmw-cffi")]`
+while using `alloc`/`Box`/`Vec`, so ANY image linking `nros` with the cffi path needs a global allocator
+regardless of the `alloc` feature: a `no_std` bin fails to link with "no global memory allocator found".
+Bisected with a live reference at each step (`nros-core`, `nros-rmw-cffi`, `nros-node +rmw-cffi` all link
+heap-free; `nros +rmw-cffi` does not, even referencing only `u8`). `cargo check` cannot see this — a lib
+check never needs an allocator, only a link does, which is how phase-391 W1's feasibility note came to
+overstate it. This is the mechanism under W1's "0 of 4 claims backed by a built image": no image CAN be
+built no-alloc on the cffi path, so W1's fixture and W4's `heap-free` lane are both blocked. Distinct from
+0832 (that is bypass, this is unavoidability). See `0843-*`. (2026-08-27)
+
 **#0839** (rmw, open 2026-08-27) — the `action-server` image on mr_canhubk3/s32k344 (zenoh over serial)
 declares every entity correctly and then loses its zenoh session on a ~20 s cycle —
 `_zp_unicast_lease_task: Closing session because it has expired after 10000ms` — against the router config
