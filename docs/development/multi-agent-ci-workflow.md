@@ -337,9 +337,223 @@ The lanes are not new machinery so much as a re-cut of what exists.
 | `just ci-full` | **L6 / pre-release** | unchanged |
 | interop cells (`interop::CELLS`) | **L5** | split out of the general sweep |
 
+New recipes the workflow files above assume, none of which exist yet:
+`just ci-l1`, `just ci-l2`, `just ci-l3`, `just ci-l4-tier1`, and `just claim`.
+Adding them is the real work; the YAML is thin by convention
+([ci-workflow-reorg.md](ci-workflow-reorg.md)) and stays that way.
+
 The two structural edits are: **L2 stops requiring fixtures it does not use**,
 and **L3 becomes a real lane** rather than a single link check — because that is
 where most embedded defect classes are cheapest to catch.
+
+## Setting it up on GitHub
+
+Three things to configure, all scriptable. This assumes the conventions in
+[ci-conventions.md](ci-conventions.md) — a runner is a fresh clone with no
+submodules, no ROS, no SDKs — and the thin-`just`-caller rule from
+[ci-workflow-reorg.md](ci-workflow-reorg.md): workflow YAML calls recipes, it
+never inlines logic.
+
+### 1. Branch protection + merge queue
+
+```sh
+OWNER=NEWSLabNTU REPO=nano-ros
+
+# Required checks are the HOSTED lanes only. L3 runs inside the queue and
+# reports through the merge_group run, so it must NOT be listed here.
+gh api -X PUT "repos/$OWNER/$REPO/branches/main/protection" \
+  --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": false,
+    "contexts": ["l0-source", "l1-unit", "l2-host-exec"]
+  },
+  "enforce_admins": false,
+  "required_pull_request_reviews": null,
+  "restrictions": null
+}
+JSON
+```
+
+Then enable the queue itself (Settings → Branches → `main` → *Require merge
+queue*), or by ruleset:
+
+| setting | value | why |
+| --- | --- | --- |
+| merge method | rebase | the repo requires linear history |
+| maximum PRs to build | **4** | one batch ≈ a quarter of the CI runs |
+| minimum PRs to merge | 1 | do not stall a quiet queue |
+| wait time to meet minimum | 5 min | lets a batch actually form |
+| status check timeout | > L3's p99 | a timeout is indistinguishable from a red |
+
+`strict: false` matters. "Require branches up to date" forces every PR to rebase
+before merging, which is precisely the rebase-race this design removes — the
+queue tests the speculated trunk instead.
+
+### 2. Register a runner (works behind NAT)
+
+`scripts/ci/runner-register.sh`, in outline:
+
+```sh
+#!/usr/bin/env bash
+# usage: runner-register.sh <label>[,<label>...]
+set -euo pipefail
+LABELS="${1:?labels required}"
+OWNER=NEWSLabNTU REPO=nano-ros
+
+scripts/ci/runner-doctor.sh "$LABELS"      # refuse to lie about capabilities
+
+TOKEN="$(gh api -X POST "repos/$OWNER/$REPO/actions/runners/registration-token" \
+         --jq .token)"
+
+./config.sh \
+  --url "https://github.com/$OWNER/$REPO" \
+  --token "$TOKEN" \
+  --labels "self-hosted,linux,$LABELS" \
+  --ephemeral \
+  --unattended \
+  --replace
+sudo ./svc.sh install "$RUNNER_USER" && sudo ./svc.sh start
+```
+
+Only outbound 443 is used — the runner long-polls GitHub. Nothing needs to
+reach it, so NAT, DHCP and a laptop uplink are all fine. The registration token
+is short-lived (about an hour) and is *not* a secret to store.
+
+`--ephemeral` means the runner takes one job and de-registers; a supervisor
+re-registers it. That is what stops one job leaving state for the next, and it
+is not optional on a public repo.
+
+### 3. Runner roles
+
+Register each machine for what it has, not what it is:
+
+```sh
+scripts/ci/runner-register.sh nros-qemu,nros-sdk-zephyr,nros-big   # builder
+scripts/ci/runner-register.sh nros-ros2                            # interop
+```
+
+## The workflow files
+
+Four files, replacing the current five. Each job is a thin `just` caller.
+
+**`pr.yml`** — hosted, every PR. This is the whole pre-merge gate.
+
+```yaml
+name: pr
+on:
+  pull_request:
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true          # supersede an agent's own re-push
+jobs:
+  l0-source:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: just check-fast         # buildless; no submodules needed
+
+  l1-unit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: target
+          key: l1-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'packages/**/*.rs') }}
+      - run: just ci-l1              # affected crates only
+
+  l2-host-exec:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false          # init only what the lane needs
+      - run: just ci-l2              # Linux + native_sim + threadx-linux + freertos-posix
+```
+
+`l2` needs the Zephyr *sources* for native_sim but **not** the SDK — it builds
+with host gcc. That is the whole reason this lane fits on a hosted runner.
+
+**`queue.yml`** — self-hosted, merge queue only.
+
+```yaml
+name: queue
+on:
+  merge_group:
+jobs:
+  l3-cross-build:
+    runs-on: [self-hosted, linux, nros-sdk-zephyr]
+    steps:
+      - uses: actions/checkout@v4
+      - run: just ci-l3              # cross build + link + mem-report + no-alloc
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: { name: l3-logs, path: tmp/ci-*.log }
+```
+
+The upload is not decoration: a NAT'd runner cannot be reached, so its logs must
+leave with the run or the failure is undiagnosable.
+
+**`post-submit.yml`** — self-hosted, after landing.
+
+```yaml
+name: post-submit
+on:
+  push:
+    branches: [main]
+jobs:
+  l4-cross-run:
+    runs-on: [self-hosted, linux, nros-qemu]
+    steps:
+      - uses: actions/checkout@v4
+      - run: just ci-l4-tier1        # tier-1 boards only
+```
+
+**`nightly.yml`** — the full L4 matrix plus L5 interop, on schedule. L5 stays
+here and nowhere else, because it is the flakiest lane and must never gate a
+batch.
+
+## What a contributor or agent actually does
+
+```sh
+# 1. Claim the work — atomic, race-free, and it expires if the agent dies.
+just claim issue-0827
+
+# 2. Isolate.
+git worktree add ../nros-0827 -b fix/0827
+
+# 3. Work, then verify locally. `just ci` is now L0+L1+L2 — minutes, no fixtures,
+#    no cross toolchain. This is the ONLY verification an agent runs.
+just ci
+
+# 4. Push a branch and open a PR. Never push to main.
+git push -u origin fix/0827
+gh pr create --fill
+
+# 5. Enqueue and walk away.
+gh pr merge --auto --rebase
+```
+
+From there nothing is the author's problem:
+
+| stage | who | on failure |
+| --- | --- | --- |
+| PR lanes L0–L2 | hosted runners | author fixes; queue never sees it |
+| merge queue L3 | self-hosted | queue ejects the PR, re-forms the batch, notifies the author |
+| landed | — | — |
+| post-submit L4 | self-hosted | culprit-find, auto-revert, issue filed against the author |
+
+**What changes for an agent, concretely:** it no longer runs `just ci-matrix` or
+`ci-full`, no longer rebuilds fixtures before pushing, and no longer rebases to
+chase a moving `main`. It claims, works, runs one fast verb, and enqueues. The
+expensive tiers become someone else's asynchronous problem, which is the point —
+today ten agents each pay for them serially.
+
+**What still requires judgement:** a red in L4 post-submit lands on `main` and
+gets auto-reverted. Agents must treat an auto-revert as a first-class signal —
+reclaim the issue, reproduce locally against the reverted commit — rather than
+re-pushing the same change.
 
 ## Telemetry, and when to abandon this
 
