@@ -202,6 +202,28 @@ build-fixtures:
     # moves into the fixture manifest" is done: it has a row, so the
     # `fixtures-build.sh` call above builds it with a coordinate and a group.
 
+# Phase-395 W0.5 — the two lane verbs every other platform module has.
+#
+# `nightly.yml` runs `just <plat> build-all || just <plat> build-examples ||
+# just <plat> build`. `qemu` was the ONLY module missing both, so that chain
+# silently fell through to the lightest `build` for this platform alone — the
+# heavy fixture build QEMU e2e actually consumes never ran on the nightly, and
+# the two "does not contain recipe" errors were swallowed by the `||`. Silent
+# narrowing: reduced coverage reported as success.
+#
+# `build-all` mirrors freertos/threadx/nuttx/esp32 — the fixture build is the
+# whole of it here, because `build-fixtures` already covers the example
+# binaries this platform ships.
+[group("full-matrix")]
+build-all: build-fixtures
+    @echo "QEMU bare-metal build-all completed."
+
+# Alias kept because the nightly chain names it and a missing verb degrades
+# silently rather than failing.
+[group("full-matrix")]
+build-examples: build-fixtures
+    @echo "QEMU bare-metal build-examples completed."
+
 # Run all QEMU tests (non-networked)
 [group("main")]
 test verbose="": build-fixtures
@@ -210,7 +232,18 @@ test verbose="": build-fixtures
     failed=0
     just init-test-logs
     just qemu test-basic {{verbose}} || failed=1
-    just qemu test-wcet {{verbose}} || failed=1
+    # `test-wcet` is deliberately NOT here. The bench refuses to emit numbers on
+    # QEMU because the DWT cycle counter does not increment there, and a zero
+    # WCET is indistinguishable from "this operation is free" — the most
+    # optimistic value there is, which always errs toward `schedulable`
+    # (issues 0403 / 0259). That refusal is correct, and it means the bench can
+    # NEVER pass under emulation.
+    #
+    # So including it in the QEMU aggregate made this lane red by construction:
+    # the nightly `qemu` job failed on it every run, which is how a permanently
+    # red lane stops carrying signal about anything else in it (phase-395 W0.5).
+    # WCET belongs to the hardware lane; run `just qemu test-wcet` directly on a
+    # board.
     just qemu test-lan9118 {{verbose}} || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some QEMU tests failed."
