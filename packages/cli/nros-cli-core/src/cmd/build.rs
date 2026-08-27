@@ -201,6 +201,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
+        let mut cargo_prepare: Option<Handoff> = None;
         let handoff = match driver {
             Driver::Cargo => {
                 // W3.b — generate the entry package. This is D4's headline
@@ -265,6 +266,9 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // build/ — cargo requires members to sit below their root and
                 // resolves a package's workspace by walking up. An existing
                 // hand-written root is used as-is, never overwritten.
+                // Did WE write this root? `has_tracked_root` answers it the
+                // same way `cargo_root::ensure` decides whether to write.
+                let generated_root = !crate::builder::cargo_root::has_tracked_root(&root);
                 let excluded = cargo_excluded_entry_dirs(&found, &catalog);
                 // EVERY cargo image's entry, not just this one.
                 //
@@ -337,6 +341,35 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     // 0676 records why `--offline` alone is the wrong spelling
                     // (it restricts the cache without pinning resolution).
                     a.push("--frozen".to_string());
+
+                    // A GENERATED root has a GENERATED lock, and `--frozen`
+                    // forbids creating one:
+                    //
+                    //   error: cannot update the lock file … because --frozen
+                    //   was passed to prevent this
+                    //
+                    // `--locked` exists to stop a build silently re-resolving
+                    // an AUTHORED lock — a promise that someone else's build
+                    // resolves what yours did. This lock is build output of a
+                    // root this process just wrote, so there is no promise to
+                    // protect, and the first build after a clone has nothing to
+                    // be frozen against.
+                    //
+                    // So resolve ONCE, offline, before the frozen build. The
+                    // build itself stays frozen, which is the property issue
+                    // 0676 wants. `NROS_CARGO_FLAGS=` because the PATH shim
+                    // injects `--locked` project-wide and would forbid this
+                    // step too.
+                    if generated_root && !root.join("Cargo.lock").is_file() {
+                        cargo_prepare = Some(
+                            Handoff::new(
+                                "cargo",
+                                vec!["generate-lockfile".to_string(), "--offline".to_string()],
+                            )
+                            .in_dir(&root)
+                            .with_env("NROS_CARGO_FLAGS", ""),
+                        );
+                    }
                 }
                 a.extend(args.native_args.iter().cloned());
                 // Run FROM the workspace root, not the manifest dir: cargo
@@ -522,7 +555,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         };
 
         out.push(ResolvedBuild {
-            configure: cmake_configure,
+            configure: cmake_configure.or(cargo_prepare),
             qualified: qual,
             board,
             platform,
