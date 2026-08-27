@@ -783,3 +783,86 @@ copies the UNLOCALIZED archive from the shared dir into each leaf, localization
 modifies it, so the next build's `copy_if_different` sees a difference and
 re-copies, invalidating the stamp. Localizing once in the shared dir would fix
 it, but cargo owns that file.
+
+## Critical path measured (2026-08-27): it was a bash for-loop
+
+The previous section said the next step was a critical-path measurement rather
+than another component hunt. Done, with a new instrument —
+`scripts/build/sample-build-leaves.sh`, which attributes each of the build's
+descendants to a LEAF (by lineage, then by build-dir path) and records how many
+leaves are active per instant. The existing samplers answer "how busy" and "what
+is it blocked on"; neither answers "how many at once", which is the only
+question that turns a component's size into its effect on the wall.
+
+Warm `threadx_riscv64`, 331 s, 81% of process-samples leaf-attributed:
+
+```
+t+0..60s     6-7 leaves concurrent, 45-59 procs
+t+90..330s   ONE leaf, 7-8 procs
+```
+
+| leaves active | share of wall |
+| --- | --- |
+| **1** | **73.8%** |
+| 6-7 | 21.0% |
+
+And the tail names itself:
+
+```
+t+ 75s  rust/talker/build-cyclonedds
+t+ 99s  rust/talker/build-zenoh
+t+121s  rust/listener/build-cyclonedds
+ …
+t+311s  rust/action-client/build-zenoh
+```
+
+Twelve rust leaf builds, ~20 s each, strictly one at a time — a plain serial
+`for` loop in `just/threadx-riscv64.just`, running beside C/C++ leaves that
+`fixtures-build.sh` was already dispatching 7-wide under `make -j8`.
+
+**256 s of a 331 s wall — 77% — was that loop, on a 32-core box.**
+
+### Why every earlier fix disappointed
+
+This issue removed ~750 s of archive post-processing and gained 30 s of wall,
+and 452 s of cargo recompilation for 97 s. Both were real; neither was the
+bound. They were overlapped work sitting beside a serial critical path, and no
+amount of shrinking them could move a wall that loop determined.
+
+That is the durable lesson, and it is the same shape as issue 0648's: **a
+component being large is not evidence that it bounds anything.** 0648 warns
+against reading an event count as a cost; this warns against reading a cost as a
+bound. Both need the measurement that answers the actual question.
+
+### Fixed
+
+The loop now dispatches concurrently at the same width the C/C++ leaves get
+(`nros_cargo_frontend_jobs`). Failures stay fatal: a backgrounded job escapes
+`set -e`, so each records its own status and the join re-raises — a silent pass
+would be the "reports PASS on unmet preconditions" failure gated against
+elsewhere in this tree.
+
+| | before | after |
+| --- | --- | --- |
+| wall, warm | 331 s | **227 s** |
+| 1 leaf active | 73.8% of wall | — |
+| 12 leaves active | — | **63.2% of wall** |
+
+rc=0, 29 binaries, every rust leaf produced one, 133/133 gates green.
+
+### Warm floor, end to end
+
+| stage | wall |
+| --- | --- |
+| start of this work | 459 s |
+| after the cargo fingerprint fix | 362 s |
+| after the archive-processing stamp | 331 s |
+| after parallel rust dispatch | **227 s** |
+
+**51% off the warm rebuild**, and the shape is now healthy: 12 leaves in flight
+for most of it rather than one.
+
+Not claimed: that this is the floor. The next bound is whatever the new
+concurrency profile exposes, and it should be measured the same way rather than
+guessed. The same serial-loop shape may exist on other lanes; this measured only
+`threadx_riscv64`.

@@ -344,12 +344,50 @@ build-fixture-extras:
             # these six leaves two entry points and two build paths — issue 0666,
             # and the reason 0688's panic policy was missed on the CMake side.
             # The seam is RMW-neutral since W1, so one loop covers both.
+            # issue 0805 — dispatch these CONCURRENTLY, at the same width the
+            # C/C++ leaves already get from `fixtures-build.sh`'s `make -j`.
+            #
+            # This was a plain serial for-loop, and a per-leaf span measurement
+            # showed it WAS the critical path: 6-7 leaves ran together for the
+            # first ~60 s, then 12 rust builds went one at a time for 256 s of a
+            # 331 s wall — 77%, at ~20 s each, on a 32-core box. Every earlier
+            # component fix in this issue (cargo recompiles, archive
+            # post-processing) shaved overlapped work and moved the wall barely
+            # at all, because THIS is what bounded it.
+            #
+            # Failures must still be fatal: a backgrounded job escapes `set -e`,
+            # so each records its own status and the loop below re-raises. A
+            # silent pass here would be the "reports PASS on unmet
+            # preconditions" failure this repo gates against elsewhere.
+            _tx_jobs="$(nros_cargo_frontend_jobs)"
+            _tx_status_dir="$(mktemp -d)"
+            _tx_n=0
             for _rc in talker listener service-server service-client action-server action-client; do
                 if [ -d "examples/qemu-riscv64-threadx/rust/$_rc" ]; then
-                    build_threadx_cmake_rmw "examples/qemu-riscv64-threadx/rust/$_rc" cyclonedds build-cyclonedds
-                    build_threadx_cmake_rmw "examples/qemu-riscv64-threadx/rust/$_rc" zenoh build-zenoh
+                    for _tx_pair in "cyclonedds build-cyclonedds" "zenoh build-zenoh"; do
+                        # shellcheck disable=SC2086
+                        set -- $_tx_pair
+                        while [ "$(jobs -rp | wc -l)" -ge "$_tx_jobs" ]; do wait -n || true; done
+                        _tx_n=$((_tx_n + 1))
+                        (
+                            if build_threadx_cmake_rmw \
+                                "examples/qemu-riscv64-threadx/rust/$_rc" "$1" "$2"; then
+                                : > "$_tx_status_dir/$_rc-$1.ok"
+                            else
+                                : > "$_tx_status_dir/$_rc-$1.fail"
+                            fi
+                        ) &
+                    done
                 fi
             done
+            wait
+            _tx_ok="$(find "$_tx_status_dir" -name '*.ok' | wc -l)"
+            _tx_bad="$(find "$_tx_status_dir" -name '*.fail' | wc -l)"
+            rm -rf "$_tx_status_dir"
+            if [ "$_tx_bad" -ne 0 ] || [ "$_tx_ok" -ne "$_tx_n" ]; then
+                echo "  ThreadX-RV64 rust leaves: $_tx_ok/$_tx_n ok, $_tx_bad failed" >&2
+                exit 1
+            fi
         fi
     fi
     unset NROS_CMAKE_EXTRA_DEFS
