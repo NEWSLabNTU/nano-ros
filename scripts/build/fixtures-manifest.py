@@ -778,6 +778,18 @@ def _cmake_has_entry_target(text, entry_name):
 
 def _validate_rust_workspace(entry, root, entry_dir):
     workspace_manifest = root / "Cargo.toml"
+    if not workspace_manifest.is_file():
+        # A MIGRATED workspace has no tracked root: `nros build` generates it
+        # from the discovered packages plus the `[image.*]` table (phase-383
+        # W3.a), and it is gitignored build output. So it is absent in a fresh
+        # clone and present only after a build — which makes "is this entry a
+        # member?" unanswerable by a STATIC manifest check, and answering it
+        # from whatever happens to be on disk is worse than not asking.
+        #
+        # This row keeps the `entry` form because its entry is hand-written and
+        # driven by idf.py, not cargo; cargo membership is not what builds it.
+        # The entry package's own existence is still checked by the caller.
+        return
     _require_file(entry, workspace_manifest, "workspace Cargo.toml")
 
     member_names = set()
