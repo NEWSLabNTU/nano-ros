@@ -40,6 +40,13 @@ set(_caps ${NANO_ROS_FEATURES})
 if(NANO_ROS_SAFETY_E2E)
     list(APPEND _caps safety)
 endif()
+# issue 0805 — the append does not check, and a declaration that ALREADY names
+# `safety` produced `caps=safety,safety`. Cargo dedupes features so nothing was
+# mis-built, but the list is also an input to the shared-cargo key, and a key
+# that varies with how a list was assembled rather than with the configuration
+# makes two identical leaves stop sharing. The key normalises defensively; this
+# fixes the source so the duplicate never travels.
+list(REMOVE_DUPLICATES _caps)
 # phase-323 W2 — capabilities come from the DECLARATION on every platform.
 #
 # posix used to get `param_services` + `lifecycle` unconditionally. That was not

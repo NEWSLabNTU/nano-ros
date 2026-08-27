@@ -882,6 +882,13 @@ compiles: 494 s to decide nothing was needed, across 70 cargo freshness scans at
 0491 churn or the 0648 package-cache lock — both checked and excluded. Answers 0726's priority 3.
 See `0805-*`. (2026-08-26)
 
+**#0824** (rmw, open 2026-08-27) — a service server registers its queryable and BOTH liveliness tokens on
+domain **0** while the same image's boot node token is on the configured domain. On mr_canhubk3 with
+`CONFIG_NROS_DOMAIN_ID=10`, three of the four declared keys read `@ros2_lv/0/…` against one `@ros2_lv/10/…`,
+so a host on domain 10 matches none of them: `ros2 service list` never shows `/add_two_ints`. Indexed here by
+a passing session to unblock `check-issue-index`; the hook is derived from the issue's own text, so refine it
+if it undersells the finding. See `0824-*`. (2026-08-27)
+
 Recently resolved (2026-08-20): **#0721** — gate scripts walked built trees to find tracked files, and the
 gate forbidding it could not read Python. Closed after RE-MEASURING: five of the seven scripts in the
 issue's Remaining list were already converted by `5a9b77367`; `check-zephyr-kconfig-symbols` stays a walk

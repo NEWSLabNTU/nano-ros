@@ -270,7 +270,15 @@ build-fixture-extras:
     # existed pre-collapse on FreeRTOS). Per-cell RMW + build-subdir come from
     # the manifest; the platform-wide toolchain / codegen-tool -D defs are
     # injected via the shared builder's NROS_CMAKE_EXTRA_DEFS contract.
-    export NROS_CMAKE_EXTRA_DEFS="-DCMAKE_TOOLCHAIN_FILE=$toolchain -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
+    # issue 0805 — one Corrosion cargo dir per (platform, resolved feature
+    # inputs) instead of one per leaf; 12 identical per-leaf dirs here (6 C +
+    # 6 C++, all at the same hash) collapse to 1. cmake keys the subdirectory
+    # itself. `nros_build_dir` verified IN SCOPE in this recipe before wiring
+    # (it arrives via `lane-skip.sh`, sourced first — `cargo.sh` dots
+    # build-root.sh only INSIDE a function, so it does not export the helper).
+    # A missing helper would expand the flag EMPTY and silently keep per-leaf
+    # dirs, which is defect 3 from the native wiring.
+    export NROS_CMAKE_EXTRA_DEFS="-DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" freertos) -DCMAKE_TOOLCHAIN_FILE=$toolchain -DCMAKE_BUILD_TYPE=Release -D_NANO_ROS_CODEGEN_TOOL=$codegen"
     bash scripts/build/fixtures-build.sh freertos c zenoh
     bash scripts/build/fixtures-build.sh freertos cpp zenoh
     unset NROS_CMAKE_EXTRA_DEFS

@@ -340,5 +340,112 @@ keeps the store from accumulating while that happens.
 | `native` | 59 -> 0, 186 GB -> 61 GB | byte-identical |
 | `threadx-linux` | 24 (converts on wipe) | byte-identical |
 
-Remaining: freertos, nuttx, esp32, zephyr — one line each, each needing its own
-in-scope check and its own lane-level A/B. Not wired blind.
+Remaining after this: see the survey below — "one line each" turned out to be
+true of exactly ONE of the four.
+
+## Surveyed all four remaining lanes (2026-08-27) — and the estimate was wrong
+
+This issue said of freertos, nuttx, esp32 and zephyr:
+
+> Every one reaches cmake through `NROS_CMAKE_EXTRA_DEFS`, so wiring is one line
+> each
+
+**That holds for one of the four.** I wrote it from the two lanes I had already
+wired and never checked the others. Surveyed properly:
+
+| lane | Corrosion per-leaf dirs | verdict |
+| --- | --- | --- |
+| **freertos** | **12** (6 C + 6 C++, all one hash) | APPLIES — wired, verified |
+| nuttx | **0** | does not apply — see below |
+| esp32 | **0** | does not apply — no C/C++ leaves exist at all |
+| zephyr | **0** of 141 build dirs | does not apply — not a Corrosion path |
+
+### freertos — wired and verified
+
+Lane A/B, same leaf, both halves fresh on the same commit:
+
+```
+sharing OFF   d2775a32302f2a98364504a1
+sharing ON    d2775a32302f2a98364504a1   -> byte-identical
+```
+
+`nros_build_dir` verified in scope first. Worth recording WHERE it comes from:
+only `scripts/build/lane-skip.sh` exports it (it dots `build-root.sh` at file
+scope); `cargo.sh` dots the same file INSIDE a function, so it does not. The
+freertos recipe happens to source `lane-skip.sh` first, so the wiring is correct
+— but that dependency is incidental rather than declared, which is the same
+shape as defect 3 on native and will bite whoever reorders those lines.
+
+### nuttx — the flag would be INERT, and the duplication is real anyway
+
+`CMakeLists.txt:105` reads `if(NOT NANO_ROS_PLATFORM MATCHES "^nuttx")` around
+`add_subdirectory(packages/api/nros-c)`. The only call site of
+`nros_share_corrosion_cargo_dir()` is inside that subdirectory, so on nuttx it
+is never invoked and `-DNROS_SHARED_CARGO_ROOT` would do nothing. Note the
+empty-value FATAL guard lives inside the function too, so even a broken value
+would fail silently here — a lane where the wiring cannot announce its own
+breakage.
+
+But nuttx HAS the same problem through a different mechanism: 13 leaves each
+with a private `cargo-target/`, measured **716 MB** on `c/talker` alone (~9 GB
+total), set at `packages/api/nros-c/cmake/nros-nuttx.cmake:228`:
+
+```cmake
+set(_cargo_target_dir "${CMAKE_CURRENT_BINARY_DIR}/cargo-target")
+```
+
+That line's own comment already states the key argument this issue arrived at
+independently — "concurrent/sequential builds from different examples silently
+clobber each other" — so any sharing there needs the same keying discipline.
+Also note nuttx has TWO platform coordinates (`nuttx` arm, `nuttx-riscv`), and a
+key that ignored the arch would be wrong.
+
+### zephyr — not Corrosion, and the census is complete
+
+`zephyr/CMakeLists.txt:192-194` says so outright ("not a Corrosion target"), and
+`zephyr/cmake/nros_cargo_build.cmake:412` pins its own
+`CARGO_TARGET_DIR=${CMAKE_BINARY_DIR}/nros-rust`. Verified by scanning the whole
+out-of-tree workspace rather than sampling: **0** `nano-ros_*` dirs across all
+**141** `build-*` directories.
+
+Zephyr does have the duplication — 141 per-leaf `nros-rust/` dirs — but fixing it
+is a change to `nros_cargo_build.cmake`, not a lane wire-up.
+
+### esp32 — nothing to wire
+
+`examples/qemu-esp32-baremetal/` is Rust-only: two leaves, no `CMakeLists.txt`
+anywhere, built by cargo directly. The lane's single Corrosion dir belongs to one
+`idf.py` TEST FIXTURE, not an example leaf, and `idf.py` does not read
+`NROS_CMAKE_EXTRA_DEFS`.
+
+### Lanes wired, final
+
+| lane | before | verified |
+| --- | --- | --- |
+| `threadx_riscv64` | 29 -> 0 | byte-identical, 1706 s -> 898 s |
+| `native` | 59 -> 0, 186 GB -> 61 GB | byte-identical |
+| `threadx-linux` | 24 (converts on wipe) | byte-identical |
+| `freertos` | 12 (converts on wipe) | byte-identical |
+
+**Every lane that can use this mechanism now does.** What remains is not more
+wiring:
+
+* **nuttx**, `nros-nuttx.cmake:228` — ~9 GB across 13 leaves, needs the same
+  keyed sharing built for its own cargo driver, and must key on the arch.
+* **zephyr**, `nros_cargo_build.cmake:412` — 141 per-leaf dirs, same shape.
+* **the warm floor**, which no target-dir change can touch: it is 70 cargo
+  invocations re-scanning fingerprints and needs FEWER INVOCATIONS.
+
+### Closed while here: the two duplication smells
+
+* `caps=safety,safety` — `packages/api/nros-c/CMakeLists.txt` appends `safety`
+  without checking whether the declaration already named it. Fixed at source
+  with `list(REMOVE_DUPLICATES _caps)`; the key normaliser keeps it harmless
+  either way.
+* `panic-platform` seven times — `nros_apply_panic_policy()` is called once per
+  `nano_ros_entry()` and `corrosion_set_features` APPENDS. Investigated and
+  deliberately NOT changed: cargo dedupes features, and conflicting policies are
+  already caught by a `FATAL_ERROR` against the global
+  `NROS_ENTRY_PANIC_POLICY`. De-duplicating the CALLS would risk skipping a
+  target that only appears later in the configure, which is a real hazard traded
+  for a cosmetic one.
