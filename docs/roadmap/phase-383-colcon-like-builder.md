@@ -418,8 +418,14 @@ found only because these trees are not uniform the way ours are.
 - [ ] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
       return. Every gate in this repo exists because a class recurred; this one
       is cheap and the class is "someone re-adds a hand-written root".
-- [ ] **W10.d** Book sweep: `examples/workspaces/*/README.md` still print the
+- [x] **W10.d** Book sweep: `examples/workspaces/*/README.md` still print the
       six-command ritual this phase deletes.
+
+      **Done — 10 READMEs, zero `nros codegen-system` rituals left.** Two things
+      kept deliberately: `nros setup <board>` stays explicit (D2 has the builder
+      PROMPT rather than fetch silently, so hiding provisioning would
+      misrepresent the first run), and the trailing comments that explain the
+      mechanism rather than the ritual.
 
 ---
 
