@@ -69,6 +69,43 @@ group_size() {
     ps -eo pgid= 2>/dev/null | tr -d ' ' | grep -cx "$pgid" || true
 }
 
+# The PIDs currently in $1, so a later check can ask about THOSE processes
+# rather than about a number.
+group_members() {
+    local pgid="$1"
+    [ -n "$pgid" ] || return 0
+    ps -eo pid=,pgid= 2>/dev/null | awk -v g="$pgid" '$2 == g { print $1 }'
+}
+
+# How many of the recorded PIDs ($1, space-separated) are still alive AND still
+# in pgid $2.
+#
+# A bare `pgid == N` count is unsound on a busy host: PGIDs are RECYCLED, so an
+# unrelated process can land in a group numerically equal to one that already
+# drained, and the caller reports survivors that were never its subtree. Not
+# hypothetical — `check-subtree-guard` failed on every GitHub push while passing
+# locally and in a quiet container, with the survivor count varying between runs
+# (1, then 2), which is reuse rather than a slow drain. The hosted runner has 4
+# vCPUs and `check-fast` runs its gates 32-way parallel, so PID churn is
+# enormous there and negligible here.
+#
+# Requiring the SAME pid AND the same pgid is what makes it sound. The repo
+# already carries this lesson as `group_ledger::start_time()` — "a pid is not a
+# pid once recycled"; this is the same rule one level over.
+members_still_in_group() {
+    local pids="$1" pgid="$2" alive=0 p cur
+    for p in $pids; do
+        [ -d "/proc/$p" ] || continue
+        cur="$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')"
+        [ "$cur" = "$pgid" ] && alive=$((alive + 1))
+    done
+    echo "$alive"
+}
+
+# `wait_until` evaluates its predicate in a `bash -c` subshell, which does not
+# inherit shell functions unless they are exported.
+export -f members_still_in_group
+
 wait_until() {
     # $1 = seconds, rest = predicate
     local deadline=$(( SECONDS + $1 )); shift
@@ -95,9 +132,10 @@ lpid="$(launcher_pid)"
 [ -n "$pgid" ] || fail "no payload pgid recorded"
 [ "$(group_size "$pgid")" -ge 3 ] || fail "payload tree never reached depth (got $(group_size "$pgid"))"
 
+members="$(group_members "$pgid" | tr '\n' ' ')"
 kill -TERM "$lpid" 2>/dev/null || fail "could not signal launcher $lpid"
-wait_until 20 bash -c '[ "$(ps -eo pgid= | tr -d " " | grep -cx "'"$pgid"'")" -eq 0 ]' \
-    || fail "subtree survived SIGTERM to its launcher — $(group_size "$pgid") process(es) still in pgid $pgid. This is the orphan bug."
+wait_until 20 bash -c '[ "$(members_still_in_group "'"$members"'" "'"$pgid"'")" -eq 0 ]' \
+    || fail "subtree survived SIGTERM to its launcher — $(members_still_in_group "$members" "$pgid") of ITS OWN process(es) still in pgid $pgid. This is the orphan bug."
 # The guard removes the lock just AFTER the group drains, so wait for it rather
 # than sampling the instant the last process exits.
 wait_until 10 bash -c '! [ -f "$NROS_GUARD_LOCK_DIR/guardtest.pgid" ]' \
