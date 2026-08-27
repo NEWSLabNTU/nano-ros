@@ -2231,6 +2231,18 @@ _nextest-tolerant +nextest_args:
     source scripts/test/nextest-profile.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=({{nextest_args}})
+    # A nextest `-E` expression cannot travel through `{{nextest_args}}`: just
+    # interpolates a variadic parameter UNQUOTED, so `-E 'test(Nuttx)'` lands in
+    # the generated script as `args=(-E test(Nuttx))` and bash dies with
+    # "syntax error near unexpected token `('". That is why the nightly's
+    # `nuttx` and `threadx_linux` jobs failed — they are the only two callers
+    # whose filter contains parens (phase-395 W0.5).
+    #
+    # An env var crosses the `just -> just` boundary without re-parsing, so the
+    # expression never passes through interpolation at all.
+    if [ -n "${NROS_NEXTEST_FILTER:-}" ]; then
+        args+=(-E "$NROS_NEXTEST_FILTER")
+    fi
     # issue 0695 — the junit path is DERIVED, not the hardcoded default:
     # nextest writes it under the target dir, so a lane with a scoped
     # CARGO_TARGET_DIR (test-zpico-multisession) has its junit there, and
@@ -2287,7 +2299,11 @@ _nextest-platform test_name verbose="" feature_args="" filter="":
     # instead of running a target of its own. Without this the choice is running
     # every platform's cells or losing the [SKIPPED] junit rewrite.
     if [ -n "{{filter}}" ]; then
-        args+=(-E '{{filter}}')
+        # NOT `args+=(-E '{{filter}}')`: these args are handed to
+        # `_nextest-tolerant`, whose variadic parameter is interpolated
+        # unquoted, so a filter containing parens becomes a bash syntax error
+        # there. Hand it over in the environment instead.
+        export NROS_NEXTEST_FILTER='{{filter}}'
     fi
     # A target behind `required-features` is skipped SILENTLY by cargo — not
     # reported as filtered, not counted anywhere — so a caller needing one must
