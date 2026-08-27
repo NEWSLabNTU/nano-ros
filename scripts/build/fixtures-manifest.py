@@ -511,15 +511,17 @@ def workspace_record(entry):
     # <id>\x1f<lang>\x1f<dir>\x1f<bringup>\x1f<entry>\x1f<build-subdir>
     # \x1f<target-dir>\x1f<codegen-out>\x1f<cmake -D defs>\x1f<env>\x1f<cargo-args>
     # \x1f<board>\x1f<conf-files>
-    # board/conf_files are zephyr-only; non-zephyr rows emit empty strings so the
-    # field count stays uniform (13 columns).
+    # \x1f<image>
+    # board/conf_files are zephyr-only and `image` is set only on a migrated row
+    # (phase-383 W9.b); rows without them emit empty strings so the field count
+    # stays uniform (14 columns).
     return SEP.join(
         [
             entry["id"],
             entry["lang"],
             entry["dir"],
             entry["bringup"],
-            entry["entry"],
+            entry_name(entry),
             entry.get("build_subdir", ""),
             entry.get("target_dir", ""),
             entry.get("codegen_out", ""),
@@ -528,6 +530,7 @@ def workspace_record(entry):
             cargo_args(entry, include_target_dir=False),
             entry.get("board", ""),
             ";".join(entry.get("conf_files", [])),
+            entry.get("image", ""),
         ]
     )
 
@@ -705,6 +708,53 @@ def _workspace_members(entry, path):
     return workspace.get("members") or []
 
 
+def _workspace_excludes(entry, path):
+    """`[workspace] exclude` — packages under the root that cargo must not own.
+
+    A Rust entry built by ANOTHER framework (west, idf.py) belongs here, not in
+    `members`: it is compiled for a different target by a different driver, and
+    listing it would make `cargo build` at the root try to build it. The
+    generated root says so in its own comment. Before phase-383 W9 the eight
+    hand-written roots also excluded their west entries, so this has always been
+    the shape — the validator simply never looked at the second list, and the
+    generated root is what made that visible (`workspace-rust-esp32` is a `lang
+    = "rust"` row whose entry is driven by idf.py).
+    """
+    workspace = (_load_toml(entry, path).get("workspace") or {})
+    return workspace.get("exclude") or []
+
+
+def entry_name(entry):
+    """The entry PACKAGE name for a row — authored, or derived from its image.
+
+    THE single derivation, matching `nros_cli_core::builder::entry::package_name`.
+    The record, the artifact path and the test-side resolver all read it from
+    here so a migrated row's binary name has one spelling.
+    """
+    authored = entry.get("entry")
+    if authored:
+        return authored
+    image = entry.get("image") or ""
+    return "{}_entry".format(re.sub(r"[-./]", "_", image))
+
+
+def _require_image(entry, system_toml, image):
+    """The `[image.<id>]` a migrated row builds must be declared.
+
+    This is the migrated row's equivalent of `_require_dir(src/<entry>)`: it is
+    the thing whose absence makes the row unbuildable, and it is checkable
+    without running the builder.
+    """
+    table = (_load_toml(entry, system_toml).get("image") or {})
+    if image not in table:
+        declared = ", ".join(sorted(table)) or "(none)"
+        _fail(
+            entry,
+            f"names image {image!r}, which {system_toml} does not declare "
+            f"(declared: {declared})",
+        )
+
+
 def _system_default_launch(entry, path):
     system = (_load_toml(entry, path).get("system") or {})
     return system.get("default_launch")
@@ -740,12 +790,20 @@ def _validate_rust_workspace(entry, root, entry_dir):
             if name:
                 member_names.add(name)
 
-    expected = entry["entry"]
+    for excluded in _workspace_excludes(entry, workspace_manifest):
+        member_basenames.add(Path(excluded).name)
+        excluded_manifest = root / excluded / "Cargo.toml"
+        if excluded_manifest.is_file():
+            name = _package_name(entry, excluded_manifest)
+            if name:
+                member_names.add(name)
+
+    expected = entry_name(entry)
     if expected not in member_names and expected not in member_basenames:
         _fail(
             entry,
-            f"Rust entry {expected!r} is not listed in workspace Cargo.toml "
-            "members or package names",
+            f"Rust entry {expected!r} is listed in workspace Cargo.toml "
+            "neither as a member nor as an exclude",
         )
 
     _require_file(entry, entry_dir / "Cargo.toml", "entry Cargo.toml")
@@ -828,10 +886,25 @@ def _validate_cmake_workspace(entry, root, entry_dir):
 
 
 def validate_workspace_fixture(entry):
-    required_keys = ("id", "platform", "lang", "dir", "rmw", "bringup", "entry")
+    required_keys = ("id", "platform", "lang", "dir", "rmw", "bringup")
     for key in required_keys:
         if not entry.get(key):
             _fail(entry, f"missing required key {key!r}")
+
+    # phase-383 W9.b — `entry` and `image` are the two ways a row can name what
+    # it builds, and exactly one of them is authored. `image` is the migrated
+    # form: the entry package is generated by `nros build`, so its NAME is
+    # derived (`<image>_entry`) rather than restated. Authoring both would put
+    # one fact in two places, which is this repository's named defect class —
+    # and the two could disagree, which is a row that builds one binary and
+    # tests another.
+    if bool(entry.get("entry")) == bool(entry.get("image")):
+        _fail(
+            entry,
+            "a workspace row names EITHER `entry` (hand-written package under "
+            "src/) OR `image` (an `[image.<id>]` the builder generates), never "
+            "both and never neither",
+        )
 
     lang = entry["lang"]
     if lang not in FIXTURE_LANGS:
@@ -888,6 +961,16 @@ def validate_workspace_fixture(entry):
         f"default launch file (declare `[system].default_launch` in "
         f"{system_toml} to name a different one)",
     )
+
+    # phase-383 W9.b — a row that names an `image` builds through `nros build`,
+    # and its entry package is GENERATED. There is nothing under `src/` to
+    # check; what must exist is the `[image.<id>]` declaration the builder
+    # resolves. Validate THAT and stop, because every remaining check below
+    # (`src/<entry>`, its `package.xml`, its membership in a hand-written
+    # `[workspace]`) asks about files this row deliberately no longer has.
+    if entry.get("image"):
+        _require_image(entry, system_toml, entry["image"])
+        return
 
     entry_dir = root / "src" / entry["entry"]
     _require_dir(entry, entry_dir, "entry dir")

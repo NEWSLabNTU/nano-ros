@@ -90,6 +90,19 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         Some(w) => w.clone(),
         None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
     };
+    // ABSOLUTE from here on. `--workspace .` is an ordinary invocation — the
+    // fixture driver cd's into the workspace and passes exactly that — and
+    // every generated file computes paths RELATIVE to this root against the
+    // nano-ros checkout and the user's packages. `relative_or_err` needs two
+    // absolute paths and correctly refuses otherwise, so a relative root
+    // surfaced as "cannot express /abs/packages/api/nros relative to
+    // ./build/posix-zenoh/native_entry" — an error about the wrong thing.
+    //
+    // `canonicalize` rather than `absolute`: symlinked checkouts are normal
+    // here, and two spellings of one directory would produce two different
+    // relative paths in generated files that are supposed to be byte-identical.
+    let root = std::fs::canonicalize(&root)
+        .wrap_err_with(|| format!("resolving workspace root {}", root.display()))?;
 
     // ---- stage 1 --------------------------------------------------------
     let members = discover::cargo_members_or_walk(&root);
@@ -195,12 +208,70 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     crate::orchestration::image::validate_panic(Some(p))
                         .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
                 }
+
+                // `rmw` is INERT on this driver, so refuse rather than lie.
+                //
+                // On the cmake driver the image's rmw becomes `-DNROS_RMW` and
+                // configures the build. On cargo it does not: the backend comes
+                // from the `<entry>_nros_selection` facade `nros sync`
+                // generates from the bringup's `[system] rmw`, and nothing
+                // consults the image. The only visible effect is the
+                // coordinate DIRECTORY name — so an image declaring
+                // `rmw = "cyclonedds"` produced `build/posix-cyclonedds/`
+                // holding a zenoh binary, which reads as coverage and is not.
+                //
+                // Measured while migrating `examples/workspaces/rust`
+                // (phase-383 W9.b): zero occurrences of "cyclone" in the
+                // artifact, 1916 of "zenoh". Fail loud until the facade can be
+                // generated per-image (issue 0831); a wrong answer that looks
+                // right is the one outcome worth refusing.
+                let system_rmw = bringup_rmw(&bringup_dir);
+                if let Some(want) = image.rmw.as_deref()
+                    && let Some(have) = system_rmw.as_deref()
+                    && want != have
+                {
+                    eyre::bail!(
+                        "`[image.{image_id}] rmw = \"{want}\"` cannot be honoured on \
+                         the cargo driver: the backend comes from the \
+                         `nros sync`-generated selection facade, which reads \
+                         `[system] rmw = \"{have}\"` in {}. Building anyway would \
+                         produce a `{have}` binary in a directory named for \
+                         `{want}`.\n\n\
+                         Either set `[system] rmw` to `{want}`, or drop the \
+                         `rmw` key from this image. Per-image RMW on the cargo \
+                         driver is issue 0831.",
+                        bringup_dir.join("system.toml").display(),
+                    );
+                }
                 // The cargo root lives at the WORKSPACE root, not under
                 // build/ — cargo requires members to sit below their root and
                 // resolves a package's workspace by walking up. An existing
                 // hand-written root is used as-is, never overwritten.
                 let excluded = framework_entry_dirs(&found, &catalog);
-                let extra: Vec<PathBuf> = entry_dir.clone().into_iter().collect();
+                // EVERY cargo image's entry, not just this one.
+                //
+                // The root is a property of the WORKSPACE; making its member
+                // list depend on which image is being built means the list —
+                // and therefore `Cargo.lock` — changes on every image switch.
+                // With the `--locked` the cargo shim injects project-wide, that
+                // is a hard error ("cannot update the lock file ... because
+                // --frozen was passed"), and without it, a silent re-resolve
+                // plus a full fingerprint invalidation on every switch.
+                //
+                // Generating them all is cheap (an entry is two small files)
+                // and restores the shape the hand-written roots had: the rust
+                // workspace's listed all seventeen entries and built one with
+                // `-p`. phase-383 W9.b found this the first time a driver built
+                // two images of one workspace in a row.
+                let extra = all_cargo_entry_dirs(
+                    &bringups,
+                    &bringup,
+                    &root,
+                    &catalog,
+                    has_non_rust,
+                    nano_ros_root.as_deref(),
+                    entry_dir.clone(),
+                )?;
                 crate::builder::cargo_root::ensure(
                     &found,
                     &root,
@@ -465,11 +536,18 @@ fn generate_entry(
         d.is_dir().then_some(d)
     };
 
+    // Most specific first: the image id IS the deploy key when an image is
+    // named after a board, but `[image.native_service_server]` is not, and
+    // `[image.robot1]` is not — so the board and platform back it up. ONE list,
+    // consumed by both the deploy token and the board crate, because the macro
+    // resolves the crate FROM the token: two searches could disagree, and the
+    // disagreement is a generated entry that does not compile.
+    let board_name = image.board.clone().unwrap_or_default();
+    let candidates = [image_id, board_name.as_str(), platform];
+
     let spec = EntrySpec {
         image_id: image_id.to_string(),
-        // The deploy token is the IMAGE id — that is what `[deploy.<id>]`
-        // always keyed on and what `nros check` reads.
-        deploy: image_id.to_string(),
+        deploy: crate::builder::entry::macro_deploy_token(&candidates),
         launch,
         args: image.args.clone(),
         panic: image.panic.clone(),
@@ -477,14 +555,85 @@ fn generate_entry(
         nano_ros_root: nros_root.to_path_buf(),
         facade_dir,
     };
-    // Most specific first: the image id IS the deploy key, but an image named
-    // `robot1` is not a board token, so the board and platform back it up.
-    let board_name = image.board.clone().unwrap_or_default();
-    let facts = BoardFacts::from_descriptor_for(descriptor, &[image_id, &board_name, platform]);
+    let facts = BoardFacts::from_descriptor_for(descriptor, &candidates);
     let parent = root.join("build").join(coordinate(platform, image));
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
     Ok(Some(dir))
+}
+
+/// The bringup's declared `[system] rmw`, if it has one.
+///
+/// Read straight from `system.toml` rather than from the parsed model: this is
+/// a guard against a DECLARATION mismatch, and it must see what the author
+/// wrote even when the rest of the pipeline has folded defaults over it.
+fn bringup_rmw(bringup_dir: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(bringup_dir.join("system.toml")).ok()?;
+    let doc: toml::Value = text.parse().ok()?;
+    doc.get("system")?
+        .get("rmw")?
+        .as_str()
+        .map(ToString::to_string)
+}
+
+/// Every cargo-driver entry directory of `bringup`, generated if need be.
+///
+/// The generated root lists all of them (see the call site): a member list that
+/// depends on which image is being built makes `Cargo.lock` churn on every
+/// switch, which `--locked` turns into a hard error.
+///
+/// `already` is the entry this build just generated — passed in rather than
+/// regenerated so the caller's diagnostics and this list cannot disagree.
+/// Images whose driver is west or idf.py contribute nothing: they are not cargo
+/// members, and `framework_entry_dirs` excludes their hand-written packages.
+#[allow(clippy::too_many_arguments)]
+fn all_cargo_entry_dirs(
+    bringups: &[(String, PathBuf, plan::ImageSet)],
+    bringup: &str,
+    root: &std::path::Path,
+    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    has_non_rust: bool,
+    nano_ros_root: Option<&std::path::Path>,
+    already: Option<PathBuf>,
+) -> Result<Vec<PathBuf>> {
+    let mut out: Vec<PathBuf> = already.into_iter().collect();
+    // `all_images` rather than reading `set.images` directly: it folds
+    // `[image_defaults]` in, and a sibling generated WITHOUT that fold would
+    // differ from the same entry generated as the build target — the same
+    // entry, two contents, depending on which image was asked for.
+    for (b, bringup_dir, id, image) in plan::all_images(bringups) {
+        if b != bringup {
+            continue;
+        }
+        let Ok(descriptor) = crate::orchestration::image::resolve_image_board(catalog, &id, &image)
+        else {
+            // An image whose board does not resolve is reported where it is
+            // BUILT, with the context to explain it. Skipping here keeps a
+            // sibling's misdeclaration from failing an unrelated build.
+            continue;
+        };
+        let platform = descriptor.platform.kebab().to_string();
+        if plan::driver_for(&platform, has_non_rust) != Driver::Cargo {
+            continue;
+        }
+        let Some(dir) = generate_entry(
+            root,
+            &bringup_dir,
+            bringup,
+            &id,
+            &image,
+            descriptor,
+            &platform,
+            nano_ros_root,
+        )?
+        else {
+            continue;
+        };
+        if !out.contains(&dir) {
+            out.push(dir);
+        }
+    }
+    Ok(out)
 }
 
 /// Deploy tokens a package's entry declaration names, if it is an entry.

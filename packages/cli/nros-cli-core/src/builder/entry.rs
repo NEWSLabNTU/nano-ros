@@ -94,6 +94,10 @@ pub struct BoardFacts {
     pub platform_feature: String,
     /// Verbatim crate-root items: the panic-crate `use`, `esp_app_desc!()`.
     pub crate_root_extra: String,
+    /// Manifest lines for the crates [`Self::crate_root_extra`] names. Travels
+    /// WITH it — a crate-root `use` whose crate is not a dependency is a
+    /// generated entry that does not compile.
+    pub crate_root_deps: Vec<String>,
 }
 
 /// The board crate `nros::main!` will emit a reference to, if any.
@@ -131,6 +135,33 @@ pub fn macro_board_crate(candidates: &[&str]) -> Option<String> {
     None
 }
 
+/// The `deploy` token to record, from the same candidate list as the crate.
+///
+/// **These two must agree, and that is the whole point of sharing the search.**
+/// `deploy` is what `nros::main!` looks up in its own board table at expansion
+/// time; the crate is what must be in scope for the path that lookup returns.
+/// Writing the image id unconditionally worked only while an image happened to
+/// be NAMED after a board — `[image.native]` does, `[image.native_service_server]`
+/// does not, and the generated entry failed with "unknown board
+/// `native_service_server` in `[package.metadata.nros.entry] deploy`". A
+/// hand-written entry never hit this because a human wrote `deploy = "native"`
+/// and named the package whatever they liked.
+///
+/// Falls back to the first candidate so the error, when nothing resolves, still
+/// names what the author wrote rather than an empty string.
+#[must_use]
+pub fn macro_deploy_token(candidates: &[&str]) -> String {
+    for key in candidates {
+        if !key.is_empty() && nros_orchestration_ir::board_path_for(key).is_some() {
+            return (*key).to_string();
+        }
+    }
+    candidates
+        .iter()
+        .find(|k| !k.is_empty())
+        .map_or_else(String::new, |k| (*k).to_string())
+}
+
 impl BoardFacts {
     /// Lift from a descriptor, taking the board crate from the MACRO's mapping.
     ///
@@ -164,6 +195,11 @@ impl BoardFacts {
                 .entry
                 .as_ref()
                 .map(|e| e.crate_root_extra.clone())
+                .unwrap_or_default(),
+            crate_root_deps: d
+                .entry
+                .as_ref()
+                .map(|e| e.crate_root_deps.clone())
                 .unwrap_or_default(),
         }
     }
@@ -284,6 +320,16 @@ pub fn render_manifest(
         board.platform_feature
     ));
 
+    // Whatever the board's crate-root items need. Emitted right before the node
+    // packages so a reader sees it beside the `use` it serves — and emitted at
+    // all because the descriptor is the only place that knows: the items are
+    // verbatim board text (`use panic_semihosting as _;`), so this file cannot
+    // infer the crate from them without parsing Rust.
+    for dep in &board.crate_root_deps {
+        out.push_str(dep);
+        out.push('\n');
+    }
+
     // Node packages, in launch order. Each is an rlib the macro's emitted
     // `register()` calls reach; `default-features = false` keeps a node from
     // dragging a platform choice into an entry that already made one.
@@ -383,6 +429,40 @@ fn write_if_changed(path: &Path, body: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_deploy_token_falls_back_when_the_image_is_not_a_board_name() {
+        // phase-383 W9.b, found by migrating `examples/workspaces/rust`.
+        // `[image.native_service_server]` is a perfectly good image id and not a
+        // board token; writing it as `deploy` made the generated entry fail with
+        // "unknown board `native_service_server`". `[image.native]` hid it,
+        // because there the id and the token coincide.
+        assert_eq!(
+            macro_deploy_token(&["native_service_server", "native", "posix"]),
+            "native"
+        );
+        assert_eq!(macro_deploy_token(&["native", "native", "posix"]), "native");
+    }
+
+    #[test]
+    fn the_deploy_token_and_the_board_crate_come_from_one_search() {
+        // They must agree: `deploy` is what `nros::main!` looks up, and the
+        // crate is what its answer needs in scope. Two searches could disagree,
+        // and the disagreement is an entry that does not compile.
+        let candidates = ["robot1", "native", "posix"];
+        let token = macro_deploy_token(&candidates);
+        let krate = macro_board_crate(&candidates).expect("resolves");
+        let from_token = macro_board_crate(&[token.as_str()]).expect("resolves");
+        assert_eq!(
+            krate, from_token,
+            "token {token} must select the same crate"
+        );
+    }
+
+    #[test]
+    fn an_unresolvable_candidate_list_still_names_what_the_author_wrote() {
+        assert_eq!(macro_deploy_token(&["", "nonesuch", ""]), "nonesuch");
+    }
     use super::*;
 
     fn spec() -> EntrySpec {
@@ -415,6 +495,7 @@ mod tests {
             board_features: Vec::new(),
             platform_feature: "platform-posix".to_string(),
             crate_root_extra: String::new(),
+            crate_root_deps: Vec::new(),
         }
     }
 
@@ -426,6 +507,7 @@ mod tests {
             board_features: Vec::new(),
             platform_feature: "platform-freertos".to_string(),
             crate_root_extra: "use panic_semihosting as _;".to_string(),
+            crate_root_deps: vec!["panic-semihosting = \"0.6\"".to_string()],
         }
     }
 

@@ -167,6 +167,14 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
+**#0831** (build, open 2026-08-27) — `[image.<id>].rmw` configures NOTHING on the cargo driver: it names the
+build DIRECTORY and nothing else, while the backend comes from the `nros sync` facade generated from `[system]
+rmw`. So an image declaring cyclonedds yields `build/posix-cyclonedds/` holding a zenoh binary. The same hole is
+live one layer up — `workspace-rust-native-cyclonedds` builds an artifact with 0 occurrences of "cyclone" and
+1916 of "zenoh", and `linux,rust,cyclonedds` is one of tier 2's fourteen coordinates. A cargo row's `rmw` is read
+only by `cmake_defs()` (cmake rows), `row_coord()` and the label printer; the driver never mentions it. Predates
+phase-383, which only made it visible. `nros build` now REFUSES a divergent per-image rmw rather than lying. See
+`0831-*`.
 **#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an
 out-of-lane fixture only when it can ATTRIBUTE it, and 47 rows share one `build_subdir`
 (`build-workspace-fixtures`, 14 of them in `examples/workspaces/c` alone), so issue 0517's ambiguity makes them

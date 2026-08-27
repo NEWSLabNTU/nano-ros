@@ -119,6 +119,24 @@ pub struct BoardEntry {
     /// Crate-root `use`s / items pinned above the entry (panic handler, etc.).
     #[serde(default)]
     pub crate_root_extra: String,
+    /// Cargo dependencies the [`Self::crate_root_extra`] items need, as
+    /// `name = <spec>` lines in manifest spelling.
+    ///
+    /// **One fact, one place.** `crate_root_extra = "use panic_semihosting as
+    /// _;"` names a crate, and a crate-root `use` of a crate nothing depends on
+    /// does not compile. While every entry was hand-written a human supplied
+    /// both halves and they could not drift apart; the moment the entry became
+    /// GENERATED, the descriptor had one half and no way to express the other,
+    /// and `nros build freertos` emitted `use panic_semihosting as _;` into a
+    /// manifest with no `panic-semihosting` (phase-383 W9.b, found by migrating
+    /// `examples/workspaces/rust`).
+    ///
+    /// Kept as raw manifest lines rather than a structured type because a
+    /// dependency spec is already a small language — `"0.6"`, `{ version =
+    /// "~0.18.0", features = [...] }` — and re-modelling it here would be a
+    /// second grammar to keep in step with cargo's.
+    #[serde(default)]
+    pub crate_root_deps: Vec<String>,
     /// Builder-chain suffix appended inside the closure; empty for most boards.
     #[serde(default)]
     pub closure_extra: String,
@@ -879,6 +897,7 @@ target = "thumbv7em-none-eabihf"
 crate_name = "nros_board_stm32f4"
 signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
 crate_root_extra = "use panic_probe as _;"
+crate_root_deps = ["panic-probe = \"0.3\""]
 
 [[board]]
 names = ["stm32f407"]
@@ -1344,5 +1363,66 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             .resolve("some-unknown", "x86_64-unknown-linux-gnu")
             .unwrap();
         assert_eq!(d.platform, PlatformKind::Posix);
+    }
+
+    /// Every crate a `crate_root_extra` `use`s must be a declared dependency.
+    ///
+    /// phase-383 W9.b. While entries were hand-written a human wrote both the
+    /// `use` and the `[dependencies]` line, so they could not drift; a
+    /// GENERATED entry gets only what the descriptor declares, and
+    /// `nros build freertos` emitted `use panic_semihosting as _;` into a
+    /// manifest with no `panic-semihosting`. The failure was a compile error in
+    /// a generated tree — far from the descriptor that caused it.
+    ///
+    /// Checks the SHIPPED catalog, and skips `use`s of the board's own crate
+    /// (the emitter always depends on that one).
+    #[test]
+    fn every_crate_root_use_has_a_declared_dependency() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = BoardCatalog::load(&root)
+            .unwrap_or_else(|e| panic!("shipped board catalog under {}: {e}", root.display()));
+        let mut checked = 0;
+        for d in catalog.descriptors() {
+            let Some(entry) = d.entry.as_ref() else {
+                continue;
+            };
+            for line in entry.crate_root_extra.lines() {
+                let line = line.trim();
+                let Some(rest) = line.strip_prefix("use ") else {
+                    continue;
+                };
+                let krate = rest
+                    .split([' ', ';', ':'])
+                    .next()
+                    .unwrap_or_default()
+                    .trim();
+                if krate.is_empty() || krate == entry.crate_name {
+                    continue;
+                }
+                let dashed = krate.replace('_', "-");
+                let declared = entry
+                    .crate_root_deps
+                    .iter()
+                    .any(|dep| dep.split(['=', ' ']).next().unwrap_or_default().trim() == dashed);
+                assert!(
+                    declared,
+                    "board {:?}: `crate_root_extra` uses `{krate}` but \
+                     `crate_root_deps` does not declare `{dashed}`. A generated \
+                     entry would emit the `use` with no dependency and fail to \
+                     compile (phase-383 W9.b).",
+                    d.names
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "no crate-root `use` was checked — the descriptors moved and this \
+             gate is now inert"
+        );
     }
 }

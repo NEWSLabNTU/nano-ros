@@ -521,3 +521,28 @@ fn a_cargo_only_member_does_not_break_discovery() {
     );
     assert!(names.contains(&"talker_pkg"), "{names:?}");
 }
+
+/// A RELATIVE `--workspace` is an ordinary invocation and must plan.
+///
+/// phase-383 W9.b. The fixture driver cd's into the workspace and passes
+/// `--workspace .`; every generated file computes paths relative to this root,
+/// and `relative_or_err` needs two absolute paths. A relative root therefore
+/// failed with "cannot express /abs/packages/api/nros relative to
+/// ./build/posix-zenoh/native_entry" — an error naming the wrong path as the
+/// problem, one layer below the cause.
+#[test]
+fn a_relative_workspace_root_plans_the_same_as_an_absolute_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    fixture(tmp.path());
+    let abs = plan_builds(&args(tmp.path(), &["native"])).expect("absolute root plans");
+
+    let prev = std::env::current_dir().expect("cwd");
+    std::env::set_current_dir(tmp.path()).expect("cd into the workspace");
+    let rel = plan_builds(&args(Path::new("."), &["native"]));
+    std::env::set_current_dir(prev).expect("cd back");
+
+    let rel = rel.expect("a relative root plans too");
+    assert_eq!(rel.len(), abs.len());
+    assert_eq!(rel[0].qualified, abs[0].qualified);
+    assert_eq!(rel[0].board, abs[0].board);
+}

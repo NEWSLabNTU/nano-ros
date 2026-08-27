@@ -97,5 +97,4 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 # `scripts/build/nuttx-libc-patch.sh`, a shell re-append that existed only
 # because sync used to WITHHOLD the row). Do not edit it — edit the board.
 [patch.crates-io]
-libc = { path = "../../../third-party/nuttx/libc" }  # nros-managed
 nros-zephyr-build = { path = "../../../packages/tooling/nros-zephyr-build" }  # nros-managed

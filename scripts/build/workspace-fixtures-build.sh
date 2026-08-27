@@ -175,8 +175,8 @@ mapfile -t cargo_profile_args < <(nros_cargo_profile_args)
 
 build_workspace() {
     local record="$1"
-    local id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files
-    IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files <<< "$record"
+    local id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image
+    IFS=$'\x1f' read -r id lang dir bringup entry build_subdir target_dir codegen_out defs envstr cargo_extra board conf_files image <<< "$record"
 
     [ -n "$id" ] || return 0
     [ -n "$dir" ] && [ -n "$bringup" ] && [ -n "$entry" ] || {
@@ -290,17 +290,35 @@ build_workspace() {
                 mapfile -t profile_args < <(nros_cargo_profile_args_for "$nuttx_profile")
                 row_profile_dir="$(_nros_profile_query dir "$nuttx_profile")"
             fi
-            local cargo_args=(build "${profile_args[@]}" -p "$entry")
-            if [ -n "$target_dir" ]; then
-                cargo_args+=(--target-dir "$target_dir")
-            fi
+            local extra_args=()
             if [ -n "$cargo_extra" ]; then
-                local extra_args=()
                 read -r -a extra_args <<< "$cargo_extra"
-                cargo_args+=("${extra_args[@]}")
             fi
-            echo "     cargo ${cargo_args[*]}"
-            cargo "${cargo_args[@]}"
+            if [ -n "$image" ]; then
+                # phase-383 W9.b — a MIGRATED row. The entry package is
+                # generated, so the row names the image and `nros build` does
+                # discovery, the generated root, the entry and the handoff. The
+                # native args after `--` reach cargo verbatim, which is how the
+                # fixture keeps its own profile and target-dir: the image
+                # deliberately declares no `profile`, so there is exactly one
+                # `--profile` on the command line.
+                local nros_args=(build "$image" --workspace . --offline --)
+                nros_args+=("${profile_args[@]}")
+                if [ -n "$target_dir" ]; then
+                    nros_args+=(--target-dir "$target_dir")
+                fi
+                nros_args+=("${extra_args[@]}")
+                echo "     nros ${nros_args[*]}"
+                "$nros_cli" "${nros_args[@]}"
+            else
+                local cargo_args=(build "${profile_args[@]}" -p "$entry")
+                if [ -n "$target_dir" ]; then
+                    cargo_args+=(--target-dir "$target_dir")
+                fi
+                cargo_args+=("${extra_args[@]}")
+                echo "     cargo ${cargo_args[*]}"
+                cargo "${cargo_args[@]}"
+            fi
 
             local out_root="${target_dir:-target}"
             echo "     built: $dir/$out_root/$row_profile_dir/$entry"

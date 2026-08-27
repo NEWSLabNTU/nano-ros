@@ -2054,7 +2054,10 @@ pub fn build_native_workspace_rust_entry_robot1() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-robot1",
                 "rust",
-                "native_entry_robot1",
+                // phase-383 W9.b — GENERATED entry: the row names `[image.native_robot1]`
+                // and the package name is derived (`<image>_entry`), so this is
+                // `native_robot1_entry`, not the pre-migration `native_entry_robot1`.
+                "native_robot1_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2067,7 +2070,8 @@ pub fn build_native_workspace_rust_entry_robot2() -> TestResult<&'static Path> {
             build_workspace_rust_entry(
                 "workspace-rust-native-robot2",
                 "rust",
-                "native_entry_robot2",
+                // phase-383 W9.b — see robot1 above.
+                "native_robot2_entry",
             )
         })
         .map(|p| p.as_path())

@@ -149,20 +149,28 @@ time_slice = "5000us"
 # --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
 # Derived from the entry packages that existed at migration time; each
 # entry's `deploy` token picked its board, and its `launch` its topology.
+# `panic` carries over from the entry package this image was derived from
+# (RFC-0077). It is NOT cosmetic: the generated entry's crate root and its
+# `nros::main!` invocation both key on it, and an image that omits it
+# generates a DIFFERENT program than the one it replaces — one that still
+# compiles. phase-383 W9.a declared the images without it.
 [image_defaults]
 rmw = "zenoh"
 
 [image.freertos_realtime]
 board = "freertos"
+panic = "own"
 
 [image.native]
 board = "native"
 
 [image.nuttx]
 board = "nuttx"
+panic = "platform"
 
 [image.riscv_nuttx]
 board = "nuttx-riscv"
+panic = "platform"
 
 [image.threadx]
 board = "threadx-linux"

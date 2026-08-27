@@ -146,14 +146,23 @@ sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }
 # --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
 # Derived from the entry packages that existed at migration time; each
 # entry's `deploy` token picked its board, and its `launch` its topology.
+# `panic` and `args` carry over from the entry package each image was derived
+# from. Neither is cosmetic: `panic` (RFC-0077) decides the generated crate
+# root and the `nros::main!` invocation, and `args` is how an image selects a
+# MACHINE — a multihost image with no bindings resolves the whole system
+# instead of one host. An image missing either generates a DIFFERENT program
+# than the entry it replaces, and one that still compiles. phase-383 W9.a
+# declared the images without them.
 [image_defaults]
 rmw = "zenoh"
 
 [image.esp32]
 board = "esp32-qemu"
+panic = "own"
 
 [image.freertos]
 board = "mps2-an385-freertos"
+panic = "own"
 
 [image.native]
 board = "native"
@@ -166,6 +175,16 @@ launch = "action_client.launch.xml"
 [image.native_action_server]
 board = "native"
 launch = "action_server.launch.xml"
+
+[image.native_robot1]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot1" }
+
+[image.native_robot2]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot2" }
 
 [image.native_service_client]
 board = "native"
@@ -185,9 +204,15 @@ launch = "showcase.launch.xml"
 
 [image.nuttx]
 board = "nuttx-qemu-arm"
+panic = "platform"
 
 [image.threadx]
 board = "threadx-linux"
 
 [image.zephyr]
 board = "native_sim/native/64"
+
+[image.zephyr_robot1]
+board = "native_sim/native/64"
+launch = "multihost.launch.xml"
+args = { host = "robot1" }
