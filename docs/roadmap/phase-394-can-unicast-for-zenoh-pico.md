@@ -38,7 +38,7 @@ implementation to disagree with, before it is trusted on one without.
 | **W2** | `src/link/unicast/isotp.c` + config; register in `_z_open_link` **only** | pico connects out and never touches the accept path | **done** |
 | **W3** | zenoh-pico ↔ zenoh-rs over `vcan0`: session, pub/sub, and a **query** | the two implementations agree on the wire | **done** |
 | **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | **done** |
-| **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | |
+| **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | **code done, suites not run** |
 | **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | **done** |
 | **W7** | Extend the demo container to show it | the artifact reviewers can run | **done** |
 
@@ -364,3 +364,67 @@ The README and the demo's own closing summary no longer say services do not
 work over CAN. They now say which link carries which semantics, and that the
 multicast restriction is a property of zenoh's multicast transport rather than
 of CAN.
+
+## 10. W5 status — the Zephyr port is written, its suites are not run
+
+`src/system/zephyr/isotp.c` implements the link on Zephyr's own
+`subsys/canbus/isotp` — `isotp_bind` / `isotp_recv` / `isotp_send` — and not on
+the vendored library. Same rule the `unix` port follows with the kernel socket:
+where the platform implements the protocol, the platform's implementation wins.
+It is tested by its own conformance suite, maintained alongside the CAN drivers
+it sits on, and is what a Zephyr application would already be using.
+
+Three decisions in it worth keeping:
+
+* The receive side is bound **once at open**, not per read. Zephyr installs a
+  CAN filter in `isotp_bind` and a controller has few filter slots, so binding
+  per read would exhaust them and would also drop everything that arrived
+  between reads.
+* `isotp_send` is called with a **NULL completion callback**, which makes it
+  block until the whole PDU is out. That is the contract the link expects — a
+  send that returns is a send the peer has paced through flow control — and it
+  is also what settles `N_As` on this platform: transmit confirmation is
+  Zephyr's problem, inside the CAN driver, rather than something this port has
+  to time. Contrast the vendored library, where the same question has no good
+  answer and is documented as the integrator's.
+* Flow control asks for `bs = 0`, matching the Linux kernel, so a Zephyr node
+  and a Linux node pace each other the same way.
+
+One API trap, caught before the build by reading Zephyr 3.7's `isotp.h` rather
+than trusting memory: `struct isotp_msg_id` has **no `id_type` member**. That is
+the pre-3.7 API. Addressing mode lives in `flags` (`ISOTP_MSG_IDE` for 29-bit),
+and `std_id`/`ext_id` are a **union** over the same storage, so exactly one is
+written — setting both would silently truncate the 29-bit value.
+
+### What is NOT done, and why
+
+**W5's acceptance criteria are not met.** They require Zephyr's own ISO-TP
+conformance and implementation test suites to be run and the result recorded
+before the island depends on this link for services — Zephyr marks `CONFIG_ISOTP`
+`[EXPERIMENTAL]` in Kconfig, and the point of that criterion is not to take the
+label on trust either way.
+
+Running them needs a Zephyr workspace, which this machine does not have. The
+provisioning was started and abandoned: the SDK tarball downloaded at roughly
+5 MB/min, which put the SDK alone over an hour, before `west update` had begun.
+Worse, `scripts/zephyr/setup.sh` re-provisions in-tree sources as it goes, and
+it twice reset the `zenoh-pico` submodule out from under work in progress —
+once back to a commit from before this phase started. Nothing was lost, because
+every commit was already made and reachable, but it is the reason the run was
+stopped rather than left going.
+
+So: the Zephyr port compiles as written against the 3.7 API and has never been
+built or run. **It should be treated as unverified code** until the suites are
+run. That is a smaller claim than the rest of this phase and it is deliberately
+not dressed up as more.
+
+To finish it:
+
+```sh
+just zephyr setup                      # expect a long fetch
+west twister -T tests/subsys/canbus/isotp/conformance   -p native_sim
+west twister -T tests/subsys/canbus/isotp/implementation -p native_sim
+```
+
+then build a zenoh-pico image with `Z_FEATURE_LINK_ISOTP=1` for `native_sim`
+and run the Tier 2 test from §4 against a Linux peer on `vcan0`.
