@@ -508,6 +508,63 @@ sizing arithmetic: a constructor that accepts backing and ignores it, because
 the pool does not exist yet, would be an API that lies. So step 3 introduces the
 constructor, the pool and the index migration together.
 
+### 3a LANDED; 3b hit a structural blocker worth stating before anyone retries
+
+**3a is in** (`runtime_storage::{Slot, carve}`): non-overlapping 8-aligned slots
+from a caller-supplied backing, a fail-loud panic on a short one naming both
+sizes, and `Slot::fits::<T>()` as a registration-time check. Eight tests,
+including a `should_panic` control verified to FAIL when the assert is removed.
+
+**3b was attempted and reverted.** The first half — `ComponentCell.slot` from
+`RefCell<Box<dyn ComponentSlot>>` to `RefCell<&'static mut dyn ComponentSlot>`,
+plus `new_in` and a bump `ComponentPool` — compiles down to exactly two errors,
+and they are the whole problem:
+
+```
+node_runtime.rs:434   slot: RefCell::new(Box::new(TypedSlot::<C> { .. }))   // register_node
+node_runtime.rs:1615  slot: RefCell::new(Box::new(TypedSlot::<C> { .. }))   // register_node_borrowed
+```
+
+`register_node` has the runtime and can draw a slot. **`register_node_borrowed`
+cannot** — its signature is
+
+```rust
+fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
+    executor: &mut Executor<'static>,
+    params: &'p [(&'p str, &'p str)],
+    node_identity: Option<(&'static str, &'static str)>,
+    remaps: &'p [(&'p str, &'p str)],
+    qos_overrides: &'static [..],
+) -> NodeResult<Arc<ComponentCell>>
+```
+
+no runtime, no pool. And it is not an internal detail: it is what
+`install_node_typed` / `install_node_typed_with_params` /
+`install_node_typed_with_launch` / `..._with_node_identity` call — i.e. the
+`__nros_component_<pkg>_install` seam that C, C++ and every generated entry
+enter through. So **W5 cannot proceed without deciding where the FFI install
+path's slot storage comes from**, and that is a question about the seam, not
+about `node_runtime`'s internals.
+
+Three shapes, none chosen:
+
+1. **Thread storage through the seam** — `install_node_typed` grows a
+   backing/sizing argument. Honest and explicit, and it changes a signature that
+   C, C++ and codegen all emit calls to; every generated entry would have to
+   supply storage it currently does not know about.
+2. **A module-level `static` pool** for the borrowed path, sized by
+   `MAX_COMPONENTS`. No signature change, so the seam is untouched — but it
+   reintroduces a fixed global exactly where W5 was trying to make storage
+   caller-owned, and two runtimes in one image would share it.
+3. **Split the paths** — caller-supplied storage for `register_node`, keep the
+   boxed slot on the borrowed/FFI path and accept that `heap-free` excludes
+   images that install through the C seam. Smallest change; narrows the tier's
+   reach to pure-Rust entries.
+
+Note (3) makes the tier's scope a deliberate decision rather than an accident,
+which is more than the current state offers — but it should be chosen, not
+defaulted into.
+
 **Acceptance (unchanged):** an image that CALLS runtime code links at tier
 `heap-free` and passes the W1 gate with `symbols read` well above 1. Three
 probes have already passed that gate vacuously at `symbols read: 1`.
