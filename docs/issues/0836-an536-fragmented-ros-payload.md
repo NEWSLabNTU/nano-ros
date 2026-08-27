@@ -103,6 +103,61 @@ overflow directly rather than inferring it from the deficit, and if confirmed,
 compare interrupt-driven RX against faster polling. The board registers its
 netif in POLL mode (`nros_board_poll_netif`), which was the cheapest shape for
 bring-up and may simply not survive a real ROS burst.
+## Correction: this image does NOT run a flow-control-less LAN9118
+
+Reasoning here kept starting from `docs/research/qemu-lan9118-slirp-rx-stall.md`
+and its finding that "LAN9118 registers no `.can_receive` and never calls
+`qemu_flush_queued_packets`, so a full RX FIFO drops frames outright". That is
+true of **stock** QEMU and false of the binary this board runs: the SDK ships
+`11.0.0-nros2`, built from `NEWSLabNTU/qemu` branch `nano-ros-v11.0.0-patches`,
+which carries our own `can_receive` patch (`nm` finds the symbol; the
+disassembly is quoted in issue 0830). The throttle EXISTS. So the question is
+whether its re-arm cycle keeps up across a burst, not whether back-pressure is
+present — and given the measurement above puts the loss at the drain, that
+cycle is now the prime suspect rather than a detail.
+
+## The RX FIFO number, and one correction to it
+
+`lan9118_reset` fixes the RX FIFO at `s->rx_fifo_size = 2640` **words**
+(10,560 bytes), and each frame costs `(size + n + 3) >> 2` words plus one for
+the CRC — about **352 words for a 1400 B fragment**, so ~7.5 fragments fit. A
+10-fragment burst needs ~3520 words and cannot be resident at once.
+
+The ~10 KB figure above is right, but **not because of the 5 KB TX
+allocation**. On silicon the 16 KB FIFO is split between TX and RX, so
+`TX_FIF_SZ = 5` in `hw_init` would shrink RX — but QEMU does not model the
+split: `case CSR_HW_CFG` stores the bits and never recomputes `rx_fifo_size`.
+The size is hardcoded at reset and identical whatever `hw_init` writes. Worth
+knowing before anyone "fixes" this by lowering the TX allocation: on QEMU that
+changes nothing, and on real hardware it would.
+
+## Also ruled out
+
+* **QEMU net-queue depth.** `nq_maxlen` is 10000 and the drop-on-full path
+  (`net/queue.c:102`) requires `!sent_cb`; tap always passes
+  `tap_send_completed`. Frames are not dying in the queue.
+
+## A drain-path suspect in our own driver
+
+Given the loss is between the wire and the drain, this is worth checking before
+anything in QEMU. `lan9118_lwip_poll` stops on any `NULL`, but `rx_receive`
+returns `NULL` for four different reasons — no packet, error status, bad
+length, and **`pbuf_alloc` failure** — and the last three have already consumed
+or discarded a frame with more still pending:
+
+```c
+struct pbuf *p = rx_receive(base);
+if (p == NULL)
+    break;          /* <- also taken when a frame was merely discarded */
+```
+
+Under exactly the burst this issue is about, pbuf pressure is highest, so an
+alloc failure mid-burst ends the drain early — leaving the FIFO fuller for
+longer, which is the condition that makes `can_receive` stay false and the
+backend stop reading. That is a plausible mechanism for losing most of a burst
+while the first frames of it arrive fine. Distinguishing "FIFO empty" (stop)
+from "frame discarded" (continue within budget) is a two-line change, and the
+`pbuf_alloc` failure count is the counter to add alongside the `RXSTAT` ones.
 
 ## Still unknown
 
