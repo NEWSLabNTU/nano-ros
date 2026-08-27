@@ -1,20 +1,10 @@
-//! Native Fibonacci action server — the official ROS 2 demo action.
+//! ThreadX Linux Action Server — Node pkg.
 //!
-//! Node pkg shape: `register()` declares the node + action server and logs
-//! `ACTION_SERVER_READY_MARKER`; the callbacks accept goals, and `tick()` runs
-//! the execution loop publishing feedback and completing the goal. `main.rs`'s
-//! `nros::main!()` and the board own `nros::init`, executor open, RMW
-//! registration and the spin loop.
+//! Serves `example_interfaces/Fibonacci` on `/fibonacci`: accepts goals with a
+//! non-negative order, publishes feedback, and completes them from `tick`. The
+//! generated runtime owns init / executor / spin.
 //!
-//! phase-338 W3 — was an `[package.metadata.nros.application]` example on the
-//! imperative Executor API. Now Node-class like every other platform's copy,
-//! byte-identical to them (the `example_portability` gate asserts it).
-//!
-//! Migrating this one needed TWO runtime fixes first, both found here and both
-//! affecting every raw-registered action: the keyexpr advertised the bare action
-//! type instead of the per-channel types (`7a7068af9`), and the payload carried
-//! an extra CDR header (issue 0418 / RFC-0069). Until those landed the server
-//! declared its entities and silently never received a goal.
+//! phase-338 W3.e — body converged onto the group-A source.
 
 #![no_std]
 

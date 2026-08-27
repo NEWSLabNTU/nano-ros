@@ -1,22 +1,25 @@
-//! Native Fibonacci action server — the official ROS 2 demo action.
+//! ThreadX QEMU RISC-V Fibonacci Action Server — app-node logic.
 //!
-//! Node pkg shape: `register()` declares the node + action server and logs
-//! `ACTION_SERVER_READY_MARKER`; the callbacks accept goals, and `tick()` runs
-//! the execution loop publishing feedback and completing the goal. `main.rs`'s
-//! `nros::main!()` and the board own `nros::init`, executor open, RMW
-//! registration and the spin loop.
-//!
-//! phase-338 W3 — was an `[package.metadata.nros.application]` example on the
-//! imperative Executor API. Now Node-class like every other platform's copy,
-//! byte-identical to them (the `example_portability` gate asserts it).
-//!
-//! Migrating this one needed TWO runtime fixes first, both found here and both
-//! affecting every raw-registered action: the keyexpr advertised the bare action
-//! type instead of the per-channel types (`7a7068af9`), and the payload carried
-//! an extra CDR header (issue 0418 / RFC-0069). Until those landed the server
-//! declared its entities and silently never received a goal.
+//! Serves an `example_interfaces/Fibonacci` action on `/fibonacci`. This is an
+//! **app node** (it owns `main`, via `src/main.rs`'s `nros::main!()`), not a
+//! workspace Node lib — but the *logic* is still platform/RMW-agnostic:
+//! `register()` declares node + action server (goal / cancel / accepted
+//! callbacks); `on_callback` runs the goal/cancel decisions; `tick()` walks
+//! active goals, publishes feedback, and completes them. The board
+//! (`nros-board-threadx-qemu-riscv64`, `BoardEntry::run`) owns `nros::init`,
+//! executor open, RMW registration, and the spin loop. RMW selection
+//! (zenoh / cyclonedds) lives in `Cargo.toml [features]`; the locator + domain
+//! in `[package.metadata.nros.deploy.threadx-qemu-riscv64]` — never here.
 
 #![no_std]
+
+mod app_main;
+
+// Keep the board crate (panic handler + allocator + critical-section impl)
+// linked into the `staticlib`. phase-369 — `app_main!` names it on both RMW
+// paths now, so this anchor is belt-and-braces rather than load-bearing
+// (issue #205 — the per-example critical-section anchor moved into the board
+// crate).
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{

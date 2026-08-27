@@ -1,20 +1,12 @@
-//! Native Fibonacci action server — the official ROS 2 demo action.
+//! FreeRTOS QEMU MPS2-AN385 Fibonacci action server —
+//! declarative Node pkg.
 //!
-//! Node pkg shape: `register()` declares the node + action server and logs
-//! `ACTION_SERVER_READY_MARKER`; the callbacks accept goals, and `tick()` runs
-//! the execution loop publishing feedback and completing the goal. `main.rs`'s
-//! `nros::main!()` and the board own `nros::init`, executor open, RMW
-//! registration and the spin loop.
-//!
-//! phase-338 W3 — was an `[package.metadata.nros.application]` example on the
-//! imperative Executor API. Now Node-class like every other platform's copy,
-//! byte-identical to them (the `example_portability` gate asserts it).
-//!
-//! Migrating this one needed TWO runtime fixes first, both found here and both
-//! affecting every raw-registered action: the keyexpr advertised the bare action
-//! type instead of the per-channel types (`7a7068af9`), and the payload carried
-//! an extra CDR header (issue 0418 / RFC-0069). Until those landed the server
-//! declared its entities and silently never received a goal.
+//! Declarative: node + action server with distinct goal / cancel /
+//! accepted callbacks. Bodies:
+//!  - `on_goal` accepts non-negative orders, rejects otherwise.
+//!  - `on_cancel` always accepts.
+//!  - `on_accepted` is a no-op (per-spin work runs in `tick()`).
+//!  - `tick()` walks every active goal, publishes feedback, completes.
 
 #![no_std]
 
