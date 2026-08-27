@@ -4234,6 +4234,7 @@ impl<'s> Executor<'s> {
         let node_name: heapless::String<64> = self.node_name.clone();
         let ns: heapless::String<64> = self.namespace.clone();
         let mut info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+            .with_domain(self.domain_id)
             .with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
@@ -4303,6 +4304,7 @@ impl<'s> Executor<'s> {
             (r.name.clone(), r.namespace.clone(), r.session_idx)
         };
         let mut info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+            .with_domain(self.domain_id)
             .with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
@@ -4866,7 +4868,7 @@ impl<'s> Executor<'s> {
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
         let mut info =
-            ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
+            ServiceInfo::new(service_name, service_type, service_hash).with_domain(self.domain_id).with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
@@ -5016,7 +5018,7 @@ impl<'s> Executor<'s> {
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
         let mut info =
-            ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
+            ServiceInfo::new(service_name, service_type, service_hash).with_domain(self.domain_id).with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
@@ -5094,7 +5096,7 @@ impl<'s> Executor<'s> {
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
         let mut info =
-            ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
+            ServiceInfo::new(service_name, service_type, service_hash).with_domain(self.domain_id).with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
@@ -6419,6 +6421,7 @@ impl<'s> Executor<'s> {
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
             let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+                .with_domain(self.domain_id)
                 .with_namespace(namespace);
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
@@ -6606,6 +6609,7 @@ impl<'s> Executor<'s> {
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
             let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+                .with_domain(self.domain_id)
                 .with_namespace(namespace);
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
