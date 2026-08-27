@@ -1,18 +1,21 @@
 #!/usr/bin/env bash
 # Build and run the ROS-2-over-CAN demo (RFC-0082 / phase-387).
 #
-#   docker/can-demo/run.sh --zenoh <path-to-zenoh-fork> [--negative] [--build-only]
+#   docker/can-demo/run.sh --zenoh <path-to-zenoh-fork> [--negative|--unicast] [--build-only]
 #
-#   --zenoh <dir>   checkout of the zenoh fork on branch feat/can-link-ros.
-#                   Defaults to $ZENOH_DIR.
+#   --zenoh <dir>   checkout of the zenoh fork on branch feat/can-links-ros,
+#                   which carries BOTH link crates. Defaults to $ZENOH_DIR.
 #   --pico <dir>    zenoh-pico checkout. Defaults to the vendored submodule.
 #   --negative      run the deliberately-broken variant, which must FAIL to
 #                   communicate -- this is how we know the assertions fire
+#   --unicast       run the ISO-TP demo: a ROS 2 SERVICE CALL over CAN, and the
+#                   same call over the multicast link, which must fail
 #   --build-only    build the image and stop
 #
-# The host must have the vcan kernel module available. The container creates its
-# own vcan0 in its own network namespace with --cap-add=NET_ADMIN; it takes no
-# other privileges and needs no CAN interface on the host.
+# The host must have the vcan kernel module available, and --unicast also needs
+# can-isotp. The container creates its own vcan0 in its own network namespace
+# with --cap-add=NET_ADMIN; it takes no other privileges and needs no CAN
+# interface on the host.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,6 +31,7 @@ while [ $# -gt 0 ]; do
         --zenoh) ZENOH_DIR="$2"; shift 2 ;;
         --pico)  PICO_DIR="$2"; shift 2 ;;
         --negative) MODE="--negative"; shift ;;
+        --unicast)  MODE="--unicast"; shift ;;
         --build-only) BUILD_ONLY=1; shift ;;
         -h | --help)
             awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$0"
@@ -38,10 +42,15 @@ done
 
 die() { echo "[can-demo] error: $*" >&2; exit 1; }
 
-[ -n "$ZENOH_DIR" ] || die "--zenoh is required (or set ZENOH_DIR): the zenoh fork carrying zenoh-link-can"
+[ -n "$ZENOH_DIR" ] || die "--zenoh is required (or set ZENOH_DIR): the zenoh fork carrying both CAN links"
 ZENOH_DIR="$(cd "$ZENOH_DIR" 2>/dev/null && pwd)" || die "--zenoh path does not exist"
-[ -d "$ZENOH_DIR/io/zenoh-links/zenoh-link-can" ] \
-    || die "$ZENOH_DIR has no io/zenoh-links/zenoh-link-can. Wrong checkout, or wrong branch."
+# BOTH crates. The image carries one libzenohc.so with both links because the
+# demo's point is the contrast between them.
+for crate in zenoh-link-can zenoh-link-isotp; do
+    [ -d "$ZENOH_DIR/io/zenoh-links/$crate" ] \
+        || die "$ZENOH_DIR has no io/zenoh-links/$crate. Wrong checkout, or wrong
+     branch -- feat/can-links-ros is the one carrying both."
+done
 [ -d "$PICO_DIR/include/zenoh-pico" ] || die "$PICO_DIR is not a zenoh-pico checkout"
 
 # The container reproduces what rmw_zenoh ships, which is zenoh 2687c5135 -- a
@@ -62,6 +71,16 @@ if ! modinfo vcan >/dev/null 2>&1 && ! lsmod 2>/dev/null | grep -q '^vcan'; then
     die "the host has no vcan kernel module. The container cannot load it -- it
      takes no privileges beyond NET_ADMIN by design.
        sudo modprobe vcan
+     (Debian/Ubuntu may need linux-modules-extra-\$(uname -r))"
+fi
+
+# can-isotp is a SEPARATE module from vcan, and only --unicast needs it. Checked
+# here rather than inside the container so the failure names the host command
+# that fixes it.
+if [ "$MODE" = "--unicast" ] \
+   && ! grep -qw can_isotp /proc/modules 2>/dev/null && [ ! -d /sys/module/can_isotp ]; then
+    die "--unicast needs the can-isotp kernel module, which is not loaded.
+       sudo modprobe can-isotp
      (Debian/Ubuntu may need linux-modules-extra-\$(uname -r))"
 fi
 

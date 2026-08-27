@@ -40,7 +40,7 @@ implementation to disagree with, before it is trusted on one without.
 | **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | |
 | **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | |
 | **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | **done** |
-| **W7** | Extend the demo container to show it | the artifact reviewers can run | |
+| **W7** | Extend the demo container to show it | the artifact reviewers can run | **done** |
 
 **W4 is the interesting one.** Implementing `unix` twice — once on the kernel,
 once on the vendored library — makes the kernel the oracle for the library on
@@ -240,3 +240,47 @@ the daemon instead; a stray daemon inherits the environment and holds a session
 on the bus after the test. And the harness sources ROS itself rather than
 trusting the caller's shell, with no `set -u` anywhere, because `setup.bash`
 dereferences unset variables and aborts under it.
+
+## 9. W7 result — the demo container
+
+`docker/can-demo/` now carries **both** links in one `libzenohc.so`, built from
+`feat/can-links-ros` in the zenoh fork — a merge of the two ROS-based branches
+whose every conflict was the two of them adding their own entry to the same
+list. One artifact, because the demo's point is the contrast.
+
+```sh
+docker/can-demo/run.sh --zenoh <fork> --unicast
+```
+
+runs **both halves of the argument in one container**:
+
+```
+3u. the SAME service call over the MULTICAST link -- expected to fail
+    multicast service call: rc=124, replies=0
+4u. the same call over the ISO-TP UNICAST link
+    server: isotp/vcan0#tx_id=0x201;rx_id=0x200
+    client: isotp/vcan0#tx_id=0x200;rx_id=0x201
+5u. results
+    example_interfaces.srv.AddTwoInts_Response(sum=42)
+    ISO 15765-2 on the wire:
+      first frames  (1x): 19
+      flow controls (3x): 19
+```
+
+and asserts both: the unicast call must return `sum=42`, and the multicast call
+must return nothing. A demo that showed only the working case would leave the
+reader to take the broken case on trust — and the failing half is the more
+surprising claim, so it is the one that needs demonstrating.
+
+The existing modes still pass on the same image: the default multicast topic
+demo, and the `--negative` control that puts the two ROS peers in disjoint
+identifier bands and asserts the listener hears nothing.
+
+`--unicast` needs the `can-isotp` kernel module on the host as well as `vcan`.
+`run.sh` checks for it before building, so the failure names the host command
+that fixes it rather than surfacing inside the container.
+
+The README and the demo's own closing summary no longer say services do not
+work over CAN. They now say which link carries which semantics, and that the
+multicast restriction is a property of zenoh's multicast transport rather than
+of CAN.

@@ -48,13 +48,40 @@ peers keep transmitting. Without it, "the listener heard the talker" only tells
 you they communicated — not that CAN carried it. With it, the same setup goes
 silent when and only when the CAN filter is told to separate them.
 
-## What this does not show
+## Two links, and which ROS semantics each one carries
 
-- **Services, actions, parameters and graph introspection do not work over this
-  transport.** A zenoh multicast face routes pushed data only: `mcast_groups`
-  appears in `pubsub.rs` and never in `queries.rs` or `token.rs`, while
-  rmw_zenoh resolves services through queries and builds the ROS graph from
-  liveliness tokens. No CAN link can fix this.
+The image carries **both** CAN links in one `libzenohc.so`, because the
+interesting thing is the difference between them.
+
+| | `can` (RFC-0080) | `isotp` (RFC-0083) |
+| --- | --- | --- |
+| shape | multicast | unicast, ISO 15765-2 |
+| MTU | 64 (CAN FD frame) | 4095 |
+| topics | yes | yes |
+| services, actions, parameters, graph | **no** | **yes** |
+| peers per link | the whole bus | one, a directed identifier pair |
+
+A zenoh **multicast** face routes pushed data only: `mcast_groups` appears in
+`pubsub.rs` and never in `queries.rs` or `token.rs`, while rmw_zenoh resolves
+services through queries and builds the ROS graph from liveliness tokens. That
+is a property of zenoh's multicast transport and **not a limitation of CAN** —
+the same failure reproduces on stock ROS over UDP multicast. Give CAN a real
+unicast face and all of it comes back.
+
+```sh
+docker/can-demo/run.sh --zenoh /path/to/zenoh-fork --unicast
+```
+
+runs a ROS 2 **service call** across the bus over ISO-TP and asserts it returns
+`sum=42`, and runs the same call over the multicast link and asserts it returns
+**nothing**. Both halves run, because a demo that shows only the working case
+leaves the reader to take the broken case on trust. It also prints the ISO
+15765-2 framing `candump` saw — first frames, flow control, consecutive frames.
+
+`--unicast` additionally needs the `can-isotp` kernel module on the host
+(`sudo modprobe can-isotp`); `vcan` alone is not enough.
+
+## What this does not show
 - **Nothing about timing.** `vcan` has no bit rate and no arbitration, so every
   latency and bandwidth figure remains analytic. Real hardware is untested.
 - **Bus load is the publisher's whole output**, not the subscribers' interest,

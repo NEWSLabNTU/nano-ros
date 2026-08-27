@@ -15,18 +15,28 @@
 ARG ZENOHC_COMMIT=05bd370343b5161ca9269649b9a914c9c2dc4170
 
 # ---------------------------------------------------------------------------
-# libzenohc.so, carrying the CAN link
+# libzenohc.so, carrying BOTH CAN links
 # ---------------------------------------------------------------------------
+# Two links, one library, because the demo's point is the CONTRAST between them:
+#   * `can`   (RFC-0080) is multicast. zenoh routes pushed data to multicast
+#              faces, so topics work over it -- and queries do not, which means
+#              no services, actions, parameters or graph introspection.
+#   * `isotp` (RFC-0083) is a real unicast face over ISO 15765-2, and carries
+#              all of them.
+# Building both into one artifact is what lets `--unicast` and the default mode
+# be the same image with a different config.
 FROM rust:slim-bookworm AS zenohc-builder
 ARG ZENOHC_COMMIT
 RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
         git cmake clang pkg-config libssl-dev ca-certificates python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# The zenoh fork carrying io/zenoh-links/zenoh-link-can, on feat/can-link-ros.
+# The zenoh fork carrying both link crates, on feat/can-links-ros.
 COPY --from=zenoh . /src/zenoh
-RUN test -d /src/zenoh/io/zenoh-links/zenoh-link-can \
-    || (echo "the 'zenoh' build context has no zenoh-link-can crate" >&2; exit 1)
+RUN for c in zenoh-link-can zenoh-link-isotp; do \
+        test -d "/src/zenoh/io/zenoh-links/$c" \
+            || { echo "the 'zenoh' build context has no $c crate" >&2; exit 1; }; \
+    done
 
 WORKDIR /src
 RUN git clone --filter=blob:none --no-checkout https://github.com/eclipse-zenoh/zenoh-c.git zenoh-c \
@@ -57,7 +67,7 @@ RUN set -eu; \
     for m in /src/zenoh-c/Cargo.toml /src/zenoh-c/build-resources/opaque-types/Cargo.toml; do \
         grep -q 'transport_vsock = \["zenoh/transport_vsock"\]' "$m" \
             || { echo "no transport_vsock anchor in $m; zenoh-c layout changed" >&2; exit 1; }; \
-        sed -i 's|transport_vsock = \["zenoh/transport_vsock"\]|&\ntransport_can = ["zenoh/transport_can"]|' "$m"; \
+        sed -i 's|transport_vsock = \["zenoh/transport_vsock"\]|&\ntransport_can = ["zenoh/transport_can"]\ntransport_isotp = ["zenoh/transport_isotp"]|' "$m"; \
     done; \
     rm -f /src/zenoh-c/build-resources/opaque-types/Cargo.lock
 
@@ -67,7 +77,7 @@ RUN set -eu; \
 # error. zenoh_cpp_vendor passes -DZENOHC_BUILD_WITH_UNSTABLE_API=TRUE and
 # --features=shared-memory.
 WORKDIR /src/zenoh-c
-RUN cargo build --release --features unstable,shared-memory,transport_can
+RUN cargo build --release --features unstable,shared-memory,transport_can,transport_isotp
 
 # Verify the link is really in the artifact rather than trusting the flag.
 # Deliberately not `strings | grep -q`: under pipefail grep -q closes the pipe
@@ -76,7 +86,9 @@ RUN cargo build --release --features unstable,shared-memory,transport_can
 RUN set -eu; \
     n="$(strings target/release/libzenohc.so | grep -c 'CAN: no such interface' || true)"; \
     [ "$n" -gt 0 ] || (echo "built libzenohc.so does not contain the CAN link" >&2; exit 1); \
-    echo "zenohc-builder: CAN link present"
+    m="$(strings target/release/libzenohc.so | grep -c 'ISO-TP: no such interface' || true)"; \
+    [ "$m" -gt 0 ] || (echo "built libzenohc.so does not contain the ISO-TP link" >&2; exit 1); \
+    echo "zenohc-builder: both CAN links present"
 
 # ---------------------------------------------------------------------------
 # zenoh-pico, standing in for the safety island
