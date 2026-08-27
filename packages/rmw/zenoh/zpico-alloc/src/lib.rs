@@ -54,10 +54,27 @@
 #![no_std]
 
 use core::{
+    alloc::Layout,
     cell::UnsafeCell,
     ptr,
+    ptr::NonNull,
     sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
 };
+use rlsf::Tlsf;
+
+/// phase-391 W2 — the second-level list length. 16 bounds internal
+/// fragmentation at 1/SLLEN = 6.25%.
+const SLLEN: usize = 16;
+
+/// rlsf's `GRANULARITY.trailing_zeros()`: `GRANULARITY = size_of::<usize>() * 4`,
+/// so 4 on a 32-bit target and 5 on 64-bit. Used only by the compile-time pool
+/// bound below; rlsf computes its own internally.
+const GRANULARITY_LOG2: u32 = (core::mem::size_of::<usize>() * 4).trailing_zeros();
+
+/// First-level bitmap. Fixed at `u32` rather than tracked to `FLLEN`: it must
+/// hold at least `FLLEN` bits, and letting the two drift is a foot-gun that
+/// costs 2 bytes to remove. `u32` covers every `FLLEN` up to 32.
+type FlBitmap = u32;
 
 const ALIGN: usize = 8;
 const HEADER_SIZE: usize = core::mem::size_of::<BlockHeader>();
@@ -96,20 +113,16 @@ struct BlockHeader {
     next_free: *mut BlockHeader,
 }
 
-/// Align `val` up to 8-byte boundary.
-#[inline]
-const fn align_up(val: usize, align: usize) -> usize {
-    (val + align - 1) & !(align - 1)
-}
-
 /// First-fit free-list allocator backed by a static `[u8; N]` heap,
 /// with an O(1) slab fast-path for small allocations.
 ///
 /// Single-threaded bare-metal only — uses `Relaxed` atomics for the free-list
 /// head pointer and initialization flag. Not safe for multi-threaded use.
-pub struct FreeListHeap<const N: usize> {
+pub struct FreeListHeap<const N: usize, const FLLEN: usize = 18> {
     heap: UnsafeCell<Aligned<N>>,
-    free_list: AtomicUsize,
+    /// phase-391 W2 — the O(1) allocator. Was an `AtomicUsize` head of an
+    /// address-ordered first-fit free list, whose walk had no worst-case bound.
+    tlsf: UnsafeCell<Tlsf<'static, FlBitmap, u16, FLLEN, SLLEN>>,
     initialized: AtomicBool,
     /// Slab region: 8 slots × 64 bytes, separate from the main heap.
     slab: UnsafeCell<Aligned<SLAB_REGION_SIZE>>,
@@ -125,23 +138,36 @@ pub struct FreeListHeap<const N: usize> {
 
 // Safety: bare-metal single-threaded. The AtomicUsize/AtomicBool provide
 // interior mutability without `static mut`.
-unsafe impl<const N: usize> Sync for FreeListHeap<N> {}
+unsafe impl<const N: usize, const FLLEN: usize> Sync for FreeListHeap<N, FLLEN> {}
 
-impl<const N: usize> Default for FreeListHeap<N> {
+impl<const N: usize, const FLLEN: usize> Default for FreeListHeap<N, FLLEN> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<const N: usize> FreeListHeap<N> {
+impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
     /// Create a new heap. Use in a `static`:
     /// ```rust,ignore
     /// static HEAP: FreeListHeap<{64 * 1024}> = FreeListHeap::new();
     /// ```
+    /// The largest pool rlsf can hold at this `FLLEN`:
+    /// `MAX_POOL_SIZE = 1 << (GRANULARITY_LOG2 + FLLEN)` (rlsf `tlsf.rs`).
+    pub const MAX_POOL: usize = 1usize << (GRANULARITY_LOG2 + FLLEN as u32);
+
     pub const fn new() -> Self {
+        // phase-391 W2 — a compile-time bound, not a comment. An arena larger
+        // than rlsf's max pool would otherwise fail at the first insert, at
+        // runtime, on the target. Raise FLLEN (each +1 doubles the bound and
+        // costs ~66 B of .bss at SLLEN=16): 12 -> 64 KiB, 14 -> 256 KiB,
+        // 18 -> 4 MiB.
+        assert!(
+            N <= Self::MAX_POOL,
+            "zpico-alloc: heap size exceeds rlsf MAX_POOL_SIZE for this FLLEN — raise FLLEN"
+        );
         Self {
             heap: UnsafeCell::new(Aligned([0u8; N])),
-            free_list: AtomicUsize::new(0),
+            tlsf: UnsafeCell::new(Tlsf::new()),
             initialized: AtomicBool::new(false),
             slab: UnsafeCell::new(Aligned([0u8; SLAB_REGION_SIZE])),
             slab_free_bitmap: AtomicU8::new(0xFF), // all 8 slots free
@@ -157,24 +183,24 @@ impl<const N: usize> FreeListHeap<N> {
     #[inline]
     unsafe fn ensure_init(&self) {
         if !self.initialized.load(Ordering::Relaxed) {
-            let heap_ptr = self.heap.get() as *mut u8 as *mut BlockHeader;
+            // phase-391 W2 — hand the whole arena to rlsf as one pool. The
+            // arena itself is unchanged: same `Aligned<N>` storage, same
+            // 8-byte alignment guarantee. Only who manages it changed.
+            //
+            // `insert_free_block_ptr` wants a `NonNull<[u8]>` over memory this
+            // heap owns for `'static`; the arena is a field of a `static`, so
+            // that holds. It returns the usable size, or `None` if the region
+            // was too small to hold even one block — which `N` cannot be,
+            // given the constructor's `MAX_POOL` bound and rlsf's own
+            // granularity minimum.
+            let base = self.heap.get() as *mut u8;
+            let region = ptr::slice_from_raw_parts_mut(base, N);
             unsafe {
-                (*heap_ptr).size = N - HEADER_SIZE;
-                (*heap_ptr).next_free = ptr::null_mut();
+                let tlsf = &mut *self.tlsf.get();
+                tlsf.insert_free_block_ptr(NonNull::new_unchecked(region));
             }
-            self.free_list.store(heap_ptr as usize, Ordering::Relaxed);
             self.initialized.store(true, Ordering::Relaxed);
         }
-    }
-
-    #[inline]
-    fn get_free_list(&self) -> *mut BlockHeader {
-        self.free_list.load(Ordering::Relaxed) as *mut BlockHeader
-    }
-
-    #[inline]
-    fn set_free_list(&self, ptr: *mut BlockHeader) {
-        self.free_list.store(ptr as usize, Ordering::Relaxed);
     }
 
     // ── Slab fast-path ─────────────────────────────────────────────────
@@ -263,69 +289,39 @@ impl<const N: usize> FreeListHeap<N> {
             return ptr::null_mut();
         }
 
-        // Slab fast-path for small allocations
+        // Slab fast-path for small allocations. Kept: it is already O(1), so
+        // it is not what phase-391 W2 set out to replace, and keeping it means
+        // `capacity()`/`used()` keep their existing basis.
         if size <= SLAB_SLOT_SIZE {
             let ptr = self.slab_alloc(size);
             if !ptr.is_null() {
                 return ptr;
             }
-            // Slab full — fall through to free-list
+            // Slab full — fall through to the general allocator.
         }
 
-        let aligned_size = align_up(size, ALIGN);
-
+        // phase-391 W2 — was a first-fit walk of an address-ordered free list,
+        // O(n) in the number of free blocks and therefore unbounded in the
+        // worst case. rlsf is O(1) for allocate and free regardless of heap
+        // state (two-level segregated fit + bitmaps + a CLZ).
         unsafe {
             self.ensure_init();
-
-            let mut prev: *mut BlockHeader = ptr::null_mut();
-            let mut current = self.get_free_list();
-
-            while !current.is_null() {
-                if (*current).size >= aligned_size {
-                    let remainder = (*current).size - aligned_size;
-
-                    if remainder > HEADER_SIZE + ALIGN {
-                        // Split: new free block after the allocated region
-                        let new_block = (current as *mut u8).add(HEADER_SIZE + aligned_size)
-                            as *mut BlockHeader;
-                        (*new_block).size = remainder - HEADER_SIZE;
-                        (*new_block).next_free = (*current).next_free;
-                        (*current).size = aligned_size;
-
-                        if prev.is_null() {
-                            self.set_free_list(new_block);
-                        } else {
-                            (*prev).next_free = new_block;
-                        }
-                    } else {
-                        // Use whole block (remainder too small to split)
-                        if prev.is_null() {
-                            self.set_free_list((*current).next_free);
-                        } else {
-                            (*prev).next_free = (*current).next_free;
-                        }
-                    }
-
-                    (*current).next_free = ptr::null_mut();
-
+            let layout = match Layout::from_size_align(size, ALIGN) {
+                Ok(l) => l,
+                Err(_) => return ptr::null_mut(),
+            };
+            let tlsf = &mut *self.tlsf.get();
+            match tlsf.allocate(layout) {
+                Some(p) => {
                     #[cfg(feature = "stats")]
                     {
-                        let used = self
-                            .used_bytes
-                            .fetch_add((*current).size + HEADER_SIZE, Ordering::Relaxed)
-                            + (*current).size
-                            + HEADER_SIZE;
+                        let used = self.used_bytes.fetch_add(size, Ordering::Relaxed) + size;
                         let _ = self.peak_bytes.fetch_max(used, Ordering::Relaxed);
                     }
-
-                    return (current as *mut u8).add(HEADER_SIZE) as *mut core::ffi::c_void;
+                    p.as_ptr() as *mut core::ffi::c_void
                 }
-
-                prev = current;
-                current = (*current).next_free;
+                None => ptr::null_mut(),
             }
-
-            ptr::null_mut()
         }
     }
 
@@ -383,66 +379,30 @@ impl<const N: usize> FreeListHeap<N> {
             return;
         }
 
-        // Slab fast-path
+        // Slab fast-path (unchanged).
         if self.is_in_slab(ptr as *mut u8) {
             self.slab_free(ptr as *mut u8);
             return;
         }
 
-        // #190 hardening — refuse pointers outside this heap's arena. A
-        // cross-allocator free (a Rust-global-heap or static pointer handed
-        // to `z_free`) would be INSERTED into the free list as if `ptr - 8`
-        // were a block header; the next alloc/free would then write header
-        // words into that foreign memory. (Instrumented during the #190
-        // esp32-c3 triage: no such free actually occurs today —
-        // `foreign_free_count` stayed 0; the corruption there was a stack
-        // overflow into `.bss`. The guard stays: dropping a foreign pointer
-        // leaks at worst, corrupting live memory is never acceptable.)
+        // #190 hardening, preserved verbatim in intent: refuse pointers
+        // outside this heap's arena. A cross-allocator free (a Rust-global-heap
+        // or static pointer handed to `z_free`) must never reach the allocator
+        // — under the old free list it would have been spliced in as if
+        // `ptr - 8` were a block header; under rlsf it would corrupt a block
+        // header just the same. Dropping a foreign pointer leaks at worst.
         if !self.is_in_heap(ptr as *mut u8) {
-            let n = self.foreign_frees.load(Ordering::Relaxed);
-            self.foreign_frees.store(n + 1, Ordering::Relaxed);
+            self.foreign_frees.fetch_add(1, Ordering::Relaxed);
             return;
         }
 
+        // phase-391 W2 — O(1) free. `deallocate` needs the alignment the block
+        // was allocated with; this heap allocates everything at ALIGN.
         unsafe {
-            let block = (ptr as *mut u8).sub(HEADER_SIZE) as *mut BlockHeader;
-
-            #[cfg(feature = "stats")]
-            self.used_bytes
-                .fetch_sub((*block).size + HEADER_SIZE, Ordering::Relaxed);
-
-            // Insert into free list in address order
-            let mut prev: *mut BlockHeader = ptr::null_mut();
-            let mut current = self.get_free_list();
-
-            while !current.is_null() && (current as usize) < (block as usize) {
-                prev = current;
-                current = (*current).next_free;
-            }
-
-            (*block).next_free = current;
-            if prev.is_null() {
-                self.set_free_list(block);
-            } else {
-                (*prev).next_free = block;
-            }
-
-            // Coalesce with next block if adjacent
-            if !current.is_null() {
-                let block_end = (block as *mut u8).add(HEADER_SIZE + (*block).size);
-                if block_end == current as *mut u8 {
-                    (*block).size += HEADER_SIZE + (*current).size;
-                    (*block).next_free = (*current).next_free;
-                }
-            }
-
-            // Coalesce with previous block if adjacent
-            if !prev.is_null() {
-                let prev_end = (prev as *mut u8).add(HEADER_SIZE + (*prev).size);
-                if prev_end == block as *mut u8 {
-                    (*prev).size += HEADER_SIZE + (*block).size;
-                    (*prev).next_free = (*block).next_free;
-                }
+            self.ensure_init();
+            let tlsf = &mut *self.tlsf.get();
+            if let Some(nn) = NonNull::new(ptr as *mut u8) {
+                tlsf.deallocate(nn, ALIGN);
             }
         }
     }

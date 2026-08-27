@@ -128,6 +128,15 @@ hand a live thread's stack to the next task. Residue recorded rather than hidden
 still retires its slot for the life of the image. Found while chasing #0821 and did NOT fix it — that
 fault reproduces with slots to spare. See `archived/0822-*`. (2026-08-27)
 
+**#0832** (platform/rmw, open 2026-08-27) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the
+cyclonedds and xrce native images: the platform layer IS linked and exports the funnel, and Cyclone's
+`ddsrt_malloc`/`ddsi_config_init` and XRCE's `get_ip_from_iface` tail-call `malloc@plt` straight past it.
+Only zenoh reaches it (`z_malloc` -> `nros_platform_alloc` -> `malloc@plt`). Reported first as "undefined";
+it is not, and the distinction is the finding — "the platform layer is not linked on hosted images" is a
+hypothesis this DISPROVES. Matters to phase-391 W4: a tier gate keying on the funnel symbol being PRESENT
+passes all three images while two bypass it. Embedded/ARM case NOT established (the Zephyr ELFs here are
+native_sim relocatable). See `0832-*`. (2026-08-27)
+
 **#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
 
 **#0811** (platform, open 2026-08-26) — `ep->iptcp` is allocated by two different allocators and always freed by one of them. See `0811-*`.

@@ -13,6 +13,16 @@ readme = "README.md"
 keywords = ["allocator", "bare-metal", "no-std", "embedded", "zenoh"]
 categories = ["embedded", "no-std", "memory-management"]
 
+[dependencies]
+# phase-391 W2 — the O(1) allocator behind the funnel. `default-features = false`
+# keeps its `std` feature off; rlsf is `#![no_std]` unconditionally.
+#
+# Already a transitive dependency of `nros-board-esp32-qemu` (via esp-alloc), so
+# it is proven to build for a bare-metal target in this tree, and it is present
+# in the local registry — which matters because `--locked` is injected
+# project-wide by the scripts/bin/cargo shim.
+rlsf = { version = "0.2.3", default-features = false }
+
 [features]
 default = []
 ## Track peak heap usage (adds two atomics per heap) and expose the reusable

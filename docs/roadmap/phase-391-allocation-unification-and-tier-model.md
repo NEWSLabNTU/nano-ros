@@ -135,6 +135,147 @@ every later wave.
 and the `z_malloc`/`z_free` shim structure do not change; only the algorithm
 does.
 
+**Vetted 2026-08-27 — rlsf clears every prerequisite, and two costs the survey
+above did not know are lower than it assumed.**
+
+*Suitability.* `#![no_std]` unconditionally (`lib.rs:2`, not cfg-gated); its
+`std` feature is opt-in and off by default. Edition 2021, `rust-version` 1.61.
+Dependencies are `cfg-if`, `const-default` (`default-features = false`) and
+`rustversion` — none reaches std. The API is the shape this funnel needs:
+`Tlsf::new()` is a `pub const fn` (so it can back a `static`),
+`insert_free_block_ptr(NonNull<[u8]>)` takes a static arena, and
+`allocate(Layout) -> Option<NonNull<u8>>` / `deallocate(ptr, align)` match the
+funnel's two operations. `reallocate` exists if the glue ever wants it.
+
+*The tuning table is expressible and self-consistent with the source.*
+`Tlsf<'pool, FLBitmap, SLBitmap, const FLLEN: usize, const SLLEN: usize>` is
+generic over exactly the parameters the table varies, with the bitmaps as
+separate type parameters — which is why the `16/32` row needs a `u32` SL
+bitmap: `sl_bitmap: [SLBitmap; FLLEN]` has to be wide enough for SLLEN.
+
+*Two things that lower the cost of adopting it:*
+
+* **rlsf 0.2.3 is already vendored in the local cargo registry** (0.2.2 and
+  0.2.3 both present), so adding it needs no network — which matters because
+  `--locked` is injected project-wide by the `scripts/bin/cargo` shim.
+* **It is already a transitive dependency of `nros-board-esp32-qemu`**, via
+  `esp-alloc 0.9.0`. rlsf therefore already compiles for a bare-metal target in
+  this tree. "Does it build for our targets" is retired as a risk, and
+  `nros-platform-esp32-qemu` would be consolidating onto an allocator its own
+  board already links rather than adding a second one.
+
+*Measured on `thumbv7m-none-eabi`, `opt-level="z"` + LTO + `codegen-units=1`* —
+a DIFFERENT target from the survey table above, which is `thumbv7em-none-eabihf`:
+
+```
+FLLEN=12 SLLEN=16, u16/u16 bitmaps
+  control struct (.bss)   796 B     <- matches the table's 12/16 row exactly
+  code + 3 C wrappers     720 B
+```
+
+The `.bss` figure reproduces the survey's 796 B independently, on M3 rather than
+M7, which is expected — the control struct is `fl_bitmap` + `[SLBitmap; FLLEN]`
++ `[[Option<NonNull>; SLLEN]; FLLEN]`, and both targets are 32-bit. The harness
+was validated by decomposition rather than asserted: total probe `.bss` was
+4,892 B = 796 (control) + 4,096 (the probe's own arena).
+
+The code figure is NOT directly comparable to the table's `600 B (rlsf) + 282 B
+(glue)`: this 720 B is rlsf plus three thin `extern "C"` wrappers under LTO,
+not the same glue. Same order; do not subtract them from each other.
+
+**THE SURVEY'S CHOSEN 12/16 CANNOT SERVE TWO OF THE THREE PLATFORMS.** This is
+the one measurement that contradicts the section above, and it is a correctness
+constraint, not a tuning preference.
+
+rlsf caps the pool it can hold (`tlsf.rs`):
+
+```rust
+const MAX_POOL_SIZE: Option<usize> = {
+    let shift = GRANULARITY_LOG2 + FLLEN as u32;   // GRANULARITY_LOG2 = 4 on 32-bit
+    if shift < usize::BITS { Some(1 << shift) } else { None }
+};
+```
+
+`GRANULARITY = size_of::<usize>() * 4` = 16, so `MAX_POOL_SIZE = 1 << (4 + FLLEN)`
+and the largest single block is `(GRANULARITY << FLLEN) - GRANULARITY`.
+
+| FLLEN | max pool | verdict against our arenas |
+| --- | --- | --- |
+| **12** (the row this doc chose) | **64 KiB** | too small for two of three |
+| 14 | 256 KiB | covers the 128 KiB arenas |
+| 18 | 4 MiB | covers the 2 MiB arena |
+
+The arenas, from the statics this wave is supposed to convert:
+
+| platform | `DEFAULT_HEAP_SIZE` | needs |
+| --- | --- | --- |
+| `nros-platform-stm32f4` | 32 KiB | FLLEN >= 12 (12/16 is fine) |
+| `nros-platform-mps2-an385` | 128 KiB | **FLLEN >= 14** |
+| `nros-platform-mps2-an385` (one cfg) | 2 MiB | **FLLEN >= 18** |
+
+So the `.bss` figure in the survey table is an understatement for the platforms
+that matter: at ~136 B per FL class, 12 -> 18 is roughly +816 B on top of the
+796 B, i.e. ~1.6 KiB rather than 796 B for the 2 MiB arena. That is still small
+against a 2 MiB heap, but it is not the number this doc currently promises, and
+picking 12/16 as written would fail to hold the pool at all.
+
+**DESIGN REVISION (measured 2026-08-27): a DEFAULT const parameter, with the
+adequacy of FLLEN for N asserted at compile time.** This supersedes the three
+options first sketched here (one-size FLLEN / derive-from-N / split the arena).
+
+```rust
+pub struct FreeListHeap<const N: usize, const FLLEN: usize = 18> { .. }
+
+impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
+    const MAX_POOL: usize = 1usize << (4 + FLLEN);   // GRANULARITY_LOG2 = 4, 32-bit
+    pub const fn new() -> Self {
+        assert!(N <= Self::MAX_POOL,
+                "NROS_HEAP_SIZE exceeds rlsf MAX_POOL_SIZE for this FLLEN");
+        ..
+    }
+}
+```
+
+Every existing call site keeps working — `FreeListHeap<N>` takes the default —
+and a platform that wants a smaller control struct names its own:
+`FreeListHeap<{32 * 1024}, 12>`.
+
+*Verified on `thumbv7m-none-eabi`, both directions:*
+
+* `FreeListHeap<{32 * 1024}, 12>` and `FreeListHeap<{128 * 1024}>` compile.
+* `FreeListHeap<{128 * 1024}, 12>` — a 128 KiB arena against a 64 KiB max pool
+  — **fails the build**: `error[E0080]: evaluation panicked: NROS_HEAP_SIZE
+  exceeds rlsf MAX_POOL_SIZE for this FLLEN`. The negative control was run
+  deliberately, because a guard nothing can trip is this campaign's own named
+  trap.
+
+Default const parameters and `assert!` in a `const fn` both work on the pinned
+toolchain, so this needs no `generic_const_exprs` — which is what blocked the
+derive-FLLEN-from-N option.
+
+*Measured control-struct cost, SLLEN=16, same target:*
+
+| FLLEN | `.bss` | max pool | fits |
+| --- | --- | --- | --- |
+| 12 | **796 B** | 64 KiB | stm32f4 (32 KiB) |
+| 14 | **928 B** | 256 KiB | mps2-an385 (128 KiB) |
+| 18 | **1,192 B** | 4 MiB | mps2-an385 (2 MiB cfg) |
+
+**This corrects the survey table's per-class figure.** The measured slope is
+**66 B per FL class** at SLLEN=16, not the ~136 B this doc claimed — 136 is the
+SLLEN=32 slope. So the worst case (FLLEN=18) is +396 B over the already-accepted
+796 B, not the ~+816 B a reader would extrapolate. Sizing for the largest arena
+is therefore much cheaper than it first appeared, and the default of 18 costs a
+32 KiB board 1,192 B (3.6% of its arena) if it does not override.
+
+**BLOCKED on file ownership, not on technique.** `FreeListHeap`'s implementation
+is `packages/rmw/zenoh/zpico-alloc/src/lib.rs`, and the rlsf dependency would be
+added to that crate's manifest. The three `nros-platform-*/src/memory.rs` files
+are 94-line wrappers that only `use zpico_alloc::FreeListHeap` and size the
+arena from `NROS_HEAP_SIZE`; changing them alone would leave the tree pointing
+at a type whose O(n) first-fit walk is unchanged — a diff that reads as "W2
+landed" while delivering none of its property.
+
 **W3 — Zephyr tier: `CONFIG_HEAP_MEM_POOL_SIZE=0`.** Repoint
 `nros_platform_alloc` at rlsf and let `sys_heap` garbage-collect. Requires that
 no Zephyr subsystem calling `k_malloc` is enabled (fs, mcumgr, net,
