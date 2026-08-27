@@ -225,6 +225,16 @@ impl NrosConfig {
         // 2 — run cargo metadata.
         let metadata = MetadataCommand::new()
             .manifest_path(&manifest_path)
+            // Run FROM the workspace, not from wherever the caller happens to
+            // stand. `manifest_path` tells cargo which manifest to read; it does
+            // NOT tell it where to look for `.cargo/config.toml`, which cargo
+            // discovers by walking UP from the CURRENT DIRECTORY. Without this,
+            // `nros` invoked inside the nano-ros checkout applied THIS repo's
+            // cargo config — its `[patch.crates-io]` set included — to a
+            // completely unrelated workspace, and the resolved package set came
+            // back different. phase-383 W9.c: three codegen tests failed only
+            // when the suite was run from the repo root, and passed from /tmp.
+            .current_dir(workspace_root)
             .no_deps()
             .exec()
             .map_err(|source| NrosConfigError::CargoMetadata {

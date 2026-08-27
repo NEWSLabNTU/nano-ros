@@ -181,6 +181,8 @@ CONFIG_MAIN_STACK_SIZE and multiplied into every task stack (the link previously
 overflowed by 21588 bytes"). Residual recorded, not buried: a THREAD_ANALYZER+INIT_STACKS build
 survived six cycles at the original 8 KiB and that is unexplained. See `archived/0821-*`. (2026-08-27)
 
+**#0825** (build, open 2026-08-27) — a stale model under `$OUT_DIR` OUTRANKS a bringup's own committed model, so one `nros` run poisons every later test using a bringup of the same NAME. `model_search_paths` keys that rung on the bringup's DIRECTORY NAME (`demo_bringup` — nearly every fixture) while `$OUT_DIR` during `cargo test` is a persistent shared build dir. `apply_model_execution` then overwrites `system.tiers` wholesale, so a model with no `execution.tiers` silently erases tiers the user authored: three codegen tests failed with "tier `high` has no `[tiers.high]` definition" while the file on disk plainly had it. Reads as host-specific, order-dependent and not-a-regression, and survives `cargo clean -p`. Mitigation: `rm -rf packages/cli/target/*/build/nros-cli-core-*/out/nros`. See `0825-*`.
+
 Recently resolved (2026-08-27): **#0822** (rmw) — zenoh-pico's Zephyr port picked thread stacks with
 `thread_stack_area[thread_index++]` over a fixed 4-entry array, with `thread_index` never reset and
 never bounds checked, so the fifth task an image created got a stack one whole stack past the end and
