@@ -1434,4 +1434,33 @@ rmw_ret_t service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
     return NROS_RMW_RET_OK;
 }
 
+/* phase-393 W1 (issue 0823) — the four DDS entities behind a client or a
+ * service, so their granted QoS can be read back like a publisher's.
+ *
+ * Upstream names them from the CALLER's point of view, which is worth spelling
+ * out because the mapping inverts between the two sides: a client's REQUEST
+ * publisher is its writer and its RESPONSE subscription is its reader, while a
+ * service's REQUEST subscription is its reader and its RESPONSE publisher is
+ * its writer. Getting that backwards reads a real QoS off the wrong entity —
+ * an answer that looks right and is not, which is worse than no answer. */
+dds_entity_t client_request_writer(const rmw_client_t* client) {
+    if (client == nullptr || client->backend_data == nullptr) return 0;
+    return static_cast<const ClientState*>(client->backend_data)->writer;
+}
+
+dds_entity_t client_response_reader(const rmw_client_t* client) {
+    if (client == nullptr || client->backend_data == nullptr) return 0;
+    return static_cast<const ClientState*>(client->backend_data)->reader;
+}
+
+dds_entity_t service_request_reader(const rmw_service_t* service) {
+    if (service == nullptr || service->backend_data == nullptr) return 0;
+    return static_cast<const ServerState*>(service->backend_data)->reader;
+}
+
+dds_entity_t service_response_writer(const rmw_service_t* service) {
+    if (service == nullptr || service->backend_data == nullptr) return 0;
+    return static_cast<const ServerState*>(service->backend_data)->writer;
+}
+
 } // namespace nros_rmw_cyclonedds

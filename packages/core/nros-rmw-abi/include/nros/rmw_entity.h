@@ -483,6 +483,45 @@ typedef void (*rmw_content_filter_visit_fn)(void *ctx,
  * hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable
  * trailing param to `create_publisher`; NULL = all defaults.
  */
+/**
+ * Session creation options — the home for init-time context that
+ * `create_session`'s flat argument list cannot grow without another ABI break
+ * (issue 0808). Passed as a NULLable trailing param; NULL = all defaults.
+ *
+ * The carrier question 0808 opened had two candidates: encode this behind the
+ * locator string, or take one options struct. The struct wins on precedent —
+ * `rmw_publisher_options_t` and `rmw_subscription_options_t` already solved
+ * exactly this problem for entities, with the same NULLable-trailing-param
+ * shape — and on cost: parsing config out of a locator means every backend
+ * reimplements a parser, which is code size on a target plus a new class of
+ * silent misparse. One break, then the struct grows.
+ *
+ * Of Humble's eight `rmw_init_options_t` fields this carries the two that were
+ * GAPS (issue 0785). `domain_id` stays a named argument because every backend
+ * needs it; `security_options` remains declined on the target (a DDS-SROS2
+ * keystore path, and there is neither a filesystem nor a security plugin
+ * where this ABI runs); `allocator`, `instance_id`, `impl` and
+ * `implementation_identifier` are answered elsewhere or declined ABI-wide.
+ */
+typedef struct rmw_session_options_t {
+    /** Restrict discovery to this host. Upstream `rmw_localhost_only_t`,
+     *  narrowed to a flag: 0 = the system default, non-zero = localhost only.
+     *
+     *  A backend that cannot restrict discovery must IGNORE this rather than
+     *  fail — same contract as `mode`. Cyclone is the one that can honour it. */
+    uint8_t localhost_only;
+    uint8_t _reserved[7];     /**< Reserved; must be zero. */
+    /** The security enclave this session belongs to, or NULL.
+     *
+     *  Borrowed for the duration of the call. Carried so
+     *  `rmw_get_node_names_with_enclaves` stops being a HOLLOW grouping: the
+     *  visitor's `enclave` argument was structurally always NULL because
+     *  nothing in this ABI accepted one (issue 0785). A backend that does not
+     *  track enclaves still reports NULL, which is now a fact about the
+     *  backend rather than about the seam. */
+    const char *enclave;
+} rmw_session_options_t;
+
 typedef struct rmw_publisher_options_t {
     /** phase-279 (#145) — express hint (`TopicInfo::tx_express` across
      *  the C ABI): non-zero = this publisher's samples bypass transport

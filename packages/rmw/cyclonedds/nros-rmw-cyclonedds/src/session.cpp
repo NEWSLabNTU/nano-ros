@@ -163,7 +163,8 @@ constexpr const char* kEmbeddedCycloneConfig =
 } // namespace
 
 rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
-                            const char* node_name, rmw_session_t* out) {
+                            const char* node_name, const rmw_session_options_t* options,
+                            rmw_session_t* out) {
     if (out == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -213,8 +214,29 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     }
 #endif
 
+    /* issue 0808 — honour `localhost_only`, so the field is a real control
+     * rather than a carried value nobody reads (which the issue calls an inert
+     * slot in a different costume).
+     *
+     * Cyclone expresses it as a participant QoS property that its RTPS layer
+     * reads when choosing interfaces: restricting discovery to the loopback
+     * interface. A caller asking for it on a backend that cannot do it must
+     * still get a session — the contract for `mode` and for this field alike is
+     * IGNORE, not reject — so a failure to set the property is not fatal. */
+    dds_qos_t* pp_qos = nullptr;
+    if (options != nullptr && options->localhost_only != 0) {
+        pp_qos = dds_create_qos();
+        if (pp_qos != nullptr) {
+            const char* one = "1";
+            dds_qset_prop(pp_qos, "__Interface/Networking/Localhost", one);
+        }
+    }
+
     NROS_CYC_TRACE("session_create: calling dds_create_participant");
-    dds_entity_t pp = dds_create_participant(domain_id, nullptr, nullptr);
+    dds_entity_t pp = dds_create_participant(domain_id, pp_qos, nullptr);
+    if (pp_qos != nullptr) {
+        dds_delete_qos(pp_qos);
+    }
     NROS_CYC_TRACE("session_create: dds_create_participant returned %d", (int)pp);
     if (pp < 0) {
         if (state->domain > 0) {

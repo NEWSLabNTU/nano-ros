@@ -316,7 +316,8 @@ uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos);
 
 /* ---- session.c ---- */
 rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
-                                 const char* node_name, rmw_session_t* out);
+                                 const char* node_name,
+                                 const rmw_session_options_t* options, rmw_session_t* out);
 rmw_ret_t xrce_session_destroy(rmw_session_t* session);
 rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms);
 /* Phase 124.F.2 — connectivity probe via `uxr_ping_agent_session`. */

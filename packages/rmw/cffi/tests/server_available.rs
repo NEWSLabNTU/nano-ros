@@ -26,8 +26,8 @@ use nros_rmw::{
 use nros_rmw_cffi::{
     CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
-    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
-    nros_rmw_cffi_register_named,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 // ---- Mutable script the stub reads on each `server_available` call ----
@@ -47,6 +47,7 @@ unsafe extern "C" fn stub_open(
     _: u8,
     _: u32,
     _: *const core::ffi::c_char,
+    _options: *const NrosRmwSessionOptions,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     unsafe {

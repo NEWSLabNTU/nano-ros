@@ -203,7 +203,7 @@ int main(void) {
      * Use port 1 to make the "no agent" case deterministic — it's
      * reserved + nothing is listening. */
     rmw_session_t session = {0};
-    r = g_received_vtable->create_session("127.0.0.1:1", 0, 0, "smoke", &session);
+    r = g_received_vtable->create_session("127.0.0.1:1", 0, 0, "smoke", NULL, &session);
     if (r == NROS_RMW_RET_UNSUPPORTED) {
         fprintf(stderr,
                 "FAIL: open returned UNSUPPORTED — K.2.1 should have replaced the stub\n");
@@ -326,7 +326,7 @@ int main(void) {
 
     rmw_session_t cust_session = {0};
     rmw_ret_t cret = g_received_vtable->create_session(
-        "custom://noop", 0, 0, "smoke-custom", &cust_session);
+        "custom://noop", 0, 0, "smoke-custom", NULL, &cust_session);
     if (cret != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: custom:// open without armed bridge returned %d, "

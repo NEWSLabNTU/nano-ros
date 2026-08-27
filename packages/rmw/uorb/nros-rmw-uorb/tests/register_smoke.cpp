@@ -177,7 +177,7 @@ int main() {
     // session mode, and domain id; the only validated state is
     // `backend_data` allocated by open and freed by close.
     rmw_session_t session{};
-    rc = vt->create_session("/* ignored */", 0, 0, "test_module", &session);
+    rc = vt->create_session("/* ignored */", 0, 0, "test_module", nullptr, &session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open returned %d, expected OK\n", rc);
         return 1;
@@ -213,7 +213,7 @@ int main() {
     //
     // Re-open the session for the publisher exercise (close above
     // freed the state).
-    rc = vt->create_session("", 0, 0, "test_module", &session);
+    rc = vt->create_session("", 0, 0, "test_module", nullptr, &session);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "re-open returned %d\n", rc);
         return 1;
@@ -463,7 +463,7 @@ int main() {
     vt->destroy_session(&session);
 
     // Null-arg rejection on open.
-    rc = vt->create_session(nullptr, 0, 0, nullptr, nullptr);
+    rc = vt->create_session(nullptr, 0, 0, nullptr, nullptr, nullptr);
     if (rc != NROS_RMW_RET_INVALID_ARGUMENT) {
         std::fprintf(stderr, "open(null out) returned %d, expected INVALID_ARGUMENT\n", rc);
         return 1;

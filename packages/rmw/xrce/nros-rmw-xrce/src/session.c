@@ -291,7 +291,9 @@ static const char* locator_serial_path(const char* locator) {
 }
 
 rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
-                                 const char* node_name, rmw_session_t* out) {
+                                 const char* node_name,
+                                 const rmw_session_options_t* options, rmw_session_t* out) {
+    (void)options; /* XRCE has no discovery to restrict and no enclave. */
     (void)mode;
     if (out == NULL || node_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;

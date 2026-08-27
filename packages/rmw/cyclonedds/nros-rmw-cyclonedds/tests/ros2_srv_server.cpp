@@ -51,7 +51,7 @@ int main() {
     if (const char *e = std::getenv("ROS_DOMAIN_ID")) {
         domain = static_cast<uint32_t>(std::atoi(e));
     }
-    if (g_vt->create_session(nullptr, 0, domain, s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, domain, s.node_name, nullptr, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 

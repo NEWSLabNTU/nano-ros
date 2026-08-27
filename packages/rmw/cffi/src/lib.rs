@@ -192,6 +192,8 @@ const _: () = assert!(nros_rmw::DURATION_INFINITE_MS as i64 == NROS_RMW_DURATION
 pub type NrosRmwQos = rmw_qos_profile_t;
 /// Compat alias for the generated `rmw_session_t`.
 pub type NrosRmwSession = rmw_session_t;
+/// issue 0808 — session creation options; NULL means every default.
+pub type NrosRmwSessionOptions = rmw_session_options_t;
 /// Phase 376 W5/B1 — a graph node. The first argument of the four `create_*`
 /// slots, in place of the fabricated per-call session view they used to take.
 pub type NrosRmwNode = rmw_node_t;
@@ -1657,6 +1659,11 @@ impl CffiSession {
                 mode,
                 domain_id,
                 session.node_name_buf.as_ptr().cast(),
+                // issue 0808 — NULL is "every default". The runtime has no
+                // session options to state yet; a caller that does reaches the
+                // backend through this argument rather than through a locator
+                // it would have to parse.
+                core::ptr::null(),
                 &mut view,
             )
         };
@@ -1685,6 +1692,69 @@ impl CffiSession {
         }
         session.backend_data = view.backend_data;
         Ok(session)
+    }
+}
+
+/// Report a QoS DOWNGRADE — the granted profile differing from the requested
+/// one — once per entity, at creation.
+///
+/// Issue 0823 gave the runtime the ability to READ the granted QoS. This is the
+/// half that makes it a diagnostic. Silence from a QoS mismatch is
+/// indistinguishable from a topic-name typo, a domain split (issue 0801) and a
+/// discovery failure (issue 0803); all three were run to ground this month and
+/// each cost hours precisely because nothing separated them. A line naming the
+/// field that changed separates this one in a sentence.
+///
+/// Only a DIFFERENCE is reported. Equality is the common case and printing it
+/// would bury the signal — the same reason `nros_platform_task_init` only warns
+/// when the kernel disagreed with the priority it was asked for.
+///
+/// Best-effort by construction: a backend with no read-back slot reports
+/// nothing, which is correct rather than missing (zenoh-pico's QoS is
+/// per-message flags with no negotiation to read).
+#[cfg(feature = "alloc")]
+fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted: &NrosRmwQos) {
+    // The generated constants are `i32` (bindgen) while the struct field is
+    // `u8`; compare in the constants' type rather than casting them down.
+    fn reliability(v: u8) -> &'static str {
+        match v as i32 {
+            NROS_RMW_RELIABILITY_RELIABLE => "RELIABLE",
+            NROS_RMW_RELIABILITY_BEST_EFFORT => "BEST_EFFORT",
+            _ => "?",
+        }
+    }
+    fn durability(v: u8) -> &'static str {
+        match v as i32 {
+            NROS_RMW_DURABILITY_TRANSIENT_LOCAL => "TRANSIENT_LOCAL",
+            NROS_RMW_DURABILITY_VOLATILE => "VOLATILE",
+            _ => "?",
+        }
+    }
+    if requested.reliability != granted.reliability {
+        nros_log::nros_warn!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "{kind} `{name}`: asked for reliability {} and the backend granted {}. A RELIABLE \
+             reader does not match a BEST_EFFORT writer, so this is the usual reason a pair \
+             goes silent.",
+            reliability(requested.reliability),
+            reliability(granted.reliability)
+        );
+    }
+    if requested.durability != granted.durability {
+        nros_log::nros_warn!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "{kind} `{name}`: asked for durability {} and the backend granted {}.",
+            durability(requested.durability),
+            durability(granted.durability)
+        );
+    }
+    if requested.depth != granted.depth && granted.depth != 0 {
+        nros_log::nros_warn!(
+            nros_log::get_logger("nros_rmw_cffi"),
+            "{kind} `{name}`: asked for history depth {} and the backend granted {}.",
+            requested.depth,
+            granted.depth
+        );
     }
 }
 
@@ -1758,6 +1828,17 @@ impl Session for CffiSession {
         }
         pub_state.backend_data = view.backend_data;
         pub_state.can_loan_messages = view.can_loan_messages;
+        // phase-393 W1 — say so when the backend granted something else.
+        #[cfg(feature = "alloc")]
+        if let Some(read) = pub_state.vtable.publisher_get_actual_qos {
+            let mut granted = qos_struct;
+            let mut v = pub_state.make_view();
+            // SAFETY: the entity was created above and `v` describes it.
+            if unsafe { read(&v, &mut granted) } == NROS_RMW_RET_OK {
+                report_qos_downgrade("publisher", topic.name, &qos_struct, &granted);
+            }
+            let _ = &mut v;
+        }
         Ok(pub_state)
     }
 
@@ -3657,6 +3738,7 @@ mod tests {
         _mode: u8,
         _domain_id: u32,
         _node_name: *const core::ffi::c_char,
+        _options: *const NrosRmwSessionOptions,
         out: *mut NrosRmwSession,
     ) -> NrosRmwRet {
         unsafe {

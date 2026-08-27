@@ -87,20 +87,6 @@ INERT_FAMILIES = {
         "branches on are each their own slot, answered by nullity or a dedicated "
         "probe, which is a narrower and checkable mechanism",
     ),
-    "actual-qos": (
-        (
-            "client_request_publisher_get_actual_qos",
-            "client_response_subscription_get_actual_qos",
-            "service_request_subscription_get_actual_qos",
-            "service_response_publisher_get_actual_qos",
-        ),
-        "reading back the QoS a backend actually granted after negotiation. The "
-        "publisher and subscription halves are LIVE on cyclonedds since issue 0823 "
-        "(`read_entity_qos`); these four are the client/service entities, which need "
-        "the handle behind a client or service and have no consumer yet — "
-        "phase-393 W1. Deleting them would re-hide what 0823 measured: the runtime "
-        "reporting the QoS it asked for as the QoS it got",
-    ),
     "acks": (
         ("publisher_wait_for_all_acked",),
         "a blocking wait for reliable delivery to be acknowledged. Blocking is the "

@@ -15,7 +15,7 @@ use core::{
 use nros_rmw::{QoSProfile, Session as _, TopicInfo};
 use nros_rmw_cffi::{
     CffiSession, EMPTY_VTABLE, NROS_RMW_RET_OK, NrosRmwNode, NrosRmwPublisher, NrosRmwQos,
-    NrosRmwSession, NrosRmwVtable, generated, nros_rmw_cffi_register_named,
+    NrosRmwSession, NrosRmwSessionOptions, NrosRmwVtable, generated, nros_rmw_cffi_register_named,
 };
 
 // The call counters below are file-globals, so the tests in this binary must
@@ -98,6 +98,7 @@ unsafe extern "C" fn stub_open(
     _mode: u8,
     _domain: u32,
     _name: *const c_char,
+    _options: *const NrosRmwSessionOptions,
     out: *mut NrosRmwSession,
 ) -> i32 {
     unsafe { (*out).backend_data = 0x5E55_usize as *mut core::ffi::c_void };

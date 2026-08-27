@@ -49,7 +49,7 @@ int main() {
     rmw_session_t s{};
     s.node_name  = "graph_counts";
     s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(97), s.node_name, &s) !=
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(97), s.node_name, nullptr, &s) !=
         NROS_RMW_RET_OK) {
         return 3;
     }

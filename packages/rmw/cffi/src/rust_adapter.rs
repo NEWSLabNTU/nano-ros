@@ -49,8 +49,9 @@ use nros_rmw::{
 use crate::{
     EMPTY_VTABLE, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
-    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
-    event_kind_from_c, ret_from_error, rmw_publisher_options_t, rmw_subscription_options_t,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
+    NrosRmwSubscription, NrosRmwVtable, event_kind_from_c, ret_from_error, rmw_publisher_options_t,
+    rmw_subscription_options_t,
 };
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
@@ -384,11 +385,16 @@ unsafe extern "C" fn create_session_trampoline<R: RustBackend>(
     mode: u8,
     domain_id: u32,
     node_name: *const core::ffi::c_char,
+    options: *const NrosRmwSessionOptions,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     if out.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // issue 0808 — a Rust backend states no session options yet. Accepted and
+    // ignored rather than rejected: the contract for this argument is the same
+    // as for `mode`, a backend that cannot honour it must IGNORE it.
+    let _ = options;
     let cfg = RmwConfig {
         locator: unsafe { cstr_to_str(locator) },
         mode: if mode == 0 {

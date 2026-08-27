@@ -418,6 +418,7 @@ fn rust_backend_adapter_routes_every_slot() {
             0,
             0,
             b"test-node\0".as_ptr().cast(),
+            core::ptr::null(),
             &mut sess,
         )
     };
@@ -563,6 +564,7 @@ fn rust_backend_adapter_preserves_session_identity() {
                 0,
                 7,
                 b"talker\0".as_ptr().cast(),
+                core::ptr::null(),
                 &mut sess,
             )
         },
@@ -767,6 +769,7 @@ fn rust_backend_adapter_routes_events_and_services() {
                 0,
                 0,
                 b"e\0".as_ptr().cast(),
+                core::ptr::null(),
                 &mut sess,
             )
         },
@@ -1016,6 +1019,7 @@ fn rust_backend_adapter_rejects_null_pointers() {
             0,
             0,
             b"x\0".as_ptr().cast(),
+            core::ptr::null(),
             core::ptr::null_mut(),
         )
     };

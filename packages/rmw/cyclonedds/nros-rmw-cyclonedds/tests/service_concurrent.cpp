@@ -82,7 +82,7 @@ static int run_client(int client_idx, std::atomic<int> *failures) {
     rmw_session_t my_s{};
     my_s.node_name  = node_name;
     my_s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), node_name, &my_s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), node_name, nullptr, &my_s) != NROS_RMW_RET_OK) {
         failures->fetch_add(1);
         return 1;
     }
@@ -163,7 +163,7 @@ int main() {
     rmw_session_t s{};
     s.node_name  = "service_concurrent";
     s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, nullptr, &s) != NROS_RMW_RET_OK) {
         return 2;
     }
 

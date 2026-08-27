@@ -134,9 +134,17 @@ typedef struct nros_rmw_vtable_t {
      *  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`
      *              rather than the enum to keep the slot's width fixed
      *              across compilers. A backend with no peer/client
-     *              distinction must IGNORE it, not reject it. */
+     *              distinction must IGNORE it, not reject it.
+     *  @param options NULLable; NULL means every default. Issue 0808 — the
+     *              home for init-time context this flat list cannot grow
+     *              without another break. `mode` is NOT moved into it: doing
+     *              so would be a second break for no gain, and it is already
+     *              a named argument every backend reads. What moved in are the
+     *              two fields issue 0785 measured as GAPS, `localhost_only`
+     *              and `enclave`. */
     rmw_ret_t (*create_session)(const char *locator, uint8_t mode,
                            uint32_t domain_id, const char *node_name,
+                           const rmw_session_options_t *options,
                            rmw_session_t *out);
     rmw_ret_t (*destroy_session)(rmw_session_t *session);
     rmw_ret_t (*drive_io)(rmw_session_t *session, int32_t timeout_ms);

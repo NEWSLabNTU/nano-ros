@@ -26,7 +26,8 @@ use nros_rmw::{Publisher as _, QoSProfile, Session, SessionMode, TopicInfo};
 use nros_rmw_cffi::{
     EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
     NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService,
-    NrosRmwSession, NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
+    NrosRmwSession, NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable,
+    nros_rmw_cffi_register_named,
 };
 
 const PAYLOAD: &[u8] = b"streamed-publish-payload-0123456789ABCDEF";
@@ -70,6 +71,7 @@ unsafe extern "C" fn stub_open(
     _: u8,
     _: u32,
     _: *const core::ffi::c_char,
+    _options: *const NrosRmwSessionOptions,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     unsafe { (*out).backend_data = std::ptr::dangling_mut::<c_void>() };

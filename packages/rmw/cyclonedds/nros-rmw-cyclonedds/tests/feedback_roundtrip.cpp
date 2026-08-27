@@ -129,7 +129,7 @@ int main() {
     rmw_session_t s{};
     s.node_name = "feedback_roundtrip";
     s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(88), s.node_name, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(88), s.node_name, nullptr, &s) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "session open failed\n");
         return 2;
     }

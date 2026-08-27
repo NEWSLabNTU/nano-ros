@@ -29,6 +29,7 @@ mod stub {
         _: u8,
         _: u32,
         _: *const c_char,
+        _: *const nros_rmw_cffi::rmw_session_options_t,
         _: *mut rmw_session_t,
     ) -> rmw_ret_t {
         NROS_RMW_RET_OK

@@ -138,10 +138,21 @@ dds_entity_t subscription_reader(const rmw_subscription_t *subscriber);
  * field reads as "unchanged" instead of as a zero that looks like an answer. */
 rmw_ret_t read_entity_qos(dds_entity_t entity, rmw_qos_profile_t *out);
 
+/** phase-393 W1 — the DDS entities behind a client / service, for the QoS
+ *  read-back. The mapping inverts between the two sides: a CLIENT's request
+ *  publisher is its writer and its response subscription is its reader; a
+ *  SERVICE's request subscription is its reader and its response publisher is
+ *  its writer. */
+dds_entity_t client_request_writer(const rmw_client_t *client);
+dds_entity_t client_response_reader(const rmw_client_t *client);
+dds_entity_t service_request_reader(const rmw_service_t *service);
+dds_entity_t service_response_writer(const rmw_service_t *service);
+
 
 /* ---- session.cpp ---- */
 rmw_ret_t session_create(const char *locator, uint8_t mode,
                             uint32_t domain_id, const char *node_name,
+                            const rmw_session_options_t *options,
                             rmw_session_t *out);
 rmw_ret_t session_destroy(rmw_session_t *session);
 rmw_ret_t session_drive_io(rmw_session_t *session, int32_t timeout_ms);

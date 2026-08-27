@@ -43,7 +43,7 @@ int main() {
     rmw_session_t s{};
     s.node_name  = "status_events";
     s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, &s) !=
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, nullptr, &s) !=
         NROS_RMW_RET_OK) {
         return 3;
     }

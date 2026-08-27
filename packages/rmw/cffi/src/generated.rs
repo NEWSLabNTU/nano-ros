@@ -146,7 +146,17 @@ pub struct rmw_network_flow_endpoint_t {
     pub dscp: u8,
     pub internet_address: [core::ffi::c_char; 48usize],
 }
-#[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults."]
+#[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults.\n/\n/**\n Session creation options — the home for init-time context that\n `create_session`'s flat argument list cannot grow without another ABI break\n (issue 0808). Passed as a NULLable trailing param; NULL = all defaults.\n\n The carrier question 0808 opened had two candidates: encode this behind the\n locator string, or take one options struct. The struct wins on precedent —\n `rmw_publisher_options_t` and `rmw_subscription_options_t` already solved\n exactly this problem for entities, with the same NULLable-trailing-param\n shape — and on cost: parsing config out of a locator means every backend\n reimplements a parser, which is code size on a target plus a new class of\n silent misparse. One break, then the struct grows.\n\n Of Humble's eight `rmw_init_options_t` fields this carries the two that were\n GAPS (issue 0785). `domain_id` stays a named argument because every backend\n needs it; `security_options` remains declined on the target (a DDS-SROS2\n keystore path, and there is neither a filesystem nor a security plugin\n where this ABI runs); `allocator`, `instance_id`, `impl` and\n `implementation_identifier` are answered elsewhere or declined ABI-wide."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_session_options_t {
+    #[doc = " Restrict discovery to this host. Upstream `rmw_localhost_only_t`,\n  narrowed to a flag: 0 = the system default, non-zero = localhost only.\n\n  A backend that cannot restrict discovery must IGNORE this rather than\n  fail — same contract as `mode`. Cyclone is the one that can honour it."]
+    pub localhost_only: u8,
+    #[doc = "< Reserved; must be zero."]
+    pub _reserved: [u8; 7usize],
+    #[doc = " The security enclave this session belongs to, or NULL.\n\n  Borrowed for the duration of the call. Carried so\n  `rmw_get_node_names_with_enclaves` stops being a HOLLOW grouping: the\n  visitor's `enclave` argument was structurally always NULL because\n  nothing in this ABI accepted one (issue 0785). A backend that does not\n  track enclaves still reports NULL, which is now a fact about the\n  backend rather than about the seam."]
+    pub enclave: *const core::ffi::c_char,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_publisher_options_t {
@@ -271,13 +281,14 @@ pub struct rmw_count_status_t {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_vtable_t {
-    #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`.\n\n  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`\n              rather than the enum to keep the slot's width fixed\n              across compilers. A backend with no peer/client\n              distinction must IGNORE it, not reject it."]
+    #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`.\n\n  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`\n              rather than the enum to keep the slot's width fixed\n              across compilers. A backend with no peer/client\n              distinction must IGNORE it, not reject it.\n  @param options NULLable; NULL means every default. Issue 0808 — the\n              home for init-time context this flat list cannot grow\n              without another break. `mode` is NOT moved into it: doing\n              so would be a second break for no gain, and it is already\n              a named argument every backend reads. What moved in are the\n              two fields issue 0785 measured as GAPS, `localhost_only`\n              and `enclave`."]
     pub create_session: ::core::option::Option<
         unsafe extern "C" fn(
             locator: *const core::ffi::c_char,
             mode: u8,
             domain_id: u32,
             node_name: *const core::ffi::c_char,
+            options: *const rmw_session_options_t,
             out: *mut rmw_session_t,
         ) -> rmw_ret_t,
     >,

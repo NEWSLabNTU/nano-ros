@@ -17,8 +17,8 @@ use nros_rmw::{QoSProfile, RmwConfig, Session as _, SessionMode, SlotLending, To
 use nros_rmw_cffi::{
     CffiRmw, EMPTY_VTABLE, NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
     NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
-    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSubscription, NrosRmwVtable,
-    nros_rmw_cffi_register_named,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 // Backend-owned buffer + counter state. The loan trampolines return
@@ -41,6 +41,7 @@ unsafe extern "C" fn ln_open(
     _: u8,
     _: u32,
     _: *const core::ffi::c_char,
+    _options: *const NrosRmwSessionOptions,
     out: *mut NrosRmwSession,
 ) -> NrosRmwRet {
     unsafe { (*out).backend_data = 0xAB00usize as *mut c_void };

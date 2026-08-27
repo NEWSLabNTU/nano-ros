@@ -88,6 +88,47 @@ static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher,
     return NROS_RMW_RET_OK;
 }
 
+/* phase-393 W1 — the client/service half of the QoS read-back (issue 0823).
+ *
+ * Same `out`-carries-the-request contract as the publisher and subscription
+ * forms above. The entity each one names is not symmetric between the two
+ * sides; `internal.hpp` spells the mapping out. */
+static rmw_ret_t cyclone_client_request_publisher_get_actual_qos(const rmw_client_t *client,
+                                                                 rmw_qos_profile_t *qos) {
+    if (client == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    return nros_rmw_cyclonedds::read_entity_qos(
+        nros_rmw_cyclonedds::client_request_writer(client), qos);
+}
+
+static rmw_ret_t cyclone_client_response_subscription_get_actual_qos(const rmw_client_t *client,
+                                                                     rmw_qos_profile_t *qos) {
+    if (client == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    return nros_rmw_cyclonedds::read_entity_qos(
+        nros_rmw_cyclonedds::client_response_reader(client), qos);
+}
+
+static rmw_ret_t cyclone_service_request_subscription_get_actual_qos(const rmw_service_t *service,
+                                                                     rmw_qos_profile_t *qos) {
+    if (service == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    return nros_rmw_cyclonedds::read_entity_qos(
+        nros_rmw_cyclonedds::service_request_reader(service), qos);
+}
+
+static rmw_ret_t cyclone_service_response_publisher_get_actual_qos(const rmw_service_t *service,
+                                                                   rmw_qos_profile_t *qos) {
+    if (service == nullptr || qos == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    return nros_rmw_cyclonedds::read_entity_qos(
+        nros_rmw_cyclonedds::service_response_writer(service), qos);
+}
+
 /* issue 0823 — QoS is a negotiation; report what was GRANTED.
  *
  * `out` is pre-loaded with the requested profile so a field Cyclone does not
@@ -255,10 +296,10 @@ const nros_rmw_vtable_t kVtable = {
     /*subscription_count_matched_publishers*/ cyclone_subscription_count_matched_publishers,
     /*publisher_get_actual_qos*/ cyclone_publisher_get_actual_qos,
     /*subscription_get_actual_qos*/ cyclone_subscription_get_actual_qos,
-    /*client_request_publisher_get_actual_qos*/ nullptr,
-    /*client_response_subscription_get_actual_qos*/ nullptr,
-    /*service_request_subscription_get_actual_qos*/ nullptr,
-    /*service_response_publisher_get_actual_qos*/ nullptr,
+    /*client_request_publisher_get_actual_qos*/ cyclone_client_request_publisher_get_actual_qos,
+    /*client_response_subscription_get_actual_qos*/ cyclone_client_response_subscription_get_actual_qos,
+    /*service_request_subscription_get_actual_qos*/ cyclone_service_request_subscription_get_actual_qos,
+    /*service_response_publisher_get_actual_qos*/ cyclone_service_response_publisher_get_actual_qos,
     /*publisher_wait_for_all_acked*/ nullptr,
     /*take_with_info*/ nullptr,
     /*take_loaned_message_with_info*/ nullptr,
