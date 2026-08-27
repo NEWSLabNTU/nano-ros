@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-33 open. One line each — the detail lives in the issue file,
+37 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -80,9 +80,13 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0819** (rmw) — XRCE payloads at/above the transport MTU are DELIVERED CORRUPTED rather than refused See `0819-*`.
 - **#0820** (cmake, testing) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no dependency edge on the Rust world, and hardcoded `--release` past a miscompile carve-out See `0820-*`.
 - **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
+- **#0828** (testing) — Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is green only while an earlier `lane=all` build is still fresh See `0828-*`.
 - **#0829** (api, rmw) — Two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on depth — 1 in `nros-rmw`, 10 in the `nros::qos` façade, each with two callers See `0829-*`.
 - **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames; a third hub port fixes it See `0830-*`.
+- **#0831** (build) — `[image.<id>].rmw` configures nothing on the cargo driver — and a workspace fixture row's `rmw` does not either, so two tier-2 coordinates test zenoh while claiming cyclonedds and XRCE See `0831-*`.
 - **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
+- **#0834** (cmake) — The per-build `nros_cpp_config_generated.h` mirror can reach a state no re-run repairs — only wiping the west build dir recovers it See `0834-*`.
+- **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
 - **#0836** (rmw) — A FreeRTOS/lwIP image receives every small ROS topic and never a fragmented one — a 13 KiB Autoware trajectory never arrives See `0836-*`.
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
@@ -176,19 +180,21 @@ fail on staleness and every one passes solo afterwards. Two runs either side of 
 IDENTICAL 92-test failure set, which is how it gets blamed on whatever landed last. Fixed on the way: the rust
 probe selected by `--lang rust` while `is_cargo_row` is builder-keyed, so twelve threadx cmake rows got a bare
 `cargo build` that could never succeed. See `0835-*`.
-=======
 
-**#0837** (testing, open 2026-08-27) — a submodule bump leaves fixtures the BUILD side calls fresh and the TEST
-side calls stale. `git submodule update` on cyclonedds rewrote `atomics.c` (11:31); thirteen cyclonedds fixtures
-built at 10:01 were left alone by a `lane=all` at 13:38 that reported `== threadx_linux == OK`, while the
-test-side probe — which walks 13351 inputs including the submodule — failed them with the exact newer file. The
-STALE verdict is absorbing (0445): "6th consecutive stale verdict, first 3h ago", three hours of that coordinate
-running nothing. Rebuilding the thirteen by hand took native_api + c_xrce_api from 6 failures to 41/41. Issue
-0196's rule with the two sides disagreeing about a whole submodule. See `0837-*`.
 
->>>>>>> af5dbdd9f (docs(#0837): a submodule bump strands fixtures the build side calls fresh)
+**#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an
+out-of-lane fixture only when it can ATTRIBUTE it, and 47 rows share one `build_subdir`
+(`build-workspace-fixtures`, 14 of them in `examples/workspaces/c` alone), so issue 0517's ambiguity makes them
+fail closed — in the run set at every lane. `lane=tier2` builds the 14-coordinate cover; `workspace-c-native` is
+`linux,c,zenoh` and the cover has `linux,c,cyclonedds`. After a core-crate edit the lane gate PASSED and test-all
+reported 190 stale-fixture failures. Green today only because older `lane=all` residue was still fresh — so a
+tier-2 green is conditional on a build the lane does not name. See `0828-*`.
 
->>>>>>> ed0edeb7d (docs(#0837): correct the diagnosis in place and close it)
+Recently resolved (2026-08-28): **#0848** (rmw) — NOT a router defect. The symptom was `rmw_zenohd`
+appearing to stop transmitting to a serial peer after the handshake, with zenoh-pico expiring the session at
+2 x lease; the cause is the board's POLLED UART receive overrunning and dropping the keepalive frame
+(issue 0852). The router is exonerated. See `archived/0848-*`.
+
 **#0834** (cmake, open 2026-08-27) — the per-build `nros_cpp_config_generated.h` mirror can reach a state NO
 re-run repairs: mirror dir holds the `.stamp` and not the header, the producing custom command runs, cargo prints
 `Finished` without re-emitting the byproduct, and ninja records the output as built. Deleting the stamp, and
@@ -204,27 +210,7 @@ live one layer up — `workspace-rust-native-cyclonedds` builds an artifact with
 only by `cmake_defs()` (cmake rows), `row_coord()` and the label printer; the driver never mentions it. Predates
 phase-383, which only made it visible. `nros build` now REFUSES a divergent per-image rmw rather than lying. See
 `0831-*`.
-<<<<<<< HEAD
-=======
 
-<<<<<<< HEAD
-**#0842** (cmake, open 2026-08-27) — a generated cmake root picks the WRONG NETSTACK for a board whose platform
-shares a `[deploy.<target>.nros]` block with another board. `examples/workspaces/c` has two FreeRTOS boards
-(mps2-an385 lwIP, freertos-posix sockets) and one `[deploy.freertos.nros] netstack = "lwip"`, so building the
-POSIX one compiled zenoh-pico's lwIP backend into `libnros_cpp.a` and failed with 63 `undefined reference to
-lwip_*`. The hand-written root escaped it by gating SUBDIRS on `NANO_ROS_BOARD` — one entry per configure. The
-pre-migration binary has ZERO lwip strings, so the artifact settles it. Blocks the embedded half of every
-remaining cmake workspace migration. See `0842-*`.
-=======
->>>>>>> d70a8833c (docs(#0842): correct the diagnosis in place and close it)
-**#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an
-out-of-lane fixture only when it can ATTRIBUTE it, and 47 rows share one `build_subdir`
-(`build-workspace-fixtures`, 14 of them in `examples/workspaces/c` alone), so issue 0517's ambiguity makes them
-fail closed — in the run set at every lane. `lane=tier2` builds the 14-coordinate cover; `workspace-c-native` is
-`linux,c,zenoh` and the cover has `linux,c,cyclonedds`. After a core-crate edit the lane gate PASSED and test-all
-reported 190 stale-fixture failures. Green today only because older `lane=all` residue was still fresh — so a
-tier-2 green is conditional on a build the lane does not name. See `0828-*`.
-<<<<<<< HEAD
 
 Recently resolved (2026-08-27): **#0837** (cmake) — a cyclonedds submodule bump relinked NOTHING. The leg does
 visit the cells and ninja does rebuild `libddsc.a`; what it does not know is that `c_talker` depends on it,
@@ -1811,7 +1797,6 @@ missing on the first attempt. **A second clause came from the fix:** with the fi
 `-p <pkg> --test <target>`. Two dead targets found, deleted in phase-115 and phase-169.3 — the latter's commit
 says it "strip[ped] Cargo wiring" and missed the recipe. Both recipes deleted: one that cannot run looks like
 coverage. Mutation-tested both directions. See `archived/0660-*`.
-
 
 
 Recently resolved (2026-08-19): **#644** — all six threadx-linux Rust leaves now take `nros` with `alloc`,
@@ -3800,7 +3785,6 @@ pass. Root-caused and worked around, NOT structurally fixed — a per-arch tree 
 freshness signature is larger and belongs with the NuttX board owner. See `archived/0433-*`.
 
 
-
 Recently resolved (2026-08-06): **#435** — filed as "CMake fixtures do not depend on generated RMW
 headers"; SUPERSEDED by **#442**, whose diagnosis is the correct one. Not a missing dependency:
 `zpico.h` is generated IN PLACE by its own producer's build script, so it cannot be its own input.
@@ -3850,7 +3834,6 @@ Residual is board enablement, not this issue: nuttx/freertos/threadx need multi-
 (FreeRTOS has no SMP port here at all). Note the original guess that a "zephyr native_sim SMP
 variant" would do was wrong — the POSIX arch has no SMP support, which is why this took a real a53
 board. See `archived/0260-*`. (2026-08-21)
-
 
 
 Recently resolved (2026-08-10): **#0371** — RESOLVED 2026-08-10, archived. See `archived/0371-*`.
