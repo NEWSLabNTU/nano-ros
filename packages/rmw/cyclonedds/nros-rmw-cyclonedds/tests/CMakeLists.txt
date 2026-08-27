@@ -112,6 +112,23 @@ add_test(
     COMMAND nros_rmw_cyclonedds_status_events
 )
 
+# phase-393 W2 — matched counts and the publisher GID. Asserts the count MOVES
+# when a reader appears, which a stub returning 0 could not fake.
+add_executable(nros_rmw_cyclonedds_graph_counts
+    graph_counts.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_graph_counts PRIVATE nros_rmw_cyclonedds)
+target_include_directories(nros_rmw_cyclonedds_graph_counts
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_graph_counts
+    COMMAND nros_rmw_cyclonedds_graph_counts
+)
+
 # Issue 0823 — the QoS read-back. Pre-loads the out-struct with values the
 # entity cannot have, so an echoing or zeroing implementation is visible.
 add_executable(nros_rmw_cyclonedds_actual_qos

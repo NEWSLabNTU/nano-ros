@@ -87,16 +87,6 @@ INERT_FAMILIES = {
         "branches on are each their own slot, answered by nullity or a dedicated "
         "probe, which is a narrower and checkable mechanism",
     ),
-    "gid": (
-        ("get_gid_for_publisher",),
-        "publisher GIDs travel in the message attachment and are compared there; "
-        "nothing asks a backend for one out of band",
-    ),
-    "matched-counts": (
-        ("publisher_count_matched_subscriptions", "subscription_count_matched_publishers"),
-        "discovery-introspection counts. Nothing in the executor or the C/C++ API "
-        "surfaces them, so no consumer exists to give them meaning",
-    ),
     "actual-qos": (
         (
             "client_request_publisher_get_actual_qos",

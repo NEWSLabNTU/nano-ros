@@ -5,6 +5,8 @@
 // return NROS_RMW_RET_UNSUPPORTED so the runtime sees a wired-but-
 // inert backend until 117.4–117.7 fill them in.
 
+#include <cstring>
+
 #include "nros_rmw_cyclonedds.h"
 
 #include "nros/rmw_ret.h"
@@ -29,6 +31,63 @@ namespace {
  * UNSET is refused rather than guessed: it means "no severity stated", and a
  * backend inventing one would be choosing a verbosity the caller did not ask
  * for. */
+/* phase-393 W2 — the three cheap reads, each backed by a Cyclone primitive.
+ *
+ * `dds_get_matched_*` with a NULL array and 0 capacity returns the COUNT: the
+ * API rejects `rds == NULL && nrds > 0`, so asking for none is how you ask how
+ * many. That answers "is anyone subscribed to this topic", which is the
+ * question an operator asks when nothing arrives — and until now the runtime
+ * could not answer it in any language. */
+static rmw_ret_t cyclone_publisher_count_matched_subscriptions(const rmw_publisher_t *publisher,
+                                                               size_t *subscription_count) {
+    if (publisher == nullptr || subscription_count == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_return_t n =
+        dds_get_matched_subscriptions(nros_rmw_cyclonedds::publisher_writer(publisher), nullptr, 0);
+    if (n < 0) {
+        return NROS_RMW_RET_ERROR;
+    }
+    *subscription_count = (size_t)n;
+    return NROS_RMW_RET_OK;
+}
+
+static rmw_ret_t cyclone_subscription_count_matched_publishers(
+    const rmw_subscription_t *subscription, size_t *publisher_count) {
+    if (subscription == nullptr || publisher_count == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_return_t n = dds_get_matched_publications(
+        nros_rmw_cyclonedds::subscription_reader(subscription), nullptr, 0);
+    if (n < 0) {
+        return NROS_RMW_RET_ERROR;
+    }
+    *publisher_count = (size_t)n;
+    return NROS_RMW_RET_OK;
+}
+
+/* Cyclone's GUID is 16 bytes; `rmw_gid_t::data` is 24 (upstream's
+ * `RMW_GID_STORAGE_SIZE`). Zero-pad the tail rather than leaving it
+ * uninitialised — a gid is COMPARED, and comparing 8 bytes of stack residue
+ * makes two reads of the same publisher differ. */
+static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher, rmw_gid_t *gid) {
+    if (publisher == nullptr || gid == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    dds_guid_t guid;
+    std::memset(&guid, 0, sizeof(guid));
+    if (dds_get_guid(nros_rmw_cyclonedds::publisher_writer(publisher), &guid) != DDS_RETCODE_OK) {
+        return NROS_RMW_RET_ERROR;
+    }
+    std::memset(gid->data, 0, RMW_GID_STORAGE_SIZE);
+    static_assert(sizeof(guid.v) <= RMW_GID_STORAGE_SIZE, "cyclone GUID must fit rmw_gid_t");
+    std::memcpy(gid->data, guid.v, sizeof(guid.v));
+    /* The identifier is what makes two gids comparable at all (rmw_entity.h);
+     * a gid without it can be compared against a foreign backend's by mistake. */
+    gid->implementation_identifier = "cyclonedds";
+    return NROS_RMW_RET_OK;
+}
+
 /* issue 0823 — QoS is a negotiation; report what was GRANTED.
  *
  * `out` is pre-loaded with the requested profile so a field Cyclone does not
@@ -191,9 +250,9 @@ const nros_rmw_vtable_t kVtable = {
     /*get_implementation_identifier*/ nullptr,
     /*get_serialization_format*/ nullptr,
     /*feature_supported*/ nullptr,
-    /*get_gid_for_publisher*/ nullptr,
-    /*publisher_count_matched_subscriptions*/ nullptr,
-    /*subscription_count_matched_publishers*/ nullptr,
+    /*get_gid_for_publisher*/ cyclone_get_gid_for_publisher,
+    /*publisher_count_matched_subscriptions*/ cyclone_publisher_count_matched_subscriptions,
+    /*subscription_count_matched_publishers*/ cyclone_subscription_count_matched_publishers,
     /*publisher_get_actual_qos*/ cyclone_publisher_get_actual_qos,
     /*subscription_get_actual_qos*/ cyclone_subscription_get_actual_qos,
     /*client_request_publisher_get_actual_qos*/ nullptr,
