@@ -44,14 +44,40 @@ fi
 # the zenoh-pico aliases, threadx images, px4/uorb, …).
 COVERAGE=(
     # FreeRTOS firmware: the board supplies strong netif hooks (LAN9118/lwIP).
-    "examples/qemu-arm-freertos/rust|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
-    "build/cargo-fixtures/qemu-arm-freertos|freertos_rs_*entry|nros_board_register_netif nros_board_poll_netif"
+    #
+    # phase-386 W3b follow-on / issue 0833. These two rows were stale in BOTH
+    # fields and matched nothing, which is what left `nros_board_register_netif`
+    # unverified — W3b made that visible (`warn`), and this makes it checked.
+    # What was wrong, and why each half is easy to get wrong again:
+    #
+    #   base  `examples/qemu-arm-freertos/rust` / `build/cargo-fixtures/`
+    #         `qemu-arm-freertos` -> the real group dir is keyed on the fixture
+    #         COORDINATE's platform token (`freertos`), not on the example
+    #         directory name. phase-340 P2 moved every leaf into that shared
+    #         cargo group; the path here never followed.
+    #   glob  `freertos_rs_*entry` -> `freertos_rs_talker` is the CRATE (an
+    #         rlib, which this loop skips anyway); the BIN cargo emits is
+    #         `talker`. Nothing in this tree has ever been named `*entry` here.
+    #
+    # The base deliberately stops at the platform token: the triple
+    # (`thumbv7m-none-eabi`) and the profile (`nros-minsizerel`, from
+    # `nros_cargo_platform_profile freertos`) are derived, and spelling either
+    # here would be a literal that breaks the next time one moves. `find`
+    # recurses to them.
+    "build/cargo-fixtures/freertos|talker|nros_board_register_netif nros_board_poll_netif"
+    "build/cargo-fixtures/freertos|listener|nros_board_register_netif nros_board_poll_netif"
     # (phase-249 P4a removed the weak nros_app_register_backends default — it is now
     #  a generated strong def or a link error, never a weak-overridable symbol, so
     #  it left this image gate.)
     # Serial example ELFs (Phase 244.D1 Wave D): board serial aliases.
-    "examples/qemu-arm-baremetal/rust|qemu-serial-talker|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
-    "examples/qemu-arm-baremetal/rust|qemu-serial-listener|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
+    #
+    # Same stale-BASE as the FreeRTOS rows above and fixed with them rather than
+    # after they resurface separately (CLAUDE.md, "fix the CLASS"): here the
+    # glob was already right and only the base was pre-phase-340, pointing at
+    # the example leaf instead of the coordinate group dir. Both rows verified
+    # nothing and, before W3b, said nothing about it.
+    "build/cargo-fixtures/qemu-arm-baremetal|qemu-serial-talker|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
+    "build/cargo-fixtures/qemu-arm-baremetal|qemu-serial-listener|_z_open_serial_from_dev _z_close_serial _z_send_serial_internal _z_read_serial_internal"
     # (smoltcp_init/smoltcp_cleanup are NOT image-checked: re-audited 2026-06-15
     #  to optional-hook. They are legacy no-op stubs the post-Phase-80 path no
     #  longer overrides — real bring-up is `nros_smoltcp` + the board

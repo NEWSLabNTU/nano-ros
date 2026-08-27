@@ -490,44 +490,46 @@ tidiness issue rather than a correctness one.
 ## Attempting to CLOSE the netif coverage gap (2026-08-27) — blocked, findings recorded
 
 W3b made the gap legible; closing it means building the images the coverage rows
-name. Attempted, and it does not work today. What was established:
+name. **Closed 2026-08-27 — `warn=0`.**
 
-**The rows name a path nothing builds.** They expect
-`examples/qemu-arm-freertos/rust` / `build/cargo-fixtures/qemu-arm-freertos`
-matching `freertos_rs_*entry`. A `find` over the whole tree for that glob
-returns **nothing**, and `just freertos build-fixtures` puts its artifacts under
-`examples/workspaces/rust/target-fixtures/freertos/...` instead.
+### What the rows were actually wrong about
 
-So the row may be stale rather than merely uncovered — the phase-331 workspace
-migration moved where FreeRTOS entries land, and this coverage map appears not
-to have followed. **That is a stronger claim than W3b made and it is not yet
-proven**: the run below did not get far enough to produce an entry image of any
-name, so "the glob is wrong" and "the image is not built" are still
-indistinguishable.
+The earlier note here suspected the rows were stale but said plainly that it was
+**not yet proven**, because the blocked build meant "the glob is wrong" and "the
+image is not built" were indistinguishable. With the build unblocked (issue
+0833) they separate, and the rows were stale in **both** fields:
 
-**`just freertos build-fixtures` fails.** It reaches
-`examples/workspaces/realtime-cpp/.../freertos_entry/` and exits 2 with no
-diagnostic in the log — the last lines are benign newlib
-`_read/_lseek/_isatty is not implemented` link warnings, then the failure. Two
-attempts, the second detached so a foreground timeout could not be the cause.
+| Field | Row said | Reality |
+| --- | --- | --- |
+| base | `examples/qemu-arm-freertos/rust`, `build/cargo-fixtures/qemu-arm-freertos` | `build/cargo-fixtures/freertos` — the group dir is keyed on the fixture coordinate's PLATFORM token, not the example directory name (phase-340 P2) |
+| glob | `freertos_rs_*entry` | `talker`, `listener`, … — `freertos_rs_talker` is the CRATE (an rlib, which the loop skips); the BIN cargo emits is `talker`. Nothing here was ever named `*entry` |
 
-### For whoever continues
+**The guarantee itself holds.** `nros_board_register_netif` and
+`nros_board_poll_netif` are `T` (strong) in the real FreeRTOS images — the
+LAN9118/lwIP board does supply the strong pair. The defect was never the
+override; it was that nothing looked.
 
-1. Get `just freertos build-fixtures` green, or find the real error — the log's
-   final page is warnings, so the diagnostic is either suppressed or upstream of
-   the tail. This is the actual blocker.
-2. Then check what the entry images are NAMED and where they land, and fix the
-   two COVERAGE rows to match if the workspace migration moved them.
-3. Only then does `nros_board_register_netif` get verified, and the `warn=4`
-   drop to 2 (the baremetal-serial rows are a separate lane with the same
-   question).
+### The same defect one lane over
 
-Worth noting the shape: W3b turned an invisible gap into a visible one, and the
-first attempt to close it immediately found a second, likelier defect behind it.
-That is the gate working as intended — but the guarantee remains unverified, and
-saying so plainly is better than a partial fix that moves the warning without
-checking anything.
+The two `qemu-arm-baremetal` serial rows had the identical stale BASE (glob
+already correct), so they were fixed in the same commit rather than left to
+resurface separately — CLAUDE.md's "fix the CLASS, not the reported site".
 
+The ThreadX rows were deliberately **left alone**: those leaves keep per-leaf
+`target-zenoh`/`target-dds` dirs and were never migrated to the group, so their
+`examples/…` bases are correct. A blanket rewrite of every row would have broken
+them, which is the argument for checking each row against the tree rather than
+applying the pattern.
+
+### Result
+
+```
+weak-image: checked=30 fail=0 warn=0
+```
+
+Was `checked=22 … warn=4`. Every coverage row now matches at least one image and
+every image-checkable guarantee is verified — including
+`nros_board_register_netif`, which is what W3b set out to make possible.
 
 ## Diagnosis: `just freertos build-fixtures` (2026-08-27)
 
@@ -547,35 +549,69 @@ Rebuild it (not auto-done — compiling at build/test time is forbidden):
 `cmake --build examples/workspaces/realtime-cpp/build-workspace-fixtures-freertos`
 then returns **rc=0**. So the C++ leaf itself builds fine.
 
-**2. A second failure remains, and it is NOT the leaf.** With a fresh CLI,
-`just freertos build-fixtures` still exits 2, and the log's last line is the
-`built:` message for that same leaf — i.e. the last SUCCESS, not the failure
-point. The failing step produces no diagnostic at all.
+**2. A second failure remains, and it is NOT the leaf — RESOLVED, issue 0833.**
 
-`scripts/build/workspace-fixtures-build.sh` shows what runs immediately after
-that echo: the fixture signature stamp.
+The first explanation written here was **wrong**, and is kept rather than
+deleted because how it went wrong is the useful part.
 
-```sh
-echo "     built: $dir/$built_path"
-...
-mkdir -p "$stamp_dir"
-bash "$repo_root/scripts/build/workspace-fixture-signature.sh" "$record" \
-    > "$stamp_dir/.nros-workspace-fixture.$id.inputsig"
+*What was written:* with a fresh CLI the run still exits 2, the log's last line
+is the `built:` message for that leaf, and the step immediately after that echo
+is the fixture signature stamp — so the stamp step is the prime suspect, since a
+non-zero exit there ends the subshell with nothing printed. It was recorded as
+**inference, not fact**, with the confirming command named.
+
+*What the confirming command showed:* run against the actual `$record` for
+`workspace-cpp-freertos-realtime`, `workspace-fixture-signature.sh` exits **0**
+and prints a signature. The stamp step was never involved.
+
+*The real cause*, found by running the failing stage alone and grepping its
+stderr for `***`:
+
+```
+CMake Error at .../corrosion/0.6.1-nros1/share/cmake/FindRust.cmake:812 (message):
+  Target armv8r-none-eabihf is not installed for toolchain
+  stable-x86_64-unknown-linux-gnu.
+make: *** [.../ws-freertos-….mk:10: ws-group-0] Error 1
 ```
 
-That is the prime suspect: a non-zero exit there ends the subshell with nothing
-printed, which matches the observed shape exactly — last output is `built:`,
-exit code 2, no error text.
+`rustup target add armv8r-none-eabihf` → the stage returns **rc=0**, and the
+whole lane (`just freertos build-fixtures`, which also runs
+`build-examples` / `build-fixture-extras` / `build-fixtures-posix`) exits
+**0** — `FreeRTOS test fixtures built.` A stage-level green would not have
+shown whether anything else was queued behind the first failure.
 
-**Not yet confirmed**, and stated that way on purpose: the signature script was
-not run against the actual `$record` for this row, so "the stamp step fails" is
-still inference. Confirming it is one command once someone has the record —
-run `workspace-fixture-signature.sh` with that row's record and read its status.
+The target is Cortex-R52, declared by two boards, one toolchain file and two
+fixture rows. `just doctor` did not catch it because the cross-target list was
+hand-authored **twice** — installer and verifier — and phase-372 added the
+target to the installer only. Full write-up, the shared-list fix
+(`config/rust-targets.txt` + `scripts/lib/rust-targets.sh`) and the new
+`check-rust-targets-covered` gate: `docs/issues/archived/0833-*`.
+
+### Why every premise was reasonable and the conclusion still wrong
+
+Three things stacked, and none of them is specific to this bug:
+
+1. **The build is a parallel `make` fan-out** (one target per workspace dir), so
+   the log's last line is the last line EMITTED, not the failing step. It was a
+   *success* message from the group that passed.
+2. **`make` exits 2 on error.** The observed exit 2 read as a bespoke status
+   code from the build script. It was just make.
+3. **~180 lines of benign newlib warnings ended the stderr**, so the visible tail
+   looked like a link problem — the same masking as layer 1.
+
+The lesson is narrow and reusable: *"the step after the last successful output"*
+is not a location in a parallel build. Before reasoning about ordering, re-run
+the failing stage ALONE and grep its stderr for `***` / `Error`. That names the
+group and the real error in one line, and it costs less than the inference did.
 
 ### Note the shape
 
 Both layers hid their errors the same way: the real message was printed early
-and then buried under warnings, or not printed at all. That is the same class as
-0445's absorbing STALE verdict and W3b's silently-skipped coverage rows — this
-tree has a recurring habit of failing quietly at the point where a diagnostic
-would be most useful.
+and then buried under warnings. That is the same class as 0445's absorbing STALE
+verdict and W3b's silently-skipped coverage rows — this tree has a recurring
+habit of failing quietly at the point where a diagnostic would be most useful.
+
+And a third instance one level up: `just doctor` is precisely the tool built to
+answer "is this host able to run the build", and it answered yes. A gate whose
+coverage is narrower than the rule it enforces does not merely fail to help —
+its green stops the search (issue 0196; #282→#326 for the second-idiom half).
