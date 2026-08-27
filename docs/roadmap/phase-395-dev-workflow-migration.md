@@ -262,8 +262,9 @@ Still manual, because GitHub exposes no REST API for the merge-queue settings
 themselves: the `Settings -> Branches -> main -> Require merge queue` panel. The
 script prints the exact values to enter.
 
-**Was blocked on issue 0853 (now FIXED — awaiting a green CI run to confirm),
-and the reason generalises.** `check (fast on push;
+**Was blocked on issue 0853. FIXED and CONFIRMED — `pr-checks` run 33110917045
+went green on `5d62867dd`, the first green PR gate on this repo. The reason it
+blocked still generalises.** `check (fast on push;
 full on PR/nightly)` is in the required set and is DETERMINISTICALLY RED on the
 runner — `check-subtree-guard` fails on every GitHub run and passes everywhere
 reproducible locally. Enabling the queue against an always-red required check
@@ -271,8 +272,8 @@ freezes merging exactly as surely as the always-pending case does; they are the
 same failure wearing different clothes.
 
 So the precondition for W7 is not "the workflows exist" but **every required
-check must be able to go green on the runner**. Two ways to satisfy it, and only
-one is honest:
+check must be able to go green on the runner** — now satisfied for the hosted
+set. Two ways to have satisfied it, and only one was honest:
 
 * fix 0853 — the guard exists to stop a killed build orphaning its descendants
   (issue 0762), and 71 orphaned `add_two_ints_server` processes, oldest 10 days,
