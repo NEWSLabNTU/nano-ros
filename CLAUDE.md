@@ -53,8 +53,16 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 ## Practices
 - **Run the TIER your change earns, after every task** (RFC-0061 / phase-318).
   **Never `sudo`** — tell the user.
-  - `just ci` — **tier 1**, minutes, host only. The default. Gates and runs only
-    native fixtures, so a stale ThreadX fixture cannot block it.
+  - `just ci-l1` — **compile + unit, ~6 min, NO FIXTURES** (phase-395 W2).
+    Run this before every push. It is `check` + `test-unit`, and it needs no
+    fixture build, no SDK, no QEMU and no cross toolchain — only `test`/
+    `test-all` depend on fixtures, and 74 of 163 test files never needed them.
+    It caught two reds on main in its first two runs (three clippy `-D warnings`
+    errors and an unregenerated pool inventory), both in the compile tier that
+    the `pre-push` `check-fast` hook deliberately excludes.
+  - `just ci` — **tier 1**, host only. Gates and runs only native fixtures, so a
+    stale ThreadX fixture cannot block it. Costs a fixture build; run it when
+    you need fixture-backed coverage, not as the reflex before every push.
   - `just ci-matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
     or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once, ~28 % of
     the coordinates. It sees each platform and each language, but NOT their

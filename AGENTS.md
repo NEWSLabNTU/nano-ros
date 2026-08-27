@@ -43,7 +43,12 @@ Two rules:
 - `just test`: standard dev tier; skips heavy platform/ROS 2 groups.
 - `just test-all`: full matrix, doctests, Miri, and C codegen tests. Run `just build-test-fixtures` first.
 - `just check`: formatting and clippy checks across Rust, C, C++, and Python surfaces.
-- `just ci`: `check` plus `test-all`.
+- `just ci-l1`: `check` plus `test-unit`. ~6 min, and it builds **no fixtures** —
+  only `test`/`test-all` require them. This is the verb to run before a push
+  (phase-395 W2); it catches the compile-tier reds that the `pre-push`
+  `check-fast` hook deliberately excludes.
+- `just ci`: `check` plus `test-all`. Requires a fixture build; run it when you
+  need fixture-backed coverage.
 
 Treat `<platform>` as target families such as `qemu`, `zephyr`, `freertos`, `nuttx`, `threadx_linux`, `threadx_riscv64`, `esp32`, or board groups. Support services such as `zenohd`, `cyclonedds`, and `xrce` are not platform scopes.
 
@@ -201,7 +206,7 @@ After rebasing over a remote submodule-pointer change, run `git submodule status
 
 ### Agent Practices
 
-- **Always `just ci` after a task.** Never `sudo` — tell the user.
+- **Run `just ci-l1` before every push** (~6 min, no fixtures); run `just ci` when the change earns fixture-backed coverage. Never `sudo` — tell the user.
 - **Green CI locally BEFORE pushing** — run `just format` then `just ci`. CI stops at the first failing step; re-run until fully green. A toolchain bump can surface new pre-existing lints (e.g. rust-1.96 `unnecessary_cast` / `drop_non_drop` / `not_unsafe_ptr_arg_deref`) — fix them locally rather than discovering them remotely.
 - **Always nightly for `rustfmt`** — `rustfmt.toml` enables nightly-only options; stable produces different output. Run `cargo +nightly fmt`.
 - **Never merge in git.** Use `git pull --rebase` or `git fetch` + `git rebase`. Never create merge commits unless asked.
