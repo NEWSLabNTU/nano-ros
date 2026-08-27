@@ -16,6 +16,8 @@
 //! the launch wiring has no entity for. The model said 2 and passed; the truth
 //! was 7. That gap is the whole reason issue 0257 stayed open.
 
+mod common;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -216,6 +218,7 @@ fn args(ws: &Path, out: &Path) -> Args {
 /// succeeds — and it must keep succeeding, or every existing build regresses.
 #[test]
 fn modelled_count_alone_fits_and_the_bake_succeeds() {
+    common::isolate_model_discovery();
     let dir = temp_root("model_only");
     write_fixture(&dir);
     let out = dir.join("build");
@@ -228,6 +231,7 @@ fn modelled_count_alone_fits_and_the_bake_succeeds() {
 /// Full`; now it fails at the bake and names the real count.
 #[test]
 fn recorded_timers_over_capacity_fail_the_bake_with_the_count() {
+    common::isolate_model_discovery();
     let dir = temp_root("timers_over");
     write_fixture(&dir);
     write_sidecar(&dir, 6);
@@ -248,6 +252,7 @@ fn recorded_timers_over_capacity_fail_the_bake_with_the_count() {
 /// does not record service/action clients, which the model does name.)
 #[test]
 fn a_thin_sidecar_never_lowers_the_bake_count() {
+    common::isolate_model_discovery();
     let dir = temp_root("thin_sidecar");
     write_fixture(&dir);
     write_sidecar(&dir, 0);

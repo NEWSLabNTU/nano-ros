@@ -1540,6 +1540,7 @@ execution:
 
     #[test]
     fn codegen_system_emits_resolved_tiers() {
+        crate::test_support::isolate_model_discovery();
         let dir = scratch_dir("emits_resolved_tiers");
         write_tiered_workspace(&dir);
         let out = dir.join("build/demo_bringup");
@@ -1655,6 +1656,7 @@ contracts:
     /// unit (W5.6).
     #[test]
     fn codegen_system_derives_tiers_from_contract_model() {
+        crate::test_support::isolate_model_discovery();
         let dir = scratch_dir("derives_from_contracts");
         write_derived_workspace(&dir);
         let out = dir.join("build/demo_bringup");
@@ -1953,6 +1955,7 @@ structure:
     /// baked tree under `<out>/nros-system/`.
     #[test]
     fn codegen_system_emits_baked_headers_for_zephyr_native_sim() {
+        crate::test_support::isolate_model_discovery();
         let dir = scratch_dir("emits_baked_headers_for_zephyr_native_sim");
         write_rust_two_component_workspace(&dir);
 

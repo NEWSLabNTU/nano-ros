@@ -99,17 +99,17 @@ INERT_FAMILIES = {
     ),
     "actual-qos": (
         (
-            "publisher_get_actual_qos",
-            "subscription_get_actual_qos",
             "client_request_publisher_get_actual_qos",
             "client_response_subscription_get_actual_qos",
             "service_request_subscription_get_actual_qos",
             "service_response_publisher_get_actual_qos",
         ),
-        "reading back the QoS a backend actually granted after negotiation. Six "
-        "slots for one capability, none consumed: the runtime treats the QoS it "
-        "requested as the QoS it has, which is wrong wherever a backend downgrades "
-        "and is why these are reserved rather than deleted",
+        "reading back the QoS a backend actually granted after negotiation. The "
+        "publisher and subscription halves are LIVE on cyclonedds since issue 0823 "
+        "(`read_entity_qos`); these four are the client/service entities, which need "
+        "the handle behind a client or service and have no consumer yet — "
+        "phase-393 W1. Deleting them would re-hide what 0823 measured: the runtime "
+        "reporting the QoS it asked for as the QoS it got",
     ),
     "acks": (
         ("publisher_wait_for_all_acked",),

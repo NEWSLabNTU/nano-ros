@@ -126,6 +126,40 @@ pub(crate) fn write_executable_stub(path: &std::path::Path, script: &str) {
     let _ = std::fs::remove_file(&src);
 }
 
+/// Scope model discovery to the fixture under test, once per test process.
+///
+/// `model_search_paths` consults ambient `$OUT_DIR`, which is right when the
+/// caller IS the build script of the crate whose model is being resolved — the
+/// zephyr module and the pio extra_script both shell `codegen system` that way.
+/// It is wrong in a test: this crate has a build script, so the test process
+/// inherits an `OUT_DIR` belonging to a DIFFERENT crate, and the build-output
+/// candidate is keyed on the bringup's directory NAME. Every fixture here calls
+/// its bringup `demo_bringup`, as does whatever last generated into that
+/// directory, so discovery matched across two unrelated workspaces and loaded a
+/// stale model — three `codegen_system` unit tests failed on it, one asserting
+/// the wrong provenance and two ingesting components this fixture never had.
+///
+/// Pointing `OUT_DIR` at an empty per-process directory removes the collision
+/// without changing the search ORDER these tests exercise.
+///
+/// Same reasoning as this module's own: one spelling, because the differences
+/// between hand-written ones were the bug (issue 0455).
+pub fn isolate_model_discovery() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let dir = std::env::temp_dir().join(format!("nros-cli-core-outdir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch OUT_DIR");
+        // SAFETY: once, before any test body reads the environment; every
+        // reader is this process's own model resolution.
+        unsafe {
+            std::env::set_var("OUT_DIR", &dir);
+            std::env::remove_var("NROS_MODEL_DIR");
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

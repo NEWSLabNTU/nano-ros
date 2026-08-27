@@ -724,8 +724,26 @@ def self_test():
                         ("tracked in issue 77", False)):
         if bool(_ISSUE_REF.search(probe)) != want:
             bad.append(f"issue-ref rule: {probe!r} should be deferred={want}")
-    if not DEFERRED:
-        bad.append("no deferred gap resolved — the parity MAP link is broken")
+    # The DERIVATION, not the tree's current contents. This asserted
+    # `if not DEFERRED` until 2026-08-27, which conflated "the link to the
+    # parity MAP is broken" with "there is nothing to derive" — and the second
+    # became true the moment the last gap closed (issue 0776 -> `layer`, once
+    # phase-380 W1 landed the size bound). A tripwire that fires when the tree
+    # gets HEALTHIER is a tripwire people learn to route around, so it is now
+    # checked against a synthetic mapping and holds whether or not any real gap
+    # exists.
+    _probe_map = {
+        "rmw_synthetic_deferred": ("gap", "issue 0776. deliberately unresolved"),
+        "rmw_synthetic_plain_gap": ("gap", "no issue named, so not deferred"),
+        "rmw_synthetic_answered": ("vtable", "issue 0776 mentioned but not a gap"),
+    }
+    derived = {
+        k: _ISSUE_REF.search(why).group(1)
+        for k, (bucket, why) in _probe_map.items()
+        if bucket == "gap" and _ISSUE_REF.search(why)
+    }
+    if derived != {"rmw_synthetic_deferred": "0776"}:
+        bad.append(f"deferred derivation: got {derived}, want only the issue-bearing gap")
 
     # A deviation entry for a slot that no longer deviates is the same drift
     # the parity MAP had (45 stale entries, two directions). Three ARG entries
