@@ -77,6 +77,13 @@ hand a live thread's stack to the next task. Residue recorded rather than hidden
 still retires its slot for the life of the image. Found while chasing #0821 and did NOT fix it — that
 fault reproduces with slots to spare. See `archived/0822-*`. (2026-08-27)
 
+**#0824** (rmw, open 2026-08-27) — a service server registers its queryable and liveliness tokens on
+domain 0 regardless of `CONFIG_NROS_DOMAIN_ID`. `examples/zephyr/c/service-server` on
+mr_canhubk3/s32k344 with domain 10 boots, prints `Waiting for service requests` and brings its serial
+transport up, but a host on domain 10 sees nothing: `ros2 node list` empty, no `/add_two_ints`, and a
+`ros2 service call` waits forever. Same split-brain class as the phase-180 cyclone domain default.
+See `0824-*`. (2026-08-27)
+
 **#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
 
 **#0811** (platform, open 2026-08-26) — `ep->iptcp` is allocated by two different allocators and always freed by one of them. See `0811-*`.
