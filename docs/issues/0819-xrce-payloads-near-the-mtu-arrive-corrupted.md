@@ -229,3 +229,79 @@ system — it is a source read, and this issue has already recorded one
 mis-attribution (phase-384 chased the `XRCE_BUFFER_SIZE` cliff, which refuses
 loudly, and never reached this one). Whoever picks it up should get the agent
 running first and check point 1 before touching the publisher.
+
+## Reproduced on current main, 2026-08-27 — and the signature has CHANGED
+
+The agent was already provisioned: `nros setup --tool xrce-agent` reports
+`present 2.4.3-nros1 (skip)`. The earlier "blocked, the submodule is
+uninitialised" note in this issue was looking at `third-party/xrce/agent`
+instead of asking the provisioning tool, and was wrong.
+
+`nros-bench/stress-xrce` built with `NROS_XRCE_BUFFER_SIZE=8192`, a local agent
+on `udp4 -p 8700`, talker and listener as separate processes on one topic:
+
+| payload | talker | listener |
+| --- | --- | --- |
+| 3584 | `PUBLISH_DONE: sent=10` | `received=10 valid=10 invalid=0` |
+| **4096** | **`PUBLISH_DONE: sent=10`** | **`received=0 valid=0 invalid=0`** |
+
+**This is not the recorded symptom.** The issue measured
+`received=10 valid=0` — ten samples DELIVERED with the last 16 bytes zeroed. On
+current main the payload does not arrive at all, while the publisher still
+reports ten successful sends.
+
+Both are the same underlying defect, and the title should be read accordingly:
+it is not "delivered corrupted", it is **the publish path cannot tell whether
+the bytes went**. Silent total loss is the worse of the two — a corrupt sample
+can at least be rejected by a validator, whereas this is indistinguishable from
+a topic nobody ever published to.
+
+## Why the talker reports success — BOTH error signals are unusable
+
+```c
+uint16_t req = uxr_buffer_topic(&st->session, st->output_reliable,
+                                ps->datawriter_oid, body, body_len);
+if (req != UXR_INVALID_REQUEST_ID) {
+    (void)uxr_run_session_time(&st->session, 0);
+    return NROS_RMW_RET_OK;
+}
+```
+
+**1. `req` cannot represent a short serialization.** `uxr_buffer_topic` assigns
+`rv` before `ucdr_serialize_array_uint8_t` runs and returns it unconditionally;
+an overflow sets `ub.error` and nothing reads it.
+
+**2. The flush return IS the right signal, and it is discarded.**
+`uxr_run_session_time` returns `uxr_output_streams_confirmed(&session->streams)`
+— whether the output streams have been acknowledged, which is exactly the fact
+this bug turns on. The call site `(void)`-casts it away.
+
+**But it cannot simply be checked.** The call passes `timeout_ms = 0`, and on a
+RELIABLE stream a perfectly healthy publish is not acknowledged at that instant
+either — confirmation takes a round trip. Erroring on `false` here would fail
+every normal publish.
+
+So the fix is not "check the return". It is to notice PERSISTENT
+non-confirmation — an output stream that never drains across subsequent
+`drive_io` ticks — and report that. The signal exists, it is thrown away, and it
+is not readable synchronously at the point where it is thrown away.
+
+## Still not established
+
+* **Where the bytes are lost.** `uxr_buffer_topic` did NOT refuse — otherwise
+  the talker would have returned `MESSAGE_TOO_LARGE` — so
+  `uxr_prepare_reliable_buffer_to_write` accepted the length, necessarily via
+  its fragmenting branch, since one reliable slot is exactly one MTU here.
+  Whether the fragments are emitted, reach the agent, or are reassembled is
+  unmeasured: the verbose agent log could not be captured in this environment
+  (the shell terminated the backgrounded agent before its redirect settled).
+* **Send versus receive** therefore stays open, as it was.
+* **Whether a larger MTU still fixes it** — not re-measured on current main.
+
+## What a fix must NOT do
+
+Refuse on `body_len >= MTU`. One reliable slot is exactly one MTU here, so that
+bound rejects precisely the payloads the client is supposed to fragment —
+trading a delivery bug for a capability regression. Any pre-check belongs
+against the fragmentation capacity (`available_block_size * remaining_blocks`),
+not the datagram size.
