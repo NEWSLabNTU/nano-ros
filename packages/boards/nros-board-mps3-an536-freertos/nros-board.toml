@@ -19,8 +19,10 @@
 #
 # With only the NIC and the tap on the hub, QEMU never delivers host-to-guest
 # frames: the guest transmits fine and receives nothing, which reads like a
-# driver or a discovery bug and is neither. The unpeered hub port is the whole
-# fix (issue 0830).
+# driver or a discovery bug and is neither. The unpeered hub port is a workaround
+# (issue 0830). The real fix exists on the qemu fork branch
+# (nano-ros-v11.0.0-patches, "flush queued packets when RX is enabled"); this
+# stays required until an SDK re-cut ships it.
 
 [[board]]
 names = ["mps3-an536-freertos", "an536", "AN536"]

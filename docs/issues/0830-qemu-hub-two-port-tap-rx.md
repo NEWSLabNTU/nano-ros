@@ -1,11 +1,11 @@
 ---
 id: 830
 title: "A QEMU net hub with only a NIC and a tap never delivers host->guest
-  frames; a third hub port fixes it"
+  frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX"
 status: open
-type: limitation
+type: bug
 area: boards
-related: [phase-385]
+related: [phase-385, issue-0836]
 ---
 
 ## Symptom
@@ -59,15 +59,125 @@ With the third port, bidirectional ROS 2 interop works: a host
 `ros2 topic echo /chatter` receives 39 of the guest's samples, and the guest
 logs the host's published value 20 times.
 
-## Cause (likely, not confirmed)
+## Cause — CONFIRMED, and it is OUR patch, not upstream QEMU
 
-QEMU only polls a backend's fd while the destination reports it can receive.
-A hub port with no peer always can, so the third port keeps the hub's
-answer true and the tap gets read; with two ports the answer depends solely on
-the LAN9118 model, which appears to report "cannot receive" and never
-self-clears — the driver cannot drain a FIFO it is never given anything to
-drain. Confirming this needs QEMU's `lan9118_can_receive` source, which the SDK
-ships only as a binary.
+The SDK ships a PATCHED qemu (`11.0.0-nros2`, `[tool.qemu.source]` =
+`NEWSLabNTU/qemu` branch `nano-ros-v11.0.0-patches`), and the patch is
+`lan9118-flow-control.patch` — written for a DIFFERENT symptom, the slirp RX
+stall on `mps2-an385` (`docs/research/qemu-lan9118-slirp-rx-stall.md`). It adds
+the `lan9118_can_receive` callback that stock QEMU does not have.
+
+The installed binary really does carry it — the symbol exists, and its body is
+the patch:
+
+```
+$ nm ~/.nros/sdk/qemu/11.0.0-nros2/bin/qemu-system-arm | grep lan9118_can_receive
+0000000000539da0 t lan9118_can_receive
+
+$ objdump -d --start-address=0x539da0 …
+  539db0:  testb  $0x4,0x24ac(%rax)     ; MAC_CR_RXEN
+  539db7:  je     539ddd                ; -> false
+  539dbf:  cmp    %ecx,0x390c(%rax)     ; rx_status_fifo_used == size
+  539dc5:  je     539ddd                ; -> false
+  539dd3:  cmp    $0x17f,%edx           ; free >= 384 words
+  539dd9:  setg   %r8b
+```
+
+`.nros-provenance` sha256 `a1cb9df6…` matches `dist.linux-x86_64` in
+`nros-sdk-index.toml`, so this is the released artifact and not a local build.
+
+### The deadlock
+
+`lan9118_can_receive` returns false while `MAC_CR_RXEN` is clear — which is the
+state at guest boot, before the driver's `hw_init()` reaches step 9. From there:
+
+1. `net_hub_port_can_receive` (`net/hub.c`) answers "can any OTHER port
+   receive?". With exactly two ports, the tap's only peer is the NIC's port,
+   which now answers **false**.
+2. `qemu_net_queue_send` sees `!qemu_can_send_packet(sender)`, appends the frame
+   and returns **0**.
+3. `tap_send` treats 0 as back-pressure and calls `tap_read_poll(s, false)` —
+   **the tap fd handler is removed**.
+4. Re-arming needs `qemu_flush_queued_packets`, and the patch calls it from
+   exactly one place: `rx_status_fifo_pop`, i.e. after the guest pops a received
+   frame.
+
+No frame can be received, so no frame is ever popped, so the flush never runs
+and the fd handler is never restored. The guest enables `RXEN` a few
+microseconds later and nothing notices. **Zero frames, permanently** — which is
+what the measurement shows.
+
+The third hub port works because `qemu_can_send_packet` short-circuits on a
+peerless client (`if (!sender->peer) return 1;`), so the hub's answer is
+unconditionally true and step 3 never fires. It is a wedge under a stuck
+callback, not a fix.
+
+This also explains why `-nic tap,...` (direct peering, no hub) fails the same
+way: same gating, and no unpeered port to hold the door open.
+
+## Fix
+
+Flush when `RXEN` goes off->on, so enabling RX re-arms the backend — the idiom
+every other NIC model already follows. In `do_mac_write`, `case MAC_CR`, which
+today only handles the on->off edge:
+
+```c
+    case MAC_CR:
+        if ((s->mac_cr & MAC_CR_RXEN) != 0 && (val & MAC_CR_RXEN) == 0) {
+            s->int_sts |= RXSTOP_INT;
+        }
++       if ((s->mac_cr & MAC_CR_RXEN) == 0 && (val & MAC_CR_RXEN) != 0) {
++           qemu_flush_queued_packets(qemu_get_queue(s->nic));
++       }
+        s->mac_cr = val & ~MAC_CR_RESERVED;
+```
+
+This belongs on the fork branch `nano-ros-v11.0.0-patches` and needs a re-cut
+SDK release to reach users, so the third hub port stays the documented
+workaround until then. Note the pending `-nros3` re-cut already queued in
+`nros-sdk-index.toml` (issue 0368 F3, the libslirp rpath bundle) — this fix
+should ride along with it rather than earn its own release.
+
+## What this cost, and the lesson
+
+The original report reasoned to nearly the right mechanism ("the LAN9118 model
+appears to report 'cannot receive' and never self-clears") but attributed it to
+stock QEMU and closed with "confirming this needs QEMU's `lan9118_can_receive`
+source, which the SDK ships only as a binary". Both halves were wrong in the
+same direction: the callback is not upstream's, it is ours, and a stripped-looking
+binary still answered the question in two commands (`nm`, then `objdump` at the
+symbol). **When a hypothesis names a specific function, check whether that
+function is one of ours before filing it against upstream** — and a local
+`static` symbol usually survives in the symbol table, so "ships only as a
+binary" is rarely the end of the road.
+
+## Fix written and VERIFIED — awaiting a fork push and an SDK re-cut
+
+`third-party/qemu/qemu` commit `729262e975` ("hw/net/lan9118: flush queued
+packets when RX is enabled") on branch `nano-ros-v11.0.0-patches` implements the
+hunk above. It is **committed locally and NOT pushed** — fork remotes need an
+explicit allow-rule — so the superproject's submodule pin deliberately still
+points at `dbd1049b06`. Push the branch first, then bump the pin, then re-cut
+the SDK; until that release exists the third hub port remains the workaround,
+and the board's `nros-board.toml` comment stays accurate.
+
+Verified by rebuilding `qemu-system-arm` from that commit and answering ICMP
+echo for the `mps3-an536` FreeRTOS/lwIP fixture over a `-net socket` backend
+(the socket backend shares the exact gating path — `net/socket.c` disables
+`read_poll` on a 0 return just as `tap_send` does — so this reproduces without
+needing CAP_NET_ADMIN to make a tap). 30 s per run, same image throughout:
+
+| binary | hub ports | frames sent | ICMP echo replies | verdict |
+| --- | --- | --- | --- | --- |
+| SDK `11.0.0-nros2` (unfixed) | 2 | 280 | **0** | dead |
+| SDK `11.0.0-nros2` (unfixed) | 3 (workaround) | 281 | 259 | works |
+| rebuilt with `729262e975` | **2** | 281 | **259** | works |
+
+The middle row is the control: it shows the probe can detect RX at all, and the
+fixed two-port run reproduces the workaround's numbers exactly. Repro script:
+`tmp/rxprobe.py` (throwaway; it must start sending at t=0, because the deadlock
+needs a frame to arrive BEFORE the guest sets `RXEN` — a probe that waits for
+the guest to speak first will never trigger the bug and reports a false pass).
 
 ## Notes
 
