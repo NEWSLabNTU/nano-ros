@@ -202,6 +202,65 @@ When pulling or rebasing the superproject, inspect submodule changes. If a pull 
 
 After rebasing over a remote submodule-pointer change, run `git submodule status --recursive <path>` and update the checkout to the commit recorded by `HEAD` before pushing. Recent pulls advanced `third-party/dds/cyclonedds`; leaving the worktree at the old detached commit made the superproject appear dirty even though the parent commit was correct.
 
+## Branch policy for `main` (GitHub ruleset `main-rules`)
+
+`main` is protected by a **ruleset**, not classic branch protection. The two are
+separate systems that do not read each other, so "is the branch protected?" has
+to be asked of the right one: `gh api repos/NEWSLabNTU/nano-ros/rulesets`, not
+`.../branches/main/protection` (which returns `Branch not protected` and means
+nothing here).
+
+### In force now
+
+| rule | effect |
+| --- | --- |
+| `required_linear_history` | a **merge commit cannot be pushed to `main`** |
+| `non_fast_forward` | no force-push to `main` |
+| `deletion` | `main` cannot be deleted |
+
+Scope is `refs/heads/main` only, and **`bypass_actors` is empty** — nobody,
+including admins, is exempt. A rule everyone can bypass is not a rule.
+
+**What actually changed for you.** Not the workflow — direct push to `main`
+still works. What changed is the *failure mode* of one specific mistake. An
+accidental merge commit (a bare `git pull`, or a `git rebase` you abandoned into
+a merge) used to LAND SILENTLY: three such commits are on `main` from
+2026-05-15, and nobody noticed for months. Now the push is rejected. Recover by
+rebasing:
+
+```
+git fetch origin && git rebase origin/main      # then push again
+```
+
+Never "fix" a rejected push with `--force` — that is blocked too, and reaching
+for it means the rebase was the step you skipped.
+
+### Deliberately NOT in force yet
+
+**Required status checks and the merge queue are OFF.** Enabling either one ENDS
+direct-push, because a commit you are about to push has no check results yet, so
+the push is refused. That is a workflow change for every agent, not a setting,
+and it is gated on this section existing and on the workflow files being
+complete — which is why you are reading it here first.
+
+When it flips, the flow becomes: branch, push, open a PR, let the queue land it.
+`queue.yml` and `post-submit.yml` already exist; `scripts/ci/enable-merge-queue.sh`
+prints the settings. Claim your work first (`just claim issue-NNNN`) so two
+agents do not open competing PRs for one issue.
+
+### What the ruleset does NOT touch, verified
+
+Branch rulesets target `refs/heads/**`, so the custom refs the coordination
+primitives depend on are unaffected — **verified by pushing and deleting
+`refs/issue-ids/9999` under the active ruleset**, both rc 0. So `just issue-new`
+and `just claim` keep working, and a `deletion` rule on `main` does not stop a
+claim being released.
+
+Agent branches are also untouched: the ruleset targets `refs/heads/main`, NOT
+`~ALL`. Force-pushing your own `fix/<id>` branch while rebasing is still fine,
+which is the reason `~ALL` was rejected — it would have broken every agent and
+every outside contributor on day one.
+
 ## Practices & Pitfalls
 
 ### Agent Practices

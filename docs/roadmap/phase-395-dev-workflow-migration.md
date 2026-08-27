@@ -258,9 +258,37 @@ Three things this surfaced that the plan did not say:
   (`ci-matrix`) meanwhile — a real cover, and honestly narrower than what the
   plan wants.
 
-Still manual, because GitHub exposes no REST API for the merge-queue settings
-themselves: the `Settings -> Branches -> main -> Require merge queue` panel. The
-script prints the exact values to enter.
+**`main` is governed by a RULESET (`main-rules`), not classic branch
+protection**, and the two are separate systems that do not read each other —
+`branches/main/protection` answers `Branch not protected` on this repo while
+`main` is in fact protected. Ask `gh api repos/.../rulesets`.
+
+In force now, targeting `refs/heads/main` only, with **`bypass_actors` empty** so
+it binds admins too: `deletion`, `non_fast_forward`, `required_linear_history`.
+That last one enforces an invariant the repo already held and had violated by
+accident — three `Merge remote-tracking branch` commits from 2026-05-15. Direct
+push still works; only the failure mode of an accidental merge changed, from
+landing silently to being rejected.
+
+Two corrections to earlier advice on this page, both in the ruleset's favour:
+
+* **The merge queue needs no web-UI step.** A ruleset carries it as a rule type
+  (`merge_queue`, with `merge_method` / `max_entries_to_build` /
+  `min_entries_to_merge` / `min_entries_to_merge_wait_minutes` /
+  `check_response_timeout_minutes` / `grouping_strategy`), so
+  `enable-merge-queue.sh --apply --with-queue` sets it through the API. The
+  "no REST API" note was true of classic protection only.
+* **Required status checks are what end direct-push**, with or without a
+  `pull_request` rule: a commit you are about to push has no check results yet,
+  so the push is refused. That makes enabling them a workflow change for every
+  agent rather than a setting, which is why the policy is written into
+  AGENTS.md "Branch policy" first.
+
+Verified under the active ruleset, not reasoned: pushing AND deleting
+`refs/issue-ids/9999` both succeeded, so branch rulesets do not touch the custom
+refs `just issue-new` and `just claim` depend on. Targeting `~ALL` instead of
+`refs/heads/main` would have broken every agent's own `fix/<id>` branch and
+every outside contributor on day one.
 
 **Was blocked on issue 0853. FIXED and CONFIRMED — `pr-checks` run 33110917045
 went green on `5d62867dd`, the first green PR gate on this repo. The reason it

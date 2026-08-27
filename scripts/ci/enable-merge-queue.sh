@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
 #
-# Apply the merge-queue and branch-protection settings phase-395 W7 specifies.
-# Read-only by default: it PRINTS the exact API calls and changes nothing until
-# `--apply`.
+# Apply the merge-queue settings phase-395 W7 specifies, ON TOP OF the existing
+# `main-rules` RULESET. Read-only by default: it PRINTS what it would do and
+# changes nothing until `--apply`.
+#
+# RULESETS, NOT CLASSIC BRANCH PROTECTION
+#
+# `main` is governed by a ruleset. Rulesets and classic branch protection are
+# SEPARATE SYSTEMS that do not read each other: `branches/main/protection`
+# answers `Branch not protected` on this repo while `main` is, in fact,
+# protected. An earlier version of this script wrote classic protection, which
+# would have built a second overlapping regime beside the ruleset — two sources
+# of truth for one question, with the losing one still answering.
+#
+# So this script READS the ruleset, ADDS rules to it, and never creates one: if
+# `main-rules` is missing, that is a state a human should look at, not something
+# to paper over by minting a fresh ruleset with different contents.
 #
 # WHY THIS IS A SCRIPT AND NOT A DOC OF CLICKS
 #
@@ -31,7 +44,8 @@
 #
 # Usage:
 #   scripts/ci/enable-merge-queue.sh                    # show the plan, change nothing
-#   scripts/ci/enable-merge-queue.sh --apply
+#   scripts/ci/enable-merge-queue.sh --apply             # + required status checks
+#   scripts/ci/enable-merge-queue.sh --apply --with-queue # + PR + merge queue
 #   scripts/ci/enable-merge-queue.sh --apply --self-hosted-ready
 #   scripts/ci/enable-merge-queue.sh --status           # what is configured now
 
@@ -44,6 +58,8 @@ BRANCH="${NROS_QUEUE_BRANCH:-main}"
 APPLY=0
 SELF_HOSTED=0
 STATUS=0
+WITH_QUEUE=0
+RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 
 # The lanes that can ALWAYS start. Only these gate, by default.
 HOSTED_CHECKS=(
@@ -61,6 +77,7 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --apply)              APPLY=1 ;;
         --self-hosted-ready)  SELF_HOSTED=1 ;;
+        --with-queue)         WITH_QUEUE=1 ;;
         --status)             STATUS=1 ;;
         -h|--help)            sed -n '2,40p' "$0"; exit 0 ;;
         *) echo "unknown option $1 (try --help)" >&2; exit 2 ;;
@@ -71,9 +88,26 @@ done
 command -v gh >/dev/null 2>&1 || { echo "[FAIL] gh not installed" >&2; exit 3; }
 gh auth status >/dev/null 2>&1 || { echo "[FAIL] gh not authenticated (gh auth login)" >&2; exit 3; }
 
+# The ruleset id for $RULESET, or "" — printed so a caller can see WHICH object
+# is being read rather than trusting that a name resolved.
+ruleset_id() {
+    gh api "repos/$REPO/rulesets" --jq \
+        ".[] | select(.name == \"$RULESET\") | .id" 2>/dev/null | head -1
+}
+
 if [ "$STATUS" = 1 ]; then
-    echo "== branch protection on $REPO:$BRANCH =="
-    gh api "repos/$REPO/branches/$BRANCH/protection" 2>&1 | head -60 || true
+    echo "== ruleset '$RULESET' on $REPO =="
+    rid="$(ruleset_id)"
+    if [ -z "$rid" ]; then
+        echo "  NOT FOUND. Note this is NOT the same question as classic branch"
+        echo "  protection, which is a separate system: rulesets and"
+        echo "  branches/$BRANCH/protection do not read each other."
+    else
+        gh api "repos/$REPO/rulesets/$rid" --jq \
+            '"  id \(.id)  enforcement \(.enforcement)  targets \(.conditions.ref_name.include | join(","))",
+             "  bypass_actors: \(.bypass_actors | length)  (0 means the rule binds admins too)",
+             (.rules[] | "  rule: \(.type)")' 2>&1
+    fi
     echo
     echo "== NROS_SELF_HOSTED_READY =="
     gh variable list --repo "$REPO" 2>/dev/null | awk '/NROS_SELF_HOSTED_READY/ {print}' \
@@ -124,6 +158,9 @@ if [ "$SELF_HOSTED" = 0 ]; then
     printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}"
     echo "  Add them with --self-hosted-ready once a runner is online."
 fi
+if [ "$WITH_QUEUE" != 1 ]; then
+    echo "merge queue: NOT added (pass --with-queue). Values it would use:"
+fi
 cat <<'PLAN'
 merge queue:
     merge_method              rebase      (linear history is a repo invariant)
@@ -136,55 +173,111 @@ PLAN
 if [ "$APPLY" != 1 ]; then
     echo
     echo "DRY RUN — nothing was changed. Re-run with --apply."
-    echo "This touches BRANCH PROTECTION on $BRANCH, which affects everyone."
+    echo "This edits the '$RULESET' RULESET on $BRANCH, which binds everyone"
+    echo "(bypass_actors is empty). Adding required status checks ENDS"
+    echo "direct-push to $BRANCH: a commit you are about to push has no check"
+    echo "results yet, so the push is refused. That is a workflow change for"
+    echo "every agent, not a setting."
     exit 0
 fi
 
 echo
 echo "applying…"
 
-contexts_json="$(printf '%s\n' "${required[@]}" | python3 -c 'import json,sys; print(json.dumps([l.rstrip("\n") for l in sys.stdin if l.strip()]))')"
+rid="$(ruleset_id)"
+if [ -z "$rid" ]; then
+    echo "[FAIL] no ruleset named '$RULESET' on $REPO." >&2
+    echo "       This script ADDS rules to an existing ruleset; it will not mint" >&2
+    echo "       one, because a fresh ruleset with guessed contents is worse than" >&2
+    echo "       none. Create it in Settings -> Rules, or pass NROS_QUEUE_RULESET." >&2
+    exit 1
+fi
 
-python3 - "$contexts_json" > /tmp/nros-protection.json <<'PY'
+# Read the CURRENT rules and add to them. Replacing wholesale would silently
+# drop the guardrails (linear history, no force-push, no deletion) that are the
+# reason the ruleset exists.
+gh api "repos/$REPO/rulesets/$rid" > /tmp/nros-ruleset-current.json
+
+python3 - "$contexts_json" "$WITH_QUEUE" \
+    < /tmp/nros-ruleset-current.json > /tmp/nros-ruleset-new.json <<'PY'
 import json, sys
 contexts = json.loads(sys.argv[1])
+with_queue = sys.argv[2] == "1"
+cur = json.load(sys.stdin)
+
+rules = {r["type"]: r for r in cur.get("rules", [])}
+for guard in ("deletion", "non_fast_forward", "required_linear_history"):
+    rules.setdefault(guard, {"type": guard})
+
+rules["required_status_checks"] = {
+    "type": "required_status_checks",
+    "parameters": {
+        # strict=false is not laxity: strict forces every PR to rebase whenever
+        # main moves, serialising exactly the merges a queue parallelises.
+        "strict_required_status_checks_policy": False,
+        "do_not_enforce_on_create": False,
+        "required_status_checks": [{"context": c} for c in contexts],
+    },
+}
+if with_queue:
+    rules["pull_request"] = {
+        "type": "pull_request",
+        "parameters": {
+            # 0 is REQUIRED here, not lax: every agent commits as one identity,
+            # so any non-zero count means nothing can ever merge.
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": False,
+            "require_code_owner_review": False,
+            "require_last_push_approval": False,
+            "required_review_thread_resolution": False,
+        },
+    }
+    rules["merge_queue"] = {
+        "type": "merge_queue",
+        "parameters": {
+            "merge_method": "REBASE",
+            "max_entries_to_build": 4,
+            "min_entries_to_merge": 1,
+            "min_entries_to_merge_wait_minutes": 5,
+            "max_entries_to_merge": 4,
+            "grouping_strategy": "ALLGREEN",
+            "check_response_timeout_minutes": 60,
+        },
+    }
+
 print(json.dumps({
-    "required_status_checks": {"strict": False, "contexts": contexts},
-    "enforce_admins": False,
-    "required_pull_request_reviews": None,
-    "restrictions": None,
-    "allow_force_pushes": False,
-    "allow_deletions": False,
+    "name": cur["name"],
+    "target": cur["target"],
+    "enforcement": cur["enforcement"],
+    "conditions": cur["conditions"],
+    "bypass_actors": cur.get("bypass_actors", []),
+    "rules": list(rules.values()),
 }))
 PY
 
-gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" \
+gh api -X PUT "repos/$REPO/rulesets/$rid" \
     -H "Accept: application/vnd.github+json" \
-    --input /tmp/nros-protection.json >/dev/null
-echo "  branch protection set"
+    --input /tmp/nros-ruleset-new.json >/dev/null
+echo "  ruleset '$RULESET' updated (guardrails preserved, status checks added)"
 
 gh api -X PATCH "repos/$REPO" -f "allow_merge_commit=false" \
     -f "allow_rebase_merge=true" -f "allow_squash_merge=true" >/dev/null
-echo "  merge methods set (no merge commits — linear history)"
+echo "  merge commits disabled in the UI, so it agrees with required_linear_history"
 
 if [ "$SELF_HOSTED" = 1 ]; then
     gh variable set NROS_SELF_HOSTED_READY --repo "$REPO" --body "true"
     echo "  NROS_SELF_HOSTED_READY=true — self-hosted queue jobs will now run"
 fi
 
-rm -f /tmp/nros-protection.json
+rm -f /tmp/nros-ruleset-current.json /tmp/nros-ruleset-new.json
 cat <<'AFTER'
 
-  The merge queue itself has NO REST API for its settings — it is the one part
-  that must be set in the web UI:
+  Unlike classic branch protection, a RULESET carries the merge queue as a rule
+  type (`merge_queue`), so `--with-queue` sets it through the API and there is
+  no web-UI step. That is a real advantage of the ruleset over the classic
+  regime, not merely a different spelling of it.
 
-    Settings -> Branches -> main -> "Require merge queue" ->
-      merge method              Rebase
-      build concurrency         4
-      minimum group size        1
-      maximum wait              5 minutes
-      status check timeout      60 minutes
-
-  Then land one trivial PR through it before trusting it. A queue that is
-  misconfigured does not error; it silently stops merging.
+  Land one trivial PR through the queue before trusting it. A misconfigured
+  queue does not error; it silently stops merging, which reads as GitHub being
+  slow.
 AFTER

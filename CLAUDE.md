@@ -107,6 +107,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   stable produces different output. Run `cargo +nightly fmt`.
 - **C/C++ style:** `.clang-format` LLVM-based, 4-space indent, 100-col.
 - **Linear history:** `git pull --rebase` or `git fetch` + `git rebase`. Never merge unless asked.
+  **Now ENFORCED SERVER-SIDE** — the `main-rules` ruleset on `refs/heads/main` blocks
+  force-pushes, deletions and MERGE COMMITS, with no bypass actors. So the old failure
+  mode is gone: an accidental `git pull` merge used to LAND silently (three did, on
+  2026-05-15) and now the push is REJECTED. Recovery is `git rebase origin/main`, never
+  `--force`. Direct push to `main` still works; that changes when the merge queue lands
+  (phase-395 W7) — read AGENTS.md "Branch policy" BEFORE the switch, not after.
 - **Never `git add -A` / `git add .`** — stage the paths you actually changed
   (`git add <path>…`, or `git add -u <dir>` for tracked-only edits). A blanket add
   scoops up build output, leftover dirs and stray artifacts. Twice in one session it
