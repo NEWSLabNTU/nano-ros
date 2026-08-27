@@ -3,7 +3,7 @@
   "just/native.just": 1,
   "just/nuttx.just": 1,
   "just/qemu-baremetal.just": 1,
-  "just/workspace.just": 5,
+  "just/workspace.just": 4,
   "just/zephyr-setup.just": 1,
   "justfile": 3,
   "packages/cli/rosidl-codegen/scripts/check_parser_failures.sh": 3,

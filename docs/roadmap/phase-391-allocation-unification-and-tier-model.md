@@ -750,6 +750,51 @@ The Box-leaked ctxs ride the same fork: their storage lands wherever the cells
 do, and per-class emission sizes them exactly too (a class with no actions pays
 zero action-ctx bytes).
 
+### W5 endgame design (2026-08-28) — per-class cells, drafted before implementation
+
+**Measured motivation landed the same day as issue 0857:** the interim inline
+registries cost CELL_REG_CAP × ~1.35 KiB per cell (`EmbeddedRawPublisher`
+embeds a 1 KiB `TxArena`), still `Arc`'d onto the heap — the second component's
+~17.5 KiB cell OOM'd the esp32 workspace entry's 48 KiB heap
+(`test_esp32_workspace_entry_e2e`, red 3/3 solo, symbolized to
+`listener_pkg::register`'s `Box::new_uninit`). Interim per-image knob
+`NROS_RUNTIME_MAX_CELL_ENTITIES=2` on the fixture row took the cell to
+~3.5 KiB and the test green; the exact-cells design below retires the
+worst-case pad structurally.
+
+Fork option (1) taken (sole-owner call, the campaign mandate): the macro emits a
+PER-CLASS cell alongside the per-class slot store it already emits, with
+registries sized exactly. Key structural facts, read from today's tree:
+
+* `ComponentCell` is consumed through `&ComponentCell` at 9 `dispatch_into_cell`
+  sites, `tick_one_cell`, and the enroll/drop trampolines' `*mut c_void`. The
+  FFI boundary only ever sees the void pointer, so the cell may go generic
+  WITHOUT touching any C signature — the "const generics only where other
+  languages cannot see them" rule holds.
+* The tick/drop trampolines are shared today (`component_tick_trampoline` at
+  one address for every class). Per-class cells need per-class trampolines —
+  which the macro can emit exactly as it emits the install trampoline, and the
+  executor's `enroll_component(raw, tick, drop)` already takes them as
+  ARGUMENTS, so the executor does not change at all.
+* Shape: `ComponentCell` becomes `ComponentCell<const PUBS: usize, const SUBS:
+  usize, const SVCS: usize, const ACTS: usize>` (or one `N` if the counts
+  collapse cleanly); `TypedSlot<C>` and the cell fuse into the macro-emitted
+  per-class static — which also absorbs the ctx slabs, so a class with no
+  actions pays zero action-ctx bytes. `dispatch_into_cell` and friends take a
+  thin non-generic view struct (`CellRef { slot: &RefCell<...>, regs: ... }`)
+  or go generic; the VIEW keeps monomorphisation from multiplying the dispatch
+  code per class, and is the preferred spelling.
+* The dynamic path (`register_node`) keeps pool-backed cells at the knob caps —
+  two cell layouts, ONE view type. The view is what `tick_one_cell` and the
+  trampolines actually need, and it is what makes the split affordable.
+* `ComponentSlotStorage::take()`'s `fetch_add` must become load+store in the
+  same pass (riscv32imc has no CAS — issue 0851's precedent, 25d23e117).
+
+Sequencing: view-struct refactor first (inert, all tests must stay green), then
+the macro emission of per-class cell+trampolines, then the Arc deletion, then
+the ctx slabs, then `node_runtime` drops its `alloc` gate — the finish signal —
+and W1/W4's heap-free image follows.
+
 **Acceptance (unchanged):** an image that CALLS runtime code links at tier
 `heap-free` and passes the W1 gate with `symbols read` well above 1. Three
 probes have already passed that gate vacuously at `symbols read: 1`.

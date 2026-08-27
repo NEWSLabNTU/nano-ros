@@ -47,15 +47,21 @@ const REQUIREMENTS: &[Backend] = &[
         // (TX/RX/peer) + a write filter per publisher. The default
         // CONFIG_MAX_PTHREAD_MUTEX_COUNT=5 exhausts the pool → `_z_*` returns -80
         // (`_Z_ERR_SYSTEM_GENERIC`) at session open. Needs ~8+; examples use 32/16.
+        // phase-391 W3 — HEAP_MEM_POOL_SIZE is deliberately NOT required any
+        // more: zenoh-pico's z_malloc funnels into the rlsf arena in
+        // nros-platform's zephyr_heap (NROS_ZEPHYR_HEAP_SIZE), not k_malloc,
+        // and the converted confs set the kernel pool to 0 so it shrinks to
+        // Zephyr's own ADD_SIZE floor. Requiring pool > 0 here would force
+        // every image to carry BOTH heaps — the exact state W3 removed.
         reqs: &[
-            Req::Positive("HEAP_MEM_POOL_SIZE"),
             Req::Yes("POSIX_API"),
             Req::Min("MAX_PTHREAD_MUTEX_COUNT", 8),
             Req::Min("MAX_PTHREAD_COND_COUNT", 6),
         ],
-        why: "zenoh-pico needs a heap (k_malloc) + POSIX threads with >=8 pthread \
-               mutexes / >=6 condvars; the default 5 mutexes fails with -80 at \
-               Executor::open",
+        why: "zenoh-pico needs POSIX threads with >=8 pthread mutexes / >=6 \
+               condvars (the default 5 mutexes fails with -80 at \
+               Executor::open); its heap is the phase-391 rlsf arena, not \
+               k_malloc, so the kernel pool may be 0",
     },
     Backend {
         rmw: "cyclonedds",
@@ -64,8 +70,12 @@ const REQUIREMENTS: &[Backend] = &[
     },
     Backend {
         rmw: "xrce",
-        reqs: &[Req::Positive("HEAP_MEM_POOL_SIZE")],
-        why: "Micro-XRCE needs a heap (k_malloc); transport is plain UDP (no pthread)",
+        // phase-391 W3 — same as zenoh: the allocation funnel is the rlsf
+        // arena, so the kernel pool is no longer this backend's heap.
+        reqs: &[],
+        why: "Micro-XRCE's heap is the phase-391 rlsf arena (funnelled through \
+               nros_platform_alloc); transport is plain UDP (no pthread), so \
+               nothing here needs the kernel pool",
     },
 ];
 

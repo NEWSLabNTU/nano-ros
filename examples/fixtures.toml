@@ -343,7 +343,13 @@ target = "riscv32imc-unknown-none-elf"
 # by ~54 KiB. 4 KiB cuts that block to 32 KiB (saves ~96 KiB); 4096 > the 2048
 # size threshold so the small/large split holds, and esp32 cannot buffer 16 KiB
 # messages anyway.
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2", ZPICO_SUBSCRIBER_LARGE_SIZE = "4096" }
+# NROS_RUNTIME_MAX_CELL_ENTITIES: issue 0857 — the phase-391 W5 inline cell
+# registries cost CELL_REG_CAP × ~1.35 KiB (EmbeddedRawPublisher embeds a 1 KiB
+# TxArena) on the Rust heap PER COMPONENT; at the default 8 the second
+# component's ~17.5 KiB Arc<ComponentCell> OOMs the 48 KiB esp-alloc heap. The
+# two components here declare one publisher + one subscription, so 2 is exact.
+# Interim until the W5-endgame per-class exact cells retire the worst-case pad.
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2", ZPICO_SUBSCRIBER_LARGE_SIZE = "4096", NROS_RUNTIME_MAX_CELL_ENTITIES = "2" }
 
 # Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
 # (Cortex-A7) workspace Entry. Built by the cargo lane
