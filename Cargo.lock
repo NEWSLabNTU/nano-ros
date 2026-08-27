@@ -1927,6 +1927,7 @@ dependencies = [
  "nros-platform-esp32-qemu",
  "nros-platform-mps2-an385",
  "nros-platform-stm32f4",
+ "zpico-alloc",
 ]
 
 [[package]]

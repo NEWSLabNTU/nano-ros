@@ -126,8 +126,15 @@ pub struct FreeListHeap<const N: usize, const FLLEN: usize = 18> {
     initialized: AtomicBool,
     /// Slab region: 8 slots × 64 bytes, separate from the main heap.
     slab: UnsafeCell<Aligned<SLAB_REGION_SIZE>>,
-    /// Bitmap of free slab slots (bit set = free). Starts as 0xFF (all free).
-    slab_free_bitmap: AtomicU8,
+    /// Bitmap of USED slab slots (bit set = occupied). Starts 0 (all free).
+    ///
+    /// phase-391 W3 — the sense is inverted deliberately: with "set = free"
+    /// this initialised to 0xFF, and ONE nonzero byte in an otherwise-zero
+    /// struct places the ENTIRE static — arena included — in `.data` instead
+    /// of `.bss`, costing the arena's full size in FLASH (measured: 67 KB on
+    /// the Zephyr image, and every bare-metal port paid its arena size too).
+    /// All-zero init keeps the static in `.bss`, where a heap belongs.
+    slab_used_bitmap: AtomicU8,
     /// #190 — count of foreign-pointer `free`/`realloc` calls refused.
     foreign_frees: AtomicUsize,
     #[cfg(feature = "stats")]
@@ -170,7 +177,7 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             tlsf: UnsafeCell::new(Tlsf::new()),
             initialized: AtomicBool::new(false),
             slab: UnsafeCell::new(Aligned([0u8; SLAB_REGION_SIZE])),
-            slab_free_bitmap: AtomicU8::new(0xFF), // all 8 slots free
+            slab_used_bitmap: AtomicU8::new(0), // all 8 slots free (set = used)
             foreign_frees: AtomicUsize::new(0),
             #[cfg(feature = "stats")]
             used_bytes: AtomicUsize::new(0),
@@ -240,17 +247,17 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
             return ptr::null_mut();
         }
 
-        let bitmap = self.slab_free_bitmap.load(Ordering::Relaxed);
-        if bitmap == 0 {
+        let bitmap = self.slab_used_bitmap.load(Ordering::Relaxed);
+        if bitmap == 0xFF {
             return ptr::null_mut(); // all slots occupied
         }
 
-        // Find first set bit (first free slot) — O(1)
-        let slot = bitmap.trailing_zeros() as usize;
+        // Find first CLEAR bit (first free slot) — O(1)
+        let slot = (!bitmap).trailing_zeros() as usize;
 
-        // Clear the bit (mark as occupied)
-        self.slab_free_bitmap
-            .store(bitmap & !(1 << slot), Ordering::Relaxed);
+        // Set the bit (mark as occupied)
+        self.slab_used_bitmap
+            .store(bitmap | (1 << slot), Ordering::Relaxed);
 
         #[cfg(feature = "stats")]
         {
@@ -268,10 +275,10 @@ impl<const N: usize, const FLLEN: usize> FreeListHeap<N, FLLEN> {
         let offset = ptr as usize - self.slab_base() as usize;
         let slot = offset / SLAB_SLOT_SIZE;
 
-        // Set the bit (mark as free)
-        let bitmap = self.slab_free_bitmap.load(Ordering::Relaxed);
-        self.slab_free_bitmap
-            .store(bitmap | (1 << slot), Ordering::Relaxed);
+        // Clear the bit (mark as free)
+        let bitmap = self.slab_used_bitmap.load(Ordering::Relaxed);
+        self.slab_used_bitmap
+            .store(bitmap & !(1 << slot), Ordering::Relaxed);
 
         #[cfg(feature = "stats")]
         self.used_bytes.fetch_sub(SLAB_SLOT_SIZE, Ordering::Relaxed);

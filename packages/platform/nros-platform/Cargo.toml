@@ -99,7 +99,7 @@ platform-esp32-qemu = [
 platform-nuttx = ["dep:nros-platform-cffi"]
 platform-freertos = ["dep:nros-platform-cffi"]
 platform-threadx = ["dep:nros-platform-cffi"]
-platform-zephyr = ["dep:nros-platform-cffi"]
+platform-zephyr = ["dep:nros-platform-cffi", "dep:zpico-alloc"]
 # phase-337 W7.b — `platform-orin-spe` (a back-compat alias for
 # `platform-freertos` since 121.10) and `platform-esp32s3` are gone with their
 # boards. A Cortex-R5F FreeRTOS-FSP consumer selects `platform-freertos`
@@ -186,6 +186,11 @@ nros-platform-api = { version = "0.5.0", path = "../nros-platform-api" }
 # Phase 123.A.1.x.2 — POSIX Rust crate deleted; the directory at
 # `../nros-platform-posix/` now holds the C port only.
 nros-platform-cffi = { version = "0.5.0", path = "../nros-platform-cffi", optional = true }
+# phase-391 W3 — the Zephyr rlsf arena (zpico-alloc's FreeListHeap is
+# rlsf-backed since W2). Hosted HERE because this crate is in BOTH Zephyr
+# lanes' graphs (the C lane via nros-c's `platform-zephyr` feature, the Rust
+# lane directly) and already owns the Rust-side allocator story.
+zpico-alloc = { path = "../../rmw/zenoh/zpico-alloc", optional = true }
 nros-platform-mps2-an385 = { version = "0.5.0", path = "../../platform/nros-platform-mps2-an385", optional = true }
 nros-platform-stm32f4 = { version = "0.4.0", path = "../../platform/nros-platform-stm32f4", optional = true }
 nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platform/nros-platform-esp32-qemu", optional = true }

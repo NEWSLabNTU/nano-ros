@@ -98,6 +98,10 @@ pub static __FORCE_LINK_CFFI: extern "C" fn() = nros_platform_cffi::_nros_force_
 /// helper the C/C++ examples use; the symbol is RMW-independent (defined in
 /// `nros-platform-zephyr`, compiled in every RMW build). Equivalent to
 /// `nros-board-zephyr`'s `ZephyrBoard::wait_link_up`.
+// phase-391 W3 — the rlsf arena behind Zephyr's C allocation funnel.
+#[cfg(feature = "platform-zephyr")]
+pub mod zephyr_heap;
+
 #[cfg(feature = "platform-zephyr")]
 pub mod zephyr {
     unsafe extern "C" {

@@ -98,12 +98,19 @@ build-one example rmw="zenoh" board="native_sim/native/64":
             echo "WARN: no native_sim line overlay at $line_overlay" >&2
         fi
         ;;
-    qemu_cortex_m3*)
-        # No entropy device on this board; the net stack needs sys_rand_get.
+    qemu_cortex_m3*|mps2*)
+        # No entropy device on these boards; the net stack needs sys_rand_get.
         # Overlays live here rather than in a per-example `boards/*.conf`
         # because Zephyr only auto-merges those when CONF_FILE is UNSET
         # (cmake/modules/configuration_files.cmake:39) and every build here
         # sets it explicitly — so a `boards/` fragment is silently inert.
+        # phase-391 W3 — `mps2*` added: `build-one c/talker zenoh mps2/an385`
+        # failed on `z_impl_sys_rand_get` for exactly this reason, while the
+        # fixture lane's mps2 images (which get the fragment) link fine. The
+        # conf's content is board-agnostic (TEST/TIMER_RANDOM_GENERATOR).
+        # NOTE `qemu_cortex_m3` itself is the TI LM3S6965 (256K flash / 64K
+        # RAM) — far too small for a zenoh image; mps2/an385 is the Cortex-M
+        # board this repo actually targets.
         conf="$conf;$(pwd)/cmake/zephyr/qemu-cortex-m3.conf"
         ;;
     esac

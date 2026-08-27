@@ -354,6 +354,40 @@ GONE (garbage-collected), which is simultaneously the proof that no enabled
 subsystem needed them. Rust-lane images keep `nros-platform`'s opt-in
 allocator and get the same arena through the same three C symbols.
 
+**W3 LANDED — measured A/B on `build-c-talker-zenoh` (mps2/an385, zenoh/TCP),
+both arms same tree via stash (2026-08-28):**
+
+| | before | after | delta |
+| --- | --- | --- | --- |
+| `.bss` | 445,498 | 448,234 | **+2,736** = arena 67,248 − kheap freed 64,512 (closes exactly) |
+| text+data (flash) | 316,387 | 317,605 | **+1,218** (rlsf + spinlock glue) |
+| `kheap__system_heap` | 65,536 | **1,024** | `HEAP_MEM_POOL_ADD_SIZE_MQUEUE` — POSIX mqueue's declared floor |
+| `k_malloc`-family syms | 6 | 5 | kept by the mqueue path |
+
+Read the residuals honestly: on THIS image (TCP + POSIX mqueue) the kernel heap
+cannot fully disappear — Zephyr's ADD_SIZE mechanism keeps a 1 KiB floor for
+mqueue, which is the mechanism working as designed, not a failure. The
+"k_malloc GONE from nm" outcome is real exactly for the serial images phase-392
+targets (no net, no mqueue). What every image gets today: the funnel is O(1)
+(rlsf), the heap is knob-sized by choice (`NROS_ZEPHYR_HEAP_SIZE`), and the
+spinlock in `platform.c` supplies the thread-safety FreeListHeap's contract
+demands — Zephyr is multi-threaded (zenoh read/lease tasks), which this doc's
+W3 sketch had not accounted for.
+
+Found and fixed on the way, both pre-existing:
+
+* **One `0xFF` byte put every FreeListHeap arena in FLASH.** `slab_free_bitmap:
+  AtomicU8::new(0xFF)` was the only nonzero byte in the static, which places
+  the ENTIRE struct — arena included — in `.data` rather than `.bss`: 67 KB of
+  load image here, and every bare-metal port has paid its arena size in flash
+  since the slab landed. Sense inverted (set = USED, init 0); arena measured
+  back in `.bss` (`b`).
+* **`just zephyr build-one` was broken for `mps2/an385`** — the entropy
+  fragment's case matched only `qemu_cortex_m3*`, so the board this repo
+  actually targets failed on `z_impl_sys_rand_get`. Case widened; comment now
+  also warns that `qemu_cortex_m3` is the TI LM3S6965 (256K/64K), 60x too
+  small for a zenoh image.
+
 Expected delta, to be MEASURED not asserted: −131,072 `kheap` `.bss`, −~600+ B
 `sys_heap` text, +arena (knob-sized `.bss`), +~600 B rlsf text, +1,192 B rlsf
 control — net text shrink, and the arena knob finally sized by choice rather

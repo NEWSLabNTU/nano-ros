@@ -155,32 +155,48 @@ uint64_t nros_platform_epoch_us(void) {
 }
 #endif /* CONFIG_SNTP */
 
-/* ---- Allocation ---- */
+/* ---- Allocation ----
+ *
+ * phase-391 W3 — the funnel is backed by the rlsf arena in
+ * `nros-platform/src/zephyr_heap.rs` (zpico-alloc's FreeListHeap, rlsf since
+ * W2), not by `k_malloc`. Every image's Rust staticlib carries that module:
+ * the C lane through nros-c's `platform-zephyr` feature, the Rust lane through
+ * nros-platform directly. Once an image's conf also sets
+ * `CONFIG_HEAP_MEM_POOL_SIZE=0`, `k_malloc`/`sys_heap_*` garbage-collect out
+ * of the link — the wave's link test.
+ *
+ * The spinlock is load-bearing: FreeListHeap is single-threaded by contract
+ * and Zephyr is not (zenoh-pico's read/lease tasks allocate concurrently with
+ * the app). rlsf is O(1), so the critical section is short and bounded — which
+ * is exactly why phase-391 chose it. The old `k_realloc` emulation also
+ * memcpy'd the NEW size out of the old block (a documented best-effort
+ * over-read); rlsf's own reallocate retires that too. */
+
+extern void *nros_zephyr_heap_alloc(size_t size);
+extern void *nros_zephyr_heap_realloc(void *ptr, size_t size);
+extern void nros_zephyr_heap_free(void *ptr);
+
+static struct k_spinlock nros_heap_lock;
 
 void *nros_platform_alloc(size_t size) {
     if (size == 0) return NULL;
-    return k_malloc(size);
+    k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
+    void *out = nros_zephyr_heap_alloc(size);
+    k_spin_unlock(&nros_heap_lock, key);
+    return out;
 }
 
 void *nros_platform_realloc(void *ptr, size_t size) {
-    if (size == 0) {
-        k_free(ptr);
-        return NULL;
-    }
-    if (ptr == NULL) {
-        return k_malloc(size);
-    }
-    /* Zephyr has no `k_realloc`; emulate. Same caveat as the
-     * FreeRTOS port (best-effort copy up to new size). */
-    void *out = k_malloc(size);
-    if (out == NULL) return NULL;
-    memcpy(out, ptr, size);
-    k_free(ptr);
+    k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
+    void *out = nros_zephyr_heap_realloc(ptr, size);
+    k_spin_unlock(&nros_heap_lock, key);
     return out;
 }
 
 void nros_platform_dealloc(void *ptr) {
-    k_free(ptr);
+    k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
+    nros_zephyr_heap_free(ptr);
+    k_spin_unlock(&nros_heap_lock, key);
 }
 
 /* ---- Heap stats (phase-230 Z5 / RFC-0034 D7) ----
