@@ -74,13 +74,14 @@ use portable_atomic_util::Arc;
 /// REGISTRATION error, never a truncation.
 type IdStr = heapless::String<{ nros_node::names::MAX_RESOLVED_NAME_LEN }>;
 
-/// phase-391 W5 — per-cell registry bound, PER KIND, knob-backed.
-///
-/// Was `DEFAULT_MAX_METADATA_ENTITIES` (32), borrowed from the metadata twin —
-/// but that figure is per-PLAN-shaped and made every cell ~20 KB up front.
-/// 8 is per-component-shaped; a component declaring more gets a loud
-/// registration error naming `NROS_RUNTIME_MAX_CELL_ENTITIES`.
-const CELL_REG_CAP: usize = crate::config::MAX_CELL_ENTITIES;
+// phase-391 W5 (amended by W5-endgame step 2a): the per-cell registry bound,
+// PER KIND, is the `MAX_CELL_ENTITIES` knob — now spelled as `ComponentCell`'s
+// const-parameter DEFAULTS rather than a shared `CELL_REG_CAP` const, so the
+// macro can name tighter per-class bounds while every existing spelling keeps
+// the knob-capped layout. Was `DEFAULT_MAX_METADATA_ENTITIES` (32), borrowed
+// from the metadata twin — but that figure is per-PLAN-shaped and made every
+// cell ~20 KB up front. 8 is per-component-shaped; a component declaring more
+// gets a loud registration error naming `NROS_RUNTIME_MAX_CELL_ENTITIES`.
 
 /// Owned copy of a name-shaped `&str`, or the registration error that says
 /// which knob-less bound it burst.
@@ -252,12 +253,24 @@ where
 /// Shared per-component cell. Subscription / timer closures registered
 /// against the executor hold an `Arc` clone so they can dispatch +
 /// publish back through the resolver.
-struct ComponentCell {
+///
+/// phase-391 W5-endgame step 2a (issue 0857) — generic over the four registry
+/// capacities, defaulted to the `MAX_CELL_ENTITIES` knob so every existing
+/// spelling (`ComponentCell`) keeps meaning the pool-capped layout. The
+/// per-class macro emission names tighter bounds; everything downstream of
+/// construction consumes the cell through the non-generic [`CellView`], so
+/// the const params never cross an FFI or public signature.
+struct ComponentCell<
+    const PUBS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
+    const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
+> {
     /// phase-391 W5.3b — BORROWED from per-class or pool storage, not boxed.
     /// The storage is `'static` (macro-emitted static / caller backing), so the
     /// reference outlives every closure that dispatches through it.
     slot: RefCell<&'static mut dyn ComponentSlot>,
-    publishers: RefCell<heapless::Vec<(IdStr, EmbeddedRawPublisher), CELL_REG_CAP>>,
+    publishers: RefCell<heapless::Vec<(IdStr, EmbeddedRawPublisher), PUBS>>,
     // Phase 212.M-F.23 — declarative service/action CLIENT + action-SERVER
     // handles, keyed by stable entity id, resolved during tick dispatch.
     // Mirror of the orchestration `GenClientDispatch`/`GenActionExec` arrays,
@@ -265,9 +278,9 @@ struct ComponentCell {
     // action-SERVER request/goal dispatch is owned by the executor (the
     // trampolines registered in `create_entity`); only the action-server
     // handle is kept here so the tick can complete goals / publish feedback.
-    service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), CELL_REG_CAP>>,
-    action_clients: RefCell<heapless::Vec<(IdStr, usize), CELL_REG_CAP>>,
-    action_servers: RefCell<heapless::Vec<(IdStr, crate::ActionServerRawHandle), CELL_REG_CAP>>,
+    service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), SVCS>>,
+    action_clients: RefCell<heapless::Vec<(IdStr, usize), ACTC>>,
+    action_servers: RefCell<heapless::Vec<(IdStr, crate::ActionServerRawHandle), ACTS>>,
     callback_dispatches: AtomicUsize,
     message_dispatches: AtomicUsize,
     // Phase 264 W4c — raw pointer to the executor's volatile parameter store, so a
@@ -283,7 +296,9 @@ struct ComponentCell {
     param_server: core::cell::Cell<*const nros_params::ParameterServer<'static>>,
 }
 
-impl Drop for ComponentCell {
+impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize> Drop
+    for ComponentCell<PUBS, SVCS, ACTC, ACTS>
+{
     fn drop(&mut self) {
         // phase-391 W5.3b — the slot is BORROWED from one-shot storage, so the
         // component state's destructor no longer rides a `Box` drop. Run it
@@ -300,7 +315,9 @@ impl Drop for ComponentCell {
     }
 }
 
-impl ComponentCell {
+impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
+    ComponentCell<PUBS, SVCS, ACTC, ACTS>
+{
     /// Phase 264 W4c — the executor's parameter store, or `None` until
     /// `apply_param_services` threads it in. The deref is sound: single-threaded
     /// executor, param services mutate the server only outside callback dispatch.
@@ -353,7 +370,9 @@ trait CellView {
     fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>>;
 }
 
-impl CellView for ComponentCell {
+impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize> CellView
+    for ComponentCell<PUBS, SVCS, ACTC, ACTS>
+{
     fn note_dispatch(&self, message: bool) {
         self.callback_dispatches.fetch_add(1, Ordering::Relaxed);
         if message {
