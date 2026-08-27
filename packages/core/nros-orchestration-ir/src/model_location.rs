@@ -54,9 +54,12 @@ pub fn model_search_paths(bringup_dir: &Path, model_rel: &str) -> Vec<PathBuf> {
     }
     if let Some(dir) = std::env::var_os("OUT_DIR") {
         let dir = Path::new(&dir).join("nros");
-        if let Some(b) = &bringup {
-            out.push(dir.join(b).join(&name));
-        }
+        // Keyed on the bringup's PATH, not its name — issue 0825. `$OUT_DIR`
+        // is per-crate for a build script but SHARED by every test binary of
+        // a package, and `demo_bringup` is the name nearly every fixture uses,
+        // so a bare name makes one test's model shadow another's. Same hash
+        // the cache fallback already uses, for the same reason.
+        out.push(dir.join(build_scoped_dir(bringup_dir)).join(&name));
         out.push(dir.join(&name));
     }
     // phase-330 W4/W7 — the WORKSPACE build root, where `nros sync` writes by
@@ -341,21 +344,45 @@ fn model_write_dir(bringup_dir: &Path) -> PathBuf {
         return Path::new(&dir).join(&bringup_name);
     }
     if let Some(dir) = std::env::var_os("OUT_DIR") {
-        return Path::new(&dir).join("nros").join(&bringup_name);
-    }
-    // Hash the absolute bringup path so two bringups with the same directory
-    // name (every workspace has a `demo_bringup`) cannot collide.
-    let mut h: u64 = 0xcbf29ce484222325;
-    for b in bringup_dir.to_string_lossy().as_bytes() {
-        h ^= *b as u64;
-        h = h.wrapping_mul(0x100000001b3);
+        // Issue 0825 — the same path-keyed name the SEARCH side uses. The two
+        // must move together: a writer and a reader disagreeing about this
+        // directory is the shadowing bug with the roles swapped.
+        return Path::new(&dir)
+            .join("nros")
+            .join(build_scoped_dir(bringup_dir));
     }
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".cache")))
         .unwrap_or_else(std::env::temp_dir);
     base.join("nano-ros/models")
-        .join(format!("{h:016x}-{}", bringup_name.to_string_lossy()))
+        .join(build_scoped_dir(bringup_dir))
+}
+
+/// Directory name that identifies a bringup inside a SHARED build output tree.
+///
+/// `<fnv1a(abs path)>-<dir name>`. The name alone is not an identifier: every
+/// workspace in this repository calls its bringup `demo_bringup`, so a
+/// name-keyed directory under `$OUT_DIR` — which cargo shares across every
+/// test binary of a package — lets one test's model be read as another's
+/// (issue 0825: a model with no `execution.tiers` silently erased tiers three
+/// sibling tests had authored). The hash keeps the human-readable half for
+/// anyone reading the directory, and makes collisions require an actual path
+/// collision.
+///
+/// **Both the reader and the writer must call this.** They are the only two
+/// places that spell the directory, and they are in this file for that reason.
+fn build_scoped_dir(bringup_dir: &Path) -> String {
+    let name = bringup_dir
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "bringup".to_string());
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bringup_dir.to_string_lossy().as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}-{name}")
 }
 
 /// Locate the model for `(bringup, model_rel)`, RESOLVING it from the bringup's
@@ -553,9 +580,21 @@ mod tests {
                     Path::new("/ws/src/demo_bringup"),
                     "config/system_model.yaml",
                 );
+                // Issue 0825 — the rung is keyed on the bringup's PATH, so the
+                // directory carries a hash. Asserted through the same function
+                // the production code calls, because the POINT is that the two
+                // sides agree; a literal here would let them drift apart while
+                // this test stayed green.
                 assert_eq!(
                     c[0],
-                    PathBuf::from("/build/out/nros/demo_bringup/system_model.yaml")
+                    PathBuf::from("/build/out/nros")
+                        .join(build_scoped_dir(Path::new("/ws/src/demo_bringup")))
+                        .join("system_model.yaml")
+                );
+                assert!(
+                    c[0].to_string_lossy().contains("demo_bringup"),
+                    "the readable half survives: {}",
+                    c[0].display()
                 );
                 assert_eq!(c[1], PathBuf::from("/build/out/nros/system_model.yaml"));
                 // phase-330 W4/W7 inserted the two build-root rungs BETWEEN the
@@ -584,6 +623,53 @@ mod tests {
                     PathBuf::from("/ws/src/demo_bringup/config/system_model.yaml"),
                     "the committed config path stays LAST — the model is a build \
                      artifact (phase-330 W4), so every build output outranks it"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn two_bringups_of_the_same_name_do_not_share_an_out_dir_slot() {
+        // Issue 0825. `$OUT_DIR` is per-crate for a build script but SHARED by
+        // every test binary of a package, and every workspace here names its
+        // bringup `demo_bringup`. When the rung was keyed on that name, one
+        // test's model was read as another's: the reader got a model with no
+        // `execution.tiers`, and `apply_model_execution` erased the tiers the
+        // fixture had authored. Three sibling tests failed on a file they never
+        // touched.
+        with_env(
+            &[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))],
+            || {
+                let a = model_search_paths(
+                    Path::new("/ws-a/src/demo_bringup"),
+                    "config/system_model.yaml",
+                );
+                let b = model_search_paths(
+                    Path::new("/ws-b/src/demo_bringup"),
+                    "config/system_model.yaml",
+                );
+                assert_ne!(
+                    a[0], b[0],
+                    "same NAME, different PATH — these must not resolve to one file"
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn the_writer_and_the_reader_agree_on_the_out_dir_slot() {
+        // The other half of 0825: a fix applied to only one side turns a
+        // shadowing bug into a never-found bug. This is the shape CLAUDE.md
+        // names — one helper, not a second spelling.
+        with_env(
+            &[("NROS_MODEL_DIR", None), ("OUT_DIR", Some("/build/out"))],
+            || {
+                let bringup = Path::new("/ws/src/demo_bringup");
+                let written = model_write_dir(bringup).join("system_model.yaml");
+                let searched = model_search_paths(bringup, "config/system_model.yaml");
+                assert_eq!(
+                    written, searched[0],
+                    "what the writer writes must be what the reader reads first"
                 );
             },
         );

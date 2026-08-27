@@ -167,6 +167,17 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
+Recently resolved (2026-08-27): **#0825** (build) — a stale model under `$OUT_DIR` OUTRANKED a
+bringup's own committed model, so one run poisoned every later test using a bringup of the same
+NAME. `model_search_paths` keyed that rung on the bringup DIRECTORY NAME (`demo_bringup` — nearly
+every fixture) while `$OUT_DIR` is per-crate for a build script and SHARED by every test binary of
+a package. `apply_model_execution` then overwrote `system.tiers` wholesale, so a model with no
+`execution.tiers` silently erased tiers the fixture had authored: three codegen tests failed with
+"tier `high` has no `[tiers.high]` definition" while the file on disk plainly had it. Reader and
+writer now share one path-keyed helper (`build_scoped_dir`, `<fnv1a(abs path)>-<name>` — the scheme
+the XDG cache fallback already used and the reason it never had the bug); `$NROS_MODEL_DIR` is
+unchanged because cmake writes it by bare name from another code path. Running the suite twice used
+to fail the second time. See `archived/0825-*`.
 Recently resolved (2026-08-27): **#0821** (rmw/platform) — the S32K344 took a USAGE FAULT at exactly
 2 x Z_TRANSPORT_LEASE with an exception frame of ALL ZEROES (pc, lr, xpsr, every FPU register). xpsr=0
 is impossible for a real frame, so the CPU unstacked one out of dead memory: a blown stack, not a bad
@@ -180,8 +191,6 @@ it needed `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE` first, because `NROS_ZEPHYR_STACK
 CONFIG_MAIN_STACK_SIZE and multiplied into every task stack (the link previously failed, "region `RAM'
 overflowed by 21588 bytes"). Residual recorded, not buried: a THREAD_ANALYZER+INIT_STACKS build
 survived six cycles at the original 8 KiB and that is unexplained. See `archived/0821-*`. (2026-08-27)
-
-**#0825** (build, open 2026-08-27) — a stale model under `$OUT_DIR` OUTRANKS a bringup's own committed model, so one `nros` run poisons every later test using a bringup of the same NAME. `model_search_paths` keys that rung on the bringup's DIRECTORY NAME (`demo_bringup` — nearly every fixture) while `$OUT_DIR` during `cargo test` is a persistent shared build dir. `apply_model_execution` then overwrites `system.tiers` wholesale, so a model with no `execution.tiers` silently erases tiers the user authored: three codegen tests failed with "tier `high` has no `[tiers.high]` definition" while the file on disk plainly had it. Reads as host-specific, order-dependent and not-a-regression, and survives `cargo clean -p`. Mitigation: `rm -rf packages/cli/target/*/build/nros-cli-core-*/out/nros`. See `0825-*`.
 
 Recently resolved (2026-08-27): **#0822** (rmw) — zenoh-pico's Zephyr port picked thread stacks with
 `thread_stack_area[thread_index++]` over a fixed 4-entry array, with `thread_index` never reset and

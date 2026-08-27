@@ -2,10 +2,11 @@
 id: 825
 title: "A stale model under `$OUT_DIR` outranks a bringup's own committed model,
   so one `nros` run poisons every later test using a bringup of the same NAME"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0320, phase-330, phase-383]
+resolved_in: phase-383 W9.c
 ---
 
 ## Problem
@@ -75,25 +76,50 @@ Ruled out on the way, each costing a cycle: the model cache under
 `$XDG_CACHE_HOME`, the `nros-launch-resolve` binary's presence, submodule drift,
 environment differences (only `PWD` differed), and stale incremental artifacts.
 
-## Fix — directions, not yet chosen
+## Fix
 
-The `$OUT_DIR` rung exists so a cargo build can hand its own build script a
-freshly resolved model, which is legitimate. What is wrong is that the rung is
-**keyed on a name that is not unique** and **read by consumers that never wrote
-it**.
+The `$OUT_DIR` rung is legitimate — a cargo build hands its own build script a
+freshly resolved model. What was wrong is that it was **keyed on a name that is
+not unique**, and `demo_bringup` is the name nearly every fixture uses.
 
-* **Namespace the rung by identity, not by name.** The bringup's absolute path
-  (hashed) rather than its `file_name()`. `$XDG_CACHE_HOME` already does this —
-  `<hash>-<bringup>` — and does not have the bug.
-* **Or restrict the rung to the writer.** Only consult `$OUT_DIR` when this
-  process's own build script produced the model, rather than whenever the
-  variable happens to be set. A test binary inheriting `$OUT_DIR` is not the
-  case the rung was written for.
-* **Independently: `apply_model_execution` should not erase authored tiers with
-  an empty model.** A model that declares no `execution.tiers` almost certainly
-  means "this model does not speak about tiers", not "the system has none". The
-  fail-loud rule in RFC-0052 argues for refusing, or for leaving the authored
-  tiers in place, rather than a silent wholesale overwrite.
+Both sides of the rung now key on the bringup's PATH, through one helper:
+
+```rust
+fn build_scoped_dir(bringup_dir: &Path) -> String   // "<fnv1a(abs path)>-<name>"
+```
+
+`model_search_paths` (reader) and `model_write_dir` (writer) are the only two
+places that spell that directory, and they are in one file for exactly this
+reason — a fix applied to one side would turn a shadowing bug into a
+never-found bug. The XDG cache fallback already used this scheme, and did not
+have the bug; it now shares the helper rather than open-coding it.
+
+`$NROS_MODEL_DIR` is deliberately unchanged: cmake writes into it by bare name
+from a different code path, so its spelling is not this file's to choose.
+
+**Proof.** Running the CLI suite twice used to fail the second time. It now
+leaves two directories where one file used to overwrite the other:
+
+```
+4b63456a56cadad4-demo_bringup
+6d10813704073ca3-demo_bringup
+```
+
+Two regression tests: `two_bringups_of_the_same_name_do_not_share_an_out_dir_slot`
+(the bug — same name, different path, must not resolve to one file) and
+`the_writer_and_the_reader_agree_on_the_out_dir_slot` (the one-sided-fix guard).
+The order test asserts the hashed rung through `build_scoped_dir` itself rather
+than a literal, so the two sides cannot drift while the test stays green.
+
+## Still open, tracked separately
+
+`apply_model_execution` (`model_ingest.rs:96`) does `system.tiers =
+model.execution.tiers` — a model that declares no `execution.tiers` ERASES the
+tiers the user authored. That is what turned the shadow into a confusing error
+rather than a missing-file one, and it is a hazard on its own: a model that does
+not speak about tiers is not a system with none. RFC-0052's fail-loud rule argues
+for refusing, or for leaving the authored tiers in place. Not changed here —
+it alters shared ingest semantics and deserves its own commit.
 
 ## Sweep
 
