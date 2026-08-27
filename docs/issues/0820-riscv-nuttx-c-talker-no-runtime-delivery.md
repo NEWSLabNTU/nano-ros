@@ -148,6 +148,90 @@ The archive the native C talker actually links is `libnros_cpp.a` (it defines
 backend change rebuilds it and relinks the example. So zenoh/xrce on native are
 fine, and the defect is specific to the NuttX seam above.
 
+## THE PROPER FIX (explored 2026-08-27) — three coupled defects in one seam
+
+The missing edge is not the only thing wrong with this custom command, and the
+other two are why a naive fix breaks the build.
+
+### 1. The profile is hardcoded, and it contradicts the platform's own
+
+```cmake
+cargo build --release                                     # line 288
+set(_output_binary ".../${_NNBE_TARGET_TRIPLE}/release/nros-nuttx-ffi")   # line 229
+```
+
+`nros-cargo-profile` declares `NUTTX_RUST_PROFILE = MINSIZEREL.name` =
+**`nros-minsizerel`**, and `platform_profile("nuttx"|"nuttx-riscv")` returns it.
+The Rust lane honours that (`armv7a-nuttx-eabihf/nros-minsizerel/nuttx_entry`).
+This C lane builds `release` instead. Measured: the riscv leaf's cargo dir
+contains ONLY `release/`.
+
+phase-336's `NanoRosCargoProfile.cmake` exists to resolve one profile "for
+everything cmake builds through Corrosion **or a custom command**". This is a
+custom command and it never asks. The file does not even include the module (it
+includes only `nros-rtos-helpers.cmake`).
+
+Consequences, in the order they bite:
+
+* **Size, on the platform that picked minsizerel for a reason.** NuttX images
+  get `release` codegen where the tree says size-optimised.
+* **`CMAKE_BUILD_TYPE` does not reach the Rust half at all.** Configure Debug
+  and the C side is `-O0` while the Rust side is still `release`; a debuggable
+  NuttX image is unobtainable.
+* **Two profile dirs for one platform.** The Rust lane writes
+  `nros-minsizerel/`, this lane writes `release/`, so shared crates compile
+  twice and neither reuses the other — the 0488 shape.
+
+### 2. The hardcoded OUTPUT path makes the profile hardcode LOAD-BEARING
+
+`_output_binary` names `release/` literally. Pass `-DNROS_CARGO_PROFILE=...`
+and cargo writes elsewhere while cmake still expects `release/`; the 0159 guard
+then fires `NuttX cross-link produced no kernel ELF`. So the profile cannot be
+fixed without the path — they move together or the build breaks loudly.
+
+### 3. The missing edge — and cargo already solved it
+
+Cargo writes a dep-info file next to the binary: `nros-nuttx-ffi.d`, Makefile
+format, absolute paths, and it lists **159 nano-ros Rust sources** (verified —
+`packages/core/nros-node/src/c_waker.rs` is in there). CMake consumes exactly
+this shape:
+
+```cmake
+add_custom_command(
+    OUTPUT  "${_output_binary}"
+    DEPFILE "${_output_binary}.d"
+    ...)
+```
+
+Prerequisites are already met: `cmake_minimum_required(VERSION 3.22)`, cmake
+3.22.1, `CMAKE_GENERATOR=Ninja` (DEPFILE has worked with Ninja since 3.7; the
+3.20 requirement is for Makefiles). A missing depfile on the first build is
+tolerated.
+
+This beats both alternatives that were on the table:
+
+* **vs. hand-listing Rust sources in DEPENDS** — that is what is there now, and
+  it is a hand-maintained approximation of a graph cargo computes exactly. It
+  will drift again the moment a crate is added.
+* **vs. an always-run custom target** (the previous suggestion in this issue) —
+  correct but pays a cargo + NuttX kernel invocation on every build of every
+  NuttX example. DEPFILE gets the same correctness for the cost of reading a
+  file cargo already wrote.
+
+### Sequencing
+
+All three land together, because (1) alone breaks on (2), and (3) alone leaves
+NuttX images silently mis-profiled. Then verify by the recipe below — touch
+`packages/core/nros-node/src/lib.rs`, rebuild WITHOUT wiping, and confirm the
+ELF's hash changes.
+
+**Check the siblings in the same pass.** `FREERTOS_QEMU_PROFILE` is also
+`MINSIZEREL`, and the freertos/threadx/esp-idf seams are the same
+custom-command shape. A missing edge is rarely one-of-a-kind, and neither is a
+hardcoded `--release`.
+
+## Superseded: the earlier suggestion
+
 ## Suggested fix, and why it is not applied here
 
 Cargo is authoritative about its own inputs and is fast when up to date. The
