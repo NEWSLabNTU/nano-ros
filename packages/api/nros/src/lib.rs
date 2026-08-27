@@ -347,6 +347,7 @@ pub struct ComponentSlotStorage<
     const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const SSRV: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
     _p: core::marker::PhantomData<fn() -> C>,
 }
@@ -377,9 +378,10 @@ pub unsafe fn install_node_typed_in<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     _executor: *mut core::ffi::c_void,
-    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
+    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
 ) -> i32
 where
     C::State: 'static,
@@ -400,9 +402,10 @@ pub unsafe fn install_node_typed_with_launch_in<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     _executor: *mut core::ffi::c_void,
-    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
+    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
     _params: &[(&str, &str)],
     _node_identity: Option<(&'static str, &'static str)>,
     _remaps: &[(&str, &str)],

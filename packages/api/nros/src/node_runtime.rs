@@ -197,6 +197,7 @@ pub struct ComponentSlotStorage<
     const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const SSRV: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
     slots: [UnsafeCell<MaybeUninit<TypedSlot<C>>>; N],
     /// W5-endgame step 2b (issue 0857) — the per-instance CELL lives here too,
@@ -204,7 +205,7 @@ pub struct ComponentSlotStorage<
     /// out pairwise with its slot by `take`; the cell's `slot` field then
     /// borrows the sibling region, which is sound because the two arrays are
     /// distinct `UnsafeCell`s claimed by the same monotonic index.
-    cells: [UnsafeCell<MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS>>>; N],
+    cells: [UnsafeCell<MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>>; N],
     next: AtomicUsize,
 }
 
@@ -217,7 +218,8 @@ unsafe impl<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
-> Sync for ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
+    const SSRV: usize,
+> Sync for ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>
 {
 }
 
@@ -228,7 +230,8 @@ impl<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
-> ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
+    const SSRV: usize,
+> ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>
 {
     /// Const constructor — the macro emits `static STORE: ... = ...::new();`.
     #[allow(clippy::new_without_default)]
@@ -253,7 +256,7 @@ impl<
         &'static self,
     ) -> Option<(
         &'static mut MaybeUninit<TypedSlot<C>>,
-        &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS>>,
+        &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>,
     )> {
         let i = self.next.fetch_add(1, Ordering::Relaxed);
         if i >= N {
@@ -315,6 +318,7 @@ struct ComponentCell<
     const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
     const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const SSRV: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
     /// W5-endgame step 2b — MUST stay first; see [`CellHeader`].
     header: CellHeader,
@@ -333,6 +337,17 @@ struct ComponentCell<
     service_clients: RefCell<heapless::Vec<(IdStr, crate::HandleId), SVCS>>,
     action_clients: RefCell<heapless::Vec<(IdStr, usize), ACTC>>,
     action_servers: RefCell<heapless::Vec<(IdStr, crate::ActionServerRawHandle), ACTS>>,
+    // W5-endgame ctx slabs (issue 0857) — the leaked trampoline contexts the
+    // sink used to `Box::into_raw` live INSIDE the cell, sized by the class's
+    // declared bounds, so the macro path allocates nothing. Monotonic
+    // counters; a full slab is a loud registration error. The entries die
+    // with the cell (executor drop), after which no trampoline can fire.
+    svc_ctxs: [UnsafeCell<MaybeUninit<ServiceServerCtx>>; SSRV],
+    svc_ctxs_used: core::cell::Cell<usize>,
+    act_srv_ctxs: [UnsafeCell<MaybeUninit<ActionServerCtx>>; ACTS],
+    act_srv_ctxs_used: core::cell::Cell<usize>,
+    act_cli_ctxs: [UnsafeCell<MaybeUninit<ActionClientCtx>>; ACTC],
+    act_cli_ctxs_used: core::cell::Cell<usize>,
     // Phase 264 W4c — raw pointer to the executor's volatile parameter store, so a
     // subscription/timer/service/action callback can read `ctx.parameter::<T>(name)`.
     // The callback closures + leaked trampolines hold only a `CellHandle` (the
@@ -346,8 +361,8 @@ struct ComponentCell<
     param_server: core::cell::Cell<*const nros_params::ParameterServer<'static>>,
 }
 
-impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize> Drop
-    for ComponentCell<PUBS, SVCS, ACTC, ACTS>
+impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
+    Drop for ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>
 {
     fn drop(&mut self) {
         // phase-391 W5.3b — the slot is BORROWED from one-shot storage, so the
@@ -357,6 +372,22 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
         // path's `Arc` drops it on runtime drop), and the
         // storage slot is never handed out again (`take`/`next_slot` counters
         // are monotonic), so nothing can observe the dropped bytes.
+        // W5-endgame ctx slabs — run the placed ctxs' destructors (their
+        // `CellHandle` may hold an `Arc` on the pooled arm). Monotonic
+        // counters bound the initialized prefix exactly.
+        for i in 0..self.svc_ctxs_used.get() {
+            // SAFETY: entries [0, used) were initialized by `place_service_ctx`
+            // and are dropped exactly once, here.
+            unsafe { (*self.svc_ctxs[i].get()).assume_init_drop() };
+        }
+        for i in 0..self.act_srv_ctxs_used.get() {
+            // SAFETY: as above, for `place_action_server_ctx`.
+            unsafe { (*self.act_srv_ctxs[i].get()).assume_init_drop() };
+        }
+        for i in 0..self.act_cli_ctxs_used.get() {
+            // SAFETY: as above, for `place_action_client_ctx`.
+            unsafe { (*self.act_cli_ctxs[i].get()).assume_init_drop() };
+        }
         let slot: &mut &'static mut dyn ComponentSlot = self.slot.get_mut();
         let p: *mut dyn ComponentSlot = &raw mut **slot;
         // SAFETY: `p` targets storage uniquely owned by this cell (handed out
@@ -366,8 +397,8 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
     }
 }
 
-impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
-    ComponentCell<PUBS, SVCS, ACTC, ACTS>
+impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
+    ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>
 {
     /// Phase 264 W4c — the executor's parameter store, or `None` until
     /// `apply_param_services` threads it in. The deref is sound: single-threaded
@@ -429,10 +460,17 @@ trait CellView {
     fn push_action_client(&self, id: IdStr, entry_index: usize) -> Result<(), ()>;
     fn push_action_server(&self, id: IdStr, handle: crate::ActionServerRawHandle)
     -> Result<(), ()>;
+    /// W5-endgame ctx slabs — place a trampoline context into the cell's slab
+    /// and return its stable address for the executor's C-ABI registration.
+    /// `Err(())` = slab full (the class declared fewer of that kind than
+    /// `register()` creates). The entry lives — and is dropped — with the cell.
+    fn place_service_ctx(&self, ctx: ServiceServerCtx) -> Result<*mut core::ffi::c_void, ()>;
+    fn place_action_server_ctx(&self, ctx: ActionServerCtx) -> Result<*mut core::ffi::c_void, ()>;
+    fn place_action_client_ctx(&self, ctx: ActionClientCtx) -> Result<*mut core::ffi::c_void, ()>;
 }
 
-impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize> CellView
-    for ComponentCell<PUBS, SVCS, ACTC, ACTS>
+impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
+    CellView for ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>
 {
     fn note_dispatch(&self, message: bool) {
         self.header
@@ -482,6 +520,48 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
             .borrow_mut()
             .push((id, handle))
             .map_err(|_| ())
+    }
+
+    fn place_service_ctx(&self, ctx: ServiceServerCtx) -> Result<*mut core::ffi::c_void, ()> {
+        let i = self.svc_ctxs_used.get();
+        if i >= SSRV {
+            return Err(());
+        }
+        self.svc_ctxs_used.set(i + 1);
+        // SAFETY: `i` is claimed exactly once (monotonic counter, single-
+        // threaded executor contract), so no other reference to this entry
+        // exists; the address is stable because the cell never moves after
+        // placement.
+        Ok(
+            unsafe { (*self.svc_ctxs[i].get()).write(ctx) as *mut ServiceServerCtx }
+                as *mut core::ffi::c_void,
+        )
+    }
+
+    fn place_action_server_ctx(&self, ctx: ActionServerCtx) -> Result<*mut core::ffi::c_void, ()> {
+        let i = self.act_srv_ctxs_used.get();
+        if i >= ACTS {
+            return Err(());
+        }
+        self.act_srv_ctxs_used.set(i + 1);
+        // SAFETY: as `place_service_ctx`.
+        Ok(
+            unsafe { (*self.act_srv_ctxs[i].get()).write(ctx) as *mut ActionServerCtx }
+                as *mut core::ffi::c_void,
+        )
+    }
+
+    fn place_action_client_ctx(&self, ctx: ActionClientCtx) -> Result<*mut core::ffi::c_void, ()> {
+        let i = self.act_cli_ctxs_used.get();
+        if i >= ACTC {
+            return Err(());
+        }
+        self.act_cli_ctxs_used.set(i + 1);
+        // SAFETY: as `place_service_ctx`.
+        Ok(
+            unsafe { (*self.act_cli_ctxs[i].get()).write(ctx) as *mut ActionClientCtx }
+                as *mut core::ffi::c_void,
+        )
     }
 
     fn publisher(&self, entity_id: &str) -> Option<Ref<'_, EmbeddedRawPublisher>> {
@@ -774,6 +854,12 @@ impl ExecutorNodeRuntime {
             service_clients: RefCell::new(heapless::Vec::new()),
             action_clients: RefCell::new(heapless::Vec::new()),
             action_servers: RefCell::new(heapless::Vec::new()),
+            svc_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+            svc_ctxs_used: core::cell::Cell::new(0),
+            act_srv_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+            act_srv_ctxs_used: core::cell::Cell::new(0),
+            act_cli_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+            act_cli_ctxs_used: core::cell::Cell::new(0),
             header: CellHeader {
                 callback_dispatches: AtomicUsize::new(0),
                 message_dispatches: AtomicUsize::new(0),
@@ -981,6 +1067,7 @@ unsafe extern "C" fn component_tick_trampoline<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     state: *mut core::ffi::c_void,
     exec_ctx: *mut core::ffi::c_void,
@@ -988,7 +1075,7 @@ unsafe extern "C" fn component_tick_trampoline<
     // SAFETY: `state` is a live placed `ComponentCell` (kept in place until
     // the drop trampoline); this monomorphization was enrolled alongside it,
     // so the cast target is the cell's true type.
-    let cell = unsafe { &*(state as *const ComponentCell<PUBS, SVCS, ACTC, ACTS>) };
+    let cell = unsafe { &*(state as *const ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>) };
     tick_one_cell(cell, exec_ctx as *mut Executor<'static>);
 }
 
@@ -1008,12 +1095,13 @@ unsafe extern "C" fn component_drop_trampoline<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     state: *mut core::ffi::c_void,
 ) {
     // SAFETY: enroll's contract above; dropped exactly once by the executor,
     // through the monomorphization enrolled with the cell.
-    unsafe { core::ptr::drop_in_place(state as *mut ComponentCell<PUBS, SVCS, ACTC, ACTS>) };
+    unsafe { core::ptr::drop_in_place(state as *mut ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>) };
 }
 
 // =============================================================================
@@ -1354,10 +1442,14 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .callback_id
                     .as_ref()
                     .ok_or(NodeDeclError::Runtime)?;
-                let ctx = Box::into_raw(Box::new(ServiceServerCtx {
-                    cell: self.cell.clone(),
-                    callback_id: id_str(cb_id.as_str())?,
-                })) as *mut core::ffi::c_void;
+                let ctx = self
+                    .cell
+                    .view()
+                    .place_service_ctx(ServiceServerCtx {
+                        cell: self.cell.clone(),
+                        callback_id: id_str(cb_id.as_str())?,
+                    })
+                    .map_err(|_| NodeDeclError::Runtime)?;
                 self.executor
                     .register_service_raw_sized_on::<1024, 1024>(
                         node,
@@ -1404,12 +1496,16 @@ impl NodeRuntime for ExecutorSink<'_> {
                     .as_ref()
                     .map(|c| id_str(c.as_str()))
                     .transpose()?;
-                let ctx = Box::into_raw(Box::new(ActionServerCtx {
-                    cell: self.cell.clone(),
-                    goal_callback_id: id_str(goal_cb.as_str())?,
-                    cancel_callback_id: id_str(cancel_cb.as_str())?,
-                    accepted_callback_id: accepted_cb,
-                })) as *mut core::ffi::c_void;
+                let ctx = self
+                    .cell
+                    .view()
+                    .place_action_server_ctx(ActionServerCtx {
+                        cell: self.cell.clone(),
+                        goal_callback_id: id_str(goal_cb.as_str())?,
+                        cancel_callback_id: id_str(cancel_cb.as_str())?,
+                        accepted_callback_id: accepted_cb,
+                    })
+                    .map_err(|_| NodeDeclError::Runtime)?;
                 let handle = self
                     .executor
                     .register_action_server_raw_sized::<1024, 1024, 1024, 4>(
@@ -1448,11 +1544,15 @@ impl NodeRuntime for ExecutorSink<'_> {
                             .as_ref()
                             .map(|c| id_str(c.as_str()))
                             .transpose()?;
-                        let ctx = Box::into_raw(Box::new(ActionClientCtx {
-                            cell: self.cell.clone(),
-                            result_callback_id: id_str(result_cb.as_str())?,
-                            feedback_callback_id: feedback_cb.clone(),
-                        })) as *mut core::ffi::c_void;
+                        let ctx = self
+                            .cell
+                            .view()
+                            .place_action_client_ctx(ActionClientCtx {
+                                cell: self.cell.clone(),
+                                result_callback_id: id_str(result_cb.as_str())?,
+                                feedback_callback_id: feedback_cb.clone(),
+                            })
+                            .map_err(|_| NodeDeclError::Runtime)?;
                         let fb = feedback_cb.map(|_| action_feedback_trampoline as _);
                         (Some(action_result_trampoline as _), fb, ctx)
                     }
@@ -1949,6 +2049,7 @@ fn register_node_borrowed<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     executor: &mut Executor<'static>,
     params: &'p [(&'p str, &'p str)],
@@ -1956,8 +2057,8 @@ fn register_node_borrowed<
     remaps: &'p [(&'p str, &'p str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
     slot_mu: &'static mut MaybeUninit<TypedSlot<C>>,
-    cell_mu: &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS>>,
-) -> NodeResult<&'static ComponentCell<PUBS, SVCS, ACTC, ACTS>>
+    cell_mu: &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>,
+) -> NodeResult<&'static ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV>>
 where
     C::State: 'static,
 {
@@ -1967,12 +2068,18 @@ where
     // at ~17.5 KiB of heap per component. Closures and leaked ctxs hold a
     // `CellHandle::Static` copy; the executor's drop trampoline runs the
     // cell's destructor in place.
-    let cell: &'static ComponentCell<PUBS, SVCS, ACTC, ACTS> = cell_mu.write(ComponentCell {
+    let cell: &'static ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV> = cell_mu.write(ComponentCell {
         slot: RefCell::new(place_slot::<C>(slot_mu)),
         publishers: RefCell::new(heapless::Vec::new()),
         service_clients: RefCell::new(heapless::Vec::new()),
         action_clients: RefCell::new(heapless::Vec::new()),
         action_servers: RefCell::new(heapless::Vec::new()),
+        svc_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+        svc_ctxs_used: core::cell::Cell::new(0),
+        act_srv_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+        act_srv_ctxs_used: core::cell::Cell::new(0),
+        act_cli_ctxs: [const { UnsafeCell::new(MaybeUninit::uninit()) }; _],
+        act_cli_ctxs_used: core::cell::Cell::new(0),
         header: CellHeader {
             callback_dispatches: AtomicUsize::new(0),
             message_dispatches: AtomicUsize::new(0),
@@ -2010,15 +2117,15 @@ where
     // (`MAX_NODES`) proceeds without a tick slot; the placed cell then simply
     // lives (and leaks its component state's destructor) with its storage,
     // which a monotonic `take` never re-hands out.
-    let raw = cell as *const ComponentCell<PUBS, SVCS, ACTC, ACTS> as *mut core::ffi::c_void;
+    let raw = cell as *const ComponentCell<PUBS, SVCS, ACTC, ACTS, SSRV> as *mut core::ffi::c_void;
     // SAFETY: `raw` is the freshly placed cell; the enrolled trampoline
     // monomorphizations match its exact type (borrow on tick, drop_in_place
     // on executor drop).
     let _ = unsafe {
         executor.enroll_component(
             raw,
-            component_tick_trampoline::<PUBS, SVCS, ACTC, ACTS>,
-            component_drop_trampoline::<PUBS, SVCS, ACTC, ACTS>,
+            component_tick_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV>,
+            component_drop_trampoline::<PUBS, SVCS, ACTC, ACTS, SSRV>,
         )
     };
 
@@ -2129,7 +2236,7 @@ where
     // runs (executor drop trampoline, in place), only the bytes stay.
     let cell_mu: &'static mut MaybeUninit<ComponentCell> =
         Box::leak(Box::new(MaybeUninit::uninit()));
-    match register_node_borrowed::<C, _, _, _, _>(
+    match register_node_borrowed::<C, _, _, _, _, _>(
         exec,
         params,
         node_identity,
@@ -2167,9 +2274,10 @@ pub unsafe fn install_node_typed_with_launch_in<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     executor: *mut core::ffi::c_void,
-    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
     params: &[(&str, &str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &[(&str, &str)],
@@ -2186,7 +2294,7 @@ where
     };
     // SAFETY: per the fn contract, `executor` is the live handle.
     let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
-    match register_node_borrowed::<C, _, _, _, _>(
+    match register_node_borrowed::<C, _, _, _, _, _>(
         exec,
         params,
         node_identity,
@@ -2213,9 +2321,10 @@ pub unsafe fn install_node_typed_in<
     const SVCS: usize,
     const ACTC: usize,
     const ACTS: usize,
+    const SSRV: usize,
 >(
     executor: *mut core::ffi::c_void,
-    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS, SSRV>,
 ) -> i32
 where
     C::State: 'static,

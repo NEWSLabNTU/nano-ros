@@ -482,7 +482,7 @@
  },
  "rust:EntityBounds::exact": {
   "verdict": "extension",
-  "why": "phase-391 W5-endgame step 2c -- positional constructor (publishers, service_clients, action_clients, action_servers)."
+  "why": "phase-391 W5-endgame step 2c -- positional constructor (publishers, service_servers, service_clients, action_clients, action_servers); service_servers joined in the ctx-slab step, sizing the trampoline-context slab rather than a registry."
  },
  "rust:EntityBounds::knob_caps": {
   "verdict": "extension",

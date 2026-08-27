@@ -195,6 +195,8 @@ where
 pub struct EntityBounds {
     /// Publishers this class creates (each slot ~1.35 KiB — the big one).
     pub publishers: usize,
+    /// Service servers (sizes the trampoline-context slab, not a registry).
+    pub service_servers: usize,
     /// Service clients.
     pub service_clients: usize,
     /// Action clients.
@@ -208,6 +210,7 @@ impl EntityBounds {
     pub const fn knob_caps() -> Self {
         Self {
             publishers: crate::config::MAX_CELL_ENTITIES,
+            service_servers: crate::config::MAX_CELL_ENTITIES,
             service_clients: crate::config::MAX_CELL_ENTITIES,
             action_clients: crate::config::MAX_CELL_ENTITIES,
             action_servers: crate::config::MAX_CELL_ENTITIES,
@@ -215,15 +218,17 @@ impl EntityBounds {
     }
 
     /// Exact bounds, spelled positionally:
-    /// `(publishers, service_clients, action_clients, action_servers)`.
+    /// `(publishers, service_servers, service_clients, action_clients, action_servers)`.
     pub const fn exact(
         publishers: usize,
+        service_servers: usize,
         service_clients: usize,
         action_clients: usize,
         action_servers: usize,
     ) -> Self {
         Self {
             publishers,
+            service_servers,
             service_clients,
             action_clients,
             action_servers,
