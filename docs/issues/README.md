@@ -855,6 +855,15 @@ Still unknown whether the fragments reach lwIP at all. Last blocker for the emul
 See `0836-*`. (2026-08-27)
 
 
+**#0850** (build, open 2026-08-28) — after 0805 took the warm `threadx_riscv64` rebuild 459 s -> 227 s, the new bound
+is measured, not guessed: leaf state **85% D**, runnable 0.14, and `llvm-ar rq_qos_wait` at 1075 occupancy samples
+against 137 for llvm-objcopy and 29 for cargo's lock. Cause is a CYCLE: Corrosion copies the UNLOCALIZED
+`libnros_cpp.a` into each leaf, the link wrapper localizes that copy, so next build `copy_if_different` sees a
+difference, re-copies, and invalidates 0805's skip-stamp — 17 re-processings per warm build, each extracting every
+archive member. They used to hide in a serial tail; making the rust leaves concurrent made them collide on the disk
+queue. Also noted: the four C/C++ group calls in the prologue are sequential at 2-7 of 32 cores (~40 s of the 240 s).
+See `0850-*`. (2026-08-28)
+
 **#0830** (boards, open 2026-08-27) - a QEMU net hub holding ONLY the board NIC and a tap never
 delivers host-to-guest frames; `mps3-an536` guests transmit fine and receive nothing. Not our bug and not
 the host's: attaching to the tap directly (`TUNSETIFF`) shows the host emitting ARP and RTPS normally, and
