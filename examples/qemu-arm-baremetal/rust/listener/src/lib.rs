@@ -22,6 +22,10 @@ pub struct ListenerNode;
 
 impl Node for ListenerNode {
     const NAME: &'static str = "listener";
+
+    // phase-391 W5-endgame (issue 0857) — exact bounds: one subscription,
+    // no publishers/services/actions, so the static cell pays ~nothing.
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
     const DISPATCH: DispatchStrategy = DispatchStrategy::Deferred;
 
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {

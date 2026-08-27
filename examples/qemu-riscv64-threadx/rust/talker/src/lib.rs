@@ -34,6 +34,11 @@ pub struct Talker;
 impl Node for Talker {
     const NAME: &'static str = "talker";
 
+    // phase-391 W5-endgame (issue 0857) — exact bounds: one publisher.
+    // The per-class cell is a STATIC sized by these; the knob default
+    // (8 slots x ~1.35 KiB) collapsed the esp32 single-image stack.
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0, 0);
+
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("talker"))?;
         let pub_chatter = node.create_publisher_for_topic::<StringMsg>("/chatter")?;
