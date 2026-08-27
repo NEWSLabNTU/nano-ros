@@ -34,8 +34,7 @@ placement is a planner-maturity item.
 ## Build & run
 
 ```sh
-nros sync
-cargo build -p native_entry        # macro resolves the whole launch tree at build time
+nros build native        # macro resolves the whole launch tree at build time
 nros plan demo_bringup             # inspect the fully-resolved, namespaced topology
 ```
 

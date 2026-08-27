@@ -36,8 +36,7 @@ it is **agent-based** (the egress carries a locator, not a DDS domain) and uses
 ## Build & run
 
 ```sh
-nros sync
-cargo build -p native_entry                 # links zenoh + xrce backends
+nros build native                 # links zenoh + xrce backends
 MicroXRCEAgent udp4 -p 8888 &               # the Micro-XRCE-DDS Agent
 ./target/release/native_entry               # the bridge (dials the agent)
 # override endpoints at runtime (phase-267 #113):

@@ -18,8 +18,12 @@ From the repository root:
 source ./activate.sh
 cd examples/workspaces/cpp
 nros setup native
-nros sync
-nros codegen-system --bringup demo_bringup
-cmake -S . -B build
-cmake --build build
+nros build native
 ```
+
+`nros build` walks the packages, resolves the image, checks the
+toolchain, generates what the build system needs, and hands off to
+cargo/cmake/west — so compiler errors are the compiler's, unchanged
+(RFC-0065). `nros build` with no image lists what this workspace
+declares. The old `nros sync` / `codegen-system` / `check` sequence
+still works; it is just no longer something you have to type.

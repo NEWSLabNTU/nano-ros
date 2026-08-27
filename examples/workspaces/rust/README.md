@@ -21,12 +21,15 @@ From the repository root:
 source ./activate.sh
 cd examples/workspaces/rust
 nros setup native
-nros sync
-nros codegen-system --bringup demo_bringup
-nros check --bringup src/demo_bringup
-nros check --workspace .
-cargo build -p native_entry
+nros build native
 ```
+
+`nros build` walks the packages, resolves the image, checks the
+toolchain, generates what the build system needs, and hands off to
+cargo/cmake/west — so compiler errors are the compiler's, unchanged
+(RFC-0065). `nros build` with no image lists what this workspace
+declares. The old `nros sync` / `codegen-system` / `check` sequence
+still works; it is just no longer something you have to type.
 
 Run the native entry with a Zenoh router available:
 
