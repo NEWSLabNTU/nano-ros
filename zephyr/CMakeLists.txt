@@ -390,14 +390,35 @@ if(CONFIG_NROS_CPP_API)
     # with "unknown mnemonic `typedef'". Found by the ASI consumer on
     # fvp_baser_aemv8r_smp, where it broke the image build outright.
     #
-    # The flag and its argument are separate list elements: inside a generator
-    # expression a space would make them one argument, which gcc rejects.
-    # Second witness, cortex-m/picolibc: the same defect killed every Zephyr
-    # fixture at arch/arm/core/nmi_on_reset.S with 218 x "Error: bad
-    # instruction `typedef signed char __int8_t'" (issue 0840 session).
+    # issue 0845 — `SHELL:`, not two separate list elements.
+    #
+    # The two-element form was written because a space inside one generator
+    # expression makes the flag and its path a SINGLE argument, which gcc
+    # rejects. True, but splitting them creates a worse failure: CMake
+    # DE-DUPLICATES compile options, Zephyr already passes
+    # `-include .../undef_system_defines.h`, and the second bare `-include`
+    # is dropped as a duplicate — leaving its path behind as an orphan input.
+    # gcc then sees two input files and dies with
+    #
+    #     cannot specify `-o' with `-c', `-S' or `-E' with multiple files
+    #
+    # on every picolibc TU. Reproduced minimally: two `target_compile_options`
+    # calls, the first a plain `-include first.h`, the second the split-genex
+    # pair, yields `FLAGS = -include …/first.h …/second.h` — one flag, two
+    # paths.
+    #
+    # SECOND WITNESS, cortex-m/picolibc (issue 0840 session, recorded before the
+    # cause was known): the same defect killed every Zephyr fixture at
+    # arch/arm/core/nmi_on_reset.S with 218 x "Error: bad instruction `typedef
+    # signed char __int8_t'". Two arch families, one root cause — which is the
+    # argument for fixing the pairing rather than either symptom.
+    #
+    # `SHELL:` is the CMake feature for exactly this: it splits on spaces into
+    # separate arguments AND exempts the group from de-duplication, so the pair
+    # stays together however many other `-include`s exist. Verified in the same
+    # reproducer: `-include …/first.h -include …/second.h`, and it compiles.
     zephyr_compile_options(
-        "$<$<COMPILE_LANGUAGE:C,CXX>:-include>"
-        "$<$<COMPILE_LANGUAGE:C,CXX>:${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h>")
+        "$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-include ${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h>")
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the

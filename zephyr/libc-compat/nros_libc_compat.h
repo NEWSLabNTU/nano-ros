@@ -16,6 +16,34 @@
 #ifndef NROS_LIBC_COMPAT_H
 #define NROS_LIBC_COMPAT_H
 
+/*
+ * issue 0845 — INERT when the libc itself is being compiled.
+ *
+ * `zephyr_compile_options()` reaches EVERY target, which includes the picolibc
+ * MODULE's own sources, not just application code. Force-including this header
+ * there is not the no-op the comment above assumes: the `#include <stdio.h>`
+ * below runs BEFORE picolibc's own TU sets its feature-test macros, so GNU
+ * extensions never get declared and `newlib/libc/ssp/mempcpy_chk.c` dies with
+ *
+ *     error: implicit declaration of function `mempcpy'
+ *
+ * under picolibc's `-Werror=implicit-function-declaration`. Verified by running
+ * the build's own command line with and without this `-include`: without it the
+ * TU compiles clean (rc=0), with it that error appears.
+ *
+ * `_LIBC` is picolibc's own marker for "I am building the C library" (it is on
+ * that command line as `-D_LIBC`), so it is the exact discriminator. The 12
+ * callers this shim exists for are all application sources under the zephyr
+ * examples' `src` directories; none of them is the libc.
+ *
+ * This was masked until now by a SECOND bug in the same feature: the `-include`
+ * flag was being dropped by CMake de-duplication (see zephyr/CMakeLists.txt),
+ * so the header never reached picolibc at all. Fixing that exposed this.
+ */
+#ifdef _LIBC
+#define NROS_LIBC_COMPAT_SKIPPED 1
+#else
+
 #include <stdio.h>
 
 #ifndef _IONBF
@@ -44,5 +72,7 @@ static inline int setvbuf(FILE *stream, char *buf, int mode, size_t size) {
 #endif
 
 #endif /* _IONBF */
+
+#endif /* _LIBC */
 
 #endif /* NROS_LIBC_COMPAT_H */

@@ -262,6 +262,17 @@ pin. Found in phase-382 W2', whose proofs could only be run by downgrading to 0.
 pinned via `KANI_VERSION`, with install and `doctor` both asking the DRIVER instead of the
 filesystem and failing on a mismatch. See `archived/0802-*`. (2026-08-26)
 
+Recently resolved (2026-08-28): **#0845** — the zephyr FIXTURE path could not build ANY of its leaves. TWO bugs in
+one feature, the first masking the second. (1) `zephyr/CMakeLists.txt` passed `-include` and its path as two separate
+genex elements; CMake DE-DUPLICATES compile options, Zephyr already passes one `-include`, so the second flag was
+dropped and its path left behind as a stray input — `gcc: cannot specify '-o' with '-c' … with multiple files` on every
+picolibc TU. Fixed with `SHELL:`, which splits on spaces AND is exempt from de-duplication. (2) Fixing that DELIVERED
+the shim where it had never arrived: `zephyr_compile_options()` reaches the picolibc module's own sources, and the
+shim's unconditional `#include <stdio.h>` runs before picolibc sets its feature-test macros, so `mempcpy_chk.c` died on
+an implicit declaration. Fixed by guarding the shim on `_LIBC`. ccache and `USE_CCACHE` were both RULED OUT by direct
+test — the command was already mangled in `build.ninja`. Verified: c+cpp x zenoh+xrce 24 leaves rc=0, rust+cyclonedds
+rc=0. See `archived/0845-*`. (2026-08-28)
+
 Recently resolved (2026-08-25): **#0797** — nightly was red on every real run with five of eight jobs aborting in 2-5 s: the matrix provisioned the CLI by hand (`cargo build … --bin nros`) and never built `nros-launch-resolve`, so `nros sync` refused and nightly exercised ONE platform, not six. The refusal is correct (0409) — the bug was the missing step. Fixed by `just setup-launch-resolve` in all FOUR provisioning blocks (a fix to the single block this issue quoted would have left three jobs failing identically). The issue's own unresolved question is answered: `ws.rs::resolver_from` searches a SIBLING of `nros` (arm 2 — the wording in the error, which would send you to copy the binary) and ALSO `<repo>/packages/cli/nros-launch-resolve/target/release/` via `ancestors().nth(4)` (arm 3), which is exactly where the recipe writes — so no copying is needed. Verified by running `nros` from nightly's path through a real `nros sync`. `pr-checks`/`host-tests` carry the same block and are deliberately NOT patched: only nightly is red, so they do not reach the refusal. See `archived/0797-*`. (2026-08-25)
 
 Recently resolved (2026-08-26): **#0770** (testing) — NOT REPRODUCED. The reporter (me)
@@ -828,15 +839,6 @@ zero, and per-board lwIP receive sizing got autonomous mode to ENGAGE - neither 
 Still unknown whether the fragments reach lwIP at all. Last blocker for the emulated-R52 closed loop.
 See `0836-*`. (2026-08-27)
 
-**#0845** (build, open 2026-08-27) — `just zephyr build-fixtures` cannot build its C zenoh leaves: 32 ×
-`gcc: fatal error: cannot specify '-o' with '-c' … with multiple files`, from a WIPED build dir, because the
-libc-compat header arrives as a BARE PATH with no `-include` in front of it. Those TUs run under `/usr/bin/ccache`
-even though the fixture record passes `-DUSE_CCACHE=0` plus an sccache launcher — so either that flag never reaches
-the picolibc module, or ccache is eating the `-include`. Neither confirmed; the leaf definitely cannot build. Hidden
-because `just zephyr build-c` builds the SAME six examples through `build-one` and works (337 s, rc=0) — two
-builders for one set of leaves, and only the CI one is broken (issue 0549's divergence, inverted). Found while
-landing 0805's delegation of the dev loops onto the fixture path; that delegation was REVERTED rather than ship a
-working command routed into a broken lane. See `0845-*`. (2026-08-27)
 
 **#0830** (boards, open 2026-08-27) - a QEMU net hub holding ONLY the board NIC and a tap never
 delivers host-to-guest frames; `mps3-an536` guests transmit fine and receive nothing. Not our bug and not
