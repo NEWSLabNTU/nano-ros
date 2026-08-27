@@ -115,7 +115,9 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/TypeHashNotSupported",
-                self.domain_id, service_stripped, DdsSrvType(self.type_name)
+                self.domain_id,
+                service_stripped,
+                DdsSrvType(self.type_name)
             ),
         );
         #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
@@ -123,7 +125,10 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/{}",
-                self.domain_id, service_stripped, DdsSrvType(self.type_name), self.type_hash
+                self.domain_id,
+                service_stripped,
+                DdsSrvType(self.type_name),
+                self.type_hash
             ),
         );
         key
@@ -136,7 +141,9 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/*",
-                self.domain_id, service_stripped, DdsSrvType(self.type_name)
+                self.domain_id,
+                service_stripped,
+                DdsSrvType(self.type_name)
             ),
         );
         key

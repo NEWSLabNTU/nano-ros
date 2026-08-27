@@ -728,6 +728,8 @@ mod tests {
     // `cargo check --tests` fails E0599 (default features skip the `shim` module
     // entirely and so don't surface it).
     use crate::keyexpr::TopicKeyExpr;
+    // `core::write!` into a `heapless::String` needs the trait in scope.
+    use core::fmt::Write as _;
 
     // ========================================================================
     // Error Conversion Tests
@@ -1031,8 +1033,21 @@ mod tests {
 
         // Verify service info fields are correct
         assert_eq!(service.name, "/add_two_ints");
+        // `DdsSrvType` is a Display ADAPTER, not a comparable value: it has no
+        // `PartialEq`/`Debug`, so `assert_eq!` on it directly does not compile
+        // (E0369 + E0277 — the whole test target of this crate was red on main).
+        // Render it the way the sibling key tests render theirs, which also
+        // keeps the assertion off `alloc`.
+        let mut rendered: heapless::String<128> = heapless::String::new();
+        core::write!(
+            &mut rendered,
+            "{}",
+            crate::keyexpr::DdsSrvType(service.type_name)
+        )
+        .expect("DdsSrvType rendering must fit 128 bytes");
+        // Already mangled (contains `::`), so it passes through untouched.
         assert_eq!(
-            crate::keyexpr::DdsSrvType(service.type_name),
+            rendered.as_str(),
             "example_interfaces::srv::dds_::AddTwoInts"
         );
         assert_eq!(service.domain_id, 0);
