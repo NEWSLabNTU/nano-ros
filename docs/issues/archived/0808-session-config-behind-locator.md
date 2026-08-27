@@ -2,7 +2,7 @@
 id: 808
 title: "`create_session`'s flat argument list cannot carry session config, and the
   structural fix has been deferred twice into issues that are now closed"
-status: open
+status: resolved
 type: tech-debt
 area: rmw
 related: [issue-0785, issue-0331, issue-0330, issue-0800, phase-376]
@@ -73,3 +73,56 @@ than about this argument list: it is a DDS-SROS2 keystore PATH plus an
 enforcement switch, and neither a filesystem nor a DDS security plugin exists
 where this ABI runs. `allocator` and `instance_id` likewise stay out —
 declined ABI-wide, and rcl-side process identity, respectively.
+
+## Resolved, 2026-08-27 — an options struct, not the locator
+
+`rmw_session_options_t`, a NULLable trailing parameter on `create_session`;
+NULL means every default.
+
+### The carrier decision
+
+The Direction listed two candidates and asked for a choice. The struct wins on
+two grounds:
+
+* **Precedent.** This ABI already solved the identical problem twice —
+  `rmw_publisher_options_t` and `rmw_subscription_options_t`, same
+  NULLable-trailing-param shape, same NULL-means-defaults rule. A third answer
+  to the same question would be the drift this campaign keeps removing.
+* **Cost.** Encoding config in the locator means every backend reimplements a
+  parser: code size on a target, plus a new class of silent misparse. The
+  locator is already interpreted per backend; adding structure to it makes each
+  backend's interpretation a place they can disagree.
+
+### `mode` deliberately did NOT move
+
+The Direction said all three should travel together. Two of them do. `mode`
+stays a named argument, and that is not the "doing one alone spends the break"
+failure it looks like: `mode` is ALREADY carried and already read by every
+backend. Moving it changes no capability, costs a second signature, and buys
+only tidiness. What the Direction was protecting against was carrying
+`localhost_only` without `enclave` or vice versa — leaving one gap open across
+an ABI break — and neither is open now.
+
+### `localhost_only` is HONOURED, not just carried
+
+Direction item 3, and the issue's own warning that a carried field no backend
+reads is an inert slot in a different costume. Cyclone sets a participant QoS
+property restricting discovery to loopback. XRCE ignores it explicitly — no
+discovery to restrict, no enclave — which is the documented contract for this
+argument exactly as it is for `mode`.
+
+### Item 4 cannot complete here, and that is not this issue's fault
+
+`rmw_get_node_names_with_enclaves` stops being HOLLOW only when something can
+answer it. `get_node_names` is still inert (issue 0791 / phase-381, BLOCKED on a
+bounded-memory decision), so the enclave now has a carrier and still no reader.
+That is a strictly better state — the seam no longer makes the answer
+structurally impossible — but the symbol stays in the inert column until the
+graph phase lands, and it should not be asserted fixed before then.
+
+### Scope of the break
+
+3 backend definitions + 3 headers, 17 C/C++ call sites, 10 Rust stub files, the
+adapter trampoline, regenerated bindings. All compiler-enumerated: a changed
+function-pointer type is a hard error at every site, which is what made a
+67-site break safe to do mechanically rather than by inspection.
