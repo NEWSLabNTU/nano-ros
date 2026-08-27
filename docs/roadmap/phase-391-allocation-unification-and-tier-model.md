@@ -268,6 +268,41 @@ SLLEN=32 slope. So the worst case (FLLEN=18) is +396 B over the already-accepted
 is therefore much cheaper than it first appeared, and the default of 18 costs a
 32 KiB board 1,192 B (3.6% of its arena) if it does not override.
 
+**W2 LANDED — measured before/after on a named image (2026-08-27).**
+
+`qemu-bsp-talker`, mps2-an385, `thumbv7m-none-eabi`, `nros-relwithdebinfo`,
+built by `just qemu build-fixtures`, measured with
+`scripts/nros-mem-report.py`. Both arms built from the SAME tree with only
+`zpico-alloc` differing (the pre-W2 arm produced by
+`git checkout <W2>~1 -- packages/rmw/zenoh/zpico-alloc/`), so the delta names
+this wave and nothing else:
+
+| | before (first-fit) | after (rlsf) | delta |
+| --- | --- | --- | --- |
+| `nros_platform_mps2_an385::memory::HEAP` | 131,608 B | 132,792 B | **+1,184 B** |
+| RAM (`.bss` + `.data`) | 386,900 B | 388,084 B | **+1,184 B** |
+
+RAM total moves by exactly the HEAP delta, so nothing else shifted. The
+decomposition holds:
+
+```
+arena      131,072 -> 131,072   (unchanged, by design)
+metadata       536 ->   1,720   (+1,184)
+                             = 512 slab + 1,192 rlsf control + 16 padding/flags
+```
+
+**This is a COST, not a saving, and it should be read as one.** The survey above
+projects a net flash shrink and 796 B of RAM, but that arithmetic is the ZEPHYR
+case, where rlsf REPLACES `sys_heap` (−1,856 B of text) and the 16 KiB `k_heap`
+becomes the arena. On bare-metal there is no `sys_heap` to remove, so the
+control struct is added with nothing offsetting it. W3 is where the offset
+appears; W2 alone buys a worst-case execution bound and pays 1,184 B for it on a
+458,752 B part (0.26%).
+
+A cross-check worth keeping: an image built 32 commits earlier measured the
+identical 131,608 B / 386,900 B, so none of the intervening work touched this
+image's RAM — which is why the isolated rebuild and the historical image agree.
+
 **BLOCKED on file ownership, not on technique.** `FreeListHeap`'s implementation
 is `packages/rmw/zenoh/zpico-alloc/src/lib.rs`, and the rlsf dependency would be
 added to that crate's manifest. The three `nros-platform-*/src/memory.rs` files
