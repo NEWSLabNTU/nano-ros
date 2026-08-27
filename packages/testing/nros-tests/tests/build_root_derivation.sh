@@ -498,7 +498,7 @@ echo "phase-340 B2 — the Rust resolver holds NO copy of the eligibility rule:"
 scenario '
     cd "$repo_root"
     rs="packages/testing/nros-tests/src"
-    if grep -rnE "var(_os)?\(\"NROS_FIXTURE_SHARED_PLATFORMS" "$rs"; then
+    if git grep -nE "var(_os)?\(\"NROS_FIXTURE_SHARED_PLATFORMS" -- "$rs"; then
         echo "  FAIL the Rust side READS NROS_FIXTURE_SHARED_PLATFORMS again —"
         echo "       that is a second copy of the eligibility rule. It belongs in"
         echo "       scripts/build/fixtures-target-dir.sh, reported per row by"

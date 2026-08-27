@@ -56,11 +56,26 @@ ROOT = r'"?(?:examples|packages|\$\{?\w+)'
 # files. A gate that demands an impossible fix gets disabled, so this list is
 # part of the rule, not an escape hatch.
 NO_INDEX = (r"\$prefix", r"\$ROS", r"/opt/ros", r"\$staged", r"\$out",
-            r"\$output_dir", r"\$BUILD_DIR", r"\$build_", r"\$log_dir")
+            r"\$output_dir", r"\$BUILD_DIR", r"\$build_", r"\$log_dir",
+            # issue 0844 — derived from `$ROS_SHARE` in
+            # rosidl-codegen/scripts/check_parser_failures.sh: a ROS install
+            # prefix, so the .msg files are outside the repo and the index
+            # cannot see them at all. Surfaced when the scan widened past
+            # `scripts/`.
+            r"\$MSG_DIR")
 
+# issue 0844 — every tracked shell script, not just `scripts/`. The 37-minute
+# `grep -r` over 9.2 GB of gitignored SDK lived in
+# `packages/testing/nros-tests/tests/core_only_predicate.sh`, which this gate
+# never opened: the scope was `scripts just justfile`, so the whole test-script
+# tree — 46 files — was unscanned. A gate that policed one directory while
+# stating a repo-wide rule is the same shape as the rule/pattern mismatches
+# recorded above, one level out.
 FILES = subprocess.run(
-    ["git", "ls-files", "scripts", "just", "justfile"],
+    ["git", "ls-files", "scripts", "just", "justfile", "*.sh"],
     capture_output=True, text=True).stdout.split()
+FILES = [f for f in FILES
+         if not f.startswith("third-party/") and "/third-party/" not in f]
 
 bad = []
 for f in FILES:
