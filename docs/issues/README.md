@@ -104,6 +104,13 @@ Caught by the ASI consumer on fvp_baser_aemv8r_smp, where it broke the image bui
 introducing commit verified only native_sim, whose arch layer contributes no assembly here.
 See `archived/0846-*`. (2026-08-28)
 
+**#0848** (rmw, open 2026-08-28) — the board decodes NOTHING after the serial handshake — not even Declares
+the router demonstrably queued — and then stack-overflows at session expiry. Filed by another session;
+indexed here so `check-issue-index` is green. NOTE its own CORRECTION section retracts the original
+headline: "router keepalives sent: 0" was a measurement error, since the keepalive arm calls `link.send()`
+directly and emits no `Scheduled` log line, so absence of those lines proved nothing. See `0848-*`.
+(2026-08-28)
+
 **#0843** (core/platform, open 2026-08-27) — `nros::node_runtime` is gated `#[cfg(feature = "rmw-cffi")]`
 while using `alloc`/`Box`/`Vec`, so ANY image linking `nros` with the cffi path needs a global allocator
 regardless of the `alloc` feature: a `no_std` bin fails to link with "no global memory allocator found".
