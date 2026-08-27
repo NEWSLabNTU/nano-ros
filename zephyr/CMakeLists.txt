@@ -392,6 +392,9 @@ if(CONFIG_NROS_CPP_API)
     #
     # The flag and its argument are separate list elements: inside a generator
     # expression a space would make them one argument, which gcc rejects.
+    # Second witness, cortex-m/picolibc: the same defect killed every Zephyr
+    # fixture at arch/arm/core/nmi_on_reset.S with 218 x "Error: bad
+    # instruction `typedef signed char __int8_t'" (issue 0840 session).
     zephyr_compile_options(
         "$<$<COMPILE_LANGUAGE:C,CXX>:-include>"
         "$<$<COMPILE_LANGUAGE:C,CXX>:${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h>")
