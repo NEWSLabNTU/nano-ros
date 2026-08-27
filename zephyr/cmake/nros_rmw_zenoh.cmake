@@ -47,6 +47,13 @@ file(GLOB_RECURSE _zenoh_pico_sources
 zephyr_library_sources(${_zenoh_pico_sources}
     "${ZENOH_PICO_DIR}/src/system/zephyr/network.c")
 
+# RFC-0083 — the ISO-TP platform binding. A separate TU from network.c, and
+# added by name for the same reason network.c is: the `src/link/*.c` glob above
+# picks up the link itself, but nothing under `src/system/zephyr/` is globbed.
+if(CONFIG_NROS_ZENOH_LINK_ISOTP)
+    zephyr_library_sources("${ZENOH_PICO_DIR}/src/system/zephyr/isotp.c")
+endif()
+
 # zenoh-pico include directory
 zephyr_include_directories(${ZENOH_PICO_DIR}/include)
 
@@ -148,6 +155,8 @@ _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_SCOUTING)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_SERIAL)
 # RFC-0080 — CONFIG_NROS_ZENOH_LINK_CAN -> Z_FEATURE_LINK_CAN.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
+# RFC-0083 — CONFIG_NROS_ZENOH_LINK_ISOTP -> Z_FEATURE_LINK_ISOTP.
+_nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_ISOTP)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_WS)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
 

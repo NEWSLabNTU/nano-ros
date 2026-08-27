@@ -468,6 +468,37 @@ config NROS_ZENOH_LINK_CAN
       Requires a CAN controller (CONFIG_CAN) on the board.
       Maps to Z_FEATURE_LINK_CAN.
 
+config NROS_ZENOH_LINK_ISOTP
+    bool "CAN unicast over ISO-TP"
+    default n
+    select ISOTP
+    help
+      Enable CAN unicast for zenoh-pico over ISO 15765-2 (RFC-0083),
+      using Zephyr's own subsys/canbus/isotp rather than a vendored
+      implementation.
+
+      This is a UNICAST link, unlike NROS_ZENOH_LINK_CAN. zenoh routes
+      queries and liveliness to unicast faces only, so this is the link
+      that carries ROS services, actions, parameters and graph
+      introspection over CAN; the multicast CAN link carries topics and
+      nothing built on a query. Segmentation also moves below zenoh, so
+      the MTU is 4095 bytes rather than 63 -- which is what makes
+      CLASSIC CAN usable, and classic CAN is most of the hardware in
+      the field.
+
+      A peer is addressed by a DIRECTED IDENTIFIER PAIR: this node's
+      tx_id must be the other node's rx_id and vice versa. Exactly one
+      peer may own the other end of a pair.
+
+      Endpoint syntax:
+        isotp/<device>#tx_id=0x7E0;rx_id=0x7E8
+
+      Requires a CAN controller (CONFIG_CAN) on the board. Zephyr marks
+      CONFIG_ISOTP [EXPERIMENTAL]; its own conformance and
+      implementation suites pass on native_sim, with the STmin cases
+      skipped -- see docs/roadmap/phase-394-can-unicast-for-zenoh-pico.md.
+      Maps to Z_FEATURE_LINK_ISOTP.
+
 config NROS_ZENOH_LINK_WS
     bool "WebSocket link"
     default n

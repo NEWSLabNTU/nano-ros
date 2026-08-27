@@ -38,7 +38,7 @@ implementation to disagree with, before it is trusted on one without.
 | **W2** | `src/link/unicast/isotp.c` + config; register in `_z_open_link` **only** | pico connects out and never touches the accept path | **done** |
 | **W3** | zenoh-pico ↔ zenoh-rs over `vcan0`: session, pub/sub, and a **query** | the two implementations agree on the wire | **done** |
 | **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | **done** |
-| **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | **code done, suites not run** |
+| **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | **done** |
 | **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | **done** |
 | **W7** | Extend the demo container to show it | the artifact reviewers can run | **done** |
 
@@ -364,67 +364,84 @@ The README and the demo's own closing summary no longer say services do not
 work over CAN. They now say which link carries which semantics, and that the
 multicast restriction is a property of zenoh's multicast transport rather than
 of CAN.
+## 10. W5 result — the Zephyr port, its suites, and what they do not cover
 
-## 10. W5 status — the Zephyr port is written, its suites are not run
-
-`src/system/zephyr/isotp.c` implements the link on Zephyr's own
+**Done.** The port is `src/system/zephyr/isotp.c`, on Zephyr's own
 `subsys/canbus/isotp` — `isotp_bind` / `isotp_recv` / `isotp_send` — and not on
 the vendored library. Same rule the `unix` port follows with the kernel socket:
 where the platform implements the protocol, the platform's implementation wins.
-It is tested by its own conformance suite, maintained alongside the CAN drivers
-it sits on, and is what a Zephyr application would already be using.
 
-Three decisions in it worth keeping:
+`CONFIG_NROS_ZENOH_LINK_ISOTP` in `zephyr/Kconfig` `select`s `ISOTP` and maps to
+`Z_FEATURE_LINK_ISOTP` through the existing `_nros_configure_zenoh_feature`
+bridge. Verified in the generated `.config`: setting it alone brings up
+`CONFIG_ISOTP=y`.
 
-* The receive side is bound **once at open**, not per read. Zephyr installs a
-  CAN filter in `isotp_bind` and a controller has few filter slots, so binding
-  per read would exhaust them and would also drop everything that arrived
-  between reads.
-* `isotp_send` is called with a **NULL completion callback**, which makes it
-  block until the whole PDU is out. That is the contract the link expects — a
-  send that returns is a send the peer has paced through flow control — and it
-  is also what settles `N_As` on this platform: transmit confirmation is
-  Zephyr's problem, inside the CAN driver, rather than something this port has
-  to time. Contrast the vendored library, where the same question has no good
-  answer and is documented as the integrator's.
-* Flow control asks for `bs = 0`, matching the Linux kernel, so a Zephyr node
-  and a Linux node pace each other the same way.
+### It compiles
 
-One API trap, caught before the build by reading Zephyr 3.7's `isotp.h` rather
-than trusting memory: `struct isotp_msg_id` has **no `id_type` member**. That is
-the pre-3.7 API. Addressing mode lives in `flags` (`ISOTP_MSG_IDE` for 29-bit),
-and `std_id`/`ext_id` are a **union** over the same storage, so exactly one is
-written — setting both would silently truncate the 29-bit value.
+All three ISO-TP translation units build for `native_sim/native/64` against
+Zephyr 3.7.0 with `Z_FEATURE_LINK_ISOTP=1`: `src/link/config/isotp.c`,
+`src/link/unicast/isotp.c`, and `src/system/zephyr/isotp.c`.
 
-### What is NOT done, and why
+One real bug, and the compiler found it. The port was written against
+`struct isotp_msg_id` as it looked **before** Zephyr 3.7 — an `id_type` member
+set to `ISOTP_STD_ADDR` / `ISOTP_FIXED_ADDR`. In 3.7 there is no `id_type`:
+addressing mode is in `flags` (`ISOTP_MSG_IDE` for the 29-bit identifier), and
+`std_id`/`ext_id` are a **union** over the same storage, so exactly one may be
+written or the 29-bit value is silently truncated. Reaching for a removed member
+fails to build rather than misbehaving on a bus, which is the good outcome and
+the one the code's own comment had predicted for this mistake.
 
-**W5's acceptance criteria are not met.** They require Zephyr's own ISO-TP
-conformance and implementation test suites to be run and the result recorded
-before the island depends on this link for services — Zephyr marks `CONFIG_ISOTP`
-`[EXPERIMENTAL]` in Kconfig, and the point of that criterion is not to take the
-label on trust either way.
+### Zephyr's own suites pass
 
-Running them needs a Zephyr workspace, which this machine does not have. The
-provisioning was started and abandoned: the SDK tarball downloaded at roughly
-5 MB/min, which put the SDK alone over an hour, before `west update` had begun.
-Worse, `scripts/zephyr/setup.sh` re-provisions in-tree sources as it goes, and
-it twice reset the `zenoh-pico` submodule out from under work in progress —
-once back to a commit from before this phase started. Nothing was lost, because
-every commit was already made and reachable, but it is the reason the run was
-stopped rather than left going.
-
-So: the Zephyr port compiles as written against the 3.7 API and has never been
-built or run. **It should be treated as unverified code** until the suites are
-run. That is a smaller claim than the rest of this phase and it is deliberately
-not dressed up as more.
-
-To finish it:
-
-```sh
-just zephyr setup                      # expect a long fetch
-west twister -T tests/subsys/canbus/isotp/conformance   -p native_sim
-west twister -T tests/subsys/canbus/isotp/implementation -p native_sim
+```
+5/5 native_sim/native/64  tests/subsys/canbus/isotp/{conformance,implementation}  PASSED
+77 of 85 test cases executed, 8 skipped, 0 failed
 ```
 
-then build a zenoh-pico image with `Z_FEATURE_LINK_ISOTP=1` for `native_sim`
-and run the Tier 2 test from §4 against a Linux peer on `vcan0`.
+Run with `scripts/twister -T <zephyr>/tests/subsys/canbus/isotp -p native_sim/native/64`.
+Note the board qualifier: plain `-p native_sim` selects the 32-bit variant and
+fails to build on a host without 32-bit glibc headers, naming
+`bits/libc-header-start.h` rather than the real cause.
+
+**The 8 skips are the interesting part**, and they are the reason this criterion
+existed rather than taking `[EXPERIMENTAL]` on trust either way:
+
+| skipped case | in | why it matters |
+| --- | --- | --- |
+| `stmin` | **all four** conformance configs | the separation-time pacing |
+| `canfd_rx_dl_validation` | the two non-FD configs | CAN FD length validation |
+| `canfd_mandatory_padding` | the two non-FD configs | CAN FD padding |
+
+`stmin` is skipped in **every** configuration. That is the same hole §5 already
+names for `vcan`: a simulated bus has no bit rate, so `STmin`, `BS` and the
+`N_Bs`/`N_Cr` timers are nearly no-ops and a conformance bug in the timing
+behaviour survives every test available here — Zephyr's own included. Tier 3
+hardware is the only thing that closes it, and this is now the second
+independent source saying so.
+
+### What still is not done
+
+A **complete Zephyr image** carrying the link has not been linked. The C talker
+example fails to build on this host in Zephyr's own
+`lib/posix/options/sysconf.c` (`ARG_MAX`, `CHILD_MAX`, `IOV_MAX` undeclared).
+That is pre-existing and unrelated: the **same example with the ISO-TP overlay
+removed fails identically**, which is the control that says so. Tier 2 — the
+`native_sim` image talking to a Linux peer over `vcan0` — is therefore still
+open, and is the next thing to do once that breakage is fixed.
+
+### A note on the working environment
+
+This checkout is shared with other work. Three times during this phase the
+`zenoh-pico` submodule was reset out from under an edit — twice by
+`scripts/zephyr/setup.sh`, which re-provisions in-tree sources as it runs, and
+once along with the `nros` checkout itself. Nothing was lost, because everything
+was committed and pushed before each reset, but the `id_type` fix above was
+silently discarded by one of them and had to be redone. The Zephyr work was
+finished in a dedicated `git worktree` for that reason, and that is the
+recommended way to do long builds here.
+
+The SDK is worth one line too: `scripts/zephyr/setup.sh` fetches it with `curl`
+by deliberate choice (documented in the script — a single spelling of "which SDK
+does this host need" was worth more than the speed). On this connection that ran
+at roughly 5 MB/min. Fetching the same tarball with `aria2c -x16` took 90
+seconds, and the checksum in `nros-sdk-index.toml` verifies it either way.
