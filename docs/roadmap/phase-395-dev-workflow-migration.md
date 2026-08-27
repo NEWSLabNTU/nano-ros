@@ -232,6 +232,36 @@ not written.
 - Merge queue on: rebase, batch 4, min 1, 5 min wait, timeout above L3's p99.
 - Partition by path so docs never queue behind a Cyclone build.
 
+**Workflows and the apply script landed; the queue itself is NOT enabled** —
+that is a repo-admin action and deliberately not an agent's.
+
+`queue.yml` (on `merge_group`) and `post-submit.yml` (on push to `main`) exist.
+`scripts/ci/enable-merge-queue.sh` / `just merge-queue` shows the plan and
+changes nothing without `--apply`.
+
+Three things this surfaced that the plan did not say:
+
+* **A required check that can never START does not fail — it stays PENDING, and
+  a merge queue waits on pending forever.** So making a self-hosted lane
+  required before a runner exists does not make merging stricter, it stops it,
+  and the symptom is a spinner that reads as GitHub being slow. Both the
+  workflows and the script are interlocked on this: the self-hosted jobs are
+  gated on `vars.NROS_SELF_HOSTED_READY`, and the script refuses
+  `--self-hosted-ready` unless it can see an online runner advertising every
+  needed label. Verified: it refuses today, rc 1, against the live API.
+* **`cancel-in-progress` is correct for post-submit and wrong for the queue.**
+  Post-submit asks "is main good now", so a newer commit subsumes an older
+  answer. Cancelling a queue job makes the batch fail with no verdict, and
+  GitHub then ejects PRs that were never actually tested.
+* **`ci-l4-tier1` does not exist.** The plan names it; inventing its contents
+  would be guessing at which cells belong in it. `post-submit.yml` runs tier 2
+  (`ci-matrix`) meanwhile — a real cover, and honestly narrower than what the
+  plan wants.
+
+Still manual, because GitHub exposes no REST API for the merge-queue settings
+themselves: the `Settings -> Branches -> main -> Require merge queue` panel. The
+script prints the exact values to enter.
+
 ## W8 — Claims
 
 `just claim` / `claim-renew` / `claim-release`, modelled on

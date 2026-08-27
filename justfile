@@ -3401,6 +3401,13 @@ rust-rtos-link-check: _require-leaf-includes
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
 
+# Show (or apply) the merge-queue + branch-protection settings — phase-395 W7.
+# Read-only by default; `--apply` touches branch protection, which affects
+# everyone, so it is never the default. `--status` shows what is set now.
+[group("setup")]
+merge-queue *ARGS:
+    @scripts/ci/enable-merge-queue.sh {{ARGS}}
+
 # --- self-hosted runner (phase-395 W6) ---------------------------------------
 # Thin callers for scripts/ci/runner-*.sh. These are OPERATOR verbs, not CI
 # steps: none run inside a workflow.

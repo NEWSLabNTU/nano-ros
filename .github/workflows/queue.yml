@@ -1,0 +1,114 @@
+# Merge-queue lane — phase-395 W7.
+#
+# Runs on `merge_group`, the event GitHub fires for a batch it has speculatively
+# merged. This is the ONLY place a pre-merge lane may be expensive: it runs once
+# per batch rather than once per push, which is the whole economic argument for
+# batching.
+#
+# WHY THE SELF-HOSTED JOB IS GATED ON A VARIABLE
+#
+# A required check that can never start does not fail — it stays PENDING, and a
+# merge queue waits for pending forever. So a self-hosted job made required
+# before a runner exists does not degrade the repo, it FREEZES it: nothing
+# merges, and the symptom (a spinner) looks like GitHub being slow rather than
+# like a misconfiguration.
+#
+# `vars.NROS_SELF_HOSTED_READY` is that interlock. Until a runner is registered
+# and the variable is set, the L3 job is skipped and the queue is carried by the
+# hosted job alone — which is a real gate, just a narrower one. Turn it on with
+# `scripts/ci/enable-merge-queue.sh --self-hosted-ready` AFTER
+# `just runner-doctor <labels>` passes on the machine.
+#
+# WHY LOGS UPLOAD UNCONDITIONALLY
+#
+# A self-hosted runner behind NAT cannot be reached to look at afterwards. If
+# the logs are not pushed at the moment of failure they do not exist, and
+# `if: always()` is the difference between a diagnosable red and a rerun.
+name: queue
+
+on:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  # NOT cancel-in-progress. Cancelling a queue job makes the batch fail with no
+  # verdict, and GitHub then ejects PRs that were never actually tested.
+  group: queue-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  # L1 — compile, lint, unit. Hosted, so this works with no runner registered.
+  l1:
+    name: L1 (compile + unit)
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format (pinned via pypi wheel)
+        run: pip install --no-cache-dir "clang-format==17.0.5"
+      - name: Build nros CLI + provision sources
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+      - name: just ci-l1
+        run: just ci-l1
+      - name: Upload junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: queue-l1-junit
+          path: |
+            target/nextest/**/junit*.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # L3 — cross build + link + symbol checks. Needs the RTOS toolchains, so it is
+  # self-hosted, so it is gated. See the header: a required check that cannot
+  # start freezes the queue rather than failing it.
+  l3:
+    name: L3 (cross build + link)
+    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-sdk-zephyr, nros-big]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      # A runner that lies about its labels wins jobs it cannot run, and the red
+      # lands on the author's change looking like a code failure. Assert first.
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-sdk-zephyr,nros-big
+      - name: just ci-l3
+        run: |
+          source ./activate.sh
+          just ci-l3
+      - name: Upload logs and size reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: queue-l3-logs
+          path: |
+            target/nextest/**/junit*.xml
+            build/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+      # Between jobs on a shared runner, one leaked peer is every later job's
+      # flake. `always()` because a cancelled job leaks the most.
+      - name: Sweep orphans and disk
+        if: always()
+        run: ./scripts/ci/runner-sweep.sh || true

@@ -1,0 +1,79 @@
+# Post-submit lane — phase-395 W7.
+#
+# Runs on `push` to `main`, AFTER a change has landed. This is where the lanes
+# too expensive to gate a merge still get a daily-or-better signal, and where a
+# regression that slipped past the pre-merge lanes is caught within one commit
+# rather than at the next nightly.
+#
+# WHY POST-SUBMIT IS NOT A WEAKER PRE-MERGE
+#
+# Pre-merge and post-submit answer different questions. Pre-merge asks "is this
+# change safe to land?" and must be affordable per batch. Post-submit asks "is
+# main still good?" and may cost whatever a bisect would have cost, because it
+# runs once per landed change and its job is to bound how far a regression can
+# travel before anyone notices.
+#
+# WHAT THIS DOES NOT DO YET
+#
+# The plan names `ci-l4-tier1` — the tier-1 boards' cross-RUN coverage. That
+# recipe does not exist, and inventing its contents here would be guessing at
+# which cells belong in it. Until it exists this lane runs tier 2 (`ci-matrix`),
+# which is a real cover (1-wise over platform/lang/rmw/kind) and honestly
+# narrower than what the plan eventually wants.
+name: post-submit
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  # Superseding is correct HERE and wrong in the queue: post-submit asks "is
+  # main good NOW", so a newer commit's answer subsumes an older one's.
+  group: post-submit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  matrix:
+    name: tier 2 (1-wise matrix)
+    # Gated for the same reason as queue.yml's L3: this needs the RTOS
+    # toolchains, and a job that cannot start is not a signal.
+    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
+      # A lane answers two questions with different answers: which fixtures must
+      # be FRESH (its cell cover) and which must EXIST (a property of the run).
+      # `lane=tier2` is the build tier 2's run requires — see #482 / phase-340 W3.
+      - name: Build tier-2 fixtures
+        run: |
+          source ./activate.sh
+          just build-test-fixtures lane=tier2
+      - name: just ci-matrix
+        run: |
+          source ./activate.sh
+          just ci-matrix
+      - name: Upload junit and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-submit-junit
+          path: |
+            target/nextest/**/junit*.xml
+            build/**/*.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Sweep orphans and disk
+        if: always()
+        run: ./scripts/ci/runner-sweep.sh || true
