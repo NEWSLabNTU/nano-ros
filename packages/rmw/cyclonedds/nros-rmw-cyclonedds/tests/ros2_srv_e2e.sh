@@ -136,18 +136,35 @@ if [ -n "${NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN:-}" ] &&
     echo "=== 117.12.B.2: nros client → ros2 stock server ==="
     CLIENT_OUT=$(mktemp)
     SERVER_LOG=$(mktemp)
-    trap 'rm -f "$CYCLONE_XML" "$SERVER_OUT" "$CALL_OUT" "$CLIENT_OUT" "$SERVER_LOG"' EXIT
-
-    env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
+    # `ros2 run` is a PYTHON launcher that spawns the C++ node as a child, so
+    # `kill $DN_PID` kills the launcher and REPARENTS the node to init. Measured
+    # 2026-08-28 on this host: 71 orphaned
+    # `/opt/ros/humble/lib/demo_nodes_cpp/add_two_ints_server`, oldest 10 days,
+    # each holding a DDS participant — the shape issue 0659 describes and the
+    # reason it says "`ros2` (python) does not [take its child down]".
+    #
+    # This script spawns its peer directly rather than through `nros-tests`'
+    # `ManagedProcess`, so it inherits none of that harness's PDEATHSIG + group
+    # ledger machinery and has to do the equivalent itself. `setsid` makes the
+    # launcher a session/group leader (pgid == its own pid, verified on this
+    # host), so the negative-pid kill below takes the whole tree with it.
+    setsid env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
         ros2 run demo_nodes_cpp add_two_ints_server > "$SERVER_LOG" 2>&1 &
     DN_PID=$!
+    # Reap on ANY exit, not only the happy path. The kill used to sit after the
+    # client run, so an early return, a failed assertion or an interrupt between
+    # the two leaked the peer — which is most of how 71 accumulated.
+    trap 'kill -TERM -"$DN_PID" 2>/dev/null || true;
+          rm -f "$CYCLONE_XML" "$SERVER_OUT" "$CALL_OUT" "$CLIENT_OUT" "$SERVER_LOG"' EXIT
+
     sleep 2
 
     timeout 15 env LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" \
         "$NROS_RMW_CYCLONEDDS_SRV_CLIENT_BIN" > "$CLIENT_OUT" 2>&1
     CLI_RC=$?
 
-    kill $DN_PID 2>/dev/null || true
+    # Group kill: the launcher's whole session, not just the launcher.
+    kill -TERM -"$DN_PID" 2>/dev/null || true
     wait $DN_PID 2>/dev/null || true
 
     if [ "$CLI_RC" -ne 0 ]; then
