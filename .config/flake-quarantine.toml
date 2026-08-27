@@ -1,0 +1,50 @@
+# Flake quarantine — phase-395 W5.
+#
+# A quarantined test STILL RUNS and STILL RECORDS. It just stops BLOCKING.
+# It is not deleted, not `#[ignore]`d, and not filtered out of the run: the
+# difference between a quarantined test and a deleted one is that the
+# quarantined one still tells you when it fails, and still tells you when it
+# starts passing again.
+#
+# WHY THIS EXISTS BEFORE THE MERGE QUEUE, NOT AFTER
+#
+# A batch red is ambiguous between a real defect and a flake, and bisection
+# amplifies the cost: one flake ejects and re-tests every innocent PR in the
+# batch. Batching without this converts one flake into N false rejections.
+#
+# WHAT AN ENTRY MUST EARN
+#
+# `evidence` is not a formality. "It failed once" is indistinguishable from a
+# real intermittent defect, and quarantining a real defect is how it ships. The
+# evidence that justifies an entry is a SOLO re-run that passes — that is the
+# thing which separates load-induced from broken. `just retest-failures-solo`
+# produces exactly that, from the junit of the run that just went red.
+#
+# WHY EVERY ENTRY EXPIRES
+#
+# Quarantine without expiry is deletion with extra steps: the test stops
+# blocking, everyone stops looking, and two years later nobody can say whether
+# it still describes a real behaviour. `expires` is a HARD failure of
+# `check-flake-quarantine`, so an entry survives only by someone deciding again.
+# Extending a date is a fine decision — making it silently is not.
+#
+# WHY EVERY ENTRY NEEDS AN OPEN ISSUE
+#
+# The flake is a defect in something: the test, the harness, or the code. The
+# quarantine records that we chose not to fix it YET. Without an issue that
+# choice has no owner and no place to write down what was learned.
+
+[[quarantined]]
+test = "action_raw_goal_ships_one_cdr_header"
+binary = "nros-tests::action_raw_goal_e2e"
+issue = "0854"
+added = "2026-08-28"
+expires = "2026-10-27"
+evidence = "60s timeout in-sweep; 3.6s solo; 5/5 solo passes. A 16x margin."
+reason = """
+Load-induced, not a defect in the behaviour under test. The assertion is that a
+raw goal ships exactly one CDR header, which does not depend on timing; what
+depends on timing is reaching the assertion inside the 60s budget while ~31
+other gates compete for the host. The 16x solo margin is the evidence: a test
+that needs 3.6s and is given 60s is not slow, it is starved.
+"""

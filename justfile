@@ -597,6 +597,7 @@ check-build: \
     check-pool-inventory \
     check-mem-report \
     check-claim-protocol \
+    check-flake-quarantine \
     check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
@@ -2344,6 +2345,10 @@ test-doc:
 _rewrite-skipped-junit junit="target/nextest/default/junit.xml":
     #!/usr/bin/env bash
     python3 scripts/test/rewrite-skipped-junit.py "{{junit}}"
+    # phase-395 W5 — demote QUARANTINED failures here, before the snapshot, for
+    # the same reason the rewrite above happens here: every downstream consumer
+    # then reads one agreed account of the run instead of re-deriving it.
+    python3 scripts/test/quarantine.py --demote "{{junit}}"
     # Issue 0527 — SNAPSHOT the rewritten file. `junit.xml` is written by every
     # `cargo nextest` invocation, so the doctest phase that runs after this, and
     # every suite a human re-runs while triaging, overwrite the one artifact
@@ -3395,6 +3400,63 @@ rust-rtos-link-check: _require-leaf-includes
 # NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
+
+# Re-run the failures from the last run ALONE, which is the evidence that
+# separates a flake from a defect — phase-395 W5.
+#
+# "It failed once" is indistinguishable from a real intermittent defect, and
+# quarantining a real defect is how it ships. A test that fails in a 32-way
+# sweep and passes solo with a wide margin was STARVED; one that fails both ways
+# is broken. This produces that comparison from the junit the red run already
+# wrote, so nobody has to reconstruct the failing set by hand.
+#
+# Output is the evidence line for a `.config/flake-quarantine.toml` entry.
+[group("test")]
+retest-failures-solo junit="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    junit="{{junit}}"
+    if [ -z "$junit" ]; then
+        junit="target/nextest/default/junit-real.xml"
+        [ -f "$junit" ] || junit="target/nextest/default/junit.xml"
+    fi
+    if [ ! -f "$junit" ]; then
+        echo "no junit at $junit — run a test lane first; this reads ITS failures." >&2
+        exit 1
+    fi
+    filter="$(python3 scripts/test/failed-filterset.py "$junit")"
+    if [ -z "$filter" ]; then
+        echo "no real failures in $junit — nothing to re-run solo."
+        exit 0
+    fi
+    echo "re-running solo (--test-threads=1), one at a time:"
+    python3 scripts/test/failed-filterset.py "$junit" --names | sed 's/^/    /'
+    echo
+    # --test-threads=1 is the point: the hypothesis under test is CONTENTION,
+    # so a solo re-run that keeps the parallelism proves nothing.
+    source scripts/build/cargo.sh
+    set +e
+    NROS_NEXTEST_FILTER="$filter" just _nextest-tolerant --no-fail-fast --test-threads=1
+    rc=$?
+    set -e
+    echo
+    if [ $rc -eq 0 ]; then
+        echo "PASSED SOLO. That is the flake evidence: same tests, no contention."
+        echo "  Record the MARGIN (solo duration vs the lane's timeout) in the"
+        echo "  entry's \`evidence\` — a 16x margin means starved, a 1.2x margin"
+        echo "  means the budget is simply too tight and quarantine is the wrong fix."
+    else
+        echo "FAILED SOLO TOO — this is a DEFECT, not a flake. Do not quarantine it."
+    fi
+    exit $rc
+
+# Quarantine registry gate — every entry has an open issue and an unexpired
+# review date. Expiry is a HARD failure on purpose: quarantine without expiry is
+# deletion with extra steps.
+[private]
+check-flake-quarantine:
+    @python3 scripts/test/quarantine.py --check
+    @python3 scripts/test/quarantine.py --selftest >/dev/null
 
 # Claim a unit of work — `refs/claims/<id>` — ATOMICALLY across parallel agents
 # and across machines, by the same origin-side compare-and-swap `just issue-new`
