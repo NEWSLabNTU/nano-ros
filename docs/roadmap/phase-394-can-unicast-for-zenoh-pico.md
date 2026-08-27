@@ -629,3 +629,68 @@ seconds, and the checksum in `nros-sdk-index.toml` verifies it either way.
 4. **Upstream.** An issue on `eclipse-zenoh/zenoh` describing the multicast
    query limitation, and PRs for the two link crates. The branches are pushed;
    the ECA and sign-off are the author's to give.
+---
+
+## 12. Branch inventory
+
+Eight branches across four repositories, two sets, same names throughout.
+**`feat/can-links`** is based on each project's upstream main and is the set to
+open PRs from. **`feat/can-links-ros`** is based on what ROS actually ships and
+is the set to build against today.
+
+| repo | `feat/can-links` (upstream main) | `feat/can-links-ros` (ROS stable) |
+| --- | --- | --- |
+| `jerry73204/zenoh` | `93cf1b3e5` — on main, 1.10.0 | `bf01b3ac1` — on 1.8.0 |
+| `jerry73204/zenoh-pico` | `75bbb28e` — on upstream main | `0fdd49ce` — on release/1.8.0 |
+| `jerry73204/zenoh-c` | `0c401df8` — on main | `911db8e8` — on `05bd370`, the commit rmw_zenoh pins |
+| `jerry73204/rmw_zenoh` | `a24b450` — on rolling | `5b4c693` — on humble |
+
+`jerry73204/zenoh-pico`'s **`nano-ros`** branch (`8e08e8b8`) is separate from
+both and is what this repository's submodule tracks. The two `feat/can-links*`
+branches are PORTS of the same work onto clean upstream bases; nothing moved off
+`nano-ros`.
+
+**Merge order is fixed: zenoh → zenoh-c → rmw_zenoh.** The zenoh-c and rmw_zenoh
+changes name features that do not exist until the link crates land in zenoh, and
+each commit says so.
+
+### The `-ros` branches carry one extra commit each, marked NOT PR MATERIAL
+
+Both repoint a dependency at the fork so the set builds before anything is
+upstream: `zenoh-c` points `zenoh` at `jerry73204/zenoh#feat/can-links-ros`, and
+`rmw_zenoh` points `zenoh_c_vendor` at `jerry73204/zenoh-c#feat/can-links-ros`.
+Drop those commits to make either a PR candidate.
+
+### Verified
+
+`colcon build --packages-select zenoh_cpp_vendor rmw_zenoh_cpp` on the humble
+set: **2 packages finished, exit 0**, only pre-existing upstream `-Wswitch`
+warnings. The vendored `libzenohc.so` carries both links, and a ROS 2 service
+call over that artifact returns `sum=42` across 140 frames.
+
+The `feat/can-links` set is **not** built, and cannot be until the crates are
+upstream — it deliberately carries no fork repoint, because that is the hunk
+that would sink the PR.
+
+### The trap that cost the first colcon build
+
+**`zenoh-c`'s `Cargo.toml` is GENERATED.** `CMakeLists.txt` runs
+`configure_file(Cargo.toml.in -> Cargo.toml)` at build time, so the committed
+manifest is an artifact on the cmake path and edits to it alone are silently
+overwritten. The feature passthroughs went into `Cargo.toml` first; the build
+then re-resolved `zenoh` from upstream main and failed with
+
+```
+package `zenoh-c` depends on `zenoh` with feature `transport_can`
+but `zenoh` does not have that feature
+```
+
+which names the symptom and not the cause. Patch **`Cargo.toml.in`** — and both
+of them, parent and `build-resources/opaque-types/`, for the same reason the
+size probe needs both.
+
+Related, and already documented in `scripts/can/build-zenohc-can.sh`: rewrite
+the zenoh dependency rather than `[patch]`ing it. A patch section leaves the
+original git source for cargo to resolve, and zenoh-c's build script invokes the
+opaque-types sub-build with `--offline`, where resolving a branch from a cached
+checkout fails outright.
