@@ -527,38 +527,6 @@
     "verdict": "divergence",
     "why": "runtime QoS OVERRIDES -- the launch-declared per-entity QoS a node applies at startup (RFC-0046). rclcpp's equivalent is `qos_overriding_options`, which negotiates at create time; ours are applied from the resolved SystemModel because there is nothing to negotiate with. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
-  "rust:QOS_PROFILE_ACTION_STATUS_DEFAULT": {
-    "verdict": "rename",
-    "why": "the action-status QoS preset. Ours is `QoSProfile::action_status_default`. The `QosSettings`->`QoSProfile` type rename this rode on LANDED 2026-08-27 (phase-379 W5), so what remains here is only the crate-level RE-EXPORT of the constant -- see `rust:QOS_PROFILE_DEFAULT`."
-  },
-  "rust:QOS_PROFILE_CLOCK": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
-  },
-  "rust:QOS_PROFILE_DEFAULT": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
-  },
-  "rust:QOS_PROFILE_PARAMETERS": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
-  },
-  "rust:QOS_PROFILE_PARAMETER_EVENTS": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
-  },
-  "rust:QOS_PROFILE_SENSOR_DATA": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
-  },
-  "rust:QOS_PROFILE_SERVICES_DEFAULT": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename."
-  },
-  "rust:QOS_PROFILE_SYSTEM_DEFAULT": {
-    "verdict": "rename",
-    "why": "identical NAME, different path. rclrs exports the seven `QOS_PROFILE_*` profiles as crate-level `const`s; ours are associated consts on `QoSProfile`, and `nros_rmw` / `nros_node` re-export the TYPE but not the consts, so `use rclrs::QOS_PROFILE_DEFAULT` has no counterpart to port to. Every one of the seven exists under the same name with the same policy values. Re-exporting them at crate level is the whole fix and costs nothing -- see `rust:QoSProfile` for the type half of the rename. Note the semantics do not carry over intact: `rmw_qos_profile_system_default` means \"leave every policy for the middleware to decide\", and there is no middleware here to defer to -- the backend is linked at build time and the profile is fixed at compile time (RFC-0036). Our `system_default` is a concrete RELIABLE + VOLATILE + KEEP_LAST(1) value, and our policy enums carry no `SystemDefault` or `Unknown` discriminant on purpose."
-  },
   "rust:QoSDurabilityPolicy": {
     "verdict": "rename",
     "why": "ours is `QosDurabilityPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSDurabilityPolicy`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosDurabilityPolicy` was deleted; the text above records the state BEFORE the rename and is kept as history."

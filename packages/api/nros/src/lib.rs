@@ -691,6 +691,35 @@ pub use nros_rmw::{
 /// upstream `rmw_qos_profile_default` etc. field-by-field. Backends
 /// validate against these synchronously at create time; no silent
 /// downgrade.
+// phase-379 W5 — rclrs exports the eight QoS presets as CRATE-LEVEL consts
+// (`rclrs::QOS_PROFILE_DEFAULT`); ours were associated consts on `QoSProfile`
+// and nothing re-exported them, so `use rclrs::QOS_PROFILE_DEFAULT` had no
+// counterpart to port to. The NAMES already matched exactly — only the path
+// did not, which is why the ledger filed these as a re-export and not a
+// rename.
+//
+// These ALIAS the associated consts rather than restating them. `nros::qos`
+// below is a second, hand-written copy of the same presets that predates them;
+// `qos_presets_agree` in the test module asserts the two never drift, which is
+// the hand-mirror class (issues 0088/0160/0245) one layer up.
+/// `rmw_qos_profile_default` — reliable, volatile, keep-last(10).
+pub const QOS_PROFILE_DEFAULT: QoSProfile = QoSProfile::QOS_PROFILE_DEFAULT;
+/// `rmw_qos_profile_system_default` — the RMW implementation's own defaults.
+pub const QOS_PROFILE_SYSTEM_DEFAULT: QoSProfile = QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT;
+/// `rmw_qos_profile_sensor_data` — best-effort, keep-last(5).
+pub const QOS_PROFILE_SENSOR_DATA: QoSProfile = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+/// `rmw_qos_profile_services_default`.
+pub const QOS_PROFILE_SERVICES_DEFAULT: QoSProfile = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
+/// `rmw_qos_profile_parameters` — reliable, depth 1000.
+pub const QOS_PROFILE_PARAMETERS: QoSProfile = QoSProfile::QOS_PROFILE_PARAMETERS;
+/// `rmw_qos_profile_parameter_events`.
+pub const QOS_PROFILE_PARAMETER_EVENTS: QoSProfile = QoSProfile::QOS_PROFILE_PARAMETER_EVENTS;
+/// The clock preset — sensor-data shaped with depth 1.
+pub const QOS_PROFILE_CLOCK: QoSProfile = QoSProfile::QOS_PROFILE_CLOCK;
+/// The action-status preset — reliable + transient-local, depth 1.
+pub const QOS_PROFILE_ACTION_STATUS_DEFAULT: QoSProfile =
+    QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT;
+
 pub mod qos {
     use crate::{
         QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSProfile,
@@ -1165,3 +1194,77 @@ compile_error!(
 compile_error!(
     "`env` reads the process environment, which needs the standard library: add \"std\" to this crate's features"
 );
+
+// phase-379 W5 — the crate-level `QOS_PROFILE_*` presets (rclrs parity) and the
+// older hand-written `nros::qos::*` module are two spellings of the same eight
+// profiles. The first ALIASES `QoSProfile`'s associated consts; the second
+// restates them as struct literals and predates them.
+//
+// They agree today. Nothing made them agree tomorrow, and a hand-mirrored
+// constant drifting silently is the class issues 0088 / 0160 / 0245 all record.
+// So assert it, at compile time where possible.
+#[cfg(test)]
+mod qos_preset_parity {
+    use super::*;
+
+    #[test]
+    fn crate_level_presets_alias_the_associated_consts() {
+        assert_eq!(QOS_PROFILE_DEFAULT, QoSProfile::QOS_PROFILE_DEFAULT);
+        assert_eq!(QOS_PROFILE_SENSOR_DATA, QoSProfile::QOS_PROFILE_SENSOR_DATA);
+        assert_eq!(QOS_PROFILE_PARAMETERS, QoSProfile::QOS_PROFILE_PARAMETERS);
+        assert_eq!(
+            QOS_PROFILE_ACTION_STATUS_DEFAULT,
+            QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT
+        );
+    }
+
+    /// The one that can actually rot: `qos::*` is a SEPARATE hand-written copy.
+    #[test]
+    fn qos_module_agrees_with_the_presets() {
+        assert_eq!(qos::DEFAULT, QOS_PROFILE_DEFAULT, "qos::DEFAULT drifted");
+        assert_eq!(
+            qos::SENSOR_DATA,
+            QOS_PROFILE_SENSOR_DATA,
+            "qos::SENSOR_DATA drifted"
+        );
+        assert_eq!(
+            qos::SERVICES_DEFAULT,
+            QOS_PROFILE_SERVICES_DEFAULT,
+            "qos::SERVICES_DEFAULT drifted"
+        );
+        assert_eq!(
+            qos::PARAMETERS,
+            QOS_PROFILE_PARAMETERS,
+            "qos::PARAMETERS drifted"
+        );
+    }
+
+    /// issue 0829 — `SYSTEM_DEFAULT` is the one that ALREADY drifted, and this
+    /// test is what found it: `nros::qos::SYSTEM_DEFAULT` queues **10**,
+    /// `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` queues **1**, each with two
+    /// callers, so neither is obviously the live one. Depth is not cosmetic —
+    /// it is how many samples the history keeps before dropping.
+    ///
+    /// Pinned at the CURRENT divergent values rather than deleted or "fixed" by
+    /// guess: recording a known gap keeps any FURTHER drift failing, where a
+    /// removed assertion would let both sides wander. Delete this test and fold
+    /// the constant into the one above when 0829 picks a depth.
+    #[test]
+    fn system_default_divergence_is_pinned_until_0829() {
+        assert_eq!(
+            qos::SYSTEM_DEFAULT.depth,
+            10,
+            "façade side changed; see issue 0829"
+        );
+        assert_eq!(
+            QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.depth,
+            1,
+            "nros-rmw side changed; see issue 0829"
+        );
+        assert_ne!(
+            qos::SYSTEM_DEFAULT,
+            QOS_PROFILE_SYSTEM_DEFAULT,
+            "0829 appears to be FIXED — fold this into qos_module_agrees_with_the_presets"
+        );
+    }
+}

@@ -51,6 +51,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+**#0829** (api/rmw, open 2026-08-27) — the same QoS profile ships TWICE with different depths:
+`QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` queues **1**, `nros::qos::SYSTEM_DEFAULT` queues **10**, two
+callers each, so neither is obviously the live one. Depth is how many samples the history keeps before
+dropping, so whichever set of callers loses gets a silent queueing change. Found by a drift test added
+in phase-379 W5 that was written to PROVE the two copies agreed and failed on its first run. Neither
+matches upstream either: `rmw_qos_profile_system_default` is all SYSTEM_DEFAULT sentinels ("let the
+RMW decide") where both of ours are concrete, so the name currently means "a profile someone picked".
+The divergence is pinned by a test so any FURTHER drift still fails. See `0829-*`.
+
 Recently resolved (2026-08-27): **#0826** (rmw/docs) — RFC-0035's numbered slot table documented a
 33-slot vtable that is really **74 slots**: 17 of the 36 names it listed no longer existed (mostly
 phase-376 W3.b's move to upstream's `rmw_*` vocabulary) and most real slots were never mentioned.
