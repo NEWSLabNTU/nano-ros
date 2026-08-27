@@ -193,6 +193,10 @@ impl<C: ExecutableNode> ComponentSlot for TypedSlot<C> {
 pub struct ComponentSlotStorage<
     C: ExecutableNode,
     const N: usize = { crate::config::MAX_CLASS_INSTANCES },
+    const PUBS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
+    const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
 > {
     slots: [UnsafeCell<MaybeUninit<TypedSlot<C>>>; N],
     /// W5-endgame step 2b (issue 0857) — the per-instance CELL lives here too,
@@ -200,15 +204,32 @@ pub struct ComponentSlotStorage<
     /// out pairwise with its slot by `take`; the cell's `slot` field then
     /// borrows the sibling region, which is sound because the two arrays are
     /// distinct `UnsafeCell`s claimed by the same monotonic index.
-    cells: [UnsafeCell<MaybeUninit<ComponentCell>>; N],
+    cells: [UnsafeCell<MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS>>>; N],
     next: AtomicUsize,
 }
 
 // SAFETY: `take` hands each slot out at most once (monotonic `fetch_add`), so
 // no two references to the same `UnsafeCell` contents ever coexist.
-unsafe impl<C: ExecutableNode, const N: usize> Sync for ComponentSlotStorage<C, N> {}
+unsafe impl<
+    C: ExecutableNode,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+> Sync for ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
+{
+}
 
-impl<C: ExecutableNode, const N: usize> ComponentSlotStorage<C, N> {
+impl<
+    C: ExecutableNode,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+> ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
+{
     /// Const constructor — the macro emits `static STORE: ... = ...::new();`.
     #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
@@ -232,7 +253,7 @@ impl<C: ExecutableNode, const N: usize> ComponentSlotStorage<C, N> {
         &'static self,
     ) -> Option<(
         &'static mut MaybeUninit<TypedSlot<C>>,
-        &'static mut MaybeUninit<ComponentCell>,
+        &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS>>,
     )> {
         let i = self.next.fetch_add(1, Ordering::Relaxed);
         if i >= N {
@@ -955,13 +976,19 @@ fn tick_one_cell(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
 /// static storage or the alloc convenience's leaked box — live until
 /// `component_drop_trampoline`); `exec_ctx` must be the live
 /// `*mut Executor<'static>` the executor passes itself.
-unsafe extern "C" fn component_tick_trampoline(
+unsafe extern "C" fn component_tick_trampoline<
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
     state: *mut core::ffi::c_void,
     exec_ctx: *mut core::ffi::c_void,
 ) {
     // SAFETY: `state` is a live placed `ComponentCell` (kept in place until
-    // `component_drop_trampoline`); borrow it without taking ownership.
-    let cell = unsafe { &*(state as *const ComponentCell) };
+    // the drop trampoline); this monomorphization was enrolled alongside it,
+    // so the cast target is the cell's true type.
+    let cell = unsafe { &*(state as *const ComponentCell<PUBS, SVCS, ACTC, ACTS>) };
     tick_one_cell(cell, exec_ctx as *mut Executor<'static>);
 }
 
@@ -976,9 +1003,17 @@ unsafe extern "C" fn component_tick_trampoline(
 /// # Safety
 /// `state` must be the placed `ComponentCell` enrolled via
 /// [`Executor::enroll_component`], not yet dropped.
-unsafe extern "C" fn component_drop_trampoline(state: *mut core::ffi::c_void) {
-    // SAFETY: enroll's contract above; dropped exactly once by the executor.
-    unsafe { core::ptr::drop_in_place(state as *mut ComponentCell) };
+unsafe extern "C" fn component_drop_trampoline<
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
+    state: *mut core::ffi::c_void,
+) {
+    // SAFETY: enroll's contract above; dropped exactly once by the executor,
+    // through the monomorphization enrolled with the cell.
+    unsafe { core::ptr::drop_in_place(state as *mut ComponentCell<PUBS, SVCS, ACTC, ACTS>) };
 }
 
 // =============================================================================
@@ -1907,15 +1942,22 @@ fn decl_err_from_node(e: nros_node::NodeError) -> NodeDeclError {
     }
 }
 
-fn register_node_borrowed<'p, C: ExecutableNode + 'static>(
+fn register_node_borrowed<
+    'p,
+    C: ExecutableNode + 'static,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
     executor: &mut Executor<'static>,
     params: &'p [(&'p str, &'p str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &'p [(&'p str, &'p str)],
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
     slot_mu: &'static mut MaybeUninit<TypedSlot<C>>,
-    cell_mu: &'static mut MaybeUninit<ComponentCell>,
-) -> NodeResult<&'static ComponentCell>
+    cell_mu: &'static mut MaybeUninit<ComponentCell<PUBS, SVCS, ACTC, ACTS>>,
+) -> NodeResult<&'static ComponentCell<PUBS, SVCS, ACTC, ACTS>>
 where
     C::State: 'static,
 {
@@ -1925,7 +1967,7 @@ where
     // at ~17.5 KiB of heap per component. Closures and leaked ctxs hold a
     // `CellHandle::Static` copy; the executor's drop trampoline runs the
     // cell's destructor in place.
-    let cell: &'static ComponentCell = cell_mu.write(ComponentCell {
+    let cell: &'static ComponentCell<PUBS, SVCS, ACTC, ACTS> = cell_mu.write(ComponentCell {
         slot: RefCell::new(place_slot::<C>(slot_mu)),
         publishers: RefCell::new(heapless::Vec::new()),
         service_clients: RefCell::new(heapless::Vec::new()),
@@ -1968,11 +2010,16 @@ where
     // (`MAX_NODES`) proceeds without a tick slot; the placed cell then simply
     // lives (and leaks its component state's destructor) with its storage,
     // which a monotonic `take` never re-hands out.
-    let raw = cell as *const ComponentCell as *mut core::ffi::c_void;
-    // SAFETY: `raw` is the freshly placed cell; the trampolines match its
-    // provenance (borrow on tick, drop_in_place on executor drop).
+    let raw = cell as *const ComponentCell<PUBS, SVCS, ACTC, ACTS> as *mut core::ffi::c_void;
+    // SAFETY: `raw` is the freshly placed cell; the enrolled trampoline
+    // monomorphizations match its exact type (borrow on tick, drop_in_place
+    // on executor drop).
     let _ = unsafe {
-        executor.enroll_component(raw, component_tick_trampoline, component_drop_trampoline)
+        executor.enroll_component(
+            raw,
+            component_tick_trampoline::<PUBS, SVCS, ACTC, ACTS>,
+            component_drop_trampoline::<PUBS, SVCS, ACTC, ACTS>,
+        )
     };
 
     // W4c — capture the executor's volatile param store on the cell so this node's
@@ -2082,7 +2129,7 @@ where
     // runs (executor drop trampoline, in place), only the bytes stay.
     let cell_mu: &'static mut MaybeUninit<ComponentCell> =
         Box::leak(Box::new(MaybeUninit::uninit()));
-    match register_node_borrowed::<C>(
+    match register_node_borrowed::<C, _, _, _, _>(
         exec,
         params,
         node_identity,
@@ -2113,9 +2160,16 @@ where
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry
 /// passes, valid for the call.
-pub unsafe fn install_node_typed_with_launch_in<C: ExecutableNode + 'static>(
+pub unsafe fn install_node_typed_with_launch_in<
+    C: ExecutableNode + 'static,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
     executor: *mut core::ffi::c_void,
-    store: &'static ComponentSlotStorage<C>,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
     params: &[(&str, &str)],
     node_identity: Option<(&'static str, &'static str)>,
     remaps: &[(&str, &str)],
@@ -2132,7 +2186,7 @@ where
     };
     // SAFETY: per the fn contract, `executor` is the live handle.
     let exec: &mut Executor<'static> = unsafe { &mut *(executor as *mut Executor<'static>) };
-    match register_node_borrowed::<C>(
+    match register_node_borrowed::<C, _, _, _, _>(
         exec,
         params,
         node_identity,
@@ -2152,15 +2206,22 @@ where
 ///
 /// # Safety
 /// As [`install_node_typed_with_launch_in`].
-pub unsafe fn install_node_typed_in<C: ExecutableNode + 'static>(
+pub unsafe fn install_node_typed_in<
+    C: ExecutableNode + 'static,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
     executor: *mut core::ffi::c_void,
-    store: &'static ComponentSlotStorage<C>,
+    store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
 ) -> i32
 where
     C::State: 'static,
 {
     // SAFETY: forwarded per this fn's contract.
-    unsafe { install_node_typed_with_launch_in::<C>(executor, store, &[], None, &[], &[]) }
+    unsafe { install_node_typed_with_launch_in(executor, store, &[], None, &[], &[]) }
 }
 
 // Phase 258 (Track 2, w5) — `nros_run_components` (the BSP shim that registered

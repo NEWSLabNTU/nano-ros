@@ -351,9 +351,19 @@ fn node_impl(input: TokenStream) -> TokenStream {
         // install path, exactly sized because the type is concrete here.
         // Shared by the trampoline below and `register(runtime)`; capacity is
         // the per-class instance cap (NROS_RUNTIME_MAX_CLASS_INSTANCES).
+        // phase-391 W5-endgame step 2c (issue 0857) — the store's registry
+        // capacities come from the class's own `ENTITY_BOUNDS` (knob caps by
+        // default, exact when the class declares them), so a static cell
+        // pays for what the class declares, not the worst case.
         #[doc(hidden)]
-        static #component_store_name: ::nros::ComponentSlotStorage<#node_ty> =
-            ::nros::ComponentSlotStorage::new();
+        static #component_store_name: ::nros::ComponentSlotStorage<
+            #node_ty,
+            { ::nros::config::MAX_CLASS_INSTANCES },
+            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.publishers },
+            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.service_clients },
+            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.action_clients },
+            { <#node_ty as ::nros::Node>::ENTITY_BOUNDS.action_servers },
+        > = ::nros::ComponentSlotStorage::new();
 
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         #[unsafe(no_mangle)]
@@ -362,7 +372,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             executor: *mut ::core::ffi::c_void,
             _self: *mut ::core::ffi::c_void,
         ) -> i32 {
-            unsafe { ::nros::install_node_typed_in::<#node_ty>(executor, &#component_store_name) }
+            unsafe { ::nros::install_node_typed_in(executor, &#component_store_name) }
         }
 
         #[unsafe(no_mangle)]
@@ -513,7 +523,7 @@ fn node_impl(input: TokenStream) -> TokenStream {
             // overrides; `ExecutorSink::create_node` installs them on the node so
             // entity creation folds the matching ones in.
             match unsafe {
-                ::nros::install_node_typed_with_launch_in::<#node_ty>(
+                ::nros::install_node_typed_with_launch_in(
                     executor,
                     &#component_store_name,
                     runtime.params,

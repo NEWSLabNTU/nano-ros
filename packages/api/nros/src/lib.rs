@@ -230,10 +230,10 @@ pub use node::NodeExecutorRuntime;
 // extern emit were deleted.)
 pub use node::{
     ActionExecutor, Callback, CallbackCtx, CallbackEffects, ClientDispatch, DeclaredNode,
-    DeclaredNodeRuntime, ExecutableNode, MISSING_NODE_EXPORT_ERROR, Node, NodeActionClient,
-    NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter, NodePublisher,
-    NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer,
-    NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
+    DeclaredNodeRuntime, EntityBounds, ExecutableNode, MISSING_NODE_EXPORT_ERROR, Node,
+    NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter,
+    NodePublisher, NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient,
+    NodeServiceServer, NodeSubscription, NodeTimer, PublisherResolver, RuntimeNodeRecord, TickCtx,
     record_node_metadata, register_node,
 };
 // Phase 212.M.5.a.4 — internal helper consumed by `nros::node!()`
@@ -340,12 +340,21 @@ where
 /// exist and be const-constructible + `Sync` in every cfg. Zero-sized.
 #[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
-pub struct ComponentSlotStorage<C, const N: usize = { crate::config::MAX_CLASS_INSTANCES }> {
+pub struct ComponentSlotStorage<
+    C,
+    const N: usize = { crate::config::MAX_CLASS_INSTANCES },
+    const PUBS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const SVCS: usize = { crate::config::MAX_CELL_ENTITIES },
+    const ACTC: usize = { crate::config::MAX_CELL_ENTITIES },
+    const ACTS: usize = { crate::config::MAX_CELL_ENTITIES },
+> {
     _p: core::marker::PhantomData<fn() -> C>,
 }
 
 #[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
-impl<C, const N: usize> ComponentSlotStorage<C, N> {
+impl<C, const N: usize, const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
+    ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
+{
     #[doc(hidden)]
     #[allow(clippy::new_without_default)]
     pub const fn new() -> Self {
@@ -361,9 +370,16 @@ impl<C, const N: usize> ComponentSlotStorage<C, N> {
 /// Signature parity with the real impl; the stub dereferences nothing.
 #[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
-pub unsafe fn install_node_typed_in<C: node::ExecutableNode + 'static>(
+pub unsafe fn install_node_typed_in<
+    C: node::ExecutableNode + 'static,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
     _executor: *mut core::ffi::c_void,
-    _store: &'static ComponentSlotStorage<C>,
+    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
 ) -> i32
 where
     C::State: 'static,
@@ -377,9 +393,16 @@ where
 /// Signature parity with the real impl; the stub dereferences nothing.
 #[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
 #[doc(hidden)]
-pub unsafe fn install_node_typed_with_launch_in<C: node::ExecutableNode + 'static>(
+pub unsafe fn install_node_typed_with_launch_in<
+    C: node::ExecutableNode + 'static,
+    const N: usize,
+    const PUBS: usize,
+    const SVCS: usize,
+    const ACTC: usize,
+    const ACTS: usize,
+>(
     _executor: *mut core::ffi::c_void,
-    _store: &'static ComponentSlotStorage<C>,
+    _store: &'static ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>,
     _params: &[(&str, &str)],
     _node_identity: Option<(&'static str, &'static str)>,
     _remaps: &[(&str, &str)],

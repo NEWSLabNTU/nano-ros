@@ -176,6 +176,61 @@ where
     A::register_protocol_types().map_err(|()| NodeDeclError::Runtime)
 }
 
+/// phase-391 W5-endgame step 2c (issue 0857) — a component class's declared
+/// upper bounds, PER ENTITY KIND, for sizing its cell registries at compile
+/// time.
+///
+/// The runtime's per-class cell storage is static, so its registries pay
+/// their CAPACITY whether or not entities fill it — and one publisher slot
+/// costs ~1.35 KiB (the loan arena rides inside). The default is the
+/// `NROS_RUNTIME_MAX_CELL_ENTITIES` knob per kind, which always works;
+/// a class that declares its real bounds pays exactly what it uses.
+/// Declaring FEWER than `register()` creates is a loud registration error
+/// (registry full), never a silent drop.
+///
+/// Public and non-generic on purpose (the `ExecutorSizing` rule): the const
+/// generics this feeds stay behind the `nros::node!` macro emission, so no
+/// other language ever sees them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityBounds {
+    /// Publishers this class creates (each slot ~1.35 KiB — the big one).
+    pub publishers: usize,
+    /// Service clients.
+    pub service_clients: usize,
+    /// Action clients.
+    pub action_clients: usize,
+    /// Action servers.
+    pub action_servers: usize,
+}
+
+impl EntityBounds {
+    /// The knob-capped default (`NROS_RUNTIME_MAX_CELL_ENTITIES` per kind).
+    pub const fn knob_caps() -> Self {
+        Self {
+            publishers: crate::config::MAX_CELL_ENTITIES,
+            service_clients: crate::config::MAX_CELL_ENTITIES,
+            action_clients: crate::config::MAX_CELL_ENTITIES,
+            action_servers: crate::config::MAX_CELL_ENTITIES,
+        }
+    }
+
+    /// Exact bounds, spelled positionally:
+    /// `(publishers, service_clients, action_clients, action_servers)`.
+    pub const fn exact(
+        publishers: usize,
+        service_clients: usize,
+        action_clients: usize,
+        action_servers: usize,
+    ) -> Self {
+        Self {
+            publishers,
+            service_clients,
+            action_clients,
+            action_servers,
+        }
+    }
+}
+
 /// Rust component entry point.
 pub trait Node {
     /// Source component name used in metadata and diagnostics.
@@ -188,6 +243,12 @@ pub trait Node {
     /// 216.A.2) and `nros check` (Phase 216.D.1) consume it to
     /// pick / validate the board-side dispatch path.
     const DISPATCH: crate::DispatchStrategy = crate::DispatchStrategy::Inline;
+
+    /// phase-391 W5-endgame step 2c — this class's per-kind entity bounds,
+    /// sizing its static cell registries. Defaults to the knob caps so every
+    /// existing component keeps compiling; declare [`EntityBounds::exact`]
+    /// to stop paying for capacity `register()` never fills.
+    const ENTITY_BOUNDS: EntityBounds = EntityBounds::knob_caps();
 
     /// Declare nodes, entities, callbacks, params, and optional effects.
     fn register(context: &mut NodeContext<'_>) -> NodeResult<()>;

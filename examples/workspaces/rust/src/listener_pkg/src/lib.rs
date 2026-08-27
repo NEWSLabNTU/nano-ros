@@ -19,6 +19,11 @@ pub struct Listener;
 impl Node for Listener {
     const NAME: &'static str = "listener";
 
+    // phase-391 W5-endgame step 2c (issue 0857) — exact bounds: one
+    // subscription, nothing else, so the static cell skips the eight
+    // ~1.35 KiB publisher slots the knob default would reserve.
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0);
+
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("listener"))?;
         let sub_chatter =

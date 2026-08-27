@@ -475,5 +475,17 @@
  "rust:register_node": {
   "verdict": "extension",
   "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+ },
+ "rust:EntityBounds": {
+  "verdict": "extension",
+  "why": "phase-391 W5-endgame step 2c (issue 0857) -- a component class's declared per-kind entity bounds, sizing its STATIC cell registries at compile time (one publisher slot costs ~1.35 KiB, so capacity is a real price). Default = the NROS_RUNTIME_MAX_CELL_ENTITIES knob per kind; exact bounds stop a class paying for capacity `register()` never fills. Public and non-generic (the `ExecutorSizing` rule); the const generics it feeds stay behind the `nros::node!` emission. No upstream analogue: rcl sizes nothing statically."
+ },
+ "rust:EntityBounds::exact": {
+  "verdict": "extension",
+  "why": "phase-391 W5-endgame step 2c -- positional constructor (publishers, service_clients, action_clients, action_servers)."
+ },
+ "rust:EntityBounds::knob_caps": {
+  "verdict": "extension",
+  "why": "phase-391 W5-endgame step 2c -- the knob-capped default, the always-works arm."
  }
 }

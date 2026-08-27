@@ -26,6 +26,10 @@ pub struct Talker;
 impl Node for Talker {
     const NAME: &'static str = "talker";
 
+    // phase-391 W5-endgame step 2c (issue 0857) — exact bounds: one
+    // publisher (the timer needs no registry slot).
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(1, 0, 0, 0);
+
     fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
         let mut node = ctx.create_node(NodeOptions::new("talker"))?;
         let pub_chatter = node.create_publisher_for_topic::<Int32>("/chatter")?;
