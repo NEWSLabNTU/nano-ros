@@ -168,10 +168,16 @@ if(TARGET nros_c-static)
 else()
     set(_nros_c_mirror_trigger "")
 endif()
+set(_NROS_C_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
 add_custom_command(
     OUTPUT "${_nros_c_gen_config_header}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    # issue 0805 — the leaf's own copy exists only if the build script RAN for
+    # this leaf, and once leaves share a cargo target dir cargo skips it for
+    # every leaf after the first. The helper falls back to the leaf-independent
+    # `nros-c-generated/` copy, which is the same bytes.
+    COMMAND bash "${_NROS_C_MIRROR_SH}"
         "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+        "${CMAKE_BINARY_DIR}" "nros-c-generated" "nros_config_generated.h"
         "${_nros_c_gen_config_header}"
     DEPENDS cargo-build_nros_c ${_nros_c_mirror_trigger}
     COMMENT "nros-c: mirroring nros_config_generated.h for in-tree consumers"

@@ -72,7 +72,21 @@ pub fn run() {
     println!("cargo:rerun-if-changed=templates/nros_config_generated.h.template");
     println!("cargo:rerun-if-changed=templates/nros_config_generated_exact.h.template");
     println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
-    println!("cargo:rerun-if-env-changed=CORROSION_BUILD_DIR");
+    // issue 0805 — NOT `rerun-if-env-changed=CORROSION_BUILD_DIR`.
+    //
+    // That is a PATH variable, and watching one as TEXT is the defect issue
+    // 0491 records. It was previously safe here on a premise that no longer
+    // holds: every cmake build dir owned its own cargo target dir, so two
+    // spellings could never meet in one `.fingerprint/`. Sharing the target dir
+    // across leaves put ~70 different spellings in ONE fingerprint namespace,
+    // so every leaf invalidated the previous leaf's build script and
+    // recompiled `nros-c` + `nros-cpp`. Measured: a repeated invocation is
+    // 0.07 s, the same invocation after another leaf's is 7.59 s, and the
+    // warm rebuild of one platform was 459 s of almost nothing but that.
+    //
+    // The header this script writes into `$CORROSION_BUILD_DIR` is ALSO written
+    // to `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`, which is leaf-independent
+    // and is what the zephyr lane already consumes. cmake mirrors from there.
 }
 
 /// Generate `nros_c_config.rs` with build-time configurable constants.

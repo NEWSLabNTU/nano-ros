@@ -107,13 +107,19 @@ if(TARGET cargo-build_nros_cpp)
     else()
         set(_nros_cpp_mirror_trigger "")
     endif()
+    set(_NROS_CPP_MIRROR_SH "${CMAKE_CURRENT_LIST_DIR}/../../../scripts/build/mirror-generated-header.sh")
     add_custom_command(
         OUTPUT "${_nros_cpp_gen_cpp_header}" "${_nros_cpp_gen_c_header}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        # issue 0805 — see the matching comment in nros-c/CMakeLists.txt: the
+        # leaf's own copy is written only when the build script runs for THIS
+        # leaf, which a shared cargo target dir makes untrue after the first.
+        COMMAND bash "${_NROS_CPP_MIRROR_SH}"
             "${CMAKE_CURRENT_BINARY_DIR}/nros_cpp_config_generated.h"
+            "${CMAKE_BINARY_DIR}" "nros-cpp-generated" "nros_cpp_config_generated.h"
             "${_nros_cpp_gen_cpp_header}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        COMMAND bash "${_NROS_CPP_MIRROR_SH}"
             "${CMAKE_CURRENT_BINARY_DIR}/nros_config_generated.h"
+            "${CMAKE_BINARY_DIR}" "nros-c-generated" "nros_config_generated.h"
             "${_nros_cpp_gen_c_header}"
         DEPENDS cargo-build_nros_cpp ${_nros_cpp_mirror_trigger}
         COMMENT "nros-cpp: mirroring nros_{,cpp_}config_generated.h for in-tree consumers"

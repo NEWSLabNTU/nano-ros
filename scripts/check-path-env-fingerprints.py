@@ -78,11 +78,22 @@ PATH_SUFFIXES = (
 # preference — if two builds sharing one `--target-dir` can disagree about the
 # string, it belongs in the fix, not here.
 ALLOWED = {
-    # Cargo/corrosion set these to the build tree itself. Two builds with
-    # different values are different fingerprint namespaces by construction, so
-    # the two spellings can never meet in one `.fingerprint/`.
+    # `CARGO_TARGET_DIR` names the target dir itself, so two spellings are two
+    # fingerprint namespaces by construction and cannot meet.
     "CARGO_TARGET_DIR": "names the target dir itself",
-    "CORROSION_BUILD_DIR": "names the cmake build dir that owns the target dir",
+    #
+    # `CORROSION_BUILD_DIR` USED TO BE EXEMPT HERE on the premise that every
+    # cmake build dir owns its own cargo target dir. Issue 0805 made leaves
+    # SHARE a target dir, so ~70 different spellings now land in one
+    # `.fingerprint/` and the premise is false. Removing the exemption was not
+    # bookkeeping: while it stood, every leaf invalidated the previous leaf's
+    # build script and recompiled nros-c + nros-cpp — 459 s of cargo time on one
+    # platform's warm rebuild, against 6.7 s once fixed.
+    #
+    # This is the failure mode this ALLOWED table is built to have: an exemption
+    # is a claim about a fact OUTSIDE this file, and a change elsewhere can
+    # falsify it silently. If you add one, say which invariant it rests on — as
+    # these do — so the next person can check whether it still holds.
     # Emitted by cargo from the `links` crate's own OUT_DIR, which lives inside
     # the target dir being fingerprinted.
     "DEP_DDSC_INCLUDE": "cargo `links` metadata, rooted in this target dir",

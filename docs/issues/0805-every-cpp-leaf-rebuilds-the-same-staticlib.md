@@ -627,3 +627,86 @@ Verified afterwards, in the order that matters:
 * The GC re-reports clean.
 * **`just zephyr build-c` rc=0 in 337 s.** Structure surviving is not the same
   as builds working, so this is the one that settles it.
+
+## The warm floor was MY OWN regression (2026-08-27)
+
+This issue has said throughout that the warm floor is "70 cargo invocations
+re-scanning fingerprints at ~7 s each" and that only fewer invocations could fix
+it. That was wrong, and the measurement that shows it is one command:
+
+```
+run1  7.59 s   Compiling nros-c, nros-cpp
+run2  0.07 s   Finished
+run3  0.07 s   Finished
+```
+
+**A true no-op cargo is 0.07 s.** The ~6.5 s average was not scanning — it was
+recompiling, every single invocation.
+
+### Cause: sharing the target dir falsified a gate's exemption
+
+`nros-build-helpers/src/{c,cpp}.rs` declared
+
+```rust
+println!("cargo:rerun-if-env-changed=CORROSION_BUILD_DIR");
+```
+
+`CORROSION_BUILD_DIR` is `${CMAKE_CURRENT_BINARY_DIR}` — a PATH, and watching a
+path as TEXT is exactly what issue 0491 forbids. It was legitimately exempt in
+`check-path-env-fingerprints`, on a stated premise:
+
+> Two builds with different values are different fingerprint namespaces by
+> construction, so the two spellings can never meet in one `.fingerprint/`.
+
+True until this issue shared the target dir. Then ~70 spellings landed in ONE
+fingerprint namespace, every leaf invalidated the previous leaf's build script,
+and `nros-c` + `nros-cpp` recompiled 87 times per warm run.
+
+The gate could not catch it: an exemption is a claim about a fact OUTSIDE the
+file it lives in, and a change elsewhere falsifies it silently. The table's own
+header says so — "if two builds sharing one `--target-dir` can disagree about
+the string, it belongs in the fix, not here". The exemption is now removed, so
+the rule is enforced rather than assumed.
+
+### It also explains the earlier mystery
+
+The nuttx section records being unable to explain why a wiped leaf rebuilt
+correctly through the lane but not under a bare `cmake`. This is why: the env
+watch forced the build script to re-run per leaf, which wrote that leaf's
+header. The churn and the correctness were the same mechanism.
+
+So removing the watch broke the fresh-leaf case — reproduced immediately: rc=2,
+no header, no binary. Fixed by `scripts/build/mirror-generated-header.sh`, which
+prefers the leaf's own copy and falls back to the leaf-independent
+`$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` one that build.rs already writes.
+Same bytes, verified: two leaves in a key group carry identical headers, which is
+guaranteed by the same key that permits them to share at all.
+
+### Measured
+
+| | before | after |
+| --- | --- | --- |
+| cargo time, warm rebuild | **459.6 s** across 70 (mean 6.57) | **6.7 s** across 70 (mean 0.13) |
+| crates recompiled, warm | 87 | **0** |
+| wall, warm | 459 s | **362 s** |
+
+Determinism re-checked afterwards: wipe a leaf, rebuild, identical binary
+(`7b67e3b99d97ab4cb0131593`).
+
+### The floor moved rather than vanished
+
+Cargo went from 100% of the warm wall to 2%, but the wall only fell 21%. What is
+left is not cargo compiling — it is cargo WAITING:
+
+```
+112  Blocking waiting for file lock on package cache
+ 22  Blocking waiting for file lock on build directory
+```
+
+That is issue 0648, and phase-371 measured it at 20 samples and called it "NOT
+the bottleneck". It was right at the time: compilation dominated. Now that
+compilation is gone, the lock is what remains, and the package-cache lock is
+GLOBAL — not a consequence of sharing.
+
+Recording rather than chasing: it is a different question, and this issue has
+enough evidence of what happens when a tired conclusion outruns its measurement.
