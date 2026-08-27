@@ -194,16 +194,27 @@ response:
 example_interfaces.srv.AddTwoInts_Response(sum=42)
 ```
 
-`scripts/test/isotp-ros-interop.sh` runs it. Topology:
+`scripts/test/isotp-ros-interop.sh` runs it, in **both roles** and with **no
+router and no TCP endpoint anywhere in the path**:
 
 ```
-ros2 service call  --tcp-->  rmw_zenohd  --ISO-TP over CAN-->  nano-ros node
+role SERVER: ros2 service call  <--ISO-TP over CAN-->  nano-ros service server
+role CLIENT: nano-ros client    <--ISO-TP over CAN-->  ros2 add_two_ints_server
 ```
 
-The router listens on both, so the request crosses the bus and the reply comes
-back the same way; TCP on the CLI side keeps the test about the CAN link rather
-than about rebuilding the ROS CLI. `candump` over one run: 140 frames, 11
-FirstFrame/FlowControl pairs, both directions.
+Both peers load a session config derived from the installed rmw_zenoh default
+with the connect endpoint (the local `rmw_zenohd`) removed and the TCP listener
+*replaced* by the ISO-TP one — replaced, not appended, because leaving a TCP
+listener would let the two processes find each other without the bus and prove
+nothing. The harness greps the generated config to prove no TCP endpoint
+survived, rather than asserting it in a comment.
+
+`candump` over one run of each: 140 frames / 11 FirstFrame–FlowControl pairs
+for the server role, 135 / 9 for the client role.
+
+An early version of that guard grepped the config for `"tcp/` without stripping
+comments and killed a good run: the stock json5 is heavily documented and its
+own prose contains `"tcp/10.10.10.10:7447"` as an example.
 
 **This is what RFC-0080 could not do.** zenoh routes queries to unicast faces
 only, so a service call over the multicast CAN link never reaches a queryable
