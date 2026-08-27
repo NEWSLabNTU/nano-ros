@@ -419,3 +419,69 @@ The warning is now visible, but **the guarantee is still unverified** until
 those fixtures are built in a lane that runs this gate. W3b makes the gap
 legible; closing it is a fixture-coverage question for whoever owns the FreeRTOS
 and baremetal-serial lanes.
+
+
+## W3a LANDED — the sentence that deterred a correct edit
+
+The allowlist header said an `[img:]` token belongs to "an override-default
+line" and that "optional-hook lines carry no token". Both read as rules. Neither
+is one: the gate parses `[img:]` from any row starting with a digit and never
+inspects the classification.
+
+Replaced with what the parser actually does, plus the distinction the old
+wording hid:
+
+```
+override-default / optional-hook   is a strong def GUARANTEED to exist?
+[img: …]                           which symbols do we EXPECT specific images
+                                   to override, and want checked?
+```
+
+A row can legitimately be `optional-hook` — no override guaranteed anywhere —
+and still carry `[img:]` because the images we DO ship are expected to override
+it. `network_glue.c` is exactly that.
+
+The cost was real and is recorded in the header: the wording made a correct
+relabel look like it would silently narrow coverage, so the relabel was declined
+(by me, in 0769) and the row still carries a classification its own issue calls
+wrong.
+
+## W4 LANDED — the tie is dissolved, not won
+
+Both weak `nros_board_register_netif` bodies return -1. Only S32Z270's printed,
+so RFC-0052's fail-loud promise rode on winning an archive-order tie it does not
+control: if `network_glue.c`'s default won, the image went quiet and timed out.
+
+**Strong-vs-weak cannot break the tie** — the contract is that the out-of-tree
+consumer supplies the strong override, so promoting either default turns that
+override into a duplicate-symbol link error. 0769 identified this and left it as
+a design call.
+
+The fix is not to win the tie but to stop depending on it. The single call site
+(`nros_freertos_register_netif`) returned the -1 bare; it now reports it:
+
+```c
+int rc = nros_board_register_netif(mac, ip, netmask, gw);
+if (rc != 0) {
+    printf("nros-board-freertos: no Ethernet — nros_board_register_netif "
+           "returned %d. A board overlay or consumer must provide a strong "
+           "override (see RFC-0052, issue 0769).\n", rc);
+}
+return rc;
+```
+
+Whichever default is linked, the operator is told. The board-specific message
+stays in S32Z270's body and still prints when that one is linked — this is the
+floor, not a replacement.
+
+**Generalises the W2 lesson.** There the rule was "return the value the API
+already defines, rather than adding output". Here no return value could carry
+the information, because both bodies already returned the correct one — so the
+diagnostic moved to the place that has exactly one implementation. **Put the
+report where the ambiguity is not.**
+
+Verified: `just freertos build-fixture-extras` rc=0 (243 s), no diagnostics from
+`network_glue.c`; `check-weak-symbols` OK (17 files).
+
+0769's remaining question — whether the two defaults should be one — is now a
+tidiness issue rather than a correctness one.

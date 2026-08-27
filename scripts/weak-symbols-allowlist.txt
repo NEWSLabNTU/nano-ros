@@ -35,14 +35,33 @@
 # ThreadX libc stubs returned -1 with a STALE errno). A row that would need it
 # should be fixed, not labelled.
 #
-# Image gate (scripts/check-weak-symbols-image.sh) SSoT: an override-default
-# line carries an `[img: <sym> <sym> …]` token naming the exact symbols whose
-# strong override must win in a FINAL linked image. That gate cross-checks its
-# coverage map against this set: every covered symbol must be declared here,
-# and a declared symbol with no coverage row yet is reported (not silently
-# dropped). Both source-level gates take only the text before `#`, so the
-# token is invisible to them. optional-hook lines carry no token (the weak
-# no-op is a valid runtime — nothing to assert in an image).
+# Image gate (scripts/check-weak-symbols-image.sh) SSoT: an `[img: <sym> <sym> …]`
+# token names the exact symbols whose strong override must win in a FINAL linked
+# image. That gate cross-checks its coverage map against this set: every covered
+# symbol must be declared here, and a declared symbol with no coverage row yet is
+# reported (not silently dropped). Both source-level gates take only the text
+# before `#`, so the token is invisible to them.
+#
+# `[img:]` is INDEPENDENT of the override-default/optional-hook classification
+# (phase-386 W3a). This paragraph used to say an [img:] token belongs to "an
+# override-default line" and that "optional-hook lines carry no token", which
+# read as a rule and is not one: the gate parses [img:] from ANY row starting
+# with a digit and never inspects the classification. Verified by relabelling a
+# row and re-running — coverage unchanged.
+#
+# The distinction that sentence obscured, and the reason it matters:
+#   override-default / optional-hook  is a strong def GUARANTEED to exist?
+#   [img: …]                          which symbols do we EXPECT specific
+#                                     images to override, and want checked?
+# Those are different questions. A row can legitimately be an optional-hook —
+# no override guaranteed anywhere — and still carry [img:] because the images we
+# DO ship are expected to override it. `network_glue.c` is exactly that case
+# (issue 0769): its weak returns -1 meaning "no Ethernet", a supported shipped
+# state, while LAN9118 MPS2 images are expected to override and worth gating.
+#
+# The cost of the old wording was real: it made a correct relabel look like it
+# would silently narrow coverage, so the relabel was declined and the row still
+# carries a classification its own issue calls wrong.
 
 2  packages/api/nros-c/c-stubs/weak_platform_log_stubs.c       # body:correct optional-hook: no-platform weak log_{write,flush} fallbacks. (Renamed from weak_register_backends.c in #62 cleanup; the weak nros_app_register_backends default was REMOVED — phase-249 P4a / issue 0050 W3.1; the cmake nano_ros_link_rmw strong stub is now the sole def, missing => link error.)
 2  packages/api/nros-cpp/c-stubs/weak_platform_log_stubs.c     # body:correct optional-hook: no-platform weak log_{write,flush} fallbacks, mirroring nros-c (weak defs from both archives coexist; a platform strong def overrides). Was an empty placeholder before the #62 cleanup gave it the same log stubs.

@@ -114,7 +114,33 @@ int nros_freertos_init_network(
     /* Delegate netif registration to the board overlay.
      * Default weak impl returns -1 (no Ethernet); LAN9118 / STM ETH
      * / NXP ENET / etc. overlays provide the strong version. */
-    return nros_board_register_netif(mac, ip, netmask, gw);
+    int rc = nros_board_register_netif(mac, ip, netmask, gw);
+    if (rc != 0) {
+        /* phase-386 W4 / issue 0769 — say it HERE, at the one call site, so
+         * the message does not depend on which weak default wins the link.
+         *
+         * Two weak `nros_board_register_netif` bodies exist in crates that
+         * compose (this one, and nros-board-s32z270-freertos's), both
+         * returning -1. Only S32Z270's printed, so RFC-0052's fail-loud
+         * promise rode on winning an archive-order tie it does not control:
+         * if this file's default won, the image went quiet and timed out —
+         * exactly the outcome fail-loud exists to prevent.
+         *
+         * Strong-vs-weak cannot break the tie. The contract is that the
+         * out-of-tree CONSUMER supplies the strong override, so promoting
+         * either default would turn that override into a duplicate-symbol
+         * link error. Moving the diagnostic to the caller dissolves the
+         * question instead: whichever default runs, the operator is told.
+         *
+         * The board-specific detail stays in the board's own body, which
+         * still prints when it is the one linked. This message is the
+         * floor, not a replacement. */
+        extern int printf(const char *, ...);
+        printf("nros-board-freertos: no Ethernet — nros_board_register_netif "
+               "returned %d. A board overlay or consumer must provide a strong "
+               "override (see RFC-0052, issue 0769).\n", rc);
+    }
+    return rc;
 }
 
 /*
