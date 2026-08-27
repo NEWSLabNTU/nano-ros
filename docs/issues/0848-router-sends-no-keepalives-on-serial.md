@@ -74,6 +74,49 @@ result was measured on those same undersized stacks. A retest at 8192 was
 started and its harness failed (one line of RTT captured); it is **not**
 evidence either way and no conclusion is drawn from it.
 
+## Confound eliminated (2026-08-28): 8192 changes nothing
+
+Rebuilt RAM-neutral at the DEFAULT task stack size — `TASK_SLOTS=6`,
+`TASK_STACK_SIZE=8192`, `MAIN_STACK_SIZE=16384` — and re-measured. Both
+symptoms persist unchanged:
+
+| | at 6144 | at 8192 |
+| --- | --- | --- |
+| board decodes, whole session | init + open only | **init + open only** |
+| keepalives decoded | 0 (5 sent) | **0 (5 sent)** |
+| expiry | 20.09 s | **20.07 s** |
+| fault | `FATAL 34` @ 20.29 s | **`FATAL 34` @ 20.28 s** |
+| faulting pc | `0x004236dd` | **`0x004236dd`** |
+
+Same fault, same address, same timing at both stack sizes. **The undersized
+stack was not the cause of either symptom**, and the earlier
+"discovery works at slots=8" result is not invalidated by it either.
+
+The fault address being IDENTICAL across builds is itself informative: this is
+a deterministic path, not random stack corruption. `0x004236dd` is
+`_z_network_message_elem_copy`
+(`include/zenoh-pico/protocol/definitions/network.h:356`), reached via
+`_z_wireexpr_copy` and `_z_slist_new`, and it fires immediately after
+`_z_close_encode` on the expiry path:
+
+```
+[20.075] _zp_unicast_lease_task: Closing session because it has expired
+[20.282] _z_transport_tx_send_t_msg: Send session message
+[20.282] _z_close_encode: Encoding _Z_MID_T_CLOSE
+[20.283] ***** USAGE FAULT *****  Illegal load of EXC_RETURN into PC
+```
+
+So there are two independent defects on this image, neither explained by
+configuration:
+
+1. **The read path never delivers a frame** after the handshake — no
+   keepalives, not even the Declares the router queued.
+2. **The expiry teardown faults deterministically** at
+   `_z_network_message_elem_copy`.
+
+(1) is what causes the expiry; (2) is what happens when the expiry runs. Fixing
+(1) would avoid (2) in practice but leave it latent.
+
 ## Original framing (superseded, kept for the record)
 
 ## Problem
