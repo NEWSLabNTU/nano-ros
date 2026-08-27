@@ -53,13 +53,11 @@
 
 #![no_std]
 
-use core::{
-    alloc::Layout,
-    cell::UnsafeCell,
-    ptr,
-    ptr::NonNull,
-    sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
-};
+use core::{alloc::Layout, cell::UnsafeCell, ptr, ptr::NonNull};
+// `portable_atomic`, not `core::sync::atomic`: the counters use `fetch_add`,
+// and a target without atomic RMW (esp32-c3 is `riscv32imc`) has no such method
+// on the core types. See the note in Cargo.toml.
+use portable_atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use rlsf::Tlsf;
 
 /// phase-391 W2 — the second-level list length. 16 bounds internal

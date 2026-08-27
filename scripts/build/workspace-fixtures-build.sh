@@ -311,6 +311,22 @@ build_workspace() {
                 echo "     nros ${nros_args[*]}"
                 "$nros_cli" "${nros_args[@]}"
             else
+                # A HAND-WRITTEN entry in a MIGRATED workspace still needs the
+                # generated root to exist: `cargo build -p <entry>` resolves the
+                # package through it, and the root is build output that a fresh
+                # clone does not have —
+                #
+                #   error: package ID specification `esp32_entry` did not match
+                #   any packages
+                #
+                # `--all --dry-run` writes the root and every entry and runs no
+                # build tool, which is exactly the missing step. Only when the
+                # workspace has no tracked root, so an unmigrated workspace is
+                # untouched.
+                if [ ! -f Cargo.toml ]; then
+                    echo "     nros build --all --dry-run   (generate the root)"
+                    "$nros_cli" build --all --dry-run >/dev/null
+                fi
                 local cargo_args=(build "${profile_args[@]}" -p "$entry")
                 if [ -n "$target_dir" ]; then
                     cargo_args+=(--target-dir "$target_dir")

@@ -23,6 +23,26 @@ categories = ["embedded", "no-std", "memory-management"]
 # project-wide by the scripts/bin/cargo shim.
 rlsf = { version = "0.2.3", default-features = false }
 
+# The counters below use atomic READ-MODIFY-WRITE (`fetch_add`), which
+# `core::sync::atomic` does not provide on every target this crate builds for:
+# esp32-c3 is `riscv32imc-unknown-none-elf`, which has load/store atomics and no
+# RMW, so `AtomicUsize::fetch_add` simply does not exist there —
+#
+#   error[E0599]: no method named `fetch_add` found for struct `Atomic<usize>`
+#     --> packages/rmw/zenoh/zpico-alloc/src/lib.rs:395:32
+#
+# `portable-atomic` supplies them. Same shape `nros-board-esp32-qemu` already
+# uses, including the split below: the `unsafe-assume-single-core` feature is a
+# claim about the SYSTEM (no other core can race the emulated RMW), so it is
+# enabled only for the bare-metal no-RMW targets that need it, and never
+# unconditionally — that crate's own comment records the accident of doing so.
+portable-atomic = { version = "1", default-features = false }
+
+[target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
+portable-atomic = { version = "1", default-features = false, features = [
+    "unsafe-assume-single-core",
+] }
+
 [features]
 default = []
 ## Track peak heap usage (adds two atomics per heap) and expose the reusable
