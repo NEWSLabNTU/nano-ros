@@ -315,10 +315,49 @@ landed" while delivering none of its property.
 `nros_platform_alloc` at rlsf and let `sys_heap` garbage-collect. Requires that
 no Zephyr subsystem calling `k_malloc` is enabled (fs, mcumgr, net,
 `log_mgmt`, cfb — none are in the serial image, but this needs a link test, not
-an assertion). Prerequisite: fix
-[issue 0811](../issues/0811-zephyr-net-iptcp-allocator-provenance-mismatch.md),
-whose two-allocators-one-free-path is survivable only while both bottom out in
-`k_malloc`.
+an assertion). Prerequisite
+[issue 0811](../issues/archived/0811-zephyr-net-iptcp-allocator-provenance-mismatch.md)
+is RESOLVED (e71548e44) — the multicast-teardown use-after-free is gone, so the
+two-allocator overlap no longer protects anything.
+
+**TRIAGE (2026-08-28) — measured on
+`zephyr-workspace/build-cortex-m-c-talker-zenoh` (mps2/an385, zenoh/TCP; STALE
+vs today's tree but structurally current):**
+
+* **The funnel is already unified on Zephyr, proven by disassembly, not
+  assumed:** `z_malloc` is `b.w nros_platform_alloc` AND the compiler-emitted
+  `__rust_alloc` is `b.w nros_platform_alloc`. One funnel; behind it,
+  `nros-platform-zephyr/src/platform.c:160-183` is three `k_malloc`/`k_free`
+  lines. W3 is exactly those three lines plus a conf.
+* **The prize:** `kheap__system_heap` = 131,072 B `.bss`
+  (`CONFIG_HEAP_MEM_POOL_SIZE=131072` in this image, not the doc's 16 KiB
+  example) + the live `sys_heap`/`k_heap` text
+  (`sys_heap_aligned_alloc` 232, `k_heap_aligned_alloc` 130, …). The rlsf arena
+  replaces the k_heap byte-for-byte at whatever size the knob picks, and W2's
+  `.bss` cost (+1,192 control) finally buys its offset here.
+* **A premise correction for this doc's own header:** "one
+  `#[global_allocator]` in the tree — `nros-platform/src/lib.rs`" is the
+  RUST-LANE story. The C-lane Zephyr image contains NO `nros-platform` crate at
+  all (crate census by mangled prefixes: `nros_cpp`, `nros_node`,
+  `nros_rmw_cffi`, `nros_rmw_zenoh`, `nros_platform_cffi` — nothing else);
+  there, **`nros-c` owns the `#[global_allocator]`** ("behind the platform
+  vtable", its own phase-361 W8.c comment). One per GRAPH, two in the tree.
+
+**Implementation shape that follows from the census:** the arena must live in a
+crate present in EVERY Zephyr image's graph, and `nros-c` is that crate (it is
+also already the allocator owner). Zephyr-gated: `nros-c` gains a
+`zpico-alloc` dependency + `static HEAP: FreeListHeap<{knob}>` + three
+`extern "C"` exports; `platform.c`'s three lines call those instead of
+`k_malloc`; the image conf sets `CONFIG_HEAP_MEM_POOL_SIZE=0`. Then the link
+test the wave demands: `nm` the image — `k_malloc` and `sys_heap_*` must be
+GONE (garbage-collected), which is simultaneously the proof that no enabled
+subsystem needed them. Rust-lane images keep `nros-platform`'s opt-in
+allocator and get the same arena through the same three C symbols.
+
+Expected delta, to be MEASURED not asserted: −131,072 `kheap` `.bss`, −~600+ B
+`sys_heap` text, +arena (knob-sized `.bss`), +~600 B rlsf text, +1,192 B rlsf
+control — net text shrink, and the arena knob finally sized by choice rather
+than by `HEAP_MEM_POOL_SIZE`'s guess.
 
 **W4 — declare the tier per image, and gate it in CI.** Tier becomes a build
 input; the W1 gate reads it. `heap-free` gets at least one lane that actually
