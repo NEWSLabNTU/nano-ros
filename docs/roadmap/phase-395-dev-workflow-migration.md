@@ -36,12 +36,63 @@ Half a day, no code. Two numbers decide the rest of the sequence.
    not "most", so **W10 cannot be deferred as far as first written**. Roughly
    half the suite genuinely needs built artifacts, which keeps the fixture cache
    load-bearing rather than an optimisation.
-2. **Wall-clock split of one PR run**: provisioning vs building vs testing. If
-   provisioning dominates — which the SDK-versus-cache arithmetic predicts —
-   then a single self-hosted runner (W6) recovers most of the hours by itself.
+2. **Wall-clock split of one PR run.** **Measured 2026-08-28, and it inverts
+   the premise of this plan.** Nothing on GitHub takes hours:
 
-Record both in the design doc. Everything below assumes the predicted answers
-and should be re-ordered if they are wrong.
+   | workflow | median | state |
+   | --- | ---: | --- |
+   | `pr-checks` | **2.5 min** | **14 of 14 runs failing** |
+   | `host-tests` | 3 min | failing |
+   | `nightly` | 30–34 min | failing |
+   | `images` | 8–13 min | succeeding |
+
+   Every signal-bearing workflow is RED, and has been for days. Causes so far:
+
+   - `pr-checks` — `check-subtree-guard` counting a recycled PGID rather than
+     its own processes. Fixed; it failed only on the runner because 4 vCPUs
+     running `check-fast` 32-way parallel churn PIDs hard enough for reuse.
+   - `host-tests` — `ERROR: cannot locate rmw_zenoh_cpp/rmw_zenohd`. The CI
+     container has no ROS zenoh router, so RFC-0075's resolution finds nothing.
+     A provisioning gap in the image, not a code defect.
+   - `nightly` — qemu and freertos jobs fail at ~30 min. Root cause **not
+     pinned**; the log tail is teardown noise.
+
+   **So the hours are not on GitHub — they are LOCAL.** Agents run the 40–90
+   minute treadmill precisely because CI is red and tells them nothing, and a
+   permanently-red required check is indistinguishable from no check at all.
+   That is a cycle, and it is cheap to break.
+
+**This re-orders the plan.** The bottleneck is not runner capacity or queue
+latency; it is that CI carries no signal. Fixing the reds and keeping them fixed
+comes before runners (W6), before the queue (W7), and before the cache (W10) —
+because none of those help while every result is ignored. W5 (flake quarantine)
+is effectively already underway: the first flake was found and fixed during W0.
+
+Everything below assumed the hours were on GitHub. Re-read it with that
+corrected.
+
+## W0.5 — Make CI carry signal again
+
+Inserted after W0.2 measured that every signal-bearing workflow is red. Nothing
+downstream matters while results are ignored, and this is the cheapest wave in
+the plan.
+
+1. **`check-subtree-guard`** — done. Recycled-PGID counting, fixed by asking
+   about its own PIDs.
+2. **`host-tests`: provision the zenoh router in the CI image**, or skip the
+   lanes that need it with an explicit capability probe rather than a hard
+   failure. RFC-0075 resolves via `NROS_RMW_ZENOHD` → `AMENT_PREFIX_PATH` →
+   `$ROS_DISTRO`; the container satisfies none of them. `nros_router_hint`
+   already exists to tell a user what to install — the image should just have
+   it.
+3. **`nightly`: root-cause the qemu and freertos failures.** Not yet diagnosed.
+4. **Then keep it green**: a red required check that persists for days is the
+   condition this wave exists to prevent, and issue 0840's `pre-push`
+   `check-fast` hook is the complementary half — it stops reds being *created*,
+   this stops them being *tolerated*.
+
+Only after CI is trustworthy does it make sense to spend on runners, queues or
+caches — those reduce the cost of a signal nobody currently reads.
 
 ## W1 — Generate the issue index
 
