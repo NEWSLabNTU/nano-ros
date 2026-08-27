@@ -275,8 +275,29 @@ fn a_cmake_workspace_gets_a_root_under_build_unlike_cargo() {
         "no absolute path (W3.c): {body}"
     );
 
+    // Two steps for cmake, and they are distinct: the CONFIGURE writes the
+    // build system, the HANDOFF builds it. They used to be one, and it was the
+    // configure — so `nros build` on a cmake workspace produced no binary at
+    // all. CMake cannot do both in one invocation at the 3.22 floor.
+    let cfg = plans[0].configure.as_ref().expect("configure").display();
+    assert!(cfg.starts_with("cmake -S build/posix-zenoh"), "{cfg}");
+    assert!(cfg.contains("-B build/posix-zenoh/cmake"), "{cfg}");
+
     let shown = plans[0].handoff.as_ref().expect("handoff").display();
-    assert!(shown.starts_with("cmake -S build/posix-zenoh"), "{shown}");
+    assert!(
+        shown.starts_with("cmake --build build/posix-zenoh/cmake"),
+        "the handoff must BUILD, not configure: {shown}"
+    );
+
+    // The cargo driver needs no configure; a stray one would mean the field is
+    // being set by shape rather than by need.
+    let tmp2 = tempfile::tempdir().unwrap();
+    fixture(tmp2.path());
+    let cargo_plans = plan_builds(&args(tmp2.path(), &["native"])).expect("plans");
+    assert!(
+        cargo_plans[0].configure.is_none(),
+        "cargo configures nothing"
+    );
 }
 
 #[test]

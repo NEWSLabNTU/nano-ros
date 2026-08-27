@@ -78,6 +78,17 @@ pub struct ResolvedBuild {
     /// The native command. `None` when stage 4 must run first and is not
     /// implemented for this driver yet.
     pub handoff: Option<Handoff>,
+    /// A configure that must run BEFORE the handoff, for drivers that need one.
+    ///
+    /// cmake is the only such driver: `cmake --build` on an unconfigured tree
+    /// fails, and configure+build is two invocations at our 3.22 floor
+    /// (`--workflow` is 3.25+). Stage 5 execs ONE command and cannot do both,
+    /// so the configure belongs to generation — which is what it is: writing
+    /// the build system next to the root that was just written.
+    ///
+    /// Kept on the plan rather than performed during planning so `plan_builds`
+    /// stays side-effect free and `--dry-run` can PRINT it. [`run`] performs it.
+    pub configure: Option<Handoff>,
 }
 
 /// Stages 1-4: everything up to the handoff, with NO side effects.
@@ -183,6 +194,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         }
 
         // ---- stage 4 ----------------------------------------------------
+        let mut cmake_configure: Option<Handoff> = None;
         let handoff = match driver {
             Driver::Cargo => {
                 // W3.b — generate the entry package. This is D4's headline
@@ -354,10 +366,16 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     .unwrap_or(&manifest_dir)
                     .display()
                     .to_string();
-                // Configure and build in one handoff: `cmake --build` on a
-                // fresh tree needs the configure first, and splitting them
-                // would need TWO execs — which stage 5 cannot do, since the
-                // first replaces the process.
+                // The configure. Its own step, not the handoff.
+                //
+                // The comment here used to say "configure and build in one
+                // handoff", and the args only ever configured — so `nros build`
+                // on a cmake workspace wrote a build system and produced no
+                // binary. CMake cannot do both in one invocation at our 3.22
+                // floor (`--workflow` is 3.25+), and stage 5 execs exactly one
+                // command, so the configure moves to generation where it
+                // belongs: it WRITES the build system, next to the root file
+                // this stage just wrote. [`run`] performs it before the exec.
                 let mut a = vec![
                     "-S".to_string(),
                     rel_src.clone(),
@@ -371,7 +389,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     a.push(format!("-DNROS_WS_PREAMBLE={}", preamble.display()));
                 }
                 a.extend(args.native_args.iter().cloned());
-                Some(Handoff::new("cmake", a).in_dir(&root))
+                cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
+                Some(
+                    Handoff::new(
+                        "cmake",
+                        vec!["--build".to_string(), format!("{rel_src}/cmake")],
+                    )
+                    .in_dir(&root),
+                )
             }
             Driver::West => {
                 // W5 — overlays reach Zephyr through EXTRA_CONF_FILE and
@@ -397,6 +422,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         };
 
         out.push(ResolvedBuild {
+            configure: cmake_configure,
             qualified: qual,
             board,
             platform,
@@ -430,8 +456,25 @@ pub fn run(args: Args) -> Result<()> {
             );
         };
         if args.dry_run {
+            if let Some(cfg) = &p.configure {
+                println!("{}", cfg.display());
+            }
             println!("{}", hand.display());
             continue;
+        }
+        // The configure, for drivers that need one (cmake). Runs HERE rather
+        // than during planning so `plan_builds` stays side-effect free — the
+        // property that makes `--dry-run` trivially correct instead of a second
+        // code path. It is a subprocess, not an exec: the exec below has to
+        // survive it.
+        if let Some(cfg) = &p.configure {
+            let st = cfg
+                .command()
+                .status()
+                .wrap_err_with(|| format!("running `{}`", cfg.display()))?;
+            if !st.success() {
+                eyre::bail!("configure failed: `{}` exited {}", cfg.display(), st);
+            }
         }
         // Never returns on success: this process BECOMES the build.
         let err = crate::builder::handoff::exec(hand).unwrap_err();

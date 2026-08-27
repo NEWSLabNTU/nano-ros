@@ -115,6 +115,28 @@ impl Handoff {
 ///
 /// The return type says so: an `Ok` value is unconstructible, so a caller
 /// cannot accidentally write code that assumes control comes back. Every
+/// The same command as a `std::process::Command`, for a step that must RETURN.
+///
+/// Stage 5 execs and never comes back, which is the guarantee RFC-0065 D1
+/// rests on. A driver that needs a configure FIRST (cmake: `cmake --build` on
+/// an unconfigured tree fails, and configure+build is two invocations at our
+/// 3.22 floor) needs to run one command and survive it. Same struct, so the
+/// configure a `--dry-run` prints is the configure that runs.
+impl Handoff {
+    #[must_use]
+    pub fn command(&self) -> std::process::Command {
+        let mut cmd = std::process::Command::new(&self.program);
+        cmd.args(&self.args);
+        if let Some(dir) = &self.cwd {
+            cmd.current_dir(dir);
+        }
+        for (k, v) in &self.env {
+            cmd.env(k, v);
+        }
+        cmd
+    }
+}
+
 /// return is an error that happened BEFORE the handover — a missing `cwd`, or
 /// a program `execvp` could not find.
 #[cfg(unix)]

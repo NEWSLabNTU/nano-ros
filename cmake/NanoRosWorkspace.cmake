@@ -210,9 +210,39 @@ endfunction()
 function(nano_ros_workspace)
     cmake_parse_arguments(_NRW
         "ORDER_FROM_DEPENDS"
-        "SYSTEM;BACKEND;PLATFORM;EDITION;NANO_ROS_ROOT"
+        "SYSTEM;BACKEND;PLATFORM;EDITION;NANO_ROS_ROOT;WORKSPACE_ROOT"
         "SUBDIRS"
         ${ARGN})
+
+    # Where the WORKSPACE is, as opposed to where this root happens to sit.
+    #
+    # phase-383 W10.a. Every hand-written root lives AT the workspace root, so
+    # `CMAKE_SOURCE_DIR` was both, and the code below used it for both. A
+    # GENERATED root does not: RFC-0065 D3/D8 put it under `build/<coord>/`,
+    # which made the bringup lookup search the build directory —
+    #
+    #   nano_ros_workspace: could not resolve the capability axes of SYSTEM
+    #   'demo_bringup': no bringup pkg named 'demo_bringup' in
+    #   .../examples/workspaces/c/build/posix-zenoh
+    #
+    # — the first configure of the first cmake workspace `nros build` tried.
+    #
+    # Defaulting to `CMAKE_SOURCE_DIR` keeps every hand-written root building
+    # exactly as before, so this is additive during the migration D13 sequences.
+    # SUBDIRS stay relative to THIS file (the generator writes them that way),
+    # so they deliberately keep using `CMAKE_SOURCE_DIR`.
+    if(NOT _NRW_WORKSPACE_ROOT)
+        set(_NRW_WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}")
+    endif()
+    # The generator writes it RELATIVE, so the generated file stays
+    # byte-identical across machines (W3.c). Resolve it here, against the
+    # calling list file, because everything downstream hands it to a tool that
+    # would otherwise resolve it against its OWN working directory: `nros config
+    # show --workspace ../..` reported `no bringup pkg named 'demo_bringup' in
+    # ../..`, the same failure one layer along. Absolute input is a no-op, so
+    # the hand-written default is unaffected.
+    get_filename_component(_NRW_WORKSPACE_ROOT "${_NRW_WORKSPACE_ROOT}"
+        ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
     # Defaults: backend = zenoh, platform = posix, ROS edition = humble.
     if(NOT _NRW_BACKEND)
@@ -296,7 +326,7 @@ function(nano_ros_workspace)
         set(_caps_cmake "${CMAKE_BINARY_DIR}/nros_capabilities.cmake")
         execute_process(
             COMMAND "${NROS_BIN}" config show
-                    --workspace "${CMAKE_SOURCE_DIR}"
+                    --workspace "${_NRW_WORKSPACE_ROOT}"
                     --system "${_NRW_SYSTEM}"
                     --format cmake
             OUTPUT_FILE "${_caps_cmake}"
@@ -318,7 +348,7 @@ function(nano_ros_workspace)
         nros_lower_system_features("${NANO_ROS_FEATURES}")
         # Re-configure when the declaration changes.
         set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-            "${CMAKE_SOURCE_DIR}/src/${_NRW_SYSTEM}/system.toml")
+            "${_NRW_WORKSPACE_ROOT}/src/${_NRW_SYSTEM}/system.toml")
         set(NANO_ROS_FEATURES "${NANO_ROS_FEATURES}" PARENT_SCOPE)
     endif()
 
@@ -330,7 +360,7 @@ function(nano_ros_workspace)
     if(_NRW_SYSTEM)
         include("${_nros_root}/cmake/nano_ros_workspace_metadata.cmake")
         nano_ros_workspace_metadata(SYSTEM "${_NRW_SYSTEM}"
-                                    WORKSPACE_ROOT "${CMAKE_SOURCE_DIR}")
+                                    WORKSPACE_ROOT "${_NRW_WORKSPACE_ROOT}")
     endif()
 
     # phase-348 W4 — ORDER_FROM_DEPENDS derives the add_subdirectory() order
@@ -349,14 +379,30 @@ function(nano_ros_workspace)
     # packages ALREADY state as `<exec_depend>talker_pkg</exec_depend>`, and
     # that a hand-maintained list can silently get wrong.
     if(_NRW_ORDER_FROM_DEPENDS AND _NRW_SUBDIRS)
-        _nano_ros_order_subdirs("${CMAKE_SOURCE_DIR}" "${_NRW_SUBDIRS}" _NRW_SUBDIRS)
+        _nano_ros_order_subdirs("${_NRW_WORKSPACE_ROOT}" "${_NRW_SUBDIRS}" _NRW_SUBDIRS)
     endif()
 
+    # A source dir OUTSIDE this build tree needs an explicit BINARY dir.
+    #
+    # phase-383 W10.a — the generated root sits in `build/<coord>/` and its
+    # SUBDIRS point back OUT (`../../src/talker_pkg`), which `add_subdirectory`
+    # rejects without a second argument. A hand-written root's subdirs are all
+    # below it, so this never came up. Derive the binary dir from the package
+    # NAME rather than the path, so `../../src/talker_pkg` does not become a
+    # binary tree with `..` components in it.
     foreach(_sub IN LISTS _NRW_SUBDIRS)
         if(IS_ABSOLUTE "${_sub}")
-            add_subdirectory("${_sub}")
+            set(_nrw_src "${_sub}")
         else()
-            add_subdirectory("${CMAKE_SOURCE_DIR}/${_sub}")
+            set(_nrw_src "${_NRW_WORKSPACE_ROOT}/${_sub}")
+        endif()
+        get_filename_component(_nrw_src "${_nrw_src}" ABSOLUTE)
+        string(FIND "${_nrw_src}" "${CMAKE_SOURCE_DIR}/" _nrw_below)
+        if(_nrw_below EQUAL 0)
+            add_subdirectory("${_nrw_src}")
+        else()
+            get_filename_component(_nrw_name "${_nrw_src}" NAME)
+            add_subdirectory("${_nrw_src}" "${CMAKE_BINARY_DIR}/pkg/${_nrw_name}")
         endif()
     endforeach()
 

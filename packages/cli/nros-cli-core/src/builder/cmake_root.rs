@@ -84,7 +84,17 @@ pub fn render(
         if spec.excluded.contains(&pkg.dir) || !pkg.dir.join("CMakeLists.txt").is_file() {
             continue;
         }
-        let rel = super::paths::relative_or_err(manifest_dir, &pkg.dir)?;
+        // Relative to the WORKSPACE, not to this file.
+        //
+        // `nano_ros_workspace` hands SUBDIRS to `nros ws order --workspace
+        // <root> --subdir <s>`, which resolves each against the workspace and
+        // walks it for `package.xml`. A hand-written root sits AT the workspace
+        // root, so the two bases coincide and nothing distinguished them; this
+        // root sits in `build/<coord>/`, and manifest-relative paths made the
+        // ordering tool look inside the build directory ("no package.xml under
+        // .../build/posix-zenoh"). Workspace-relative is also what a reader
+        // wants to see: `src/talker_pkg`, not `../../src/talker_pkg`.
+        let rel = super::paths::relative_or_err(&spec.workspace, &pkg.dir)?;
         subdirs.push((rel, pkg.name.clone()));
     }
     if subdirs.is_empty() {
@@ -152,7 +162,17 @@ pub fn render(
     }
     out.push('\n');
 
+    // Relative like every other path here, so the file stays byte-identical
+    // across machines (W3.c).
+    let ws_rel = super::paths::relative_or_err(manifest_dir, &spec.workspace)?;
     out.push_str("nano_ros_workspace(\n");
+    // WHERE THE WORKSPACE IS, which is not where this file is.
+    //
+    // A hand-written root lives at the workspace root, so `nano_ros_workspace`
+    // could read `CMAKE_SOURCE_DIR` for both. This one sits in `build/<coord>/`
+    // (RFC-0065 D3/D8), and without this the bringup lookup searches the build
+    // directory: "no bringup pkg named 'demo_bringup' in .../build/posix-zenoh".
+    out.push_str(&format!("    WORKSPACE_ROOT \"{ws_rel}\"\n"));
     out.push_str(&format!("    BACKEND  {}\n", spec.rmw));
     out.push_str(&format!("    PLATFORM \"{}\"\n", spec.platform));
     out.push_str(&format!("    SYSTEM   {}\n", spec.system));
@@ -235,7 +255,14 @@ mod tests {
         let root = tmp.path();
         let d = discovered(vec![pkg(root, "zzz_pkg", true), pkg(root, "aaa_pkg", true)]);
         let body = render(&d, &root.join("build/posix"), &spec(root)).expect("renders");
-        assert!(body.contains("\"../../src/aaa_pkg\""), "{body}");
+        // Workspace-relative, not manifest-relative — see the note at the
+        // computation. A hand-written root cannot tell the difference; this one
+        // can, and got it wrong.
+        assert!(body.contains("\"src/aaa_pkg\""), "{body}");
+        assert!(
+            !body.contains("\"../../src/aaa_pkg\""),
+            "subdirs must not be relative to the generated file: {body}"
+        );
         assert!(
             !body.contains(root.to_str().unwrap()),
             "no absolute path (W3.c): {body}"
