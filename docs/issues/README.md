@@ -51,6 +51,20 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-27): **#0840** (build) — four independent reds landed on main in ONE day
+across two commits, and every one was already covered by an existing gate: a lib test target that did
+not compile (all 69 tests in `nros-rmw-zenoh` dead), a file committed unformatted, a hardcoded cargo
+profile dir, and a hand-rolled `export RMW_IMPLEMENTATION=`. `just check` would have caught all four.
+So the defect was never a missing gate — nothing between the edit and the push asked whether any tier
+ran. Note this is a DIFFERENT shape from the two checks `pre-push` already carried: those catch
+defects that become true AT REBASE, invisible to anything the author ran earlier, and would not have
+caught any of these four. Fixed by running `just check-fast` from `pre-push` on branch pushes.
+`check-fast` and not `check` on purpose — `check` compiles, and a hook costing minutes gets
+`--no-verify`'d within a week, after which its presence implies a guarantee nobody has (CLAUDE.md's
+own lesson about the pre-phase-318 `just ci`). Measured 63–64 s idle, stable because the tier is
+buildless. Covers three of the four; the compile-tier one is deliberately out and the hook SAYS so on
+success rather than letting silence imply completeness. See `archived/0840-*`. (2026-08-27)
+
 Recently resolved (2026-08-27): **#0833** (build) — `just doctor` printed `[OK] rust-targets` on a
 host that could not configure the FreeRTOS C++ workspace lane at all. The target list existed TWICE
 as hand-authored copies — the installer (`just workspace rust-targets`) and the verifier (`just

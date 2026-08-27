@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Refuse to push (a) a duplicate issue id, or (b) a submodule pin that moved
-# backward.
+# Refuse to push (a) a duplicate issue id, (b) a submodule pin that moved
+# backward, or (c) anything the fast gate tier rejects.
 #
 # `scripts/reserve-issue-id.sh` stops two sessions from CHOOSING the same id.
 # This stops a duplicate from LANDING when the reservation was skipped, or when
@@ -109,6 +109,57 @@ if [ -x "$pins" ]; then
             exit 1
         fi
     done < "$hook_stdin"
+fi
+
+# (c) The fast gate tier — issue 0840.
+#
+# On 2026-08-27 four independent reds landed on main in one day, across two
+# commits, and EVERY one was already covered by an existing gate: a lib test
+# target that did not compile (69 tests dead), a file committed unformatted, a
+# hardcoded cargo profile directory, and a hand-rolled ROS env export. Nothing
+# between the edit and the push had asked whether any tier ran, so none of them
+# did.
+#
+# That is a different shape from the two checks above. Those catch defects that
+# become true AT REBASE, invisible to anything the author ran earlier. These
+# four were true in the author's own tree the whole time and simply went
+# unexamined — so what catches them is not a smarter re-check, it is running the
+# gates once at the last moment where refusing is still cheap.
+#
+# WHY `check-fast` AND NOT `check`: `check` also compiles (`check-build`), and a
+# pre-push hook costing minutes gets `--no-verify`'d within a week — after which
+# its presence implies a guarantee nobody has. That is CLAUDE.md's own lesson
+# about the pre-phase-318 `just ci`: an instruction nobody can afford gets
+# followed selectively, which is worse than a smaller one followed honestly.
+# `check-fast` is buildless and source-free, and covers three of the four reds.
+# The fourth needs the compile tier and is deliberately NOT covered here; the
+# hook says so rather than let its silence imply completeness.
+#
+# The whole recipe, not a curated subset: a gate list spelled out here would
+# drift from `check-fast` silently, which is the #282->#326 shape this repo
+# keeps paying for.
+if [ "${NROS_SKIP_PREPUSH_CHECKS:-}" = "1" ]; then
+    echo "pre-push: fast gates SKIPPED (NROS_SKIP_PREPUSH_CHECKS=1)." >&2
+elif ! command -v just >/dev/null 2>&1; then
+    # Never fail a push because the runner is missing — that is not evidence of
+    # a defect, and a hook that blocks on its own tooling gets removed.
+    echo "pre-push: \`just\` not on PATH — fast gates NOT run." >&2
+else
+    echo "pre-push: running \`just check-fast\` (issue 0840)." >&2
+    echo "          Bypass: git push --no-verify, or NROS_SKIP_PREPUSH_CHECKS=1" >&2
+    if ! (cd "$repo_root" && just check-fast); then
+        echo "" >&2
+        echo "pre-push: REFUSING to push — the fast gate tier is red." >&2
+        echo "" >&2
+        echo "  Fix the failure above and push again. If it is not yours, it came" >&2
+        echo "  in on the rebase: say so in the commit that fixes it." >&2
+        echo "" >&2
+        echo "  Emergency bypass:  git push --no-verify" >&2
+        exit 1
+    fi
+    echo "pre-push: fast gates green. NOTE this is the FAST tier only — it does" >&2
+    echo "          not compile, so a broken test target still gets through." >&2
+    echo "          Run the tier your change earns (RFC-0061): just ci / ci-matrix." >&2
 fi
 
 exit 0
