@@ -133,6 +133,52 @@ report through one figure.
 **W3 — per-subscriber wire sizing.** Lever 1. Requires W1 so the saving is
 measured rather than asserted.
 
+**Surveyed 2026-08-27. The mechanism is more built than this doc assumed, and
+the missing piece has a language reason.**
+
+What already exists, end to end: `rx_buffer_hint` on `TopicDesc` and on
+`rmw_subscription_options_t`; `alloc_payload_block(hint)` in the zenoh shim,
+which picks the large class when the hint exceeds
+`ZPICO_SUBSCRIBER_SIZE_THRESHOLD` (2048); and, from phase 380,
+`M::MAX_SERIALIZED_SIZE_XCDR1`/`_XCDR2` as PROVIDED consts computed from the
+schema, plus `size::bound_fits::<M>` which takes the larger of the two.
+
+What is missing is that **nothing sets the hint**. The only setter in the tree
+is one bench site; `rust_adapter` passes a literal `0`. So every real
+subscription takes the small class, and the large pool — 2 x 4 x 16384 =
+131,072 B, already reserved — sits unused.
+
+The cost of that shows up in the build error `create_subscription` raises when a
+type does not fit: *"Raise the knob to at least the type's bound."* That knob is
+GLOBAL. For a 4 KiB message type:
+
+| remedy | SMALL_PAYLOADS | delta |
+| --- | ---: | ---: |
+| today: raise `ZPICO_SUBSCRIBER_BUFFER_SIZE` 1024 -> 4096 | 8 x 4 x 4096 = 131,072 | **+98,304 B** |
+| route it to the large class instead | 8 x 4 x 1024 = 32,768 | **0** — the large pool is already there |
+
+And it is charged twice: `NROS_SUBSCRIPTION_BUFFER_SIZE` sizes the executor
+arena entry as well, so raising it grows every arena slot too.
+
+**Why the split is not one wave.** The arena entry is
+`SubInfoEntry<M, F, const RX_BUF: usize>`, and on stable Rust an associated
+const of a type parameter cannot be used as a const-generic argument
+(`error: generic parameters may not be used in const operations`, checked on
+edition 2024). So:
+
+- **W3a — route the zenoh block by the type's bound.** `rx_buffer_hint` is a
+  runtime `usize`, so `create_subscription::<M>` can pass
+  `max(XCDR1, XCDR2)` with no unstable feature. A type between the small size
+  and `ZPICO_SUBSCRIBER_LARGE_SIZE` stops being a build error and starts being
+  a large-class subscriber. Unbounded types keep the default: phase 380 is
+  explicit that `None` means "no bound exists", never "unknown" — do not size a
+  buffer from a fallback.
+- **W3b — arena sizing, and only codegen can do it.** At a generated call site
+  `M` is concrete, so codegen can emit the bound as the const-generic argument;
+  a generic library function cannot. That is the real reason the size class is
+  "decoupled from codegen" today, and it is a language constraint rather than an
+  oversight.
+
 **W4 — drop the network stack from serial images.** 27,760 B.
 
 **TRIAGE ANSWERED (2026-08-27): headers only.** zenoh-pico's Zephyr layer needs

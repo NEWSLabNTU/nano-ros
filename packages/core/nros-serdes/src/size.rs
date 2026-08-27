@@ -298,6 +298,32 @@ pub const fn buffer_fits<M: crate::schema::Message>(
     }
 }
 
+/// Phase 392 W3a — the type's own receive-buffer bound, or `None` when it has
+/// none.
+///
+/// The VALUE behind [`bound_fits`]'s predicate. A subscription that knows its
+/// type's bound can be routed to a size class instead of forcing the GLOBAL
+/// buffer knob up: `ZPICO_SUBSCRIBER_BUFFER_SIZE` multiplies across
+/// `MAX_SUBSCRIBERS x RING_DEPTH`, so raising it from 1024 to 4096 for one
+/// 4 KiB topic costs 98,304 bytes, while the large class that topic belongs in
+/// is already reserved and empty.
+///
+/// Takes the larger of the two encodings, for the same reason `bound_fits`
+/// does: the peer picks the encoding at runtime, so sizing from XCDR1 alone is
+/// a trap.
+///
+/// `None` means "no bound EXISTS", never "unknown" — phase 380 is explicit that
+/// a buffer must not be sized from a fallback. A caller routing by size class
+/// must treat `None` as "keep the default", not as "assume small".
+pub const fn max_serialized_bound<M: crate::schema::Message>() -> Option<usize> {
+    match (M::MAX_SERIALIZED_SIZE_XCDR1, M::MAX_SERIALIZED_SIZE_XCDR2) {
+        (Some(x1), Some(x2)) => Some(if x1 > x2 { x1 } else { x2 }),
+        // One encoding unbounded makes the type unbounded on the wire, because
+        // the peer chooses. Not `Some(the_other)`.
+        _ => None,
+    }
+}
+
 /// Phase 380 W4 — the BUILD-ASSERTION predicate: `false` only when the type is
 /// provably too large for `rx_buf`.
 ///
@@ -375,6 +401,64 @@ mod tests {
         write_fields(&mut w, fields);
         w.end_dheader(dh).unwrap();
         w.position()
+    }
+
+    /// Phase 392 W3a — `max_serialized_bound` is what routes a subscription to a
+    /// size class, so the two ways it can be wrong both cost real RAM or real
+    /// truncation: reporting the smaller encoding under-sizes the block the peer
+    /// may actually fill, and inventing a number for an unbounded type sizes a
+    /// buffer from a fallback, which phase 380 forbids in as many words.
+    struct BoundedMsg;
+    impl crate::schema::Message for BoundedMsg {
+        const TYPE_NAME: &'static str = "test/msg/BoundedMsg";
+        const FIELDS: &'static [Field] = &[
+            f("a", FieldType::Uint8),
+            f("b", FieldType::Uint64),
+            f("c", FieldType::Uint8),
+        ];
+    }
+
+    struct UnboundedMsg;
+    impl crate::schema::Message for UnboundedMsg {
+        const TYPE_NAME: &'static str = "test/msg/UnboundedMsg";
+        const FIELDS: &'static [Field] = &[f("s", FieldType::String)];
+    }
+
+    #[test]
+    fn max_serialized_bound_takes_the_larger_encoding() {
+        let x1 = <BoundedMsg as crate::schema::Message>::MAX_SERIALIZED_SIZE_XCDR1
+            .expect("bounded in xcdr1");
+        let x2 = <BoundedMsg as crate::schema::Message>::MAX_SERIALIZED_SIZE_XCDR2
+            .expect("bounded in xcdr2");
+        let got = max_serialized_bound::<BoundedMsg>().expect("bounded type has a bound");
+        assert_eq!(
+            got,
+            x1.max(x2),
+            "must take the LARGER encoding — the peer picks it at runtime, so \
+             sizing from one alone is the trap phase 380 documents"
+        );
+        assert!(
+            bound_fits::<BoundedMsg>(got),
+            "the value must satisfy the predicate it is derived from"
+        );
+        assert!(
+            !bound_fits::<BoundedMsg>(got - 1),
+            "one byte under the bound must NOT fit, or the value is not tight"
+        );
+    }
+
+    #[test]
+    fn max_serialized_bound_is_none_for_an_unbounded_type() {
+        assert_eq!(
+            max_serialized_bound::<UnboundedMsg>(),
+            None,
+            "an unbounded type has NO bound; returning a number here would let a \
+             caller size a buffer from a fallback"
+        );
+        assert!(
+            bound_fits::<UnboundedMsg>(1),
+            "unbounded still passes the BUILD assertion — nothing is provable"
+        );
     }
 
     fn write_fields(w: &mut CdrWriter<'_>, fields: &[Field]) {
