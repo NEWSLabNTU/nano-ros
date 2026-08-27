@@ -33,6 +33,35 @@ typedef struct {
     int fd;
 } nros_esp_socket_t;
 
+/* ---- Endpoint provenance (issue 0811) ----
+ *
+ * `iptcp` has two origins and they do NOT share an allocator:
+ *
+ *   - `lwip_getaddrinfo()` — nodes come from lwIP's `MEMP_NETDB` pool,
+ *     and `lwip_freeaddrinfo` returns them with `memp_free`.
+ *   - `nros_platform_udp_mcast_open()` below, which hand-builds a
+ *     one-element addrinfo out of `nros_platform_alloc` (heap_caps via
+ *     ESP-IDF's libc `malloc`; RFC-0034 D6 says spell it as the funnel).
+ *
+ * `memp_free(MEMP_NETDB, p)` on a heap pointer pushes foreign memory
+ * onto lwIP's fixed-element free list: silent corruption of the netdb
+ * pool, not a survivable mismatch.
+ *
+ * Both endpoints are the same C type, so the free path cannot infer the
+ * allocator from the type. Tag the locally built node by pointing its
+ * `ai_canonname` at the address of this object — a value no resolver can
+ * produce — and dispatch on it in `..._free_endpoint`.
+ *
+ * The local node is owned by `free_endpoint` ALONE, mirroring
+ * `create_endpoint`/`free_endpoint`. `mcast_close` used to free it,
+ * which made the caller's mandatory close-then-free sequence
+ * (zenoh-pico `_z_link_clear`: `_z_close_udp_multicast` then
+ * `_z_free_endpoint_udp(&lep)`) a use-after-free AND a cross-allocator
+ * free. `mcast_close` receives `lep` by value, so it cannot null the
+ * caller's copy to suppress the second free — moving the ownership is
+ * the only fix available on this side of the ABI. */
+static char nros_local_endpoint_tag;
+
 #define TRANSPORT_LEASE_MS 10000u
 
 static void set_rcv_timeout(int fd, uint32_t timeout_ms) {
@@ -72,7 +101,14 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     if (ep_raw == NULL) return;
     nros_esp_endpoint_t *ep = (nros_esp_endpoint_t *) ep_raw;
     if (ep->iptcp != NULL) {
-        lwip_freeaddrinfo(ep->iptcp);
+        if (ep->iptcp->ai_canonname == &nros_local_endpoint_tag) {
+            /* Built by mcast_open out of the platform funnel — return it
+             * to the funnel, never to lwIP's MEMP_NETDB pool. */
+            nros_platform_dealloc(ep->iptcp->ai_addr);
+            nros_platform_dealloc(ep->iptcp);
+        } else {
+            lwip_freeaddrinfo(ep->iptcp);
+        }
         ep->iptcp = NULL;
     }
 }
@@ -302,22 +338,28 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     socklen_t bound_len = (socklen_t) sizeof(addr);
     (void) lwip_getsockname(fd, (struct sockaddr *) &addr, &bound_len);
 
-    struct sockaddr *lsockaddr = (struct sockaddr *) malloc(sizeof(addr));
+    struct sockaddr *lsockaddr =
+        (struct sockaddr *) nros_platform_alloc(sizeof(addr));
     if (lsockaddr == NULL) {
         lwip_close(fd); sock->fd = -1; return -1;
     }
     memcpy(lsockaddr, &addr, sizeof(addr));
 
-    struct addrinfo *laddr = (struct addrinfo *) calloc(1, sizeof(struct addrinfo));
+    struct addrinfo *laddr =
+        (struct addrinfo *) nros_platform_alloc(sizeof(struct addrinfo));
     if (laddr == NULL) {
-        free(lsockaddr); lwip_close(fd); sock->fd = -1; return -1;
+        nros_platform_dealloc(lsockaddr);
+        lwip_close(fd); sock->fd = -1; return -1;
     }
+    memset(laddr, 0, sizeof(*laddr));
     laddr->ai_flags    = 0;
     laddr->ai_family   = ai->ai_family;
     laddr->ai_socktype = ai->ai_socktype;
     laddr->ai_protocol = ai->ai_protocol;
     laddr->ai_addrlen  = (socklen_t) sizeof(addr);
     laddr->ai_addr     = lsockaddr;
+    /* Issue 0811 — mark the funnel provenance for free_endpoint. */
+    laddr->ai_canonname = &nros_local_endpoint_tag;
     lep->iptcp = laddr;
     return 0;
 }
@@ -364,7 +406,10 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
     nros_esp_socket_t *sockrecv = (nros_esp_socket_t *) sockrecv_raw;
     nros_esp_socket_t *socksend = (nros_esp_socket_t *) socksend_raw;
     const nros_esp_endpoint_t *rep = (const nros_esp_endpoint_t *) rep_raw;
-    const nros_esp_endpoint_t *lep = (const nros_esp_endpoint_t *) lep_raw;
+    /* Issue 0811 — `lep` is NOT freed here. The caller always follows
+     * close with `free_endpoint(lep)`, which owns the funnel memory and
+     * knows which allocator it came from. */
+    (void) lep_raw;
 
     if (sockrecv != NULL && sockrecv->fd >= 0 && rep != NULL && rep->iptcp != NULL) {
         struct addrinfo *ai = rep->iptcp;
@@ -374,11 +419,6 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
         (void) lwip_setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                                &mreq, sizeof(mreq));
-    }
-    if (lep != NULL && lep->iptcp != NULL) {
-        struct addrinfo *laddr = lep->iptcp;
-        free(laddr->ai_addr);
-        free(laddr);
     }
     if (sockrecv != NULL && sockrecv->fd >= 0) {
         lwip_close(sockrecv->fd); sockrecv->fd = -1;

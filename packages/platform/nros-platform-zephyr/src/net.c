@@ -36,6 +36,33 @@ typedef struct {
     int fd;
 } nros_zephyr_socket_t;
 
+/* ---- Endpoint provenance (issue 0811) ----
+ *
+ * `iptcp` has two origins and they do NOT share a heap:
+ *
+ *   - `zsock_getaddrinfo()` — the node comes from picolibc `calloc`
+ *     (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE`), and `zsock_freeaddrinfo`
+ *     is a plain libc `free()` of the head block (or, under
+ *     `CONFIG_NET_SOCKETS_OFFLOAD`, a vendor hook we cannot model).
+ *   - `nros_platform_udp_mcast_open()` below, which hand-builds a
+ *     one-element addrinfo out of `nros_platform_alloc` — `k_malloc`,
+ *     i.e. `_system_heap` (`CONFIG_HEAP_MEM_POOL_SIZE`).
+ *
+ * Both endpoints are the same C type, so the free path cannot infer
+ * the heap from the type. Tag the locally built node by pointing its
+ * `ai_canonname` at the address of this object — a value no resolver
+ * can produce — and dispatch on it in `..._free_endpoint`.
+ *
+ * The local node is owned by `free_endpoint` ALONE, mirroring
+ * `create_endpoint`/`free_endpoint`. `mcast_close` used to free it,
+ * which made the caller's mandatory close-then-free sequence
+ * (zenoh-pico `_z_link_clear`: `_z_close_udp_multicast` then
+ * `_z_free_endpoint_udp(&lep)`) a use-after-free AND a cross-heap
+ * free. `mcast_close` receives `lep` by value, so it cannot null the
+ * caller's copy to suppress the second free — moving the ownership is
+ * the only fix available on this side of the ABI. */
+static char nros_local_endpoint_tag;
+
 #define TRANSPORT_LEASE_MS 10000u
 
 static void set_rcv_timeout(int fd, uint32_t timeout_ms) {
@@ -88,7 +115,14 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     if (ep_raw == NULL) return;
     nros_zephyr_endpoint_t *ep = (nros_zephyr_endpoint_t *) ep_raw;
     if (ep->iptcp != NULL) {
-        zsock_freeaddrinfo(ep->iptcp);
+        if (ep->iptcp->ai_canonname == &nros_local_endpoint_tag) {
+            /* Built by mcast_open out of the platform funnel — return it
+             * to the funnel, never to the socket layer's allocator. */
+            nros_platform_dealloc(ep->iptcp->ai_addr);
+            nros_platform_dealloc(ep->iptcp);
+        } else {
+            zsock_freeaddrinfo(ep->iptcp);
+        }
         ep->iptcp = NULL;
     }
 }
@@ -351,6 +385,8 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     laddr->ai_protocol = ai->ai_protocol;
     laddr->ai_addrlen  = (socklen_t) sizeof(addr);
     laddr->ai_addr     = lsockaddr;
+    /* Issue 0811 — mark the funnel provenance for free_endpoint. */
+    laddr->ai_canonname = &nros_local_endpoint_tag;
     lep->iptcp = laddr;
     return 0;
 }
@@ -420,7 +456,10 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
     nros_zephyr_socket_t *sockrecv = (nros_zephyr_socket_t *) sockrecv_raw;
     nros_zephyr_socket_t *socksend = (nros_zephyr_socket_t *) socksend_raw;
     const nros_zephyr_endpoint_t *rep = (const nros_zephyr_endpoint_t *) rep_raw;
-    const nros_zephyr_endpoint_t *lep = (const nros_zephyr_endpoint_t *) lep_raw;
+    /* Issue 0811 — `lep` is NOT freed here. The caller always follows
+     * close with `free_endpoint(lep)`, which owns the funnel memory and
+     * knows which allocator it came from. */
+    (void) lep_raw;
 
     if (sockrecv != NULL && sockrecv->fd >= 0 && rep != NULL && rep->iptcp != NULL) {
         struct zsock_addrinfo *ai = rep->iptcp;
@@ -439,11 +478,6 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
         (void) zsock_setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                                 &mreq, sizeof(mreq));
 #endif
-    }
-    if (lep != NULL && lep->iptcp != NULL) {
-        struct zsock_addrinfo *laddr = lep->iptcp;
-        nros_platform_dealloc(laddr->ai_addr);
-        nros_platform_dealloc(laddr);
     }
     if (sockrecv != NULL && sockrecv->fd >= 0) {
         zsock_close(sockrecv->fd); sockrecv->fd = -1;

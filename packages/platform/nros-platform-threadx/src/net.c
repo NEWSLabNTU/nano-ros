@@ -37,6 +37,41 @@ typedef struct {
     INT fd;
 } nros_threadx_socket_t;
 
+/* ---- Endpoint provenance (issue 0811) ----
+ *
+ * `iptcp` has two origins and they do NOT share an allocator:
+ *
+ *   - `nx_bsd_getaddrinfo()` — on real NetX Duo the nodes come from the
+ *     addrinfo BLOCK pool and `nx_bsd_freeaddrinfo` returns them with
+ *     `tx_block_release`; against the host shim
+ *     (`packages/drivers/net/nsos-netx`) they are `calloc`/`strdup` and
+ *     the free is libc `free`. Either way it is not our allocator.
+ *   - `nros_platform_udp_mcast_open()` below, which hand-builds a
+ *     one-element addrinfo out of `nros_platform_alloc` — a
+ *     `tx_byte_allocate` BYTE pool.
+ *
+ * `tx_block_release` on a byte-pool pointer treats the preceding word
+ * as a block header and links the memory into the block pool's free
+ * list: silent heap corruption, not a survivable mismatch. Both
+ * `freeaddrinfo` variants also release `ai_canonname`, which is the
+ * field the tag below occupies — one more reason a locally built node
+ * must never reach them.
+ *
+ * Both endpoints are the same C type, so the free path cannot infer
+ * the pool from the type. Tag the locally built node by pointing its
+ * `ai_canonname` at the address of this object — a value no resolver
+ * can produce — and dispatch on it in `..._free_endpoint`.
+ *
+ * The local node is owned by `free_endpoint` ALONE, mirroring
+ * `create_endpoint`/`free_endpoint`. `mcast_close` used to free it,
+ * which made the caller's mandatory close-then-free sequence
+ * (zenoh-pico `_z_link_clear`: `_z_close_udp_multicast` then
+ * `_z_free_endpoint_udp(&lep)`) a use-after-free AND a cross-pool
+ * free. `mcast_close` receives `lep` by value, so it cannot null the
+ * caller's copy to suppress the second free — moving the ownership is
+ * the only fix available on this side of the ABI. */
+static CHAR nros_local_endpoint_tag;
+
 #define TRANSPORT_LEASE_MS 10000u
 
 static void set_rcv_timeout(INT fd, uint32_t timeout_ms) {
@@ -90,7 +125,14 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     if (ep_raw == NULL) return;
     nros_threadx_endpoint_t *ep = (nros_threadx_endpoint_t *) ep_raw;
     if (ep->iptcp != NULL) {
-        nx_bsd_freeaddrinfo(ep->iptcp);
+        if (ep->iptcp->ai_canonname == &nros_local_endpoint_tag) {
+            /* Built by mcast_open out of the platform funnel (byte pool) —
+             * return it to the funnel, never to NetX's block pool. */
+            nros_platform_dealloc(ep->iptcp->ai_addr);
+            nros_platform_dealloc(ep->iptcp);
+        } else {
+            nx_bsd_freeaddrinfo(ep->iptcp);
+        }
         ep->iptcp = NULL;
     }
 }
@@ -346,6 +388,8 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     laddr->ai_protocol = ai->ai_protocol;
     laddr->ai_addrlen  = (INT) sizeof(addr);
     laddr->ai_addr     = lsockaddr;
+    /* Issue 0811 — mark the funnel provenance for free_endpoint. */
+    laddr->ai_canonname = &nros_local_endpoint_tag;
     lep->iptcp = laddr;
     return 0;
 }
@@ -402,7 +446,10 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
     nros_threadx_socket_t *sockrecv = (nros_threadx_socket_t *) sockrecv_raw;
     nros_threadx_socket_t *socksend = (nros_threadx_socket_t *) socksend_raw;
     const nros_threadx_endpoint_t *rep = (const nros_threadx_endpoint_t *) rep_raw;
-    const nros_threadx_endpoint_t *lep = (const nros_threadx_endpoint_t *) lep_raw;
+    /* Issue 0811 — `lep` is NOT freed here. The caller always follows
+     * close with `free_endpoint(lep)`, which owns the funnel memory and
+     * knows which allocator it came from. */
+    (void) lep_raw;
 
     if (sockrecv != NULL && sockrecv->fd >= 0 && rep != NULL && rep->iptcp != NULL) {
         struct nx_bsd_addrinfo *ai = rep->iptcp;
@@ -413,11 +460,6 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
         mreq.imr_interface.s_addr = 0;
         (void) nx_bsd_setsockopt(sockrecv->fd, IPPROTO_IP, IP_DROP_MEMBERSHIP,
                                  &mreq, sizeof(mreq));
-    }
-    if (lep != NULL && lep->iptcp != NULL) {
-        struct nx_bsd_addrinfo *laddr = lep->iptcp;
-        nros_platform_dealloc(laddr->ai_addr);
-        nros_platform_dealloc(laddr);
     }
     if (sockrecv != NULL && sockrecv->fd >= 0) {
         (void) nx_bsd_soc_close(sockrecv->fd); sockrecv->fd = -1;

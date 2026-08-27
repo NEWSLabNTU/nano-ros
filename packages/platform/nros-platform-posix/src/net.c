@@ -47,6 +47,36 @@ typedef struct {
     int fd;
 } nros_posix_socket_t;
 
+/* ---- Endpoint provenance (issue 0811) ----
+ *
+ * `iptcp` has two origins:
+ *
+ *   - `getaddrinfo()` — owned by libc, released with `freeaddrinfo`,
+ *     which also frees `ai_addr`, `ai_canonname` and the `ai_next`
+ *     chain in one call.
+ *   - `nros_platform_udp_mcast_open()` below, which hand-builds a
+ *     one-element addrinfo out of `nros_platform_alloc` (the funnel;
+ *     `malloc` on this port, `k_malloc` / `pvPortMalloc` / a ThreadX
+ *     byte pool on the RTOS ports that share this file's shape).
+ *
+ * Both endpoints are the same C type, so the free path cannot infer the
+ * allocator from the type — and on the RTOS ports the two allocators are
+ * genuinely different heaps (see the sibling `net.c` headers). Tag the
+ * locally built node by pointing its `ai_canonname` at the address of
+ * this object — a value no resolver can produce — and dispatch on it in
+ * `..._free_endpoint`.
+ *
+ * The local node is owned by `free_endpoint` ALONE, mirroring
+ * `create_endpoint`/`free_endpoint`. `mcast_close` used to free it,
+ * which made the caller's mandatory close-then-free sequence
+ * (zenoh-pico `_z_link_clear`: `_z_close_udp_multicast` then
+ * `_z_free_endpoint_udp(&lep)`) a use-after-free — and, once
+ * `freeaddrinfo` is reached with a hand-built node, a free of memory
+ * libc never handed out. `mcast_close` receives `lep` by value, so it
+ * cannot null the caller's copy to suppress the second free — moving the
+ * ownership is the only fix available on this side of the ABI. */
+static char nros_local_endpoint_tag;
+
 /* zenoh-pico's lease used as SO_LINGER fallback. */
 #define NROS_POSIX_TRANSPORT_LEASE_MS 10000u
 
@@ -109,7 +139,14 @@ void nros_platform_tcp_free_endpoint(void *ep_raw) {
     if (ep_raw == NULL) return;
     nros_posix_endpoint_t *ep = (nros_posix_endpoint_t *) ep_raw;
     if (ep->iptcp != NULL) {
-        freeaddrinfo(ep->iptcp);
+        if (ep->iptcp->ai_canonname == &nros_local_endpoint_tag) {
+            /* Built by mcast_open out of the platform funnel — return it
+             * to the funnel, never to libc's `freeaddrinfo`. */
+            nros_platform_dealloc(ep->iptcp->ai_addr);
+            nros_platform_dealloc(ep->iptcp);
+        } else {
+            freeaddrinfo(ep->iptcp);
+        }
         ep->iptcp = NULL;
     }
 }
@@ -361,7 +398,10 @@ typedef struct {
 
 /* Walk the host's interfaces looking for one whose name matches
  * `iface` and whose address family matches `sa_family`. Returns a
- * malloc'd sockaddr (callee frees with libc free) or NULL.
+ * sockaddr allocated from the platform funnel (callee releases it with
+ * `nros_platform_dealloc`) or NULL. Issue 0811 — funnel, not libc
+ * `malloc`, because the pointer ends up as a locally built endpoint's
+ * `ai_addr` and is released on the `free_endpoint` path.
  * Mirrors the Rust `get_ip_from_iface`.
  *
  * Phase 127.B.5: `iface == NULL` is the common DDS SPDP path — the
@@ -398,7 +438,7 @@ static struct sockaddr *get_ip_from_iface(const uint8_t *iface,
         else if (sa_family == AF_INET6) size = sizeof(struct sockaddr_in6);
         else continue;
 
-        result = (struct sockaddr *) malloc(size);
+        result = (struct sockaddr *) nros_platform_alloc(size);
         if (result != NULL) {
             memcpy(result, it->ifa_addr, size);
             addrlen = (socklen_t) size;
@@ -426,12 +466,12 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     if (lsockaddr == NULL) return -1;
 
     int fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-    if (fd < 0) { free(lsockaddr); return -1; }
+    if (fd < 0) { nros_platform_dealloc(lsockaddr); return -1; }
     sock->fd = fd;
     set_recv_timeout_ms(fd, timeout_ms);
 
     if (bind(fd, lsockaddr, addrlen) < 0) {
-        close(fd); free(lsockaddr); sock->fd = -1; return -1;
+        close(fd); nros_platform_dealloc(lsockaddr); sock->fd = -1; return -1;
     }
 
     /* Retrieve the kernel-assigned port (in-place update of lsockaddr). */
@@ -453,16 +493,20 @@ int8_t nros_platform_udp_mcast_open(void *sock_raw, const void *endpoint,
     /* Wrap the bound local sockaddr in an addrinfo and stash it in
      * `lep` so the caller can use the local address as the read
      * endpoint identifier (matches the Rust impl's lifetime model). */
-    struct addrinfo *laddr = (struct addrinfo *) calloc(1, sizeof(struct addrinfo));
+    struct addrinfo *laddr =
+        (struct addrinfo *) nros_platform_alloc(sizeof(struct addrinfo));
     if (laddr == NULL) {
-        close(fd); free(lsockaddr); sock->fd = -1; return -1;
+        close(fd); nros_platform_dealloc(lsockaddr); sock->fd = -1; return -1;
     }
+    memset(laddr, 0, sizeof(*laddr));
     laddr->ai_flags    = 0;
     laddr->ai_family   = ai->ai_family;
     laddr->ai_socktype = ai->ai_socktype;
     laddr->ai_protocol = ai->ai_protocol;
     laddr->ai_addrlen  = addrlen;
     laddr->ai_addr     = lsockaddr;
+    /* Issue 0811 — mark the funnel provenance for free_endpoint. */
+    laddr->ai_canonname = &nros_local_endpoint_tag;
     lep->iptcp = laddr;
     return 0;
 }
@@ -490,7 +534,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
     if (lsockaddr == NULL) return -1;
 
     int fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-    if (fd < 0) { free(lsockaddr); return -1; }
+    if (fd < 0) { nros_platform_dealloc(lsockaddr); return -1; }
     sock->fd = fd;
     set_recv_timeout_ms(fd, timeout_ms);
     set_int_option(fd, SOL_SOCKET, SO_REUSEADDR, 1);
@@ -514,7 +558,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         bind_rc = bind(fd, (struct sockaddr *) &addr, sizeof(addr));
     }
     if (bind_rc < 0) {
-        close(fd); free(lsockaddr); sock->fd = -1; return -1;
+        close(fd); nros_platform_dealloc(lsockaddr); sock->fd = -1; return -1;
     }
 
     /* Join the multicast group on the chosen interface. */
@@ -523,7 +567,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         struct ip_mreq mreq;
         memset(&mreq, 0, sizeof(mreq));
         if (inet_pton(AF_INET, (const char *) join, &mreq.imr_multiaddr) != 1) {
-            close(fd); free(lsockaddr); sock->fd = -1; return -1;
+            close(fd); nros_platform_dealloc(lsockaddr); sock->fd = -1; return -1;
         }
         mreq.imr_interface = ((const struct sockaddr_in *) lsockaddr)->sin_addr;
         join_rc = setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
@@ -533,7 +577,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
         struct ipv6_mreq mreq;
         memset(&mreq, 0, sizeof(mreq));
         if (inet_pton(AF_INET6, (const char *) join, &mreq.ipv6mr_multiaddr) != 1) {
-            close(fd); free(lsockaddr); sock->fd = -1; return -1;
+            close(fd); nros_platform_dealloc(lsockaddr); sock->fd = -1; return -1;
         }
         mreq.ipv6mr_interface = if_nametoindex((const char *) iface);
         join_rc = setsockopt(fd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP,
@@ -543,7 +587,7 @@ int8_t nros_platform_udp_mcast_listen(void *sock_raw, const void *endpoint,
 #endif
     }
 
-    free(lsockaddr);
+    nros_platform_dealloc(lsockaddr);
     if (join_rc < 0) {
         close(fd); sock->fd = -1; return -1;
     }
@@ -555,7 +599,10 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
     nros_posix_socket_t *sockrecv = (nros_posix_socket_t *) sockrecv_raw;
     nros_posix_socket_t *socksend = (nros_posix_socket_t *) socksend_raw;
     const nros_posix_endpoint_t *rep = (const nros_posix_endpoint_t *) rep_raw;
-    const nros_posix_endpoint_t *lep = (const nros_posix_endpoint_t *) lep_raw;
+    /* Issue 0811 — `lep` is NOT freed here. The caller always follows
+     * close with `free_endpoint(lep)`, which owns the funnel memory and
+     * knows which allocator it came from. */
+    (void) lep_raw;
 
     /* Drop multicast membership on sockrecv before closing. */
     if (sockrecv != NULL && sockrecv->fd >= 0 && rep != NULL && rep->iptcp != NULL) {
@@ -578,13 +625,6 @@ void nros_platform_udp_mcast_close(void *sockrecv_raw, void *socksend_raw,
                               &mreq, sizeof(mreq));
 #endif
         }
-    }
-
-    /* Free the local-endpoint addrinfo allocated by mcast_open. */
-    if (lep != NULL && lep->iptcp != NULL) {
-        struct addrinfo *laddr = lep->iptcp;
-        free(laddr->ai_addr);
-        free(laddr);
     }
 
     if (sockrecv != NULL && sockrecv->fd >= 0) {
