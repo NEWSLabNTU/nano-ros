@@ -157,7 +157,7 @@ pub mod node_metadata;
 ///
 /// Gated on `rmw-cffi`; the underlying [`Executor`] is only present
 /// when an RMW backend is linked.
-#[cfg(feature = "rmw-cffi")]
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub mod node_runtime;
 
 /// Phase 212.L.5 — top-level init API.
@@ -248,7 +248,7 @@ pub use node_metadata::{CallbackId, EntityId, NodeId};
 // and match against the `Callback<'_>` delivered to
 // `ExecutableNode::on_callback`.
 pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
-#[cfg(feature = "rmw-cffi")]
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub use node_runtime::{
     ExecutorError,
     ExecutorNodeRuntime,
