@@ -332,20 +332,20 @@ static const nros_rmw_vtable_t MY_RMW = {
     .drive_io            = my_drive_io,
     .create_publisher    = my_create_publisher,
     .destroy_publisher   = my_destroy_publisher,
-    .publish_raw         = my_publish_raw,
+    .publish         = my_publish_raw,
     .create_subscription = my_create_subscription,
     .destroy_subscription = my_destroy_subscription,
-    .try_recv_raw        = my_try_recv_raw,
+    .take        = my_try_recv_raw,
     .has_data            = my_has_data,
     .create_service      = my_create_service,
     .destroy_service     = my_destroy_service,
-    .try_recv_request    = my_try_recv_request,
+    .take_request    = my_try_recv_request,
     .has_request         = my_has_request,
-    .send_reply          = my_send_reply,
+    .send_response          = my_send_reply,
     .create_client       = my_create_client,
     .destroy_client      = my_destroy_client,
-    .send_request_raw    = my_send_request_raw,
-    .try_recv_reply_raw  = my_try_recv_reply_raw,
+    .send_request    = my_send_request_raw,
+    .take_response  = my_try_recv_reply_raw,
 };
 ```
 
@@ -376,13 +376,13 @@ allowance. The C vtable inherits the same rules:
   pointers must be safe to invoke from any executor thread.
 - `drive_io` may block up to `timeout_ms`; it must not hold
   application-visible locks across the wait.
-- `publish_raw`, `try_recv_raw`, and `send_reply` may run concurrently
+- `publish`, `take`, and `send_response` may run concurrently
   from different executor threads — your backend handles serialisation.
-- `try_recv_raw`, `try_recv_request`, and `try_recv_reply_raw` are
+- `take`, `take_request`, and `take_response` are
   non-blocking: return `0` / `NROS_RMW_RET_NO_DATA` if nothing is
   ready. The executor will retry after `drive_io`.
 - There is no blocking client slot (phase-301 deleted the deprecated
-  `call_raw`): `send_request_raw` + `try_recv_reply_raw` is the one
+  `call_raw`): `send_request` + `take_response` is the one
   request/reply path; the executor drives the wait.
 
 All strings are null-terminated and borrowed (caller owns the

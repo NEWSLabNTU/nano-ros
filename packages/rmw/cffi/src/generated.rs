@@ -226,7 +226,7 @@ pub struct rmw_subscription_t {
     #[doc = " Opaque backend state. NULL if creation failed."]
     pub backend_data: *mut core::ffi::c_void,
 }
-#[doc = " Service entity (phase-301: renamed from `service_server` to the upstream `rmw_service_t` term).\n\n Service entities have no QoS in the nros subset (the upstream\n `rmw_qos_profile_services_default` distinction does not generalise\n across non-DDS backends — see book `concepts/ros2-comparison.md`).\n\n No `can_loan_messages` field — service request/reply currently\n always goes through `try_recv_request` / `send_reply` byte-buffer\n APIs. If a future backend wants service-side lending, the\n `_reserved[8]` block accommodates the bool + 7 padding bytes\n without an ABI break."]
+#[doc = " Service entity (phase-301: renamed from `service_server` to the upstream `rmw_service_t` term).\n\n Service entities have no QoS in the nros subset (the upstream\n `rmw_qos_profile_services_default` distinction does not generalise\n across non-DDS backends — see book `concepts/ros2-comparison.md`).\n\n No `can_loan_messages` field — service request/reply currently\n always goes through `take_request` / `send_response` byte-buffer\n APIs. If a future backend wants service-side lending, the\n `_reserved[8]` block accommodates the bool + 7 padding bytes\n without an ABI break."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_service_t {

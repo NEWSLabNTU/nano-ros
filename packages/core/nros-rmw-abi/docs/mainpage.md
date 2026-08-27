@@ -58,17 +58,17 @@ The vtable is a struct of function pointers grouped by entity (see
   the executor's I/O drive call; it must dispatch any pending
   receive/send work and return within the given timeout.
 - **Publisher** — `create_publisher`, `destroy_publisher`,
-  `publish_raw`. Raw payloads are CDR-encoded by the upper layer.
+  `publish`. Raw payloads are CDR-encoded by the upper layer.
 - **Subscription** — `create_subscription`, `destroy_subscription`,
   `take`, `has_data`. `take` is non-blocking; report `taken = false`
   with `NROS_RMW_RET_OK` when no data is ready (phase 376 W3.d
   retired the `NROS_RMW_RET_NO_DATA` sentinel here — see below).
 - **Service** — `create_service`, `destroy_service`,
-  `take_request`, `has_request`, `send_reply`. The `seq_out`
-  parameter on `try_recv_request` carries the request sequence number
-  forwarded back to `send_reply`.
+  `take_request`, `has_request`, `send_response`. The `seq_out`
+  parameter on `take_request` carries the request sequence number
+  forwarded back to `send_response`.
 - **Client** — `create_client`, `destroy_client`,
-  `send_request_raw`, `take_response` (non-blocking pair; the
+  `send_request`, `take_response` (non-blocking pair; the
   executor drives I/O between them — there is no blocking call slot).
 
 ## Return-value conventions
@@ -116,10 +116,10 @@ the failure site through the platform's `printk` equivalent.
   pointers must be safe to invoke from any executor thread.
 - `drive_io` may block up to `timeout_ms`; it must not hold
   application locks across the wait.
-- `publish_raw`, `take`, and `send_reply` may run concurrently
+- `publish`, `take`, and `send_response` may run concurrently
   from different threads — the backend is responsible for any
   required serialisation.
-- `send_request_raw` / `take_response` are non-blocking; the
+- `send_request` / `take_response` are non-blocking; the
   executor drives I/O between them.
 
 ## See also

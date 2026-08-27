@@ -16,7 +16,7 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 > types are now `rmw_subscription_t` / `rmw_service_t` /
 > `rmw_client_t`, the session slots are `create_session` /
 > `destroy_session`, and the deprecated blocking `call_raw` slot is
-> deleted (`send_request_raw` + `try_recv_reply_raw` is the one
+> deleted (`send_request` + `take_response` is the one
 > request/reply path). Transport hints (`tx_express`,
 > `rx_buffer_hint`) moved out of `rmw_qos_profile_t` into per-create
 > options structs. This page uses the new names throughout.
@@ -627,8 +627,8 @@ generate every event:
 | Backend | Liveliness | Deadline | Message lost |
 |---------|-----------|----------|--------------|
 | Cyclone DDS | 🟡 Not wired through nano-ros events yet | 🟡 Not wired yet | 🟡 Not wired yet |
-| XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | 🟡 Sub: shim-side clock check on `try_recv_raw`; pub: shim-side check on `publish_raw`. `LivelinessChanged` / `LivelinessLost` not feasible. | ❌ `topic_callback` carries no per-sample sequence |
-| zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish_raw` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
+| XRCE-DDS | ❌ XRCE protocol carries no session→client liveliness callback | 🟡 Sub: shim-side clock check on `take`; pub: shim-side check on `publish`. `LivelinessChanged` / `LivelinessLost` not feasible. | ❌ `topic_callback` carries no per-sample sequence |
+| zenoh-pico | ✅ Sub: per-publisher count via `zpico_liveliness_get_count` + wildcard keyexpr query; pub: shim-side keepalive timer fires `LivelinessLost` from `publish` when `MANUAL_BY_*` lease expires. | ✅ Clock-based check at sub + pub, rate-limited to ≤ 1 fire per deadline period | ✅ Sequence-gap detection from RMW attachment |
 | uORB | ❌ No wire-level liveliness | ❌ No rate concept | ✅ Native: `RustSubscriptionCallback` publish-counter delta on host mock + real PX4 |
 
 `assert_liveliness()` (manual): not all backends expose manual
@@ -710,8 +710,8 @@ Two return-shape conventions, picked by call shape:
 | Returns | Success | Failure |
 |---------|---------|---------|
 | `rmw_ret_t` + entity-struct out-param (`create_session`, `create_publisher`, `create_subscription`, …) | `NROS_RMW_RET_OK`, `out->backend_data` non-NULL | negative named constant |
-| `rmw_ret_t` (`destroy_session`, `drive_io`, `publish_raw`, `send_reply`, …) | `NROS_RMW_RET_OK` | negative named constant |
-| `int32_t` byte count (`try_recv_raw`, `try_recv_request`, `try_recv_reply_raw`) | `>= 0` (bytes received) | negative `rmw_ret_t` |
+| `rmw_ret_t` (`destroy_session`, `drive_io`, `publish`, `send_response`, …) | `NROS_RMW_RET_OK` | negative named constant |
+| `int32_t` byte count (`take`, `take_request`, `take_response`) | `>= 0` (bytes received) | negative `rmw_ret_t` |
 
 **Differences from upstream.**
 
@@ -762,7 +762,7 @@ fields — but through a different seam:
   C mirrors this with `nros_executor_register_subscription_raw_with_info`
   (the callback receives the payload plus the attachment/metadata
   arguments directly — there is no info struct on the C side).
-- **What's carved out.** The hot `try_recv_raw` vtable slot returns
+- **What's carved out.** The hot `take` vtable slot returns
   bytes ONLY. The metadata rides a separate `MessageInfoSlot`
   side-channel that the backend populates from its native attachment /
   sample-info (Zenoh attachment, DDS sample-info, XRCE topic callback)

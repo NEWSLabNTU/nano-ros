@@ -710,7 +710,7 @@ typedef struct rmw_subscription_t {
  * across non-DDS backends — see book `concepts/ros2-comparison.md`).
  *
  * No `can_loan_messages` field — service request/reply currently
- * always goes through `try_recv_request` / `send_reply` byte-buffer
+ * always goes through `take_request` / `send_response` byte-buffer
  * APIs. If a future backend wants service-side lending, the
  * `_reserved[8]` block accommodates the bool + 7 padding bytes
  * without an ABI break.
