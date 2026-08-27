@@ -1,7 +1,8 @@
 # Phase 381 — read the ROS graph, which we are already visible in
 
-**Status (2026-08-27). NOT STARTED. Design notes added 2026-08-27 from reading
-the zpico shim — W1 is smaller than scoped (the primitive is already start/poll),
+**Status (2026-08-27). NOT STARTED — BLOCKED on the deferred bounded-memory
+decision in Design note 2, which is ABI-shaped and cannot be walked back.
+Design notes added 2026-08-27 from reading the zpico shim — W1 is smaller than scoped (the primitive is already start/poll),
 but the acceptance criteria need a warm-up window. See "Design notes" below.**
 Split from issue 0791 because it is several times the size of the other W3
 coverage gaps and needs live interop verification the others do not.
@@ -109,7 +110,32 @@ It is not. `zpico_liveliness_get_start(keyexpr, timeout_ms)` returns a SLOT
 HANDLE immediately and `liveliness_get_check(handle)` polls it — start/poll, not
 a blocking call. So W1 does not have to invent an async shape; it has one.
 
-### 2. What is missing is storage, not asynchrony
+### 2. What is missing is storage, not asynchrony — **DEFERRED 2026-08-27**
+
+**Decision: the bounded-memory question is deferred, and this phase does not
+start until it is answered.** Not because it is hard, but because it is the one
+part that cannot be walked back: a reply buffer sized into `get_reply_ctx_t` is
+a struct BOTH the shim and the zenoh-pico library see, so its width becomes ABI
+(issue 0135) and shrinking it later is a break, not a tweak. Everything else in
+W1-W7 is additive.
+
+What has to be settled before W1 opens:
+
+* the per-query reply-buffer width, and whether it is a count of entries or a
+  byte budget — a `@ros2_lv` keyexpr is variable-length, so a fixed entry count
+  still needs a per-entry cap;
+* whether the knob is separate from `ZPICO_MAX_PENDING_GETS` (default 4) or
+  derived from it;
+* what a 128 KiB image sets it to, and whether zero MUST leave the slots NULL
+  rather than returning an empty enumeration — the two are different answers to
+  the caller and W6 already says they must stay distinguishable;
+* whether truncation is reportable. A graph query that silently drops the
+  entries past the buffer is the "plausible wrong answer" W2 warns about, in a
+  second form.
+
+Until then the rest of this section is background, not a plan.
+
+
 
 `get_reply_ctx_t` (`zpico.c`) holds `received`, `done` and `reply_count`. The
 reply handler increments the count and DISCARDS the keyexpr. Enumeration needs
