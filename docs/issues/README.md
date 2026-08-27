@@ -204,18 +204,16 @@ resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the 
 has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
 who validates). See `0760-*`. (2026-08-23)
 
-**#0769** (boards/build, open 2026-08-23) — ONE symbol, TWO weak definitions, in crates that compose:
-`nros-board-freertos/c/network_glue.c` and `nros-board-s32z270-freertos/c/board_s32z270.c` both define
-`nros_board_register_netif`, and s32z270 DEPENDS on nros-board-freertos, so both land in one image and
-archive order picks the winner (issue 0050's failure mode verbatim). Signatures differed too — four pointers
-vs `(void)` — confirmed by putting both prototypes in one TU, which is a hard `conflicting types` error the
-compiler never sees across translation units. The signature half is FIXED; the TIE is not: both return -1 but
-only s32z270's PRINTS, so RFC-0052's fail-loud promise rides on winning a tie it does not control.
-Strong-vs-weak cannot fix it — the consumer supplies the strong override, so a strong default would make
-that a duplicate-symbol error. Also revises phase-375's weak-symbol audit: the `override-default` class is 4
-files not 5, and `network_glue.c`'s own label looks wrong. See `0769-*`.
-
-Recently resolved (2026-08-25): **#0764** — the fixture staleness probe compared MTIMES while the build compares CONTENT (`copy_if_different` + cargo), so a source whose mtime moved without its content changing read STALE and rebuilding could NOT clear it — the build right to do nothing, the probe right that the mtime was older, the two answering different questions. Not the documented treadmill, whose "rebuild affected fixtures" remedy is a no-op here by construction; 16 tier-1 tests failed on it. The fix was WIRING, not construction: `candidates_changed_content_policy` + `.nros-srcbaseline` already existed and TWO of the three probe arms already used them (zephyr since #147, cargo dep-info since phase-353 W2) — only the cmake/ninja arm never got it. Third turn of the shape CLAUDE.md cites as its own example (#222 → #328 → #764: helper added, `binaries/mod.rs` not wired), so the file was swept — every raw mtime compare now FEEDS the content decision instead of returning a verdict. Verified BOTH ways, which matters because a probe that forgives everything turns museum binaries into silent passes: `touch` (sha unchanged) stays fresh, a one-line real edit goes STALE. Fixed in `493440c65`. See `archived/0764-*`. (2026-08-25)
+Recently resolved (2026-08-27): **#0769** (boards/build) — all three concerns, two by different
+means. Signature fixed 2026-08-23. The archive-order TIE was DISSOLVED rather than won (phase-386
+W4): both weak bodies return -1, so the tie decided only whether the operator is TOLD, and the
+diagnostic moved to `nros_freertos_register_netif` — the single call site, which cannot be
+shadowed. Two defaults still coexist; that is now tidiness, not safety. The relabel to
+`optional-hook` is done, coverage unchanged (checked=18 warn=4), after W3a removed the header
+prose that had made a correct edit look dangerous — my own objection here was WRONG and is
+retracted in the issue. What outlives it: W3b found the image gate silently skipped coverage rows
+whose images are not built, so `nros_board_register_netif` was never verified while the gate read
+green. Now visible, still unverified. See `archived/0769-*`. (2026-08-27)
 
 Recently resolved (2026-08-25): **#0755** (cmake) — the entry's DEPLOY now reaches
 `board-facts`, so a multi-deploy `system.toml` resolves instead of silently skipping; the

@@ -3,10 +3,10 @@ id: 769
 title: "Two WEAK definitions of `nros_board_register_netif` in crates that
   compose — different signatures, and archive order decides which fail-loud
   message an S32Z270 image gets"
-status: open
+status: resolved
 type: bug
 area: boards, build
-related: [issue-0050, rfc-0052, phase-372, phase-375]
+related: [issue-0050, rfc-0052, phase-372, phase-375, phase-386]
 ---
 
 ## Problem
@@ -102,46 +102,81 @@ by reading. All three erred in the same direction: claiming a strong override
 exists where none is guaranteed. Re-audit the remaining classifications before
 removing anything on the strength of the label.
 
-## The `network_glue.c` relabel is NOT a safe swap (2026-08-26)
+## RETRACTED: "the relabel is NOT a safe swap" (2026-08-26, corrected 2026-08-27)
 
-This issue argues `network_glue.c`'s `override-default` label is wrong and should
-be `optional-hook`, and the semantic argument holds: its weak returns -1 meaning
+This section previously argued that relabelling `network_glue.c` to
+`optional-hook` would drop its `[img:]` set and silently stop verifying
+`nros_board_register_netif` / `nros_board_poll_netif`. **That was wrong, and it
+stopped a correct edit.**
+
+`check-weak-symbols-image.sh` parses `[img:]` with
+
+```sh
+grep -E '^[0-9]' "$allowlist" | sed -n 's/.*\[img:\([^]]*\)\].*/\1/p'
+```
+
+— **any row starting with a digit.** It never inspects the classification.
+Confirmed by relabelling the row and re-running: `checked=18 fail=0 warn=0`,
+unchanged.
+
+I reasoned from the allowlist's header prose ("an override-default line carries
+an `[img:]` token", "optional-hook lines carry no token") rather than from the
+parser. That prose read as a rule and was not one; phase-386 W3a corrected it,
+and recorded that its cost was exactly this — a safe edit declined on the
+strength of a sentence.
+
+The issue's original semantic argument stands: the weak body returns -1 meaning
 "no board override → no Ethernet", and `poll_netif` is a no-op for IRQ-driven RX
-boards. Both are supported shipped states, not placeholders awaiting a guaranteed
-strong definition.
+boards. Both are supported shipped states, which is `optional-hook`.
 
-**But the classification is not documentation — it drives a gate.**
-`scripts/check-weak-symbols-image.sh` exists to verify
 
-> that each audited **override-default** weak symbol is actually overridden
+## Resolved (2026-08-27) — all three concerns, two by different means
 
-by `nm`-ing built images, driven by the `[img: …]` set on the allowlist row.
-`network_glue.c` currently carries
-`[img: nros_board_register_netif nros_board_poll_netif]`, so the gate today
-checks that LAN9118 MPS2 images really do override both.
+| concern | outcome |
+| --- | --- |
+| signature mismatch | fixed 2026-08-23 — both bodies take the same four params |
+| the archive-order tie | **dissolved**, phase-386 W4 |
+| the `network_glue.c` mislabel | **done**, after W3a removed the obstacle |
 
-Relabelling to `optional-hook` and dropping `[img:]` would **silently remove that
-check**. The images that override would keep overriding, the gate would keep
-passing, and nobody would learn when one stopped. That is the
-guarantee-that-cannot-fail shape this repo treats as worse than a red — and it
-would be introduced by a change whose stated purpose is accuracy.
+### The tie was dissolved, not won
 
-### What the fix actually needs
+This issue asked which default should win, and weighed options like "one default
+per symbol per image". W4 answered a different question first: both bodies return
+-1, so the tie decided only **whether the operator is told**, not what happens.
 
-The two facts are independent and the schema currently conflates them:
+The diagnostic moved to `nros_freertos_register_netif` — the single call site,
+which has exactly one implementation and cannot be shadowed:
 
-* **Is a strong override GUARANTEED?** (`override-default` vs `optional-hook`)
-  — for `network_glue.c`, no.
-* **Which image classes are EXPECTED to override it?** — for `network_glue.c`,
-  the LAN9118 MPS2 images, and that expectation is worth gating.
+```c
+int rc = nros_board_register_netif(mac, ip, netmask, gw);
+if (rc != 0) {
+    printf("nros-board-freertos: no Ethernet — ... returned %d. A board overlay "
+           "or consumer must provide a strong override (RFC-0052, issue 0769).\n", rc);
+}
+```
 
-So the row wants to be an `optional-hook` that still carries an `[img: …]`
-expectation. Whether `check-weak-symbols-image.sh` accepts that combination
-today is untested; the header comment reads as though `[img:]` is only meaningful
-for `override-default`.
+Whichever weak default links, RFC-0052's fail-loud promise now holds.
+S32Z270's board-specific message still prints when that body is the one linked.
 
-Deliberately not changed here. A relabel that quietly narrows gate coverage is
-worse than a label that reads slightly wrong, and the issue's own closing
-paragraph makes the same point about the other three mislabels: all erred toward
-claiming a guarantee that was not there. The correction should not err toward
-removing a check that was.
+Two weak defaults still coexist and archive order still picks one. That is now
+**tidiness, not a safety property** — worth a separate small issue if anyone
+wants it, not a reason to hold this one open.
+
+### The relabel is done
+
+`network_glue.c` is now `optional-hook`, keeping its `[img:]` set. Coverage
+verified unchanged: `checked=18 fail=0 warn=4` before and after.
+
+### What this issue uncovered that outlives it
+
+Chasing the tie led to phase-386, and its most consequential finding is not
+about netif at all: **`check-weak-symbols-image.sh` silently skipped coverage
+rows whose images were not built.** The two FreeRTOS rows naming
+`nros_board_register_netif` match no image in a routine tree, so the gate
+reported green while verifying nothing — for as long as those images have been
+absent.
+
+W3b makes that visible (`warn=4`). **The guarantee this issue is about is still
+unverified**; it is now legible rather than invisible. Building those fixtures in
+a lane that runs the gate is the remaining work, and it belongs to whoever owns
+the FreeRTOS and baremetal-serial lanes.
