@@ -16,19 +16,26 @@
 # router is the persistent end of the pair, which is also how a real deployment
 # looks: an MCU on the bus, a router on the vehicle computer. The node's ONLY
 # link is still ISO-TP, so the parameter traffic still crosses CAN.
-# issue 0726 — `nros_grep_q` exits 2 on a TOOL failure instead of reporting a
-# finding; a raw `grep -q` under load once reported a failed-to-fork grep as a
-# missing anchor.
-. "$(dirname "$0")/../lib/grep-q.sh"
 OUT=$(mktemp -d); rm -rf "$OUT"; mkdir -p "$OUT"
 . /opt/ros/${ROS_DISTRO:-humble}/setup.bash
 export LD_LIBRARY_PATH=${ZENOHC_ISOTP_LIB:?set ZENOHC_ISOTP_LIB}:${LD_LIBRARY_PATH:-}
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 
+# issue 0726 — `grep -q` in a conditional cannot tell a tool ERROR (exit >=2)
+# from a NON-MATCH (exit 1), and this script branches on both. `nros_grep_q`
+# exits 2 on a tool failure so a dead grep cannot masquerade as a verdict.
+# shellcheck source=scripts/lib/grep-q.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/grep-q.sh"
+
 sed 's|"tcp/\[::\]:7447"|"tcp/[::]:7447", "isotp/vcan0#tx_id=0x201;rx_id=0x200"|' \
     /opt/ros/${ROS_DISTRO:-humble}/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5 \
     > "$OUT/router.json5"
-nros_grep_q 'isotp/vcan0' "$OUT/router.json5" || { echo "FAIL: no CAN endpoint injected"; exit 1; }
+nros_grep_q 'isotp/vcan0' "$OUT/router.json5"
+case $? in
+    0) ;;
+    1) echo "FAIL: no CAN endpoint injected"; exit 1 ;;
+    *) echo "FAIL: could not read $OUT/router.json5 (grep failed)"; exit 2 ;;
+esac
 
 ros2 daemon stop >/dev/null 2>&1 || true
 stdbuf -o0 candump -ta vcan0 >"$OUT/dump.log" 2>&1 &
@@ -68,10 +75,20 @@ echo "frames: $(wc -l <"$OUT/dump.log")  FF: $(grep -cE '\[8\]  1[0-9A-F] ' "$OU
 # change it, read it back changed. A `get` alone would pass against a node that
 # ignores `set` entirely.
 ok=0
-nros_grep_q 'Integer value is: 120'     "$OUT/get1.log" && ok=$((ok+1))
-nros_grep_q 'Set parameter successful'  "$OUT/set.log"  && ok=$((ok+1))
-nros_grep_q 'Integer value is: 250'     "$OUT/get2.log" && ok=$((ok+1))
-nros_grep_q 'publish_period_ms'         "$OUT/list.log" && ok=$((ok+1))
+# A tool failure here would silently cost a point and read as a missing round
+# trip, so it aborts instead of scoring.
+score() {
+    nros_grep_q "$1" "$2"
+    case $? in
+        0) ok=$((ok+1)) ;;
+        1) ;;
+        *) echo "FAIL: could not read $2 (grep failed)"; exit 2 ;;
+    esac
+}
+score 'Integer value is: 120'    "$OUT/get1.log"
+score 'Set parameter successful' "$OUT/set.log"
+score 'Integer value is: 250'    "$OUT/get2.log"
+score 'publish_period_ms'        "$OUT/list.log"
 if [ "$ok" -eq 4 ]; then
     echo "[isotp-params] PASS: list + get 120 + set 250 + get 250, all over CAN"
     rm -rf "$OUT"; exit 0
