@@ -164,8 +164,11 @@ pub mod node_metadata;
 /// is the planner-side metadata sink).
 ///
 /// Gated on `rmw-cffi`; the underlying [`Executor`] is only present
-/// when an RMW backend is linked.
-#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+/// when an RMW backend is linked. W5-endgame (issue 0843): the MACRO install
+/// path (per-class static storage, placed cells, slabbed ctxs) is alloc-free,
+/// so the module no longer demands `alloc` — only the dynamic
+/// `ExecutorNodeRuntime` half does, item-gated inside.
+#[cfg(feature = "rmw-cffi")]
 pub mod node_runtime;
 pub mod runtime_storage;
 
@@ -257,24 +260,30 @@ pub use node_metadata::{CallbackId, EntityId, NodeId};
 // and match against the `Callback<'_>` delivered to
 // `ExecutableNode::on_callback`.
 pub use dispatch_tag::{ActionTag, ServiceTag, SubscriptionTag};
-#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+// W5-endgame (issue 0843) — the alloc-free half of the seam: per-class static
+// storage + the `_in` installs the macro emits. Available on `rmw-cffi` alone.
+#[cfg(feature = "rmw-cffi")]
 pub use node_runtime::{
     ComponentSlotStorage,
-    ExecutorError,
-    ExecutorNodeRuntime,
-    RegisteredNode,
     // Phase 257 (W0-B) — the uniform cross-language component-install seam backing
     // `__nros_component_<pkg>_install` (nros::node!): register an ExecutableNode on the
     // shared executor a foreign typed entry hands in. (`register_node_borrowed` stays
     // crate-internal — it returns the private `ComponentCell`.)
-    install_node_typed,
     install_node_typed_in,
     // Phase 305 W3 (issue 0255) — same seam plus launch `<remap>` rules; the variant
     // `nros::node!()` emits.
-    install_node_typed_with_launch,
     install_node_typed_with_launch_in,
+};
+// The dynamic runtime + the leak-per-call conveniences still need `alloc`.
+#[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
+pub use node_runtime::{
+    ExecutorError,
+    ExecutorNodeRuntime,
+    RegisteredNode,
+    install_node_typed,
+    install_node_typed_with_launch,
     // Phase 268 W1 — same seam with both `<param>` initials AND `<node name= namespace=>`
-    // identity injection; the variant `nros::node!()` now emits (RFC-0046).
+    // identity injection (RFC-0046).
     install_node_typed_with_node_identity,
     // W4a — same seam, seeding the node's NodeContext with launch-baked `<param>` initials.
     install_node_typed_with_params,
@@ -288,7 +297,7 @@ pub use node_runtime::{
 ///
 /// # Safety
 /// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
@@ -304,7 +313,7 @@ where
 ///
 /// # Safety
 /// The stub dereferences nothing.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_params<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
@@ -321,7 +330,7 @@ where
 ///
 /// # Safety
 /// The stub dereferences nothing.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_node_identity<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,
@@ -338,7 +347,7 @@ where
 /// runtime (or without `alloc`): the macro emits a per-class
 /// `static ... = ComponentSlotStorage::new()` unconditionally, so the name must
 /// exist and be const-constructible + `Sync` in every cfg. Zero-sized.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub struct ComponentSlotStorage<
     C,
@@ -352,7 +361,7 @@ pub struct ComponentSlotStorage<
     _p: core::marker::PhantomData<fn() -> C>,
 }
 
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 impl<C, const N: usize, const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize>
     ComponentSlotStorage<C, N, PUBS, SVCS, ACTC, ACTS>
 {
@@ -369,7 +378,7 @@ impl<C, const N: usize, const PUBS: usize, const SVCS: usize, const ACTC: usize,
 ///
 /// # Safety
 /// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_in<
     C: node::ExecutableNode + 'static,
@@ -393,7 +402,7 @@ where
 ///
 /// # Safety
 /// Signature parity with the real impl; the stub dereferences nothing.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_launch_in<
     C: node::ExecutableNode + 'static,
@@ -428,7 +437,7 @@ where
 ///
 /// # Safety
 /// The stub dereferences nothing.
-#[cfg(not(all(feature = "rmw-cffi", feature = "alloc")))]
+#[cfg(not(feature = "rmw-cffi"))]
 #[doc(hidden)]
 pub unsafe fn install_node_typed_with_launch<C: node::ExecutableNode + 'static>(
     _executor: *mut core::ffi::c_void,

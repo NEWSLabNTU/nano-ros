@@ -220,3 +220,15 @@ decides whether the `node_runtime` port is mechanical or a design change.
 Note this is independent of [issue 0832](0832-platform-alloc-funnel-unreferenced-on-cyclone-and-xrce.md):
 0832 is about allocation bypassing the funnel on two backends, this is about
 allocation being unavoidable at all on the cffi path.
+
+## Progress (2026-08-28, phase-391 W5-endgame)
+
+The `Arc<ComponentCell>` question resolved itself in issue 0857's fix: cells
+are PLACED in per-class static storage (slot + cell + ctx-slab pairs), the
+trampoline contexts moved into the cell, the sink's node table went heapless,
+and `node_runtime`'s gate narrowed from `all(rmw-cffi, alloc)` to `rmw-cffi` —
+the dynamic `ExecutorNodeRuntime` half is item-gated on `alloc` inside. The
+macro install path (`nros::node!` → `install_node_typed_*_in`) now performs
+zero heap allocation. What keeps this issue open: the W1 gate proving a real
+linked image heap-free (`check-no-alloc-image --tier heap-free`, symbols read
+well above 1) — the fixture + gate work tracked as the campaign's next task.

@@ -52,18 +52,21 @@
 
 extern crate alloc;
 
+#[cfg(feature = "alloc")]
 use alloc::{boxed::Box, vec::Vec};
+#[cfg(feature = "alloc")]
+use core::time::Duration;
 use core::{
     cell::{Ref, RefCell, UnsafeCell},
     marker::PhantomData,
     mem::MaybeUninit,
-    time::Duration,
 };
 
 // Via nros-core's re-export rather than a new direct dependency — every graph
 // containing `nros` would otherwise move (16 leaf lockfiles, measured on W5.1).
 use nros_core::heapless;
 use portable_atomic::{AtomicUsize, Ordering};
+#[cfg(feature = "alloc")]
 use portable_atomic_util::Arc;
 
 /// phase-391 W5 — entity/callback identifier, fixed-capacity.
@@ -73,6 +76,11 @@ use portable_atomic_util::Arc;
 /// id, node name or namespace, i.e. name-shaped. An id that does not fit is a
 /// REGISTRATION error, never a truncation.
 type IdStr = heapless::String<{ nros_node::names::MAX_RESOLVED_NAME_LEN }>;
+
+/// W5-endgame alloc-off — nodes one component's `register()` may create.
+/// Components create one node in every in-tree class; 4 leaves room without
+/// costing anything that outlives registration (the sink is a stack local).
+const MAX_SINK_NODES: usize = 4;
 
 // phase-391 W5 (amended by W5-endgame step 2a): the per-cell registry bound,
 // PER KIND, is the `MAX_CELL_ENTITIES` knob — now spelled as `ComponentCell`'s
@@ -450,7 +458,10 @@ trait CellView {
     /// threads it in.
     #[cfg(feature = "param-services")]
     fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>>;
-    /// The `(callbacks, messages)` dispatch counters.
+    /// The `(callbacks, messages)` dispatch counters. Only the dynamic
+    /// runtime's stats fold reads them through the trait; the macro path's
+    /// fold reads the `CellHeader` directly.
+    #[cfg(feature = "alloc")]
     fn dispatch_counts(&self) -> (usize, usize);
     /// Registration-time registry appends. `Err(())` = registry full — the
     /// component declared more entities of that kind than its cell's bound,
@@ -483,6 +494,7 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize,
         }
     }
 
+    #[cfg(feature = "alloc")]
     fn dispatch_counts(&self) -> (usize, usize) {
         (
             self.header.callback_dispatches.load(Ordering::Relaxed),
@@ -666,6 +678,7 @@ impl PublisherResolver for CellResolver<'_> {
 /// 3. [`spin`](Self::spin) / [`spin_once`](Self::spin_once) drive the
 ///    executor; between iterations every registered component's
 ///    [`ExecutableNode::tick`] runs.
+#[cfg(feature = "alloc")]
 pub struct ExecutorNodeRuntime {
     executor: Executor<'static>,
     components: Vec<Arc<ComponentCell>>,
@@ -677,6 +690,7 @@ pub struct ExecutorNodeRuntime {
 
 /// Bump view over the runtime's slot backing. Raw pointer, not a slice, so the
 /// runtime stays movable — the SLOTS never move; they live in the backing.
+#[cfg(feature = "alloc")]
 struct ComponentPool {
     base: *mut MaybeUninit<u8>,
     len_bytes: usize,
@@ -687,8 +701,10 @@ struct ComponentPool {
 
 // SAFETY: the pool is confined to the runtime (`&mut self` on every use); the
 // raw pointer targets `'static` backing handed over at construction.
+#[cfg(feature = "alloc")]
 unsafe impl Send for ComponentPool {}
 
+#[cfg(feature = "alloc")]
 impl ComponentPool {
     /// Next disjoint slot window, or `None` when the pool is full.
     fn next_slot(&mut self) -> Option<&'static mut [MaybeUninit<u8>]> {
@@ -705,6 +721,7 @@ impl ComponentPool {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl ExecutorNodeRuntime {
     /// Wrap an already-built [`Executor`], LEAKING the slot backing.
     ///
@@ -874,7 +891,7 @@ impl ExecutorNodeRuntime {
         let mut sink = ExecutorSink {
             executor: &mut self.executor,
             cell: CellHandle::Pooled(cell.clone()),
-            nodes: Vec::new(),
+            nodes: heapless::Vec::new(),
             node_identity: None, // direct API — no launch injection
             remaps: &[],         // direct API — no launch remaps
             qos_overrides: &[],  // direct API — no plan overrides
@@ -1115,6 +1132,7 @@ unsafe extern "C" fn component_drop_trampoline<
 // cleanly) and installs via `nros::install_node_typed`. Phase 258 (w5) retired
 // the old `register_dispatch_slot_dyn` four-fn-ptr bridge.
 
+#[cfg(feature = "alloc")]
 impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     fn spin_once(&mut self, timeout_ms: u32) -> Result<(), ()> {
         Self::spin_once(self, Duration::from_millis(timeout_ms.into())).map_err(|_| ())
@@ -1230,7 +1248,10 @@ struct ExecutorSink<'a> {
     /// EFFECTIVE `(name, namespace)` the node was created with (launch identity
     /// or the `NodeOptions` default) — phase-306 W3 needs it to expand
     /// `~`/relative entity names per node.
-    nodes: Vec<SinkNode>,
+    /// W5-endgame alloc-off — heapless: a component class declares a small,
+    /// statically bounded number of NODES (nearly always one). Full = loud
+    /// registration error, the registries' rule.
+    nodes: heapless::Vec<SinkNode, MAX_SINK_NODES>,
     /// Phase 268 W1 — launch-injected node identity `(name, namespace)` baked by
     /// `nros::main!` per component. When `Some`, `create_node` uses this identity
     /// instead of the `NodeOptions` default; `None` → default stands (backward-compat).
@@ -1285,12 +1306,14 @@ impl NodeRuntime for ExecutorSink<'_> {
             self.executor
                 .set_node_qos_overrides(node_id, self.qos_overrides);
         }
-        self.nodes.push(SinkNode {
-            stable_id: id_str(id.as_str())?,
-            node_id,
-            name: id_str(name)?,
-            namespace: id_str(ns)?,
-        });
+        self.nodes
+            .push(SinkNode {
+                stable_id: id_str(id.as_str())?,
+                node_id,
+                name: id_str(name)?,
+                namespace: id_str(ns)?,
+            })
+            .map_err(|_| NodeDeclError::Runtime)?;
         Ok(())
     }
 
@@ -2093,7 +2116,7 @@ where
         // sink (which holds `&mut Executor<'static>`) is dropped below.
         executor: &mut *executor,
         cell: CellHandle::Static(cell),
-        nodes: Vec::new(),
+        nodes: heapless::Vec::new(),
         // Phase 268 W1 — thread the per-component identity bake (RFC-0046).
         node_identity,
         // Phase 305 W3 (issue 0255) — thread the per-component remap bake.
@@ -2155,6 +2178,7 @@ where
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes (its
 /// `nros::global_handle()` / a node's `executor_handle()`), valid for the call.
+#[cfg(feature = "alloc")]
 pub unsafe fn install_node_typed<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
 ) -> i32
@@ -2171,6 +2195,7 @@ where
 ///
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
+#[cfg(feature = "alloc")]
 pub unsafe fn install_node_typed_with_params<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
     params: &[(&str, &str)],
@@ -2191,6 +2216,7 @@ where
 ///
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
+#[cfg(feature = "alloc")]
 pub unsafe fn install_node_typed_with_node_identity<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
     params: &[(&str, &str)],
@@ -2211,6 +2237,7 @@ where
 ///
 /// # Safety
 /// `executor` must be the live `*mut Executor<'static>` handle a typed entry passes, valid for the call.
+#[cfg(feature = "alloc")]
 pub unsafe fn install_node_typed_with_launch<C: ExecutableNode + 'static>(
     executor: *mut core::ffi::c_void,
     params: &[(&str, &str)],
