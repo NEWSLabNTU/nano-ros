@@ -217,7 +217,6 @@ board = "native"
 
 [image.nuttx]
 board = "nuttx-qemu-arm"
-launch = "names"
 
 [image.riscv_nuttx]
 board = "nuttx-qemu-riscv"

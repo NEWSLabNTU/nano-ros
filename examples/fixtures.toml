@@ -596,8 +596,8 @@ lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "freertos_posix_entry"
-build_subdir = "build-workspace-fixtures-freertos-posix"
+image = "freertos_posix"
+build_subdir = "build/freertos-cyclonedds-freertos-posix/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "freertos-posix" }
 
 [[workspace_fixture]]
@@ -624,8 +624,8 @@ lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-s32z270"
+image = "s32z270"
+build_subdir = "build/freertos-cyclonedds-s32z270-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "s32z270-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7940" }
 
 # phase-385 W4 — the AN536 (Cortex-R52 on QEMU) cell. Same CPU, same kernel
@@ -642,8 +642,8 @@ lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-an536"
+image = "mps3_an536"
+build_subdir = "build/freertos-cyclonedds-mps3-an536-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps3-an536-freertos", FREERTOS_PORT = "GCC/ARM_CRx_No_GIC", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7941" }
 
 # phase-263 C2b — the NuttX (QEMU arm-virt) C workspace entry (talker + listener linked INTO
@@ -737,9 +737,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-263 A1 (services, C++) — the AddTwoInts cross-process round-trip (issue 0096): server +
 # client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_service cell).
@@ -750,9 +750,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_service_server_entry"
+image = "native_service_server"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-service-client"
@@ -761,9 +761,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_service_client_entry"
+image = "native_service_client"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-263 A4 (actions, C++) — the Fibonacci action cross-process round-trip (issue 0096): server
 # + client as two entries. Consumed by tests/roundtrip_xprocess_e2e.rs (native_cpp_action cell) (the client
@@ -775,9 +775,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_action_server_entry"
+image = "native_action_server"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-action-client"
@@ -786,9 +786,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_action_client_entry"
+image = "native_action_client"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # phase-326 — per-host C++ entries for the multihost demo (per-host models
 # `multihost_robot<N>_model.yaml`). Consumed by tests/multihost_e2e.rs (native_cpp cell).
@@ -799,9 +799,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry_robot1"
+image = "native_robot1"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-robot2"
@@ -810,9 +810,9 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry_robot2"
+image = "native_robot2"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures"
+build_subdir = "build/posix-zenoh-native/cmake"
 
 # Phase 269 W1 — parameterised C workspace. [param_services] bakes nros_cpp_declare_param
 # calls into the generated entry; the C component reads the live value via
@@ -981,8 +981,8 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "threadx_entry"
-build_subdir = "build-workspace-fixtures-threadx"
+image = "threadx"
+build_subdir = "build/threadx-linux-zenoh/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9230" }
 
 [[workspace_fixture]]
@@ -992,8 +992,8 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "freertos_entry"
-build_subdir = "build-workspace-fixtures-freertos"
+image = "freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8030" }
 
 [[workspace_fixture]]
@@ -3771,9 +3771,9 @@ lang = "cpp"
 rmw = "cyclonedds"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native_cyclonedds"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures-cyclonedds"
+build_subdir = "build/posix-cyclonedds-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-cpp-native-xrce"
@@ -3782,9 +3782,9 @@ lang = "cpp"
 rmw = "xrce"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native_xrce"
 codegen_out = "build-workspace-codegen/demo_bringup"
-build_subdir = "build-workspace-fixtures-xrce"
+build_subdir = "build/posix-xrce-native/cmake"
 
 [[workspace_fixture]]
 id = "workspace-rust-native-cyclonedds"

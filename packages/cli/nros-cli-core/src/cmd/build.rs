@@ -178,6 +178,12 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     for (bringup, bringup_dir, image_id, image) in resolved {
         let qual = plan::qualified(&bringup, &image_id);
         let want_entry = crate::builder::entry::package_name(&image_id);
+        // A `launch` that names no file is a typo, and W9.a wrote three of
+        // them as PROSE fragments that survived two waves because nothing
+        // built from the declarations. Caught here, against the bringup, with
+        // the available names in the message.
+        crate::orchestration::image::validate_image_launch(&image_id, &image, &bringup_dir)
+            .map_err(|e| eyre::eyre!("{e}"))?;
         let descriptor =
             crate::orchestration::image::resolve_image_board(&catalog, &image_id, &image)
                 .map_err(|e| eyre::eyre!("{e}"))?;
@@ -358,14 +364,26 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // that name would collide. Delete the package and the next
                 // build emits its call (D13, incremental).
                 let coord = cmake_coordinate(&platform, &image);
+                // A C++ source ANYWHERE in a package, not just at its top.
+                //
+                // These packages keep sources in `src/` — `talker_pkg/src/Talker.cpp` —
+                // so a top-level scan called the pure-C++ workspace `c`, and
+                // `nros codegen entry` refused with the right complaint from the
+                // wrong layer: "node pkg `talker_pkg` exec `talker` is lang
+                // `cpp`, not `c`". The model knows each exec's language; until
+                // the emitter reads it, look where the sources actually are.
                 let has_cpp = found.packages.iter().any(|p| {
-                    p.dir
-                        .read_dir()
-                        .map(|rd| {
-                            rd.flatten()
-                                .any(|e| e.file_name().to_string_lossy().ends_with(".cpp"))
-                        })
-                        .unwrap_or(false)
+                    [p.dir.clone(), p.dir.join("src")].iter().any(|d| {
+                        d.read_dir()
+                            .map(|rd| {
+                                rd.flatten().any(|e| {
+                                    let n = e.file_name();
+                                    let n = n.to_string_lossy();
+                                    n.ends_with(".cpp") || n.ends_with(".cc") || n.ends_with(".cxx")
+                                })
+                            })
+                            .unwrap_or(false)
+                    })
                 });
                 let cmake_entries = plan::all_images(&bringups)
                     .into_iter()
@@ -420,6 +438,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                             } else {
                                 b.clone()
                             },
+                            panic: img.panic.clone(),
                             name,
                         })
                     })

@@ -3133,7 +3133,7 @@ pub fn build_native_workspace_cpp_subnode_portable_entry() -> TestResult<&'stati
 pub fn build_native_workspace_cpp_entry_robot1() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_ROBOT1_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-cpp-native-robot1", "cpp", "native_entry_robot1")
+            build_workspace_cmake_entry("workspace-cpp-native-robot1", "cpp", "native_robot1_entry")
         })
         .map(|p| p.as_path())
 }
@@ -3142,7 +3142,7 @@ pub fn build_native_workspace_cpp_entry_robot1() -> TestResult<&'static Path> {
 pub fn build_native_workspace_cpp_entry_robot2() -> TestResult<&'static Path> {
     NATIVE_WORKSPACE_CPP_ENTRY_ROBOT2_BINARY
         .get_or_try_init(|| {
-            build_workspace_cmake_entry("workspace-cpp-native-robot2", "cpp", "native_entry_robot2")
+            build_workspace_cmake_entry("workspace-cpp-native-robot2", "cpp", "native_robot2_entry")
         })
         .map(|p| p.as_path())
 }

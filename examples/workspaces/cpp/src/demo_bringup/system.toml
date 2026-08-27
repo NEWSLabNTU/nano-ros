@@ -165,12 +165,47 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 [image_defaults]
 rmw = "zenoh"
 
+# Boards and RMWs mirror the fixture rows these images replace — read from the
+# rows rather than defaulted, which is the lesson of issue 0842: zenoh-pico's
+# FreeRTOS backend is lwIP-only, so a FreeRTOS board without lwIP must declare
+# the cyclonedds its row always built.
+[image.freertos]
+board = "mps2-an385-freertos"
+
 [image.freertos_posix]
 board = "freertos-posix"
+rmw = "cyclonedds"
+
+[image.s32z270]
+board = "s32z270-freertos"
+rmw = "cyclonedds"
+
+[image.mps3_an536]
+board = "mps3-an536-freertos"
+rmw = "cyclonedds"
 
 [image.native]
 board = "native"
-launch = "…`"
+# The entry this replaces carried `PANIC platform`; none of its siblings did.
+panic = "platform"
+
+[image.native_cyclonedds]
+board = "native"
+rmw = "cyclonedds"
+
+[image.native_xrce]
+board = "native"
+rmw = "xrce"
+
+[image.native_robot1]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot1" }
+
+[image.native_robot2]
+board = "native"
+launch = "multihost.launch.xml"
+args = { host = "robot2" }
 
 [image.native_action_client]
 board = "native"

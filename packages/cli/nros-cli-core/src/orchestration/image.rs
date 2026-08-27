@@ -420,6 +420,57 @@ mod selection_tests {
 /// `native_sim/native/64` sits beside `zephyr` in
 /// `packages/boards/zephyr/nros-board.toml` — so both spellings already resolve
 /// to one descriptor.
+/// An image's `launch`, checked against the bringup's `launch/` directory.
+///
+/// phase-383 W10.a. W9.a wrote three images whose `launch` was a fragment of
+/// PROSE — `launch = "…`"` in `workspaces/cpp`, `launch = "names"` in both
+/// `realtime-c` bringups — and nothing noticed for two waves, because nothing
+/// built from those declarations until the migration reached them. The macro
+/// would have failed at expansion with a message about a missing model, several
+/// layers from the typo.
+///
+/// Checked HERE because every consumer resolves an image through this module,
+/// and the check is a `is_file()` against a name the author wrote.
+///
+/// `None`, and the conventional `default`, both mean "the bringup's own default
+/// launch" and are always valid.
+pub fn validate_image_launch(
+    image_id: &str,
+    image: &ImageBlock,
+    bringup_dir: &std::path::Path,
+) -> Result<(), String> {
+    let Some(launch) = image.launch.as_deref() else {
+        return Ok(());
+    };
+    if launch == "default" {
+        return Ok(());
+    }
+    let path = bringup_dir.join("launch").join(launch);
+    if path.is_file() {
+        return Ok(());
+    }
+    let mut have: Vec<String> = std::fs::read_dir(bringup_dir.join("launch"))
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.ends_with(".launch.xml"))
+                .collect()
+        })
+        .unwrap_or_default();
+    have.sort();
+    let have = if have.is_empty() {
+        "(none)".to_string()
+    } else {
+        have.join(", ")
+    };
+    Err(format!(
+        "`[image.{image_id}] launch = \"{launch}\"` names no launch file: {} \
+         does not exist. Available in this bringup: {have}. Drop the key to use \
+         the bringup's default.",
+        path.display()
+    ))
+}
+
 pub fn resolve_image_board<'c>(
     catalog: &'c BoardCatalog,
     image_id: &str,
@@ -688,5 +739,40 @@ mod deprecation_tests {
         assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"kind"));
         assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"nodes"));
         assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"launch"));
+    }
+    #[test]
+    fn a_launch_that_names_no_file_is_refused_with_the_alternatives() {
+        // phase-383 W10.a. W9.a wrote `launch = "…`"` and `launch = "names"` —
+        // fragments of PROSE — into three shipped bringups, and they survived
+        // two waves because nothing built from those declarations. The macro
+        // would have failed at expansion, several layers from the typo.
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path();
+        std::fs::create_dir_all(bringup.join("launch")).unwrap();
+        std::fs::write(bringup.join("launch/system.launch.xml"), "<launch/>").unwrap();
+
+        let mut img = ImageBlock {
+            board: Some("native".to_string()),
+            ..Default::default()
+        };
+
+        // The real corruption, verbatim.
+        img.launch = Some("…`".to_string());
+        let e = validate_image_launch("native", &img, bringup).expect_err("refused");
+        assert!(e.contains("names no launch file"), "{e}");
+        assert!(
+            e.contains("system.launch.xml"),
+            "the message must list what IS available: {e}"
+        );
+
+        // A real one passes.
+        img.launch = Some("system.launch.xml".to_string());
+        assert!(validate_image_launch("native", &img, bringup).is_ok());
+
+        // Both spellings of "the bringup's own default" are always valid.
+        img.launch = Some("default".to_string());
+        assert!(validate_image_launch("native", &img, bringup).is_ok());
+        img.launch = None;
+        assert!(validate_image_launch("native", &img, bringup).is_ok());
     }
 }

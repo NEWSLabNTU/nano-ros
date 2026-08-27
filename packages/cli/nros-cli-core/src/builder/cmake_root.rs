@@ -71,6 +71,8 @@ pub struct CmakeEntry {
     pub lang: String,
     /// `DEPLOY` — the board token the macro resolves against.
     pub deploy: String,
+    /// `PANIC` — RFC-0077 policy, when the image declares one.
+    pub panic: Option<String>,
 }
 
 /// Everything the emitted root needs that is not in [`Discovered`].
@@ -291,6 +293,9 @@ pub fn render(
             out.push_str(&format!("    LAUNCH_ARGS {k}={v}\n"));
         }
         out.push_str(&format!("    LANG    {}\n", e.lang));
+        if let Some(p) = &e.panic {
+            out.push_str(&format!("    PANIC   {p}\n"));
+        }
         // Every one of the 57 C/C++ entries in this tree is TYPED — it routes
         // each launch node to the real executor through its component object.
         // An untyped generated entry would be a different program.
@@ -463,6 +468,7 @@ mod tests {
             args: vec![("host".to_string(), "robot1".to_string())],
             lang: "c".to_string(),
             deploy: "native".to_string(),
+            panic: None,
         }];
         let body = render(&d, &root.join("build/posix"), &sp).expect("renders");
 
