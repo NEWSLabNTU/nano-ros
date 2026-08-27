@@ -2,9 +2,10 @@
 id: 824
 title: "A service server registers its queryable and liveliness tokens on domain 0
   while the same image's node token is on the configured domain"
-status: open
+status: resolved
 type: bug
 area: rmw
+resolved_in: 1ba0deed6
 related: [issue-0801, phase-390]
 ---
 
@@ -58,7 +59,7 @@ problem: pub/sub is right and services are not, in the same image shape.
 All **seven** `ServiceInfo::new` sites in
 `packages/core/nros-node/src/executor/spin.rs` set `.with_namespace()` and
 `.with_node_name()` and **never** `.with_domain()`. The identical defect
-[issue 0801](archived/0801-domain-id-split-across-entities.md) fixed for
+[issue 0801](0801-domain-id-split-across-entities.md) fixed for
 `TopicInfo`, in the service path. `executor/action.rs` already had it right on
 all three of its `ServiceInfo`s, so these were simply missed.
 
@@ -76,7 +77,7 @@ lets the executor build the `ServiceInfo`. That is the path with no domain on
 it. Two rebuild-and-flash cycles were spent instrumenting the wrong function
 before a probe that never fired showed the live path was elsewhere.
 
-## STILL BROKEN: the service type name is not DDS-mangled
+## FIXED (2026-08-27): the service type name was not DDS-mangled
 
 `ros2 service list` still shows nothing and calls still hang. Compare the keys
 now that the domain is right:
@@ -92,10 +93,40 @@ is not**, so it reaches the key as `example_interfaces/srv/AddTwoInts` — and
 into three extra segments and cannot match what rmw_zenoh expects at those
 positions.
 
-Expected shape is presumably `example_interfaces::srv::dds_::AddTwoInts_`,
-matching how message types are handled, but that has NOT been confirmed against
-rmw_zenoh's own parser — do that before fixing, rather than assuming the
-mangling rule is identical for srv.
+Confirmed by ground truth rather than assumption: a native
+`demo_nodes_cpp add_two_ints_server` was run on the host against rmw_zenoh and
+its declared key captured.
+
+```
+native  …/SS/…/%add_two_ints/example_interfaces::srv::dds_::AddTwoInts_/…/::,10:,:,:,,
+ours    …/SS/…/%add_two_ints/example_interfaces/srv/AddTwoInts/…/1:2:1,10:,:,:,,
+```
+
+Fixed with `DdsSrvType`, a `Display` wrapper that mangles inside the existing
+`format_args!` with no allocation (this runs on a 320 KiB part). Applied at all
+four liveliness sites and all three routing-key sites. Names already containing
+`::` pass through untouched, and anything not shaped exactly `a/b/c` passes
+through rather than being mangled into nonsense.
+
+### Verified end to end
+
+```
+ros2 service list        ->  /add_two_ints
+ros2 service type        ->  example_interfaces/srv/AddTwoInts
+call {a: 3,   b: 4}      ->  AddTwoInts_Response(sum=7)
+call {a: 100, b: -1}     ->  AddTwoInts_Response(sum=99)
+```
+
+### Two things deliberately left
+
+**The QoS field still differs from native** — ours `1:2:1,10:,:,:,,` against
+native `::,10:,:,:,,`. It blocks neither discovery nor calls, so it is recorded
+rather than changed blind.
+
+**Discovery needs a stable session.** Runs where the board's serial transport
+cycled (3 serial links in one 7-transport run) never converged, while runs with
+a single stable link resolved within ~45 s. That is session churn, a different
+axis from this issue, and it is what made early results look intermittent.
 
 ## Where it is NOT
 
@@ -105,7 +136,7 @@ re-walk it:
 - `nros_cpp_service_server_register` (`packages/api/nros-cpp/src/service.rs:119`)
   does build its `ServiceInfo` with `.with_domain(ctx.domain_id)`, so the call
   site is not simply missing the domain the way
-  [issue 0801](archived/0801-domain-id-split-across-entities.md) was.
+  [issue 0801](0801-domain-id-split-across-entities.md) was.
 - `nros_cpp_init` writes `ctx.domain_id` from the resolved `BootConfig`, and
   `zephyr_run_tiers.c:513` passes the configured domain into it — which is
   consistent with the `node` token correctly showing 10.
@@ -126,5 +157,5 @@ Cheapest next step is not more reading: print `ctx.domain_id` at
 Services are unusable over any non-zero domain. Pub/sub on the same image is
 fine, so this is invisible until someone tries a service — which on this board
 was blocked behind
-[issue 0821](archived/0821-zenoh-pico-faults-at-lease-expiry-on-zephyr.md)
+[issue 0821](0821-zenoh-pico-faults-at-lease-expiry-on-zephyr.md)
 until it was fixed, which is why it surfaced only now.

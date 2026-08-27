@@ -51,6 +51,18 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-27): **#0824** (rmw) — a service server on the board was invisible to
+`ros2 service list` and every call hung. TWO defects, found in sequence. First, all SEVEN
+`ServiceInfo::new` sites in `spin.rs` set namespace and node_name and never the domain — the #0801
+defect sitting unfixed in the service path, so queryables and liveliness tokens went out on domain 0
+while the node token was on 10. Second, and still broken after that: the service type name reached the
+key as `example_interfaces/srv/AddTwoInts`, and `/` is a zenoh keyexpr SEPARATOR, so it split the key
+into three extra segments. Confirmed against ground truth by running a native `demo_nodes_cpp
+add_two_ints_server` and capturing the key IT declares
+(`example_interfaces::srv::dds_::AddTwoInts_`). Fixed with an allocation-free `Display` wrapper.
+Verified on mr_canhubk3/s32k344 over serial: `ros2 service call` returns sum=7 and sum=99. Left
+recorded, not changed: the QoS field still differs from native (`1:2:1,10:` vs `::,10:`) and blocks
+nothing. See `archived/0824-*`. (2026-08-27)
 **#0829** (api/rmw, open 2026-08-27) — the same QoS profile ships TWICE with different depths:
 `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` queues **1**, `nros::qos::SYSTEM_DEFAULT` queues **10**, two
 callers each, so neither is obviously the live one. Depth is how many samples the history keeps before
