@@ -6,10 +6,12 @@
 #   NANO_ROS_CLIENT=<built nano-ros service-client> \
 #   NANO_ROS_ACTION_SERVER=<built nano-ros action-server> \
 #   NANO_ROS_ACTION_CLIENT=<built nano-ros action-client> \
+#   NANO_ROS_ACTION_SERVER_PACED=<action-server built with NROS_FIB_STEP_TICKS=5000> \
 #   ./scripts/test/isotp-ros-interop.sh [--role <role>]
 #
 #   --role service-server | service-client | action-server | action-client
-#          both (the two service roles, the default) | all (all four)
+#          action-cancel
+#          both (the two service roles, the default) | all (all four + cancel)
 #
 # Build the library with:
 #   scripts/can/build-zenohc-can.sh --link isotp --zenoh <fork on a 1.8.0 branch>
@@ -312,6 +314,44 @@ if [ "$ROLE" = all ] || [ "$ROLE" = action-client ]; then
         FAILED=1; say "  FAIL"
         echo "--- nano-ros action client ---"; tail -30 "$OUT/aclient.log"
         echo "--- ros2 action server ---"; tail -20 "$OUT/aros-server.log"
+    fi
+fi
+
+# ------------------------------------------------------- role: action-cancel
+# A goal that is CANCELLED, not one that completes. The cancel request is a
+# service call on `<action>/_action/cancel_goal`, and the reply has to come back
+# across the bus before the client's own timeout -- so this exercises the one
+# part of the action protocol the happy path never touches.
+#
+# It needs a PACED server. ROS 2's cancel client cancels exactly 3.0 s after
+# sending the goal, and the stock nano-ros action server computes the whole
+# sequence in the tick that sees the goal -- about four milliseconds -- so the
+# goal has always succeeded long before the cancel arrives and the cancel path
+# is unreachable. Build the example with NROS_FIB_STEP_TICKS=5000 (a
+# compile-time knob: the crate is no_std) to emit one term per 5000 ticks.
+if [ "$ROLE" = all ] || [ "$ROLE" = action-cancel ]; then
+    PSERVER=${NANO_ROS_ACTION_SERVER_PACED:?set NANO_ROS_ACTION_SERVER_PACED to a paced action-server}
+    say "role ACTION-CANCEL: nano-ros serves /fibonacci, ros2 cancels the goal"
+    start_candump "$OUT/dump-cancel.log"
+    CANCEL_BIN="$ROS_DISTRO_DIR/lib/examples_rclcpp_minimal_action_client/action_client_not_composable_with_cancel"
+    [ -x "$CANCEL_BIN" ] || die "$CANCEL_BIN is not executable"
+    run_bg timeout 60 "$CANCEL_BIN" >"$OUT/cancel-cli.log" 2>&1
+    CANCEL_PID=${PIDS[-1]}
+    sleep 3
+    NROS_LOCATOR="$NODE_EP" run_bg "$PSERVER" >"$OUT/cancel-srv.log" 2>&1
+    wait "$CANCEL_PID" 2>/dev/null
+    kill_all
+    # BOTH ends, deliberately. The client alone would report "Goal was canceled"
+    # on a request that timed out client-side; the server's own line is what says
+    # the cancel actually crossed the bus and was honoured.
+    if [ "$(count_in "$OUT/cancel-cli.log" 'Goal was canceled')" -gt 0 ] \
+       && [ "$(count_in "$OUT/cancel-srv.log" 'Goal canceled')" -gt 0 ]; then
+        say "  PASS: ros2 cancels -> CAN -> nano-ros honours it, both ends agree"
+        report_bus "$OUT/dump-cancel.log"
+    else
+        FAILED=1; say "  FAIL"
+        echo "--- ros2 cancel client ---"; tail -20 "$OUT/cancel-cli.log"
+        echo "--- nano-ros action server ---"; tail -20 "$OUT/cancel-srv.log"
     fi
 fi
 

@@ -290,6 +290,43 @@ whose `system.toml` already declares `features = ["param_services"]`; it gained
 a `link-isotp` passthrough so the CAN link can be switched on from the command
 line.
 
+### Action cancel
+
+The happy path never touches the cancel service. `--role action-cancel` does:
+ROS 2's own cancel client sends a goal, cancels it, and both ends have to agree
+across the bus.
+
+```
+ros2:     Sending goal            t+0.000
+ros2:     canceling goal          t+3.011
+nano-ros: Publish feedback
+nano-ros: Goal canceled
+ros2:     Goal was canceled       t+3.023
+```
+
+526 frames, 35 FirstFrame–FlowControl pairs. The assertion needs **both** ends:
+the client alone would print `Goal was canceled` for a request that timed out on
+its own side, so the server's own line is what says the cancel actually crossed
+CAN and was honoured.
+
+Two things had to change in `examples/native/rust/action-server` first, and the
+first is a plain bug:
+
+* **A cancel the server accepted was then reported as `Succeeded`.** `on_cancel`
+  answered `CancelResponse::Accept` and `tick` completed the goal as `Succeeded`
+  regardless — a lie the client cannot detect. `tick` now sees `Canceling` in the
+  goal status it already collects, and finishes the goal as `Canceled` with
+  whatever sequence had been computed.
+* **The goal has to still be running when the cancel arrives.** Measured: ROS 2's
+  cancel client cancels **exactly 3.0 s** after sending, and the server computed
+  all eleven terms in the single tick that saw the goal — about four
+  milliseconds. The cancel path was unreachable, not broken. The server now
+  supports emitting one term every `NROS_FIB_STEP_TICKS` ticks; the knob is
+  read with `option_env!` because the crate is `no_std`, and **defaults to 0 =
+  the old all-in-one-tick behaviour**, so every existing test is unaffected —
+  confirmed by re-running `--role action-server` on a default build and getting
+  the same `[0,1,1,2,3,5]` and the same 534 frames.
+
 **This is what RFC-0080 could not do.** zenoh routes queries to unicast faces
 only, so a service call over the multicast CAN link never reaches a queryable
 at all. It is not a CAN limitation and never was — it is a property of zenoh's
