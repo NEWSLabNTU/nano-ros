@@ -373,6 +373,14 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   green — a bisect whose steps rebuilt clean "converged" on a docs-only commit). When a bisect's
   first-bad is implausible for the symptom, the test tracked a confounder (build state, load,
   ports) — rerun one rev N times before trusting any boundary. → AGENTS.md Test Pitfalls.
+- **A missing per-build sizes header can be ABSORBING, not a race (issue 0834).** The
+  0088-family fixes were all ordering; this one is not. When a mirror dir holds
+  `nros_cpp_config_generated.h.stamp` and NOT the header, cargo is up to date, so the
+  build script does not re-emit the byproduct, the POST_BUILD copy has nothing to copy,
+  and ninja records its custom command as successful. Deleting the stamp does not help;
+  building the header target directly does not help; only `rm -rf` on the west build dir
+  does. Survey with: for each `zephyr-workspace/build-*/nros-rust/nros-{cpp,c}-generated/nros`,
+  a `.stamp` with no `.h` beside it. Two such leaves stopped a whole `lane=all` sweep.
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires

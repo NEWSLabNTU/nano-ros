@@ -167,6 +167,13 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
+**#0834** (cmake, open 2026-08-27) — the per-build `nros_cpp_config_generated.h` mirror can reach a state NO
+re-run repairs: mirror dir holds the `.stamp` and not the header, the producing custom command runs, cargo prints
+`Finished` without re-emitting the byproduct, and ninja records the output as built. Deleting the stamp, and
+building the header target directly, both failed; only `rm -rf` on the west build dir recovered. Two XRCE C leaves
+stopped a whole `lane=all` sweep (the zephyr leg is not `-k`), which is the multi-hour prerequisite for
+`ci-matrix`. Unlike the rest of the 0088 family this is ABSORBING, not a race, so every documented remedy for that
+family is the wrong path. Survey for it with the three-line orphan-stamp scan in the issue. See `0834-*`.
 **#0831** (build, open 2026-08-27) — `[image.<id>].rmw` configures NOTHING on the cargo driver: it names the
 build DIRECTORY and nothing else, while the backend comes from the `nros sync` facade generated from `[system]
 rmw`. So an image declaring cyclonedds yields `build/posix-cyclonedds/` holding a zenoh binary. The same hole is
