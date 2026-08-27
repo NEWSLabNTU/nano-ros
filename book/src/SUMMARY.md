@@ -62,7 +62,6 @@
 - [Logging](./user-guide/logging.md)
 - [Build Profiles](./user-guide/build-profiles.md)
 - [Profiling Your Build](./user-guide/build-profiling.md)
-- [Measuring Static Memory](./user-guide/measuring-static-memory.md)
 - [Deployment Workflow](./user-guide/deployment.md)
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)
@@ -117,6 +116,7 @@
 
 - [Codegen — the pack pipeline](./internals/codegen-packs.md)
 - [Canonical Platform C ABI](./internals/platform-c-abi.md)
+- [Measuring Static Memory](./internals/measuring-static-memory.md)
 - [RMW Backends — Host-Language Policy](./internals/rmw-backends.md)
 - [RMW Zenoh Protocol](./internals/rmw-zenoh-protocol.md)
 - [FreeRTOS LAN9118 Debugging](./internals/freertos-lan9118-debugging.md)
