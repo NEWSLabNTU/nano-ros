@@ -1,14 +1,16 @@
 # Phase 393 — what is left of the RMW contract, and what deliberately is not
 
 **Status (2026-08-27). NOT STARTED — this doc is the ledger phase-376 did not
-leave.** Phase 376 made the vtable mirror upstream and made every deviation
+leave. W3's graph-query entry was CORRECTED the same day; see the strikethrough
+there and issue 0791.** Phase 376 made the vtable mirror upstream and made every deviation
 declared and checked. It did not say what remains, and the numbers it left
 overstate delivery in one specific way that issue 0800 then measured. This is
 the remainder, split into work that should proceed and reservations that should
 not.
 
 **Implements.** RFC-0054 (the C headers are the ABI SSoT). Continues phase-376
-(archived) and issue 0800 (archived). Not to be confused with phase-379, which
+(archived) and issue 0800 (archived). Issue 0791 owns the graph-query family and
+is NOT superseded by this doc. Not to be confused with phase-379, which
 is the USER API (rclc/rclcpp/rclrs) one layer up.
 
 ## Where the contract stands
@@ -56,11 +58,29 @@ Each is small, each has a live backend primitive, none changes a contract.
 Recorded so nobody spends a week closing a "gap" that is a decision. Reasons
 live in `check-rmw-slot-producers.py`'s `INERT_FAMILIES` and the gate holds them.
 
-* **graph queries + entity counts (11).** Reading the graph back means holding a
-  discovered view of every peer — unbounded memory on a target. Cyclone's
-  `graph.cpp` PUBLISHES this node's participant info, which is the half an
-  embedded image needs; that file existing has twice been misread as these being
-  implemented.
+* ~~**graph queries + entity counts (11).**~~ **WRONG — corrected 2026-08-27.**
+  This said they should stay reserved because reading the graph back means
+  holding a discovered view of every peer, unbounded on a target. Issue **0791**
+  had already refuted that with better evidence, and this doc was written
+  without reading it.
+
+  The refutation: we are ALREADY visible in the graph — cyclone publishes
+  `ros_discovery_info` and the zenoh shim declares `@ros2_lv` liveliness tokens
+  — so a nano-ros node appears in `ros2 node list` while being unable to answer
+  "is anyone subscribed to this topic" in any of the three languages. That
+  ASYMMETRY is the defect, and "unbounded memory" was an argument against a
+  persistent cache that nobody proposed; a query-on-demand needs no cache.
+
+  0791 also measured the real cost, and it is not small: zenoh has
+  `liveliness_get_check` — a BOOLEAN "does anything match", not an enumeration —
+  so a slot needs a new zpico shim entry point that collects reply keyexprs, a
+  parser for `rmw_zenoh_cpp`'s `@ros2_lv/...` grammar that must match exactly,
+  then the slot, a runtime wrapper and three language surfaces. Cyclone needs a
+  READER for the info it only writes. That is a phase, which is what 0791 asks
+  for — not a decline, and not a W3 item here.
+
+  Recorded rather than quietly edited: the reasoning was checkable and I did not
+  check it, which is the failure mode this whole campaign has been about.
 * **`publisher_wait_for_all_acked` (1).** It BLOCKS, and this ABI decomposes
   waiting into `has_data` / `drive_io` / `next_deadline_ms` precisely so one
   executor can drive several backends. A slot that blocks inside one backend

@@ -1,6 +1,8 @@
 # Phase 381 — read the ROS graph, which we are already visible in
 
-**Status (2026-08-25). NOT STARTED — scoped out of phase-379 W3 on measurement.**
+**Status (2026-08-27). NOT STARTED. Design notes added 2026-08-27 from reading
+the zpico shim — W1 is smaller than scoped (the primitive is already start/poll),
+but the acceptance criteria need a warm-up window. See "Design notes" below.**
 Split from issue 0791 because it is several times the size of the other W3
 coverage gaps and needs live interop verification the others do not.
 
@@ -91,6 +93,58 @@ will read absence as emptiness.
 phase-379 to decline six rows across two stages that had to be re-verdicted. The
 accurate statement is narrower: no discovery-driven *entity matching*, but the
 graph is observable.
+
+## Design notes from reading the shim (2026-08-27)
+
+Three findings that change W1's shape. Recorded here rather than in a second
+phase doc, because this doc already owns the work.
+
+### 1. The primitive is ALREADY non-blocking — W1 is smaller than it reads
+
+The slot contract in `rmw_vtable.h` is strict: *"NONE of these may block on the
+wire, and none takes a timeout"*, on the premise that no background transport
+thread is assumed. That looked like a collision with a liveliness GET.
+
+It is not. `zpico_liveliness_get_start(keyexpr, timeout_ms)` returns a SLOT
+HANDLE immediately and `liveliness_get_check(handle)` polls it — start/poll, not
+a blocking call. So W1 does not have to invent an async shape; it has one.
+
+### 2. What is missing is storage, not asynchrony
+
+`get_reply_ctx_t` (`zpico.c`) holds `received`, `done` and `reply_count`. The
+reply handler increments the count and DISCARDS the keyexpr. Enumeration needs
+those strings kept.
+
+That reintroduces a bounded-memory question, but a much smaller one than the
+"graph cache" the vtable header warns about: it is one query's replies, not a
+standing view of every peer. Size it with a knob beside the existing
+`ZPICO_MAX_PENDING_GETS` (default 4, `CONFIG_NROS_MAX_PENDING_GETS`), so a
+128 KiB image can set it to zero and leave the slots NULL.
+
+**The zpico rule applies with force here** (CLAUDE.md, issue 0135): the shim's
+config is ABI-coupled to the zenoh-pico library, and `get_reply_ctx_t` is a
+struct both TUs see. A field added under a config flag that the two halves do
+not agree on is a silent ABI break, which is exactly how the queryables went
+session-local-only.
+
+### 3. The slot is single-shot; the primitive is start/poll. That has a
+### USER-VISIBLE consequence the acceptance criteria must state
+
+`get_node_names(session, visit, ctx)` takes no timeout and may not block, so it
+can only report what has ALREADY arrived. The backend therefore needs a standing
+or periodic liveliness query fed by `drive_io`, and **the first call after
+startup legitimately returns a partial graph**.
+
+That differs from `rmw_zenoh_cpp`, whose cache is warm because its background
+thread has been filling it. So the acceptance line *"`ros2 node list` and a
+nano-ros node's own `get_node_names()` agree"* is only true after settling, and
+written as-is it is a flaky test. It needs either a bounded wait for the counts
+to match, or an explicit statement of the warm-up window.
+
+The alternative — letting the slot block for a timeout — is available and should
+be REJECTED deliberately rather than by omission: it would stall the executor's
+only thread inside an introspection call, on a runtime whose whole premise is
+that there is no other thread to do the work.
 
 ## Acceptance
 
