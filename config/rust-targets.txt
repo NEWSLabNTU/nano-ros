@@ -1,0 +1,44 @@
+# Rust cross-compilation targets this tree builds for — the ONE list.
+#
+# Issue 0833. Before this file there were TWO hand-authored copies: the install
+# loop in `just workspace rust-targets` and the verify loop in `just doctor`.
+# They disagreed. `armv8r-none-eabihf` (Cortex-R52, phase-372/phase-385) was
+# added to the installer and never to the checker, so `just doctor` reported
+# `[OK] rust-targets` on a host that could not configure the FreeRTOS C++
+# workspace lane at all — corrosion failed at CONFIGURE with "Target
+# armv8r-none-eabihf is not installed", make returned 2, and the tail of the
+# build log held only benign newlib warnings. A green doctor is the whole point
+# of a doctor; a second spelling of its list is how it lies.
+#
+# Column 2 says how the target is PROVIDED, and the two values are not
+# interchangeable:
+#
+#   rustup     A prebuilt rust-std exists. `just workspace rust-targets`
+#              installs it and `just doctor` verifies it. Both read THIS file.
+#   build-std  No prebuilt std (Tier 3 / custom JSON target). Provided by
+#              nightly + `-Zbuild-std` from the consuming leaf's own
+#              .cargo/config.toml. There is nothing to install, so neither the
+#              installer nor the doctor touches these rows — they are here so
+#              the coverage gate can tell "deliberately not installable" from
+#              "somebody forgot".
+#
+# `check-rust-targets-covered` asserts every target DECLARED anywhere in the
+# tree — board `nros-board.toml` `[target.X]`, `cmake/toolchain/*`
+# `Rust_CARGO_TARGET`, leaf `.cargo/config.toml` `[build] target` — has a row
+# here. That is the half a shared list alone does not buy: a new board that
+# names a new triple cannot land with nobody provisioning it, which is exactly
+# how armv8r got in this state.
+
+thumbv7m-none-eabi              rustup
+thumbv7em-none-eabihf           rustup
+# Cortex-R5F, AGX Orin SPE (phase-100). Tier 3 but rustup ships a rust-std.
+armv7r-none-eabihf              rustup
+# Cortex-R52 / ARMv8-R AArch32 — NXP S32Z270 (phase-372) and MPS3-AN536
+# (phase-385). Both `workspace-cpp-*-freertos` fixture rows cross-build to it.
+armv8r-none-eabihf              rustup
+riscv32imc-unknown-none-elf     rustup
+riscv64gc-unknown-none-elf      rustup
+
+# NuttX: Tier 3 custom targets, no prebuilt std. See RFC-0012 / issue 0583.
+armv7a-nuttx-eabihf             build-std
+riscv32imac-unknown-nuttx-elf   build-std

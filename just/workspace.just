@@ -532,10 +532,24 @@ doctor:
     fi
 
     # --- rust-targets ---
+    # Issue 0833 — read from config/rust-targets.txt, NOT a second copy of the
+    # installer's list. The copy was missing armv8r-none-eabihf, so this check
+    # printed [OK] on a host where `just freertos build-fixtures` died in cmake
+    # configure. A doctor with its own idea of the list is worse than no doctor.
+    # shellcheck source=scripts/lib/rust-targets.sh
+    source scripts/lib/rust-targets.sh
     tgt_missing=()
-    for t in thumbv7em-none-eabihf thumbv7m-none-eabi armv7r-none-eabihf riscv32imc-unknown-none-elf riscv64gc-unknown-none-elf; do
-        timeout 5s rustup target list --installed 2>/dev/null | grep -q "^$t$" || tgt_missing+=("$t")
-    done
+    # One `rustup target list` for the whole loop, matched with a shell `case`
+    # rather than `grep -q`: a no-match and a grep FAILURE are both exit>=1, and
+    # this loop's whole job is to tell those apart (scripts/lib/grep-q.sh).
+    installed_targets=" $(timeout 5s rustup target list --installed 2>/dev/null | tr '\n' ' ') "
+    while read -r t; do
+        [ -n "$t" ] || continue
+        case "$installed_targets" in
+            *" $t "*) ;;
+            *) tgt_missing+=("$t") ;;
+        esac
+    done < <(nros_rust_targets rustup)
     if [ ${#tgt_missing[@]} -eq 0 ]; then
         echo "  [OK] rust-targets"
     else
@@ -747,23 +761,19 @@ rust-pinned-toolchains:
 rust-targets:
     #!/usr/bin/env bash
     set -e
-    rustup target add thumbv7em-none-eabihf
-    rustup target add thumbv7m-none-eabi
-    # Phase 100 — AGX Orin SPE (Cortex-R5F). Tier 3, but rustup ships a
-    # prebuilt rust-std for both stable and nightly so `cargo check`
-    # works without `-Zbuild-std`. The SPE board crate (100.6) may
-    # still opt into `-Zbuild-std` for `panic_abort` / build-std-features
-    # tuning; that lives in the board crate's .cargo/config.toml.
-    rustup target add armv7r-none-eabihf
-    # phase-372 W1 — Cortex-R52 (ARMv8-R AArch32), the NXP S32Z270 RTU profile
-    # `config/freertos/nros-platform.toml` declares as `[arch.cortex-r52]`. The
-    # `workspace-cpp-s32z270-freertos` fixture row cross-builds to it, so a host
-    # provisioned by this recipe still failed `just freertos build-fixtures` at
-    # CONFIGURE time with corrosion's "Target armv8r-none-eabihf is not
-    # installed" — a fixture row naming a target the setup recipe does not add.
-    rustup target add armv8r-none-eabihf
-    rustup target add riscv32imc-unknown-none-elf
-    rustup target add riscv64gc-unknown-none-elf
+    # Issue 0833 — the target list is DATA (config/rust-targets.txt), read by
+    # this recipe and by `just doctor` through the same helper. It used to be
+    # two hand-authored copies, and they drifted: armv8r-none-eabihf (Cortex-R52
+    # — phase-372's S32Z270 and phase-385's MPS3-AN536, both with
+    # `workspace-cpp-*-freertos` fixture rows) was added here and never to the
+    # doctor, so a host that could not configure the FreeRTOS C++ lane at all
+    # still reported `[OK] rust-targets`.
+    # shellcheck source=scripts/lib/rust-targets.sh
+    source scripts/lib/rust-targets.sh
+    while read -r t; do
+        [ -n "$t" ] || continue
+        rustup target add "$t"
+    done < <(nros_rust_targets rustup)
     rustup +{{NIGHTLY}} target add thumbv7m-none-eabi
     if rustc +{{NIGHTLY}} --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then
         echo "  armv7a-nuttx-eabi (NuttX Tier 3): supported via nightly + build-std"

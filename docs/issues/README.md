@@ -51,6 +51,23 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+Recently resolved (2026-08-27): **#0833** (build) — `just doctor` printed `[OK] rust-targets` on a
+host that could not configure the FreeRTOS C++ workspace lane at all. The target list existed TWICE
+as hand-authored copies — the installer (`just workspace rust-targets`) and the verifier (`just
+doctor`) — and phase-372 added `armv8r-none-eabihf` (Cortex-R52; two boards, one toolchain file, two
+fixture rows) to the installer only. So `just freertos build-fixtures` died in cmake configure with
+corrosion's "Target armv8r-none-eabihf is not installed" while the doctor whose job was to catch
+exactly that stayed green — the #282→#326 second-idiom shape and the issue-0196 narrow-gate rule at
+once. Fixed as DATA: `config/rust-targets.txt`, read by both through
+`scripts/lib/rust-targets.sh`. Plus the gate for the next one —
+`check-rust-targets-covered` asserts every target declared by a board toml, a `cmake/toolchain/*`
+`Rust_CARGO_TARGET`, or a leaf `[build] target` has a row, because a shared list does nothing about
+a board that lands a NEW triple tomorrow, which is how this one happened. Note the first diagnosis
+here was wrong and recorded as a hypothesis rather than a cause: the parallel `make` fan-out puts a
+SUCCESS line (`built: …`) last in the log, make's own exit 2 read as a bespoke status, and ~180 lines
+of benign newlib `_read is not implemented` warnings ended the stderr — so the inputsig stamp step
+looked responsible. It exits 0. See `archived/0833-*`. (2026-08-27)
+
 Recently resolved (2026-08-27): **#0824** (rmw) — a service server on the board was invisible to
 `ros2 service list` and every call hung. TWO defects, found in sequence. First, all SEVEN
 `ServiceInfo::new` sites in `spin.rs` set namespace and node_name and never the domain — the #0801
