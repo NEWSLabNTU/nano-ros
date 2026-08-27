@@ -106,9 +106,61 @@ report through one figure.
 **W3 — per-subscriber wire sizing.** Lever 1. Requires W1 so the saving is
 measured rather than asserted.
 
-**W4 — drop the network stack from serial images.** 27,760 B. Needs triage
-first: whether zenoh-pico's Zephyr layer needs the net *headers* only, or the
-pools too.
+**W4 — drop the network stack from serial images.** 27,760 B.
+
+**TRIAGE ANSWERED (2026-08-27): headers only.** zenoh-pico's Zephyr layer needs
+Zephyr's networking HEADERS at compile time and does not pull the pools. The
+27,760 B is enabled by the image's own Kconfig, not by the transport.
+
+Three independent lines of evidence:
+
+*1. Kconfig dependency chains.* `config NROS_RMW_ZENOH` (zephyr/Kconfig) has NO
+`depends on NET_SOCKETS` and selects nothing networking. Its siblings do —
+`NROS_RMW_XRCE` is `depends on NET_SOCKETS`, `NROS_RMW_CYCLONEDDS` is
+`depends on NET_SOCKETS && POSIX_API && CPP`. `NROS_ZENOH_LINK_SERIAL` has no
+networking dependency either, and `NROS_TRANSPORT_SERIAL` only
+`select NROS_ZENOH_LINK_SERIAL`. So nothing in our Kconfig requires networking
+for a zenoh serial image.
+
+*2. The #include graph.* In zenoh-pico's `src/system/zephyr/network.c`, `<netdb.h>`
+and `<sys/socket.h>` are already guarded by `#if defined(CONFIG_NET_SOCKETS)`.
+`<zephyr/net/net_if.h>` is NOT guarded — that is the one wart — but every
+`net_if_*` USE is: all 19 call sites sit inside link-feature guards
+(`Z_FEATURE_LINK_UDP_MULTICAST` and friends), 0 unguarded, checked by walking
+the preprocessor stack rather than by eye. So on a serial build no networking
+code is compiled; only a header is included.
+
+*3. Symbols in a built image.* `zephyr-workspace/build-cortex-m-c-talker-zenoh`
+(mps2/an385, zenoh over TCP) carries **22,580 B** of networking RAM — the same
+order as the mr_canhubk3 figure on a different board/config. The largest are
+`_k_mem_slab_buf_tcp_conns_slab` 9,600, `net_buf_data_rx_bufs` 4,096,
+`net_buf_data_tx_bufs` 4,096. Every one is a Zephyr net-subsystem symbol; none
+belongs to zenoh-pico.
+
+And the pools have a named source: `examples/zephyr/c/talker/prj-zenoh.conf`
+sets `CONFIG_NET_TCP=y`, `NET_PKT_RX/TX_COUNT=32`, `NET_BUF_RX/TX_COUNT=64`.
+That is the image's config, correct for a TCP image and simply inherited by
+anything that copies it.
+
+**So the fix is conf-level, not code-level**, and needs no vendored change: a
+serial image should not enable `NETWORKING`/`NET_TCP`/`NET_PKT_*`/`NET_BUF_*`.
+
+**One caveat that still needs a build to settle.** Because
+`#include <zephyr/net/net_if.h>` is unconditional, a serial image still needs
+Zephyr's net headers to COMPILE with `CONFIG_NETWORKING=n`. Zephyr ships those
+headers unconditionally and they are declaration-only, so this is expected to
+hold — but it is not proven here, and if it does not hold the remedy is guarding
+that include in zenoh-pico, which is VENDORED and must be reported rather than
+patched in place.
+
+**NOT MEASURED, and deliberately not guessed.** The mr_canhubk3/s32k344 board is
+not in this tree — no board directory, no conf, no `build-board/` — so its image
+cannot be built or measured here. `scripts/nros-mem-report.py` and
+`just mem-report` do not exist in this tree or on `origin/main` either, so no
+`--json --baseline` delta was available. Per this phase's own rule that no wave
+claims a saving it did not measure, the 27,760 B remains the originally reported
+figure and this wave contributes the triage plus the 22,580 B cross-check above,
+not a new saving.
 
 ## Explicitly out of scope
 
