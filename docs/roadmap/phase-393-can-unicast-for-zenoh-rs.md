@@ -1,6 +1,18 @@
 # Phase 393 — CAN unicast for zenoh-rs: ROS services over a CAN bus
 
-**Status (2026-08-27). PROPOSED — nothing started.**
+**Status (2026-08-27). W0-W5 DONE — the gate is passed.**
+
+**A ROS 2 service call completes over a CAN bus.**
+
+```
+[add_two_ints_server]: Incoming request
+[add_two_ints_client]: Result of add_two_ints: 5
+```
+
+No router, no TCP: each session has exactly one active endpoint and it is
+`isotp/vcan0`. 1141 CAN frames across the pair, including 13 flow-control
+frames and visible first frames (`10 19` = FF of 25 bytes), so the kernel's
+ISO-TP segmentation is genuinely carrying it. W6 and W7 remain.
 
 Implements [RFC-0083](../design/0083-can-unicast-over-isotp.md), the zenoh-rs
 half. Delivers what the multicast link cannot: **ROS 2 services, actions,
@@ -32,17 +44,54 @@ can be tested without a bus are tested without one.
 
 | | What | Proves | State |
 | --- | --- | --- | --- |
-| **W0** | Crate skeleton; endpoint grammar; identifier-pair validation; unit tests with no socket | the configuration surface is right, and testable anywhere | |
-| **W1** | `sys.rs`: `CAN_ISOTP` socket open/bind, options, `sockaddr_can.tp` | a Linux process moves ISO-TP PDUs | |
-| **W2** | `LinkUnicastTrait` + connect and listen managers, on the `zenoh-link-serial` pattern | a unicast link exists on a medium with no `accept()` | |
-| **W3** | `LinkKind::Isotp`, `LinkAuthId::Isotp`, `transport_isotp` feature plumbing | a zenoh session accepts an `isotp/...` endpoint | |
-| **W4** | E2E on `vcan0`: two zenoh-rs peers, a **unicast** transport, payload past the MTU | the link carries a zenoh session at all | |
-| **W5** | **`ros2 run demo_nodes_cpp add_two_ints_client` succeeds over CAN** | the reason this phase exists | |
+| **W0** | Crate skeleton; endpoint grammar; identifier-pair validation; unit tests with no socket | the configuration surface is right, and testable anywhere | **done** |
+| **W1** | `sys.rs`: `CAN_ISOTP` socket open/bind, options, `sockaddr_can.tp` | a Linux process moves ISO-TP PDUs | **done** |
+| **W2** | `LinkUnicastTrait` + connect and listen managers, on the `zenoh-link-serial` pattern | a unicast link exists on a medium with no `accept()` | **done** |
+| **W3** | `LinkKind::Isotp`, `LinkAuthId::Isotp`, `transport_isotp` feature plumbing | a zenoh session accepts an `isotp/...` endpoint | **done** |
+| **W4** | E2E on `vcan0`: two zenoh-rs peers, a **unicast** transport, payload past the MTU | the link carries a zenoh session at all | **done** |
+| **W5** | **`ros2 run demo_nodes_cpp add_two_ints_client` succeeds over CAN** | the reason this phase exists | **done** |
 | **W6** | Graph introspection, actions, parameters; negative control on the multicast link | the full ROS surface, and that the contrast is real | |
 | **W7** | `prio_classes`: one ISO-TP socket per priority, identifiers priority-major | per-message bus arbitration, which W7 of phase-378 could not reach | |
 
 **W5 is the gate.** Everything before it is machinery; if a service call does not
 complete, the premise of RFC-0083 is wrong and the rest should not be built.
+
+### Results (2026-08-27)
+
+| wave | outcome |
+| --- | --- |
+| W0 | 14 unit tests, no socket, no root |
+| W1 | `CAN_ISOTP` socket; `can-isotp` autoloads unprivileged, so no modprobe prerequisite |
+| W2 | link + listener, no `accept()` anywhere |
+| W3 | `LinkKind::Isotp` registered; default and `--no-default-features` builds unchanged |
+| W4 | **unicast** transport over `vcan0`, MTU 4095, asserted rather than inferred |
+| W5 | **`Result of add_two_ints: 5`** over CAN |
+
+**Three ABI traps**, found by transcribing the kernel header rather than working
+from memory, all now handled in code:
+
+* `sockaddr_can.can_addr.tp` declares **`rx_id` before `tx_id`**. Declaring the
+  struct locally in the intuitive order swaps them silently and yields a link
+  that opens cleanly and never communicates. `libc`'s struct is used and the
+  fields are set by name.
+* `optlen` is compared for **equality**, not as a minimum, so a layout drift
+  would surface as a runtime `EINVAL` on correct configuration. `const` size
+  assertions make it a compile error.
+* Every socket option must be set **before** `bind`; `isotp_setsockopt` returns
+  `EISCONN` afterwards.
+
+**The port to the ROS revision cost more than the multicast one did**, and the
+difference was predicted. `LinkMulticastTrait` is byte-identical between
+`release/1.8.0` and `main`, so the multicast link moved untouched. The unicast
+trait is not: at `2687c5135` the I/O methods carry no priority argument, and
+there is no `supports_priorities`, no `get_fd` and no
+`get_locators_noloopback`. Four mechanical differences in one file, noted in
+the file itself so the divergence is legible rather than rediscovered by
+diffing. Branch `feat/can-unicast-isotp-ros`; `feat/can-unicast-isotp` keeps the
+`main` line for the eventual PR.
+
+**Also confirmed empirically:** clippy's MSRV lint caught `is_none_or`, stable
+since 1.82 against zenoh's 1.75 floor — the same gate upstream CI enforces.
 
 ## 3. Acceptance criteria
 
