@@ -203,6 +203,22 @@ static mut SMALL_PAYLOADS: [SmallPayloadBlock; ZPICO_MAX_SUBSCRIBERS] =
 static mut LARGE_PAYLOADS: [LargePayloadBlock; MAX_LARGE_SUBSCRIBERS] =
     [[[0u8; SUBSCRIBER_LARGE_SIZE]; SUBSCRIBER_RING_DEPTH]; MAX_LARGE_SUBSCRIBERS];
 
+/// Issue 0841 — the largest hint the small class can actually serve.
+///
+/// `SUBSCRIBER_SIZE_THRESHOLD` and `SUBSCRIBER_BUFFER_SIZE` are independent
+/// knobs and disagree at their shipped defaults (2048 vs 1024), so routing on
+/// the threshold alone sent every hint in 1025..=2048 to a block half its size.
+/// The effective ceiling is whichever is SMALLER: the block must hold what was
+/// routed into it, and a threshold set below the block size is a legitimate way
+/// to push borderline topics large early.
+///
+/// A `const fn` rather than `Ord::min`, which is not const-callable on stable.
+const SMALL_CLASS_CEILING: usize = if SUBSCRIBER_SIZE_THRESHOLD < SUBSCRIBER_BUFFER_SIZE {
+    SUBSCRIBER_SIZE_THRESHOLD
+} else {
+    SUBSCRIBER_BUFFER_SIZE
+};
+
 pub(super) static NEXT_SMALL_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
 pub(super) static NEXT_LARGE_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
 
@@ -230,7 +246,20 @@ const _: () = {
 /// `rx_buffer_hint` bytes. Returns `(payload_base, payload_stride)` for
 /// `init_ring_desc`, or `None` if that size class is exhausted.
 pub(super) fn alloc_payload_block(rx_buffer_hint: usize) -> Option<(*mut u8, usize)> {
-    if rx_buffer_hint > SUBSCRIBER_SIZE_THRESHOLD {
+    // Issue 0841 — route on whether the hint FITS THE SMALL BLOCK, not on the
+    // threshold alone. The two knobs are independent and disagree at their
+    // shipped defaults (threshold 2048, small block 1024), so `hint > threshold`
+    // sent every hint in 1025..=2048 to a block that could not hold it. That
+    // window is reachable by following `create_subscription`'s own build error,
+    // which says to raise `NROS_SUBSCRIPTION_BUFFER_SIZE` — at 2048 the hint is
+    // not > 2048, so it lands small and the sample is dropped at the transport:
+    // the exact failure the assertion exists to prevent.
+    //
+    // `min`, not a replacement: setting the threshold BELOW the block size is a
+    // legitimate way to push borderline topics into the large class early, and
+    // that keeps working. What must not happen is small-routing a hint the small
+    // block cannot hold.
+    if rx_buffer_hint > SMALL_CLASS_CEILING {
         let idx = NEXT_LARGE_PAYLOAD.fetch_add(1, Ordering::SeqCst);
         if idx >= MAX_LARGE_SUBSCRIBERS {
             NEXT_LARGE_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
@@ -1473,6 +1502,43 @@ pub(super) mod tests {
         assert_eq!(&recv_buf[..100], &payload);
 
         assert!(!buffer.has_data());
+    }
+
+    /// Issue 0841 — every block handed out must be able to hold the hint that
+    /// was routed into it.
+    ///
+    /// The pre-existing routing test probes `SUBSCRIBER_SIZE_THRESHOLD + 1`,
+    /// one byte ABOVE the threshold, so it never visits the window where the
+    /// two independent knobs disagree — at the shipped defaults, hints of
+    /// 1025..=2048 took a 1024-byte block. This asserts the property directly
+    /// instead of the threshold's arithmetic, so it stays meaningful whatever a
+    /// consumer sets the knobs to.
+    #[test]
+    fn a_routed_block_always_fits_its_hint() {
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+
+        // One byte past what the small block can hold — inside the old gap
+        // whenever the threshold exceeds the block size.
+        let hint = SUBSCRIBER_BUFFER_SIZE + 1;
+        let (_b, stride) =
+            alloc_payload_block(hint).expect("a block for a hint over the small size");
+        assert!(
+            stride >= hint,
+            "hint {hint} was routed to a {stride}-byte block: the sample cannot \
+             fit, and the drop happens at the transport where no build assertion \
+             can see it"
+        );
+
+        // And the boundary itself still takes the cheap class.
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+        let (_b, stride) = alloc_payload_block(SMALL_CLASS_CEILING).expect("small alloc");
+        assert_eq!(
+            stride, SUBSCRIBER_BUFFER_SIZE,
+            "a hint exactly at the ceiling must stay in the small class — \
+             rounding it up would double every subscriber's cost"
+        );
     }
 
     // Phase 231 Wave 3 (RFC-0038) — size-class routing + exhaustion.

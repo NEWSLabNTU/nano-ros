@@ -144,6 +144,41 @@ pub fn register_type<M: MessageForRmw>() -> Result<(), crate::NodeError> {
     Ok(())
 }
 
+/// Phase 392 W3a — the receive-buffer hint to hand the backend for `M`.
+///
+/// The hint describes THE MESSAGE, not the buffer the executor happens to have.
+/// Until now the registration passed `RX_BUF` — the arena slot size — so a
+/// 64-byte type and a 4 KiB type produced the same hint, and the backend's size
+/// class was chosen from a number that says nothing about either.
+///
+/// Returns the type's own bound when there is one, and `default` (the arena
+/// size) otherwise. `None` from `max_serialized_bound` means "no bound EXISTS",
+/// which phase 380 is explicit must not be turned into a guess — for an
+/// unbounded type there is nothing better to say than what we say today.
+///
+/// Same two arms as [`subscription_buffer_ok`], for the same reason: a backend
+/// whose `MessageForRmw` carries no schema cannot answer the question, and
+/// requiring one would make codegen mandatory for a hand-written message type.
+///
+/// This does NOT by itself let a large type through — `create_subscription`
+/// still gates on the arena knob, and sizing the arena per type needs a
+/// const-generic argument only codegen can supply (phase-392 W3b). What it does
+/// is make the number the backend routes on describe the message.
+#[cfg(rmw_needs_type_descriptors)]
+pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
+    match nros_serdes::size::max_serialized_bound::<M>() {
+        Some(bound) => bound,
+        None => default,
+    }
+}
+
+/// See the documented sibling — no schema on this backend, so no better answer
+/// than the caller's own default.
+#[cfg(not(rmw_needs_type_descriptors))]
+pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
+    default
+}
+
 /// Phase 380 W4 — can a default-sized receive buffer hold every message of `M`?
 ///
 /// `true` when it can, when `M` is unbounded (nothing to prove), AND on backends

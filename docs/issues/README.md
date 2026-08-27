@@ -65,6 +65,8 @@ own lesson about the pre-phase-318 `just ci`). Measured 63–64 s idle, stable b
 buildless. Covers three of the four; the compile-tier one is deliberately out and the hook SAYS so on
 success rather than letting silence imply completeness. See `archived/0840-*`. (2026-08-27)
 
+**#0841** (rmw, open 2026-08-27) — `alloc_payload_block` routes on `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` (2048) but hands back a block sized `ZPICO_SUBSCRIBER_BUFFER_SIZE` (1024), so every hint in 1025..=2048 got a block half its size — and `create_subscription`'s own build error walks you into that window by telling you to raise `NROS_SUBSCRIPTION_BUFFER_SIZE`. See `0841-*`.
+
 Recently resolved (2026-08-27): **#0811** (platform) — `ep->iptcp` was freed to the wrong heap on EVERY multicast teardown, not latently: zenoh-pico's `_z_link_clear` runs close-then-free and `mcast_close` had already freed the local endpoint. The two routes share no allocator on any port (picolibc `free` vs `k_malloc`; `tx_block_release` vs `tx_byte_allocate`; `memp_free(MEMP_NETDB)` vs libc). Fixed on all five ports together by tagging the locally built node and moving its ownership to `free_endpoint`. See `archived/0811-*`.
 
 Recently resolved (2026-08-27): **#0812** (api) — the loan path allocated TWICE per loan, not once: `CffiPublisher::try_lend_slot` and `zenoh_pub_loan` each boxed a slot to mint a token. Both are gone with ZERO new state — no pool, no slot table — because a live loan is already `(publisher, granted length)` and the token never had to identify anything the callee is not handed. The receive half still boxes per borrow; that is 0814's territory. See `archived/0812-*`.

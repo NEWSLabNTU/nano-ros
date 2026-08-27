@@ -3556,9 +3556,15 @@ impl<'s> Executor<'s> {
         )
         .with_domain(self.domain_id)
         .with_namespace(&ns)
-        // Phase 231 (RFC-0038) — hand the backend the receive-buffer size so it
+        // Phase 231 (RFC-0038) — hand the backend a receive-buffer size so it
         // can size-class its receive storage (zenoh-pico: small vs large).
-        .with_rx_buffer_hint(RX_BUF);
+        //
+        // Phase 392 W3a — the TYPE's bound, not `RX_BUF`. The arena slot size
+        // says nothing about the message: a 64-byte type and a 4 KiB type both
+        // hinted the same number, so the class was chosen from a value unrelated
+        // to what arrives. Falls back to `RX_BUF` for an unbounded type, where
+        // no bound exists to state (phase 380).
+        .with_rx_buffer_hint(crate::rmw_type_registry::subscription_rx_hint::<M>(RX_BUF));
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
