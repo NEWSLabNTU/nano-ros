@@ -146,6 +146,10 @@ extern crate self as nros;
 // Ungated: they are plain consts, useful to size caller-supplied storage
 // whether or not the runtime module that consumes them is compiled in.
 pub mod config;
+
+// phase-391 W5 — caller-supplied component-pool storage sizing. Ungated for the
+// same reason `config` is: plain arithmetic, useful to size a `static` whether
+// or not `node_runtime` is compiled in.
 pub mod dispatch_tag;
 pub mod guide;
 #[cfg(feature = "metadata-mode")]
@@ -163,6 +167,7 @@ pub mod node_metadata;
 /// when an RMW backend is linked.
 #[cfg(all(feature = "rmw-cffi", feature = "alloc"))]
 pub mod node_runtime;
+pub mod runtime_storage;
 
 /// Phase 212.L.5 — top-level init API.
 ///
