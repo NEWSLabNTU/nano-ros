@@ -314,7 +314,22 @@ amplifies the cost. Quarantine means the test **still runs and still records**
 but no longer blocks; it does not mean deleted.
 
 Today's candidate: `action_raw_goal_ships_one_cdr_header` — 60 s timeout
-in-sweep, 3.6 s solo, 5/5 passes. A 16× margin, load-induced.
+in-sweep, 3.6 s solo, 5/5 passes. A 16× margin, load-induced. Now issue 0854 and
+the first entry in `.config/flake-quarantine.toml`.
+
+Two rules the registry enforces, both aimed at the same failure — a quarantine
+that quietly becomes permanent:
+
+* **Every entry expires**, and expiry is a hard gate failure. Extending a date
+  is a fine decision; making it silently is not.
+* **Every entry names an open issue.** The flake is a defect in something — the
+  test, the harness, or the code — and the quarantine records that we chose not
+  to fix it *yet*. Without an issue that choice has no owner.
+
+`just retest-failures-solo` is what an entry must earn: it re-runs the last
+run's failures with `--test-threads=1`, since the hypothesis under test is
+contention. If they fail solo too, that is a defect and must not be
+quarantined.
 
 `_nextest-tolerant` and the skip budget are most of the mechanism already. What
 is missing is a registry and the does-not-block half.

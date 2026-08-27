@@ -183,6 +183,16 @@ innocent PRs.
 `_nextest-tolerant` and the skip budget are most of the mechanism already; what
 is missing is the registry and the does-not-block half.
 
+**Landed.** `.config/flake-quarantine.toml` + `scripts/test/quarantine.py`.
+`--demote` rewrites a quarantined `<failure>` into `<skipped
+type="nros:quarantine">` keeping the original text, wired into
+`_rewrite-skipped-junit` before the `junit-real.xml` snapshot so every consumer
+reads one account. `--check` refuses an expired entry, a non-open issue or a
+missing field; expiry is a hard failure because quarantine without expiry is
+deletion with extra steps. `just retest-failures-solo` produces the evidence an
+entry must earn. 19 hermetic selftest assertions, run by the gate. First entry
+is issue 0854.
+
 ## W6 — Runner scripts, and one runner
 
 - `scripts/ci/runner-register.sh` — registration token via `gh api`,
@@ -198,6 +208,19 @@ is missing is the registry and the does-not-block half.
 
 Register one machine with `nros-qemu,nros-sdk-zephyr,nros-big`. Outbound 443
 only, so NAT is fine. Ephemeral and unprivileged, because this is a public repo.
+
+**Scripts landed; no machine registered.** All four exist and take `--check`.
+The doctor is the label SSoT (executable and sourceable, so there is no second
+copy of the vocabulary) and register runs it first, refusing a host that fails.
+The service install was made OPT-IN (`--with-service`): it is the only sudo in
+the four, and nothing in this repo sudos.
+
+**Known gap: `--ephemeral` and a systemd service are not a complete pairing.**
+The runner takes one job, de-registers and exits; the unit then restarts a
+runner whose registration is gone. Something must re-register — a supervisor
+loop or a timer re-running `runner-register.sh`, which is idempotent thanks to
+`--replace`. The script prints this after every registration; the supervisor is
+not written.
 
 ## W7 — The queue
 
