@@ -442,7 +442,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn a_generated_root_emits_the_entry_call_when_the_package_is_gone() {
         // W4.b. A C/C++ entry package is ONE `nano_ros_add_executable` call —
         // `SOURCES` is optional when `LAUNCH` is present because the verb
