@@ -111,9 +111,27 @@ fi
 # rounds already paid, serially, with a rebuild in between.
 stale_families=0
 
+# BUILDER-keyed, not language-keyed (phase-344 W2's rule, applied here at last).
+#
+# `is_cargo_row` stopped keying on `lang` when the six
+# `examples/qemu-riscv64-threadx/rust/*` cyclonedds rows turned out to build
+# through cmake; this probe kept `--lang rust` and so kept handing those rows —
+# twelve of them, zenoh and cyclonedds — to `cargo build`. A threadx C/C++ leaf
+# cannot be built that way, so the probe failed on all twelve EVERY run:
+#
+#   ERROR: 12 rust fixture(s) could NOT be built by the staleness probe
+#     error: could not compile `nros-rmw-zenoh-staticlib` (lib)
+#
+# and a row the probe cannot build is never fresh, so it is stale again on the
+# next run. That is not a treadmill converging — it is a fixed point, and it
+# cost ~190 test failures on every `just ci-matrix` (issue 0828's neighbourhood:
+# a row in the run set that no lane can make fresh). The rows were ALSO in the
+# cmake list, where they self-healed correctly, so each was reported twice under
+# two labels — which is why the ERROR block named them `build-zenoh` with no
+# leaf path and read as unattributable rather than as a partition bug.
 rust_stale=()
 if command -v parallel >/dev/null 2>&1; then
-    python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust "${scope_args[@]}" \
+    python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --builder cargo "${scope_args[@]}" \
         | parallel --halt now,fail=1 --jobs "$(nproc)" \
         bash scripts/test/rust-fixture-stale.sh {} >"$PROBE_OUT" 2>>"$PROBE_ERR" \
         || probe_crash $?
@@ -122,7 +140,7 @@ else
     while IFS= read -r line; do
         out="$(bash scripts/test/rust-fixture-stale.sh "$line")"
         [ -n "$out" ] && rust_stale+=("$out")
-    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --lang rust "${scope_args[@]}")
+    done < <(python3 scripts/build/fixtures-manifest.py list --for-probe --with-platform --builder cargo "${scope_args[@]}")
 fi
 # issue 0466 — split the probe's two outcomes. "Stale, and cargo rebuilt it" is a
 # WARNING because the artifact now exists; "could not build" is an ERROR, because

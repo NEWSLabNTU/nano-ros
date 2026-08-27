@@ -167,6 +167,15 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
+**#0835** (testing, open 2026-08-27) — the cmake and rust fixture families RE-STALE EACH OTHER, so
+`check-fixtures-stale` never reaches a fixed point: three consecutive runs on a tree with a green `lane=all`
+build each reported the same 17 cmake + 23 rust as stale-and-rebuilt. The per-row probe converges (probe a row
+twice: stale, then fresh), but right after a full run a cmake cell that was just rebuilt is stale again — the
+rust rebuild writes something the cmake signature covers. THIS is what keeps `just ci-matrix` red: ~190 tests
+fail on staleness and every one passes solo afterwards. Two runs either side of an unrelated change gave the
+IDENTICAL 92-test failure set, which is how it gets blamed on whatever landed last. Fixed on the way: the rust
+probe selected by `--lang rust` while `is_cargo_row` is builder-keyed, so twelve threadx cmake rows got a bare
+`cargo build` that could never succeed. See `0835-*`.
 **#0834** (cmake, open 2026-08-27) — the per-build `nros_cpp_config_generated.h` mirror can reach a state NO
 re-run repairs: mirror dir holds the `.stamp` and not the header, the producing custom command runs, cargo prints
 `Finished` without re-emitting the byproduct, and ninja records the output as built. Deleting the stamp, and
