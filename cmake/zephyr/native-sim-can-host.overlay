@@ -1,0 +1,25 @@
+/*
+ * phase-394 Tier 2 — bind native_sim's CAN to a HOST SocketCAN interface.
+ *
+ * native_sim's DTS carries two CAN nodes: `can_loopback0`, which is `okay` and
+ * is what `zephyr,canbus` chooses by default, and `can0`, a
+ * `zephyr,native-linux-can` node that is `disabled`. Loopback never leaves the
+ * process, so it can prove the link compiles and nothing more. This overlay
+ * enables the host-backed node and points `zephyr,canbus` at it, which is what
+ * lets a native_sim image share a bus with a Linux peer.
+ *
+ * `host-interface` is set to vcan0 directly. Upstream's comment suggests
+ * `ip link property add dev vcan0 altname zcan0` instead; naming the interface
+ * here is one less piece of host state to get wrong.
+ */
+
+/ {
+	chosen {
+		zephyr,canbus = &can0;
+	};
+};
+
+&can0 {
+	status = "okay";
+	host-interface = "vcan0";
+};

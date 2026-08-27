@@ -378,6 +378,13 @@ if(CONFIG_NROS_CPP_API)
     # `using ::fprintf;` re-export pattern is benign on top of a real
     # `<cstdio>`.
     zephyr_include_directories(${NROS_REPO_DIR}/zephyr/cxx-compat)
+    # Force-included libc gap shim. Zephyr's MINIMAL libc has no `setvbuf` and
+    # no `_IO*BF`, and every C and C++ example calls
+    # `setvbuf(stdout, NULL, _IONBF, 0)` so its prints appear promptly -- so on
+    # minimal libc they all fail to build. Force-included rather than shipped as
+    # a `<stdio.h>` override so it cannot disturb the include_next chain, and
+    # keyed on `_IONBF` inside so it is inert on picolibc and newlib.
+    zephyr_compile_options(-include ${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h)
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the
