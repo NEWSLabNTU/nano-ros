@@ -422,6 +422,155 @@ fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     Ok(())
 }
 
+/// Does a `remote.origin.fetch` refspec set make `<branch>` resolvable?
+///
+/// A refspec's SOURCE side (before the `:`) is what matters: `refs/heads/*`
+/// covers everything, `refs/heads/<branch>` covers exactly one. A leading `+`
+/// (force) is not part of the ref pattern.
+fn refspecs_cover_branch(specs: &str, branch: &str) -> bool {
+    specs.lines().any(|spec| {
+        let src = spec
+            .trim()
+            .trim_start_matches('+')
+            .split(':')
+            .next()
+            .unwrap_or("")
+            .trim();
+        src == "refs/heads/*" || src == format!("refs/heads/{branch}")
+    })
+}
+
+/// Issue 0833 follow-on — a submodule that DECLARES a branch must be able to
+/// resolve it.
+///
+/// `git submodule update --depth 1` (the shallow path above, and the default
+/// for most `[source.*]` rows) clones single-branch: it writes
+/// `remote.origin.fetch = +refs/heads/main:refs/remotes/origin/main` and
+/// nothing else. When `.gitmodules` declares a DIFFERENT branch — the normal
+/// case for our forks, which keep patches on a named line and `main` clean —
+/// that branch never materialises as a remote-tracking ref. The effects are
+/// quiet and compounding: `git submodule update --remote` cannot follow the
+/// declared line, `origin/<branch>` does not exist so no one can diff the pin
+/// against its tip, and CLAUDE.md's "resolve the branch by containment" check
+/// (`git merge-base --is-ancestor <pin> <branch>`) fails with *unknown
+/// revision* rather than an answer.
+///
+/// Measured 2026-08-27: zenoh-pico declared `branch = nano-ros` while fetching
+/// only `main`, and it was the ONLY one of 20 submodules whose declared branch
+/// and refspec disagreed — so the breakage read as "that fork is odd" instead
+/// of as a provisioning bug. Nothing in the repo sets that refspec; `--depth 1`
+/// does.
+///
+/// Additive on purpose: the existing spec is kept and the declared branch is
+/// added beside it, so the shallow intent survives (this does NOT widen to
+/// `refs/heads/*` and start pulling every branch tip). Idempotent — a
+/// submodule with no declared branch, or one already covered, is untouched, so
+/// re-running `nros setup` repairs a tree provisioned before this landed.
+fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) -> Result<()> {
+    let ws = workspace.to_string_lossy();
+    // `.gitmodules` is keyed by submodule NAME, which need not equal its path.
+    let Ok(entries) = sh_capture(
+        &[
+            "git",
+            "-C",
+            &ws,
+            "config",
+            "-f",
+            ".gitmodules",
+            "--get-regexp",
+            r"^submodule\..*\.path$",
+        ],
+        None,
+    ) else {
+        return Ok(());
+    };
+    let Some(name) = entries.lines().find_map(|line| {
+        let (key, value) = line.split_once(char::is_whitespace)?;
+        (value.trim() == path).then(|| {
+            key.trim_start_matches("submodule.")
+                .trim_end_matches(".path")
+                .to_string()
+        })
+    }) else {
+        return Ok(());
+    };
+
+    // No declared branch => nothing to guarantee (an untouched upstream pin).
+    let key = format!("submodule.{name}.branch");
+    let Ok(branch) = sh_capture(
+        &[
+            "git",
+            "-C",
+            &ws,
+            "config",
+            "-f",
+            ".gitmodules",
+            "--get",
+            &key,
+        ],
+        None,
+    ) else {
+        return Ok(());
+    };
+    // `.` means "the superproject's branch" — not a name we can add a spec for.
+    if branch.is_empty() || branch == "." {
+        return Ok(());
+    }
+
+    let subdir = workspace.join(path);
+    let subdir_s = subdir.to_string_lossy();
+    let specs = sh_capture(
+        &[
+            "git",
+            "-C",
+            &subdir_s,
+            "config",
+            "--get-all",
+            "remote.origin.fetch",
+        ],
+        None,
+    )
+    .unwrap_or_default();
+    if refspecs_cover_branch(&specs, &branch) {
+        return Ok(());
+    }
+
+    let spec = format!("+refs/heads/{branch}:refs/remotes/origin/{branch}");
+    sh(
+        &[
+            "git",
+            "-C",
+            &subdir_s,
+            "config",
+            "--add",
+            "remote.origin.fetch",
+            &spec,
+        ],
+        None,
+    )
+    .wrap_err_with(|| format!("add fetch refspec for {path} (branch {branch})"))?;
+
+    // A refspec alone creates no ref. Fetch once, at the same depth the
+    // submodule was provisioned with, so `origin/<branch>` actually exists —
+    // otherwise this "fix" leaves the same unknown-revision error behind a
+    // config that looks correct.
+    let mut fetch: Vec<&str> = vec!["git", "-C", &subdir_s, "fetch", "origin"];
+    if shallow {
+        fetch.push("--depth");
+        fetch.push("1");
+    }
+    fetch.push(&branch);
+    if let Err(e) = sh(&fetch, None) {
+        // Non-fatal: an offline host still gets the durable config, and the
+        // next fetch materialises the ref. Failing provisioning over this
+        // would be worse than the state we are repairing.
+        eprintln!(
+            "nros setup: {path}: added fetch refspec for `{branch}`, but fetching it failed ({e}). It will resolve on the next `git fetch`."
+        );
+    }
+    Ok(())
+}
+
 /// Outcome of [`provision_source`] — for the `nros setup` disposition line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceDisposition {
@@ -535,6 +684,11 @@ pub fn provision_source(
                     })?;
                 }
             }
+            // Issue 0833 follow-on — `--depth 1` clones single-branch, so a
+            // submodule declaring a non-`main` branch could not resolve it.
+            // Runs on every provision, including the already-initialised
+            // no-op, which is what makes an older tree self-heal.
+            ensure_submodule_branch_refspec(workspace, path, shallow)?;
             Ok(SourceDisposition::Provisioned)
         }
         SourceProvision::Clone => {
@@ -959,6 +1113,47 @@ mod tests {
             InstallAction::Present
         );
         std::fs::remove_dir_all(&present).ok();
+    }
+
+    /// Issue 0833 follow-on — the refspec predicate behind
+    /// `ensure_submodule_branch_refspec`. The bug it exists to prevent was a
+    /// single-branch clone (`+refs/heads/main:…`) under a `.gitmodules`
+    /// declaring `branch = nano-ros`, so the "narrow spec, different branch"
+    /// row is the regression case.
+    #[test]
+    fn refspec_coverage_is_decided_by_the_source_side() {
+        let wide = "+refs/heads/*:refs/remotes/origin/*";
+        let only_main = "+refs/heads/main:refs/remotes/origin/main";
+
+        assert!(refspecs_cover_branch(wide, "nano-ros"));
+        assert!(refspecs_cover_branch(only_main, "main"));
+        // The measured zenoh-pico state.
+        assert!(!refspecs_cover_branch(only_main, "nano-ros"));
+        assert!(!refspecs_cover_branch("", "nano-ros"));
+
+        // Multiple specs: covered if ANY covers it (what --add produces).
+        let repaired = format!("{only_main}\n+refs/heads/nano-ros:refs/remotes/origin/nano-ros");
+        assert!(refspecs_cover_branch(&repaired, "nano-ros"));
+        assert!(refspecs_cover_branch(&repaired, "main"));
+        assert!(!refspecs_cover_branch(&repaired, "some-other-branch"));
+
+        // The DESTINATION side must not decide it: a spec whose source is
+        // `main` does not provide `nano-ros` merely by naming it on the right.
+        assert!(!refspecs_cover_branch(
+            "+refs/heads/main:refs/remotes/origin/nano-ros",
+            "nano-ros"
+        ));
+
+        // A missing `+` is still a valid refspec.
+        assert!(refspecs_cover_branch(
+            "refs/heads/nano-ros:refs/remotes/origin/nano-ros",
+            "nano-ros"
+        ));
+        // Prefix collisions are not matches.
+        assert!(!refspecs_cover_branch(
+            "+refs/heads/nano:refs/remotes/origin/nano",
+            "nano-ros"
+        ));
     }
 
     #[test]
