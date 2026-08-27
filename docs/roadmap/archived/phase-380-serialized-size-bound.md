@@ -1,8 +1,15 @@
 # Phase 380 — a message's serialized size, computed instead of guessed
 
-**Status (2026-08-26). W0-W3, W5 landed; W4 landed CONDITIONALLY — see the
-correction below.** Deferred deliberately from phase-376 W4, which established that
-this is not an ABI question. Issue 0776 is the gap; this doc is the plan.
+**Status: COMPLETE (2026-08-26). W0-W5 all landed.** The status line said "W4
+landed CONDITIONALLY" for a while; the correction section below resolved that —
+`bound_fits` (not `buffer_fits`) is the right predicate at a subscription site,
+and with it W4 landed without blocking the unbounded types the first attempt
+would have refused. Deferred deliberately from phase-376 W4, which established
+this is not an ABI question. Issue 0776 was the gap and is resolved/archived.
+
+Scope note, kept because it is easy to overstate: this helps messages that HAVE
+a bound. `std_msgs/String` and friends are unbounded, get `None`, and keep
+whatever knob-sized buffer the integrator chose — see "What this does NOT fix".
 
 ## Why
 
