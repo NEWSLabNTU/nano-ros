@@ -485,3 +485,45 @@ Verified: `just freertos build-fixture-extras` rc=0 (243 s), no diagnostics from
 
 0769's remaining question — whether the two defaults should be one — is now a
 tidiness issue rather than a correctness one.
+
+
+## Attempting to CLOSE the netif coverage gap (2026-08-27) — blocked, findings recorded
+
+W3b made the gap legible; closing it means building the images the coverage rows
+name. Attempted, and it does not work today. What was established:
+
+**The rows name a path nothing builds.** They expect
+`examples/qemu-arm-freertos/rust` / `build/cargo-fixtures/qemu-arm-freertos`
+matching `freertos_rs_*entry`. A `find` over the whole tree for that glob
+returns **nothing**, and `just freertos build-fixtures` puts its artifacts under
+`examples/workspaces/rust/target-fixtures/freertos/...` instead.
+
+So the row may be stale rather than merely uncovered — the phase-331 workspace
+migration moved where FreeRTOS entries land, and this coverage map appears not
+to have followed. **That is a stronger claim than W3b made and it is not yet
+proven**: the run below did not get far enough to produce an entry image of any
+name, so "the glob is wrong" and "the image is not built" are still
+indistinguishable.
+
+**`just freertos build-fixtures` fails.** It reaches
+`examples/workspaces/realtime-cpp/.../freertos_entry/` and exits 2 with no
+diagnostic in the log — the last lines are benign newlib
+`_read/_lseek/_isatty is not implemented` link warnings, then the failure. Two
+attempts, the second detached so a foreground timeout could not be the cause.
+
+### For whoever continues
+
+1. Get `just freertos build-fixtures` green, or find the real error — the log's
+   final page is warnings, so the diagnostic is either suppressed or upstream of
+   the tail. This is the actual blocker.
+2. Then check what the entry images are NAMED and where they land, and fix the
+   two COVERAGE rows to match if the workspace migration moved them.
+3. Only then does `nros_board_register_netif` get verified, and the `warn=4`
+   drop to 2 (the baremetal-serial rows are a separate lane with the same
+   question).
+
+Worth noting the shape: W3b turned an invisible gap into a visible one, and the
+first attempt to close it immediately found a second, likelier defect behind it.
+That is the gate working as intended — but the guarantee remains unverified, and
+saying so plainly is better than a partial fix that moves the warning without
+checking anything.
