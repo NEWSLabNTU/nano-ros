@@ -724,13 +724,15 @@ first revision wrongly cited mtime as proof it was "not stale" — every conclus
 mismatch, an issue-0801 comparison, a suspected `support_domain != 0` sentinel defect) was wrong with it.
 See `0820-*`. (2026-08-27)
 
-**#0819** (rmw, open 2026-08-26) — XRCE payloads at/above the 4096 transport MTU are DELIVERED CORRUPTED
-rather than refused. With `NROS_XRCE_BUFFER_SIZE` raised so the receive ring is not the constraint,
-3584-byte payloads arrive 10/10 valid and 4096-byte payloads arrive 10/10 INVALID — `try_recv_raw` returns
-`Ok(Some(len))`, no counter moves, and only an application that validates its own payload can tell. Found
-while correcting phase-384, whose 1024-byte cliff turned out to be `XRCE_BUFFER_SIZE` (ours, raisable, and
-it refuses LOUDLY with `MessageTooLarge`); raising past that one exposes this one, which does not refuse at
-all. Truncation point not yet located in the client. See `0819-*`. (2026-08-26)
+**#0819** (rmw, open 2026-08-26, measured 2026-08-27) — XRCE payloads near the transport MTU are DELIVERED
+with a ZEROED TAIL rather than refused. Instrumented: `len` is the full 4096, header/`seq`/`size_marker` all
+survive, the pattern matches to offset 4080, and the last 16 bytes are 0x00 — deterministic, 10/10 samples,
+4080 = MTU − 16. The boundary FOLLOWS the MTU: rebuilt with `NROS_XRCE_CUSTOM_TRANSPORT_MTU=8192` the same
+4096-byte payload is 10/10 valid, which rules out the receive ring, the agent type size and payload size as
+such. NOT reconciled: at MTU 8192 the transition is silence (nothing arrives from ~8184 up) rather than
+zero-tailing, so the two windows disagree. `xrce_publisher_publish_raw` returns MESSAGE_TOO_LARGE only when
+`uxr_buffer_topic` REFUSES; here it ACCEPTS an over-MTU payload, so the guard never fires and the fragmented
+path is still a TODO. See `0819-*`. (2026-08-27)
 
 **#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
 reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload
