@@ -22,6 +22,30 @@ if [ ! -w "$ARCHIVE" ]; then
     exit 0
 fi
 
+# issue 0805 — skip an archive we have already processed and that has not
+# changed since.
+#
+# This script runs from the LINK WRAPPER, so it is invoked once per archive per
+# link: ~190 times in one warm `threadx_riscv64` rebuild. Each invocation
+# extracts EVERY member (`llvm-ar p` per object) and runs a reader on it, then
+# makes six `llvm-objcopy` passes — measured at 4.3 s on a 1.6 MB archive, and
+# NOT faster the second time, because nothing recorded that the work was already
+# done. That is ~817 s of work in a build whose own compile step is 6.7 s, and
+# it is what the leaves were blocked on: `llvm-ar` and `llvm-objcopy` in
+# `rq_qos_wait`, i.e. block-layer writeback throttling, 36% of leaf samples in D.
+#
+# The stamp records size+mtime of the archive AS THIS SCRIPT LEFT IT. A rebuilt
+# archive gets a new mtime and is reprocessed; an untouched one is skipped. This
+# composes with the mtime restore at the bottom: after a no-op the archive keeps
+# its original mtime, so the stamp written here matches on the next run.
+STAMP="$ARCHIVE.nros-strip-stamp"
+_archive_id() {
+    stat -c '%s %Y %y' "$ARCHIVE" 2>/dev/null
+}
+if [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$(_archive_id)" ]; then
+    exit 0
+fi
+
 # Snapshot original to detect no-op runs and preserve mtime — otherwise every
 # rebuild bumps the archive mtime and cmake relinks downstream targets.
 SNAPSHOT=$(mktemp)
@@ -129,3 +153,9 @@ fi
 if cmp -s "$ARCHIVE" "$SNAPSHOT"; then
     touch -r "$SNAPSHOT" "$ARCHIVE"
 fi
+
+# Record the archive's identity AFTER the mtime restore above, so the next
+# invocation on an unchanged archive can skip (issue 0805). Written last: if any
+# step above failed, `set -e` has already exited and no stamp claims work that
+# did not happen.
+_archive_id > "$STAMP" 2>/dev/null || true

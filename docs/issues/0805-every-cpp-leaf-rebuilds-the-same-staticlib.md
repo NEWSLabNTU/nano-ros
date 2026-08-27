@@ -710,3 +710,76 @@ GLOBAL — not a consequence of sharing.
 
 Recording rather than chasing: it is a different question, and this issue has
 enough evidence of what happens when a tired conclusion outruns its measurement.
+
+## 0648 is NOT the floor — and I made the error that issue exists to warn about
+
+The previous section pointed at cargo's lock waits (112 package-cache, 22 build
+dir) as what remained. **Issue 0648 is resolved and refutes exactly that**, with
+its durable lesson stated in the title: *"the 274 blocks are real and nearly
+free"*. Its measurement: 32x the work in 6.8x the time, per-invocation cost
+FALLING monotonically, `--offline` making no difference to block counts.
+
+> **Block COUNT is not a cost measure.** Blocks grow linearly with N ...
+> including where scaling is healthy.
+
+I quoted a block count as a cost. That is the same reading error 0648 was closed
+for, one issue over, on the same day I had read the file.
+
+### Measured properly, by cost
+
+Lineage + wchan sampling over a 425 s warm run:
+
+| | |
+| --- | --- |
+| build's own processes alive | 9.4 |
+| **runnable** | **0.06** |
+| disk-wait | 0.92 |
+| leaf state | S 62%, **D 36%**, R 2% |
+
+Leaf blockers by SAMPLE COUNT (occupancy, not events):
+
+```
+153  llvm-ar       rq_qos_wait      block-layer writeback throttling
+ 41  llvm-objcopy  rq_qos_wait
+```
+
+Not locks. Archive post-processing, blocked on disk.
+
+### What it was
+
+`cmake/strip-compiler-builtins.sh` runs from the LINK WRAPPER — once per archive
+per link, ~190 times per warm rebuild. Each invocation extracts EVERY member
+(`llvm-ar p` per object), runs an ELF reader on each, then makes six
+`llvm-objcopy` passes. Measured 4.3 s on a 1.6 MB archive **and not faster the
+second time**: nothing recorded that the work had already been done.
+
+~817 s of work in a build whose compile step is 6.7 s.
+
+Fixed with a stamp of the archive's size+mtime as the script left it. Unchanged
+archive → skip; rebuilt archive → reprocess. Verified both directions: 5.66 s →
+0.00 s on repeat, 4.69 s again after a `touch`.
+
+| | before | after |
+| --- | --- | --- |
+| archive processings, warm | 190 | **17** |
+| single invocation, repeat | 4.3 s | **0.00 s** |
+| wall, warm | 362 s | **332 s** |
+
+### And the wall barely moved, which is the finding
+
+Removing ~750 s of work bought 30 s. That work was overlapped, not on the
+critical path. Three hypotheses have now been measured and each was real but not
+the bound: cargo recompilation (fixed, 459.6 s → 6.7 s), lock waits (refuted by
+0648), archive post-processing (fixed, 190 → 17).
+
+**A component being large is not evidence that it bounds the wall.** The next
+step is a CRITICAL-PATH measurement — per-leaf spans and how many run at once —
+not another component hunt. At `alive 9.4` and `runnable 0.06` over 425 s, the
+suspicion is that leaves are largely serialised, but that is a hypothesis and
+this issue has already recorded what happens to those when they go unmeasured.
+
+The remaining 17 processings are structural rather than wasteful: Corrosion
+copies the UNLOCALIZED archive from the shared dir into each leaf, localization
+modifies it, so the next build's `copy_if_different` sees a difference and
+re-copies, invalidating the stamp. Localizing once in the shared dir would fix
+it, but cargo owns that file.
