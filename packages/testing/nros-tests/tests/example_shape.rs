@@ -423,11 +423,27 @@ fn every_canonical_leaf_has_readme() {
 #[test]
 fn every_standalone_rust_leaf_is_its_own_workspace_root() {
     /// Is some ancestor of `leaf` (up to `examples/`) a workspace root?
+    ///
+    /// TWO markers, because a workspace root has two spellings now. A root
+    /// `Cargo.toml` with `[workspace]` is the original. `.colcon_workspace` is
+    /// the tracked marker a MIGRATED workspace carries (RFC-0065 D3 /
+    /// phase-383 W10.a): `nros build` GENERATES the root manifest into the
+    /// working tree, so it is gitignored and absent from a fresh clone.
+    ///
+    /// Reading only the manifest made this test depend on whether the
+    /// workspace happened to have been BUILT — green on a machine that had,
+    /// red on a fresh clone, and red here for `examples/workspaces/launch`
+    /// once its root was deleted. The marker is the tracked half of the same
+    /// fact, and it is the same order `detect_workspace_root` resolves in, so
+    /// asking for both keeps the answer independent of build state.
     fn belongs_to_enclosing_workspace(leaf: &Path, examples: &Path) -> bool {
         let mut dir = leaf.parent();
         while let Some(d) = dir {
             if !d.starts_with(examples) {
                 break;
+            }
+            if d.join(".colcon_workspace").is_file() {
+                return true;
             }
             let manifest = d.join("Cargo.toml");
             if let Ok(text) = std::fs::read_to_string(&manifest)

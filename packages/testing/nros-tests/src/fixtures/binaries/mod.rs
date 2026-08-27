@@ -1709,6 +1709,41 @@ fn require_prebuilt_workspace_binary(
     Ok(binary_path.to_path_buf())
 }
 
+/// A GENERATED row's binary name is DERIVED — `<image>_entry`, the target
+/// `nros build` emits — so a resolver that names anything else is wrong, and
+/// wrong in the expensive direction: the binary is simply "not there", which is
+/// indistinguishable from an absent toolchain, so the cell SKIPS and the lane
+/// stays green over a coordinate that never ran (issue 0411).
+///
+/// The sibling check inside [`build_workspace_cmake_entry_in`] covers a
+/// HAND-WRITTEN row by comparing against the manifest's `entry` field. That
+/// field is empty by construction for a generated row, so this is the same
+/// guard reading the field that does carry the answer — one helper on both
+/// resolvers rather than a second spelling of the rule.
+///
+/// Written after getting it wrong: migrating `safety` (phase-383 W10.a) renamed
+/// four resolvers to the bare image name. It built clean and would have skipped
+/// all four cells forever.
+fn assert_generated_entry_name(fixture_id: &str, binary_name: &str) -> TestResult<()> {
+    let Ok(record) = current_workspace_fixture_record(fixture_id) else {
+        return Ok(());
+    };
+    let fields: Vec<&str> = record.split('\x1f').collect();
+    let Some(image) = fields.get(13).filter(|f| !f.is_empty()) else {
+        return Ok(());
+    };
+    let want = format!("{image}_entry");
+    if want == binary_name {
+        return Ok(());
+    }
+    Err(TestError::BuildFailed(format!(
+        "fixture {fixture_id:?} resolves entry {binary_name:?} but its row declares \
+         image {image:?}, whose generated target is {want:?} — examples/fixtures.toml \
+         is the SSoT, and a resolver naming a different binary reports the fixture as \
+         'not built' forever (issue 0411)"
+    )))
+}
+
 /// Resolve a prebuilt Rust workspace Entry pkg binary.
 ///
 /// The workspace fixture build step owns `nros sync`,
@@ -1719,6 +1754,7 @@ pub fn build_workspace_rust_entry(
     workspace: &str,
     binary_name: &str,
 ) -> TestResult<PathBuf> {
+    assert_generated_entry_name(fixture_id, binary_name)?;
     // Kept for its existence check and its error message; the PATH now comes
     // from the row (issue 0517).
     workspace_example_dir(workspace)?;
@@ -1788,6 +1824,7 @@ pub fn build_workspace_cmake_entry_in(
             )));
         }
     }
+    assert_generated_entry_name(fixture_id, binary_name)?;
     // Kept for its existence check and its error message; the PATH now comes
     // from the row (issue 0517).
     workspace_example_dir(workspace)?;
@@ -2146,7 +2183,7 @@ pub fn build_native_workspace_c_safety_talker_entry() -> TestResult<&'static Pat
                 "workspace-safety-c-talker",
                 "safety",
                 "build/posix-zenoh-native/cmake",
-                "native_c_safety_talker",
+                "native_c_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -2162,7 +2199,7 @@ pub fn build_native_workspace_c_safety_listener_entry() -> TestResult<&'static P
                 "workspace-safety-c-listener",
                 "safety",
                 "build/posix-zenoh-native/cmake",
-                "native_c_safety_listener",
+                "native_c_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3012,7 +3049,7 @@ pub fn build_native_workspace_cpp_safety_talker_entry() -> TestResult<&'static P
                 "workspace-safety-cpp-talker",
                 "safety",
                 "build/posix-zenoh-native/cmake",
-                "native_cpp_safety_talker",
+                "native_cpp_safety_talker_entry",
             )
         })
         .map(|p| p.as_path())
@@ -3028,7 +3065,7 @@ pub fn build_native_workspace_cpp_safety_listener_entry() -> TestResult<&'static
                 "workspace-safety-cpp-listener",
                 "safety",
                 "build/posix-zenoh-native/cmake",
-                "native_cpp_safety_listener",
+                "native_cpp_safety_listener_entry",
             )
         })
         .map(|p| p.as_path())

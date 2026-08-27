@@ -15,13 +15,21 @@
 //! gate that property — it is the reason the shim package is unnecessary and
 //! the reason issue 0277 is closed.
 //!
-//! Fixture: `metadata_cpp` (examples/workspaces/cpp), built by
-//! `compile-check-fixtures.sh` during `build-test-fixtures`. On posix that
+//! Fixture: the `workspace-cpp-native` row (`examples/workspaces/cpp`), built
+//! by `workspace-fixtures-build.sh` during `build-test-fixtures`. On posix that
 //! workspace configures talker_pkg/listener_pkg (msg deps: `std_msgs`)
-//! alongside cpp_add_*_pkg and cpp_fib_*_pkg (msg deps:
-//! `example_interfaces`) — disjoint subsets, each package calling
-//! `nros_find_interfaces` from its own package.xml, all linked into the
+//! alongside the action and service packages (msg deps: `action_msgs`,
+//! `example_interfaces`, `builtin_interfaces`) — disjoint subsets, each package
+//! calling `nros_find_interfaces` from its own package.xml, all linked into the
 //! native entries.
+//!
+//! It read the `metadata_cpp` COMPILE-CHECK fixture until phase-383 W10.a. That
+//! fixture was retargeted onto `examples/templates/multi-node-workspace-cpp`
+//! when `examples/workspaces/cpp` lost its hand-written root, and the template
+//! cannot carry this property: both its packages depend on `std_msgs` alone, so
+//! there is exactly ONE subset and the disjointness this file exists to prove
+//! has nothing to stand on. The workspace with the disjoint subsets is the one
+//! to read, and the workspace-fixture row is how to reach it.
 //!
 //! The tests read the PREBUILT fixture rather than running cmake (issue 0034
 //! / AGENTS.md "No compilation inside tests").
@@ -32,17 +40,19 @@ use std::{path::PathBuf, process::Command};
 /// `deps/`-mangled copies (which are the same objects under a hashed name and
 /// would register as false duplicates).
 fn ffi_archives() -> nros_tests::TestResult<Vec<PathBuf>> {
-    // Anchor on a file the fixture always emits, so a missing fixture fails
-    // with the standard prebuilt hint rather than an empty-vec pass.
-    let metadata =
-        nros_tests::fixtures::require_cmake_fixture("metadata_cpp", "nros-metadata.json")?;
-    let root = metadata
-        .parent()
-        .expect("fixture metadata always has a parent dir")
-        .to_path_buf();
+    // Anchor on the entry binary, so a missing or unbuilt fixture fails with
+    // the standard prebuilt hint rather than an empty-vec pass.
+    nros_tests::fixtures::build_native_workspace_cpp_entry()?;
+    let root = nros_tests::fixtures::groups::workspace_artifact_dir("workspace-cpp-native")?;
 
+    // The whole build dir, not `src/` — a MIGRATED workspace's generated root
+    // lives under `build/<coord>/` while its packages stay in the source tree,
+    // so `nano_ros_workspace` gives each out-of-tree subdir a binary dir under
+    // `pkg/<name>/` (phase-383 W4). Naming one of the two layouts here would
+    // make the walk silently empty on the other, which reads as "no archives
+    // were generated" rather than "looked in the wrong place".
     let mut out = Vec::new();
-    let mut stack = vec![root.join("src")];
+    let mut stack = vec![root.clone()];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;
@@ -112,8 +122,13 @@ fn mixed_subset_workspace_builds_per_package_ffi_crates() -> nros_tests::TestRes
     let owning_pkgs: std::collections::BTreeSet<_> = archives
         .iter()
         .filter_map(|a| {
+            // Both layouts: `src/<pkg>/` for an in-tree subdir, `pkg/<pkg>/`
+            // for the out-of-tree binary dir a generated root produces.
             let s = a.to_str()?;
-            let after = s.split("/src/").nth(1)?;
+            let after = s
+                .split("/pkg/")
+                .nth(1)
+                .or_else(|| s.split("/src/").nth(1))?;
             after.split('/').next().map(str::to_string)
         })
         .collect();
