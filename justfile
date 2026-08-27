@@ -596,6 +596,7 @@ check-build: \
     check-no-tracked-file-find \
     check-pool-inventory \
     check-mem-report \
+    check-claim-protocol \
     check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
@@ -3394,6 +3395,62 @@ rust-rtos-link-check: _require-leaf-includes
 # NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
+
+# Claim a unit of work — `refs/claims/<id>` — ATOMICALLY across parallel agents
+# and across machines, by the same origin-side compare-and-swap `just issue-new`
+# uses: a push creating a ref that already exists is REJECTED, so the SERVER
+# arbitrates rather than trust. phase-395 W8.
+#
+# Unlike an issue id, a claim EXPIRES (default 4h) — an agent that dies must not
+# freeze the work behind it. The TTL is hours because an OPEN PR SUPERSEDES the
+# claim: the ref only governs the window before first push.
+#
+# Claims are ADVISORY. There is no mechanical map from a diff to a claim, so
+# nothing enforces this — it prevents accidental duplication between COOPERATING
+# agents and nothing more. Outside contributors cannot write refs at all, so
+# check the GitHub issue's assignee too.
+#
+#   just claim issue-0827        just claim phase-392-W3a --ttl 2
+#
+# rc: 0 ok | 2 held (live) | 3 remote unreachable | 4 held (expired, use steal)
+[group("docs")]
+claim id="" *flags:
+    @scripts/reserve-claim.sh claim {{id}} {{flags}}
+
+# Refresh a lease. Idempotent, and it re-claims a released id so a timer works
+# from its first tick. Drive it from a LIVENESS supervisor while the agent
+# process is alive — not between the agent's steps, or a 40-minute fixture build
+# looks like death.
+[group("docs")]
+claim-renew id="" *flags:
+    @scripts/reserve-claim.sh renew {{id}} {{flags}}
+
+# Drop a claim on completion. Do NOT wait for expiry, or every finished task
+# leaves hours of phantom occupancy.
+[group("docs")]
+claim-release id="" *flags:
+    @scripts/reserve-claim.sh release {{id}} {{flags}}
+
+# Take an EXPIRED claim. `--force-with-lease` means two agents racing to steal
+# one dead claim cannot both win. Prints what the dead agent left — a pushed
+# `fix/<id>` branch nobody would look for, partially landed commits — and says
+# to comment on the issue, because an agent dying there is otherwise invisible
+# and recurs.
+[group("docs")]
+claim-steal id="" *flags:
+    @scripts/reserve-claim.sh steal {{id}} {{flags}}
+
+# Every claim on origin, with holder, age and state.
+[group("docs")]
+claim-list:
+    @scripts/reserve-claim.sh list
+
+# The claim CAS, proven against a throwaway bare repo — hermetic, no network,
+# ~2 s. On the fast line because a coordination primitive that cannot fail is
+# worse than none: it would report agreement it never established.
+[private]
+check-claim-protocol:
+    @bash scripts/reserve-claim.sh --selftest
 
 # L3 — cross build + link + SYMBOL checks. No QEMU.
 #
