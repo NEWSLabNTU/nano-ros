@@ -1,12 +1,80 @@
 ---
 id: 848
-title: "rmw_zenohd stops transmitting to a serial peer after the handshake — no
-  keepalives, so zenoh-pico expires the session at 2 x lease"
+title: "The board decodes nothing after the serial handshake — not even Declares
+  the router demonstrably queued — and then stack-overflows at expiry"
 status: open
 type: bug
 area: rmw
 related: [issue-0839, issue-0821]
 ---
+
+## CORRECTION (2026-08-28) — read this first
+
+This issue was filed claiming **"router keepalives sent: 0"**, counted by
+grepping the router log for `KeepAlive` and finding only `rx:` lines. **That
+count was meaningless.** `zenoh_transport::unicast::universal::tx: Scheduled`
+logs a *pipeline push*; the keepalive arm calls `link.send()` **directly**,
+bypassing the pipeline, and emits no log line at all. Absence of those lines
+says nothing about whether keepalives were sent.
+
+Re-running with the keepalive interval driven down to 2 s (`lease: 20000 /
+keep_alive: 10`) over a 20 s session changed nothing in the log, for the same
+reason — the experiment could not discriminate either.
+
+**Whether the router transmits keepalives on serial is therefore still
+UNMEASURED.** It needs the wire; the socat tap was attempted twice and captured
+zero bytes both times.
+
+What the title now claims is board-side and measured. The original framing is
+kept below so the mistake is legible rather than erased.
+
+## What is actually measured, board-side
+
+With the router keepaliving every 2 s, over the whole session the board decoded:
+
+```
+1 x _z_init_decode      <- handshake
+1 x _z_open_decode      <- handshake
+(nothing else, ever)
+```
+
+- keepalive decodes: **0** — the 5 `KEEP_ALIVE` matches in its log are all
+  `_z_keep_alive_encode`, its own sends
+- Declare decodes: **0** — it never decoded the two Declares the router
+  demonstrably queued at t+0.2 s
+
+So the board's receive path stops the moment `_z_unicast_handshake_open`
+returns. Note the two decodes it *does* perform happen on the OPENING thread
+inside the handshake, not in `_zp_unicast_read_task` — so this is consistent
+with the read task never processing a single frame.
+
+`_zp_unicast_start_read_task` does `_Z_ERROR_RETURN(_Z_ERR_SYSTEM_TASK_FAILED)`
+if `_z_task_init` fails, and no such error appears, so the task was created.
+What it does after creation is the open question.
+
+## And the board stack-overflows at expiry
+
+```
+[20.095] _zp_unicast_lease_task: Closing session because it has expired
+[20.290] _z_close_encode: Encoding _Z_MID_T_CLOSE
+[20.291] ***** USAGE FAULT *****  Illegal load of EXC_RETURN into PC
+         pc 0x004236dd  _z_network_message_elem_copy
+         s[3] _z_wireexpr_copy   s[7] _z_slist_new
+[20.293] ZEPHYR FATAL ERROR 34   Current thread: idle
+```
+
+"Illegal load of EXC_RETURN into PC" is a corrupted return address — a stack
+overflow, in the message-copy path during teardown.
+
+**CONFOUND, stated plainly:** that image was built with
+`CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE=6144`, which is BELOW the 8192 default and
+was chosen by hand to fit RAM while raising `TASK_SLOTS` to 8. So this overflow
+may well be self-inflicted, and the earlier "action discovery works at slots=8"
+result was measured on those same undersized stacks. A retest at 8192 was
+started and its harness failed (one line of RTT captured); it is **not**
+evidence either way and no conclusion is drawn from it.
+
+## Original framing (superseded, kept for the record)
 
 ## Problem
 
