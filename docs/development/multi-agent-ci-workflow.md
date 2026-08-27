@@ -555,6 +555,117 @@ gets auto-reverted. Agents must treat an auto-revert as a first-class signal —
 reclaim the issue, reproduce locally against the reverted commit — rather than
 re-pushing the same change.
 
+## Sizing: a one-line fix and a phase wave are not the same change
+
+Agent output ranges from a typo in an issue file to a multi-wave phase touching
+twenty files across three crates. Routing them identically is what makes ten
+agents starve each other — most of a day's output is docs and small fixes, and
+none of it should queue behind a Cyclone build.
+
+| class | looks like | claim | lanes | queue |
+| --- | --- | --- | --- | --- |
+| **express** | docs, comments, an index row, a typo — footprint ∅ | none | L0 | own partition, batch 16, lands in minutes |
+| **minor fix** | one issue, one or two crates | `refs/claims/issue-NNNN` | L0–L2 | normal partition, batch 4 |
+| **phase wave** | many files, may touch `packages/core`, may add fixtures | `refs/claims/phase-NNN-WN` | L0–L3 | own batch; full-footprint changes serialise |
+
+Three consequences worth stating.
+
+**Express is the pressure valve.** A docs-only change has an empty coordinate
+footprint, so it needs L0 and nothing else. Path filters already give this
+almost free (`pr-checks.yml` has a `changes` job today). Without it, ten
+doc-filing agents contend for the same expensive lane they never needed.
+
+**A phase wave lands as several PRs, not one.** Today's phase-392 W3 went out as
+four commits — the bound helper, the routing fix, the macro, the doc — each
+independently green. That is the shape to encourage: a wave is a *sequence of
+landable increments*, and each one that lands is one that can no longer be
+invalidated by someone else's push. The alternative, a single 20-file PR, is
+maximally exposed to every conflict and every flake in one shot.
+
+**Stacked waves are where GitHub's queue is weakest.** W3b depends on W3a; the
+native merge queue has no notion of a stack, so the options are: land W3a first
+and let W3b rebase (simplest, costs one queue cycle of latency), or keep the
+dependency inside one PR. Prefer the former, and note that this is exactly
+finding 1 below — the claim tool should know the wave order so an agent is not
+asked to discover it by compile error.
+
+**Review scales with class, not with CI.** An express change needs no human
+eye; a phase wave that changes an ABI or a public API does, because the failure
+mode of agent work is confident-and-wrong rather than broken, and no amount of
+green catches that. Three retractions in this session — a wrong root cause in
+#0844, an over-broad staleness rule, a `const` assertion that could only be true
+— all passed every gate they were subject to.
+
+## How it behaves under concurrency
+
+A tabletop run of the design against eight scenarios, drawn from what actually
+happened in one session rather than invented. It holds in three and breaks in
+five. Findings 2, 3 and 8 are grounded in observed events; 6 and 7 are reasoned
+from the mechanism and have not been seen.
+
+### Where it holds
+
+**Disjoint topics.** Two agents on #0810 and #0814. Both claim, both run L0–L2
+locally in minutes, both enqueue, **one** L3 run covers both. That is the
+batching payoff.
+
+**Semantic conflict — the case that justifies the whole design.** Agent A
+changes `alloc_payload_block`'s routing; Agent B adds a caller in another file.
+Textually disjoint, so per-PR CI passes both and `main` breaks. The queue
+compiles them *together* and catches it. Testing each PR against its own base
+cannot.
+
+**A flake inside a batch** — survivable, but only because quarantine lands
+first. Without it, one `action_raw_goal` timeout ejects and re-tests four
+innocent PRs.
+
+### Where it breaks
+
+**1. Claims carry no dependency edges.** Agent A claims phase-392 W3a, Agent B
+claims W3b. Both succeed — different refs — but W3b's macro needs W3a's
+`max_serialized_bound`, and B branching from `main` finds it absent. B holds a
+valid claim on blocked work. Doing W3a→W3b sequentially in one session hides
+this completely.
+
+*Fix:* `just claim` refuses a wave whose predecessor is claimed-and-unlanded, or
+wave order becomes machine-readable in the phase doc.
+
+**2. Claims cover PLANNED work; most collisions are INCIDENTAL.** Two agents
+independently wrote the same two missing `check-c` test TUs, and separately both
+added the same `#0824` index row. Neither was anyone's assigned issue — both
+were reds encountered while doing something else, so no claim would ever have
+been taken.
+
+*Fix:* an incidental fix goes out as its own tiny PR, enqueued immediately, so
+the second agent rebases onto it instead of rewriting it. Agents check for an
+open PR touching the file before fixing a red they stumbled into.
+
+**3. Auto-revert versus long-lived branches.** L4 goes red at commit `X`;
+auto-revert lands `X'`. Agent C branched from `X` hours earlier, so C's branch
+still *contains* the reverted change. When C enqueues it silently re-introduces
+it — and if the defect was an L4 runtime failure, L3 cannot see it and it
+re-lands.
+
+*Fix:* short-lived branches are load-bearing here, not a style preference. The
+queue should also reject a diff that re-introduces reverted content.
+
+**4. One expensive PR sets the batch's cost.** A `packages/core` change has
+footprint = everything; batched with seven cheap PRs, all eight wait for a full
+cross build.
+
+*Fix:* batch by **footprint similarity**, not arrival order, and route
+full-footprint changes to a serial lane.
+
+**5. The shared index breaks batching outright — not just one PR.** Three agents
+file issues concurrently. Ids are race-free thanks to `issue-new`, but all three
+edit `docs/issues/README.md`. A merge queue needs the batch to merge cleanly, so
+a textual conflict there means **the batch cannot form at all**. With ten
+doc-heavy agents this is the common case, not the corner case.
+
+This is what upgrades "generate the issue index" from a cleanup to a
+**prerequisite**: batching does not function while a shared registry is
+hand-edited.
+
 ## Telemetry, and when to abandon this
 
 Every knob here — batch size, which lane a test belongs in, whether a runner is
@@ -598,6 +709,9 @@ Explicit exit criteria, so this is falsifiable rather than a one-way door:
 
 Ordered so each step pays for the next.
 
+0. **Generate `docs/issues/README.md`'s open list from frontmatter.** Moved to
+   the front by the concurrency run above: a hand-edited shared registry stops
+   batches from forming at all, so nothing downstream works without it.
 1. **Widen L2 to the host-executable platforms and stop requiring fixtures for
    it.** No new infrastructure; it is the largest coverage gain available today,
    and it runs on hosted runners.
@@ -611,8 +725,8 @@ Ordered so each step pays for the next.
 5. **Turn on the GitHub merge queue**, batch size 4, partitioned by path.
 6. **Flake quarantine** — before trusting any batch red.
 7. **Content-addressed fixture cache** on the runner's persistent disk.
-8. **Claim refs** for agents; **generate the issue index** to remove the
-   hotspot.
+8. **Claim refs** for agents — with predecessor checking, per finding 1, and
+   paired with the incidental-fix rule from finding 2.
 
 Steps 1–3 need no runner, no queue, and no new services. They are worth doing
 even if nothing else here is adopted.
