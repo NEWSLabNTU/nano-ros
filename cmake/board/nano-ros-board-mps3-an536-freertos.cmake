@@ -118,6 +118,26 @@ endif()
 if(TARGET freertos_kernel)
     target_compile_definitions(freertos_kernel PUBLIC configUSE_TRACE_FACILITY=1)
 endif()
+# lwIP sizing for REAL ROS payloads, not for the smallest board in the family.
+#
+# An Autoware trajectory is ~13 KiB, which RTPS puts on the wire as ~10
+# back-to-back datagrams. The family defaults (UDP receive mbox 8, pbuf pool
+# 24, 32 KiB heap) drop the tail of every such burst, so the sample never
+# reassembles and the subscriber reads NOTHING while a host peer on the same
+# topic reads a clean 10 Hz. This board has 48 MiB of RAM; the family default
+# exists for parts that have 4.
+#
+# Set BEFORE nros_freertos_build_lwip() so the lwIP TUs compile with them.
+add_compile_definitions(
+    MEM_SIZE=262144
+    MEMP_NUM_PBUF=128
+    MEMP_NUM_NETBUF=64
+    PBUF_POOL_SIZE=128
+    TCPIP_MBOX_SIZE=64
+    DEFAULT_UDP_RECVMBOX_SIZE=64
+    DEFAULT_TCP_RECVMBOX_SIZE=32
+    DEFAULT_RAW_RECVMBOX_SIZE=32)
+
 if(NOT TARGET lwip)
     nros_freertos_build_lwip()
 endif()

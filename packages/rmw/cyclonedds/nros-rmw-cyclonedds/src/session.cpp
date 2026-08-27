@@ -110,9 +110,50 @@ constexpr const char* kEmbeddedCycloneConfig =
     "<ReceiveBufferSize>64 KiB</ReceiveBufferSize>"
     "<ReceiveBufferChunkSize>16 KiB</ReceiveBufferChunkSize>"
     "</Sizing>"
+    // One receive thread, not per-socket ones. The split exists to shave
+    // latency on a host with cores to spare; here it costs two threads that
+    // cannot be given a stack (see the Threads block below), on a platform
+    // whose default thread stack is 1 KiB.
+    "<Internal>"
+    "<MultipleReceiveThreads>false</MultipleReceiveThreads>"
+    "</Internal>"
+    // Thread stacks. ddsrt's FreeRTOS port defaults a thread to
+    // configMINIMAL_STACK_SIZE (256 words = 1 KiB here), which is not a stack
+    // any Cyclone worker can run in: `recvUC` overflowed on the first real
+    // ROS payload (a 13 KiB Autoware trajectory) with
+    // `*** STACK OVERFLOW: recvUC ***`, and — because the overflow lands in
+    // the adjacent heap — the SAME image also failed at create_subscription
+    // with a bad-free heap_4 assert when it booted into an already-populated
+    // graph. Small fixed-size samples never reached the depth, which is why
+    // the Int32 examples pass and only a real ROS peer surfaces it.
+    // Naming a thread here is the ONLY way to size it: Cyclone has no
+    // global default stack setting.
     "<Threads>"
     "<Thread Name=\"dq.builtins\">"
     "<StackSize>64 KiB</StackSize>"
+    "</Thread>"
+    // Receive path: reads a fragment, reassembles, deserializes.
+    //
+    // Only "recv" is nameable. With MultipleReceiveThreads enabled Cyclone
+    // splits reception into per-socket "recvUC"/"recvMC" threads, and those
+    // names are NOT configurable — `check_thread_properties` validates against
+    // a fixed list and rejects them ("unknown thread"), which fails the whole
+    // config and takes the participant with it. So the split is disabled just
+    // below, leaving one receive thread that this entry actually sizes.
+    "<Thread Name=\"recv\">"
+    "<StackSize>64 KiB</StackSize>"
+    "</Thread>"
+    // User-data delivery — where the application's own types are built.
+    "<Thread Name=\"dq.user\">"
+    "<StackSize>64 KiB</StackSize>"
+    "</Thread>"
+    // Timed events and GC do less, but the 1 KiB default is below what any
+    // of them can safely use.
+    "<Thread Name=\"tev\">"
+    "<StackSize>16 KiB</StackSize>"
+    "</Thread>"
+    "<Thread Name=\"gc\">"
+    "<StackSize>16 KiB</StackSize>"
     "</Thread>"
     "</Threads>"
     "</Domain>"

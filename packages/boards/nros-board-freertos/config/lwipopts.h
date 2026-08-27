@@ -64,9 +64,13 @@
  * during the connect handshake because lwIP couldn't allocate a
  * netbuf for the outbound TCP SYN. Double the heap to 32 KiB; QEMU
  * MPS2-AN385 has 4 MiB of SRAM so the cost is irrelevant. */
+#ifndef MEM_SIZE
 #define MEM_SIZE                        (32 * 1024)
+#endif
 #define MEM_ALIGNMENT                   4
+#ifndef MEMP_NUM_PBUF
 #define MEMP_NUM_PBUF                   32
+#endif
 #define MEMP_NUM_UDP_PCB                8
 #define MEMP_NUM_TCP_PCB                8
 #define MEMP_NUM_TCP_PCB_LISTEN         4
@@ -75,7 +79,9 @@
  * SPDP / SEDP discovery burst doesn't exhaust the pool on
  * participant open. Same rationale as the Cortex-A9 net_pkt bump
  * for Zephyr (Phase 71.29). */
+#ifndef MEMP_NUM_NETBUF
 #define MEMP_NUM_NETBUF                 32
+#endif
 #define MEMP_NUM_NETCONN                8
 #define MEMP_NUM_SYS_TIMEOUT            16
 /* Phase 97.4.freertos — DDS create_endpoint() allocates an addrinfo
@@ -85,7 +91,9 @@
 #define MEMP_NUM_NETDB                  16
 
 /* ---- Pbuf pool ---- */
+#ifndef PBUF_POOL_SIZE
 #define PBUF_POOL_SIZE                  24
+#endif
 #define PBUF_POOL_BUFSIZE               LWIP_MEM_ALIGN_SIZE(TCP_MSS + 40 + PBUF_LINK_ENCAPSULATION_HLEN + PBUF_LINK_HLEN)
 
 /* ---- TCP tuning ---- */
@@ -116,12 +124,30 @@
 #define LWIP_NETCONN_SEM_PER_THREAD     1
 #define TCPIP_THREAD_STACKSIZE          (4 * 1024)
 #define TCPIP_THREAD_PRIO               4
+#ifndef TCPIP_MBOX_SIZE
 #define TCPIP_MBOX_SIZE                 16
+#endif
 #define DEFAULT_THREAD_STACKSIZE        (2 * 1024)
+#ifndef DEFAULT_RAW_RECVMBOX_SIZE
 #define DEFAULT_RAW_RECVMBOX_SIZE       8
+#endif
+#ifndef DEFAULT_UDP_RECVMBOX_SIZE
 #define DEFAULT_UDP_RECVMBOX_SIZE       8
+#endif
+#ifndef DEFAULT_TCP_RECVMBOX_SIZE
 #define DEFAULT_TCP_RECVMBOX_SIZE       8
+#endif
 #define DEFAULT_ACCEPTMBOX_SIZE         4
+
+/* ---- Per-board sizing overrides ----------------------------------------
+ * The values above are sized for the smallest board in the family. A board
+ * carrying real ROS traffic needs more, and can say so with -D rather than
+ * by editing this file: an Autoware trajectory is ~13 KiB, which RTPS sends
+ * as ~10 back-to-back datagrams, and a receive mbox of 8 silently drops the
+ * tail of every one of them — the sample then never reassembles, so the
+ * subscriber reads nothing at all while a host peer on the same topic reads
+ * a clean 10 Hz. The knobs that matter for that are the mbox depths, the
+ * pbuf pool and MEM_SIZE, so those are the ones left overridable. */
 
 /* ---- Checksum ---- */
 #define CHECKSUM_GEN_IP                 1

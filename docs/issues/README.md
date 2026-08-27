@@ -748,6 +748,17 @@ first revision wrongly cited mtime as proof it was "not stale" — every conclus
 mismatch, an issue-0801 comparison, a suspected `support_domain != 0` sentinel defect) was wrong with it.
 See `0820-*`. (2026-08-27)
 
+**#0836** (rmw, open 2026-08-27) - a FreeRTOS/lwIP image receives every SMALL ROS topic and never a
+FRAGMENTED one. Against a real Autoware over tap, an `mps3-an536-freertos` controller gets
+kinematic_state (40 Hz), steering, acceleration and operation-mode, and never the ~13 KiB
+`/planning/scenario_planning/trajectory` - while a host subscriber on the SAME domain, interface and
+topic reads a clean 10 Hz. The distinguishing property is size: ~10 RTPS fragments per sample against a
+1400 B MaxMessageSize, where every topic that works fits one datagram. Ruled out: reader QoS (already
+RELIABLE), and both sizing constraints found so far - 16 KiB -> 64 KiB subscription buffer moved it off
+zero, and per-board lwIP receive sizing got autonomous mode to ENGAGE - neither delivered the sample.
+Still unknown whether the fragments reach lwIP at all. Last blocker for the emulated-R52 closed loop.
+See `0836-*`. (2026-08-27)
+
 **#0830** (boards, open 2026-08-27) - a QEMU net hub holding ONLY the board NIC and a tap never
 delivers host-to-guest frames; `mps3-an536` guests transmit fine and receive nothing. Not our bug and not
 the host's: attaching to the tap directly (`TUNSETIFF`) shows the host emitting ARP and RTPS normally, and
