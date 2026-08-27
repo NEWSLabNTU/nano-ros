@@ -25,6 +25,8 @@ IFS=$'\x1f' read -r platform dir envstr cargo_args <<< "$line"
 
 # shellcheck source=/dev/null
 source scripts/build/cargo.sh 2>/dev/null || exit 0
+# shellcheck source=scripts/lib/grep-q.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/grep-q.sh"
 # phase-340 P2 — the PLATFORM's profile, not the ambient one. A platform with a
 # carve-out (`freertos` -> freertos-qemu, `nuttx` -> nuttx-rust) builds its whole
 # rust fixture lane at that profile, and cargo writes each profile into its own
@@ -132,9 +134,20 @@ build_rc=$?
 if [ -z "$art_before" ] && [ -z "$(_row_artifacts)" ]; then
     # Nothing to compare — an unbuilt row, or a leaf whose bins this cannot
     # name. Fall back to cargo's own signal rather than passing blindly.
-    if [ "$build_rc" -eq 0 ] && printf '%s\n' "$build_out" | grep -q '"fresh":false'; then
-        echo "$dir${cargo_args:+ ($cargo_args)}"
-        exit 0
+    if [ "$build_rc" -eq 0 ]; then
+        # `nros_grep_q`, not a bare `grep -q`: this branch decides a VERDICT, and
+        # a grep that fails to start (issue 0726 — measured under a 32-way gate
+        # fan-out) would otherwise read as "not stale" and launder the lane
+        # green. That is the same laundering the exit-status handling above
+        # exists to prevent, one layer down.
+        nros_grep_q '"fresh":false' <<<"$build_out"
+        case $? in
+            0)
+                echo "$dir${cargo_args:+ ($cargo_args)}"
+                exit 0
+                ;;
+            1) : ;;
+        esac
     fi
 fi
 
