@@ -140,3 +140,92 @@ NROS_XRCE_BUFFER_SIZE=8192 cargo build --release
 ```
 
 Note the talker/listener pair must share `STRESS_TOPIC` and the agent address.
+
+## Read of the client, 2026-08-27 — "add the fragmented path" is the WRONG fix
+
+The "Where to look next" section points at `xrce_publisher_publish_raw`'s TODO:
+
+```c
+/* TODO 115.K.2.x: fragmented fallback via
+ * `uxr_prepare_output_stream_fragmented` ... skipped here until
+ * a smoke test demonstrates the need. */
+```
+
+and reads the measurement as that smoke test. Reading the vendored client says
+otherwise, and this matters because it would be a week spent adding a path that
+is already there.
+
+### 1. Fragmentation is ALREADY compiled in, and unconditional
+
+`uxr_prepare_reliable_buffer_to_write`
+(`xrce-sys/micro-xrce-dds-client/src/c/core/session/stream/output_reliable_stream.c:100`)
+has three branches: fits the current buffer, fits a new empty buffer, or
+**`else if (length <= available_block_size * remaining_blocks)`** — a real
+fragmenting path that emits `SUBMESSAGE_ID_FRAGMENT` across slots. It is not
+behind a profile macro; the generated `uxr/client/config.h` for this build
+defines no fragmentation gate to turn off.
+
+So a payload larger than one slot does NOT fall off a cliff for want of a
+fragmenting path. Something inside the existing one is wrong, or the path is not
+being reached. That is a different investigation from the one the issue proposes.
+
+### 2. Our slot size is EXACTLY the MTU, so any payload >= MTU must fragment
+
+`XRCE_STREAM_BUFFER_SIZE = UXR_CONFIG_UDP_TRANSPORT_MTU * XRCE_STREAM_HISTORY`
+(`internal.h:97`) and the stream is created with that buffer and
+`XRCE_STREAM_HISTORY`, so one reliable slot is one MTU. That is consistent with
+the measured boundary tracking the MTU rather than `NROS_XRCE_BUFFER_SIZE`, and
+it means the 4096-byte payload at MTU 4096 is the FIRST size that needs
+fragmentation at all. The cliff is the fragmentation threshold, not a buffer
+limit.
+
+### 3. `uxr_buffer_topic` cannot report a serialization overflow, by construction
+
+```c
+rv = uxr_init_base_object_request(&session->info, datawriter_id, &payload.base);
+uxr_serialize_WRITE_DATA_Payload_Data(&ub, &payload);
+UXR_PREPARE_SHARED_MEMORY(session, datawriter_id, &ub, (uint16_t) len, rv);
+ucdr_serialize_array_uint8_t(&ub, buffer, len);
+...
+return rv;
+```
+
+`rv` is assigned BEFORE the payload is serialized and returned unconditionally.
+If `ucdr_serialize_array_uint8_t` overflows, `ub.error` is set and nobody looks:
+the function still returns a valid request id.
+
+So `xrce_publisher_publish_raw`'s guard —
+
+```c
+if (req != UXR_INVALID_REQUEST_ID) { ...; return NROS_RMW_RET_OK; }
+```
+
+— is structurally incapable of catching a short serialization. That is true
+whatever the root cause of the corruption is, and it is why the talker reported
+success. **This is worth fixing on its own**: a publish path whose only error
+signal cannot represent the failure it is most likely to hit.
+
+### What this changes about the fix
+
+* Adding `uxr_prepare_output_stream_fragmented` is probably NOT the fix; the
+  reliable stream already fragments. Confirm the fragmenting branch is entered
+  for the failing size before writing anything.
+* The caller-side guard should be fixed regardless, but a size PRE-check must be
+  computed against the fragmentation capacity
+  (`available_block_size * remaining_blocks`), not against the MTU — checking
+  the MTU would refuse payloads the client can legitimately fragment, which is a
+  regression dressed as a fix.
+* The send/receive question stays open and is now the FIRST thing to settle:
+  the input reliable stream reassembles fragments, and a defect there produces
+  exactly this signature (correct length, correct leading bytes, zeroed tail)
+  without any send-side fault.
+
+### Why this stops here
+
+Reproducing needs a live Agent. `third-party/xrce/agent` is an UNINITIALISED
+submodule on this host and building it pulls Fast-DDS/Fast-CDR, so no
+measurement was taken and none of the above is confirmed against a running
+system — it is a source read, and this issue has already recorded one
+mis-attribution (phase-384 chased the `XRCE_BUFFER_SIZE` cliff, which refuses
+loudly, and never reached this one). Whoever picks it up should get the agent
+running first and check point 1 before touching the publisher.
