@@ -287,6 +287,33 @@ is missing is a registry and the does-not-block half.
    the same atomic-ref trick as `just issue-new`. Renew while working; the claim
    lapses if the agent dies. A shared markdown task list has the lost-update
    race that `issue-new` was written to fix — reuse the ref.
+   *Does this work across machines?* Yes, and the mechanism is already proven
+   in this repo. `scripts/reserve-issue-id.sh` arbitrates at **origin**, not
+   locally: it builds an object nobody else can produce, pushes it to the ref,
+   and treats push success as ownership — because *"`git push` creating a ref
+   that already exists on the remote is REJECTED"*. Two agents on two machines
+   are serialised by the server. The object must be unique per attempt, or the
+   CAS is unsound: an identical object pushed to an existing ref is a no-op
+   success and both would believe they won.
+
+   **What claims need that id reservation does not: expiry.** An id is
+   permanent; a claim held by a crashed agent must not be. So:
+
+   - the claim object carries `agent`, `claimed_at`, `ttl`;
+   - the holder renews by pushing a new object well inside the TTL;
+   - a would-be stealer reads the ref, judges it expired, and takes it with
+     `git push --force-with-lease=refs/claims/<id>:<expected-oid>`. The server
+     rejects if the ref moved since the read, so two agents racing to steal the
+     same dead claim cannot both win.
+
+   Two limits worth stating rather than discovering. **Clock skew** across
+   machines makes TTLs approximate — keep them hour-scale, not minute-scale.
+   And **claims bind only participants**: the id reservation can be enforced by
+   the `pre-push` hook because a duplicate id is mechanically detectable, but
+   there is no mechanical map from a diff to a claim, so a claim is advisory. It
+   prevents accidental duplication between cooperating agents; it does not
+   prevent a determined collision, and no ref scheme will.
+
 2. **Isolate**: one git worktree per agent, always.
 3. **Verify locally: T0 + T1 only.** No agent runs `just ci`.
 4. **Push a branch, open a PR, enqueue.** Never push to `main`.
