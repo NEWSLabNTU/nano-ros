@@ -86,6 +86,39 @@ static void append_truncating(char* out, size_t out_cap, const char* src) {
     out[cur + add] = '\0';
 }
 
+/* Issue 0819 — the one inbound staging path. Contract in `internal.h`. */
+bool xrce_stage_inbound(uint8_t* dst, size_t dst_cap, struct ucdrBuffer* ub, size_t len,
+                        size_t* out_len) {
+    if (out_len == NULL) {
+        return false;
+    }
+    *out_len = 0;
+    if (dst == NULL || ub == NULL) {
+        return false;
+    }
+    if (len + XRCE_CDR_HEADER_LEN > dst_cap) {
+        return false;
+    }
+    /* XRCE-DDS interop: the agent delivers the bare CDR-serialized sample
+     * WITHOUT the 4-byte encapsulation header — that header belongs to the
+     * DDS/RTPS side, which the agent owns. nano-ros's deserializers expect it,
+     * so re-prepend it here; symmetric with the publish side, which strips it
+     * before `uxr_buffer_topic`. */
+    dst[0] = 0x00; /* CDR_LE representation id */
+    dst[1] = 0x01;
+    dst[2] = 0x00; /* options */
+    dst[3] = 0x00;
+    /* NOT `memcpy(dst + 4, ub->iterator, len)`. See the header comment: for a
+     * fragmented message the iterator addresses only the first fragment, and
+     * this call is the one that walks the chain. It reports failure through
+     * `ub->error`, which is also how a genuinely short buffer surfaces. */
+    if (len > 0 && !ucdr_deserialize_array_uint8_t(ub, dst + XRCE_CDR_HEADER_LEN, len)) {
+        return false;
+    }
+    *out_len = len + XRCE_CDR_HEADER_LEN;
+    return true;
+}
+
 void xrce_dds_topic_name(const char* topic_name, int avoid_ros_prefix, char* out, size_t out_cap) {
     if (out_cap == 0) return;
     out[0] = '\0';
