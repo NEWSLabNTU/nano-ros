@@ -43,6 +43,14 @@ fn main() {
     // cap is a Full-style registration error, not silent reuse.
     let max_class_instances = env_usize("NROS_RUNTIME_MAX_CLASS_INSTANCES", 2);
 
+    // phase-391 W5 regression fix — entity-registry slots per COMPONENT CELL.
+    // The first heapless conversion borrowed the metadata twin's 32, which is
+    // per-PLAN-shaped: it made every cell ~20 KB up front (4 registries x 32 x
+    // ~152 B) — 4 components ate ~80 KiB of the 128 KiB bare-metal arena.
+    // 8 is per-component-shaped (a component declaring more than 8 entities of
+    // ONE KIND is rare and gets a loud registration error + this knob).
+    let max_cell_entities = env_usize("NROS_RUNTIME_MAX_CELL_ENTITIES", 8);
+
     let contents = format!(
         "/// Component pool slots (set via `NROS_RUNTIME_MAX_COMPONENTS`, default 4).\n\
          ///\n\
@@ -56,7 +64,11 @@ fn main() {
          \n\
          /// Instances of one component class the per-class store holds\n\
          /// (set via `NROS_RUNTIME_MAX_CLASS_INSTANCES`, default 2).\n\
-         pub const MAX_CLASS_INSTANCES: usize = {max_class_instances};\n"
+         pub const MAX_CLASS_INSTANCES: usize = {max_class_instances};\n\
+         \n\
+         /// Entity-registry slots per component cell, PER KIND\n\
+         /// (set via `NROS_RUNTIME_MAX_CELL_ENTITIES`, default 8).\n\
+         pub const MAX_CELL_ENTITIES: usize = {max_cell_entities};\n"
     );
     std::fs::write(Path::new(&out_dir).join("nros_runtime_config.rs"), contents).unwrap();
 }

@@ -74,10 +74,13 @@ use portable_atomic_util::Arc;
 /// REGISTRATION error, never a truncation.
 type IdStr = heapless::String<{ nros_node::names::MAX_RESOLVED_NAME_LEN }>;
 
-/// phase-391 W5 — per-cell registry bound. The same figure the metadata twin
-/// uses for the same shape (`DEFAULT_MAX_METADATA_ENTITIES`): entities declared
-/// by ONE component.
-const CELL_REG_CAP: usize = crate::node_metadata::DEFAULT_MAX_METADATA_ENTITIES;
+/// phase-391 W5 — per-cell registry bound, PER KIND, knob-backed.
+///
+/// Was `DEFAULT_MAX_METADATA_ENTITIES` (32), borrowed from the metadata twin —
+/// but that figure is per-PLAN-shaped and made every cell ~20 KB up front.
+/// 8 is per-component-shaped; a component declaring more gets a loud
+/// registration error naming `NROS_RUNTIME_MAX_CELL_ENTITIES`.
+const CELL_REG_CAP: usize = crate::config::MAX_CELL_ENTITIES;
 
 /// Owned copy of a name-shaped `&str`, or the registration error that says
 /// which knob-less bound it burst.

@@ -666,11 +666,12 @@ issue 0827 poses one layer down ("pools sized at the backend"):
 3. **Registries as slices into a runtime-owned pool** (the entity registries
    join the slot pool). Exact-ish, keeps one cell type, adds carve complexity.
 
-(2) can land immediately and independently improves TODAY's heap profile; (1)
-is the honest endpoint for the static-cell design. They compose: do (2) now,
-(1) when the cells move. Neither is chosen here — the trade is RAM vs a
-per-class generic cell, and it belongs with the same review that set
-`CELL_REG_CAP` in the first place.
+**(2) LANDED (2026-08-28):** `CELL_REG_CAP` is now `config::MAX_CELL_ENTITIES`
+(knob `NROS_RUNTIME_MAX_CELL_ENTITIES`, default **8**, per KIND), verified to
+propagate (a build with 13 emitted 13). The analytic cell drops from ~19.5 KB
+to **~4.9 KB** — still worst-case-shaped, 4x smaller worst case. (1) remains
+the honest endpoint for the static-cell design and stays with review: the trade
+is RAM vs a per-class generic cell.
 
 The Box-leaked ctxs ride the same fork: their storage lands wherever the cells
 do, and per-class emission sizes them exactly too (a class with no actions pays
