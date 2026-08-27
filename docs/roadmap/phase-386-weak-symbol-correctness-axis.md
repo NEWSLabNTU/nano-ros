@@ -527,3 +527,55 @@ first attempt to close it immediately found a second, likelier defect behind it.
 That is the gate working as intended — but the guarantee remains unverified, and
 saying so plainly is better than a partial fix that moves the warning without
 checking anything.
+
+
+## Diagnosis: `just freertos build-fixtures` (2026-08-27)
+
+Two failures, one masking the other.
+
+**1. Stale in-tree CLI — fixed.** The leaf's real error was upstream of the log
+tail, which held only benign newlib `_read/_lseek/_isatty is not implemented`
+link warnings. Building the leaf directly surfaced it:
+
+```
+Rebuild it (not auto-done — compiling at build/test time is forbidden):
+    ./scripts/bootstrap.sh      (contributors: just setup-cli)
+    nros-cli-core/src/lib.rs:84
+```
+
+`just setup-cli` cleared it, and
+`cmake --build examples/workspaces/realtime-cpp/build-workspace-fixtures-freertos`
+then returns **rc=0**. So the C++ leaf itself builds fine.
+
+**2. A second failure remains, and it is NOT the leaf.** With a fresh CLI,
+`just freertos build-fixtures` still exits 2, and the log's last line is the
+`built:` message for that same leaf — i.e. the last SUCCESS, not the failure
+point. The failing step produces no diagnostic at all.
+
+`scripts/build/workspace-fixtures-build.sh` shows what runs immediately after
+that echo: the fixture signature stamp.
+
+```sh
+echo "     built: $dir/$built_path"
+...
+mkdir -p "$stamp_dir"
+bash "$repo_root/scripts/build/workspace-fixture-signature.sh" "$record" \
+    > "$stamp_dir/.nros-workspace-fixture.$id.inputsig"
+```
+
+That is the prime suspect: a non-zero exit there ends the subshell with nothing
+printed, which matches the observed shape exactly — last output is `built:`,
+exit code 2, no error text.
+
+**Not yet confirmed**, and stated that way on purpose: the signature script was
+not run against the actual `$record` for this row, so "the stamp step fails" is
+still inference. Confirming it is one command once someone has the record —
+run `workspace-fixture-signature.sh` with that row's record and read its status.
+
+### Note the shape
+
+Both layers hid their errors the same way: the real message was printed early
+and then buried under warnings, or not printed at all. That is the same class as
+0445's absorbing STALE verdict and W3b's silently-skipped coverage rows — this
+tree has a recurring habit of failing quietly at the point where a diagnostic
+would be most useful.
