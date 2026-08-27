@@ -14,8 +14,8 @@ No router, no TCP: each session has exactly one active endpoint and it is
 frames and visible first frames (`10 19` = FF of 25 bytes), so the kernel's
 ISO-TP segmentation is genuinely carrying it.
 
-W6 adds actions and graph introspection to that; **parameters are the one
-thing that does not work**, and the reason is latency rather than capability.
+W6 adds actions, graph introspection and parameters. Everything ROS 2 offers
+beyond topics now works over CAN.
 
 Implements [RFC-0083](../design/0083-can-unicast-over-isotp.md), the zenoh-rs
 half. Delivers what the multicast link cannot: **ROS 2 services, actions,
@@ -82,7 +82,7 @@ the control.
 | `ros2 node list` | **works** | the remote node is listed |
 | `ros2 service list` | **works** | all 7 services |
 | `ros2 node info` | **works** | Subscribers, Publishers **and Service Servers** |
-| `ros2 param set/get` | **does not** | see below |
+| `ros2 param set/get` | **works** | `Set parameter successful`, `Integer value is: 42` |
 
 **The negative control is what makes the rest mean anything.** The same service
 call over the **multicast** CAN link gets 0 results and 17 "service not
@@ -94,28 +94,51 @@ with the stock library** was tried and worked. That is what turned "our link is
 broken" into "something here is timing-dependent", and it is the check that
 should be reached for first rather than fifth.
 
-### The parameter gap, and what it actually is
+### The "parameter flake" was a one-shot listener, and it was mine
 
-`ros2 param set` reports `Node not found` with the default discovery window. With
-`--spin-time 10` the node **is** found and the failure moves to
-`Wait for service timed out`. So the graph the other tools read successfully is
-there; the parameter call itself is too slow to complete inside rclpy's default
-timeout. It is latency, not a missing capability, and the same command over TCP
-returns `Set parameter successful`.
+**This corrects the first version of this section, which blamed latency.** It
+was not latency. It was a bug in the link.
 
-That is worth stating precisely because it is the first place the cost of ISO-TP
-shows up in a user-visible way: flow control, `STmin` pacing and per-PDU round
-trips add latency that a tool with a short default deadline notices.
+The listener created one link, handed it to the transport manager, and never
+bound again. `zenoh-link-serial` loops for exactly this reason; this one did
+not. So the first peer to connect worked and every later one failed — and since
+each `ros2` command is a fresh session, the first `ros2` invocation after
+starting a node succeeded and all the rest did not.
 
-### A non-fix, recorded so it is not retried
+**The measurement that found it** was counting, not reasoning: ten identical
+service calls against one long-lived server gave **1 success and 9 failures,
+with the success first**. A failure that is ordered rather than scattered is a
+state bug, not a race. Restarting the server between calls gave **4 of 4**,
+which confirmed it before a line was changed.
 
-Graph convergence was **intermittent**: `ros2 service list` returned empty on two
-early runs and all seven on four consecutive later runs, with no code change in
-between. A larger socket receive buffer was the obvious suspect — that exact
-defect cost 31% of messages on the multicast link — but it made **no difference**
-here and was reverted rather than left in as an unexplained change. The
-intermittency is **not isolated**, and on `vcan`, which has no bit rate, it is
-unlikely to be the same phenomenon that would appear on a real bus.
+Three hypotheses were tested and **discarded** on the way, and it is worth
+recording that none of them was right:
+
+* **A receive buffer too small.** The obvious suspect, because that exact defect
+  cost 31% of messages on the multicast link. It made no difference and was
+  reverted rather than left in as an unexplained change.
+* **Truncated PDUs.** Plausible because the parameter service names are much
+  longer than `/add_two_ints`, and because the service *names* appeared in the
+  graph while the type-matched availability check failed. Disproved by logging
+  every read: the largest PDU was 3190 bytes into a 4095-byte buffer, and no
+  read ever filled its buffer.
+* **Latency.** Disproved by timing an rclpy service call: **0.32 s over ISO-TP
+  against 0.26 s over TCP.** Service calls are not slow.
+
+The fix re-arms after every client. The identifier pair is a single kernel
+socket, so the next bind can only happen once the previous link drops; a
+`connected` flag cleared in `Drop` marks that moment, and the rebind retries
+because the drop and the rebind race by a few microseconds.
+
+Verified three ways: a regression test connects three clients in sequence to one
+listener; the original measurement goes from **1/10 to 10/10**; and
+`ros2 param set` / `get` return `Set parameter successful` and
+`Integer value is: 42`.
+
+**The lesson worth keeping** is that the symptom was several layers from the
+cause. "ROS parameters flake over CAN" pointed at latency, at message size, at
+the graph — and the thing that actually cracked it was noticing that the
+failures were *ordered*.
 
 **Three ABI traps**, found by transcribing the kernel header rather than working
 from memory, all now handled in code:
