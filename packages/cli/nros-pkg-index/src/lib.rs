@@ -55,6 +55,22 @@ const SKIP_DIRS: &[&str] = &[
     ".cargo",
     "node_modules",
     "__pycache__",
+    // Agent worktrees. `.claude/worktrees/<name>/` holds a FULL checkout of
+    // this repository, so walking into one finds every package a second time
+    // and the index refuses the duplicate:
+    //
+    //   nros::main!: build_pkg_index: duplicate pkg name `native_talker` in
+    //   workspace `/…/nano-ros`: `/…/.claude/worktrees/agent-…/examples/native/
+    //   rust/custom-transport-listener` and `…/custom-transport-talker`
+    //
+    // That broke a zephyr fixture build in the MAIN checkout because a
+    // DIFFERENT session happened to have a worktree open. Parallel agent
+    // sessions are normal here — CLAUDE.md's multi-session practices exist for
+    // them, and `.claude/worktrees/` is where the tooling puts them — so one
+    // session must not break another's build by merely existing. Skipping
+    // `.claude` rather than `worktrees`: the whole directory is tooling state,
+    // never source.
+    ".claude",
 ];
 
 /// In-memory pkg-name → pkg-source-dir index.
@@ -459,4 +475,63 @@ fn load_cache_if_fresh(
         workspace_root: workspace_root.to_path_buf(),
         pkgs,
     }))
+}
+
+#[cfg(test)]
+mod worktree_tests {
+    use super::*;
+
+    fn pkg_xml(name: &str) -> String {
+        format!("<package format=\"3\"><name>{name}</name></package>")
+    }
+
+    /// A unique scratch dir. `std::env::temp_dir()` rather than `tempfile`:
+    /// this crate has no dev-dependencies, and adding one to assert a
+    /// directory-skip rule would move `Cargo.lock` — a promise about what
+    /// everyone else's build resolves — for a test helper.
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(tag: &str) -> Self {
+            let p = std::env::temp_dir().join(format!(
+                "nros-pkg-index-{tag}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            Self(p)
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// An agent worktree nested in the repo must not be walked.
+    ///
+    /// See the note on `.claude` in [`SKIP_DIRS`]: a worktree holds a full
+    /// checkout, so walking one finds every package twice and the index
+    /// refuses the duplicate.
+    #[test]
+    fn an_agent_worktree_is_not_walked() {
+        let tmp = Scratch::new("worktree");
+        let root = tmp.0.as_path();
+
+        let real = root.join("examples/talker");
+        std::fs::create_dir_all(&real).unwrap();
+        std::fs::write(real.join("package.xml"), pkg_xml("native_talker")).unwrap();
+
+        // The same package name, inside another session's worktree.
+        let shadow = root.join(".claude/worktrees/agent-abc/examples/talker");
+        std::fs::create_dir_all(&shadow).unwrap();
+        std::fs::write(shadow.join("package.xml"), pkg_xml("native_talker")).unwrap();
+
+        let idx = build_pkg_index(root).expect("the worktree copy must not collide");
+        assert_eq!(idx.resolve_pkg("native_talker").unwrap(), real);
+    }
 }

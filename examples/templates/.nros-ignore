@@ -1,0 +1,16 @@
+# Templates are COPY-OUT scaffolds, not packages of this repository.
+#
+# Each subdirectory is a self-contained workspace a user copies elsewhere, so
+# several of them legitimately ship packages of the SAME name — `demo_bringup`
+# appears in four, `robot_entry` in four, plus `talker_pkg`, `listener_pkg`,
+# `c_talker_pkg` and `consumer` in two each. Any pkg-index walk that reaches
+# this directory therefore dies on a duplicate:
+#
+#   nros::main!: build_pkg_index: duplicate pkg name `demo_bringup` in workspace
+#   `/…/nano-ros`: `…/templates/c-and-cpp-mixed-workspace/src/demo_bringup`
+#   and `…/templates/multi-node-workspace/src/demo_bringup`
+#
+# ONE marker here rather than one per template: the whole directory is
+# scaffolding. Building a template DIRECTLY is unaffected — the walker never
+# filters its own root (`depth() == 0`), which is what the `metadata_cpp`
+# compile-check relies on.

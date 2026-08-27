@@ -1,0 +1,15 @@
+# This directory is a workspace ROOT (pkg-index marker #2).
+#
+# phase-383 W10.a — needed because the cargo/cmake root here is now GENERATED
+# under `build/<coord>/` and gitignored, so it is absent in a fresh clone and
+# between builds. `detect_workspace_root` walks up for a `Cargo.toml` carrying
+# `[workspace]` and otherwise falls back to `.git/`, so without this marker a
+# package inside a migrated workspace resolves its root to the REPOSITORY and
+# indexes every package in the tree:
+#
+#   nros::main!: build_pkg_index: duplicate pkg name `demo_bringup` in
+#   workspace `/…/nano-ros`: `examples/templates/c-and-cpp-mixed-workspace/
+#   src/demo_bringup` and `examples/templates/multi-node-workspace/src/demo_bringup`
+#
+# A workspace is a workspace whether or not anything has been built in it, so
+# the marker is TRACKED and does not depend on build state.
