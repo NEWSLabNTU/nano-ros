@@ -42,6 +42,40 @@ never completed within 1000 ms. Whether that is a dropped tail on the wire or a
 sender that stalled mid-frame is not established, but it is a distinct failure
 from the 19 zero-byte windows and should not be folded into them.
 
+### Router-side: source read, logs raised, threads profiled (2026-08-28)
+
+**Source** (`eclipse-zenoh/zenoh` at tag 1.9.0, `io/zenoh-links/zenoh-link-serial/src/unicast.rs`):
+
+- `write()` and `read()` take **separate** `write_lock` / `read_lock`, so there
+  is no read-vs-write deadlock at that layer.
+- Both obtain `&mut ZSerial` from a shared `UnsafeCell<Option<ZSerial>>` via
+  `get_port_mut(&self)`. The safety note claims "no concurrent reads or
+  concurrent writes will ever happen", which is true of each *pair* — but it
+  does **not** exclude a read concurrent with a write, and both hand out `&mut`
+  to the same port. Noted as a latent hazard; not shown to fire here.
+- `write()` logs `tracing::error!` on failure under the **`zenoh_link_serial`**
+  target. Every earlier run used `zenoh_transport=debug` only, so a write error
+  would have been invisible.
+
+**Logs raised** to `zenoh_link_serial=trace`: **zero errors**, no "Unable to
+write". Writes are not failing. (That module logs almost nothing on the success
+path, so this bounds the failure rather than locating it.)
+
+**Threads profiled** via `/proc/<pid>/task/*/{comm,wchan}` — sampled three
+times across the silent window (ptrace is restricted here, so no backtraces):
+
+```
+t+6s / t+11s / t+16s
+  tx-0    ep_poll          <- parked in the reactor, all three samples
+  tx-1    futex_wait_queue <- idle worker
+  rx-0/1  ep_poll / futex
+  acc-0   ep_poll
+```
+
+**No thread is blocked on a serial write or on a mutex.** The tx worker is
+simply parked with nothing to do. That is what an unfired keepalive timer looks
+like, and it rules out the stalled-write and lock-contention explanations.
+
 ### What remains unknown
 
 Why the router stops. The board-side measurement proves nothing arrives; it
