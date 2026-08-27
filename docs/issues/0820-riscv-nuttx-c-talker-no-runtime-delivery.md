@@ -1,8 +1,8 @@
 ---
 id: 820
-title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the riscv C talker
-  published on a domain its own sources do not produce (issue 0475's symptom,
-  after 0475 was resolved)"
+title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no
+  dependency edge on the Rust world, and hardcoded `--release` past a
+  miscompile carve-out"
 status: open
 type: bug
 area: cmake, testing
@@ -147,6 +147,61 @@ The archive the native C talker actually links is `libnros_cpp.a` (it defines
 `nros_support_init`; confirmed with `nm`), and it HAS a file-level edge. A
 backend change rebuilds it and relinks the example. So zenoh/xrce on native are
 fine, and the defect is specific to the NuttX seam above.
+
+## FIXED for the NuttX seam (2026-08-27) — verified without wiping
+
+`packages/api/nros-c/cmake/nros-nuttx.cmake`, all three together:
+
+```cmake
+nros_resolve_carve_out_profile(nuttx-rust _NROS_NUTTX)
+set(_output_binary ".../${_NROS_NUTTX_DIR}/nros-nuttx-ffi")
+    cargo build --profile ${_NROS_NUTTX_PROFILE}
+    DEPFILE "${_output_binary}.d"
+```
+
+Verification — the one that matters is a rebuild WITHOUT `rm -rf`:
+
+| step | result |
+| --- | --- |
+| clean build | cargo dir moved `release/` -> `nros-minsizerel/` |
+| touch `packages/core/nros-node/src/lib.rs`, rebuild | `[1/2] Building NuttX example: c_talker` ran |
+| ELF sha256 | `7bdbba87d389e7ad` -> `f2b6e8107a94260e` |
+| probe symbol in ELF | present |
+| `c_riscv_nuttx_talker_delivers_cross_process` | PASS 3.4 s |
+
+**The profile half was not cosmetic.** `NUTTX_RUST_PROFILE`'s docstring: at
+`lto = "off"` a non-deterministic cross-CGU miscompile corrupts the std
+`lang_start` main-closure fat pointer and the image reboots before `main` with
+no console output (phase-177.8.c). Cargo's built-in `release` IS `lto = off`.
+So this seam had been building every NuttX C example in the configuration the
+tree documents as broken, while `nros profile carve-out nuttx-rust` — which
+exists to prevent exactly that — sat unused.
+
+### Still open
+
+The sibling seams. `FREERTOS_QEMU_PROFILE` is also `MINSIZEREL` (a QEMU timing
+floor rather than a miscompile, but the same "must be built at" shape), and the
+freertos / threadx / esp-idf paths are the same custom-command construction. A
+missing edge is rarely one-of-a-kind and neither is a hardcoded `--release`;
+neither has been checked.
+
+### A note on method, because it cost most of the investigation
+
+Four times here an ABSENT signal was read as evidence, and each nearly produced
+a wrong root cause:
+
+* `nros_log` output missing -> the image installs no log sink.
+* A probe string missing from the ELF -> that IS the museum binary. Check with
+  `strings <elf> | grep <probe>`.
+* A probe silent again -> no router running, so `nros_support_init` returned -4
+  and entity creation was never reached.
+* A `#[allow(dead_code)] const` probe missing -> dead-code-eliminated before it
+  reached the binary. Use `#[used]` + `#[unsafe(no_mangle)]`.
+
+The domain-1 behaviour, the "domain mismatch root cause" and the issue-0801
+comparison in this issue's history were all artifacts of that class. When a
+check produces nothing, establish that the instrument works before believing
+the reading.
 
 ## THE PROPER FIX (explored 2026-08-27) — three coupled defects in one seam
 

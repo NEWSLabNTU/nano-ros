@@ -54,6 +54,21 @@ set(_NROS_NUTTX_INCLUDED TRUE)
 
 include("${CMAKE_CURRENT_LIST_DIR}/nros-rtos-helpers.cmake")
 
+# issue 0820 — the cargo profile for this seam is a CARVE-OUT, not the ambient
+# one, and it must come from the table rather than be spelled here.
+#
+# At FILE scope, not inside the function that uses it: an include() in a
+# function body drops the included file's normal variables when the frame pops
+# (the `_NROS_ENTRY_DIR` class in CLAUDE.md). NanoRosCargoProfile.cmake carries
+# include_guard(GLOBAL), so this is a no-op when a caller already included it.
+if(NOT COMMAND nros_resolve_carve_out_profile)
+    get_filename_component(_nros_c_repo_cmake
+        "${CMAKE_CURRENT_LIST_DIR}/../../../../cmake" ABSOLUTE)
+    if(EXISTS "${_nros_c_repo_cmake}/NanoRosCargoProfile.cmake")
+        include("${_nros_c_repo_cmake}/NanoRosCargoProfile.cmake")
+    endif()
+endif()
+
 # ----------------------------------------------------------------------
 # nros_nuttx_validate
 # ----------------------------------------------------------------------
@@ -226,7 +241,25 @@ function(nros_nuttx_build_example)
     # under the FFI crate's `target/`, and concurrent / sequential
     # builds from different examples silently clobber each other.
     set(_cargo_target_dir "${CMAKE_CURRENT_BINARY_DIR}/cargo-target")
-    set(_output_binary "${_cargo_target_dir}/${_NNBE_TARGET_TRIPLE}/release/nros-nuttx-ffi")
+
+    # issue 0820 — the profile is a CARVE-OUT (`nuttx-rust`), not `--release`.
+    #
+    # `NUTTX_RUST_PROFILE` is `nros-minsizerel` and its docstring is emphatic
+    # about why: at `lto = "off"` a non-deterministic cross-CGU miscompile
+    # corrupts the std `lang_start` main-closure fat pointer and the image
+    # reboots before `main` with no console output (phase-177.8.c; phase-285 W5
+    # rode the same dodge for nuttx-riscv). Cargo's built-in `release` IS
+    # `lto = off`, so the hardcoded `cargo build --release` this replaced put
+    # every NuttX C example squarely in the miscompiling configuration, and
+    # built it at `release` codegen on a platform that chose minsizerel for size.
+    #
+    # The path moves WITH the profile. It was `.../release/...` literally, which
+    # made the hardcode load-bearing: any other profile writes elsewhere while
+    # cmake still expects `release/`, and the guard below reports "produced no
+    # kernel ELF" instead.
+    nros_resolve_carve_out_profile(nuttx-rust _NROS_NUTTX)
+    set(_output_binary
+        "${_cargo_target_dir}/${_NNBE_TARGET_TRIPLE}/${_NROS_NUTTX_DIR}/nros-nuttx-ffi")
 
     # 194.4: self-provision the NuttX export before the example links it. The
     # shared script (scripts/nuttx/build-nuttx.sh via NROS_NUTTX_PROVISION_SCRIPT)
@@ -285,7 +318,7 @@ function(nros_nuttx_build_example)
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
-            cargo build --release
+            cargo build --profile ${_NROS_NUTTX_PROFILE}
         # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with
         # no kernel ELF (up-to-date skip edge / a sub-step whose failure isn't
         # propagated) must fail HERE, not only in the outer fixture script's
@@ -296,6 +329,20 @@ function(nros_nuttx_build_example)
                 "${_includes_file}" "${_ffi_libs_file}"
                 "${_NNBE_FFI_CRATE_DIR}/build.rs"
                 "${_NNBE_FFI_CRATE_DIR}/Cargo.toml"
+        # issue 0820 — the DEPENDS list above names the app's C sources and this
+        # crate's manifest, and NOTHING from the nano-ros Rust world. An edit to
+        # nros-node or a backend left this command up to date, so cargo never
+        # ran and the ELF kept the previous build's Rust code with a fresh mtime
+        # — a museum binary (issue 0475's class), which cost a tier-2 test 90 s
+        # and a long investigation before `rm -rf` "fixed" it.
+        #
+        # Hand-listing the Rust closure here would be a maintained
+        # approximation of a graph cargo already computes exactly. It writes
+        # that graph to `<output>.d` (Makefile format, absolute paths, 159
+        # sources for this leaf), so consume it. Ninja + cmake >= 3.20 support
+        # DEPFILE on add_custom_command; a missing depfile on the first build is
+        # tolerated.
+        DEPFILE "${_output_binary}.d"
         COMMENT "Building NuttX example: ${_NNBE_NAME}"
         VERBATIM)
 
