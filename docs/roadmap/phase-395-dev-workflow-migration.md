@@ -18,9 +18,24 @@ exercises the ~50 runtime cells that are host-executable and free.
 
 Half a day, no code. Two numbers decide the rest of the sequence.
 
-1. **What fraction of the 1541 tests in `just ci` actually need a fixture?**
-   If most do not, W2 is a large win available immediately. If most do, the
-   fixture cache (W10) has to come earlier.
+1. **What fraction of the tests in `just ci` actually need a fixture?**
+   **Measured 2026-08-28: 89 of 163 test files (55%) call a fixture resolver;
+   74 (45%) do not.**
+
+   Method matters here — a first pass grepping for `build_*` returned 27%, and
+   was wrong: `qemu_baremetal_main_e2e_binary` is a resolver too. The figure
+   above is against the authoritative list of all 377 `pub fn` resolvers in
+   `fixtures/binaries/`. Same mistake class as guessing a pattern instead of
+   reading the source of truth; recorded so the next person does not repeat it.
+
+   Caveat: file-level, not test-level. `rstest` cases are not statically
+   countable, so a file needing one fixture counts the same as one needing ten.
+
+   *Consequence for this plan:* 45% of test files are gated behind a
+   precondition they do not need, so W2 is a real and immediate win — but it is
+   not "most", so **W10 cannot be deferred as far as first written**. Roughly
+   half the suite genuinely needs built artifacts, which keeps the fixture cache
+   load-bearing rather than an optimisation.
 2. **Wall-clock split of one PR run**: provisioning vs building vs testing. If
    provisioning dominates — which the SDK-versus-cache arithmetic predicts —
    then a single self-hosted runner (W6) recovers most of the hours by itself.
