@@ -4867,8 +4867,9 @@ impl<'s> Executor<'s> {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut info =
-            ServiceInfo::new(service_name, service_type, service_hash).with_domain(self.domain_id).with_namespace(&ns);
+        let mut info = ServiceInfo::new(service_name, service_type, service_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
@@ -5017,8 +5018,9 @@ impl<'s> Executor<'s> {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut info =
-            ServiceInfo::new(service_name, service_type, service_hash).with_domain(self.domain_id).with_namespace(&ns);
+        let mut info = ServiceInfo::new(service_name, service_type, service_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
@@ -5095,8 +5097,9 @@ impl<'s> Executor<'s> {
             }
             None => (self.node_name.clone(), self.namespace.clone(), 0u8),
         };
-        let mut info =
-            ServiceInfo::new(service_name, service_type, service_hash).with_domain(self.domain_id).with_namespace(&ns);
+        let mut info = ServiceInfo::new(service_name, service_type, service_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
         if !node_name.is_empty() {
             info = info.with_node_name(&node_name);
         }
@@ -6410,6 +6413,7 @@ impl<'s> Executor<'s> {
         /// Build a service name like `{node_fqn}/{suffix}` and create the server handle.
         fn create_param_srv<Svc: RosService>(
             session: &mut session::ConcreteSession,
+            domain_id: u32,
             node_fqn: &str,
             namespace: &str,
             node_name: &str,
@@ -6421,7 +6425,17 @@ impl<'s> Executor<'s> {
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
             let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-                .with_domain(self.domain_id)
+                // issue 0824 follow-up — `domain_id` is a PARAMETER, not `self.domain_id`:
+                // this is a nested `fn`, not a method, so `self` is not in scope and
+                // the original spelling was E0434. It only fails under feature sets
+                // that compile this arm, which is why `--all-features` caught it and
+                // the narrower lanes did not.
+                // issue 0824 follow-up — `domain_id` is a PARAMETER, not `self.domain_id`:
+                // this is a nested `fn`, not a method, so `self` is not in scope and
+                // the original spelling was E0434. It only fails under feature sets
+                // that compile this arm, which is why `--all-features` caught it and
+                // the narrower lanes did not.
+                .with_domain(domain_id)
                 .with_namespace(namespace);
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
@@ -6440,6 +6454,7 @@ impl<'s> Executor<'s> {
 
         let get_handle = create_param_srv::<GetParameters>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6447,6 +6462,7 @@ impl<'s> Executor<'s> {
         )?;
         let set_handle = create_param_srv::<SetParameters>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6454,6 +6470,7 @@ impl<'s> Executor<'s> {
         )?;
         let set_atomic_handle = create_param_srv::<SetParametersAtomically>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6461,6 +6478,7 @@ impl<'s> Executor<'s> {
         )?;
         let list_handle = create_param_srv::<ListParameters>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6468,6 +6486,7 @@ impl<'s> Executor<'s> {
         )?;
         let desc_handle = create_param_srv::<DescribeParameters>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6475,6 +6494,7 @@ impl<'s> Executor<'s> {
         )?;
         let types_handle = create_param_srv::<GetParameterTypes>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6598,6 +6618,7 @@ impl<'s> Executor<'s> {
 
         fn create_lc_srv<Svc: RosService>(
             session: &mut session::ConcreteSession,
+            domain_id: u32,
             node_fqn: &str,
             namespace: &str,
             node_name: &str,
@@ -6609,7 +6630,7 @@ impl<'s> Executor<'s> {
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
             let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-                .with_domain(self.domain_id)
+                .with_domain(domain_id)
                 .with_namespace(namespace);
             if !node_name.is_empty() {
                 info = info.with_node_name(node_name);
@@ -6619,12 +6640,25 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)
         }
 
-        let cs_handle =
-            create_lc_srv::<ChangeState>(&mut self.session, &node_fqn, ns, nn, "change_state")?;
-        let gs_handle =
-            create_lc_srv::<GetState>(&mut self.session, &node_fqn, ns, nn, "get_state")?;
+        let cs_handle = create_lc_srv::<ChangeState>(
+            &mut self.session,
+            self.domain_id,
+            &node_fqn,
+            ns,
+            nn,
+            "change_state",
+        )?;
+        let gs_handle = create_lc_srv::<GetState>(
+            &mut self.session,
+            self.domain_id,
+            &node_fqn,
+            ns,
+            nn,
+            "get_state",
+        )?;
         let gas_handle = create_lc_srv::<GetAvailableStates>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6632,6 +6666,7 @@ impl<'s> Executor<'s> {
         )?;
         let gat_handle = create_lc_srv::<GetAvailableTransitions>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
@@ -6639,6 +6674,7 @@ impl<'s> Executor<'s> {
         )?;
         let gtg_handle = create_lc_srv::<GetAvailableTransitions>(
             &mut self.session,
+            self.domain_id,
             &node_fqn,
             ns,
             nn,
