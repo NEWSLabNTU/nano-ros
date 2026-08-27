@@ -565,6 +565,65 @@ Note (3) makes the tier's scope a deliberate decision rather than an accident,
 which is more than the current state offers — but it should be chosen, not
 defaulted into.
 
+**RESOLVED (2026-08-28): a fourth shape supersedes all three — the MACRO emits
+the storage, because the seam is a thin trampoline over a concrete type.**
+
+The blocker assumed the FFI install path has no place to get storage from.
+Reading the emit shows it does — the macro itself. The C ABI symbol is:
+
+```rust
+// nros-macros/src/lib.rs:346 — one emission PER nros::node! expansion
+#[unsafe(no_mangle)]
+pub extern "C" fn __nros_component_<pkg>_install(
+    _node: *const c_void, executor: *mut c_void, _self: *mut c_void,
+) -> i32 {
+    unsafe { ::nros::install_node_typed::<#node_ty>(executor) }
+}
+```
+
+Three consequences, each checked:
+
+* **`#node_ty` is CONCRETE at emit time.** So the macro can emit, beside the
+  trampoline, a `static` sized `size_of::<TypedSlot<#node_ty>>()` — EXACTLY, no
+  `slot_bytes` byte-budget guessing at all on this path. This is the same
+  stable-Rust distinction the static half recorded for phase-392 W3a: a generic
+  parameter cannot appear in a const operation, but a concrete type's constants
+  can. (A `static` inside the generic `install_node_typed` body would NOT work —
+  Rust shares one static across all monomorphisations — which is exactly why the
+  emission site is the macro, where the type is spelled out.)
+* **The C/C++ ABI does not change.** `__nros_component_<pkg>_install` keeps its
+  `(ptr, ptr, ptr) -> i32` shape; the storage argument is added to the RUST
+  generic behind it (`install_node_typed_in`, with the old names delegating).
+  Checked the callers of the Rust fn: the two macro emit sites
+  (`nros-macros/src/lib.rs:351`, `main_macro.rs`) and two test files —
+  `board/runtime.rs` mentions it only in docs. No foreign caller names it.
+* **Multi-instance is real and must be capped, not assumed away.** The launch
+  path bakes one identity per node in the plan (`main_macro.rs:848`,
+  `node_identity_bakes`) and can name the same component class twice. So the
+  emitted storage is a small per-class ARRAY, capacity from a knob
+  (`NROS_RUNTIME_MAX_CLASS_INSTANCES`, default small), and an install past it is
+  the same `Full`-style registration error as everywhere else in this campaign.
+
+Where this leaves the two paths — both caller-owned, no global, no shared pool:
+
+| path | storage | sizing |
+| --- | --- | --- |
+| FFI / generated (`install_node_typed*`) | macro-emitted per-class static array | EXACT — `size_of::<TypedSlot<C>>()`, concrete at emit |
+| dynamic Rust (`register_node` / `new_in`) | caller-supplied backing via 3a's `carve` | `slot_bytes` budget, `Slot::fits::<T>()` at registration |
+
+And the `Arc<ComponentCell>` migration rides the same emission: `ComponentCell`
+is const-constructible field-by-field (`RefCell::new`, `AtomicUsize::new`,
+`Cell::new` are all const; the slot field becomes
+`RefCell<Option<&'static mut dyn ComponentSlot>>` so `None` const-inits it, and
+the `String`/`Vec` registries go `heapless`, whose `new` is also const). A
+per-emit `static` cell makes every one of the 17 `Arc` clones a plain
+`&'static ComponentCell`; `component_drop_trampoline` stops reclaiming a leaked
+refcount and instead drops the slot state in place.
+
+Per-class static cost is visible, not hidden: each class pays
+`instances x size_of::<TypedSlot<C>>()` in `.bss` under its own symbol, which is
+exactly the granularity `nros-mem-report` attributes.
+
 **Acceptance (unchanged):** an image that CALLS runtime code links at tier
 `heap-free` and passes the W1 gate with `symbols read` well above 1. Three
 probes have already passed that gate vacuously at `symbols read: 1`.
