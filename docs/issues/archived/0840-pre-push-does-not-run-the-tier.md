@@ -88,6 +88,37 @@ run on the same tree minutes later was 64 s again, so the 4x is the rebase, not
 load: a rebase rewrites source mtimes, and the gates that shell out to cargo
 re-fingerprint everything they touch.
 
+**SECOND CORRECTION, same day: the MECHANISM above is also wrong.**
+
+"a rebase rewrites source mtimes, and the gates that shell out to cargo
+re-fingerprint" was asserted, not tested. Tested now, by varying exactly that
+one variable — `touch` every tracked `.rs/.c/.h/.cpp/.hpp/.toml`, which is
+precisely what a rebase does to mtimes, and re-run:
+
+    settled tree   64 s
+    after touch    81 s      (+17 s)
+
+Not +200 s. And the +17 s is almost entirely ONE gate, which goes from ~1 s to
+~19 s; every other gate moves by a second or less. So mtime-sensitivity is real,
+small, and localised — it is not what made that push cost 267 s.
+
+The 267 s is a real measurement and its cause is now UNKNOWN. The likeliest
+remaining candidates, neither tested: contention (that push followed a heavy
+fixture build), or CONTENT changes from pulling 26 commits, which invalidate
+cargo fingerprints by hash rather than by timestamp — a different mechanism from
+the one I named.
+
+So the follow-up this issue asked for is done and returned a negative result:
+there is no cluster of mtime-hungry gates to fix. Anyone narrowing the hook on
+the strength of the 4x figure would be optimising against a cause that has not
+been demonstrated. What IS established: the hook costs ~64 s on a settled tree,
+~81 s after an mtime-only disturbance, and once cost 267 s under conditions not
+yet isolated.
+
+Three errors in one issue, all the same shape: a number measured under one set
+of preconditions, then explained with a mechanism nobody varied. The first
+correction fixed the number and introduced a story; this one removes the story.
+
 This is phase-371's lesson repeating, in the same session that recorded it:
 *repeating a measurement is not varying its preconditions.* Two runs agreeing
 tells you the variance is low; it tells you nothing about whether you measured
