@@ -516,7 +516,7 @@ impl Ros2Liveliness {
                 ns_mangled.as_str(),
                 node_name,
                 topic_mangled.as_str(),
-                topic.type_name,
+                crate::keyexpr::DdsTypeName(topic.type_name),
                 topic.type_hash,
                 qos_string.as_str()
             ),
@@ -556,7 +556,7 @@ impl Ros2Liveliness {
                 ns_mangled.as_str(),
                 node_name,
                 topic_mangled.as_str(),
-                topic.type_name,
+                crate::keyexpr::DdsTypeName(topic.type_name),
                 topic.type_hash,
                 qos_string.as_str()
             ),
@@ -596,7 +596,7 @@ impl Ros2Liveliness {
                 ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
-                crate::keyexpr::DdsSrvType(service.type_name),
+                crate::keyexpr::DdsTypeName(service.type_name),
                 service.type_hash,
                 qos_string.as_str()
             ),
@@ -636,7 +636,7 @@ impl Ros2Liveliness {
                 ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
-                crate::keyexpr::DdsSrvType(service.type_name),
+                crate::keyexpr::DdsTypeName(service.type_name),
                 service.type_hash,
                 qos_string.as_str()
             ),
@@ -670,7 +670,7 @@ impl Ros2Liveliness {
                 PROTO_VERSION_TOPIC,
                 ENTITY_PUBLISHER,
                 topic_mangled.as_str(),
-                topic.type_name,
+                crate::keyexpr::DdsTypeName(topic.type_name),
             ),
         );
         key
@@ -695,7 +695,7 @@ impl Ros2Liveliness {
                 PROTO_VERSION_TOPIC,
                 ENTITY_SERVICE_SERVER,
                 service_mangled.as_str(),
-                crate::keyexpr::DdsSrvType(service.type_name),
+                crate::keyexpr::DdsTypeName(service.type_name),
             ),
         );
         key
@@ -1033,7 +1033,7 @@ mod tests {
 
         // Verify service info fields are correct
         assert_eq!(service.name, "/add_two_ints");
-        // `DdsSrvType` is a Display ADAPTER, not a comparable value: it has no
+        // `DdsTypeName` is a Display ADAPTER, not a comparable value: it has no
         // `PartialEq`/`Debug`, so `assert_eq!` on it directly does not compile
         // (E0369 + E0277 — the whole test target of this crate was red on main).
         // Render it the way the sibling key tests render theirs, which also
@@ -1042,9 +1042,9 @@ mod tests {
         core::write!(
             &mut rendered,
             "{}",
-            crate::keyexpr::DdsSrvType(service.type_name)
+            crate::keyexpr::DdsTypeName(service.type_name)
         )
-        .expect("DdsSrvType rendering must fit 128 bytes");
+        .expect("DdsTypeName rendering must fit 128 bytes");
         // Already mangled (contains `::`), so it passes through untouched.
         assert_eq!(
             rendered.as_str(),

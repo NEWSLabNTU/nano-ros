@@ -29,7 +29,7 @@ impl TopicKeyExpr for TopicInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/TypeHashNotSupported",
-                self.domain_id, topic_stripped, self.type_name
+                self.domain_id, topic_stripped, DdsTypeName(self.type_name)
             ),
         );
         #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
@@ -37,7 +37,7 @@ impl TopicKeyExpr for TopicInfo<'_> {
             &mut key,
             format_args!(
                 "{}/{}/{}/{}",
-                self.domain_id, topic_stripped, self.type_name, self.type_hash
+                self.domain_id, topic_stripped, DdsTypeName(self.type_name), self.type_hash
             ),
         );
         key
@@ -48,7 +48,7 @@ impl TopicKeyExpr for TopicInfo<'_> {
         let topic_stripped = self.name.trim_matches('/');
         let _ = core::fmt::write(
             &mut key,
-            format_args!("{}/{}/{}/*", self.domain_id, topic_stripped, self.type_name),
+            format_args!("{}/{}/{}/*", self.domain_id, topic_stripped, DdsTypeName(self.type_name)),
         );
         key
     }
@@ -73,9 +73,9 @@ impl TopicKeyExpr for TopicInfo<'_> {
 /// that supply the mangled form (generated code does) are unaffected.
 /// Anything that is not exactly `a/b/c` is passed through as well rather than
 /// mangled into nonsense.
-pub(crate) struct DdsSrvType<'a>(pub &'a str);
+pub(crate) struct DdsTypeName<'a>(pub &'a str);
 
-impl core::fmt::Display for DdsSrvType<'_> {
+impl core::fmt::Display for DdsTypeName<'_> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let s = self.0;
         if s.contains("::") {
@@ -86,7 +86,16 @@ impl core::fmt::Display for DdsSrvType<'_> {
             (Some(pkg), Some(kind), Some(name), None)
                 if !pkg.is_empty() && !kind.is_empty() && !name.is_empty() =>
             {
-                write!(f, "{pkg}::{kind}::dds_::{name}_")
+                // The action path derives sub-types by appending to the base
+                // ("Fibonacci" -> "Fibonacci_SendGoal_"), so the name can
+                // ALREADY end in the trailing underscore. Appending a second
+                // one put "Fibonacci_SendGoal__" on the wire against a native
+                // peer's "Fibonacci_SendGoal_".
+                if name.ends_with('_') {
+                    write!(f, "{pkg}::{kind}::dds_::{name}")
+                } else {
+                    write!(f, "{pkg}::{kind}::dds_::{name}_")
+                }
             }
             _ => f.write_str(s),
         }
@@ -117,7 +126,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
                 "{}/{}/{}/TypeHashNotSupported",
                 self.domain_id,
                 service_stripped,
-                DdsSrvType(self.type_name)
+                DdsTypeName(self.type_name)
             ),
         );
         #[cfg(any(feature = "ros-iron", feature = "ros-jazzy"))]
@@ -127,7 +136,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
                 "{}/{}/{}/{}",
                 self.domain_id,
                 service_stripped,
-                DdsSrvType(self.type_name),
+                DdsTypeName(self.type_name),
                 self.type_hash
             ),
         );
@@ -143,7 +152,7 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
                 "{}/{}/{}/*",
                 self.domain_id,
                 service_stripped,
-                DdsSrvType(self.type_name)
+                DdsTypeName(self.type_name)
             ),
         );
         key
