@@ -198,6 +198,19 @@ fail closed — in the run set at every lane. `lane=tier2` builds the 14-coordin
 `linux,c,zenoh` and the cover has `linux,c,cyclonedds`. After a core-crate edit the lane gate PASSED and test-all
 reported 190 stale-fixture failures. Green today only because older `lane=all` residue was still fresh — so a
 tier-2 green is conditional on a build the lane does not name. See `0828-*`.
+<<<<<<< HEAD
+=======
+
+Recently resolved (2026-08-27): **#0838** (testing) — two ways concurrent tests landed on one Cyclone domain.
+(1) `alloc::domain_of` BAKES domain 107 into the (threadx-linux, c, pubsub) image, so the four tests that talk to
+it must all use 107 — and nextest ran them as four concurrent participants: `ddsi_udp_create_conn: failed to bind
+to ANY:34150: address in use` (34150 = 7400+250*107). Fixed with a `max-threads = 1` group filtered on the shared
+RESOURCE, so a fifth sharer joins by existing; native_api 32/36 -> 36/36. (2) The domain partition supports
+`101/4 = 25` slots and `domain_in_slot`'s own doc prescribes capping `test-threads` — never applied, so on a
+32-core host slots 25..31 aliased onto 0..6 deterministically. Now `test-threads = 25`, with a test that reads
+`.config/nextest.toml` so the constants and the cap cannot drift. See `archived/0838-*`.
+
+>>>>>>> cad788e03 (fix(#0838): serialize the tests sharing a baked Cyclone domain, and cap test-threads at the partition's slot count)
 Recently resolved (2026-08-27): **#0825** (build) — a stale model under `$OUT_DIR` OUTRANKED a
 bringup's own committed model, so one run poisoned every later test using a bringup of the same
 NAME. `model_search_paths` keyed that rung on the bringup DIRECTORY NAME (`demo_bringup` — nearly

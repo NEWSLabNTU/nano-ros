@@ -5,6 +5,24 @@
 # Mark tests as slow after 30 seconds, terminate after 60 seconds
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = false
+# issue 0838 — the DOMAIN partition's slot count, not a performance knob.
+#
+# `unique_ros_domain_id` gives each nextest global slot a disjoint block of
+# Cyclone domains: slot `s` owns `[s*4, s*4+3]` out of `1..=101`, which is
+# 101 / 4 = 25 slots. Its own doc comment says what happens past that and what
+# to do about it: "Beyond 25 slots the blocks wrap and collisions resume … the
+# fix there would be to cap `test-threads`, not to widen a range whose upper
+# bound is set by Linux's ephemeral port floor."
+#
+# The cap was never applied. nextest defaults to the CPU count, so on a 32-core
+# host slots 25..31 alias onto slots 0..6 — deterministically, not as a race:
+# slot 25 takes domains 1..4 alongside slot 0. Two live tests on one Cyclone
+# domain cross-talk, and the second to start may lose the SPDP bind outright.
+#
+# 25 is `TEST_DOMAIN_MAX / DOMAINS_PER_SLOT`. Those constants and this number
+# are one fact in two files, so `domain_partition_matches_the_nextest_cap` in
+# `nros-tests` reads this file and fails if they drift.
+test-threads = 25
 
 [profile.fail-fast]
 # Local diagnosis profile: stop scheduling after the first real failure.
@@ -55,6 +73,33 @@ max-threads = 1
 
 [test-groups.qemu-baremetal]
 max-threads = 3
+
+# issue 0838 — RESOURCE: one BAKED domain serves four tests.
+#
+# `nros_tests::alloc::domain_of` statically allocates Cyclone domain 107 to the
+# (threadx-linux, c, pubsub) coordinate, and `just threadx_linux build-fixtures`
+# bakes that number into the fixture with `-DNROS_DOMAIN_ID`. The embedded side
+# cannot be told a different domain at run time, so every test that talks to one
+# of those images must use 107 too — four of them do.
+#
+# nextest runs each test in its OWN process, so those four ran as four
+# concurrent participants on one domain. Cyclone derives its ports from the
+# domain (SPDP at `7400 + 250*d` = 34150 for 107), so the second participant to
+# start loses the bind outright:
+#
+#   ddsi_udp_create_conn: failed to bind to ANY:34150: address in use
+#   nros_support_init(&app.support, locator, domain_id) -> -1
+#
+# and where the bind does succeed the two topologies simply cross-talk, which is
+# the quieter half of the same fault. Serialize them.
+#
+# This is the same shape as the retired `zephyr-qos-port` group above, and the
+# note there is the warning worth heeding: a group that stops covering every
+# sharer protects nothing. The filter selects on the shared RESOURCE — the
+# `threadx_linux_cyclonedds` prefix all four names carry — rather than listing
+# them, so a fifth test on the same baked domain joins the group by existing.
+[test-groups.cyclone-baked-domain-107]
+max-threads = 1
 
 # issue #141 — RESOURCE: one baked image serves two tests. The qos zephyr entry
 # image + its baked router port (allocator 7460) are shared by the sink-based
@@ -505,6 +550,12 @@ retries = 2
 # ThreadX Linux sim (veth bridge) — allocator window 9000+. The
 # realtime_tiers_e2e threadx_linux_rust case (phase-297 W5) rides the same
 # host-load throttle.
+[[profile.default.overrides]]
+# issue 0838 — every test that speaks to a threadx-linux cyclonedds fixture uses
+# the BAKED domain 107; see [test-groups.cyclone-baked-domain-107].
+filter = "binary(native_api) and test(threadx_linux_cyclonedds)"
+test-group = "cyclone-baked-domain-107"
+
 [[profile.default.overrides]]
 # The `threadx_linux` binary is gone (2026-08-21) — its one test printed three
 # `is_*_available()` booleans and asserted nothing. See the nuttx override above

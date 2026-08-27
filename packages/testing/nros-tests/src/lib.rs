@@ -1152,6 +1152,56 @@ mod tests {
         );
     }
 
+    /// The nextest thread cap must equal the partition's slot count.
+    ///
+    /// Issue 0838. `a_slots_domains_never_land_on_a_live_neighbours` proves the
+    /// grid is collision-free *inside the bound*; nothing tied that bound to the
+    /// number of slots nextest actually creates. It defaults to the CPU count,
+    /// so on this 32-core host slots 25..31 aliased onto slots 0..6 —
+    /// deterministically, not as a race: slot 25 takes domains 1..4 alongside
+    /// slot 0. `domain_in_slot`'s own doc named the remedy ("cap `test-threads`")
+    /// and the cap was never applied.
+    ///
+    /// Reads the real config file rather than restating the number, because the
+    /// whole failure was two files disagreeing about one fact.
+    #[test]
+    fn domain_partition_matches_the_nextest_cap() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        let cfg = root.join(".config/nextest.toml");
+        let text = std::fs::read_to_string(&cfg)
+            .unwrap_or_else(|e| panic!("reading {}: {e}", cfg.display()));
+
+        let declared = text
+            .lines()
+            .map(str::trim)
+            .find(|l| l.starts_with("test-threads"))
+            .and_then(|l| l.split('=').nth(1))
+            .and_then(|v| v.trim().parse::<u32>().ok())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{} declares no `test-threads`. Without it nextest uses the \
+                     CPU count, and any host with more than {} cores puts two \
+                     live tests on one Cyclone domain (issue 0838).",
+                    cfg.display(),
+                    TEST_DOMAIN_MAX / DOMAINS_PER_SLOT
+                )
+            });
+
+        assert_eq!(
+            declared,
+            TEST_DOMAIN_MAX / DOMAINS_PER_SLOT,
+            "`test-threads` in {} must equal TEST_DOMAIN_MAX / DOMAINS_PER_SLOT \
+             ({} / {}). Above it the domain blocks wrap and slots alias; below \
+             it, capacity is wasted.",
+            cfg.display(),
+            TEST_DOMAIN_MAX,
+            DOMAINS_PER_SLOT
+        );
+    }
+
     /// Every domain the assigner can produce must stay port-safe (issue 0703):
     /// `7400 + 250*D` must land below Linux's ephemeral floor of 32768.
     #[test]
