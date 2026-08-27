@@ -1,0 +1,13 @@
+# The workspace is `edition = "2024"` (rustc >= 1.85) and already calls
+# `usize::is_multiple_of` (stable 1.87, e.g. nros-rmw/src/traits.rs), so 1.87 is
+# the floor the code ACTUALLY requires today.
+#
+# Declared here because clippy reads `package.rust-version` and NO member crate
+# inherits the workspace's, so without this clippy assumes whatever toolchain is
+# installed (1.96 today) and will happily suggest APIs newer than our floor.
+#
+# NOTE `[workspace.package] rust-version` still reads "1.75". That cannot be
+# true for an edition-2024 crate, and the `is_multiple_of` calls above put the
+# real floor two releases higher again. Correcting a published compatibility
+# claim is a maintainer decision, so it is flagged here rather than changed.
+msrv = "1.87"
