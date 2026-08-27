@@ -595,6 +595,8 @@ check-build: \
     check-feature-set-ssot \
     check-no-tracked-file-find \
     check-pool-inventory \
+    check-mem-report \
+    check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
     check-no-silent-sample-drop \
@@ -3916,6 +3918,44 @@ check-rust-targets-covered:
 [private]
 check-pool-inventory:
     @python3 scripts/gen-pool-inventory.py --check
+
+# Phase 392 W1 — the declared arithmetic has to survive contact with a linker.
+# `check-pool-inventory` proves the FORMULA is present and evaluates; this proves
+# it equals the bytes the compiler actually reserved. Source-only here (the
+# selftest), because `check-build` runs before any fixture exists; the
+# fixture-backed comparison is `static_memory_declared_pools`, which resolves a
+# built image through the harness and so inherits the staleness probe.
+[private]
+check-mem-report:
+    @python3 scripts/nros-mem-report.py --selftest
+
+# Issue 0816 — the book promises no-alloc integrations and nothing verified the
+# LINKED image; a Cargo feature gate is necessary and not sufficient, because a
+# vendored C dependency or a weak-symbol fallback pulls an allocator in without
+# any feature moving. Selftest + claims roster only: BUILDLESS, so it sits on
+# the fast line beside the other self-testing generators.
+#
+# The image-level tiers are deliberately NOT wired into `ci` yet. `--claims`
+# reports 0 of 4 book claims backed, because no example is BUILT no-alloc (all
+# 13 bare-metal Rust leaves enable `alloc`) — the missing thing is a fixture,
+# not a gate, and that is 0816's remaining half. The `--tier unified` object
+# check is green on the zenoh funnel and red on a cyclone leaf (`operator new`
+# in four TUs), so it waits on a fix or an `--allow` carrying a tracked issue id.
+[private]
+check-no-alloc-image:
+    @python3 scripts/check-no-alloc-image.py --selftest
+    @python3 scripts/check-no-alloc-image.py --claims
+
+# Static-memory report for a built image: RAM by symbol, by crate, and by
+# declared pool, with the unattributed gap called out. Phase 392 opened with
+# this table pasted by hand into a roadmap doc; every wave of that campaign is
+# a saving measured against it, so it needs to be re-runnable.
+#
+#   just mem-report examples/native/rust/talker/target-zenoh/nros-fast-release/talker
+#   just mem-report <elf> --json > before.json   # then --baseline before.json
+[group("dev")]
+mem-report *args:
+    @python3 scripts/nros-mem-report.py {{args}}
 
 # The per-RMW capability page is derived from the two C vtables + the zenoh
 # shim's trait overrides. Prose versions of this table drifted in BOTH

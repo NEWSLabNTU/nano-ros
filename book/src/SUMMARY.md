@@ -62,6 +62,7 @@
 - [Logging](./user-guide/logging.md)
 - [Build Profiles](./user-guide/build-profiles.md)
 - [Profiling Your Build](./user-guide/build-profiling.md)
+- [Measuring Static Memory](./user-guide/measuring-static-memory.md)
 - [Deployment Workflow](./user-guide/deployment.md)
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)
 - [QoS, Status Events, and Discovery](./concepts/status-events.md)

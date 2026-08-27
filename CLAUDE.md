@@ -36,6 +36,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | Periodic tech-debt / antipattern / UX audit | [docs/development/codebase-audit-checklist.md](docs/development/codebase-audit-checklist.md) |
 | How our RMW C API compares to upstream `rmw` | `just check-rmw-api-parity` (is every contract symbol CLASSIFIED?) + `just check-rmw-abi-shape` (does the vtable MIRROR it — name, args, return?), both phase-376, both on the fast line. Contract is the 88 symbols EVERY `librmw_*_cpp.so` defines, not the 177 headers declare. The parity MAP is AUTHORED, so it drifts when slots move: it read `("gap", "no vtable slot")` for 28 slots W4 had landed and named 17 pre-W3.b spellings, while the shape tool found one real gap — two green tools disagreeing by 25 symbols. Cross-checked now (`check_against_vtable`, both directions). A gap that is real but open goes in `gap` with a TRACKED ISSUE ID in the reason; that is what `--check` tolerates, and nothing else |
 | Profile a build's time (passive, read-only) | `just profile <dir>` → `nros-build-profile` (phase-251); [book](book/src/user-guide/build-profiling.md) |
+| Measure a built image's static RAM (by symbol, crate, declared pool) | `just mem-report <elf>` → `scripts/nros-mem-report.py` (phase-392 W1); `--json` + `--baseline` for a before/after delta |
 | Verify the book's setup flow on a pristine host | `just probe bootstrap` — runs the `probe=NN`-tagged book blocks in a clean container (`scripts/probe/`, issue 0204) |
 
 ## Naming

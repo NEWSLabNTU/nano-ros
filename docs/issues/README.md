@@ -151,6 +151,8 @@ native_sim relocatable). See `0832-*`. (2026-08-27)
 
 **#0816** (tooling, open 2026-08-26) — the book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property. See `0816-*`.
 
+**#0827** (rmw, open 2026-08-27) — static RAM is a property of the RMW, not of the node: measured with `just mem-report`, talker, listener, service-server and action-server come out IDENTICAL to the byte (zenoh 342,962 / cyclone 64,220 / xrce 7,742). A talker reserves 144,128 B of `SERVICE_BUFFERS` and 131,072 B of `LARGE_PAYLOADS` it cannot reach — 80% of its static RAM. The pools are sized at the backend, where the entity set is unknown, instead of at the image, where it is known. See `0827-*`.
+
 Recently resolved (2026-08-26): **#0818** (api/tooling) — a green `api-parity.py --check` was being
 read as "the C++ surface is accounted for" while being silent about two whole families. The extractor
 compiled ONE TU, `#include "nros/nros.hpp"`, which never includes `component_node.hpp` (ZERO ledger

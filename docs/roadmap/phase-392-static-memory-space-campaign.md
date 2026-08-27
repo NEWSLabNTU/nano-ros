@@ -90,6 +90,33 @@ is priced. Annotate the rest; add a gate rejecting new unannotated pools.
 `sizeof`), so the generator emits its figure instead. Do this first: it is the
 instrument every later wave is measured with.
 
+**Amended 2026-08-27 — "annotate the rest" is not achievable; the instrument
+measures instead. Landed.** All four unpriced pools fail for the same reason,
+and `__nros_comp_buf_N` is not the exception this wave assumed, it is the rule:
+`SERVICE_BUFFERS` is a product including `ZPICO_MAX_QUERYABLES`, whose default is
+*computed*, so there is no integer to write down; `MESSAGE_INFO_TABLE`'s element
+gains three fields under `alloc` + `safety-e2e`, which is why [issue
+0739](../issues/0739-static-pool-inventory-not-enumerable.md) declined to
+annotate it and was right to; `SUBSCRIBER_BUFFERS` is an array of structs. The
+size is known to the COMPILER, not to a comment, and a hand-written figure in a
+comment is the drift class this tree already gates against
+(`check-ffi-struct-mirrors`).
+
+So W1 shipped as `scripts/nros-mem-report.py` / `just mem-report <elf>`: it reads
+a built image's symbol table and attributes RAM by symbol, by crate and by
+declared pool, with the unattributed gap called out. The declared and measured
+mechanisms compose rather than compete — `--check` joins each `// nros-pool:`
+formula to its measured symbol and requires agreement on a default-built image,
+which turns the inventory's published figures from a claim into a checked fact
+(gate `check-mem-report`, plus the fixture-backed test
+`static_memory_declared_pools`). W3 is unblocked: a saving can now be reported as
+a measured delta between two `--json` runs.
+
+The first thing it measured is [issue
+0827](../issues/0827-unused-rmw-pools-dominate-static-ram.md) — static RAM is a
+property of the RMW, not of the node, identical to the byte across four roles,
+and a talker reserves 80% of its static RAM in pools it cannot reach.
+
 **W2 — precise executor arena.** Entry codegen emits `NROS_ARENA_REQUIRED` as
 the sum of *actual* entry sizes; `static_assert` against `ARENA_SIZE` moves the
 failure from runtime to build. Encoding the requirement as a linker symbol whose

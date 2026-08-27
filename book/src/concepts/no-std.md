@@ -214,3 +214,25 @@ This is by design: the C libraries manage their own session state, stream
 buffers, and protocol metadata using platform-provided allocators. The Rust
 `alloc` feature controls only the Rust API surface (boxed callbacks, heap
 containers, etc.) and is orthogonal to C-level memory management.
+
+### Checking your own image
+
+Because of the row above, a feature list is *evidence* that an image is
+heap-free and not *proof* of it: a vendored C dependency or a weak-symbol
+fallback can link an allocator without any Cargo feature changing. Ask the
+linker instead:
+
+```bash
+scripts/check-no-alloc-image.py path/to/your.elf
+```
+
+It reads the image's symbol table and fails on any allocation symbol — libc's
+`malloc` family, Rust's `__rust_alloc` family, C++ `operator new`, and the RTOS
+heaps (`k_malloc`, `pvPortMalloc`, `tx_byte_allocate`, `kmm_malloc`,
+`heap_caps_malloc`) — reporting for each whether the image *calls* it or
+*contains* it. `--tier unified` takes `--objects` instead and enforces the
+weaker rule that allocation may happen only inside the `nros_platform_*`
+backend (RFC-0034 D6).
+
+None of the examples shipped in this repo are built this way today — they all
+enable `alloc` — so run it against your own image, not against one of ours.
