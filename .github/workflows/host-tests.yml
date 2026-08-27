@@ -77,10 +77,29 @@ jobs:
                      --source cyclonedds-src
 
       # The workspace unit suite includes nros-rmw-zenoh's `status_events_matrix`,
-      # which opens a client-mode session against a local zenohd. Provision the
-      # prebuilt router so the test runs here instead of panicking on a missing bin.
-      - name: Provision zenohd
-        run: just zenohd setup
+      # which opens a client-mode session against a local zenohd.
+      #
+      # `just zenohd setup` used to build the VENDORED router. RFC-0075 /
+      # phase-362 deleted it (`build/zenohd/` is gone) and the router became
+      # ROS's own `rmw_zenohd`, but this step was left behind. The top-level
+      # recipe is `zenohd locator="tcp/..."`, so `setup` was being passed as a
+      # LOCATOR — the step could not have worked, and host-tests has been red on
+      # it. `check-just-recipe-refs` did not catch it because it reads
+      # `just/*.just` and never `.github/workflows/`.
+      #
+      # Install the router ROS itself ships. If it is unavailable the zenoh
+      # lanes SKIP and announce it (`check-zenohd-router-skips` enforces that
+      # they can), which is a worse result than running them but a far better
+      # one than a job that always fails.
+      - name: Provision zenohd (ROS rmw_zenoh_cpp)
+        run: |
+          if apt-get install -y --no-install-recommends "ros-${ROS_DISTRO}-rmw-zenoh-cpp" 2>/dev/null; then
+            echo "installed ros-${ROS_DISTRO}-rmw-zenoh-cpp"
+          else
+            apt-get update -qq || true
+            apt-get install -y --no-install-recommends "ros-${ROS_DISTRO}-rmw-zenoh-cpp" \
+              || echo "::warning::no rmw_zenoh_cpp available — zenoh lanes will skip"
+          fi
 
       - name: just test-unit
         run: just test-unit
@@ -129,7 +148,13 @@ jobs:
 
       # `test-integration` spawns zenohd to back the Phase 211/212 host tests.
       - name: Provision zenohd
-        run: just zenohd setup
+        run: |
+          # See the note on the unit job's provisioning step: `just zenohd setup`
+          # was removed with the vendored router (RFC-0075 / phase-362).
+          apt-get install -y --no-install-recommends "ros-${ROS_DISTRO}-rmw-zenoh-cpp" 2>/dev/null \
+            || { apt-get update -qq || true; apt-get install -y --no-install-recommends \
+                 "ros-${ROS_DISTRO}-rmw-zenoh-cpp" \
+                 || echo "::warning::no rmw_zenoh_cpp available — zenoh lanes will skip"; }
 
       # Test prerequisites the way a user gets them — via `nros setup` (#25): the
       # patched qemu-system-arm (build/qemu/), the prebuilt Micro-XRCE-DDS Agent

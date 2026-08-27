@@ -158,7 +158,7 @@ build-fixtures-posix:
     # The kernel source is the one thing this board still needs; lwIP is not.
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         nros_lane_skip_note freertos \
-            "FreeRTOS kernel not found at $FREERTOS_DIR (run: just setup-freertos)"
+            "FreeRTOS kernel not found at $FREERTOS_DIR (run: just setup freertos)"
         exit 0
     fi
     bash scripts/build/workspace-fixtures-build.sh freertos-posix c

@@ -50,7 +50,10 @@ REPO = Path(__file__).resolve().parent.parent
 # `just` at a command position: line start, after `&&`/`||`/`;`/`(`, or after a
 # leading `@`/`-` recipe prefix. Captures the first argument.
 JUST_CALL = re.compile(
-    r"(?:^|[;&|(]\s*|^\s*[@-]\s*)\s*just\s+((?:--?[A-Za-z0-9-]+\s+)*)([A-Za-z0-9_][A-Za-z0-9_-]*)"
+    # `run:\s*just …` is the workflow spelling. Without it the whole
+    # `.github/workflows` arm is inert: the files are read, no line matches, and
+    # the gate reports OK — a scope widening that silently checks nothing.
+    r"(?:^|[;&|(]\s*|^\s*[@-]\s*|\brun:\s*)\s*just\s+((?:--?[A-Za-z0-9-]+\s+)*)([A-Za-z0-9_][A-Za-z0-9_-]*)"
     r"(?:\s+([A-Za-z0-9_][A-Za-z0-9_-]*))?",
     re.M,
 )
@@ -144,6 +147,17 @@ def missing_test_targets(pkgs):
 def just_files():
     yield REPO / "justfile"
     yield from sorted((REPO / "just").glob("*.just"))
+    # Workflows are `just <recipe>` callers by convention
+    # (docs/development/ci-workflow-reorg.md), so a recipe deleted here breaks
+    # CI silently — this gate read only `just/` and never `.github/`.
+    #
+    # That is not hypothetical. `just zenohd setup` built the VENDORED router;
+    # RFC-0075 / phase-362 deleted it and made the router ROS's own
+    # `rmw_zenohd`, but two host-tests steps kept calling the old form. The
+    # top-level recipe is `zenohd locator="tcp/..."`, so `setup` was passed as a
+    # LOCATOR and the step could never work. host-tests was red on it for days,
+    # and nothing in the tree could see it.
+    yield from sorted((REPO / ".github" / "workflows").glob("*.yml"))
 
 
 def offenders(roots, mods):
