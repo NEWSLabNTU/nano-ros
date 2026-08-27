@@ -7,6 +7,15 @@ Python 3.12, wrong runner OS). This page is the checklist + copy-paste snippets
 that close that gap class. Pair it with the live workflows in
 `.github/workflows/` — they are the worked examples.
 
+> **Some workflow names on this page are HISTORICAL.** The fresh-runner
+> discipline below is current and still load-bearing; the files it was learned
+> from were consolidated by the phase-253 CI reorg and again by phase-395. Every
+> such name is listed in the "Historical workflow names" table at the foot of
+> this page, with what replaced it. A name NOT in that table must name a file
+> that exists — `check-ci-doc-workflow-refs` enforces exactly that, because a
+> doc citing a workflow nobody can open sends a reader looking for a file rather
+> than for the rule it was illustrating.
+
 ## The mental model: the runner is a fresh clone, nothing else
 
 A GitHub runner has the repo at the recorded commit and the runner image's
@@ -171,8 +180,23 @@ per-workflow minutes low and failures isolated to one platform:
 
 | Workflow | What it shows |
 |----------|---------------|
-| `ci.yml` (core-libs) | the core no_std lane: per-target matrix, rustup-only setup, no submodules |
-| `dep-chain.yml` | submodule-minimal init, ROS source, build-CLI-from-source, the dep-chain matrix |
-| `zephyr-dual-line.yml` | the full fresh-runner stack: submodules + uv + ROS + jammy + skip-flags + SDK cache |
-| `codegen-convention.yml` | a pure static lint (no toolchain) on `ubuntu-latest` |
-| `sdk-index-gate.yml` | offline structural validation of `nros-sdk-index.toml` |
+| `pr-checks.yml` | the fast gate: path-filtered jobs, container image + credentials, build-CLI-from-source, `nros setup --source` provisioning |
+| `host-tests.yml` | ROS on the runner, and installing a package rather than assuming it |
+| `nightly.yml` | the broad matrix, and lanes too expensive to gate a merge |
+| `queue.yml` | `merge_group`, `cancel-in-progress: false`, and a self-hosted job interlocked on a repo variable |
+| `post-submit.yml` | push-to-`main` scope, and why `cancel-in-progress` is right here and wrong in the queue |
+| `docs.yml` | a cheap lane with no toolchain at all |
+
+### Historical workflow names
+
+These files no longer exist. They are named above and in the prose because the
+lessons were learned from them; do not go looking for them.
+
+| Historical | Replaced by |
+|------------|-------------|
+| `ci.yml` | `pr-checks.yml` (fast gate) + `nightly.yml` (matrix) — phase-253 |
+| `dep-chain.yml` | `nightly.yml`; the check itself is `scripts/ci/dep-chain-check.sh` |
+| `zephyr-dual-line.yml` | `nightly.yml` |
+| `codegen-convention.yml` | `pr-checks.yml`; the lint is `scripts/ci/codegen-invocation-check.sh` |
+| `sdk-index-gate.yml` | `pr-checks.yml`, job `sdk-index` |
+| `host-integration-tests.yml` | `host-tests.yml` |

@@ -130,3 +130,15 @@ reconciliation so `just check` / `ci-fast` go green.
 - Docker image push (`docker buildx … --push`), `gh release` upload, GitHub Pages
   push — inherently CI credentials/glue; the *buildable* part is local
   (`mdbook build`, `cargo build --release`, `docker build`).
+
+## Historical workflow names
+
+This page is a record of the reorg itself, so it necessarily names files from
+before it. None of these exist now; they are here because the reasoning is
+about them, not because anyone should go looking.
+
+| Historical | Replaced by |
+|------------|-------------|
+| `check.yml` | `pr-checks.yml`, job `check` (a thin `just check-fast` / `just check` caller) |
+| `ci.yml` | `pr-checks.yml` + `nightly.yml` |
+| `release.yml` | `images.yml` |

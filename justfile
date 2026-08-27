@@ -598,6 +598,7 @@ check-build: \
     check-mem-report \
     check-claim-protocol \
     check-flake-quarantine \
+    check-ci-doc-workflow-refs \
     check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
@@ -3400,6 +3401,14 @@ rust-rtos-link-check: _require-leaf-includes
 # NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
+
+# A CI doc must not cite a workflow file that does not exist. Same class as
+# `check-just-recipe-refs`: a reference that silently stops resolving, in a
+# place that still reads as current.
+[private]
+check-ci-doc-workflow-refs:
+    @python3 scripts/check-ci-doc-workflow-refs.py
+    @python3 scripts/check-ci-doc-workflow-refs.py --selftest >/dev/null
 
 # Show (or apply) the merge-queue + branch-protection settings — phase-395 W7.
 # Read-only by default; `--apply` touches branch protection, which affects

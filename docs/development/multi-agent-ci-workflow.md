@@ -550,10 +550,14 @@ scripts/ci/runner-register.sh nros-ros2                            # interop
 
 Four files, replacing the current five. Each job is a thin `just` caller.
 
-**`pr.yml`** — hosted, every PR. This is the whole pre-merge gate.
+**`pr-checks.yml`** — hosted, every PR. This is the whole pre-merge gate.
+(Earlier drafts of this page called it pr.yml — no such file, which is why
+it is unbackticked here. Keeping the existing file's
+name is the cheaper choice: renaming a workflow renames its CHECKS, and a
+required check that changes name silently stops being required.)
 
 ```yaml
-name: pr
+name: pr-checks
 on:
   pull_request:
 concurrency:
