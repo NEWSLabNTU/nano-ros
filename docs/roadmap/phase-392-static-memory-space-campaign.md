@@ -173,11 +173,29 @@ edition 2024). So:
   a large-class subscriber. Unbounded types keep the default: phase 380 is
   explicit that `None` means "no bound exists", never "unknown" — do not size a
   buffer from a fallback.
-- **W3b — arena sizing, and only codegen can do it.** At a generated call site
-  `M` is concrete, so codegen can emit the bound as the const-generic argument;
-  a generic library function cannot. That is the real reason the size class is
-  "decoupled from codegen" today, and it is a language constraint rather than an
-  oversight.
+- **W3b — arena sizing, at any site where the type is named. LANDED.** The
+  constraint is narrower than "only codegen": a *generic parameter* may not
+  appear in a const operation, but a *concrete type's* associated const may, and
+  that compiles on stable (checked, edition 2024). `emit_rust.rs` turns out to
+  emit no subscriptions at all — the Rust call site is user code — so the fix is
+  `nros::rx_buffer_for!(Msg)`, expanding at whatever site names the type:
+
+  ```rust
+  node.subscription::<PointCloud2>("points")
+      .rx_buffer::<{ nros::rx_buffer_for!(PointCloud2) }>()
+      .build(on_cloud)?;
+  ```
+
+  `.rx_buffer::<N>()` already existed; what was missing is a number that cannot
+  drift. A literal is correct until a field is appended, after which the sample
+  is received, ACKed and dropped at the transport — the failure
+  `report_dropped_take` describes and that needs a packet capture to attribute.
+  An unbounded type expands to `NROS_SUBSCRIPTION_BUFFER_SIZE`, not to an
+  invented number, because phase 380 forbids sizing a buffer from a fallback.
+
+  Tested from OUTSIDE the crate (a macro body resolves in the caller, so an
+  in-crate test would see private names a consumer cannot), including use in
+  const-generic position — the property the whole wave exists for.
 
 **W4 — drop the network stack from serial images.** 27,760 B.
 

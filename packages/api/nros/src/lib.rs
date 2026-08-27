@@ -489,6 +489,48 @@ pub use nros_macros::main;
 ///
 /// Prefer `panic = "platform"`. Halting discards the diagnosis, and every port
 /// implements `nros_platform_panic` precisely so a dying image can say why.
+/// Phase 392 W3b — the receive-buffer size for a message type, as a constant
+/// that cannot drift from the type.
+///
+/// ```ignore
+/// node.subscription::<PointCloud2>("points")
+///     .rx_buffer::<{ nros::rx_buffer_for!(PointCloud2) }>()
+///     .build(on_cloud)?;
+/// ```
+///
+/// `.rx_buffer::<N>()` has always accepted a number. The problem is where the
+/// number comes from: a literal is correct until someone appends a field to the
+/// message, and then it is silently too small — the sample is received, ACKed
+/// and dropped at the transport, which needs a packet capture to attribute
+/// (`report_dropped_take`, and the 13.4 KiB Autoware trajectory case). This
+/// expands to the type's own bound, computed from its schema by phase 380, so
+/// appending a field moves the buffer with it.
+///
+/// **Why a macro and not a method.** The builder cannot do this for you:
+/// inside `impl<M> TypedSubscriptionBuilder<M>` the type is a generic
+/// parameter, and on stable Rust a generic parameter may not appear in a const
+/// operation — `error: generic parameters may not be used in const operations`.
+/// At a call site the type is CONCRETE, which is legal, so the size has to be
+/// named where the type is. That constraint is also why phase-392's size
+/// classes were "decoupled from codegen" in the first place.
+///
+/// **Unbounded types.** A type with a `String` or an unbounded sequence has no
+/// bound, and this refuses to invent one: it expands to
+/// `NROS_SUBSCRIPTION_BUFFER_SIZE`, the same default the subscription would
+/// have used. Phase 380 is explicit that `None` means "no bound EXISTS", never
+/// "unknown", and that a buffer must not be sized from a fallback — for those
+/// types the honest answer is the configured default, and `report_dropped_take`
+/// remains the backstop.
+#[macro_export]
+macro_rules! rx_buffer_for {
+    ($msg:ty) => {
+        match $crate::__rx_bound::<$msg>() {
+            ::core::option::Option::Some(n) => n,
+            ::core::option::Option::None => $crate::DEFAULT_RX_BUF_SIZE,
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! panic_halt {
     () => {
@@ -1016,6 +1058,24 @@ pub use nros_node::{
 // workspace-global `NROS_EXECUTOR_MAX_CBS`.
 #[cfg(feature = "rmw-cffi")]
 pub use nros_node::config::arena_size_for;
+
+/// The configured default receive-buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`).
+///
+/// Re-exported because [`rx_buffer_for!`] falls back to it for a type with no
+/// bound, and a macro expands at the CALLER, where `nros_node` may not be a
+/// dependency at all.
+pub use nros_node::config::DEFAULT_RX_BUF_SIZE;
+
+/// Phase 392 W3b — the bound behind [`rx_buffer_for!`]. Not part of the stable
+/// surface; call the macro.
+///
+/// Public only because a `macro_rules!` body is expanded in the caller's crate
+/// and can reach nothing private. `#[doc(hidden)]` and `__`-prefixed for the
+/// same reason every other macro-support item in this crate is.
+#[doc(hidden)]
+pub const fn __rx_bound<M: nros_serdes::schema::Message>() -> Option<usize> {
+    nros_serdes::size::max_serialized_bound::<M>()
+}
 
 // Phase 173.5 — board config traits. `BoardConfig` (read locator /
 // domain) + `BoardTransportConfig` (the generator writes nros.toml
