@@ -65,7 +65,24 @@ void xrce_topic_callback(uxrSession *session,
          * payloads; without this, deserialization is misaligned by 4 bytes and
          * every inbound sample is dropped. (Symmetric with the publish side,
          * which strips the header before `uxr_buffer_topic`.) */
-        if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
+        /* Issue 0819 — `length` is what the submessage DECLARES, not what the
+         * buffer HOLDS. Near the transport MTU the two diverge, and copying
+         * `len` bytes from `ub->iterator` then reads past the valid payload:
+         * the tail arrives as whatever the transport buffer held (zeros), the
+         * sample looks complete because `entry->len` is the declared length,
+         * and only an application that validates its own payload can tell.
+         * Measured: at MTU 4096 a 4096-byte payload arrived with its last 16
+         * bytes zeroed, deterministically, and the boundary moved with the MTU.
+         * It is also an out-of-bounds READ of the transport buffer.
+         *
+         * Treat a short buffer as the overflow it is — the take then reports
+         * NROS_RMW_RET_MESSAGE_TOO_LARGE, which is loud and already handled,
+         * rather than handing up a silently truncated sample. */
+        const size_t _avail = ucdr_buffer_remaining(ub);
+        if (len > _avail) {
+            entry->overflow = true;
+            entry->len = 0;
+        } else if (len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE) {
             entry->overflow = true;
             entry->len = 0;
         } else {

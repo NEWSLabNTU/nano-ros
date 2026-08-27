@@ -419,6 +419,51 @@ fn xrce_raising_the_ring_delivers_the_same_payload(xrce_stress_test_large_buf_bi
     );
 }
 
+/// Issue 0819 — a payload at the transport MTU must be REFUSED, not silently
+/// truncated.
+///
+/// The receive callback used to `memcpy` the submessage's DECLARED length out of
+/// the ucdr buffer without checking the buffer held that many bytes. Near the
+/// MTU the two diverge, so the tail arrived as whatever the transport buffer
+/// held — zeros — while `entry->len` still reported the full length. Measured
+/// before the fix: a 4096-byte payload arrived with its last 16 bytes zeroed,
+/// deterministically (first bad byte at offset 4080 = MTU - 16), and the
+/// boundary moved when the MTU moved.
+///
+/// The ring is raised here so that `XRCE_BUFFER_SIZE` is NOT the constraint —
+/// otherwise this would pass for phase-384's reason instead of this one, and
+/// would keep passing if the 0819 guard were removed.
+///
+/// Asserts the LOUD failure, not merely "not valid": silent truncation also
+/// produces invalid payloads, and that is exactly the bug.
+#[rstest]
+fn xrce_payload_at_the_mtu_is_refused_not_truncated(xrce_stress_test_large_buf_binary: PathBuf) {
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+    let _guard = XRCE_LARGE_MSG_LOCK.lock().expect("XRCE test lock poisoned");
+
+    let output = xrce_roundtrip(
+        &xrce_stress_test_large_buf_binary,
+        "4096",
+        "/stress_xrce_at_mtu",
+    );
+
+    let too_large = count_pattern(&output, "MessageTooLarge");
+    let invalid = count_pattern(&output, "valid=false");
+
+    assert_eq!(
+        invalid, 0,
+        "a sample arrived and failed validation — that is issue 0819's silent \
+         truncation, not a refusal.\nOutput:\n{output}",
+    );
+    assert!(
+        too_large >= 5,
+        "expected the at-MTU payload to be refused as MessageTooLarge, got \
+         {too_large} occurrence(s).\nOutput:\n{output}",
+    );
+}
+
 /// Throughput test at 100 Hz (10ms interval).
 #[rstest]
 fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_binary: PathBuf) {
