@@ -13,6 +13,11 @@ homepage.workspace = true
 documentation.workspace = true
 readme = "README.md"
 
+[build-dependencies]
+# issue 0460 — the shared Kconfig-via-$DOTCONFIG knob fallback, so a Zephyr Rust
+# image reads the knobs Kconfig set rather than this crate's defaults.
+nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+
 [features]
 # phase-361 W3 / issue 0591 — EMPTY; `std` is opt-in per dep-site.
 #

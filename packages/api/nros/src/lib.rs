@@ -142,6 +142,10 @@ extern crate self as nros;
 // boards perform the explicit `<backend>::register()` in their boot path (C5a). One
 // Rust trigger = the board/app explicit register (phase-249).
 
+// phase-391 W5 — build-time knobs (`MAX_COMPONENTS`, `COMPONENT_SLOT_BYTES`).
+// Ungated: they are plain consts, useful to size caller-supplied storage
+// whether or not the runtime module that consumes them is compiled in.
+pub mod config;
 pub mod dispatch_tag;
 pub mod guide;
 #[cfg(feature = "metadata-mode")]

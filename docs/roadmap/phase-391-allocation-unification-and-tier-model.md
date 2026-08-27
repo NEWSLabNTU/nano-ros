@@ -378,21 +378,78 @@ links at tier `heap-free` and passes the W1 gate with `symbols read` well above
 `size_of::<internals::RmwSession>()`, which pulls no code even for a real type).
 A pass without that symbol count is not evidence.
 
-**OPEN, and it decides whether this is a port or a redesign: `Box<dyn
-ComponentSlot>`.** The pool is heterogeneous — `TypedSlot<C>` is generic over
-`C` — so cell storage cannot simply be `[ComponentCell; N]`. Two candidates,
-neither chosen:
+**RESOLVED (2026-08-27): caller-supplied storage, mirroring `Executor::open_in`.**
+`Box<dyn ComponentSlot>` was the open question — the pool is heterogeneous
+(`TypedSlot<C>` is generic over `C`), so cell storage cannot be
+`[ComponentCell; N]`. The answer is the idiom this crate already uses one layer
+down rather than a second one:
 
-* caller-supplied `&'static mut dyn ComponentSlot` per slot, the shape
-  `Executor::open_in` / `ExecutorSizing` already uses, which keeps storage with
-  the caller and off the heap;
-* slot storage sized to the largest `C::State` in the image, which codegen knows
-  and a hand-written `main` does not — the same split W2 of
-  [phase 392](phase-392-static-memory-space-campaign.md) hit, where generated
-  entries can be sized statically and hand-written ones need a measured
-  high-water mark.
+```rust
+// existing, executor/spin.rs
+pub unsafe fn open_in(
+    config: &ExecutorConfig<'_>,
+    backing: &'s mut [MaybeUninit<u64>],
+    sizing: ExecutorSizing,
+) -> Result<Self, NodeError>
+```
 
-Settle that before writing code. The rest of this wave is determined.
+`ExecutorSizing` is `{ cbs, sc, arena }` with a `DEFAULT` built from the
+`MAX_CBS`/`MAX_SC`/`ARENA_SIZE` consts and a `u64_len()` that says how large the
+backing must be. W5's analogue:
+
+```rust
+pub struct RuntimeSizing {
+    pub components: usize,    // pool slots
+    pub slot_bytes: usize,    // per-slot storage for the erased TypedSlot<C>
+}
+impl RuntimeSizing {
+    pub const DEFAULT: Self = Self {
+        components: config::MAX_COMPONENTS,        // NROS_RUNTIME_MAX_COMPONENTS
+        slot_bytes: config::COMPONENT_SLOT_BYTES,  // NROS_RUNTIME_COMPONENT_SLOT_BYTES
+    };
+    pub const fn u64_len(&self) -> usize { .. }
+}
+
+pub unsafe fn ExecutorNodeRuntime::new_in(
+    executor: Executor<'_>,
+    backing: &'static mut [MaybeUninit<u64>],
+    sizing: RuntimeSizing,
+) -> Result<Self, NodeError>
+```
+
+Why this over sizing slots to the largest `C::State`: that figure is known to
+codegen and NOT to a hand-written `main`, which is the split phase-392 W2 hit and
+had to solve twice. Caller-supplied storage sidesteps it — codegen can emit a
+`static` sized exactly, a hand-written `main` can declare one, and neither needs
+the toolchain to know the other's answer. It also keeps the existing
+alloc-convenience constructors meaningful: they become the `leak` variants of
+`new_in`, exactly as `from_session` is to `open_in` today.
+
+`slot_bytes` is a per-slot BYTE budget rather than a type: the pool erases
+`TypedSlot<C>` into `&'static mut dyn ComponentSlot` carved from the backing, so
+a slot too large to fit is a registration error (the `Full` case), not a compile
+error in a generic the FFI seam would have to name.
+
+### Sequencing
+
+1. `nros` gains a `build.rs` (it has none today) emitting `MAX_COMPONENTS` and
+   `COMPONENT_SLOT_BYTES` from `NROS_RUNTIME_*` knobs, matching
+   `nros-node/build.rs`'s `NROS_EXECUTOR_MAX_NODES` -> `config::MAX_NODES`.
+   NOTE this adds `nros` to the CLI freshness closure — regenerate
+   `packages/cli/cli-source-dirs.txt` with `scripts/gen-cli-source-dirs.py`
+   (CLAUDE.md) or `setup-cli` will skip rebuilds it should do.
+2. `RuntimeSizing` + `new_in`, with the existing constructors reimplemented as
+   the leaking variants. No behaviour change yet.
+3. Pool + `ComponentId`; delete the 17 `Arc<ComponentCell>` clones. The
+   trampolines at `component_tick_trampoline` / `component_drop_trampoline` /
+   the three action+service ones currently carry an `Arc` through a
+   `*mut c_void`; they carry an index instead.
+4. `String`/`Vec` registries to `heapless`, capacities from the same knob family.
+5. Gate `node_runtime` on `rmw-cffi` alone again — issue 0843's `alloc` half of
+   the gate comes OFF, because the module no longer needs a heap. That is the
+   signal the wave is done.
+
+Steps 1-2 are inert and independently verifiable; 3 is the behavioural one.
 
 ## Related, not owned here
 
