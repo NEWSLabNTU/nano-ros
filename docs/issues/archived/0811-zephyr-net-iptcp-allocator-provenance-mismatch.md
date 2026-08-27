@@ -2,7 +2,8 @@
 id: 811
 title: "`ep->iptcp` is allocated by two different allocators and always freed by
   one of them"
-status: open
+status: resolved
+resolved_in: e71548e44
 type: bug
 area: platform
 related: [issue-0817, phase-391]

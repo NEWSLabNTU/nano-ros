@@ -65,6 +65,12 @@ own lesson about the pre-phase-318 `just ci`). Measured 63–64 s idle, stable b
 buildless. Covers three of the four; the compile-tier one is deliberately out and the hook SAYS so on
 success rather than letting silence imply completeness. See `archived/0840-*`. (2026-08-27)
 
+Recently resolved (2026-08-27): **#0811** (platform) — `ep->iptcp` was freed to the wrong heap on EVERY multicast teardown, not latently: zenoh-pico's `_z_link_clear` runs close-then-free and `mcast_close` had already freed the local endpoint. The two routes share no allocator on any port (picolibc `free` vs `k_malloc`; `tx_block_release` vs `tx_byte_allocate`; `memp_free(MEMP_NETDB)` vs libc). Fixed on all five ports together by tagging the locally built node and moving its ownership to `free_endpoint`. See `archived/0811-*`.
+
+Recently resolved (2026-08-27): **#0812** (api) — the loan path allocated TWICE per loan, not once: `CffiPublisher::try_lend_slot` and `zenoh_pub_loan` each boxed a slot to mint a token. Both are gone with ZERO new state — no pool, no slot table — because a live loan is already `(publisher, granted length)` and the token never had to identify anything the callee is not handed. The receive half still boxes per borrow; that is 0814's territory. See `archived/0812-*`.
+
+Recently resolved (2026-08-27): **#0813** (rmw) — `ZENOH_TX_BUF` is now the `ZPICO_PUBLISHER_TX_BUFFER_SIZE` knob and appears in the pool inventory. No `nros-pool:` row was added, deliberately: the arena is behind `feature = "lending"`, which no shipped image enables, and a row there asserts "your image contains this". See `archived/0813-*`.
+
 Recently resolved (2026-08-27): **#0833** (build) — `just doctor` printed `[OK] rust-targets` on a
 host that could not configure the FreeRTOS C++ workspace lane at all. The target list existed TWICE
 as hand-authored copies — the installer (`just workspace rust-targets`) and the verifier (`just
@@ -186,12 +192,6 @@ passes all three images while two bypass it. Embedded/ARM case NOT established (
 native_sim relocatable). See `0832-*`. (2026-08-27)
 
 **#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
-
-**#0811** (platform, open 2026-08-26) — `ep->iptcp` is allocated by two different allocators and always freed by one of them. See `0811-*`.
-
-**#0812** (api, open 2026-08-26) — `nros_publisher_loan` heap-allocates a Box per loan, putting a malloc on the ZERO-COPY path. See `0812-*`.
-
-**#0813** (rmw, open 2026-08-26) — `ZENOH_TX_BUF` is a bare const, so the loan path's 1 KiB ceiling is neither tunable nor visible in the pool inventory. See `0813-*`.
 
 **#0814** (rmw, open 2026-08-26) — the whole zero-copy surface sits behind `feature = "lending"`, which only a posix test crate ever enables. See `0814-*`.
 

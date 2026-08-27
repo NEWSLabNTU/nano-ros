@@ -2,7 +2,8 @@
 id: 812
 title: "`nros_publisher_loan` heap-allocates a Box per loan, putting a malloc on
   the zero-copy path"
-status: open
+status: resolved
+resolved_in: 5af7e1e44
 type: bug
 area: api
 related: [issue-0813, issue-0814, phase-391]

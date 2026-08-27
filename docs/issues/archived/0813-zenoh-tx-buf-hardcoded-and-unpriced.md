@@ -2,7 +2,8 @@
 id: 813
 title: "`ZENOH_TX_BUF` is a bare const, so the loan path's 1 KiB ceiling is neither
   tunable nor visible in the pool inventory"
-status: open
+status: resolved
+resolved_in: 5af7e1e44
 type: tech-debt
 area: rmw
 related: [issue-0815, issue-0812, phase-392]
