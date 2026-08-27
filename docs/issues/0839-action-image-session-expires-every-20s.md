@@ -35,9 +35,16 @@ itself still happening when it should not.
 
 The identical router config, same board, same transport, holds a **talker**
 session for a 5-minute soak with `closed=0` and `ros2 topic hz` steady at
-1.99 Hz. The keepalive cadence was verified on the wire with a socat tap at
-10.0 s intervals. So the router is speaking; this image is not hearing it in
-time.
+1.99 Hz. Only the guest image differs.
+
+**CORRECTION (2026-08-28).** This section used to continue: "The keepalive
+cadence was verified on the wire with a socat tap at 10.0 s intervals. So the
+router is speaking; this image is not hearing it in time." Both sentences are
+wrong for this image. The tap that produced the 10.0 s figure was run against
+the TALKER, and the conclusion drawn from it — that the router is speaking and
+the board is not listening — is the reverse of what happens here. On the action
+image the router transmits twice and then nothing:
+[issue 0848](0848-router-sends-no-keepalives-on-serial.md).
 
 ## Suspicion, not yet established
 
