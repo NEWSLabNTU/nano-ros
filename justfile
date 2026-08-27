@@ -599,6 +599,7 @@ check-build: \
     check-claim-protocol \
     check-flake-quarantine \
     check-ci-doc-workflow-refs \
+    check-ps-zombie-blind \
     check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
@@ -3401,6 +3402,15 @@ rust-rtos-link-check: _require-leaf-includes
 # NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
+
+# A `ps` scan enumerating process-GROUP membership must exclude zombies — a
+# corpse keeps its pgid and, under a PID 1 that never reaps (a GitHub Actions
+# container job: `tail -f /dev/null`), never leaves `ps`. Issue 0853: three
+# sites had the idiom and all three were wrong.
+[private]
+check-ps-zombie-blind:
+    @bash scripts/check-ps-zombie-blind.sh
+    @bash scripts/check-ps-zombie-blind.sh --selftest >/dev/null
 
 # A CI doc must not cite a workflow file that does not exist. Same class as
 # `check-just-recipe-refs`: a reference that silently stops resolving, in a

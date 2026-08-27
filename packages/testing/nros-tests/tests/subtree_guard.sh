@@ -63,19 +63,29 @@ launcher_pid() {
     awk '{print $1}' "$NROS_GUARD_LOCK_DIR/guardtest.pgid" 2>/dev/null
 }
 
-group_size() {
-    local pgid="$1"
-    [ -n "$pgid" ] || { echo 0; return; }
-    ps -eo pgid= 2>/dev/null | tr -d ' ' | grep -cx "$pgid" || true
-}
-
 # The PIDs currently in $1, so a later check can ask about THOSE processes
 # rather than about a number.
+#
+# A ZOMBIE IS NOT A MEMBER — see the same rule (and the same reason) in
+# scripts/build/subtree-guard.sh. Under a PID 1 that never reaps, a killed
+# subtree stays visible to `ps` at its original pgid forever, and a state-blind
+# count reads a successful kill as the orphan bug. That is issue 0853: this test
+# failed on every GitHub push, where the container's PID 1 is `tail -f
+# /dev/null`, and passed under every `docker run` whose PID 1 happened to reap.
 group_members() {
     local pgid="$1"
     [ -n "$pgid" ] || return 0
-    ps -eo pid=,pgid= 2>/dev/null | awk -v g="$pgid" '$2 == g { print $1 }'
+    ps -eo pid=,pgid=,stat= 2>/dev/null |
+        awk -v g="$pgid" '$2 == g && $3 !~ /^Z/ { print $1 }'
 }
+export -f group_members
+
+group_size() {
+    local pgid="$1"
+    [ -n "$pgid" ] || { echo 0; return; }
+    group_members "$pgid" | wc -l | tr -d ' '
+}
+export -f group_size
 
 # How many of the recorded PIDs ($1, space-separated) are still alive AND still
 # in pgid $2.
@@ -93,10 +103,13 @@ group_members() {
 # already carries this lesson as `group_ledger::start_time()` — "a pid is not a
 # pid once recycled"; this is the same rule one level over.
 members_still_in_group() {
-    local pids="$1" pgid="$2" alive=0 p cur
+    local pids="$1" pgid="$2" alive=0 p cur state
     for p in $pids; do
         [ -d "/proc/$p" ] || continue
-        cur="$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ')"
+        # `stat=` too: a zombie keeps both its pid and its pgid, so identity is
+        # necessary but not sufficient — it must also still be a process.
+        read -r cur state < <(ps -o pgid=,stat= -p "$p" 2>/dev/null)
+        case "$state" in Z*) continue ;; esac
         [ "$cur" = "$pgid" ] && alive=$((alive + 1))
     done
     echo "$alive"
@@ -121,7 +134,7 @@ start_launcher() {
     wait_until 15 test -s "$NROS_GUARD_LOCK_DIR/guardtest.pgid" \
         || fail "launcher never wrote its lock file"
     # The lock is written before the tree is fully up; wait for real depth.
-    wait_until 15 bash -c '[ "$(ps -eo pgid= | tr -d " " | grep -cx "$(awk "{print \$2}" "$0")")" -ge 3 ]' \
+    wait_until 15 bash -c '[ "$(group_size "$(awk "{print \$2}" "$0")")" -ge 3 ]' \
         "$NROS_GUARD_LOCK_DIR/guardtest.pgid" || true
 }
 
@@ -166,7 +179,7 @@ wait_until 10 bash -c "! kill -0 $lpid 2>/dev/null" || fail "launcher survived S
 # satisfy the announcement assertion below, which is the kind of pass that
 # looks like coverage and is not.
 "$work/launcher.sh" > "$work/reap.log" 2>&1 &
-wait_until 30 bash -c '[ "$(ps -eo pgid= | tr -d " " | grep -cx "'"$pgid"'")" -eq 0 ]' \
+wait_until 30 bash -c '[ "$(group_size "'"$pgid"'")" -eq 0 ]' \
     || fail "orphans from a SIGKILLed launcher were NOT reaped — $(group_size "$pgid") still alive in pgid $pgid. A guard that refuses instead of reaping here leaves them running forever (the discriminator must be the launcher, not the payload leader)."
 grep -q "reaping" "$work/reap.log" \
     || fail "orphans were collected but not ANNOUNCED; a build that silently kills processes it did not start is indistinguishable from one that hangs. Log was: $(cat "$work/reap.log")"

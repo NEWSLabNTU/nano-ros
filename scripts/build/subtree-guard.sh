@@ -47,9 +47,21 @@ _nros_guard_lock_path() {
 }
 
 # Every live PID in process group `pgid`, excluding this shell's own tree.
+#
+# ZOMBIES ARE NOT MEMBERS. A reaped-but-not-yet-collected process keeps its pgid
+# and stays visible to `ps` until its parent waits for it — and when the parent
+# is the launcher we just killed, the zombie is reparented to PID 1, which in a
+# GitHub Actions container job is `tail -f /dev/null` and never calls wait().
+# There the zombies are PERMANENT, so a state-blind count reports a group that
+# has fully exited as still alive: the drain loop below burns its whole 10 s and
+# then SIGKILLs a group of corpses, and `nros_guard_reap` either announces a
+# reap of nothing or refuses to start a build over processes that have already
+# died. A zombie holds no CPU, no files and no lock; it is not something to wait
+# for. → issue 0853.
 _nros_guard_group_members() {
     local pgid="$1"
-    ps -eo pid=,pgid= 2>/dev/null | awk -v g="$pgid" '$2 == g { print $1 }'
+    ps -eo pid=,pgid=,stat= 2>/dev/null |
+        awk -v g="$pgid" '$2 == g && $3 !~ /^Z/ { print $1 }'
 }
 
 # Reap a process group left behind by a launcher that could not run its trap.

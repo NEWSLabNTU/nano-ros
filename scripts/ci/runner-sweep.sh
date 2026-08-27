@@ -219,13 +219,18 @@ _nros_sweep_job_running() {
 }
 
 # Live PIDs in process group `$1`, one per line — the same idiom as
-# subtree-guard's `_nros_guard_group_members`, for the same reason.
+# subtree-guard's `_nros_guard_group_members`, for the same reason, INCLUDING
+# the zombie exclusion: on a runner whose container PID 1 is `tail -f /dev/null`
+# nothing ever reaps an orphan, so a dead group stays visible to `ps` at its
+# original pgid forever (issue 0853). Counting corpses here would make the sweep
+# report debris it cannot clear.
 _nros_sweep_group_members() {
-    ps -eo pid=,pgid= 2>/dev/null | awk -v g="$1" '$2 == g { print $1 }' || true
+    ps -eo pid=,pgid=,stat= 2>/dev/null |
+        awk -v g="$1" '$2 == g && $3 !~ /^Z/ { print $1 }' || true
 }
 
 _sweep_processes() {
-    if ! ps -eo pid=,ppid=,pgid=,etimes=,comm= >/dev/null 2>&1; then
+    if ! ps -eo pid=,ppid=,pgid=,etimes=,stat=,comm= >/dev/null 2>&1; then
         _warn "runner-sweep: this \`ps\` has no \`etimes\` column — process sweep SKIPPED."
         _warn "  Needs procps-ng. Nothing was killed; the disk half still ran."
         return 0
@@ -267,13 +272,20 @@ _sweep_processes() {
     fi
 
     # Then the general case: anything reparented, old enough, and ours.
-    local pid ppid pgid age comm exe cwd
+    local pid ppid pgid age state comm exe cwd
     local -a victims=()
     local reported=0
-    while read -r pid ppid pgid age comm; do
+    while read -r pid ppid pgid age state comm; do
         [ -n "${pid:-}" ] || continue
         [ "$pid" = "$$" ] && continue
         [ "$pid" -le 1 ] 2>/dev/null && continue
+        # A zombie is not an orphan to sweep: it holds no CPU, no files and no
+        # port, and it cannot be killed — only its parent can collect it, and
+        # under a non-reaping container PID 1 nobody ever will. Left in, every
+        # one of them would land in the `reported` branch below (a zombie's
+        # /proc/<pid>/exe is unreadable) and the sweep would tell the operator
+        # to re-run as another user, forever. → issue 0853.
+        case "$state" in Z*) continue ;; esac
         [ -n "$own_pgid" ] && [ "$pgid" = "$own_pgid" ] && continue
         [ "$pgid" -le 1 ] 2>/dev/null && continue
 
@@ -305,7 +317,7 @@ _sweep_processes() {
         _say "  orphan pid=$pid pgid=$pgid age=${age}s comm=$comm"
         _say "         exe=${exe:-?}"
         victims+=("$pgid")
-    done < <(ps -eo pid=,ppid=,pgid=,etimes=,comm= 2>/dev/null)
+    done < <(ps -eo pid=,ppid=,pgid=,etimes=,stat=,comm= 2>/dev/null)
 
     if [ "$reported" -gt 0 ]; then
         _warn "runner-sweep: $reported reparented process(es) belong to another user —"
