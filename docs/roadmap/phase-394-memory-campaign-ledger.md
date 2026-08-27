@@ -146,6 +146,35 @@ and a path typed by hand into a tool is not one of those. So the rule is manual
 and belongs with the tool: **check the artifact's mtime against its sources
 before quoting a number from it.**
 
+## A green platform build is not coverage of that platform's files
+
+Issue 0811 changed `net.c` on five ports. Tier 1 and tier 2 both went green
+having compiled exactly ONE of them --- every `net.c.o` in the tree was
+`nros_platform_posix_build`. Worse, two of the per-platform builds go green
+while deliberately skipping the file:
+
+| build | what it does with `net.c` |
+| --- | --- |
+| `just threadx_linux build-c-port` | **excludes it** --- "no NetX Duo", says so in the recipe |
+| `just freertos build-c-port` | **excludes it** --- "no lwIP in this harness" |
+| `just threadx_riscv64 build` | never compiles it; delegates to `build-fixture-extras` |
+| zephyr, any config | only under `if(CONFIG_NET_SOCKETS)` --- a serial image never compiles it |
+
+So "ThreadX built clean" and "the file I edited compiles" are independent
+statements, and the first is the one CI reports. What actually verified the
+five ports, on 2026-08-27:
+
+| port | how |
+| --- | ---: |
+| posix | tier 1 + tier 2 |
+| zephyr | `just zephyr build-c` --- 6 configs, exit 0 |
+| freertos | `just freertos build-examples` --- `net.c.obj` built |
+| threadx | direct `cc -fsyntax-only` under the file's own `-Wall -Wextra -Wpedantic -Werror`, against the vendored NetX Duo + ThreadX headers |
+| esp-idf | `just esp_idf build` --- exit 0 |
+
+Before claiming a platform change is verified, grep the build log for the FILE,
+not for the platform's name.
+
 ## Working rule for this campaign
 
 Every saving is reported as a measured delta between two `just mem-report --json`
