@@ -93,7 +93,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0849** (cli) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the checkout makes cargo see two copies of every core crate and refuse the build on `links` See `0849-*`.
 - **#0852** (rmw, platform) — the zenoh read task inherits the executor's priority on Zephyr — the declared priority is discarded by the port, so a 20 ms timeslice starves the polled serial RX and it overruns See `0852-*`.
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
-- **#0856** (examples) — `example_portability` is red: phase-394 fixed a real cancel bug in the NATIVE action-server only, and the four RTOS copies still carry the bug See `0856-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
 - **#0859** (examples, testing) — `rust/action-server` diverges from its native copy on all four RTOS platforms — one copy of a portability group was edited alone See `0859-*`.
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
@@ -147,6 +146,19 @@ here was wrong and recorded as a hypothesis rather than a cause: the parallel `m
 SUCCESS line (`built: …`) last in the log, make's own exit 2 read as a bespoke status, and ~180 lines
 of benign newlib `_read is not implemented` warnings ended the stderr — so the inputsig stamp step
 looked responsible. It exits 0. See `archived/0833-*`. (2026-08-27)
+
+Recently resolved (2026-08-28): **#0856** (examples) — `example_portability` went red because `f714e6a01`
+(phase-394) fixed a real CANCEL bug in the NATIVE action-server only: the server reported a cancelled goal as
+completed, and the unpaced loop finished order 10 in ~4 ms against a client that cancels at t+3 s, so the
+cancel path was never exercised. Both properties are platform-independent, so all four RTOS copies still
+shipped the bug. Propagated rather than annotated, and the reason is the ratchet: `KNOWN_DIVERGENCE` was
+EMPTY — phase-338 had discharged it — so an entry would have re-opened a list that reached zero, which
+`no_stale_divergence_entries` exists to prevent. Each copy keeps its own `//!` header (prose is stripped
+before comparison) and `qemu-riscv64-threadx` keeps its `mod app_main;` (a GLUE_MODULES line `normalize`
+strips); the headers were themselves stale, describing a `tick()` with no cancel arm, and now record it.
+Verified: 6/6 portability tests, one identical normalized body across all five, `cargo check` clean on all
+four RTOS leaves. QEMU RUNTIME lanes not run — tier 1 does not build them. See `archived/0856-*`.
+(2026-08-28)
 
 Recently resolved (2026-08-27): **#0819** (rmw) — XRCE payloads spanning several transport fragments were
 delivered corrupted (zeroed tail) and later, under an interim guard, not at all. SEND was never at fault:

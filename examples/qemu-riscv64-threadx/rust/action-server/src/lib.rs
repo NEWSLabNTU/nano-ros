@@ -10,16 +10,17 @@
 //! executor open, RMW registration, and the spin loop. RMW selection
 //! (zenoh / cyclonedds) lives in `Cargo.toml [features]`; the locator + domain
 //! in `[package.metadata.nros.deploy.threadx-qemu-riscv64]` — never here.
+//!
+//! phase-394 / issue 0856 — `tick()` also serves the CANCEL path: a goal in
+//! `GoalStatus::Canceling` completes as `Canceled` carrying whatever was
+//! computed before the cancel arrived, rather than reporting success it did
+//! not achieve. `NROS_FIB_STEP_TICKS` paces the loop at one term per N ticks
+//! so a cancel has a window to land in at all — unpaced, order 10 finishes in
+//! about four milliseconds and every cancel arrives after the goal is done.
 
 #![no_std]
 
 mod app_main;
-
-// Keep the board crate (panic handler + allocator + critical-section impl)
-// linked into the `staticlib`. phase-369 — `app_main!` names it on both RMW
-// paths now, so this anchor is belt-and-braces rather than load-bearing
-// (issue #205 — the per-example critical-section anchor moved into the board
-// crate).
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 use nros::{
