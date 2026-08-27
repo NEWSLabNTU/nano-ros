@@ -77,13 +77,13 @@ Inserted after W0.2 measured that every signal-bearing workflow is red. Nothing
 downstream matters while results are ignored, and this is the cheapest wave in
 the plan.
 
-All six red jobs are now root-caused and fixed. **Not one was a code
-regression** — every single one was wiring, provisioning, or a gate that could
+Five of six red jobs are root-caused and fixed; the sixth is diagnosed as far
+as this host allows and filed. **Not one was a code regression** — every single one was wiring, provisioning, or a gate that could
 not see its own rule. That is the finding, more than the individual fixes.
 
 | job | defect |
 | --- | --- |
-| `pr-checks` | `check-subtree-guard` counted a RECYCLED PGID, not its own PIDs. Passed locally and in a quiet container; failed only where 4 vCPUs run gates 32-way parallel. |
+| `pr-checks` | `check-subtree-guard`. **Still failing — my diagnosis was wrong.** I read it as PGID recycling and rewrote the check to require same-pid-AND-same-pgid; it still fails, which PROVES the survivors are genuine. Containerisation and CPU starvation are also ruled out (passes in `ubuntu:22.04`, passes at `--cpus=0.3`). The rewrite made the diagnostic honest and the hypothesis falsifiable, which is how the error surfaced. Tracked as [issue 0853](../issues/0853-subtree-guard-fails-only-on-github-runner.md); needs the CI image to diagnose. |
 | `host-tests` | `just zenohd setup` built the VENDORED router, deleted by RFC-0075 / phase-362. `zenohd` takes a LOCATOR, so `setup` was one — the step could never work. |
 | nightly `qemu` | ran `test-wcet`, which deliberately refuses under emulation (no DWT counter). Red by construction. Also silently narrowed: `build-all`/`build-examples` did not exist for this module alone, so the `\|\|` chain fell through to the lightest build. |
 | nightly `nuttx`, `threadx_linux` | a nextest `-E` filter cannot survive just's UNQUOTED variadic interpolation — `args=(-E test(Nuttx))` is a bash syntax error. The only two callers with parens; exactly the two failures. |

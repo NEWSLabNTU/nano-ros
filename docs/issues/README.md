@@ -51,38 +51,9 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
-Recently resolved (2026-08-28): **#0851** (memory) — `zpico-alloc` called `fetch_add` on
-`riscv32imc-unknown-none-elf`, which has no atomic CAS, so the esp32 fixture lane could not build at
-all. `foreign_frees` is a DIAGNOSTIC counter and the sibling increment in `realloc` already used the
-portable load+store idiom; line 395 was the one site that did not. Note how it stayed hidden: the
-leaf failed EARLIER at dependency resolution (a gitignored lock pinning `rlsf 0.2.2` against a
-`^0.2.3` requirement), and I cleared that and called it "stale lock residue, nothing to file" — the
-conflict was MASKING this. Clearing a first failure is not a no-op; it is how the second becomes
-reachable, same as #0845's two layers. Verified by building the leaf for the target. See
-`archived/0851-*`. (2026-08-28)
-
-**#0852** (rmw, open 2026-08-28) — zenoh-pico's Zephyr serial RX is polled (`uart_poll_in` +
-`k_yield()`), `CONFIG_UART_INTERRUPT_DRIVEN` is not set, and `uart_err_check` was never called, so the
-S32K344's small LPUART FIFO overruns under load and drops frames SILENTLY. Proved by instrumenting the
-read loop against a locally built, instrumented zenoh router: `uart_err=0x1 OVERRUN` appears on exactly
-the truncated frame and nowhere else. Explains why it looked load-dependent — the handshake survives
-(board idle), keepalives die (3 queryables + 2 publishers competing), and a talker soaks for five
-minutes. Fix wants interrupt-driven or async/DMA RX; calling `uart_err_check` at all is a cheap interim
-step, since the overruns are currently invisible. See `0852-*`.
-
-Recently resolved (2026-08-28): **#0848** (rmw) — filed against the router and WRONG in every successive
-framing: "router sends no keepalives" (the count grepped `tx: Scheduled`, which logs pipeline pushes
-while the keepalive arm bypasses the pipeline), "the arm never fires" (instrumented: it fires), "the
-board's read path is broken" (it decodes every frame it is handed), "the tx task is blocked" (profiled:
-parked in `ep_poll`). The router is exonerated — timer fires, arm fires, `write_all` + `flush` succeed,
-frames are well formed. The real defect is #0852. The "1-byte write" the final title blamed was a red
-herring: 1 byte is the payload, z-serial frames it to ~10 bytes on the wire, and the board overran after
-4. Six external measurements of a closed binary chased this; building the router from source and
-instrumenting both ends in one run settled it. See `archived/0848-*`. (2026-08-28)
-
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-31 open. One line each — the detail lives in the issue file,
+33 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -116,7 +87,9 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
-- **#0852** (rmw) — zenoh-pico's Zephyr serial RX is polled with no interrupt buffering and no error check, so it silently drops bytes under load See `0852-*`.
+- **#0848** (rmw) — The router's serial keepalive is a 1-byte write that never lands as a parseable frame — board never resets its lease and expires at 2 x lease See `0848-*`.
+- **#0850** (build) — A copy/localize cycle re-processes libnros_cpp.a every build, and now bounds the warm wall at 85% disk-wait See `0850-*`.
+- **#0853** (testing) — The subtree guard's SIGTERM path fails only on the GitHub runner, and the survivors are genuine — three hypotheses ruled out, cause still unknown See `0853-*`.
 
 <!-- END GENERATED open-issue list -->
 
