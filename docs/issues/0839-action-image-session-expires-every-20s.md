@@ -142,14 +142,23 @@ the identical board, router and transport holds its session for a five-minute
 soak, so this is specific to the heavier image rather than to the link.
 
 What is now ruled out: slot exhaustion at boot (the diagnostic is silent for
-the first session), the router's keepalive cadence (tapped at 10.0 s), the
-domain, and the type names.
+the first session), the domain, and the type names.
 
-What is not established: whether the router's keepalives physically reach the
-board during that window. The socat tap attempt for this image produced a
-zero-byte capture and was not retried — that measurement is still the fork in
-the road, and it now has a much smaller haystack: one session, 20 s, no
-reconnect noise.
+**CORRECTION (2026-08-28).** This section previously also ruled out "the
+router's keepalive cadence (tapped at 10.0 s)". That measurement was taken on
+the TALKER image and does not generalise. On this image the router sends **no
+keepalives at all** — two transmits total, both Declares in the first 210 ms,
+then silence for the whole 20.2 s session while the board keepalives on
+schedule. So the board is not being starved of late keepalives; nothing is
+arriving. Filed as
+[issue 0848](0848-router-sends-no-keepalives-on-serial.md), which now blocks
+this one.
+
+That question — do the router's keepalives reach the board — is now answered,
+and the answer is that they are never sent. See
+[issue 0848](0848-router-sends-no-keepalives-on-serial.md). The socat tap was
+retried twice and captured zero bytes both times; the router's own
+`zenoh_transport=trace` log answered it without a tap.
 
 ## Previously open, now superseded
 
