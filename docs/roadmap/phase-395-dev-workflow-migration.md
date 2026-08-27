@@ -262,7 +262,8 @@ Still manual, because GitHub exposes no REST API for the merge-queue settings
 themselves: the `Settings -> Branches -> main -> Require merge queue` panel. The
 script prints the exact values to enter.
 
-**Blocked on issue 0853, and the reason generalises.** `check (fast on push;
+**Was blocked on issue 0853 (now FIXED — awaiting a green CI run to confirm),
+and the reason generalises.** `check (fast on push;
 full on PR/nightly)` is in the required set and is DETERMINISTICALLY RED on the
 runner — `check-subtree-guard` fails on every GitHub run and passes everywhere
 reproducible locally. Enabling the queue against an always-red required check
@@ -281,7 +282,8 @@ one is honest:
 
 Quarantining it is NOT one of them: the flake registry is for a test that passes
 solo, and this one fails REPRODUCIBLY in one environment. That is a defect, and
-0853 says so.
+0853 says so. It was fixed the first way — the "survivors" were zombies, which a
+GitHub container job's PID 1 (`tail -f /dev/null`) never reaps.
 
 ## W8 — Claims
 
