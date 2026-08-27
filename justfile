@@ -4587,6 +4587,15 @@ check-c: check-c-fmt
     # one: with `-Werror=deprecated-declarations` the old spelling must FAIL to
     # compile. Written as an expected-failure because a passing compile is
     # exactly what a silently-dropped attribute looks like.
+    # An expected-failure compile cannot distinguish "the deprecation
+    # attribute fired" from "the file is not there" -- both are a non-zero
+    # cc, and the second reads as a pass. Phase-379 W5 landed this check
+    # without its probe and the gate was silently vacuous. Assert first.
+    test -f packages/api/nros-c/tests/compile/param_deprecation_probe.c || { \
+        echo "ERROR: param_deprecation_probe.c is MISSING -- the expected-failure check below" >&2; \
+        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
     if cc -fsyntax-only -std=c11 -Werror=deprecated-declarations \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-c/include \
@@ -4612,6 +4621,15 @@ check-c: check-c-fmt
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/service_name_aliases.c
     # ...and they must WARN, asserted as the same expected-failure compile.
+    # An expected-failure compile cannot distinguish "the deprecation
+    # attribute fired" from "the file is not there" -- both are a non-zero
+    # cc, and the second reads as a pass. Phase-379 W5 landed this check
+    # without its probe and the gate was silently vacuous. Assert first.
+    test -f packages/api/nros-c/tests/compile/service_deprecation_probe.c || { \
+        echo "ERROR: service_deprecation_probe.c is MISSING -- the expected-failure check below" >&2; \
+        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
     if cc -fsyntax-only -std=c11 -Werror=deprecated-declarations \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-c/include \
@@ -4829,6 +4847,15 @@ check-cpp: check-cpp-fmt
     # (`param_deprecation_probe.c`): with `-Werror=deprecated-declarations` the
     # old spelling must FAIL to compile. Written as an expected-failure because
     # a passing compile is exactly what a silently-dropped attribute looks like.
+    # An expected-failure compile cannot distinguish "the deprecation
+    # attribute fired" from "the file is not there" -- both are a non-zero
+    # cc, and the second reads as a pass. Phase-379 W5 landed this check
+    # without its probe and the gate was silently vacuous. Assert first.
+    test -f packages/api/nros-cpp/tests/compile/qos_deprecation_probe.cpp || { \
+        echo "ERROR: qos_deprecation_probe.cpp is MISSING -- the expected-failure check below" >&2; \
+        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
     if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
