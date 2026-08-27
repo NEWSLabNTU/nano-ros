@@ -51,6 +51,47 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 ## Open issues
 
+<!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
+
+32 open. One line each — the detail lives in the issue file,
+which already has it. Regenerate with `scripts/gen-issue-index.py`;
+`check-issue-index` fails if this block drifts.
+
+- **#0259** (orchestration) — Derived scheduling is quantitatively inert — no WCET in the model, so blocking is unmodelled and budget/placement/non_preempt can't be derived See `0259-*`.
+- **#0506** (embedded) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier for ~200 ms bursts See `0506-*`.
+- **#0736** (core, platform, testing) — `realtime_tiers` nuttx-arm/rust: the fast tier now outruns the slow one but only ~2.4x against a 3x bar — was a 10x inversion, now a marginal shortfall See `0736-*`.
+- **#0741** (rmw, testing) — `test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the 28-byte reply into a 15-byte history payload See `0741-*`.
+- **#0758** (core, boards) — No platform wall-clock epoch source — embedded consumers hand-roll SNTP before boot, and stamped messages are wrong until they do See `0758-*`.
+- **#0760** (orchestration, rmw) — RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — park it until that discussion happens See `0760-*`.
+- **#0772** (platform, boards) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too See `0772-*`.
+- **#0783** (api, docs) — `RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust error type the user API never returns See `0783-*`.
+- **#0784** (api) — `nros::` publishes three different audiences under one namespace — the component API a user writes, the machinery `nros::node!` expands into, and four types nothing consumes See `0784-*`.
+- **#0788** (api) — The same API verb is spelled differently in our C, C++ and Rust — and in two cases one language ships both spellings See `0788-*`.
+- **#0791** (api, rmw) — We are visible in the ROS graph and cannot read it — 12 rmw vtable graph slots exist, all `None`, while both backends already run the discovery machinery See `0791-*`.
+- **#0793** (api, params) — C ships two disjoint parameter stores — parameters declared on the node-local one are invisible to `ros2 param`, and its accept/reject callback fires for nobody See `0793-*`.
+- **#0794** (build, codegen, boot) — The baked boot config carries four fields and the C/C++ emitter sets one — a launch-declared namespace, domain or locator never reaches a C image See `0794-*`.
+- **#0798** (examples) — `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that hardcodes `mps2-an385-freertos` — the pairing fails all three arms of `_nra_board_active`, so the image links without its platform glue See `0798-*`.
+- **#0808** (rmw) — `create_session`'s flat argument list cannot carry session config, and the structural fix has been deferred twice into issues that are now closed See `0808-*`.
+- **#0809** (build) — `provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` honours `.nros-ignore` — the only spelling that exists on disk is the one the order-walk ignores See `0809-*`.
+- **#0810** (core) — The executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override and undersizing fails at runtime instead of at link See `0810-*`.
+- **#0814** (rmw) — The whole zero-copy surface sits behind `feature = \"lending\"`, which only a posix test crate ever enables See `0814-*`.
+- **#0815** (tooling) — The static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure See `0815-*`.
+- **#0816** (tooling) — The book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property See `0816-*`.
+- **#0819** (rmw) — XRCE payloads at/above the transport MTU are DELIVERED CORRUPTED rather than refused See `0819-*`.
+- **#0820** (cmake, testing) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no dependency edge on the Rust world, and hardcoded `--release` past a miscompile carve-out See `0820-*`.
+- **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
+- **#0829** (api, rmw) — Two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on depth — 1 in `nros-rmw`, 10 in the `nros::qos` façade, each with two callers See `0829-*`.
+- **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames; a third hub port fixes it See `0830-*`.
+- **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
+- **#0836** (rmw) — A FreeRTOS/lwIP image receives every small ROS topic and never a fragmented one — a 13 KiB Autoware trajectory never arrives See `0836-*`.
+- **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
+- **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
+- **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
+- **#0848** (rmw) — The router's serial keepalive is a 1-byte write that never lands as a parseable frame — board never resets its lease and expires at 2 x lease See `0848-*`.
+- **#0850** (build) — A copy/localize cycle re-processes libnros_cpp.a every build, and now bounds the warm wall at 85% disk-wait See `0850-*`.
+
+<!-- END GENERATED open-issue list -->
+
 Recently resolved (2026-08-27): **#0840** (build) — four independent reds landed on main in ONE day
 across two commits, and every one was already covered by an existing gate: a lib test target that did
 not compile (all 69 tests in `nros-rmw-zenoh` dead), a file committed unformatted, a hardcoded cargo
@@ -64,8 +105,6 @@ caught any of these four. Fixed by running `just check-fast` from `pre-push` on 
 own lesson about the pre-phase-318 `just ci`). Measured 63–64 s idle, stable because the tier is
 buildless. Covers three of the four; the compile-tier one is deliberately out and the hook SAYS so on
 success rather than letting silence imply completeness. See `archived/0840-*`. (2026-08-27)
-
-**#0841** (rmw, open 2026-08-27) — `alloc_payload_block` routes on `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` (2048) but hands back a block sized `ZPICO_SUBSCRIBER_BUFFER_SIZE` (1024), so every hint in 1025..=2048 got a block half its size — and `create_subscription`'s own build error walks you into that window by telling you to raise `NROS_SUBSCRIPTION_BUFFER_SIZE`. See `0841-*`.
 
 Recently resolved (2026-08-27): **#0844** (testing) — `check-no-tracked-file-find` read only `scripts/ just/ justfile`, so a `grep -r` over `scripts/` — 9.2 GB of gitignored Zephyr SDK — sat unseen in `packages/testing/.../core_only_predicate.sh` and stalled `build-test-fixtures` for 37 minutes (`git grep`: 0.33 s). The gate DID detect `grep -r`; the file set was the gap. Scope widened to every tracked `*.sh`, three exposed sites converted, one out-of-repo ROS root exempted. See `archived/0844-*`.
 
@@ -114,39 +153,6 @@ Caught by the ASI consumer on fvp_baser_aemv8r_smp, where it broke the image bui
 introducing commit verified only native_sim, whose arch layer contributes no assembly here.
 See `archived/0846-*`. (2026-08-28)
 
-**#0848** (rmw, open 2026-08-28) — the board decodes NOTHING after the serial handshake — not even Declares
-the router demonstrably queued — and then stack-overflows at session expiry. Filed by another session;
-indexed here so `check-issue-index` is green. NOTE its own CORRECTION section retracts the original
-headline: "router keepalives sent: 0" was a measurement error, since the keepalive arm calls `link.send()`
-directly and emits no `Scheduled` log line, so absence of those lines proved nothing. See `0848-*`.
-(2026-08-28)
-
-**#0843** (core/platform, open 2026-08-27) — `nros::node_runtime` is gated `#[cfg(feature = "rmw-cffi")]`
-while using `alloc`/`Box`/`Vec`, so ANY image linking `nros` with the cffi path needs a global allocator
-regardless of the `alloc` feature: a `no_std` bin fails to link with "no global memory allocator found".
-Bisected with a live reference at each step (`nros-core`, `nros-rmw-cffi`, `nros-node +rmw-cffi` all link
-heap-free; `nros +rmw-cffi` does not, even referencing only `u8`). `cargo check` cannot see this — a lib
-check never needs an allocator, only a link does, which is how phase-391 W1's feasibility note came to
-overstate it. This is the mechanism under W1's "0 of 4 claims backed by a built image": no image CAN be
-built no-alloc on the cffi path, so W1's fixture and W4's `heap-free` lane are both blocked. Distinct from
-0832 (that is bypass, this is unavoidability). See `0843-*`. (2026-08-27)
-
-**#0839** (rmw, open 2026-08-27) — the `action-server` image on mr_canhubk3/s32k344 (zenoh over serial)
-declares every entity correctly and then loses its zenoh session on a ~20 s cycle —
-`_zp_unicast_lease_task: Closing session because it has expired after 10000ms` — against the router config
-this repo ships (`keep_alive: 6`, one keepalive every 10 s), while a talker session on the same router stays
-up for minutes. Filed by another session; indexed here so `check-issue-index` is green. See `0839-*`.
-(2026-08-27)
-
-**#0829** (api/rmw, open 2026-08-27) — the same QoS profile ships TWICE with different depths:
-`QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` queues **1**, `nros::qos::SYSTEM_DEFAULT` queues **10**, two
-callers each, so neither is obviously the live one. Depth is how many samples the history keeps before
-dropping, so whichever set of callers loses gets a silent queueing change. Found by a drift test added
-in phase-379 W5 that was written to PROVE the two copies agreed and failed on its first run. Neither
-matches upstream either: `rmw_qos_profile_system_default` is all SYSTEM_DEFAULT sentinels ("let the
-RMW decide") where both of ours are concrete, so the name currently means "a profile someone picked".
-The divergence is pinned by a test so any FURTHER drift still fails. See `0829-*`.
-
 Recently resolved (2026-08-27): **#0826** (rmw/docs) — RFC-0035's numbered slot table documented a
 33-slot vtable that is really **74 slots**: 17 of the 36 names it listed no longer existed (mostly
 phase-376 W3.b's move to upstream's `rmw_*` vocabulary) and most real slots were never mentioned.
@@ -185,25 +191,6 @@ DETACHES tasks before freeing them and a detached thread may still be running �
 hand a live thread's stack to the next task. Residue recorded rather than hidden: a detach-teardown
 still retires its slot for the life of the image. Found while chasing #0821 and did NOT fix it — that
 fault reproduces with slots to spare. See `archived/0822-*`. (2026-08-27)
-
-**#0832** (platform/rmw, open 2026-08-27) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the
-cyclonedds and xrce native images: the platform layer IS linked and exports the funnel, and Cyclone's
-`ddsrt_malloc`/`ddsi_config_init` and XRCE's `get_ip_from_iface` tail-call `malloc@plt` straight past it.
-Only zenoh reaches it (`z_malloc` -> `nros_platform_alloc` -> `malloc@plt`). Reported first as "undefined";
-it is not, and the distinction is the finding — "the platform layer is not linked on hosted images" is a
-hypothesis this DISPROVES. Matters to phase-391 W4: a tier gate keying on the funnel symbol being PRESENT
-passes all three images while two bypass it. Embedded/ARM case NOT established (the Zephyr ELFs here are
-native_sim relocatable). See `0832-*`. (2026-08-27)
-
-**#0810** (core, open 2026-08-26) — the executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override. See `0810-*`.
-
-**#0814** (rmw, open 2026-08-26) — the whole zero-copy surface sits behind `feature = "lending"`, which only a posix test crate ever enables. See `0814-*`.
-
-**#0815** (tooling, open 2026-08-26) — the static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure. See `0815-*`.
-
-**#0816** (tooling, open 2026-08-26) — the book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property. See `0816-*`.
-
-**#0827** (rmw, open 2026-08-27) — static RAM is a property of the RMW, not of the node: measured with `just mem-report`, talker, listener, service-server and action-server come out IDENTICAL to the byte (zenoh 342,962 / cyclone 64,220 / xrce 7,742). A talker reserves 144,128 B of `SERVICE_BUFFERS` and 131,072 B of `LARGE_PAYLOADS` it cannot reach — 80% of its static RAM. The pools are sized at the backend, where the entity set is unknown, instead of at the image, where it is known. See `0827-*`.
 
 Recently resolved (2026-08-26): **#0818** (api/tooling) — a green `api-parity.py --check` was being
 read as "the C++ surface is accounted for" while being silent about two whole families. The extractor
@@ -328,18 +315,6 @@ on the path and the threads were still 1. Method note worth keeping: instrumenta
 through the same lens that WROTE it agrees with itself and proves nothing — printing from the CONSUMER
 (`priority=0 native=1`) ended it, the same lesson #0801 recorded. See `archived/0803-*`.
 
-**#0772** (platform/boards, open 2026-08-24) — FreeRTOS/lwIP has no wall-clock epoch, so an image there stamps from its BOOT epoch and a validating peer rejects it — the same defect #0758 fixed on Zephyr. The demand is the SAME consumer, not a speculative one: `board-support.toml` records `nros-board-s32z270-freertos` (Cortex-R52) as the "ASI phase-4 W5.b consumer", and 0758's closing note that "no FreeRTOS consumer has asked" was read off the Zephyr side alone. NOT a port of the Zephyr code: lwIP ships SNTP but our build compiles no `src/apps/*`, and its API is a background daemon with a compile-time callback macro — there is no synchronous `sntp_simple` equivalent, so 0758 W4's "acquired before the first stamp" guarantee does not carry and the clock flips mid-run. Verification is hardware-only (no emulator models the S32Z270 RTU); prove the mechanism on an mps2-an385 lwIP image instead. See `0772-*`. (2026-08-24)
-
-**#0760** (orchestration/rmw, open 2026-08-23) — RFC-0074's `ingress = { rate_hz, burst }` declaration is a
-**ros-launch-manifest** schema change, not a nano-ros one: `[[subscription]]` and its field set are defined
-by that repo, consumed here as a TAG-pinned dep (`v0.1.8`), so deciding it unilaterally in an nano-ros RFC
-produces a field nothing else understands — what RFC-0060's two-repository amendment exists to avoid.
-Parked pending that discussion. NOT blocked by it: the whole enforcement half, which is measured and does
-not depend on the spelling — the router rule, the read-task budget taking `(FRAMES, REST)`, and the two
-resolve-time constraints, all arithmetic on the per-frame cost `c`. Records the five points the discussion
-has to settle (placement, token-bucket shape, the default for `burst`, the QoS-reliability neighbour, and
-who validates). See `0760-*`. (2026-08-23)
-
 Recently resolved (2026-08-27): **#0769** (boards/build) — all three concerns, two by different
 means. Signature fixed 2026-08-23. The archive-order TIE was DISSOLVED rather than won (phase-386
 W4): both weak bodies return -1, so the tie decided only whether the operator is TOLD, and the
@@ -455,23 +430,7 @@ so the next full sweep is what confirms it. See `archived/0761-*`. (2026-08-23)
 
 
 
-**#0798** (examples, open 2026-08-25) — `examples/workspaces/c`'s root routes `s32z270-freertos` to a FreeRTOS entry that hardcodes `BOARD`/`DEPLOY mps2-an385-freertos`, so all three arms of `_nra_board_active` are false: the image links with NO platform glue and no locator bake — issue 0735's "configure succeeded, the build succeeded, the image was wrong" one arm over. Latent, not red: the only s32z270 fixture row targets the C++ workspace, which phase-372 W2 DID fix (`BOARD ${NANO_ROS_BOARD}`). The class is the implicit (entry × board) pairing that RFC-0065 makes derived. See `0798-*`.
-**#0784** (api, open 2026-08-24) — `nros::` publishes three audiences under one namespace: the component API a user writes (`Node`, `ExecutableNode`, `CallbackCtx`), the machinery `nros::node!` expands into, and four types with zero consumers anywhere. `nros::Node` is the TRAIT, not the handle — the handle is `NodeCtx`, which the facade never exports. Found by phase-379's `node` stage. See `0784-*`.
-**#0794** (build/codegen, open 2026-08-25) — the baked boot config defines four fields and the C/C++ emitter sets ONE: `domain_id`, `locator` and `namespace_` are emitted as `0`/`""`/`""` with their bits clear, and `BOOT_SET_NAMESPACE` is set by nothing anywhere, so a launch-declared namespace reaches no rung of the RFC-0045 ladder while the reader that would honour it exists. See `0794-*`.
-
-**#0809** (build, open 2026-08-26) — two workspace walks honour DIFFERENT nano-ros ignore markers: `nros-pkg-index` reads `.nros-ignore`, `provider_scan` read `NROS_IGNORE`. A dot and a case — and the spelling that EXISTS in this repo (the root `.nros-ignore` that issue 0621 added so a vendored nano-ros stops polluting a consumer's package graph) is the one `provider_scan` ignored, so `nros ws order` / `ORDER_FROM_DEPENDS` descended into a vendored checkout. 0621 fixed the walk where the symptom appeared and did not sweep the sibling. Both spellings now accepted (phase-383 W2.b); the structural fix — ONE marker list both crates read — is deliberately deferred. The two walks also differ in pruned dirs and in whether they descend into a package, which is NOT a bug but must be chosen explicitly by any caller unioning them. See `0809-*`.
-
-**#0791** (api/rmw, open 2026-08-25) — we are VISIBLE in the ROS graph and cannot read it: `rmw_vtable.h` has carried 12 graph slots since phase-376 W4, all `None`, while the zenoh shim already declares and queries `@ros2_lv` liveliness tokens and Cyclone publishes `ros_discovery_info`. 37 of the graph stage's 68 rows are gaps, not declines; RFC-0036's "no dynamic discovery" line needs narrowing. Scoped out of phase-379 W3 on measurement (zenoh has a boolean liveliness CHECK, not an enumeration) and tracked as **phase-381**. See `0791-*`.
-
-**#0793** (api/params, open 2026-08-25) — C ships two disjoint parameter stores: parameters declared on `nros_param_server_t` (the one `parameter.h` reaches first) are invisible to `ros2 param`, and its accept/reject callback is installed where no service reads it. A C++ node cannot set a parameter at all. `QOS_PROFILE_PARAMETERS` is correct and unused. See `0793-*`.
-
-**#0788** (api, open 2026-08-25) — the same API verb is spelled differently in our C, C++ and Rust, and twice ONE language ships both: `nros_service_send_response` sat beside `nros_service_send_reply_raw` (that row LANDED 2026-08-27, phase-379 W5 — all three languages now say `send_response`), and `ClientTrait` declares `is_server_ready` and `server_available` in the same trait. Six verbs across four phase-379 stages. Scopes W5's rename sweep. See `0788-*`.
-
 Recently resolved (2026-08-25): **#0790** (api/core) — no shutdown hook in any language. Both ordered phases now exist on the `Executor` in Rust, C and C++: pre-shutdown runs while the session is still open and every entity still works (the half with no workaround — publish a final state, answer a last request, park an actuator, release a bus), on-shutdown after the close, and `Drop` runs the same order so the C `fini` path is not inert. Two fixed tables of `(extern "C" fn, void* ctx)`, `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` default 2 per phase (issue 0460's precedent); the handle is a `u32` packing phase tag + slot index, so a handle from one phase cannot remove the other's. Four ledger `gap` rows closed. NOT a promise across a watchdog reset or a panic, and the docs say so. See `archived/0790-*`. (2026-08-25)
-
-**#0784** (api, open 2026-08-24) — `nros::` publishes three audiences under one namespace: the component API a user writes (`Node`, `ExecutableNode`, `CallbackCtx`), the machinery `nros::node!` expands into, and four types with zero consumers anywhere. `nros::Node` is the TRAIT; there are FOUR node-shaped things (`Node` trait, `NodeHandle` — the rclrs-shaped imperative handle, in the prelude — `NodeCtx`, `StandaloneNode`) and nothing says which to reach for. Found by phase-379's `node` stage. See `0784-*`.
-
-**#0783** (api/docs, open 2026-08-24) — `RclReturnCode` exists in `nros-core` and the `nros` facade does not export it, so a Rust user cannot name the code our own error carries; and RFC-0036's Errors row documents `NanoRosError`, which appears nowhere in `nros-node` or `packages/api`. Found by phase-379's `types` stage. See `0783-*`.
 
 Recently resolved (2026-08-23): **#0636** (boards/platform) — the NuttX boot tier held the HIGHEST declared
 priority and spun, starving every lower tier on the uniprocessor `arm-virt` guest (1 of 5 solo runs passed;
@@ -815,96 +774,6 @@ Caught a defect of my own on the way: the deferral told readers to run a recipe 
 deferral nobody can discharge is an unchecked pin with better wording. Measured: 32 pin-checks over 4
 images OK, and FAILs with exit 1 when a pin is put on the band. Does NOT merge the two namespaces; it
 makes the conversion explicit and checked. See `archived/0766-*`. (2026-08-25)
-
-**#0758** (core/boards, open 2026-08-22) — no platform wall-clock epoch source: embedded images stamp
-messages from their boot epoch and stamped-message peers reject them (ASI's Autoware `vehicle_cmd_gate`
-case — autonomous mode could not actuate until the consumer hand-rolled an SNTP hook + host server).
-Direction: an optional `epoch_us`/`acquire_epoch` platform-vtable slot with SNTP as the first provider
-(Zephyr in-tree client, lwIP SNTP, POSIX `CLOCK_REALTIME`), server address as a deploy fact, acquired
-between netif-up and component construction. AMENDED 2026-08-24: a one-shot epoch is UNBOUNDED-ERROR by
-construction, because the platform tick advances it afterwards — the ASI island measured 3694 s of offset
-growing 160 s per 16 s of wall clock (~10.5x real, the FVP fast-forwards an idle guest). That future stamp
-then seeded Autoware's `mrm_emergency_stop_operator`, whose unclamped `now - input.stamp` turned an
-emergency STOP into `a = +7127 m/s^2`. So `acquire_epoch()` must be RE-callable with a deploy-fact
-re-acquire interval, not "drift handling layered later". See `0758-*`. (2026-08-22)
-
-
-
-
-
-**#0820** (cmake/testing, open 2026-08-27) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY: the tier-2
-fixture build left a riscv C talker publishing on ROS domain 1, which its own sources do not produce. Clean
-`rm -rf build-zenoh` + rebuild → publishes on domain 0 and the test PASSES in 3.5 s (it timed out at 90 s
-before). That is issue 0475's symptom AFTER 0475 was resolved, so either phase-209's `LINK_DEPENDS` fix does
-not reach this leaf / the `just nuttx build-riscv-c` path, or tier-2 reached the binary another way — that is
-the open question. NOTE the freshness probe cannot see this class: a 0475 museum binary is NEWER than its
-sources while holding older archive code, so an mtime check is structurally blind to it, and this issue's
-first revision wrongly cited mtime as proof it was "not stale" — every conclusion built on that (a domain
-mismatch, an issue-0801 comparison, a suspected `support_domain != 0` sentinel defect) was wrong with it.
-See `0820-*`. (2026-08-27)
-
-**#0836** (rmw, open 2026-08-27) - a FreeRTOS/lwIP image receives every SMALL ROS topic and never a
-FRAGMENTED one. Against a real Autoware over tap, an `mps3-an536-freertos` controller gets
-kinematic_state (40 Hz), steering, acceleration and operation-mode, and never the ~13 KiB
-`/planning/scenario_planning/trajectory` - while a host subscriber on the SAME domain, interface and
-topic reads a clean 10 Hz. The distinguishing property is size: ~10 RTPS fragments per sample against a
-1400 B MaxMessageSize, where every topic that works fits one datagram. Ruled out: reader QoS (already
-RELIABLE), and both sizing constraints found so far - 16 KiB -> 64 KiB subscription buffer moved it off
-zero, and per-board lwIP receive sizing got autonomous mode to ENGAGE - neither delivered the sample.
-Still unknown whether the fragments reach lwIP at all. Last blocker for the emulated-R52 closed loop.
-See `0836-*`. (2026-08-27)
-
-
-**#0850** (build, open 2026-08-28) — after 0805 took the warm `threadx_riscv64` rebuild 459 s -> 227 s, the new bound
-is measured, not guessed: leaf state **85% D**, runnable 0.14, and `llvm-ar rq_qos_wait` at 1075 occupancy samples
-against 137 for llvm-objcopy and 29 for cargo's lock. Cause is a CYCLE: Corrosion copies the UNLOCALIZED
-`libnros_cpp.a` into each leaf, the link wrapper localizes that copy, so next build `copy_if_different` sees a
-difference, re-copies, and invalidates 0805's skip-stamp — 17 re-processings per warm build, each extracting every
-archive member. They used to hide in a serial tail; making the rust leaves concurrent made them collide on the disk
-queue. Also noted: the four C/C++ group calls in the prologue are sequential at 2-7 of 32 cores (~40 s of the 240 s).
-See `0850-*`. (2026-08-28)
-
-**#0830** (boards, open 2026-08-27) - a QEMU net hub holding ONLY the board NIC and a tap never
-delivers host-to-guest frames; `mps3-an536` guests transmit fine and receive nothing. Not our bug and not
-the host's: attaching to the tap directly (`TUNSETIFF`) shows the host emitting ARP and RTPS normally, and
-the SAME binary receives on a `-net socket,mcast` backend, so the loss sits between QEMU's tap reader and
-the NIC model. Workaround is one flag - add an unpeered third hub port, `-netdev hubport,id=h0,hubid=0`.
-Measured twice each: two ports = 0 driver RX frames and 100% ping loss; three ports = 19-20 frames, 0%
-loss, and bidirectional ROS 2 interop (39 samples host-ward, 20 guest-ward). Two wrong hypotheses were
-recorded before the wiring was suspected - `rt/` topic mangling (disproved) and "host egress is dead" (a
-tun/tap `tx_packets` counter that stays frozen while the interface transmits). See `0830-*`. (2026-08-27)
-
-**#0819** (rmw, open 2026-08-26, measured 2026-08-27) — XRCE payloads near the transport MTU are DELIVERED
-with a ZEROED TAIL rather than refused. Instrumented: `len` is the full 4096, header/`seq`/`size_marker` all
-survive, the pattern matches to offset 4080, and the last 16 bytes are 0x00 — deterministic, 10/10 samples,
-4080 = MTU − 16. The boundary FOLLOWS the MTU: rebuilt with `NROS_XRCE_CUSTOM_TRANSPORT_MTU=8192` the same
-4096-byte payload is 10/10 valid, which rules out the receive ring, the agent type size and payload size as
-such. NOT reconciled: at MTU 8192 the transition is silence (nothing arrives from ~8184 up) rather than
-zero-tailing, so the two windows disagree. `xrce_publisher_publish_raw` returns MESSAGE_TOO_LARGE only when
-`uxr_buffer_topic` REFUSES; here it ACCEPTS an over-MTU payload, so the guard never fires and the fragmented
-path is still a TODO. See `0819-*`. (2026-08-27)
-
-**#0741** (rmw/testing, open 2026-08-21) — `test_xrce_service_ros2_client` fails on main: the ROS 2 client's
-reply reader refuses the sample with `Change payload size of '28' bytes is larger than the history payload
-size of '15' bytes`. The server starts and listens (its startup output is in the assert precisely to rule
-that out), so this is the peer's reader history sized from a wrong max-serialized-size learned at discovery —
-15 is not a plausible `AddTwoInts_Response` — i.e. a service-reply type-registration defect, not a
-serialization one. Sibling `test_xrce_action_ros2_client` and `test_xrce_to_ros2_pubsub` pass in the same
-run, so it is specific to the service reply type. Deterministic 3/3 in-sweep and 1/1 solo. NOT caused by
-phase-359 W10 — verified by reverting `packages/core`/`packages/api` to upstream, rebuilding fixtures and
-reproducing. See `0741-*`. (2026-08-21)
-
-**#0736** (core/platform/testing, open 2026-08-20) — ROOT-CAUSED 2026-08-22: the fast tier's timer is not
-under-firing, it is not being DISPATCHED, and `spin_once`'s cooperative Sporadic budget check
-(`if !has_budget { continue; }`) is what skips it. Counted per executor in one 45 s run: the `low` tier,
-which declares no budget, spins 450 and dispatches 450 (1:1); the `high` tier (`budget_us=5000`,
-`period_us=10000`) spins 1250, takes **1200 budget skips**, and dispatches 3. The callback costs 2-4 ms, so
-one or two activations exhaust a 5 ms budget and it never recovers. This also retires the earlier
-SCHED_SPORADIC dead end and explains it: the same declaration is enforced TWICE, once by the NuttX kernel
-and once cooperatively by the executor, and only the second starves the tier — so removing the kernel half
-could never have helped. Three earlier readings refuted, including two of mine. Open on the FIX, which is a
-design call: an unsatisfiable budget should be reported, not absorbed into a 0.2 % dispatch rate. See
-`0736-*`. (2026-08-22)
 
 Recently resolved (2026-08-21): **#0734** — `nros-rmw-zenoh` was compiled TWICE into a C++ image
 (`libnros_c.a` and `libnros_cpp.a` each carried their own build under different `-C metadata`, so ~195 KiB
@@ -4150,15 +4019,6 @@ RESOLVED and whose resolution says the structural fold was NOT done, deferring t
 resolved, and about something else (the `force_link_backend!` anchor). Neither did the fold, so
 `rmw_vtable.h` pointed readers at work no open issue owned. Filed as **#0808**; the pointers now name it. A
 deferral to a resolved issue is indistinguishable from a deferral to a plan. See `archived/0785-*`.
-
-**#0808** (rmw tech-debt, open 2026-08-26) — `create_session`'s flat argument list cannot carry session
-config without an ABI break, and three things want in: the backend-SHAPED `mode` (zenoh's `whatami`, which
-cyclonedds and XRCE are told to ignore), `localhost_only`, and `enclave`. The agreed shape each time it was
-written down is to fold backend-private config behind the locator. Deferred twice into issues that are now
-closed and never did it (#0331 → #0330 part 3), which is why this exists: not a promise about shape, a
-promise that the shape has an owner. Carry all three together or the ABI break is spent without retiring the
-problem, and `localhost_only` needs a backend that honours it — a carried field nobody reads is an inert
-slot in a different costume. See `0808-*`. (2026-08-26)
 
 Recently resolved (2026-08-25): **#0787** (ci/rmw) — xrce and uORB had no host lane, so their C was
 only ever compiled by tier 2. `just check-rmw-xrce` / `check-rmw-uorb` now build and CTest both on the

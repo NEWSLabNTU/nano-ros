@@ -1850,6 +1850,7 @@ check-emitter-just-spelling:
 [private]
 check-issue-index:
     @bash scripts/check-issue-index.sh
+    @python3 scripts/gen-issue-index.py --check
 
 # Issue 0498 — a sync-owned file a CONCURRENT process reads must be written
 # temp + `rename(2)`, never `fs::write` (which truncates to zero, then fills).

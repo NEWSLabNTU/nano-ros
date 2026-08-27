@@ -57,7 +57,12 @@ cd "$repo_root"
 
 readme="docs/issues/README.md"
 
-rows="$(grep -oE '^\*\*#[0-9]+\*\*' "$readme" \
+# phase-395 W1 — the open list is GENERATED (scripts/gen-issue-index.py) and its
+# rows are list items, `- **#NNNN** (area) — title`. Accept the optional bullet
+# so this convention check keeps working against the generated block; the
+# row<->file correspondence it asserts is now true by construction, but the
+# "resolved rows only under the Recently resolved spelling" half still is not.
+rows="$(grep -oE '^(- )?\*\*#[0-9]+\*\*' "$readme" \
         | grep -oE '[0-9]+' \
         | awk '{printf "%04d\n", $1}' \
         | sort -u)"
