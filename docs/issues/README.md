@@ -71,7 +71,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0793** (api, params) — C ships two disjoint parameter stores — parameters declared on the node-local one are invisible to `ros2 param`, and its accept/reject callback fires for nobody See `0793-*`.
 - **#0794** (build, codegen, boot) — The baked boot config carries four fields and the C/C++ emitter sets one — a launch-declared namespace, domain or locator never reaches a C image See `0794-*`.
 - **#0798** (examples) — `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that hardcodes `mps2-an385-freertos` — the pairing fails all three arms of `_nra_board_active`, so the image links without its platform glue See `0798-*`.
-- **#0808** (rmw) — `create_session`'s flat argument list cannot carry session config, and the structural fix has been deferred twice into issues that are now closed See `0808-*`.
 - **#0809** (build) — `provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` honours `.nros-ignore` — the only spelling that exists on disk is the one the order-walk ignores See `0809-*`.
 - **#0810** (core) — The executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override and undersizing fails at runtime instead of at link See `0810-*`.
 - **#0814** (rmw) — The whole zero-copy surface sits behind `feature = \"lending\"`, which only a posix test crate ever enables See `0814-*`.
@@ -4110,6 +4109,20 @@ RESOLVED and whose resolution says the structural fold was NOT done, deferring t
 resolved, and about something else (the `force_link_backend!` anchor). Neither did the fold, so
 `rmw_vtable.h` pointed readers at work no open issue owned. Filed as **#0808**; the pointers now name it. A
 deferral to a resolved issue is indistinguishable from a deferral to a plan. See `archived/0785-*`.
+
+Recently resolved (2026-08-27): **#0808** (rmw tech-debt) — `create_session`'s flat argument list could not
+carry session config without an ABI break, and the fix had been deferred twice into issues that closed
+without doing it. Resolved with `rmw_session_options_t`, a NULLable trailing param (NULL = defaults), chosen
+over locator encoding on precedent — `rmw_publisher_options_t` and `rmw_subscription_options_t` already
+solved this twice in exactly that shape — and on cost, since locator encoding puts a parser in every backend.
+Carries the two fields #0785 measured as GAPS, `localhost_only` and `enclave`. `mode` deliberately did NOT
+move: it is already carried and read by every backend, so relocating it buys tidiness for a second signature;
+what the Direction guarded against was leaving one of the two gaps open across the break, and neither is.
+`localhost_only` is HONOURED on cyclonedds (a participant QoS property restricting discovery to loopback),
+not merely carried — the issue's own warning that a carried field nobody reads is an inert slot in a
+different costume. Item 4 stays open by nature: the enclave now has a carrier but no reader, because
+`get_node_names` is inert until phase-381 lands. Break was 3 backends, 3 headers, 17 C/C++ call sites, 10
+Rust stub files and the adapter, all compiler-enumerated. See `archived/0808-*`.
 
 Recently resolved (2026-08-25): **#0787** (ci/rmw) — xrce and uORB had no host lane, so their C was
 only ever compiled by tier 2. `just check-rmw-xrce` / `check-rmw-uorb` now build and CTest both on the
