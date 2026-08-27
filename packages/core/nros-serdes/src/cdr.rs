@@ -759,55 +759,6 @@ impl<'a> CdrReader<'a> {
         self.read_slice_u8()
     }
 
-    /// Read a `uint16[]` sequence, returning raw bytes and element count.
-    ///
-    /// Returns `(byte_slice, element_count)`. The caller must handle
-    /// endianness (CDR uses little-endian). For zero-copy on little-endian
-    /// platforms, the bytes can be cast to `&[u16]` if properly aligned.
-    pub fn read_slice_u16_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
-        let len = self.read_u32()? as usize;
-        self.align(2)?;
-        let byte_len = len * 2;
-        let bytes = self.read_bytes(byte_len)?;
-        Ok((bytes, len))
-    }
-
-    /// Read a `uint32[]` sequence, returning raw bytes and element count.
-    pub fn read_slice_u32_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
-        let len = self.read_u32()? as usize;
-        self.align(4)?;
-        let byte_len = len * 4;
-        let bytes = self.read_bytes(byte_len)?;
-        Ok((bytes, len))
-    }
-
-    /// Read a `float32[]` sequence, returning raw bytes and element count.
-    pub fn read_slice_f32_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
-        let len = self.read_u32()? as usize;
-        self.align(4)?;
-        let byte_len = len * 4;
-        let bytes = self.read_bytes(byte_len)?;
-        Ok((bytes, len))
-    }
-
-    /// Read a `float64[]` sequence, returning raw bytes and element count.
-    pub fn read_slice_f64_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
-        let len = self.read_u32()? as usize;
-        self.align(8)?;
-        let byte_len = len * 8;
-        let bytes = self.read_bytes(byte_len)?;
-        Ok((bytes, len))
-    }
-
-    /// Read a `uint64[]` sequence, returning raw bytes and element count.
-    pub fn read_slice_u64_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
-        let len = self.read_u32()? as usize;
-        self.align(8)?;
-        let byte_len = len * 8;
-        let bytes = self.read_bytes(byte_len)?;
-        Ok((bytes, len))
-    }
-
     /// Read a multi-byte numeric sequence (`float32[]`, `uint16[]`, …) as a
     /// borrowed [`LeSliceView`] — the alignment-agnostic borrowed reader for
     /// RFC-0033 `borrowed` mode (Phase 229.6, issue 0007).
@@ -1260,27 +1211,6 @@ mod ghost_checks {
         let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
         let slice = reader.read_slice_u8().unwrap();
         assert!(slice.is_empty());
-    }
-
-    #[test]
-    fn test_read_slice_f32_raw() {
-        let mut buf = [0u8; 64];
-        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
-        // Write a float32[] sequence: [1.0, 2.5]
-        writer.write_u32(2).unwrap(); // length
-        writer.write_f32(1.0).unwrap();
-        writer.write_f32(2.5).unwrap();
-        let len = writer.position();
-
-        let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
-        let (bytes, count) = reader.read_slice_f32_raw().unwrap();
-        assert_eq!(count, 2);
-        assert_eq!(bytes.len(), 8); // 2 × 4 bytes
-        // Verify first element (little-endian f32)
-        assert_eq!(
-            f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-            1.0
-        );
     }
 }
 

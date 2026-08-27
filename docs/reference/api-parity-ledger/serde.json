@@ -152,57 +152,7 @@
   },
   "rust:CdrReader::read_le_slice": {
     "verdict": "extension",
-    "why": "OUR LANGUAGES DISAGREE: three names for one RFC-0033 concept. The alignment-agnostic borrowed view over a numeric sequence is `CdrReader::read_le_slice::<T>() -> LeSliceView<T>` in Rust, `nros_cdr_borrow_le_slice_<t>() -> nros_le_slice_view_<t>_t` in C (nros/borrowed.h), and `nros::LeSpan<T>` in C++. Rust says READ, C says BORROW, C++ says SPAN; the borrowed byte sequence is `read_slice_u8` in Rust and `nros_cdr_borrow_bytes` in C. This is the verb the borrowed mode should settle on -- BORROW reads correctly against `Publisher::loan`'s borrow/release pair (`c:borrow_loaned_message`) and says the lifetime rule out loud, which READ does not. Phase 379 W5. Note also that the Rust type this returns, `LeSliceView`, is NOT re-exported by the `nros` facade at all -- generated code names `nros_core::LeSliceView` directly -- so the owned path and the borrowed path reach the user through different crates."
-  },
-  "rust:CdrReader::read_slice_f32_raw": {
-    "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, inside ONE language: `read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw` and `read_slice_f64_raw` are a second spelling of `read_le_slice::<T>`. Both read the u32 count, both align to `T::SIZE`, both borrow the raw LE bytes -- they differ only in the return type (`(&[u8], usize)` vs `LeSliceView<'a, T>`, which decodes an element for you). `read_le_slice` is the one rosidl-codegen emits (generator/common.rs:91); the `_raw` five have ZERO consumers in packages/ or examples/ -- one unit test and a doc-comment mention in traits.rs. Recorded as a rename because that is the campaign's work list and there is nowhere else to put `delete these`: the surviving name is `read_le_slice`, and its verb is separately contested by C's `borrow_le_slice` (see `rust:CdrReader::read_le_slice`). The single-byte `read_slice_u8`/`_i8`/`_bool` are NOT in this family -- they need no view type and no alignment, and they stay.",
-    "rename": {
-      "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DELETE"
-    }
-  },
-  "rust:CdrReader::read_slice_f64_raw": {
-    "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, inside ONE language: `read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw` and `read_slice_f64_raw` are a second spelling of `read_le_slice::<T>`. Both read the u32 count, both align to `T::SIZE`, both borrow the raw LE bytes -- they differ only in the return type (`(&[u8], usize)` vs `LeSliceView<'a, T>`, which decodes an element for you). `read_le_slice` is the one rosidl-codegen emits (generator/common.rs:91); the `_raw` five have ZERO consumers in packages/ or examples/ -- one unit test and a doc-comment mention in traits.rs. Recorded as a rename because that is the campaign's work list and there is nowhere else to put `delete these`: the surviving name is `read_le_slice`, and its verb is separately contested by C's `borrow_le_slice` (see `rust:CdrReader::read_le_slice`). The single-byte `read_slice_u8`/`_i8`/`_bool` are NOT in this family -- they need no view type and no alignment, and they stay.",
-    "rename": {
-      "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DELETE"
-    }
-  },
-  "rust:CdrReader::read_slice_u16_raw": {
-    "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, inside ONE language: `read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw` and `read_slice_f64_raw` are a second spelling of `read_le_slice::<T>`. Both read the u32 count, both align to `T::SIZE`, both borrow the raw LE bytes -- they differ only in the return type (`(&[u8], usize)` vs `LeSliceView<'a, T>`, which decodes an element for you). `read_le_slice` is the one rosidl-codegen emits (generator/common.rs:91); the `_raw` five have ZERO consumers in packages/ or examples/ -- one unit test and a doc-comment mention in traits.rs. Recorded as a rename because that is the campaign's work list and there is nowhere else to put `delete these`: the surviving name is `read_le_slice`, and its verb is separately contested by C's `borrow_le_slice` (see `rust:CdrReader::read_le_slice`). The single-byte `read_slice_u8`/`_i8`/`_bool` are NOT in this family -- they need no view type and no alignment, and they stay.",
-    "rename": {
-      "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DELETE — survivor read_le_slice already occupies the target on the same impl"
-    }
-  },
-  "rust:CdrReader::read_slice_u32_raw": {
-    "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, inside ONE language: `read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw` and `read_slice_f64_raw` are a second spelling of `read_le_slice::<T>`. Both read the u32 count, both align to `T::SIZE`, both borrow the raw LE bytes -- they differ only in the return type (`(&[u8], usize)` vs `LeSliceView<'a, T>`, which decodes an element for you). `read_le_slice` is the one rosidl-codegen emits (generator/common.rs:91); the `_raw` five have ZERO consumers in packages/ or examples/ -- one unit test and a doc-comment mention in traits.rs. Recorded as a rename because that is the campaign's work list and there is nowhere else to put `delete these`: the surviving name is `read_le_slice`, and its verb is separately contested by C's `borrow_le_slice` (see `rust:CdrReader::read_le_slice`). The single-byte `read_slice_u8`/`_i8`/`_bool` are NOT in this family -- they need no view type and no alignment, and they stay.",
-    "rename": {
-      "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DELETE"
-    }
-  },
-  "rust:CdrReader::read_slice_u64_raw": {
-    "verdict": "rename",
-    "why": "OUR LANGUAGES DISAGREE, inside ONE language: `read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw` and `read_slice_f64_raw` are a second spelling of `read_le_slice::<T>`. Both read the u32 count, both align to `T::SIZE`, both borrow the raw LE bytes -- they differ only in the return type (`(&[u8], usize)` vs `LeSliceView<'a, T>`, which decodes an element for you). `read_le_slice` is the one rosidl-codegen emits (generator/common.rs:91); the `_raw` five have ZERO consumers in packages/ or examples/ -- one unit test and a doc-comment mention in traits.rs. Recorded as a rename because that is the campaign's work list and there is nowhere else to put `delete these`: the surviving name is `read_le_slice`, and its verb is separately contested by C's `borrow_le_slice` (see `rust:CdrReader::read_le_slice`). The single-byte `read_slice_u8`/`_i8`/`_bool` are NOT in this family -- they need no view type and no alignment, and they stay.",
-    "rename": {
-      "to": null,
-      "category": "C",
-      "status": "not-a-rename",
-      "actual_change": "DELETE"
-    }
+    "why": "OUR LANGUAGES DISAGREE: three names for one RFC-0033 concept. The alignment-agnostic borrowed view over a numeric sequence is `CdrReader::read_le_slice::<T>() -> LeSliceView<T>` in Rust, `nros_cdr_borrow_le_slice_<t>() -> nros_le_slice_view_<t>_t` in C (nros/borrowed.h), and `nros::LeSpan<T>` in C++. Rust says READ, C says BORROW, C++ says SPAN; the borrowed byte sequence is `read_slice_u8` in Rust and `nros_cdr_borrow_bytes` in C. This is the verb the borrowed mode should settle on -- BORROW reads correctly against `Publisher::loan`'s borrow/release pair (`c:borrow_loaned_message`) and says the lifetime rule out loud, which READ does not. Phase 379 W5. Note also that the Rust type this returns, `LeSliceView`, is NOT re-exported by the `nros` facade at all -- generated code names `nros_core::LeSliceView` directly -- so the owned path and the borrowed path reach the user through different crates. DELETED 2026-08-27 (phase-379 W5): the `_raw` five (`read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw`, `read_slice_f64_raw`) are gone from `packages/core/nros-serdes/src/cdr.rs` -- five definitions, the one unit test (`test_read_slice_f32_raw`) and the doc-comment mention in `traits.rs`, which now names `read_le_slice::<f32>`. Zero consumers, re-verified against `packages/`, `examples/` and every `generated/` tree on disk immediately before the edit. Their five ledger rows went with them -- an item that does not exist needs no row -- so this row is where that family's history now lives. The behaviour is still covered: `read_le_slice_roundtrips_through_cdr` for the CDR round trip and the `LeSliceView` f32 test for decoding. NOTHING UPSTREAM CORRESPONDED: none of rclc/rclcpp/rclrs ships a CDR reader at all (`docs/reference/api-surface/*.json` contain no `cdr` item in any language), so the duplicate family was purely internal dedup with no ROS 2 name to align to -- which is also why the survivor is an `extension` and its only open question is the internal READ/BORROW/SPAN verb disagreement above."
   },
   "rust:CdrReader::read_string": {
     "verdict": "extension",

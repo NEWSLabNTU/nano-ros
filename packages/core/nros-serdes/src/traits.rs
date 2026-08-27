@@ -29,7 +29,7 @@ pub trait Deserialize: Sized {
 /// unbounded sequence/string fields borrow.
 ///
 /// The reader's zero-copy primitives (`read_slice_u8`, `read_string`,
-/// `read_slice_f32_raw`, …) supply the borrowed slices.
+/// `read_le_slice::<f32>`, …) supply the borrowed slices.
 pub trait DeserializeBorrowed<'a>: Sized {
     /// Deserialize a value, borrowing variable-length fields from the reader's
     /// source buffer (no copy).
