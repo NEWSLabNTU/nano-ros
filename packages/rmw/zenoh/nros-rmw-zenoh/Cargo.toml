@@ -81,6 +81,9 @@ link-tls = ["zpico-sys/link-tls"]
 # vtable via `nros_rmw::set_custom_transport(...)` BEFORE opening
 # the session.
 link-custom = ["zpico-sys/link-custom"]
+# RFC-0083 — CAN unicast over ISO-TP. Off by default: it needs a CAN interface
+# and the `can-isotp` kernel module, neither of which a generic build can assume.
+link-isotp = ["zpico-sys/link-isotp"]
 # phase-359 W10 (backend tier) — this used to forward `nros-rmw/std`, which made
 # THIS crate the reason `nros-core/std` was on in every native graph: a leaf
 # that asked for `alloc` still got the std flavour of the core because a

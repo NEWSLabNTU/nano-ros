@@ -34,6 +34,11 @@ pub struct LinkFeatures {
     pub custom: bool,
     // RFC-0080 — CAN / CAN FD link transport.
     pub can: bool,
+    // RFC-0083 — CAN unicast over ISO-TP. Separate from `can` because they are
+    // different links, not two modes of one: `can` is multicast and carries
+    // pushed data only, `isotp` is a unicast face and also carries queries and
+    // liveliness -- ROS services, actions, parameters and graph introspection.
+    pub isotp: bool,
 }
 
 impl LinkFeatures {
@@ -76,6 +81,7 @@ impl LinkFeatures {
             ivc: env::var("CARGO_FEATURE_LINK_IVC").is_ok(),
             custom: env::var("CARGO_FEATURE_LINK_CUSTOM").is_ok(),
             can: env::var("CARGO_FEATURE_LINK_CAN").is_ok(),
+            isotp: env::var("CARGO_FEATURE_LINK_ISOTP").is_ok(),
         }
     }
 
@@ -96,6 +102,7 @@ impl LinkFeatures {
         self.ivc = policy.ivc.resolve(self.ivc);
         self.custom = policy.custom.resolve(self.custom);
         self.can = policy.can.resolve(self.can);
+        self.isotp = policy.isotp.resolve(self.isotp);
         self
     }
 
@@ -125,6 +132,9 @@ impl LinkFeatures {
     }
     pub fn can_flag(&self) -> u8 {
         self.can as u8
+    }
+    pub fn isotp_flag(&self) -> u8 {
+        self.isotp as u8
     }
 }
 
@@ -162,6 +172,8 @@ pub struct LinkPolicy {
     pub custom: PolicyChoice,
     // RFC-0080 — CAN / CAN FD.
     pub can: PolicyChoice,
+    // RFC-0083 — CAN unicast over ISO-TP.
+    pub isotp: PolicyChoice,
 }
 
 impl LinkPolicy {
@@ -180,6 +192,7 @@ impl LinkPolicy {
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
+            isotp: PolicyChoice::Follow,
         }
     }
 
@@ -216,6 +229,7 @@ impl LinkPolicy {
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
+            isotp: PolicyChoice::Follow,
         }
     }
 
@@ -248,6 +262,7 @@ impl LinkPolicy {
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
+            isotp: PolicyChoice::Follow,
         }
     }
 
@@ -268,6 +283,7 @@ impl LinkPolicy {
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
+            isotp: PolicyChoice::Follow,
         }
     }
 
@@ -289,6 +305,7 @@ impl LinkPolicy {
             ivc: PolicyChoice::Follow,
             custom: PolicyChoice::Follow,
             can: PolicyChoice::Follow,
+            isotp: PolicyChoice::Follow,
         }
     }
 }

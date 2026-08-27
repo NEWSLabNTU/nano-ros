@@ -39,7 +39,7 @@ implementation to disagree with, before it is trusted on one without.
 | **W3** | zenoh-pico ↔ zenoh-rs over `vcan0`: session, pub/sub, and a **query** | the two implementations agree on the wire | **done** |
 | **W4** | `unix` platform on the **vendored library** instead of the kernel socket | the vendored ISO-TP is conformant against the kernel as reference | |
 | **W5** | Zephyr platform, using Zephyr's native `isotp_bind`/`isotp_send`/`isotp_recv` | the island's real platform | |
-| **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | |
+| **W6** | **nano-ros node ↔ ROS 2 node: a service call over CAN** | the reason this phase exists | **done** |
 | **W7** | Extend the demo container to show it | the artifact reviewers can run | |
 
 **W4 is the interesting one.** Implementing `unix` twice — once on the kernel,
@@ -182,3 +182,50 @@ back". It was not: the harness kills its children rather than letting them exit,
 and **block-buffered stdout is discarded on SIGTERM**, so a run that worked
 perfectly logged nothing. Under `stdbuf -o0` it is 3/3. `scripts/test/isotp-pico-interop.sh`
 runs everything unbuffered for this reason.
+
+## 7. W6 result — the gate
+
+A ROS 2 service call served by a nano-ros node, over CAN:
+
+```
+requester: making request: example_interfaces.srv.AddTwoInts_Request(a=20, b=22)
+
+response:
+example_interfaces.srv.AddTwoInts_Response(sum=42)
+```
+
+`scripts/test/isotp-ros-interop.sh` runs it. Topology:
+
+```
+ros2 service call  --tcp-->  rmw_zenohd  --ISO-TP over CAN-->  nano-ros node
+```
+
+The router listens on both, so the request crosses the bus and the reply comes
+back the same way; TCP on the CLI side keeps the test about the CAN link rather
+than about rebuilding the ROS CLI. `candump` over one run: 140 frames, 11
+FirstFrame/FlowControl pairs, both directions.
+
+**This is what RFC-0080 could not do.** zenoh routes queries to unicast faces
+only, so a service call over the multicast CAN link never reaches a queryable
+at all. It is not a CAN limitation and never was — it is a property of zenoh's
+multicast transport, and giving CAN a real unicast face removes it.
+
+What it took, beyond the pico link itself:
+
+* `scripts/can/build-zenohc-can.sh` grew a `--link can|isotp` selector. The
+  ISO-TP `libzenohc.so` is built from the `feat/can-unicast-isotp-ros` fork
+  branch, which is version 1.8.0 — the version the installed
+  `zenoh_cpp_vendor` ships, and the script refuses to build a mismatch. It is
+  substituted by `LD_LIBRARY_PATH` alone: no ROS rebuild, because a cargo
+  feature adds no C API.
+* `link-isotp` on `zpico-sys`, forwarded by `nros-rmw-zenoh`, plus an `isotp`
+  field through `LinkFeatures` / `LinkPolicy` so the generated pico config
+  header carries `Z_FEATURE_LINK_ISOTP`. Deliberately separate from
+  `link-can`: they are different links, not two modes of one.
+
+Two harness details worth keeping. Humble's `ros2 service call` has **no
+`--no-daemon` flag** — it is not a universal ros2 option — so the harness stops
+the daemon instead; a stray daemon inherits the environment and holds a session
+on the bus after the test. And the harness sources ROS itself rather than
+trusting the caller's shell, with no `set -u` anywhere, because `setup.bash`
+dereferences unset variables and aborts under it.

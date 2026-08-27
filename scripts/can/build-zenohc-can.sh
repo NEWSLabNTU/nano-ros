@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Build a libzenohc.so that carries the CAN link (RFC-0081 / phase-378 W6).
+# Build a libzenohc.so that carries a CAN link.
 #
 #   scripts/can/build-zenohc-can.sh --zenoh <path-to-zenoh-fork> [options]
 #
-#   --zenoh <dir>     checkout of the zenoh fork carrying zenoh-link-can,
+#   --link can        the RFC-0080 multicast CAN link (phase-378). Default
+#   --link isotp      the RFC-0083 CAN unicast link over ISO-TP (phase-393)
+#   --zenoh <dir>     checkout of the zenoh fork carrying zenoh-link-<link>,
 #                     on a branch whose version matches the zenoh-c tag below
 #   --version <tag>   zenoh-c tag to build. Default: whatever the installed
 #                     ROS zenoh_cpp_vendor package ships, so the result is
@@ -14,6 +16,12 @@
 # Why this script exists rather than a patch file: the redirection to the fork
 # is a set of absolute paths, and there is a trap that costs an hour to find if
 # you apply the obvious patch by hand. See "the opaque-types trap" below.
+#
+# Which link you want depends on what you need to work. The multicast CAN link
+# carries pushed data only, because zenoh routes queries and liveliness to
+# unicast faces -- so ROS topics work over it and services, actions, parameters
+# and graph introspection do not. The ISO-TP link is a real unicast face and
+# carries all of them.
 #
 # The output is a drop-in replacement for the vendored library:
 #
@@ -37,11 +45,13 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/grep-q.sh"
 ZENOH_DIR=""
 ZENOHC_TAG=""
 OUT_DIR=""
-WORK_DIR="${TMPDIR:-/tmp}/zenohc-can-build"
+WORK_DIR=""
+LINK="can"
 VENDOR_PREFIX="/opt/ros/humble/opt/zenoh_cpp_vendor"
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --link)    LINK="$2"; shift 2 ;;
         --zenoh)   ZENOH_DIR="$2"; shift 2 ;;
         --version) ZENOHC_TAG="$2"; shift 2 ;;
         --out)     OUT_DIR="$2"; shift 2 ;;
@@ -55,13 +65,32 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-die() { echo "[zenohc-can] error: $*" >&2; exit 1; }
-say() { echo "[zenohc-can] $*"; }
+TAG="zenohc-$LINK"
+die() { echo "[$TAG] error: $*" >&2; exit 1; }
+say() { echo "[$TAG] $*"; }
 
-[ -n "$ZENOH_DIR" ] || die "--zenoh is required: the zenoh fork carrying zenoh-link-can"
+case "$LINK" in
+    can)
+        # Each link is verified by a string only it can produce, so a feature
+        # flag that silently did nothing is caught here rather than at runtime
+        # on a bus.
+        LINK_MARKER="CAN: no such interface"
+        LINK_EXAMPLE='"can/can0#bitrate=500000;dbitrate=2000000;id=0x100;match=0;mask=0"'
+        LINK_DOC="docs/design/0081-can-link-for-zenoh-rs.md"
+        ;;
+    isotp)
+        LINK_MARKER="ISO-TP: no such interface"
+        LINK_EXAMPLE='"isotp/can0#tx_id=0x7E0;rx_id=0x7E8"'
+        LINK_DOC="docs/design/0083-can-unicast-over-isotp.md"
+        ;;
+    *) die "--link must be 'can' or 'isotp', not '$LINK'" ;;
+esac
+WORK_DIR="${WORK_DIR:-${TMPDIR:-/tmp}/zenohc-$LINK-build}"
+
+[ -n "$ZENOH_DIR" ] || die "--zenoh is required: the zenoh fork carrying zenoh-link-$LINK"
 ZENOH_DIR="$(cd "$ZENOH_DIR" && pwd)" || die "--zenoh path does not exist"
-[ -d "$ZENOH_DIR/io/zenoh-links/zenoh-link-can" ] ||
-    die "$ZENOH_DIR has no io/zenoh-links/zenoh-link-can; wrong checkout or wrong branch"
+[ -d "$ZENOH_DIR/io/zenoh-links/zenoh-link-$LINK" ] ||
+    die "$ZENOH_DIR has no io/zenoh-links/zenoh-link-$LINK; wrong checkout or wrong branch"
 
 # The version is not a free choice. rmw_zenoh_cpp is compiled against the
 # vendored zenoh-c headers, so the replacement must be the same version.
@@ -86,7 +115,7 @@ fi
 # corruption rather than a link error -- there is no soname to catch it.
 # Transport features do not affect the ABI.
 CONFIGURE_H="$VENDOR_PREFIX/include/zenoh_configure.h"
-FEATURES="transport_can"
+FEATURES="transport_$LINK"
 if [ -f "$CONFIGURE_H" ]; then
     while read -r define feature; do
         if nros_grep_q "^#define $define\b" "$CONFIGURE_H"; then
@@ -115,7 +144,7 @@ fi
 
 PATCH_BLOCK="
 # Added by nros scripts/can/build-zenohc-can.sh: build against the local zenoh
-# fork carrying the CAN link instead of the upstream release branch.
+# fork carrying the $LINK link instead of the upstream release branch.
 [patch.\"https://github.com/eclipse-zenoh/zenoh.git\"]
 zenoh = { path = \"$ZENOH_DIR/zenoh\" }
 zenoh-ext = { path = \"$ZENOH_DIR/zenoh-ext\" }
@@ -135,7 +164,7 @@ for manifest in "$SRC/Cargo.toml" "$SRC/build-resources/opaque-types/Cargo.toml"
     [ -f "$manifest" ] || die "expected $manifest; zenoh-c layout changed"
     nros_grep_q 'transport_vsock = \["zenoh/transport_vsock"\]' "$manifest" ||
         die "$manifest has no transport_vsock feature line to anchor to; layout changed"
-    sed -i 's|transport_vsock = \["zenoh/transport_vsock"\]|&\ntransport_can = ["zenoh/transport_can"]|' "$manifest"
+    sed -i "s|transport_vsock = \\[\"zenoh/transport_vsock\"\\]|&\\ntransport_$LINK = [\"zenoh/transport_$LINK\"]|" "$manifest"
     printf '%s' "$PATCH_BLOCK" >> "$manifest"
 done
 rm -f "$SRC/build-resources/opaque-types/Cargo.lock"
@@ -153,11 +182,11 @@ SO="$SRC/target/release/libzenohc.so"
 # first match, strings takes SIGPIPE, and the pipeline reports failure even
 # though the string was found. `grep -c` reads its input to the end, so there is
 # no early close to trip over.
-CAN_MARKERS="$(strings "$SO" | grep -c "CAN: no such interface" || true)"
-if [ "$CAN_MARKERS" -eq 0 ]; then
-    die "$SO does not contain the CAN link. Is the fork branch the right one?"
+LINK_MARKERS="$(strings "$SO" | grep -c "$LINK_MARKER" || true)"
+if [ "$LINK_MARKERS" -eq 0 ]; then
+    die "$SO does not contain the $LINK link. Is the fork branch the right one?"
 fi
-say "verified: the CAN link is present in the built library"
+say "verified: the $LINK link is present in the built library"
 
 OUT_DIR="${OUT_DIR:-$WORK_DIR/lib}"
 mkdir -p "$OUT_DIR"
@@ -165,7 +194,7 @@ cp -f "$SO" "$OUT_DIR/libzenohc.so"
 
 cat <<EOF
 
-[zenohc-can] done: $OUT_DIR/libzenohc.so
+[$TAG] done: $OUT_DIR/libzenohc.so
 
 To use it with the stock rmw_zenoh_cpp, with no ROS rebuild:
 
@@ -173,9 +202,9 @@ To use it with the stock rmw_zenoh_cpp, with no ROS rebuild:
   export LD_LIBRARY_PATH=$OUT_DIR:\$LD_LIBRARY_PATH
   ldd \$(ros2 pkg prefix rmw_zenoh_cpp)/lib/rmw_zenoh_cpp/rmw_zenohd | grep zenohc
 
-Then give a session a CAN endpoint, in its SESSION config and not the router's:
+Then give a session an endpoint, in its SESSION config and not the router's:
 
-  "can/can0#bitrate=500000;dbitrate=2000000;id=0x100;match=0;mask=0"
+  $LINK_EXAMPLE
 
-See docs/design/0081-can-link-for-zenoh-rs.md.
+See $LINK_DOC.
 EOF

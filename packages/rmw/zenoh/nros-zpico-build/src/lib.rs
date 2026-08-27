@@ -305,6 +305,7 @@ pub fn config_header(
     .unwrap();
     // RFC-0080 — CAN / CAN FD.
     writeln!(header, "#define Z_FEATURE_LINK_CAN {}", link.can_flag()).unwrap();
+    writeln!(header, "#define Z_FEATURE_LINK_ISOTP {}", link.isotp_flag()).unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_TLS {}", link.tls_flag()).unwrap();
     writeln!(
         header,
@@ -969,6 +970,7 @@ int32_t zpico_init(void);\n";
             tls: true,
             ivc: false,
             can: false,
+            isotp: false,
             custom: true,
         };
         let buf = ZenohBufferConfig {
@@ -990,6 +992,7 @@ int32_t zpico_init(void);\n";
         // compiling, and a field that only ever appears as `false` in a struct
         // literal is not covered by anything.
         assert!(header.contains("#define Z_FEATURE_LINK_CAN 0"));
+        assert!(header.contains("#define Z_FEATURE_LINK_ISOTP 0"));
         assert!(header.contains("#define Z_FEATURE_LINK_CUSTOM 1"));
         assert!(header.contains("#define Z_FEATURE_UNSTABLE_API"));
         // phase-337 W7.b — both were 0 only under the `orin_spe` flag this
@@ -1018,6 +1021,7 @@ int32_t zpico_init(void);\n";
             tls: false,
             ivc: false,
             can: false,
+            isotp: false,
             custom: false,
         };
         let buf = ZenohBufferConfig {
