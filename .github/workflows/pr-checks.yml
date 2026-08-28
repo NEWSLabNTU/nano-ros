@@ -423,9 +423,18 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: just build-compile-check-fixtures cxx-syntax
 
+      # The `source /opt/ros/humble/setup.bash` below is load-bearing, not
+      # boilerplate (carried from the phase-391 branch through the W1 rebase):
+      # `check-rmw-cyclonedds`'s from-msg targets run msg_to_cyclone_idl.py at
+      # BUILD time, and it imports rosidl_adapter from /opt/ros. The
+      # configure-time probe only checks the converter script EXISTS (issue-0196
+      # class: probe narrower than the rule), so an unsourced env fails at 80% of
+      # the build instead of at configure. Just as true on the nightly as it was
+      # on the merge group.
       - name: just check-build + no_std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
+          source /opt/ros/humble/setup.bash
           just check-build
           just check-no-std
 
