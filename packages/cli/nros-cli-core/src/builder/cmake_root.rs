@@ -124,6 +124,21 @@ pub fn render(
         if spec.excluded.contains(&pkg.dir) || !pkg.dir.join("CMakeLists.txt").is_file() {
             continue;
         }
+        // An INTERFACE package has a CMakeLists and still must not be a subdir
+        // (issue 0862). Its CMakeLists is deliberately verbatim upstream ROS —
+        // `find_package(ament_cmake REQUIRED)` on line one — because it must
+        // also build under `colcon`. nano-ros never configures it: `nros sync`
+        // routes `rosidl_generate_interfaces` through the codegen pipeline and
+        // emits the `generated/<pkg>` crate the node packages depend on.
+        //
+        // The hand-written roots knew this and left these packages out of
+        // `_ws_subdirs` by hand, with a comment saying why; the derivation had
+        // only "has a CMakeLists" and swept them back in. On a host WITH ROS
+        // that configures and looks fine, which is why it landed — it fails
+        // only where tier 1 is contracted to run, on a host with no ROS.
+        if crate::interface_package::dir_is_interface_package(&pkg.dir) {
+            continue;
+        }
         // Relative to the WORKSPACE, not to this file.
         //
         // `nano_ros_workspace` hands SUBDIRS to `nros ws order --workspace
