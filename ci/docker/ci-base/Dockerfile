@@ -92,9 +92,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # uv (Python 3.12 venvs) + just (recipe runner) via their canonical installers.
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
+# PINNED, not latest. Both were `curl | sh` fetching whatever was current at
+# image-build time, so two rebuilds of the "same" image could ship different
+# build tooling with no signal — the floating half of the drift axis in
+# `docs/development/ci-image-provisioning.md`. The versions here are the ones
+# running on the reference dev host, so CI and a developer's tree agree.
+#
+# Bump deliberately, and bump the image tag with it (see `images.yml`): the tag
+# encodes what is baked precisely so a bump cannot be silent.
+ARG UV_VERSION=0.12.5
+ARG JUST_VERSION=1.57.0
+RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" \
+        | env UV_INSTALL_DIR=/usr/local/bin sh \
+    && uv --version | grep -q "$UV_VERSION"
 RUN curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh \
-        | bash -s -- --to /usr/local/bin
+        | bash -s -- --tag "$JUST_VERSION" --to /usr/local/bin \
+    && just --version | grep -q "$JUST_VERSION"
 
 # Rust toolchain + the cross targets the platforms build for. Pinned to a fixed
 # root on PATH for all users (so in-container jobs need no per-cell rustup).
