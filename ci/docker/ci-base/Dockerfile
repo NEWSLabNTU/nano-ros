@@ -116,6 +116,35 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
         riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf riscv64gc-unknown-none-elf \
     && cargo install cargo-nextest --locked
 
+# sccache — the compiler cache the justfile ALREADY wires: `RUSTC_WRAPPER` is
+# `command -v sccache || true`, so every `just` recipe picks it up the moment
+# the binary is on PATH, and no workflow needs to opt in.
+#
+# BAKED, not installed per run: `nros setup --tool sccache` builds it from
+# source (vendored-openssl), which is minutes on a cold runner and would cost
+# more than it saves. The prebuilt release tarball is the same 0.8.2 the
+# `[tool.sccache]` index row pins — keep the two in lockstep.
+#
+# Why sccache rather than caching `target/`: it is CONTENT-hashed, so a restored
+# cache cannot make a stale artifact read as fresh. Restoring a `target/` dir
+# into a fresh checkout gives artifacts mtimes newer than their sources, which
+# is exactly the museum-binary class CLAUDE.md's fixture-mtime treadmill
+# describes. Content addressing sidesteps it entirely.
+ARG SCCACHE_VERSION=0.8.2
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) target="x86_64-unknown-linux-musl" ;; \
+        arm64) target="aarch64-unknown-linux-musl" ;; \
+        *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    url="https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${target}.tar.gz"; \
+    curl -fsSL "$url" -o /tmp/sccache.tar.gz; \
+    tar -xzf /tmp/sccache.tar.gz -C /tmp; \
+    install -m0755 "/tmp/sccache-v${SCCACHE_VERSION}-${target}/sccache" /usr/local/bin/sccache; \
+    rm -rf /tmp/sccache.tar.gz "/tmp/sccache-v${SCCACHE_VERSION}-${target}"; \
+    sccache --version
+
 # Pinned nightly (tools/rust-toolchain.toml `nightly-2026-04-11`) baked WITH its
 # declared components (rustfmt/miri/rust-src/llvm-tools) + the cross targets. The
 # fixture builds need it (esp32 `-Z build-std` for riscv32imc, `-Z emit-stack-

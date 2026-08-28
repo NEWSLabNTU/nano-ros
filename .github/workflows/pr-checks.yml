@@ -148,6 +148,42 @@ jobs:
       - name: Install clang-format (pinned via pypi wheel)
         run: pip install --no-cache-dir "clang-format==17.0.5"
 
+      # Compiler cache for the COMPILE tier — phase-395. `check-build` compiles
+      # the whole workspace from scratch: 587 s of an 878 s gate, measured. Only
+      # `packages/cli/target` was cached, and that is the 79 s half.
+      #
+      # sccache rather than caching `target/`, for a CORRECTNESS reason and not
+      # only a size one: sccache is content-hashed, so a restored cache cannot
+      # make a stale artifact read as fresh. Restoring a `target/` dir into a
+      # fresh checkout gives artifacts mtimes newer than their sources — the
+      # museum-binary class CLAUDE.md's fixture-mtime treadmill describes, and
+      # exactly what a cache must never introduce.
+      #
+      # GHA backend, not `actions/cache`: the justfile asks for a 30 GB cache
+      # while `actions/cache` has a 10 GB REPO-WIDE cap, so sharing it would
+      # evict the CLI cache that already works. The GHA backend is a separate
+      # store with its own eviction and needs no save/restore step.
+      #
+      # The binary is BAKED INTO THE IMAGE (ci/docker/ci-base), and the
+      # justfile's `RUSTC_WRAPPER := command -v sccache` picks it up with no
+      # further wiring — so this only has to point it at a backend.
+      - name: Configure sccache (compile tier)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        run: |
+          if ! command -v sccache >/dev/null 2>&1; then
+            echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
+            exit 0
+          fi
+          {
+            echo "SCCACHE_GHA_ENABLED=true"
+            echo "ACTIONS_RESULTS_URL=${ACTIONS_RESULTS_URL:-}"
+            echo "ACTIONS_RUNTIME_TOKEN=${ACTIONS_RUNTIME_TOKEN:-}"
+            # Well under the 10 GB cap this store does NOT share; the justfile's
+            # 30G default is a developer-workstation figure.
+            echo "SCCACHE_CACHE_SIZE=2G"
+          } >> "$GITHUB_ENV"
+          sccache --version
+
       # ----- CLI + sources: build tier (non-push) only -----
       # check-fast is BUILDLESS *and* SOURCE-FREE (no cargo build/clippy/test, no
       # `cargo tree`/metadata) — its only CLI-touching gates (board-manifest-drift,
@@ -228,6 +264,14 @@ jobs:
       - name: just test-unit (completes L1)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: just test-unit
+
+      - name: sccache stats (compile tier)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        run: |
+          # MEASURED, not assumed. A cache that silently misses every request
+          # looks exactly like one that is working; the only difference is in
+          # this output. `|| true` — a stats failure must never fail a gate.
+          command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
 
       - name: just check-decoupling (advisory until Phase 104.A)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
