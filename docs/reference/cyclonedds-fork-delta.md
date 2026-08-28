@@ -107,6 +107,21 @@ seconds later, which is exactly how 0371 cost as much time as it did.
 | `22150fbf` | fix(freertos): avoid TLS-only DDS state |
 | `99cfac88` | ddsrt: give every FreeRTOS thread its lwIP per-thread netconn semaphore |
 
+### 6. The platform allocation funnel (1 commit)
+
+| commit | subject |
+| --- | --- |
+| `6e2ad36f` | ddsrt/posix: route the heap through nano-ros's platform allocation funnel |
+
+Behind `-DNROS_DDSRT_PLATFORM_FUNNEL`, set by `ProvideCycloneDDS.cmake` on
+`ddsc` only (never on the tools-side `ddsrt-internal`: idlc and confgen link no
+platform layer). Undefined, the file is byte-identical to stock, so cyclone's
+own ctest suite is unaffected. Issue 0832 measured the funnel DEFINED and
+UNREFERENCED in native cyclone images; it now has 4 inbound edges and the whole
+`ddsrt_{malloc,malloc_s,calloc_s,realloc_s,free}` family is off `malloc@plt`.
+Compile-time rather than weak-linked on purpose: weak linkage leaves the libc
+branch in the binary, and its absence is what a tier gate has to read.
+
 With `LWIP_NETCONN_SEM_PER_THREAD=1` every thread touching the socket API needs
 its own netconn semaphore. ddsrt creates its own threads and never called
 `lwip_socket_thread_init()`, so the first socket call from one asserted
