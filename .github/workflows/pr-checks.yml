@@ -39,23 +39,22 @@ on:
       - ".github/workflows/pr-checks.yml"
   pull_request:
     branches: [main]
-    paths:
-      - "packages/**"
-      - "examples/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "justfile"
-      - "just/**"
-      - "scripts/**"
-      - "ci/nano-ros-sdk/**"
-      - "**/*.cmake"
-      - "**/CMakeLists.txt"
-      - "**/*.just"
-      - ".clang-format"
-      - "rustfmt.toml"
-      - "nros-sdk-index.toml"
-      - ".gitmodules"
-      - ".github/workflows/pr-checks.yml"
+    # NO `paths:` filter, and this is load-bearing rather than an oversight.
+    #
+    # `check` is a REQUIRED status check. A path-filtered required check never
+    # runs for a pull request outside those paths, so it never REPORTS, so the
+    # PR sits BLOCKED forever — not failing, just permanently ineligible. PR #13
+    # (docs only) hit exactly this: zero checks in its rollup and no way to
+    # merge.
+    #
+    # The same sentence is already written under `merge_group:` below. It was
+    # true here too and applying it only there is the "fix the reported site,
+    # not the class" mistake CLAUDE.md names.
+    #
+    # Affordable because the PR gate is now cheap — `check-fast` plus a compile
+    # smoke, not the full tier — so a docs-only PR pays a few minutes rather
+    # than fifteen. If that ever stops being true, the fix is a cheaper gate,
+    # never a path filter on a required check.
   # phase-395 W7 — the merge queue. A required status check MUST trigger on
   # `merge_group` or it is never reported for a queued batch, and GitHub fails
   # the merge waiting for it: a frozen repo, not a gated one.
