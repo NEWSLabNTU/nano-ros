@@ -58,6 +58,7 @@ BRANCH="${NROS_QUEUE_BRANCH:-main}"
 APPLY=0
 SELF_HOSTED=0
 STATUS=0
+READINESS=0
 WITH_QUEUE=0
 RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 
@@ -79,6 +80,7 @@ while [ "$#" -gt 0 ]; do
         --self-hosted-ready)  SELF_HOSTED=1 ;;
         --with-queue)         WITH_QUEUE=1 ;;
         --status)             STATUS=1 ;;
+        --readiness)          READINESS=1 ;;
         -h|--help)            sed -n '2,40p' "$0"; exit 0 ;;
         *) echo "unknown option $1 (try --help)" >&2; exit 2 ;;
     esac
@@ -94,6 +96,110 @@ ruleset_id() {
     gh api "repos/$REPO/rulesets" --jq \
         ".[] | select(.name == \"$RULESET\") | .id" 2>/dev/null | head -1
 }
+
+# Are the preconditions for the NEXT policy stage met? Mechanical, so "when do
+# we enforce this?" is a measurement rather than a date somebody picks.
+#
+# Each line is a fact with a source, not a judgement. A precondition that cannot
+# be checked is printed as UNCHECKED rather than assumed green — the same rule
+# the fast line uses when a gate could not run.
+if [ "$READINESS" = 1 ]; then
+    ready=0; blocked=0
+    say() { # say <ok|no|skip> <label> <detail>
+        case "$1" in
+            ok)   printf '  [ok]      %s\n            %s\n' "$2" "$3"; ready=$((ready + 1)) ;;
+            no)   printf '  [BLOCKED] %s\n            %s\n' "$2" "$3"; blocked=$((blocked + 1)) ;;
+            *)    printf '  [uncheck] %s\n            %s\n' "$2" "$3" ;;
+        esac
+    }
+
+    echo "== stage 2 readiness: pull requests + required checks + merge queue =="
+    echo
+
+    rid="$(ruleset_id)"
+    if [ -n "$rid" ]; then
+        say ok "ruleset '$RULESET' exists" "id $rid — guardrails already active"
+    else
+        say no "ruleset '$RULESET' exists" "create it first; this script will not mint one"
+    fi
+
+    # The gate that will become REQUIRED must actually be able to pass. An
+    # always-red required check freezes merging exactly like an always-pending
+    # one — that is what issue 0853 did to this repo for weeks.
+    # Measure the JOB that will be required, not the workflow. They are
+    # different questions: a `pr-checks` run is red whenever ANY of its jobs is,
+    # and most of them will not be in the required set. Reading the workflow
+    # conclusion here reported a blocked stage over a `colcon-parity` failure
+    # that could never have gated the queue.
+    runs=""
+    for _rid in $(gh run list --workflow pr-checks.yml --branch "$BRANCH" --limit 5 \
+                    --json databaseId --jq '.[].databaseId' 2>/dev/null); do
+        _c="$(gh run view "$_rid" --json jobs --jq \
+              "[.jobs[] | select(.name == \"${HOSTED_CHECKS[0]}\") | .conclusion] | first // \"absent\"" \
+              2>/dev/null || echo absent)"
+        runs="${runs:+$runs,}$_c"
+    done
+    ok_n="$(printf '%s' "$runs" | tr ',' '\n' | awk '$0 == "success"' | wc -l | tr -d ' ')"
+    if [ -z "$runs" ]; then
+        say skip "pr-checks can go green on the runner" "no runs found"
+    elif [ "$ok_n" -ge 3 ]; then
+        say ok "pr-checks can go green on the runner" "last 5: $runs"
+    else
+        say no "pr-checks can go green on the runner" \
+            "last 5: $runs — a required check that cannot pass freezes merging"
+    fi
+
+    for f in .github/workflows/queue.yml .github/workflows/post-submit.yml; do
+        if [ -f "$f" ]; then say ok "$f exists" "the queue has a lane to run"
+        else say no "$f exists" "merge_group would fire into nothing"; fi
+    done
+
+    if awk '/^## Submitting work/ { found = 1 } END { exit found ? 0 : 1 }' AGENTS.md 2>/dev/null; then
+        say ok "the policy is written down" "AGENTS.md 'Submitting work'"
+    else
+        say no "the policy is written down" "agents cannot ack a policy that is not written"
+    fi
+    if awk '/^## Branch policy/ { found = 1 } END { exit found ? 0 : 1 }' AGENTS.md 2>/dev/null; then
+        say ok "the branch policy is written down" "AGENTS.md 'Branch policy'"
+    else
+        say no "the branch policy is written down" "AGENTS.md has no Branch policy section"
+    fi
+
+    am="$(gh api "repos/$REPO" --jq '.allow_auto_merge' 2>/dev/null || echo unknown)"
+    if [ "$am" = "true" ]; then
+        say ok "auto-merge is enabled" "agents can queue a PR without a human click"
+    else
+        say no "auto-merge is enabled" \
+            "allow_auto_merge=$am — without it every agent PR waits on a human, which is the serialisation the queue removes"
+    fi
+
+    say skip "every ACTIVE agent has read the policy" \
+        "not machine-checkable: a running session carries the AGENTS.md it started with"
+
+    echo
+    echo "== stage 3 readiness: add the self-hosted L3 check =="
+    echo
+    online="$(gh api "repos/$REPO/actions/runners" --jq \
+        '[.runners[] | select(.status == "online")] | length' 2>/dev/null || echo 0)"
+    if [ "${online:-0}" -gt 0 ]; then
+        say ok "a self-hosted runner is online" "$online runner(s)"
+    else
+        say no "a self-hosted runner is online" \
+            "none — requiring L3 now would leave every merge PENDING forever"
+    fi
+
+    echo
+    printf '%s precondition(s) met, %s BLOCKED.\n' "$ready" "$blocked"
+    if [ "$blocked" -eq 0 ]; then
+        echo "Stage 2 is unblocked. Land ONE trivial PR through the queue before"
+        echo "trusting it: a misconfigured queue does not error, it silently stops"
+        echo "merging, which reads as GitHub being slow."
+    else
+        echo "Do NOT enable required checks yet — each BLOCKED line above is a way"
+        echo "to freeze merging rather than to gate it."
+    fi
+    exit 0
+fi
 
 if [ "$STATUS" = 1 ]; then
     echo "== ruleset '$RULESET' on $REPO =="

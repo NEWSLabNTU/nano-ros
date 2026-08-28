@@ -67,7 +67,13 @@ rows="$(grep -oE '^(- )?\*\*#[0-9]+\*\*' "$readme" \
         | awk '{printf "%04d\n", $1}' \
         | sort -u)"
 
-files="$(git ls-files 'docs/issues/0*.md' \
+# `--cached --others --exclude-standard`, not bare `git ls-files`: a just-filed
+# issue is UNTRACKED until it is staged, and that is exactly when this runs.
+# Tracked-only enumeration made the checker disagree with
+# `scripts/gen-issue-index.py` — the generator lists the new issue, the checker
+# says the row names no file, and the two are unresolvable by editing either
+# one. Both sides must enumerate the same set. → phase-395
+files="$(git ls-files --cached --others --exclude-standard 'docs/issues/0*.md' \
          | sed -E 's#.*/([0-9]{4}).*#\1#' \
          | sort -u)"
 
@@ -80,7 +86,8 @@ if [ -n "$missing_file" ]; then
     status=1
     echo "check-issue-index: listed as OPEN but no file in docs/issues/:" >&2
     for id in $missing_file; do
-        if git ls-files --error-unmatch "docs/issues/archived/${id}-"*.md >/dev/null 2>&1; then
+        if git ls-files --error-unmatch "docs/issues/archived/${id}-"*.md >/dev/null 2>&1 \
+           || compgen -G "docs/issues/archived/${id}-"*.md >/dev/null 2>&1; then
             echo "  #${id} — the file is in archived/, so the row is stale." >&2
             echo "        Convert it to the resolved spelling, which this gate ignores:" >&2
             echo "        Recently resolved (YYYY-MM-DD): **#${id}** — … See \`archived/${id}-*\`." >&2
@@ -100,7 +107,7 @@ fi
 
 # A file living in docs/issues/ must still be OPEN. See header note 1.
 resolved_in_open=""
-for f in $(git ls-files 'docs/issues/0*.md'); do
+for f in $(git ls-files --cached --others --exclude-standard 'docs/issues/0*.md' | sort -u); do
     st="$(sed -n 's/^status:[[:space:]]*//p' "$f" | head -1 | tr -d '[:space:]')"
     case "$st" in
         open|"") ;;

@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-37 open. One line each — the detail lives in the issue file,
+38 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -94,6 +94,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0852** (rmw) — zenoh-pico's Zephyr serial RX is polled with no interrupt buffering and no error check, so it silently drops bytes under load See `0852-*`.
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
+- **#0863** (ci) — `check-submodule-pinned-locks` fails intermittently in CI on a commit that also passed — a flaky check inside the about-to-be-required set See `0863-*`.
 
 <!-- END GENERATED open-issue list -->
 
