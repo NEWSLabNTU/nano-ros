@@ -292,6 +292,44 @@ _assert_merge_group_triggers() {
             continue
         fi
         found=1
+        # A `paths:` filter under a REQUIRED event is a permanent block, and
+        # GitHub says so outright: "If a workflow is skipped due to path
+        # filtering, branch filtering or a commit message, then checks
+        # associated with that workflow will remain in a Pending state. A pull
+        # request that requires those checks to be successful will be blocked
+        # from merging." Their guidance is explicit — "you should not use path
+        # or branch filtering to skip workflow runs if the workflow is
+        # required".
+        #
+        # This is not hypothetical here: PR #16 touches only `ci/docker/**`, the
+        # filter on `main` does not list it, and its required check has never
+        # run — so it cannot merge, ever, and it happens to carry the fix that
+        # unblocks the merge group. Two PRs, each blocked on the other.
+        #
+        # The distinction that makes the fix cheap: a skipped WORKFLOW stays
+        # pending forever, while a skipped JOB reports SUCCESS. So conditionality
+        # belongs at job or step level, never on the trigger of a required
+        # check — which is where the cost control can stay without the deadlock.
+        local _bad_paths
+        _bad_paths="$(awk '
+            /^on:/ { inon = 1; next }
+            /^[a-z]/ && !/^on:/ { inon = 0 }
+            inon && /^  (pull_request|merge_group):/ { ev = $1; next }
+            inon && /^  [a-z_]+:/ { ev = "" }
+            inon && ev != "" && /^    paths:/ { print ev }
+        ' "$wf" | sort -u | tr "\n" " ")"
+        if [ -n "$_bad_paths" ]; then
+            echo "[FAIL] required check '$ctx' lives in $(basename "$wf"), which" >&2
+            echo "       PATH-FILTERS a required event: ${_bad_paths}" >&2
+            echo "       A workflow skipped by a path filter leaves its check PENDING" >&2
+            echo "       FOREVER — any pull request touching only unfiltered paths can" >&2
+            echo "       never merge. GitHub's own guidance: do not use path filtering" >&2
+            echo "       to skip a workflow that is required." >&2
+            echo "       Move the filter to a JOB-level \`if:\` — a skipped JOB reports" >&2
+            echo "       SUCCESS, so the cost control survives without the deadlock." >&2
+            return 1
+        fi
+
         local _has
         _has="$(awk '/^on:/ { inon = 1; next }
                      /^[a-z]/ && !/^on:/ { inon = 0 }
