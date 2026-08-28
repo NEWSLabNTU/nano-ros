@@ -536,35 +536,43 @@ fn build_pair(platform: Platform, lang: Lang, variant: Variant) -> (&'static Pat
     (first, second)
 }
 
-/// Start (first, second) on `platform`. On NuttX the two instances run
-/// in parallel (no stabilisation delay between them), mirroring the
-/// existing Rust test — the NuttX Rust binaries boot slowly and if the
-/// listener is given the usual 20s head-start its session times out
-/// before the talker finishes booting. On every other platform the
-/// first node gets `stabilization_delay()` of head-start.
-fn start_pair(
+/// Start a REQUEST/RESPONSE pair: the server first, the client only once the
+/// server has actually announced itself.
+///
+/// The pub/sub shape starts its two instances in parallel on NuttX and MUST
+/// keep doing so — the reason, from the `start_pair` helper this replaced: the
+/// NuttX Rust binaries boot slowly, and giving the listener the usual 20 s
+/// head-start expires its session before the talker finishes booting. That
+/// reasoning is sound for PUB/SUB, where a subscriber joining late still
+/// receives the next sample, so nothing is lost by racing. It was keyed on the
+/// PLATFORM, though, so it also governed the request/response shapes.
+///
+/// A request/response client asks ONCE and gives up. Started alongside the
+/// server, the NuttX C action client reaches `Sending goal` while the server's
+/// queryable is not yet declared, and the deadline that expires is the app's
+/// OWN — `Failed to send goal: -2` (`NROS_RET_TIMEOUT`), 3/3, solo, which no
+/// test-side budget can move (issue 0867). Booted by hand with the client
+/// started after the server's banner, the same two images complete
+/// goal -> accept -> feedback -> result every time.
+///
+/// So the ordering is keyed on the SHAPE, which is what actually differs
+/// between the two cases, and it waits for the banner instead of sleeping a
+/// fixed guess at how long the banner takes.
+fn start_server_then_client(
     platform: Platform,
     lang: Lang,
-    first_bin: &Path,
-    second_bin: &Path,
-    first_name: &str,
-    second_name: &str,
-) -> TestResult<(RtosProcess, RtosProcess)> {
-    let first = platform.start_process(first_bin, 0, first_name, lang)?;
-
-    match platform {
-        Platform::Nuttx => {
-            let second = platform.start_process(second_bin, 1, second_name, lang)?;
-            Ok((first, second))
-        }
-        _ => {
-            std::thread::sleep(platform.stabilization_delay());
-            let second = platform.start_process(second_bin, 1, second_name, lang)?;
-            Ok((first, second))
-        }
-    }
+    server_bin: &Path,
+    client_bin: &Path,
+    server_name: &str,
+    client_name: &str,
+    ready_marker: &str,
+) -> TestResult<(RtosProcess, String, RtosProcess)> {
+    let mut server = platform.start_process(server_bin, 0, server_name, lang)?;
+    let server_boot = server.collect_until(ready_marker, boot_budget(platform));
+    ensure_ready(&server_boot, ready_marker, platform);
+    let client = platform.start_process(client_bin, 1, client_name, lang)?;
+    Ok((server, server_boot, client))
 }
-
 /// Common readiness check: is the platform's "first" process (listener
 /// or server) past its boot banner? Panics on every platform if the
 /// banner is missing — boot failures are real regressions (either a
@@ -782,15 +790,6 @@ fn test_rtos_service_e2e(
         .expect("Failed to start zenohd");
 
     eprintln!("[{} {}] service: starting server/client...", platform, lang);
-    let (mut server, mut client) = start_pair(
-        platform,
-        lang,
-        server_bin,
-        client_bin,
-        "rtos-server",
-        "rtos-client",
-    )
-    .expect("Failed to start server/client");
 
     // Server boot check. #132 — the NuttX Rust server is an `*_entry` image
     // whose board `run_entry` prints "nros entry ready" (the role crate is
@@ -807,15 +806,22 @@ fn test_rtos_service_e2e(
         }
         _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
-    let server_boot = server.collect_until(server_ready_marker, boot_budget(platform));
-    ensure_ready(&server_boot, server_ready_marker, platform);
-
-    // Give the client the same boot delay as the server so its first
-    // query doesn't race ahead of the server queryable's declaration.
-    // Only applies to QEMU-cold-boot platforms.
-    if !matches!(platform, Platform::Nuttx | Platform::ThreadxLinux) {
-        std::thread::sleep(platform.stabilization_delay());
-    }
+    // The comment that used to sit here said the client needs "the same boot
+    // delay as the server so its first query doesn't race ahead of the server
+    // queryable's declaration" — then excluded NuttX, which is exactly a
+    // QEMU-cold-boot platform. `start_server_then_client` makes the ordering
+    // real instead of approximating it with a sleep: the client is not spawned
+    // until the server's banner has actually been seen (issue 0867).
+    let (mut server, _server_boot, mut client) = start_server_then_client(
+        platform,
+        lang,
+        server_bin,
+        client_bin,
+        "rtos-server",
+        "rtos-client",
+        server_ready_marker,
+    )
+    .expect("Failed to start server/client");
 
     // NuttX C service is slower: 4 nros_client_call round-trips over
     // QEMU slirp + zenoh-pico TCP are routinely in the 40–60 s range,
@@ -872,6 +878,14 @@ fn test_rtos_service_e2e(
 // the QEMU round-trip is slow/expensive, not because it is broken.) pubsub +
 // service keep all 4 platforms × 3 langs. Cpp/C action bindings remain covered
 // on native (Cyclone) and zephyr (xrce/dds) e2e.
+//
+// STALE ABOVE, kept for the reasoning and corrected here: phase-240.5 /
+// issue-0047 put the NuttX action cells BACK ("migrated + runtime-validated",
+// see the `#[values]` note below), so the paragraph's "the QEMU-heavy NuttX +
+// ThreadX-RISCV64 action cells are dropped" describes only ThreadX-RISCV64
+// today. Left visible rather than deleted because its measurement — action is
+// the wall-clock critical path — is still true and still worth knowing before
+// anyone adds a platform here.
 #[rstest]
 fn test_rtos_action_e2e(
     // Phase 240.5 / issue-0047 — NuttX action transport (server + CALLBACK client)
@@ -893,15 +907,6 @@ fn test_rtos_action_e2e(
         .expect("Failed to start zenohd");
 
     eprintln!("[{} {}] action: starting server/client...", platform, lang);
-    let (mut server, mut client) = start_pair(
-        platform,
-        lang,
-        server_bin,
-        client_bin,
-        "rtos-action-server",
-        "rtos-action-client",
-    )
-    .expect("Failed to start server/client");
 
     // #132 — NuttX Rust action server is an `*_entry` image; readiness = the
     // board's "nros entry ready" line (see the service e2e note).
@@ -916,12 +921,16 @@ fn test_rtos_action_e2e(
         }
         _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
-    let server_boot = server.collect_until(action_ready_marker, boot_budget(platform));
-    ensure_ready(&server_boot, action_ready_marker, platform);
-
-    if !matches!(platform, Platform::Nuttx | Platform::ThreadxLinux) {
-        std::thread::sleep(platform.stabilization_delay());
-    }
+    let (mut server, server_boot, mut client) = start_server_then_client(
+        platform,
+        lang,
+        server_bin,
+        client_bin,
+        "rtos-action-server",
+        "rtos-action-client",
+        action_ready_marker,
+    )
+    .expect("Failed to start server/client");
 
     // ⚠️ DO NOT SHRINK the FreeRTOS-C action window. ⚠️
     //
