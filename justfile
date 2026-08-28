@@ -892,9 +892,28 @@ check-source-gates:
     # `freertos_firmware`, a `cargo-build` row needing the FreeRTOS KERNEL
     # SUBMODULE which CI does not provision.
     NROS_COMPILE_CHECK_LANES=cxx-syntax bash scripts/build/compile-check-fixtures.sh
-    cargo test -p nros-tests --test platform_header_compile
-    cargo test -p nros-tests --test cross_libc_precedence_gate
-    cargo test -p nros-tests --test zephyr_prjconf_requirements
+    # Issue 0673 — through `_nextest-tolerant`, not bare `cargo test`.
+    #
+    # `cross_libc_precedence_gate` already does the right thing: it calls
+    # `nros_tests::skip!` when `arm-none-eabi-g++` has no usable libstdc++, with
+    # a comment saying "Skip rather than false-fail". But `skip!` PANICS with a
+    # `[SKIPPED]` marker, and a bare runner counts that as a FAILURE — only the
+    # junit rewrite in `_nextest-tolerant` turns it back into a skip. So a
+    # correct skip was reported as a red, and it made the merge group fail on an
+    # ENVIRONMENT FACT rather than on anything in the change.
+    #
+    # That fact is not incidental either: this gate lives in `check-build` ->
+    # `ci-l1`, which promises "no SDK, no QEMU and no cross toolchain". A C++
+    # capable newlib cross is exactly a cross toolchain, so the skip is the lane
+    # contract working, and swallowing it as a failure was the bug.
+    #
+    # A real failure still fails: the tolerance keys on the marker, and a
+    # build/setup error (nextest exit != 100) is never absorbed.
+    just _nextest-tolerant \
+        -p nros-tests --no-fail-fast \
+        --test platform_header_compile \
+        --test cross_libc_precedence_gate \
+        --test zephyr_prjconf_requirements
 
 # Per-example rustfmt --check (AST-only, no codegen/deps). The `check.yml`
 # per-example-fmt step as a recipe (SSoT).
