@@ -722,6 +722,39 @@ execution_class). `matrix_platform` is already spelled exactly as the
 `platform<TAB>tier<TAB>execution_class`. Additive, no behaviour change, and it
 is the keystone the rest hangs off.
 
+**Landed (2026-08-28): tier 1 now works like tier 2 — coordinate-scoped run AND
+build.** That is a better target than the inclusion-union plan below, and the
+reason is the Zephyr caveat: no token spelling separates `ZephyrNativeSim` from
+`ZephyrQemuCortexM`, so a name filter could not express tier 1 without guessing.
+Coordinates express it exactly, and phase-340 W3 had already made the same move
+for tier 2 for the same reason.
+
+  * `pool(Tier1)` — the three tier-1 platforms, with a new test
+    (`tier1_pool_matches_board_registry`) asserting the list EQUALS
+    `--print-tiers`. Hardcoding without that assertion is precisely how the two
+    drifted apart; the test is the SSoT enforcement.
+  * `spec(Tier1)` — gains `Axis::Platform`. Without it the greedy cover is
+    driven by requirements the pool cannot influence and stays Linux-only
+    however wide the pool gets. Cover: 10 -> 12 coordinates, 16 -> 17 cells.
+  * `run_scope(Tier1)` — `LaneCoords`, not `Native`. The name filter EXCLUDED
+    `zephyr` and `threadx`, the very platforms tier 1 promises.
+  * `just ci` — exports `NROS_TEST_COORDS` like `ci-matrix`, enforced by
+    `recipes_run_the_scope_their_lane_declares`, which failed the moment the
+    declaration changed and the recipe did not.
+  * `nros_lane_build_lane tier1` — maps to ITSELF, not the `native` module. The
+    old mapping had become actively wrong: `native` builds no zephyr native_sim
+    or threadx-linux fixtures, and `lane-coords tier1 --modules` now returns
+    `native threadx_linux zephyr`.
+
+174 lib tests green; the three coupling tests each failed first and had to be
+satisfied, which is what makes the change trustworthy rather than merely
+compiling.
+
+**STILL UNMEASURED, and it gates the promise:** what a tier-1 fixture build now
+costs. It gained the zephyr native_sim and threadx-linux modules, and every
+timing to hand is warm on a 24-core host. Nothing here should be read as "tier 1
+is affordable per merge" until that is measured COLD.
+
 **The remaining steps, in dependency order:**
 
 1. **`lane-filter.sh tier1`** — an INCLUSION union over the tier-1 platforms

@@ -3811,9 +3811,27 @@ ci-l1:
 
 [group("ci")]
 ci:
-    @NROS_FIXTURE_LANE=native bash scripts/check-tier-preconditions.sh
-    @NROS_FIXTURE_SCOPE=native NROS_TEST_SCOPE=native NROS_FIXTURE_LANE=native just check rust-rtos-link-check test-all
-    @echo "CI passed (tier 1 — host only; platform coverage needs \`just ci-matrix\`)!"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # phase-395 W19 — COORDINATE-scoped, like tier 2, and no longer
+    # `NROS_TEST_SCOPE=native`.
+    #
+    # The name filter excluded `zephyr` and `threadx` outright — the very
+    # platforms `board-support.toml` grants tier 1 — so the lane covered one of
+    # the three it promised. No token spelling fixes that: `zephyr` also matches
+    # `zephyr_cortex_m_qemu`, which is tier 2. Coordinates select exactly the
+    # cover and nothing else, which is the same move phase-340 W3 made for tier
+    # 2 and the same reason.
+    #
+    # One computation reaching the build, the staleness gate and the run — the
+    # tier-2 recipe below spells it identically on purpose.
+    source scripts/build/fixture-lane.sh
+    coords="$(nros_lane_coords_file tier1)"
+    coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    NROS_FIXTURE_LANE=tier1 bash scripts/check-tier-preconditions.sh
+    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
+        just check rust-rtos-link-check test-all
+    echo "CI passed (tier 1 — host-executable platforms; cross coverage needs \`just ci-matrix\`)!"
 
 # Tier 2 — phase-318 W4.d. Gate exactly the fixture COORDINATES the lane selected.
 #
