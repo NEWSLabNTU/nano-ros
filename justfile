@@ -3430,6 +3430,22 @@ rust-rtos-link-check: _require-leaf-includes
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
 
+# phase-395 W17 — does each platform's CI evidence SUPPORT the tier it claims?
+#
+# The network half of `check-board-tiers`. That gate is in `check-fast`: offline
+# and deterministic, so it can prove a tier's obligation is STRUCTURALLY met and
+# cannot know whether the lane is GREEN — it printed "Board support tiers match
+# the evidence" while the 0 7 nightly failed on three platforms.
+#
+# REPORTS, NEVER GATES. Exit 0 whatever the evidence says; only a broken tool
+# (no gh, not authenticated, unreadable registry) exits non-zero. There is
+# deliberately no `--check`: Rust's and Zephyr's tier policies both refuse to
+# auto-demote on a red, because auto-demotion is the pressure that makes people
+# silence tests. A tier changes when someone decides, with a record.
+[group("ci")]
+tier-health *args:
+    @python3 scripts/ci/tier-health.py {{args}}
+
 # A tier's affordability claim must be TRUE. `ci-l1` says "NO FIXTURES"; it
 # reached a fixture-resolving test for as long as anyone had written the claim
 # down, and nothing noticed until that lane became a REQUIRED status check and
