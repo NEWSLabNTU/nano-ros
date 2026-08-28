@@ -14,7 +14,16 @@
 name: host-tests
 
 on:
-  pull_request:
+  # phase-395 — POST-merge, not pre-merge. This lane needs ROS on the runner and
+  # its two jobs failed on every pull request; a red that is STRUCTURAL is not a
+  # gate, it is the noise that teaches people to ignore CI. It gates nothing
+  # (only `check` is required), so running it per-PR bought no safety and cost a
+  # concurrent runner on every agent push.
+  #
+  # `push` to main rather than schedule-only: this is L2, and bounding a
+  # regression to one commit is most of what post-submit is for. It comes back
+  # pre-merge when a self-hosted runner can actually satisfy it (W6).
+  push:
     branches: [main]
     paths:
       - "packages/**"
@@ -40,7 +49,11 @@ jobs:
     # heavy integration lane below uses its own group (cancel: false).
     concurrency:
       group: host-tests-unit-${{ github.ref }}-${{ github.event_name }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      # Was keyed on `pull_request`, which this workflow no longer fires on —
+      # the condition would have been permanently false, silently disabling
+      # superseding. On push-to-main superseding is CORRECT: post-submit asks
+      # "is main good now", so a newer commit's answer subsumes an older one's.
+      cancel-in-progress: ${{ github.event_name == 'push' }}
     permissions:
       contents: read
       packages: read
