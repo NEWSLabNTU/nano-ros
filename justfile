@@ -880,13 +880,18 @@ check-source-gates:
     # runner that builds no fixtures. It costs ~13 s — the snippets are small
     # `cargo check` template crates, which is the whole point of issue 0034's
     # design. The push lane never noticed because it runs `check-fast` only.
-    # ONLY the snippet lane. `platform_header_compile` asserts the
-    # `platform_hdr_*` stamps, which are `cargo-check` records — building every
-    # lane to get them also built `freertos_firmware`, which needs the FreeRTOS
-    # KERNEL SUBMODULE that CI does not provision, and the gate died on
-    # `missing include ... third-party/freertos/kernel`. Ask for the lane you
-    # assert.
-    NROS_COMPILE_CHECK_LANES=cargo-check bash scripts/build/compile-check-fixtures.sh
+    # ONLY the lane this gate asserts. `platform_header_compile` consumes the
+    # nine `platform_hdr_*` stamps, and ALL NINE are `cxx-syntax` records —
+    # verified against `examples/fixtures.toml`, not inferred from the ids. An
+    # earlier version of this line said `cargo-check` on exactly that inference
+    # and excluded the only lane the test needs; it passed locally because the
+    # stamps already existed from previous full builds, and failed in CI where
+    # they do not.
+    #
+    # Building every lane instead is what this replaced: that also built
+    # `freertos_firmware`, a `cargo-build` row needing the FreeRTOS KERNEL
+    # SUBMODULE which CI does not provision.
+    NROS_COMPILE_CHECK_LANES=cxx-syntax bash scripts/build/compile-check-fixtures.sh
     cargo test -p nros-tests --test platform_header_compile
     cargo test -p nros-tests --test cross_libc_precedence_gate
     cargo test -p nros-tests --test zephyr_prjconf_requirements
