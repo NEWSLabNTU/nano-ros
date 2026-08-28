@@ -100,7 +100,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
 - **#0865** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0865-*`.
 - **#0867** (testing, rmw) — `test_rtos_action_e2e` nuttx/C fails 3/3 SOLO — the client's goal send times out (-2) against a server sitting at its ready banner See `0867-*`.
-- **#0870** (rmw, examples) — NuttX C++ action client fails `create_action_client` with -100 (transport TX failed) on roughly two runs in three See `0870-*`.
+- **#0870** (rmw, examples) — NuttX C++ action client fails `create_action_client` — the session reports `Transport(ConnectionFailed)` against a router the server reached See `0870-*`.
 
 <!-- END GENERATED open-issue list -->
 

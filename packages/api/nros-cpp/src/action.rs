@@ -923,7 +923,16 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
             context: storage, // context = CppActionClient pointer
         }) {
         Ok(h) => h,
-        Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+        // issue 0870 — was `NROS_CPP_RET_TRANSPORT_ERROR`, discarding a typed
+        // `NodeError`. Nothing here has touched the transport yet: this is the
+        // executor's arena claim, so the variant that actually fires is
+        // `ExecutorFull` (NROS_EXECUTOR_MAX_CBS) — which exists, per its own
+        // doc, "so the register seam can name the knob". Reporting it as a TX
+        // failure sent the diagnosis at zenoh-pico's send path instead of at a
+        // capacity knob. `node_error_to_cpp_ret` already maps every variant and
+        // prints it; this seam simply was not calling it. Same collapse issue
+        // 0557 fixed inside the mapper, one layer out.
+        Err(e) => return crate::node_error_to_cpp_ret(e),
     };
 
     let client = CppActionClient {
@@ -1021,7 +1030,9 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
                 Ok(Some(true)) => return NROS_CPP_RET_OK,
                 Ok(Some(false)) => break,
                 Ok(None) => {}
-                Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+                // issue 0870 — a `TransportError` here really is transport, but
+                // WHICH one is the diagnosis; `-100` erases it.
+                Err(e) => return crate::transport_error_to_cpp_ret(e),
             }
             if crate::nros_cpp_time_ns() >= deadline_ns {
                 return NROS_CPP_RET_TIMEOUT;
