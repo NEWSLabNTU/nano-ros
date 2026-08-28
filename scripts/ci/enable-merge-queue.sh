@@ -75,11 +75,13 @@ RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 #
 # `_assert_merge_group_triggers` enforces this rather than trusting the comment.
 HOSTED_CHECKS=(
-    "L1 (compile + unit)"
-)
-# Checks that run on the PR but deliberately do NOT gate the queue.
-PR_ONLY_CHECKS=(
     "check (fast on push; full on PR/nightly)"
+)
+# Runs in the queue but does NOT gate. `pr-checks`'s `check` job already covers
+# `ci-l1` (check-fast + check-build + no_std + test-unit), so requiring both
+# would run the same work twice on every merge.
+PR_ONLY_CHECKS=(
+    "L1 (compile + unit)"
 )
 # Added to the required set only with --self-hosted-ready.
 SELF_HOSTED_CHECKS=(
@@ -272,6 +274,11 @@ fi
 # Refuse to require a check whose workflow cannot report on a merge group.
 # Reasoning about this correctly once is not the same as the tool refusing to do
 # it wrong — and the cost of getting it wrong is a repo where nothing merges.
+# issue: PR #6 sat BLOCKED forever. A required check must report in BOTH places
+# — on the PULL REQUEST, because GitHub will not admit a PR to the queue until
+# its required checks pass, and on the MERGE GROUP, because that is where the
+# batch is verified. `L1` ran only on merge_group, so the check gating entry
+# could only run after entry, and the PR's rollup simply had no L1 row at all.
 _assert_merge_group_triggers() {
     local ctx="$1" wf found=0
     for wf in .github/workflows/*.yml; do
@@ -284,12 +291,24 @@ _assert_merge_group_triggers() {
             continue
         fi
         found=1
-        if awk '/^on:/ { inon = 1; next }
-                /^[a-z]/ && !/^on:/ { inon = 0 }
-                inon && /merge_group/ { hit = 1 }
-                END { exit hit ? 0 : 1 }' "$wf"; then
-            echo "  ok — '$ctx' is in $(basename "$wf"), which triggers on merge_group"
+        local _has
+        _has="$(awk '/^on:/ { inon = 1; next }
+                     /^[a-z]/ && !/^on:/ { inon = 0 }
+                     inon && /merge_group/ { mg = 1 }
+                     inon && /pull_request/ { pr = 1 }
+                     END { printf "%s%s", (mg ? "m" : ""), (pr ? "p" : "") }' "$wf")"
+        if [ "$_has" = "mp" ] || [ "$_has" = "pm" ]; then
+            echo "  ok — '$ctx' is in $(basename "$wf"), which triggers on BOTH" \
+                 "pull_request and merge_group"
             return 0
+        fi
+        if ! printf '%s' "$_has" | grep -q p 2>/dev/null; then
+            echo "[FAIL] required check '$ctx' lives in $(basename "$wf"), which does" >&2
+            echo "       NOT trigger on \`pull_request\`. GitHub will not admit a PR to" >&2
+            echo "       the queue until its required checks pass, so the check that" >&2
+            echo "       gates entry could only run AFTER entry. The PR sits BLOCKED" >&2
+            echo "       with the check simply ABSENT from its rollup." >&2
+            return 1
         fi
         echo "[FAIL] required check '$ctx' lives in $(basename "$wf"), which does" >&2
         echo "       NOT trigger on \`merge_group\`. GitHub will never report it for a" >&2
