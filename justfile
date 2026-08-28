@@ -3769,7 +3769,20 @@ ci-l3: rust-rtos-link-check
         echo "    (`just setup freertos` / `just setup nuttx`) or this lane proves nothing." >&2
         exit 1
     fi
-    echo "L3 passed — $checked cross ELF(s) checked without booting anything."
+    # phase-391 W1/W4 (issues 0816/0843) — the heap-free tier, on a REAL image.
+    # `heap-free-poc-mps2` calls `Executor::open_in` + `install_node_typed_in`
+    # over per-class static storage and links with NO allocation symbol at all
+    # (no `#[global_allocator]`, no `malloc`, no `nros_platform_alloc`). Three
+    # earlier probes passed this gate vacuously at `symbols read: 1`; this one
+    # reads the full symbol table of a linked image (~460). The build doubles
+    # as issue 0843's tripwire: the leaf compiles `nros` WITHOUT the `alloc`
+    # feature, so re-coupling the macro-path runtime to `alloc` breaks it.
+    echo "== L3 — heap-free tier: link gate on the no-alloc image =="
+    (cd packages/testing/nros-tests/bins/heap-free-poc-mps2 \
+        && cargo build $(nros_cargo_profile_arg_string))
+    python3 scripts/check-no-alloc-image.py --tier heap-free \
+        "packages/testing/nros-tests/bins/heap-free-poc-mps2/target/thumbv7m-none-eabi/$(nros_cargo_target_profile_dir)/heap-free-poc-mps2"
+    echo "L3 passed — $checked cross ELF(s) checked without booting anything, and the heap-free image links clean."
 
 # A COMPILE SMOKE TEST for the pull-request gate — phase-395.
 #
