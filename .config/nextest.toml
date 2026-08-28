@@ -161,8 +161,21 @@ max-threads = 1
 # Resource: QEMU host-load throttle (arm-virt cold boots are heavy). Ports
 # are allocator-unique per (variant, lang); the per-variant sub-groups are
 # retired (W4).
+#
+# issue 0865 — 9 was never measured, and it is not a count of TESTS: each of
+# these spawns TWO arm-virt QEMU instances under `-icount shift=auto`, so the
+# cap authorised eighteen. Measured on this host, two tests running together
+# fail 3/3 while either alone passes; with the boot budgets corrected they go
+# from failing outright to flaky. The banner wait is the one that expires, and
+# it expires as `<no output collected>` — a slow boot reported as a dead image,
+# which is why the sweep read this as six nuttx regressions rather than as
+# throttling. 1 is what the measurement supports.
+#
+# This throttles OUR parallelism only; it cannot throttle other agent sessions
+# building on the same host, which is the other half of the load and why the
+# budget fix in rtos_e2e.rs is needed as well as this.
 [test-groups.qemu-nuttx]
-max-threads = 9
+max-threads = 1
 
 # Resource: QEMU host-load throttle (riscv64 virt). Allocator-unique ports;
 # per-variant sub-groups retired (W4).

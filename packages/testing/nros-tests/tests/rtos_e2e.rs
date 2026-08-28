@@ -570,15 +570,58 @@ fn start_pair(
 /// banner is missing — boot failures are real regressions (either a
 /// kernel/app integration issue or a zenoh / networking problem) and
 /// must surface loudly.
+/// How long a readiness banner may take to appear, by PLATFORM.
+///
+/// All three e2e shapes wait for a banner before doing anything else, and all
+/// three waited a flat 30 s — a budget sized for a native process. On an
+/// emulated platform that same wait has to cover a cold QEMU boot, the app's
+/// own startup sleep and a zenoh session open. The talker-window comment below
+/// already measured those at ">15 s before the first publish", so 30 s was
+/// nearly no margin, and under host load it is this wait that expires.
+///
+/// It expires badly. `collect_until` returns `Err(Timeout)` only when NOTHING
+/// was captured, so a slow boot is reported as `<no output collected>` and
+/// `ensure_ready` then blames a missing banner — indistinguishable from a dead
+/// image. The image is fine: run the same test serially and it passes.
+///
+/// Keyed on platform, because every term in that list — emulator, board, cold
+/// boot — is a property of the platform and not of the language the node was
+/// written in (issue 0865).
+fn boot_budget(platform: Platform) -> Duration {
+    match platform {
+        // A native process: no emulator and no cold boot to absorb.
+        Platform::ThreadxLinux => Duration::from_secs(30),
+        _ => Duration::from_secs(90),
+    }
+}
+
 fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform) {
     if output.contains(readiness_pattern) {
         return;
     }
+    // issue 0865 — say WHICH of the two happened. `collect_until` renders a
+    // harness-level failure into the text it returns, and returns `Err` (hence
+    // `<no output collected>`) only when the capture came back EMPTY. So an
+    // empty capture means the wait expired with the image having printed
+    // nothing yet — a slow boot and a dead image are the same string, and the
+    // string reads like the dead one. Naming the difference here is what stops
+    // the next reader diagnosing a runtime regression that is not there.
+    let empty_capture = output.starts_with("<no output collected");
+    let hint = if empty_capture {
+        "\n\nThe capture is EMPTY, which means the WAIT expired before the image \
+         printed anything — not that the image is dead. A cold QEMU boot under \
+         host load reaches this. Confirm by running this test alone; if it \
+         passes, the budget or the concurrency cap is what to look at \
+         (boot_budget / [test-groups.qemu-nuttx]), not the image."
+    } else {
+        ""
+    };
     panic!(
-        "{} E2E failed — readiness pattern '{}' not observed.\nOutput so far (truncated):\n{}",
+        "{} E2E failed — readiness pattern '{}' not observed.\nOutput so far (truncated):\n{}{}",
         platform,
         readiness_pattern,
-        &output[..output.len().min(2048)]
+        &output[..output.len().min(2048)],
+        hint
     );
 }
 
@@ -666,15 +709,15 @@ fn test_rtos_pubsub_e2e(
         }
         _ => "Waiting for messages",
     };
-    let listener_boot = listener.collect_until(ready_marker, Duration::from_secs(30));
+    let listener_boot = listener.collect_until(ready_marker, boot_budget(platform));
     ensure_ready(&listener_boot, ready_marker, platform);
 
     // Let the talker run a bit and drain its output to avoid pipe back-pressure.
     // NuttX C needs a longer window: cold QEMU boot + 5s app sleep + session
     // open can eat >15 s before the first publish, and parallel retries from
     // earlier flaky tests load the host further.
-    let talker_window = match (platform, lang) {
-        (Platform::Nuttx, Lang::C) => Duration::from_secs(45),
+    let talker_window = match platform {
+        Platform::Nuttx => Duration::from_secs(45),
         _ => Duration::from_secs(15),
     };
     let talker_out = talker.wait_for_output(talker_window).unwrap_or_default();
@@ -685,8 +728,8 @@ fn test_rtos_pubsub_e2e(
     // to `listener_window` before giving up, so it both de-flakes (less host
     // saturation from tests that used to burn the full 30 s / 90 s every run)
     // and keeps the same failure deadline. The assert only needs ≥1 sample.
-    let listener_window = match (platform, lang) {
-        (Platform::Nuttx, Lang::C) => Duration::from_secs(90),
+    let listener_window = match platform {
+        Platform::Nuttx => Duration::from_secs(90),
         _ => Duration::from_secs(30),
     };
     let final_out =
@@ -764,7 +807,7 @@ fn test_rtos_service_e2e(
         }
         _ => nros_tests::output::SERVICE_SERVER_READY_MARKER,
     };
-    let server_boot = server.collect_until(server_ready_marker, Duration::from_secs(30));
+    let server_boot = server.collect_until(server_ready_marker, boot_budget(platform));
     ensure_ready(&server_boot, server_ready_marker, platform);
 
     // Give the client the same boot delay as the server so its first
@@ -778,8 +821,8 @@ fn test_rtos_service_e2e(
     // QEMU slirp + zenoh-pico TCP are routinely in the 40–60 s range,
     // and the first call can time out if the server queryable isn't
     // fully registered yet (cold-host runs). Give extra headroom.
-    let client_timeout = match (platform, lang) {
-        (Platform::Nuttx, Lang::C) => Duration::from_secs(180),
+    let client_timeout = match platform {
+        Platform::Nuttx => Duration::from_secs(180),
         _ => Duration::from_secs(60),
     };
     // Early-exit when the client logs its single `Result of add_two_ints: N`
@@ -873,7 +916,7 @@ fn test_rtos_action_e2e(
         }
         _ => nros_tests::output::ACTION_SERVER_READY_MARKER,
     };
-    let server_boot = server.collect_until(action_ready_marker, Duration::from_secs(30));
+    let server_boot = server.collect_until(action_ready_marker, boot_budget(platform));
     ensure_ready(&server_boot, action_ready_marker, platform);
 
     if !matches!(platform, Platform::Nuttx | Platform::ThreadxLinux) {
