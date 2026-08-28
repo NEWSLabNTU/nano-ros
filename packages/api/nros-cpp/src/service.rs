@@ -836,7 +836,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
                 Ok(Some(true)) => return NROS_CPP_RET_OK,
                 Ok(Some(false)) => break,
                 Ok(None) => {}
-                Err(_) => return NROS_CPP_RET_TRANSPORT_ERROR,
+                // issue 0870 — a `TransportError` here really is transport, but
+                // WHICH one is the diagnosis; `-100` erases it.
+                Err(e) => return crate::transport_error_to_cpp_ret(e),
             }
             if crate::nros_cpp_time_ns() >= deadline_ns {
                 return NROS_CPP_RET_TIMEOUT;
