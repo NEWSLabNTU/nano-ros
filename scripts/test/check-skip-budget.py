@@ -123,7 +123,27 @@ def main(argv: list[str]) -> int:
     for case in root.iter("testcase"):
         if case.find("skipped") is None and case.find("failure") is None:
             executed += 1
-    print(f"check-skip-budget: {total} skip(s) — {breakdown}; {executed} test(s) ran")
+    # DESELECTION is not a skip, and reporting them as one number makes "lots of
+    # skips" unreadable. They mean opposite things to a reader:
+    #
+    #   lane        this test was never in this lane's scope. BY DESIGN wherever
+    #               the scope is not name-expressible — tier 2 is 1-wise over
+    #               platform, so the lang×rmw narrowing can only happen at the
+    #               fixture binding, and the resolver IS the selector there
+    #               (issues 0357/0482). Nobody should act on these.
+    #   capability  the test WAS in scope and this host could not run it. That is
+    #               a provisioning gap and the only class anyone can act on.
+    #   resource    in scope, host lacks a runtime resource (ports, devices).
+    #
+    # Burying the second in the first is how a lane with a real provisioning hole
+    # reads the same as one that simply narrowed its scope.
+    deselected = by_class.get("lane", 0)
+    unprovisioned = total - deselected
+    print(f"check-skip-budget: {executed} ran, {deselected} deselected (out of lane), "
+          f"{unprovisioned} skipped for an unmet precondition — {breakdown}")
+    if unprovisioned:
+        print(f"  {unprovisioned} skip(s) name something this host lacks; "
+              f"those are the actionable ones.")
     if not selected:
         print("  (no coordinate file; the out-of-lane assertion was NOT checked)")
 
