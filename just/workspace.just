@@ -35,7 +35,17 @@ CORROSION_VERSION := "v0.6.1"
 # with `nros-sdk-index.toml::[tool.play_launch_parser]` so a
 # `just workspace install-play-launch-parser` and a
 # `nros setup --tool play_launch_parser` land the same revision.
-PLAY_LAUNCH_PARSER_VERSION := "098ccb43328bca3c35320bb3adac27a11035b15d"
+# The parser now comes from the `play_launch` SUBMODULE, not from the archived
+# standalone repo. `jerry73204/play_launch_parser` is ARCHIVED and superseded by
+# `NEWSLabNTU/play_launch`, which vendors the same crate at
+# `src/ros-launch-resolve/parser/crates/play_launch_parser` and is already a
+# submodule here — so the binary and the LIBRARY `nros-launch-resolve` path-deps
+# now come from ONE pin instead of two that could drift silently (the class of
+# issues 0609 and 0507).
+#
+# The version is the SUBMODULE COMMIT, so the stamp invalidates exactly when the
+# pin moves.
+PLAY_LAUNCH_PARSER_VERSION := "838ce948551f8ba263648fbb7eeb572cec9d5950"
 
 # Workspace module — host-agnostic dev environment setup.
 #
@@ -291,14 +301,23 @@ install-play-launch-parser:
         exit 0
     fi
     mkdir -p "$prefix"
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    echo "[play_launch_parser] cloning $want..."
-    git clone https://github.com/jerry73204/play_launch_parser.git "$tmp/src"
-    git -C "$tmp/src" checkout --quiet "$want"
-    echo "[play_launch_parser] building (cargo install)..."
-    cargo install --path "$tmp/src/crates/play_launch_parser" \
-        --root "$prefix" --locked >/dev/null
+    # Built from the in-tree SUBMODULE, not cloned. Two reasons, and the second
+    # is the one that matters:
+    #   * the standalone repo is ARCHIVED, so a provisioning step that clones it
+    #     depends on a dead source;
+    #   * the LIBRARY half is already path-dep'd from this submodule by
+    #     `nros-launch-resolve`, so cloning the binary from elsewhere gave one
+    #     component two independent pins with nothing keeping them in step.
+    # No network fetch either, which is why this now works on a CI runner that
+    # checks out the submodule but never sources `activate.sh`.
+    src="{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve/parser/crates/play_launch_parser"
+    if [ ! -f "$src/Cargo.toml" ]; then
+        echo "[play_launch_parser] submodule not initialised — expected $src" >&2
+        echo "                     git submodule update --init packages/cli/third-party/play_launch" >&2
+        exit 1
+    fi
+    echo "[play_launch_parser] building from the submodule ($want)..."
+    cargo install --path "$src" --root "$prefix" --locked >/dev/null
     echo "$want" > "$stamp"
     echo "[play_launch_parser] installed $want at $prefix"
     echo "[play_launch_parser] ensure $prefix/bin is on PATH (direnv .envrc does this)."

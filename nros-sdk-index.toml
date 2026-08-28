@@ -245,13 +245,25 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # 5 min `default` tier policy in `docs/development/sdk-tiers.md`,
 # idempotent (the `just workspace install-play-launch-parser` recipe
 # gates on a `.installed-version` stamp).
+# SUPERSEDED SOURCE, 2026-08-28. `jerry73204/play_launch_parser` is ARCHIVED;
+# the crate lives on inside `NEWSLabNTU/play_launch`, which this repo already
+# pins as a submodule at `packages/cli/third-party/play_launch`. Pointing here
+# at the archived repo gave ONE component TWO independent pins — the LIBRARY
+# half is path-dep'd from the submodule by `nros-launch-resolve`, the BINARY
+# half was cloned from the standalone repo — with nothing keeping them in step.
+# That is the drift class of issues 0609 (zenoh router) and 0507 (cyclonedds).
+#
+# `just workspace install-play-launch-parser` now builds from the SUBMODULE and
+# fetches nothing; this row remains so `nros setup --tool play_launch_parser`
+# and `nros sdk-path` keep working for an out-of-tree consumer, and its `ref` is
+# the submodule pin so the two cannot disagree.
 [tool.play_launch_parser]
 version = "0.1.0-nros1"
-upstream = "098ccb43328bca3c35320bb3adac27a11035b15d" # = source.ref (main SHA, no upstream tags)
+upstream = "838ce948551f8ba263648fbb7eeb572cec9d5950" # = source.ref (play_launch pin; no upstream tags)
 [tool.play_launch_parser.source]
-git = "https://github.com/jerry73204/play_launch_parser"
-ref = "098ccb43328bca3c35320bb3adac27a11035b15d"
-install = "cargo install --path crates/play_launch_parser --root {prefix} --locked"
+git = "https://github.com/NEWSLabNTU/play_launch"
+ref = "838ce948551f8ba263648fbb7eeb572cec9d5950"
+install = "cargo install --path src/ros-launch-resolve/parser/crates/play_launch_parser --root {prefix} --locked"
 
 # Corrosion — the CMake ↔ Rust/Cargo bridge that `corrosion_import_crate()`
 # in mixed-language workspaces (Phase 212 — `cmake/NanoRosThreadxSystemCodegen.cmake`,

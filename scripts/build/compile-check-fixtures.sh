@@ -224,9 +224,20 @@ cmake_fixture_prereqs_ok() {
         exit 2
     }
     # The C/mixed Entry templates parse launch XML via play_launch_parser.
+    #
+    # A LANE SKIP, not `exit 2`, and the distinction is the point: a missing
+    # play_launch_parser is a HOST CAPABILITY question, exactly like the
+    # `cmake absent` case a few lines up, which has always skipped. Killing the
+    # whole script for it meant a caller that needs only the compile-check
+    # SNIPPETS could not get them — `check-source-gates` builds its own stamps
+    # for `platform_header_compile`, and on a CI runner that never sources
+    # `activate.sh` this turned into a required status check that could not
+    # pass. A stale or absent `nros` CLI stays hard below: that is a defect,
+    # not a capability.
     command -v play_launch_parser >/dev/null 2>&1 || {
-        echo "cmake-fixtures: play_launch_parser not found (source ./activate.sh)" >&2
-        exit 2
+        cmake_skipped="play_launch_parser absent"
+        _note_lane_skip "cmake-fixtures: play_launch_parser not found (source ./activate.sh)"
+        return 1
     }
     NROS_CLI_BIN="$nb"
     return 0

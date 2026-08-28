@@ -7,16 +7,6 @@
 # issue-0743 class.
 #
 # Regenerate: python3 scripts/check-gate-selftests.py --write-baseline
-scripts/build/borrowed-e2e-fixture.sh
-scripts/build/build-root.sh
-scripts/build/cargo.sh
-scripts/build/check-skip.sh
-scripts/build/fixture-inventory.py
-scripts/build/fixtures-manifest.py
-scripts/build/host-only-members.sh
-scripts/build/jobserver-pool.sh
-scripts/build/link-determinism-fixture.sh
-scripts/build/run-gates-parallel.sh
 scripts/check-activate-shells.sh
 scripts/check-archive-lang-items.sh
 scripts/check-artifact-identity-budget.sh
