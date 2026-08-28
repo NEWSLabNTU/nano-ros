@@ -2,12 +2,43 @@
 id: 859
 title: "`rust/action-server` diverges from its native copy on all four RTOS
   platforms — one copy of a portability group was edited alone"
-status: open
+status: resolved
+resolution: retracted
 type: bug
 area: examples, testing
 related: [phase-338, phase-394]
 ---
 
+> **RETRACTED — not a defect.** The original report is kept below
+> unaltered, because a retraction that deletes its own evidence cannot
+> be checked.
+
+## Retracted 2026-08-28 — the run that produced this was invalid
+
+This was filed from a `just ci-matrix` run whose FIXTURES PREDATED THE TREE.
+The sweep built its artifacts at 03:19, the tree was then rebased past 04:48,
+and the old results were read as current. Re-run against fixtures matching the
+tree, it passes.
+
+That is not a flake and not a partial fix: nothing about the reported behaviour
+was real. See the retraction note at the bottom for the shared cause, which took
+all four issues from that run.
+
+## Re-check
+
+```
+$ cargo nextest run -E 'test(copies_within_a_group_are_identical)'
+    PASS [   0.008s] (1/1) nros-tests::example_portability copies_within_a_group_are_identical
+     Summary [   0.018s] 1 test run: 1 passed
+```
+
+This gate reads example SOURCES (`collect_sources()`), not fixtures, so it was
+decidable immediately and needed no rebuild. The divergence had already been
+fixed on main; my checkout simply predated the fix.
+
+---
+
+# Original report (retracted, kept for the record)
 ## Symptom
 
 `nros-tests::example_portability copies_within_a_group_are_identical` fails on

@@ -92,9 +92,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0852** (rmw, platform) — the zenoh read task inherits the executor's priority on Zephyr — the declared priority is discarded by the port, so a 20 ms timeslice starves the polled serial RX and it overruns See `0852-*`.
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
-- **#0859** (examples, testing) — `rust/action-server` diverges from its native copy on all four RTOS platforms — one copy of a portability group was edited alone See `0859-*`.
-- **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
-- **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
 - **#0865** (examples, docs) — parameter services are implemented and tested but undiscoverable: no example calls them, and the C header declares the entry point unconditionally so a caller without the feature gets a bare `undefined reference` See `0865-*`.
 - **#0868** (examples, testing) — A `send_goal` TIMEOUT prints as `Goal was rejected by server`, so an intermittent XRCE action failure reads as a deterministic server decision See `0868-*`.
 - **#0871** (ci, testing) — Every PR is red on a fixture CI never builds — and `main` cannot see it, because the required gate does not run on push See `0871-*`.
