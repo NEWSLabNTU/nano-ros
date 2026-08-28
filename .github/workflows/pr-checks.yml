@@ -56,6 +56,22 @@ on:
       - "nros-sdk-index.toml"
       - ".gitmodules"
       - ".github/workflows/pr-checks.yml"
+  # phase-395 W7 — the merge queue. A required status check MUST trigger on
+  # `merge_group` or it is never reported for a queued batch, and GitHub fails
+  # the merge waiting for it: a frozen repo, not a gated one.
+  #
+  # This is not symmetric with the other triggers, and the asymmetry is the
+  # whole lesson. A required check has to report in BOTH places — on the pull
+  # request, because GitHub will not admit a PR to the queue until its required
+  # checks pass, and on the merge group, because that is where the batch is
+  # actually verified. A check that runs in only one of them deadlocks: PR #6
+  # sat BLOCKED with `L1 (compile + unit)` simply ABSENT from its rollup, since
+  # the check gating entry could only run after entry.
+  #
+  # Deliberately no `paths:` filter here. Path-gating a merge-queue check means
+  # a batch touching only unfiltered paths never reports it, which is the same
+  # freeze arriving by a quieter route.
+  merge_group:
   # Nightly runs the FULL gate (fast + build tier) even on a direct-push-to-main
   # workflow where PRs are rare — so the compile gates get a daily signal.
   schedule:
@@ -64,12 +80,27 @@ on:
 
 concurrency:
   group: pr-checks-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  # NEVER cancel a merge-queue run. Cancelling one makes the batch fail with no
+  # verdict, and GitHub then ejects pull requests that were never actually
+  # tested — the opposite of what the queue is for. Superseding is right
+  # everywhere else, where a newer push's answer subsumes an older one's.
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   # Path-gate the narrow lanes: on a PR each runs only if its paths moved; on
   # push/schedule/dispatch the per-job `if` falls through to run them all.
   changes:
+    # Not on a merge group. `dorny/paths-filter` has no base ref to diff there,
+    # and the three lanes below fall through on any non-`pull_request` event, so
+    # without this a queued batch would additionally run `scaffold-journey` and
+    # `colcon-parity` — minutes of latency on every merge, and `colcon-parity`
+    # is the lane that was already red on 2026-08-27 for reasons unrelated to
+    # any change in the batch. A skipped dependency skips its dependents, so
+    # this one condition covers all three.
+    #
+    # Only the REQUIRED check needs to run in the queue, and `check` declares no
+    # `needs`, so it is unaffected.
+    if: ${{ github.event_name != 'merge_group' }}
     runs-on: ubuntu-latest
     outputs:
       scaffold: ${{ steps.f.outputs.scaffold }}
