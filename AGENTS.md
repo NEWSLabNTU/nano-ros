@@ -297,6 +297,30 @@ damage is bounded, but it is real and it is paid by other agents.
 push is what makes the cheap PR gate affordable for everyone else. Skipping it
 does not save you time; it moves your time onto three other agents.
 
+## Stacking: when PR B builds on PR A
+
+**Base B on `fix/a`, never on `main`.** The merge queue is FIFO by entry time and
+understands nothing about branch relationships, so ordering is something you
+arrange or do not get.
+
+If B's base is **`main`** while its branch contains A's commits, B's diff is
+`A + B`. That mostly works — and fails in the one case that matters: **if A is
+rejected, its commits are still in B's branch, so they land anyway when B
+merges.** The queue did its job and the change shipped regardless. Nothing in
+the tooling catches this; the diff is legitimate and the queue has no way to
+know those commits were someone else's rejected work.
+
+If B's base is **`fix/a`**, ordering is structural. The ruleset targets
+`refs/heads/main` only, so a pull request into `fix/a` has no required checks and
+no queue — it merges into A freely, and A then carries both into the queue as one
+unit. When A lands and `fix/a` is deleted, GitHub retargets B to `main`
+automatically, and B queues with only its own changes.
+
+**Simplest of all: do not stack.** Land A, rebase B onto the new `main`, then
+open B. It costs one queue cycle and has no failure mode. Stack only when B is
+genuinely blocked on A's code, which is rarer than it feels — `just claim` exists
+so two agents do not need the same work in flight.
+
 ## When the merge queue rejects your pull request
 
 A merge group tests **`main` + your PR**, which is a commit that exists nowhere
