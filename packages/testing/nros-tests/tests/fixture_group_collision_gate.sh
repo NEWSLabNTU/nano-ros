@@ -42,6 +42,14 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 cd "$repo_root"
 
+# Issue 0726 — `expect_report` below concludes "the gate never mentioned
+# <artifact>, so it did not detect this collision" from a `grep -q` that cannot
+# tell rc 1 from rc>=2. Under the gate fan-out that verdict is reachable with
+# the collision detected and the message printed. `nros_grep_q` exits 2 on
+# rc>=2 rather than returning a status the caller reads as a finding.
+# shellcheck source=../../../../scripts/lib/grep-q.sh
+. "$repo_root/scripts/lib/grep-q.sh"
+
 gate="scripts/check-fixture-groups.py"
 collider="tripwire_collider"
 fail=0
@@ -108,7 +116,10 @@ expect_report() {
         fail=1
         return
     fi
-    if ! printf '%s' "$out" | grep -q "$artifact"; then
+    # NOT `printf … | nros_grep_q`: a pipeline runs the helper in a SUBSHELL,
+    # where its `exit 2` ends only that pipeline segment and hands the caller
+    # back the exact rc it exists to remove. A herestring keeps it in-process.
+    if ! nros_grep_q "$artifact" <<<"$out"; then
         echo "  FAIL $label — gate failed but never mentioned '$artifact', so it"
         echo "        did not detect this collision (a crash exits non-zero too)"
         echo "        gate said: $out"

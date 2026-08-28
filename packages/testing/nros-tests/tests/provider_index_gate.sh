@@ -38,6 +38,16 @@ MODULE="$ROOT/cmake/NanoRosProviders.cmake"
 # shellcheck source=../../../../scripts/build/check-skip.sh
 . "$ROOT/scripts/build/check-skip.sh"
 
+# Issue 0726/0732 — every assertion below is `grep -q … || bad T<n>`, i.e. a
+# grep that did not RUN is indistinguishable from a provision that is not
+# there, and the verdict it produces ("board:Widget missing (case folded
+# away?)") is specific enough to send the reader into the index loader. Under
+# the parallel gate fan-out a forked grep can fail to start, which is exactly
+# how `workspace_order_gate.sh` next door announced a provider had stopped
+# being discoverable. `nros_grep_q` exits 2 on rc>=2 instead of returning it.
+# shellcheck source=../../../../scripts/lib/grep-q.sh
+. "$ROOT/scripts/lib/grep-q.sh"
+
 # The in-tree CLI is a BUILD PRODUCT, absent on the pristine worktree this
 # tier documents itself green on (issue 0650's list names it). Skip loudly —
 # the lane's closing report refuses to say "passed" over a skipped gate.
@@ -148,24 +158,24 @@ OUT="$(cd "$WORK" && cmake -S . -B build 2>&1)" || {
     exit 1
 }
 
-grep -q "GATE rows=4" <<<"$OUT" ||
+nros_grep_q "GATE rows=4" <<<"$OUT" ||
     bad T1 "expected 4 provision rows (2 rmw + 2 board), got: $(grep -o 'GATE rows=[0-9]*' <<<"$OUT")"
-grep -q "GATE kinds=board;rmw" <<<"$OUT" ||
+nros_grep_q "GATE kinds=board;rmw" <<<"$OUT" ||
     bad T1 "expected kinds 'board;rmw', got: $(grep -o 'GATE kinds=.*' <<<"$OUT")"
-grep -q "GATE acme_pkg=acme_rmw" <<<"$OUT" ||
+nros_grep_q "GATE acme_pkg=acme_rmw" <<<"$OUT" ||
     bad T1 "per-name PACKAGE variable not set for rmw:acme"
-grep -q "GATE acmefast_dir=$WS/src/acme_rmw" <<<"$OUT" ||
+nros_grep_q "GATE acmefast_dir=$WS/src/acme_rmw" <<<"$OUT" ||
     bad T1 "hyphenated name 'acme-fast' did not map to a usable variable suffix"
 
 # T2 — both case spellings resolve, and to their OWN entries. If the suffix
 # were upper-cased these two would be one variable.
-grep -q "GATE lower=case_board" <<<"$OUT" || bad T2 "board:widget missing"
-grep -q "GATE upper=case_board" <<<"$OUT" || bad T2 "board:Widget missing (case folded away?)"
+nros_grep_q "GATE lower=case_board" <<<"$OUT" || bad T2 "board:widget missing"
+nros_grep_q "GATE upper=case_board" <<<"$OUT" || bad T2 "board:Widget missing (case folded away?)"
 
 # T3 — the non-provider is watched too, and so is the index itself.
-grep -q "GATE dep=$WS/src/plain_node/package.xml" <<<"$OUT" ||
+nros_grep_q "GATE dep=$WS/src/plain_node/package.xml" <<<"$OUT" ||
     bad T3 "a NON-provider package.xml is not in CMAKE_CONFIGURE_DEPENDS"
-grep -q "GATE dep=$IDX" <<<"$OUT" ||
+nros_grep_q "GATE dep=$IDX" <<<"$OUT" ||
     bad T3 "the index itself is not in CMAKE_CONFIGURE_DEPENDS"
 
 # --- T4: a provider appearing after the index was written --------------------
@@ -188,9 +198,9 @@ if CHECK="$("$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" \
         --check-index "$IDX" 2>&1)"; then
     bad T4 "adding a new provider did NOT make --check-index fail"
 else
-    grep -q "latecomer" <<<"$CHECK" ||
+    nros_grep_q "latecomer" <<<"$CHECK" ||
         bad T4 "--check-index failed but never named the new provider: $CHECK"
-    grep -qi "STALE" <<<"$CHECK" ||
+    nros_grep_q -i "STALE" <<<"$CHECK" ||
         bad T4 "--check-index failed without saying the index is stale"
 fi
 
@@ -201,7 +211,7 @@ if OUT5="$("$NROS" ws providers --workspace "$OTHER" --nano-ros-root "$OTHER" \
         --index "$IDX" 2>&1)"; then
     bad T5 "an index built for different roots was served instead of rejected"
 else
-    grep -qi "roots" <<<"$OUT5" ||
+    nros_grep_q -i "roots" <<<"$OUT5" ||
         bad T5 "rejected, but the message does not mention the roots: $OUT5"
 fi
 
@@ -223,14 +233,27 @@ if [ -n "$R6" ]; then
     # verified by perturbation, which is how this weakness was found. Check the
     # WINNER line (first) and the shadows line separately.
     R6_WINNER="$(head -1 <<<"$R6")"
-    R6_SHADOW="$(grep 'shadows' <<<"$R6" || true)"
-    grep -q "patched_backend" <<<"$R6_WINNER" ||
+    # Issue 0726 in CAPTURE form, and the `-q` helper cannot serve it because
+    # the LINE is wanted, not just its presence. `grep … || true` collapses
+    # "no shadows line" (rc 1) and "grep did not run" (rc>=2) into the same
+    # empty string, which the `[ -n … ]` below reports as "the shadowed
+    # provider was not reported" — a specific, wrong claim about the CLI.
+    if R6_SHADOW="$(grep 'shadows' <<<"$R6")"; then :; else
+        r6_rc=$?
+        [ "$r6_rc" -eq 1 ] || {
+            echo "FATAL: grep failed (rc=$r6_rc) reading the shadows line." >&2
+            echo "       A tool failure, not a finding (issue 0726)." >&2
+            exit 2
+        }
+        R6_SHADOW=""
+    fi
+    nros_grep_q "patched_backend" <<<"$R6_WINNER" ||
         bad T6 "the OVERLAY did not win; winner line was: $R6_WINNER"
-    grep -q "root\[1\]" <<<"$R6_WINNER" ||
+    nros_grep_q "root\[1\]" <<<"$R6_WINNER" ||
         bad T6 "the winner is not from the LATER root: $R6_WINNER"
     [ -n "$R6_SHADOW" ] ||
         bad T6 "the shadowed provider was not reported: $R6"
-    grep -q "acme_rmw" <<<"$R6_SHADOW" ||
+    nros_grep_q "acme_rmw" <<<"$R6_SHADOW" ||
         bad T6 "the shadows line does not name the loser: $R6_SHADOW"
 fi
 
@@ -242,7 +265,7 @@ if R7="$("$NROS" ws providers --workspace "$DUP" --nano-ros-root "$DUP" \
         --resolve rmw:twice 2>&1)"; then
     bad T7 "same-root ambiguity resolved instead of erroring: $R7"
 else
-    grep -q "dup_one" <<<"$R7" && grep -q "dup_two" <<<"$R7" ||
+    nros_grep_q "dup_one" <<<"$R7" && nros_grep_q "dup_two" <<<"$R7" ||
         bad T7 "ambiguity error does not list both candidates: $R7"
 fi
 
@@ -251,7 +274,7 @@ if R8="$("$NROS" ws providers --workspace "$WS" --nano-ros-root "$WS" \
         --resolve rmw:acmee 2>&1)"; then
     bad T8 "an unknown provider name resolved"
 else
-    grep -q "acme" <<<"$R8" ||
+    nros_grep_q "acme" <<<"$R8" ||
         bad T8 "not-found error does not list the available names: $R8"
 fi
 

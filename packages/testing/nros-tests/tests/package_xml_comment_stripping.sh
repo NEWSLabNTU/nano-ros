@@ -35,6 +35,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 MODULE="$ROOT/cmake/NanoRosPackageXml.cmake"
+
+# Issue 0726 — `expect` below reports "expected to contain '<want>'", i.e. that
+# the cmake comment stripper read the wrong value, on the strength of a
+# `grep -qF` that may not have run at all. `nros_grep_q` exits 2 on rc>=2.
+# shellcheck source=../../../../scripts/lib/grep-q.sh
+. "$ROOT/scripts/lib/grep-q.sh"
+
 [ -f "$MODULE" ] || {
     echo "FAIL: module not found at $MODULE" >&2
     exit 1
@@ -98,14 +105,29 @@ OUT="$(cmake -P "$WORK/run.cmake" 2>&1)" || {
 fail=0
 expect() {
     local label="$1" want="$2"
-    local got
-    got="$(printf '%s\n' "$OUT" | grep -E "RESULT $label " || true)"
+    local got grc
+    # Issue 0726 in CAPTURE form: `grep … || true` maps BOTH "no RESULT line"
+    # (rc 1) and "grep did not run" (rc>=2) to the empty string, and the empty
+    # string is reported below as "the case never ran" — a claim about the
+    # cmake loop, produced by a grep that never answered. The `-q` helper does
+    # not fit (the LINE is wanted), so the statuses are split by hand.
+    if got="$(grep -E "RESULT $label " <<<"$OUT")"; then :; else
+        grc=$?
+        [ "$grc" -eq 1 ] || {
+            echo "FATAL: grep failed (rc=$grc) selecting the RESULT line for" >&2
+            echo "       '$label'. A tool failure, not a finding (issue 0726)." >&2
+            exit 2
+        }
+        got=""
+    fi
     if [ -z "$got" ]; then
         echo "FAIL[$label]: no RESULT line — the case never ran" >&2
         fail=1
         return
     fi
-    if ! printf '%s\n' "$got" | grep -qF "$want"; then
+    # A herestring, not a pipe: in a pipeline the helper is a SUBSHELL and its
+    # `exit 2` would end only that segment.
+    if ! nros_grep_q -F -- "$want" <<<"$got"; then
         echo "FAIL[$label]: expected to contain '$want'" >&2
         echo "  got: ${got#*-- }" >&2
         fail=1
