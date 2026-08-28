@@ -391,12 +391,21 @@ fi
 # reason the ruleset exists.
 gh api "repos/$REPO/rulesets/$rid" > /tmp/nros-ruleset-current.json
 
-python3 - "$contexts_json" "$WITH_QUEUE" \
-    < /tmp/nros-ruleset-current.json > /tmp/nros-ruleset-new.json <<'PY'
+# The required contexts as JSON. Built here rather than inline in the heredoc so
+# a name containing a space or a paren survives intact.
+contexts_json="$(printf '%s\n' "${required[@]}" |
+    python3 -c 'import json,sys; print(json.dumps([l.rstrip("\n") for l in sys.stdin if l.strip()]))')"
+
+# The ruleset is passed BY PATH, not on stdin: `python3 -` already consumes
+# stdin for the program itself, so a `< file` redirect here reaches an exhausted
+# stream and json.load sees an empty string.
+python3 - "$contexts_json" "$WITH_QUEUE" /tmp/nros-ruleset-current.json \
+    > /tmp/nros-ruleset-new.json <<'PY'
 import json, sys
 contexts = json.loads(sys.argv[1])
 with_queue = sys.argv[2] == "1"
-cur = json.load(sys.stdin)
+with open(sys.argv[3], encoding="utf8") as fh:
+    cur = json.load(fh)
 
 rules = {r["type"]: r for r in cur.get("rules", [])}
 for guard in ("deletion", "non_fast_forward", "required_linear_history"):
