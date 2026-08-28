@@ -72,6 +72,13 @@ def gate_scripts():
             continue
         for m in re.finditer(r"scripts/[A-Za-z0-9._/-]+\.(?:sh|py)", line):
             p = m.group(0)
+            # `scripts/build/**` PRODUCES artifacts; it does not assert, so it
+            # is not a gate and cannot have a failure path to exercise. A gate
+            # legitimately invokes one as a prerequisite —
+            # `check-source-gates` builds its own compile-check stamps — and
+            # counting that as a gate demanded a selftest of a build step.
+            if p.startswith("scripts/build/"):
+                continue
             if os.path.exists(os.path.join(ROOT, p)):
                 found.add(p)
     return sorted(found)

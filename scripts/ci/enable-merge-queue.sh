@@ -302,14 +302,19 @@ _assert_merge_group_triggers() {
                  "pull_request and merge_group"
             return 0
         fi
-        if ! printf '%s' "$_has" | grep -q p 2>/dev/null; then
+        # `case`, not `grep -q`: a `grep -q` conditional cannot tell a tool
+        # ERROR (exit >=2) from a NON-MATCH (exit 1), which is what
+        # `check-grep-q-error-conflation` forbids. A glob needs no tool at all.
+        case "$_has" in
+            *p*) ;;
+            *)
             echo "[FAIL] required check '$ctx' lives in $(basename "$wf"), which does" >&2
             echo "       NOT trigger on \`pull_request\`. GitHub will not admit a PR to" >&2
             echo "       the queue until its required checks pass, so the check that" >&2
             echo "       gates entry could only run AFTER entry. The PR sits BLOCKED" >&2
             echo "       with the check simply ABSENT from its rollup." >&2
-            return 1
-        fi
+            return 1 ;;
+        esac
         echo "[FAIL] required check '$ctx' lives in $(basename "$wf"), which does" >&2
         echo "       NOT trigger on \`merge_group\`. GitHub will never report it for a" >&2
         echo "       queued batch, and the merge fails waiting — a frozen repo, not a" >&2
