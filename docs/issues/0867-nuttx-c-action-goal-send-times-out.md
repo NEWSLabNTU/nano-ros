@@ -77,7 +77,43 @@ yet tested:
   rather than dead. Two different failures on one platform for one variant
   suggests the action path's embedded resourcing, not the C bindings.
 
+## Cause, found by booting the pair by hand
+
+Not a resourcing bug at all — an ORDERING one. `start_pair` launched both
+instances simultaneously on NuttX, and its comment says why: the NuttX Rust
+binaries boot slowly, so giving the listener the usual 20 s head start expired
+its session before the talker finished booting. That is correct for PUB/SUB,
+where a subscriber joining late still receives the next sample. It was keyed on
+the PLATFORM, so it also governed the request/response shapes — where the client
+asks ONCE and gives up.
+
+Booted by hand with the client started after the server's banner, the same two
+images complete goal -> accept -> feedback -> result every time. Started
+together, the client reaches `Sending goal` before the server's queryable is
+declared, and the deadline that expires is the app's own.
+
+## Fix
+
+`start_server_then_client` — the client is not spawned until the server's
+readiness banner has actually been observed. Keyed on the SHAPE, and waiting on
+the banner rather than sleeping a fixed guess at how long the banner takes.
+Applied to both request/response shapes (service and action); pub/sub keeps its
+parallel start for the reason above, and `start_pair`'s reasoning was folded
+into the replacement rather than deleted with it.
+
+Measured: nuttx/C action 3/3 failing at 72-92 s -> passing in 16.2 s. Action
+matrix 8/8 on real cells; freertos and threadx-linux unaffected.
+
 ## Acceptance
 
-* `test_rtos_action_e2e` nuttx/C passes solo, repeatably, and the diagnosis
-  names which resource ran out rather than reporting a bare `-2`.
+* `test_rtos_action_e2e` nuttx/C passes solo, repeatably. (Met.)
+
+## Still failing in that cell's C++ sibling — issue 0870
+
+nuttx/C++ action intermittently fails `create_action_client` with `-100`
+(`NROS_CPP_RET_TRANSPORT_ERROR`), roughly 2 runs in 3, solo on an idle host.
+Different failure at a different point — it never finishes constructing the
+client, where this issue's client got as far as `Sending goal`. It predates this
+fix and survives it. Filed as 0870 rather than folded in here, because the two
+were already easy to conflate: the same cell produced `-2` and `-100` on
+different runs.
