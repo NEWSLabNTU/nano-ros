@@ -29,19 +29,15 @@
 name: nightly
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "packages/**"
-      - "examples/**"
-      - "just/**"
-      - "justfile"
-      - "cmake/**"
-      - "zephyr/**"
-      - "scripts/zephyr/**"
-      - "nros-sdk-index.toml"
-      - "ci/docker/zephyr-ros/**"
-      - ".github/workflows/nightly.yml"
+  # phase-395 — NO `pull_request`. This is the L3/L4 cross-build matrix: it
+  # needs the Zephyr SDK, cross toolchains and QEMU, none of which a hosted
+  # runner has, so all 8 jobs failed on every PR. Structurally unable to pass is
+  # not flaky and is not a gate — it is 8 concurrent runners of pure noise per
+  # agent push, sitting beside the one check that actually gates.
+  #
+  # It stays on the schedule, where it can be provisioned, and on dispatch.
+  # Bringing it pre-merge requires a self-hosted runner (W6) — `queue.yml`'s L3
+  # job is the place for that, gated on NROS_SELF_HOSTED_READY.
   workflow_dispatch:
     inputs:
       run_e2e:
@@ -194,6 +190,10 @@ jobs:
             case " $runnable " in *" $m "*) all="$all $m" ;; esac
           done
           echo "lane-derived platform set:$all"
+          # Always true now — `pull_request` is not a trigger. Left as an
+          # explicit branch rather than deleted: the `else` records what the PR
+          # lane used to select, and phase-395 W6 brings a narrowed pre-merge
+          # matrix back once a self-hosted runner can satisfy it.
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             sel="$all"
             zephyr="true"
@@ -221,7 +221,11 @@ jobs:
     runs-on: ubuntu-22.04
     concurrency:
       group: nightly-platform-${{ matrix.plat }}-${{ github.ref }}-${{ github.event_name }}
-      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+      # `pull_request` is no longer a trigger here, so this was permanently
+      # false. Keep it that way deliberately: a cancelled matrix job on a
+      # schedule leaves a coordinate with NO verdict, which reads the same as
+      # one that passed.
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: read
