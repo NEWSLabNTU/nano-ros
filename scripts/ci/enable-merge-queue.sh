@@ -62,10 +62,24 @@ READINESS=0
 WITH_QUEUE=0
 RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 
-# The lanes that can ALWAYS start. Only these gate, by default.
+# The lanes that gate. EVERY entry must be a job whose workflow triggers on
+# `merge_group`, or the queue blocks forever — GitHub's own words: "The merge
+# will fail as the required status check will not be reported." A required check
+# that cannot REPORT is the same freeze as one that cannot START.
+#
+# So `check (fast on push; full on PR/nightly)` is NOT here despite being the
+# obvious candidate: `pr-checks.yml` triggers on push/pull_request/schedule and
+# NOT on merge_group. It still runs on every PR and its failures are still
+# visible; it just cannot be the thing that gates a queue. `just ci-l1` covers
+# the same ground inside the queue (check-fast + check-build + test-unit).
+#
+# `_assert_merge_group_triggers` enforces this rather than trusting the comment.
 HOSTED_CHECKS=(
-    "check (fast on push; full on PR/nightly)"
     "L1 (compile + unit)"
+)
+# Checks that run on the PR but deliberately do NOT gate the queue.
+PR_ONLY_CHECKS=(
+    "check (fast on push; full on PR/nightly)"
 )
 # Added to the required set only with --self-hosted-ready.
 SELF_HOSTED_CHECKS=(
@@ -255,7 +269,51 @@ if [ "$STATUS" = 1 ]; then
     exit 0
 fi
 
+# Refuse to require a check whose workflow cannot report on a merge group.
+# Reasoning about this correctly once is not the same as the tool refusing to do
+# it wrong — and the cost of getting it wrong is a repo where nothing merges.
+_assert_merge_group_triggers() {
+    local ctx="$1" wf found=0
+    for wf in .github/workflows/*.yml; do
+        [ -f "$wf" ] || continue
+        # Does this workflow define a job with that display name?
+        # `index`, not `~`: a job name like "L1 (compile + unit)" is full of
+        # regex metacharacters, and matching it as a PATTERN finds nothing —
+        # which this interlock reported as "no workflow produces it".
+        if ! awk -v n="name: $ctx" 'index($0, n) { hit = 1 } END { exit hit ? 0 : 1 }' "$wf"; then
+            continue
+        fi
+        found=1
+        if awk '/^on:/ { inon = 1; next }
+                /^[a-z]/ && !/^on:/ { inon = 0 }
+                inon && /merge_group/ { hit = 1 }
+                END { exit hit ? 0 : 1 }' "$wf"; then
+            echo "  ok — '$ctx' is in $(basename "$wf"), which triggers on merge_group"
+            return 0
+        fi
+        echo "[FAIL] required check '$ctx' lives in $(basename "$wf"), which does" >&2
+        echo "       NOT trigger on \`merge_group\`. GitHub will never report it for a" >&2
+        echo "       queued batch, and the merge fails waiting — a frozen repo, not a" >&2
+        echo "       gated one. Add \`merge_group:\` to that workflow's \`on:\`, or drop" >&2
+        echo "       the check from the required set." >&2
+        return 1
+    done
+    if [ "$found" = 0 ]; then
+        echo "[FAIL] required check '$ctx' matches no job name in .github/workflows/." >&2
+        echo "       A required check that no workflow produces stays PENDING forever." >&2
+        return 1
+    fi
+}
+
 required=("${HOSTED_CHECKS[@]}")
+
+if [ "$WITH_QUEUE" = 1 ] || [ "$APPLY" = 1 ]; then
+    echo "checking every required context can REPORT on a merge group:"
+    for _ctx in "${required[@]}"; do
+        _assert_merge_group_triggers "$_ctx" || exit 1
+    done
+    echo
+fi
 
 if [ "$SELF_HOSTED" = 1 ]; then
     # Refuse on ASSERTION, not on assumption: a self-hosted required check with
@@ -290,7 +348,7 @@ echo "required checks (strict: false — see the header for why that is not laxi
 printf '    %s\n' "${required[@]}"
 if [ "$SELF_HOSTED" = 0 ]; then
     echo "  NOT required (they still run, and their failures are still visible):"
-    printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}"
+    printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}" "${PR_ONLY_CHECKS[@]}"
     echo "  Add them with --self-hosted-ready once a runner is online."
 fi
 if [ "$WITH_QUEUE" != 1 ]; then
