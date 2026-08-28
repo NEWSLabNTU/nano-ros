@@ -50,6 +50,11 @@
 
 #![cfg(feature = "rmw-cffi")]
 
+// W5-endgame (issue 0843): the DECLARATION is gated too — a bare
+// `extern crate alloc` links the alloc crate into every image and rustc then
+// demands a `#[global_allocator]` even when nothing here allocates. This line
+// is what kept the first heap-free-tier image from linking.
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
