@@ -41,41 +41,16 @@ permissions:
   packages: read
 
 jobs:
-  # L1 — compile, lint, unit. Hosted, so this works with no runner registered.
-  l1:
-    name: L1 (compile + unit)
-    runs-on: ubuntu-22.04
-    container:
-      image: ghcr.io/newslabntu/nano-ros-ci:humble
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install clang-format (pinned via pypi wheel)
-        run: pip install --no-cache-dir "clang-format==17.0.5"
-      - name: Build nros CLI + provision sources
-        run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
-            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
-            --source micro-xrce-dds-client --source cyclonedds-src
-      - name: just ci-l1
-        run: just ci-l1
-      - name: Upload junit
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: queue-l1-junit
-          path: |
-            target/nextest/**/junit*.xml
-          if-no-files-found: ignore
-          retention-days: 7
+  # phase-395 W13 — the L1 job that used to live here is GONE.
+  #
+  # `pr-checks`'s `check` job now runs the compile tier on `merge_group`, and it
+  # covers strictly more than `just ci-l1` did (check-fast + check-build +
+  # no_std + test-unit, plus the 133 source gates). Both ran on every merge
+  # group, so the same tree compiled TWICE on the critical path to landing —
+  # pure latency on the one lane that bounds how fast ten agents can merge.
+  #
+  # `check` is also the REQUIRED context, so this job gated nothing. Keeping it
+  # meant paying for a second opinion nobody consulted.
 
   # L3 — cross build + link + symbol checks. Needs the RTOS toolchains, so it is
   # self-hosted, so it is gated. See the header: a required check that cannot

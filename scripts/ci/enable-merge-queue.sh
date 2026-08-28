@@ -77,11 +77,12 @@ RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 HOSTED_CHECKS=(
     "check (fast on push; full on PR/nightly)"
 )
-# Runs in the queue but does NOT gate. `pr-checks`'s `check` job already covers
-# `ci-l1` (check-fast + check-build + no_std + test-unit), so requiring both
-# would run the same work twice on every merge.
+# Runs but does NOT gate. `queue.yml`'s L1 job was DELETED in phase-395 W13 for
+# the reason that kept it out of this list: `pr-checks`'s `check` covers
+# strictly more, and both running meant compiling the same tree twice on every
+# merge group.
 PR_ONLY_CHECKS=(
-    "L1 (compile + unit)"
+    "L3 (cross build + link)"
 )
 # Added to the required set only with --self-hosted-ready.
 SELF_HOSTED_CHECKS=(
@@ -372,7 +373,7 @@ echo "required checks (strict: false — see the header for why that is not laxi
 printf '    %s\n' "${required[@]}"
 if [ "$SELF_HOSTED" = 0 ]; then
     echo "  NOT required (they still run, and their failures are still visible):"
-    printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}" "${PR_ONLY_CHECKS[@]}"
+    printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}"
     echo "  Add them with --self-hosted-ready once a runner is online."
 fi
 if [ "$WITH_QUEUE" != 1 ]; then

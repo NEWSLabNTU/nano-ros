@@ -588,7 +588,7 @@ check-build: \
     check-launch-resolve-builds \
     check-test-targets \
     check-workspace-all check-workspace-features check-nros-log-riscv32 \
-    check-source-gates check-staticlib-symbols check-borrowed-e2e check-dep-chain \
+    check-source-gates check-staticlib-symbols check-borrowed-e2e \
     check-embedded-feature-unification \
     check-c check-cpp check-rmw-cyclonedds check-rmw-xrce check-rmw-uorb check-cli-tests check-node-std-tests \
     check-required-features-tests \
@@ -1352,8 +1352,13 @@ check-tier-priority-plan-image config="":
 # covers CLI sources. Measured: `just check-fast` failed in 0.77s having checked
 # nothing. Four source-level reds sat on main behind exactly this.
 #
-# Front-running `check-dep-chain` still works, because it is now first in the
-# lane that CONTAINS `check-dep-chain`.
+# phase-395 W12 — `check-dep-chain` has since MOVED OUT of `check-build` to
+# post-submit (158 s measured, an 8-cell board×rmw matrix that no single pull
+# request changes), so this no longer front-runs it and must not be read as
+# doing so. It stays at the head of `check-build` on its own merits: a stale CLI
+# breaks codegen for every gate below it, and failing in 0.1 s with the real
+# cause beats failing minutes in with a cargo resolution error. The post-submit
+# lane runs this same predicate before its own dep-chain step.
 [private]
 check-cli-fresh:
     @bash scripts/check-cli-fresh.sh
@@ -3617,6 +3622,17 @@ claim id="" *flags:
 [group("docs")]
 claim-renew id="" *flags:
     @scripts/reserve-claim.sh renew {{id}} {{flags}}
+
+# Keep a claim alive while its agent is — phase-395 W14. Renewal keyed on the
+# PROCESS being alive, never on progress: a 40-minute fixture build is not
+# death, and a claim that lapses mid-task lets another agent steal live work
+# with the tooling's blessing.
+#
+#   just claim issue-0827
+#   just claim-supervise issue-0827 --pid $$ &
+[group("docs")]
+claim-supervise id="" *flags:
+    @bash scripts/ci/claim-supervisor.sh {{id}} {{flags}}
 
 # Drop a claim on completion. Do NOT wait for expiry, or every finished task
 # leaves hours of phantom occupancy.
