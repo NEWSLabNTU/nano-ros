@@ -167,8 +167,12 @@ jobs:
       # The binary is BAKED INTO THE IMAGE (ci/docker/ci-base), and the
       # justfile's `RUSTC_WRAPPER := command -v sccache` picks it up with no
       # further wiring — so this only has to point it at a backend.
-      - name: Configure sccache (compile tier)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+      # Wherever anything COMPILES — which is now the pull request too, since
+      # the compile smoke landed there. Gating this on the tier alone would have
+      # left the PR's `cargo check` uncached, which is the one event that runs
+      # on every push an agent makes.
+      - name: Configure sccache (compiling events)
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
           if ! command -v sccache >/dev/null 2>&1; then
             echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
@@ -198,7 +202,7 @@ jobs:
       # source-free by construction (its CLI-touching gates skip gracefully
       # when the CLI is absent).
       - name: Cache CLI build (compile tier)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         uses: actions/cache@v4
         with:
           path: packages/cli/target
@@ -207,7 +211,7 @@ jobs:
             nros-cli-${{ runner.os }}-
 
       - name: Build nros CLI + provision compile-tier sources
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
@@ -243,6 +247,26 @@ jobs:
       # tier. A compile error that reaches the queue ejects its batch-mates;
       # GitHub then re-tests them in smaller groups, so the cost is bounded and
       # paid rarely, against a 10 min saving on every PR.
+      # phase-395 — a COMPILE SMOKE TEST, pull requests only.
+      #
+      # The compile tier lives in the merge group, which means a plainly broken
+      # pull request is caught by the QUEUE — costing a batch slot, an ejection
+      # and someone's triage — rather than by its own gate. This compiles the
+      # workspace ONCE (no lints, no feature matrix, no backends) to catch that
+      # class here, while the expensive verification stays batched.
+      #
+      # Not on merge_group: `check-build` there does strictly more, so running
+      # both would compile the same tree twice on the critical path to landing.
+      #
+      # It does NOT subsume the tier and must not be read as doing so — no
+      # clippy, so no `-D warnings`; no feature combinations, so a break that
+      # only appears under `--no-default-features` still reaches the queue.
+      # What it does catch is the common case: a type error, a signature change
+      # that did not propagate, a test that no longer compiles.
+      - name: just check-compile-smoke (pull request only)
+        if: ${{ github.event_name == 'pull_request' && !cancelled() }}
+        run: just check-compile-smoke
+
       - name: just check-build + no_std (compile tier)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |

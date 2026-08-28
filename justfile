@@ -3693,6 +3693,37 @@ ci-l3: rust-rtos-link-check
     fi
     echo "L3 passed — $checked cross ELF(s) checked without booting anything."
 
+# A COMPILE SMOKE TEST for the pull-request gate — phase-395.
+#
+# `check-build` compiles the workspace roughly ten times: six clippy feature
+# combos, `--all-targets` with `-D warnings`, plus the C/C++/Cyclone/XRCE
+# backend lanes. That is 587 s of an 878 s gate, and it is why the compile tier
+# moved to the merge group.
+#
+# But moving it there means a plainly broken pull request is caught by the QUEUE
+# rather than by its own gate, where it costs a batch slot and an ejection. This
+# compiles the workspace ONCE — no lints, no feature matrix, no backends — to
+# catch that class on the PR while leaving the expensive verification batched.
+#
+# `--all-targets` on purpose: tests and benches are where a signature change
+# most often fails to propagate, and they are not built by a bare `cargo check`.
+#
+# It does NOT replace `check-build` and must never be confused for it: no
+# clippy, so no `-D warnings`; no feature combinations, so a break that only
+# appears under `--no-default-features` survives this and is caught in the
+# queue. It is a smoke test, and the name says so.
+[private]
+check-compile-smoke:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    # The same exclusions `check-test-targets` uses: these crates are `no_std`
+    # or build-only and cannot compile for the host — a bare `--workspace` dies
+    # on `#[panic_handler] function required` and reports a defect that is not
+    # one.
+    cargo check --workspace --all-targets --quiet {{HOST_UNCHECKABLE}}
+    echo "compile smoke: workspace + all targets check clean (no lints; see check-build)."
+
 # L1 — compile, lint and unit tests. No fixtures, no platforms, no QEMU.
 [group("main")]
 ci-l1:
