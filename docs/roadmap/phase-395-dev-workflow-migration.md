@@ -525,6 +525,77 @@ between steps: 40 minutes inside one build is not death. `reserve-claim.sh`
 already prints that instruction on every successful claim; what is missing is
 something that obeys it.
 
+## W15 — Separate the SUPPORT tier from the BUILD cost (landed)
+
+`check-board-tiers` certified tier 1 while the only lane covering tier 1 was
+failing, because one predicate — `tier 1 => a nightly lane covers it` — binds a
+PROMISE to a lane NAME, which is a scheduling artifact. A lane can be red and
+the tier still certifies; restructuring CI breaks tier claims for no substantive
+reason; and a platform that could be covered MORE often gets no credit for it.
+
+**Rust's structure, adopted.** Their tier IS the CI obligation, stated as a
+guarantee: tier 1 "guaranteed to work" = tests RUN in CI; tier 2 "guaranteed to
+build" = builds, no runs; tier 3 = no CI. And the cost axis is a MODIFIER —
+`Tier 2 with host tools` vs `without` — not a parallel taxonomy. That is exactly
+our host-executable/cross-only split, and we were about to invent a second table
+for it.
+
+**Zephyr's two additions.** A tier names WHO commits and how often (tier 0 blocks
+PRs; tier 1 is a named team running the suite regularly), and ONE TIER-0 PLATFORM
+PER ARCHITECTURE. We already had that finding — RISC-V as "the witness that the
+platform layer is not accidentally ARM-shaped" — this makes it a rule.
+
+**Both projects refuse to auto-demote on a red, and the first draft of this had
+it wrong.** Demoting a Rust tier-1 target needs a full RFC, and the policy
+explicitly permits temporarily disabling a target's tests WITHOUT demoting it.
+The maintainer obligation is worded "should", not "must". The reason is worth
+keeping: auto-demotion on red is precisely the pressure that makes people
+silence tests. A tier is a promise between people — it changes when someone
+decides, with a record, not as a side effect of a bad night.
+
+Landed:
+
+- `execution_class` on every tiered row: `host-executable` / `cross-run` /
+  `hardware`. It states what the platform NEEDS, so a tier is never a promise
+  with no stated cost.
+- **tier 1 requires `host-executable`**, because only that class can afford a
+  per-merge runtime cadence. Both predicates mutation-proved.
+- **`NuttxArm` and `FreertosMps2` demoted 1 -> 2.** Both are cross-run, so their
+  runtime evidence can only ever be nightly — which is tier 2's promise — and
+  nightly is currently red for exactly those platforms. The equally legitimate
+  alternative is buying the cadence with a self-hosted runner and promoting them
+  back on evidence; what is not legitimate is claiming the tier without it.
+
+The relationship, stated rather than implied: **the class bounds the cadence you
+can afford; the cadence bounds the tier you can honestly claim.** The class never
+CONFERS a tier — `FreertosPosix` is host-executable and free to run and a
+two-cell smoke, so it stays tier 2 and the way up is more cells.
+
+## W16 — `ci-l2`, and the tier-1 obligation it makes real
+
+Tier 1 promises runtime evidence every merge, and **no lane delivers that today**
+— the host-executable group's ~50 runtime cells run only in the nightly sweep.
+`ci-l2` is the lane that would keep the promise: `ZephyrNativeSim` builds with
+`ZEPHYR_TOOLCHAIN_VARIANT=host`, plain host gcc and no SDK, so three RTOS APIs
+fit on a hosted runner.
+
+**Measure it COLD before any tier promise depends on it.** Every timing to hand
+is warm on a 24-core host, and warm local numbers have already produced two
+wrong answers in this campaign — both because state survived from an earlier
+build. A tier-1 cadence promised on a warm number is that same error where
+retracting it costs much more.
+
+## W17 — `just tier-health`: report the evidence, do not gate on it
+
+`check-board-tiers` is in `check-fast`: offline, deterministic, no network. It
+can check that a tier's obligation is STRUCTURALLY met and cannot know whether
+the evidence is GREEN — and it must not imply otherwise, which is the gap that
+let a half-red nightly certify tier 1.
+
+So a separate verb queries CI and reports which tier each platform's evidence
+actually supports. It does not gate, per the demotion policy above. Same split as
+`check-*` versus `merge-queue --readiness`.
+
 ## Not in scope
 
 - Replacing GitHub's merge queue with a third-party tool. The native one has

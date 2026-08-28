@@ -55,6 +55,7 @@
 crate = "nros-board-linux"
 matrix_platform = "Linux"
 tier = 1
+execution_class = "host-executable"
 maintainers = []
 notes = "The reference platform: the densest Runtime coverage of any target, all three RMWs. phase-337 W8.a merged the `native` shim and the `posix` family driver into this one crate — the registry carried TWO rows for one implementation because `board_path_for` mapped both keys to the same ZST."
 
@@ -63,6 +64,7 @@ crate = "nros-board-zephyr"
 matrix_platform = "ZephyrNativeSim"
 nightly_token = "zephyr"
 tier = 1
+execution_class = "host-executable"
 maintainers = []
 notes = "CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything."
 
@@ -96,7 +98,8 @@ crate = "nros-board-mps2-an385-freertos"
 matrix_platform = "FreertosMps2"
 nightly_token = "freertos"
 link_check_example = "examples/qemu-arm-freertos/rust/talker"
-tier = 1
+tier = 2
+execution_class = "cross-run"
 maintainers = []
 
 # phase-372 W2 — hardware-only board: no emulator models the S32Z270 RTU, so
@@ -122,6 +125,7 @@ crate = "nros-board-s32z270-freertos"
 # board yet. Give it a real PlatformId when it gets a witness, not the
 # neighbour's.
 tier = 3
+execution_class = "hardware"
 maintainers = []
 notes = "S32Z270 RTU Cortex-R52 (ASI phase-4 W5.b consumer). No matrix_platform: no witness exists for this board, and borrowing FreertosMps2's would claim its Runtime cells. Link-completeness is proven by the workspace cmake lane with the CRx_No_GIC default port."
 
@@ -134,7 +138,8 @@ crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxArm"
 nightly_token = "nuttx"
 link_check_example = "examples/qemu-arm-nuttx/rust/talker"
-tier = 1
+tier = 2
+execution_class = "cross-run"
 maintainers = []
 
 [[board]]
@@ -143,6 +148,7 @@ matrix_platform = "ThreadxLinux"
 nightly_token = "threadx_linux"
 link_check_example = "examples/threadx-linux/rust/talker"
 tier = 1
+execution_class = "host-executable"
 maintainers = []
 
 # phase-370 — the FreeRTOS POSIX simulator. Descriptor-only (no Rust board
@@ -153,6 +159,7 @@ crate = "nros-board-freertos-posix"
 matrix_platform = "FreertosPosix"
 nightly_token = "freertos_posix"
 tier = 2
+execution_class = "host-executable"
 maintainers = []
 
 # ===== tier 2 — verified ===================================================
@@ -162,6 +169,7 @@ crate = "nros-board-threadx-qemu-riscv64"
 matrix_platform = "ThreadxRiscv64"
 nightly_token = "threadx_riscv64"
 tier = 2
+execution_class = "cross-run"
 maintainers = []
 notes = "All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage."
 
@@ -170,6 +178,7 @@ crate = "nros-board-mps2-an385"
 matrix_platform = "QemuBaremetal"
 nightly_token = "qemu"
 tier = 2
+execution_class = "cross-run"
 maintainers = []
 notes = "phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row."
 
@@ -184,6 +193,7 @@ crate = "nros-board-zephyr"
 matrix_platform = "ZephyrQemuCortexM"
 nightly_token = "zephyr"
 tier = 2
+execution_class = "cross-run"
 maintainers = []
 notes = "C and C++ pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. NO RUST ROW: `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio nodes (issue 0432), so a rust cell would not build and BuildOnly would be a lie. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU."
 
@@ -192,6 +202,7 @@ crate = "nros-board-esp32-qemu"
 matrix_platform = "Esp32Qemu"
 nightly_token = "esp32"
 tier = 2
+execution_class = "cross-run"
 maintainers = []
 notes = "Real two-way QEMU e2e (esp32_emulator.rs)."
 
@@ -200,6 +211,7 @@ crate = "nros-board-nuttx-qemu"
 matrix_platform = "NuttxRiscv"
 nightly_token = "nuttx"
 tier = 2
+execution_class = "cross-run"
 maintainers = []
 notes = "HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly."
 
@@ -210,6 +222,7 @@ crate = "nros-board-zephyr"
 matrix_platform = "Fvp"
 gated_sdk = "arm-fvp"
 tier = 3
+execution_class = "hardware"
 maintainers = []
 notes = "License-gated model; runtime is maintainer-run via `just zephyr verify-fvp-runtime`. Kept in-tree: it is the ASI reference consumer's target (phase-292), a real downstream user the CI evidence cannot see. phase-337 W9.a folded the `nros-board-fvp-aemv8r-smp` CRATE into `nros-board-zephyr/boards/fvp-aemv8r-smp/` — the crate's Rust half (a `Config` and a `run` loop) had zero consumers, so what it actually shipped was a prj.conf, a DTS overlay and a board.cmake: a config bundle wearing a Cargo.toml. Third row for this crate, which is exactly what W1.c's (crate, matrix_platform) keying is for."
 

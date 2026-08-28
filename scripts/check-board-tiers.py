@@ -57,6 +57,36 @@ VALID_TIERS = {"1", "2", "3", "scaffold", "infra"}
 MAINTAINER_MIN = {"1": 3, "2": 2, "3": 1}
 
 
+# phase-395 W15 — the COST axis, borrowed from Rust's `Tier 2 with host tools`
+# modifier rather than invented as a parallel taxonomy.
+#
+# The support tier is a PROMISE; the execution class is a FACT about what the
+# platform needs in order to run. They are independent, and the relationship
+# runs one way: the class bounds the CADENCE a platform can afford, and the
+# cadence bounds the tier that can honestly be claimed. The class never CONFERS
+# a tier.
+#
+# `FreertosPosix` is the case that makes the distinction concrete — host-
+# executable, so free to run, and a two-cell smoke. Cheap does not mean covered,
+# so it is tier 2 and the way up is more cells, not a promotion.
+EXECUTION_CLASSES = {
+    # runs on a hosted runner with nothing but a host compiler, so a per-merge
+    # runtime cadence is affordable
+    "host-executable",
+    # needs a cross toolchain and usually QEMU; nightly is the realistic floor
+    "cross-run",
+    # needs a board or a licensed model, so no automated cadence exists at all
+    "hardware",
+}
+
+# Only a host-executable platform can meet tier 1's per-merge runtime
+# obligation. A cross-run platform's evidence can only ever be nightly, which is
+# tier 2's cadence by definition — claiming tier 1 for it promises more than the
+# cost structure can deliver, which is exactly what `NuttxArm` and
+# `FreertosMps2` did while the nightly lane covering them was red.
+TIER_1_CLASSES = {"host-executable"}
+
+
 def tier_supported_by(count):
     """The strongest tier `count` maintainers can carry, or None.
 
@@ -377,6 +407,35 @@ def main():
     # force them to. What must stay unique is the PAIR: two rows claiming the
     # same crate on the same platform are a genuine duplicate.
     #
+    # --- the execution class, and what it permits (phase-395 W15) ------------
+    for e in reg:
+        crate = e.get("crate", "<no crate key>")
+        tier = str(e.get("tier", ""))
+        if tier not in ("1", "2", "3"):
+            continue          # infra / scaffold carry no tier promise
+        cls = e.get("execution_class")
+        where = f"{crate}@{e.get('matrix_platform') or '-'}"
+        if not cls:
+            errors.append(
+                f"{where}: tier {tier} row has no `execution_class`. It states what "
+                f"the platform NEEDS in order to run — one of "
+                f"{', '.join(sorted(EXECUTION_CLASSES))} — and without it the tier "
+                f"is a promise with no stated cost.")
+        elif cls not in EXECUTION_CLASSES:
+            errors.append(
+                f"{where}: unknown execution_class {cls!r}. Known: "
+                f"{', '.join(sorted(EXECUTION_CLASSES))}.")
+        elif tier == "1" and cls not in TIER_1_CLASSES:
+            errors.append(
+                f"{where}: tier 1 requires an execution_class in "
+                f"{', '.join(sorted(TIER_1_CLASSES))}, and this row is {cls!r}.\n"
+                f"    Tier 1 promises runtime evidence EVERY MERGE. A {cls} platform "
+                f"cannot deliver that cadence — its evidence can only be nightly, "
+                f"which is tier 2's promise.\n"
+                f"    Either demote the row to tier 2, or buy the cadence (a "
+                f"self-hosted runner moves cross-run toward per-merge) and then "
+                f"promote it back on evidence.")
+
     # Every crate on disk must still appear at least once; that completeness
     # check is the reason this registry exists.
     listed = [e.get("crate", "<no crate key>") for e in reg]

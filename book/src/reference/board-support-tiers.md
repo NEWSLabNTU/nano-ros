@@ -17,8 +17,6 @@ For **procurement guidance on parts that have no crate in this tree** (Nordic, N
 | Board package | Platform | Maintainers | Notes |
 |---|---|---|---|
 | `nros-board-linux` | Linux | *unassigned* | The reference platform: the densest Runtime coverage of any target, all three RMWs. phase-337 W8.a merged the `native` shim and the `posix` family driver into this one crate — the registry carried TWO rows for one implementation because `board_path_for` mapped both keys to the same ZST. |
-| `nros-board-mps2-an385-freertos` | FreertosMps2 | *unassigned* |  |
-| `nros-board-nuttx-qemu` | NuttxArm | *unassigned* |  |
 | `nros-board-threadx-linux` | ThreadxLinux | *unassigned* |  |
 | `nros-board-zephyr` | ZephyrNativeSim | *unassigned* | CAVEAT: only ever built for native_sim/native/64. No real Zephyr hardware board is built by anything. |
 
@@ -31,6 +29,8 @@ Asserted runtime coverage and a nightly lane, but not in `just ci`. Breakage is 
 | `nros-board-esp32-qemu` | Esp32Qemu | *unassigned* | Real two-way QEMU e2e (esp32_emulator.rs). |
 | `nros-board-freertos-posix` | FreertosPosix | *unassigned* |  |
 | `nros-board-mps2-an385` | QemuBaremetal | *unassigned* | phase-337 W6.a folded `nros-board-rtic-mps2-an385` in as the `rtic` feature — one crate, two entry shapes (direct-exec + RTIC), one witness row. |
+| `nros-board-mps2-an385-freertos` | FreertosMps2 | *unassigned* |  |
+| `nros-board-nuttx-qemu` | NuttxArm | *unassigned* |  |
 | `nros-board-nuttx-qemu` | NuttxRiscv | *unassigned* | HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly. |
 | `nros-board-threadx-qemu-riscv64` | ThreadxRiscv64 | *unassigned* | All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage. |
 | `nros-board-zephyr` | ZephyrQemuCortexM | *unassigned* | C and C++ pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. NO RUST ROW: `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio nodes (issue 0432), so a rust cell would not build and BuildOnly would be a lie. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU. |
