@@ -39,6 +39,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — both conditionals below turn a grep STATUS into a verdict about
+# the source tree, and `grep -q` cannot tell "not present" (1) from "the grep
+# never ran" (>=2). Under a 32-way gate fan-out the second kind happens, and
+# `if ! grep -q rename` would then announce that the generated harness stopped
+# renaming its output — a confident, specific, false claim. `nros_grep_q` exits
+# 2 instead.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 CORE="packages/cli/nros-cli-core/src"
 # The implementation moved DOWN to cargo-nano-ros (issue 0562): nros-cli-core
 # depends on it, and `provider_scan` there writes a sync-owned file of its own,
@@ -81,7 +90,7 @@ for entry in "${GUARDED[@]}"; do
         echo "check-atomic-sync-writes: $file has no fn $fn — the guarded set is stale" >&2
         exit 2
     fi
-    if grep -q 'fs::write' <<<"$body"; then
+    if nros_grep_q 'fs::write' <<<"$body"; then
         echo "ERROR: $file: fn $fn writes a sync-owned file with fs::write" >&2
         fail=1
     fi
@@ -91,7 +100,7 @@ done
 # CLI, so it inlines the discipline instead of calling the helper. Assert the
 # emitted source renames rather than truncating.
 harness="$CORE/orchestration/metadata_build.rs"
-if ! grep -q 'std::fs::rename(&tmp, out)' "$harness"; then
+if ! nros_grep_q 'std::fs::rename(&tmp, out)' "$harness"; then
     echo "ERROR: $harness: the generated metadata harness no longer renames its output" >&2
     echo "       (it must write a temp sibling and rename; see issue 0498)" >&2
     fail=1

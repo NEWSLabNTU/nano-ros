@@ -28,6 +28,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — `if ! … grep -qF -- "$required"` reads a grep that never ran as
+# "this probe lost its verdict call", which is a specific claim about a function
+# that is intact. `nros_grep_q` exits 2 there; it takes the same `-F --`, and it
+# searches a HERESTRING so the helper's `exit` is not confined to a pipeline
+# subshell.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 SRC="packages/testing/nros-tests/src"
 OWNER="$SRC/fixtures/staleness.rs"
 PROBES="$SRC/fixtures/binaries/mod.rs"
@@ -67,7 +75,7 @@ for name in $entries; do
     ' "$PROBES")"
     checked=$((checked + 1))
     for required in "staleness::begin_probe()" "staleness::stale_error" "staleness::record_fresh"; do
-        if ! printf '%s' "$body" | grep -qF -- "$required"; then
+        if ! nros_grep_q -F -- "$required" <<<"$body"; then
             echo "[FAIL] $name is missing \`$required\`" >&2
             fail=1
         fi

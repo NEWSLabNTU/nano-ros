@@ -86,7 +86,7 @@ for knob in $knobs; do
     found=0
     for f in "${READERS[@]}" "${DERIVED_READERS[@]}"; do
         [ -f "$f" ] || continue
-        if grep -qF "\"$knob\"" "$f"; then
+        if nros_grep_q -F "\"$knob\"" "$f"; then
             found=1
             # issue 0751 — the name APPEARING is not the name being resolved
             # through `$DOTCONFIG`. A forwarded knob read with a bare
@@ -97,7 +97,7 @@ for knob in $knobs; do
             # Not hypothetical. That is what `nros-params/build.rs` did before
             # #0749's follow-up, and it was caught only because the file was not
             # yet listed as a reader — once listed, this arm passed over it.
-            if grep -qF "env::var(\"$knob\")" "$f"; then
+            if nros_grep_q -F "env::var(\"$knob\")" "$f"; then
                 echo "[FAIL] $f reads forwarded knob $knob with a bare env::var" >&2
                 echo "       On a Zephyr Rust image that yields the crate default" >&2
                 echo "       whatever Kconfig says (issue 0460). Resolve it with" >&2

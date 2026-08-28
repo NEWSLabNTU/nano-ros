@@ -24,6 +24,15 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/build/source-manifest.sh
 source "$repo_root/scripts/build/source-manifest.sh"
+# issue 0726 — every assertion below reads a `grep -q` STATUS as an answer about
+# the manifest, in BOTH directions (`&& bad … || ok …` as well as `if … else
+# bad`). A grep that failed to start therefore does not merely lose a check: on
+# the exclusion arms it reports that build output leaked into the manifest, and
+# on the inclusion arms that a listed source was dropped. `nros_grep_q` exits 2.
+# All of them already search a HERESTRING, so the helper runs in this shell and
+# its `exit` ends the gate rather than a pipeline subshell.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$repo_root/scripts/lib/grep-q.sh"
 
 fail=0
 ok() { echo "  ok    $1"; }
@@ -55,12 +64,12 @@ printf 'BUILD OUTPUT\n' > "$sandbox/leaf/target/debug/artifact.o"
 echo "check-source-manifest: no type filter"
 manifest="$(nros_source_manifest "$sandbox" leaf)" || bad "manifest failed"
 for f in prj.conf sub/Echo.msg spec.json memory.x; do
-    if grep -q " leaf/$f\$" <<< "$manifest"; then ok "$f is hashed"; else bad "$f was DROPPED"; fi
+    if nros_grep_q " leaf/$f\$" <<< "$manifest"; then ok "$f is hashed"; else bad "$f was DROPPED"; fi
 done
 
 echo "check-source-manifest: exclusions"
-grep -q "README.md" <<< "$manifest" && bad ".md should be skipped" || ok ".md skipped"
-grep -q "artifact.o" <<< "$manifest" && bad "gitignored build output LEAKED" || ok "build output excluded"
+nros_grep_q "README.md" <<< "$manifest" && bad ".md should be skipped" || ok ".md skipped"
+nros_grep_q "artifact.o" <<< "$manifest" && bad "gitignored build output LEAKED" || ok "build output excluded"
 
 echo "check-source-manifest: content, not mtime"
 before="$(nros_source_signature "$sandbox" leaf)"
@@ -88,8 +97,8 @@ printf '%s: %s %s\n' \
     "$sandbox/leaf/prj.conf" \
     "${dep_src// /\\ }" > "$sandbox/leaf/target/debug/x.d"
 closure="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")" || bad "closure failed"
-grep -q "leaf/prj.conf\$" <<< "$closure" && ok "closure picks up a listed dep" || bad "closure missed a dep"
-grep -q "with space.rs\$" <<< "$closure" \
+nros_grep_q "leaf/prj.conf\$" <<< "$closure" && ok "closure picks up a listed dep" || bad "closure missed a dep"
+nros_grep_q "with space.rs\$" <<< "$closure" \
     && ok "an escaped space is one path, not two" \
     || bad "escaped space truncated the closure"
 
@@ -104,10 +113,10 @@ printf '%s: %s %s\n' \
     "$sandbox/.git/index" > "$sandbox/leaf/target/debug/x.d"
 closure_git="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")" \
     || bad "closure failed with a .git dep listed"
-grep -q "\.git/" <<< "$closure_git" \
+nros_grep_q "\.git/" <<< "$closure_git" \
     && bad "a listed .git/ path reached the closure" \
     || ok "a listed .git/ path is excluded from the closure"
-grep -q "leaf/prj.conf\$" <<< "$closure_git" \
+nros_grep_q "leaf/prj.conf\$" <<< "$closure_git" \
     && ok "excluding .git/ keeps the real deps" \
     || bad ".git/ exclusion dropped a real dep"
 
@@ -120,13 +129,13 @@ echo "check-source-manifest: dep-info shapes"
 printf 'x.o: \\\n %s \\\n %s\n' "$sandbox/leaf/prj.conf" "$sandbox/leaf/memory.x" \
     > "$sandbox/leaf/target/debug/wrapped.d"
 wrapped="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
-grep -q "leaf/memory.x\$" <<< "$wrapped" \
+nros_grep_q "leaf/memory.x\$" <<< "$wrapped" \
     && ok "a backslash-continued depfile yields every dep, not just the first" \
     || bad "continuation lines were dropped"
 # A depfile may record paths relative to the compiler's cwd rather than absolute.
 printf 'x.o: leaf/prj.conf\n' > "$sandbox/leaf/target/debug/rel.d"
 relout="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
-grep -q "leaf/prj.conf\$" <<< "$relout" \
+nros_grep_q "leaf/prj.conf\$" <<< "$relout" \
     && ok "relative dep paths resolve against the repo root" \
     || bad "relative dep paths were dropped"
 
@@ -139,10 +148,10 @@ echo "check-source-manifest: build output stays out of the closure"
 printf 'x.o: %s %s\n' "$sandbox/leaf/target/debug/artifact.o" "$sandbox/leaf/prj.conf" \
     > "$sandbox/leaf/target/debug/out.d"
 outc="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
-grep -q "artifact.o" <<< "$outc" \
+nros_grep_q "artifact.o" <<< "$outc" \
     && bad "a gitignored build artifact entered the closure" \
     || ok "gitignored output is excluded (signature can settle)"
-grep -q "leaf/prj.conf\$" <<< "$outc" \
+nros_grep_q "leaf/prj.conf\$" <<< "$outc" \
     && ok "tracked sources in the same depfile are kept" \
     || bad "the ignore filter dropped a tracked source"
 
@@ -165,7 +174,7 @@ printf 'x.o: %s\n' "$sandbox/sub/hdr.h" > "$sandbox/leaf/target/debug/sub.d"
 subc="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")" \
     && ok "extraction survives a submodule path" \
     || bad "extraction failed on a submodule path"
-grep -q "sub/hdr.h\$" <<< "$subc" \
+nros_grep_q "sub/hdr.h\$" <<< "$subc" \
     && ok "submodule content is kept (it is tracked source)" \
     || bad "submodule content was dropped"
 rm -f "$sandbox/leaf/target/debug/sub.d"
@@ -175,7 +184,7 @@ mkdir -p "$sandbox/leaf/target/debug/CMakeFiles"
 printf 'set(CMAKE_MAKEFILE_DEPENDS\n  "%s"\n  )\n' "$sandbox/leaf/memory.x" \
     > "$sandbox/leaf/target/debug/CMakeFiles/Makefile.cmake"
 cm="$(nros_dep_closure_manifest "$sandbox" "$sandbox/leaf/target/debug")"
-grep -q "leaf/memory.x\$" <<< "$cm" \
+nros_grep_q "leaf/memory.x\$" <<< "$cm" \
     && ok "CMAKE_MAKEFILE_DEPENDS is read (configure-only rows have no compile)" \
     || bad "cmake configure inputs were not picked up"
 

@@ -22,6 +22,19 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# issue 0726 — `git grep` carries the same conflation as `grep`: 1 is "no
+# match", 128 is a fatal (bad index, unreadable object, a fork that never
+# started under fan-out), and `if ! git grep -q …` reads the second as the
+# first. Here that prints "drift: <crate> exposes no board entry" about a crate
+# whose entry is right there. `nros_git_grep_q` exits 2 on >=2; it passes the
+# pattern as `-e` so the caller's `--` keeps its PATHSPEC meaning.
+#
+# The `2>/dev/null` on each call is gone with the conversion. It was muting the
+# very channel that distinguishes the two outcomes, and it was not doing any
+# work: a pathspec matching nothing — including a board crate with no `src/` —
+# exits 1 with no message (verified against this tree).
+# shellcheck source=scripts/lib/grep-q.sh
+source "$ROOT/scripts/lib/grep-q.sh"
 GENERATOR="$ROOT/packages/codegen/packages/nros-cli-core/src/orchestration/generate.rs"
 
 if [[ ! -f "$GENERATOR" ]]; then
@@ -64,7 +77,7 @@ for rel in "${BOARD_PATHS[@]}"; do
     # case the `find` sweep hit — it is here for the same reason the rule exists
     # at all: a walk that is cheap because a directory happens to be small is
     # cheap by luck, and this one runs once per board crate.
-    if ! git grep -qE 'pub fn run\b|pub fn run_generic\b|pub use[^;]*\brun\b' -- "$dir/src" 2>/dev/null; then
+    if ! nros_git_grep_q -E 'pub fn run\b|pub fn run_generic\b|pub use[^;]*\brun\b' -- "$dir/src"; then
         echo "drift: $rel exposes no board entry (pub fn run / run_generic / re-export)" >&2
         fail=1
         continue
@@ -78,13 +91,13 @@ for rel in "${BOARD_PATHS[@]}"; do
     # Board impl" — catches "added a board + its `run`, forgot the impls".
     # Base/common crates (run_generic / trait def) are exempt.
     if [[ "$rel" != *nros-board-common ]] \
-       && git grep -qE 'pub fn run\b' -- "$dir/src" 2>/dev/null \
-       && ! git grep -qE 'pub fn run_generic\b' -- "$dir/src" 2>/dev/null; then
+       && nros_git_grep_q -E 'pub fn run\b' -- "$dir/src" \
+       && ! nros_git_grep_q -E 'pub fn run_generic\b' -- "$dir/src"; then
         # Match the trait-impl head `… <Trait> for …` (covers both
         # `impl BoardExit for X` and `impl nros_board_common::BoardExit
         # for X`). The `<Trait> for` adjacency is the robust signal.
         for tr in BoardInit BoardPrint BoardExit; do
-            if ! git grep -qE "\b${tr}[[:space:]]+for\b" -- "$dir/src" 2>/dev/null; then
+            if ! nros_git_grep_q -E "\b${tr}[[:space:]]+for\b" -- "$dir/src"; then
                 echo "drift: $rel has a concrete board entry but no \`${tr}\` impl (Board super-trait incomplete)" >&2
                 fail=1
             fi

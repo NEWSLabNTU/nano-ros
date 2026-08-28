@@ -21,6 +21,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — the two staleness probes below exit 2 on ABSENCE, and `grep -q`
+# cannot tell absence from a grep that did not run. That direction is the
+# quieter one: the gate declares itself stale and stops checking parity, which
+# reads as maintenance rather than as a tool failure. `nros_grep_q` exits 2 with
+# a message that says which it was.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 RESOLVER="scripts/dev/zenohd.sh"
 TABLE="scripts/dev/zenohd-resolution-cases.tsv"
 RUST="packages/testing/nros-tests/src/process.rs"
@@ -32,9 +40,9 @@ done
 # Staleness. A gate that has stopped watching must say so, not pass: this one's
 # sibling (`check-zenohd-spawn-sites`) caught its own rot exactly this way when
 # the helper was renamed in phase-362.
-grep -q 'AMENT_PREFIX_PATH' "$RESOLVER" || {
+nros_grep_q 'AMENT_PREFIX_PATH' "$RESOLVER" || {
     echo "check-zenohd-resolution-parity: $RESOLVER no longer reads AMENT_PREFIX_PATH — stale" >&2; exit 2; }
-grep -q 'zenohd-resolution-cases.tsv' "$RUST" || {
+nros_grep_q 'zenohd-resolution-cases.tsv' "$RUST" || {
     echo "check-zenohd-resolution-parity: $RUST no longer reads the shared table — stale" >&2; exit 2; }
 
 # Every case runs with a router PREPENDED to PATH (`@/bin/rmw_zenohd`), because

@@ -38,6 +38,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — the two conditionals below decide, from a grep STATUS, whether a
+# leaf is unprotected by the repo-root exclude list. A grep that failed to start
+# reads as "not excluded" and the gate names a specific leaf and a specific
+# manifest that are both correct. `nros_grep_q` exits 2 on a tool failure.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 root_manifest="Cargo.toml"
 fail=0
 
@@ -75,8 +82,8 @@ while IFS= read -r ws_manifest; do
             [ -f "$leaf/Cargo.toml" ] || continue
             # A leaf with its OWN [workspace] table is its own root; the
             # walker stops there and the repo root never sees it.
-            if grep -q '^\[workspace\]' "$leaf/Cargo.toml"; then continue; fi
-            if ! grep -q "\"$leaf\"" "$root_manifest"; then
+            if nros_grep_q '^\[workspace\]' "$leaf/Cargo.toml"; then continue; fi
+            if ! nros_grep_q "\"$leaf\"" "$root_manifest"; then
                 echo "[FAIL] $leaf" >&2
                 echo "       excluded by $ws_manifest but NOT by the repo-root Cargo.toml." >&2
                 echo "       cargo run from inside it will fail: \"current package believes" >&2

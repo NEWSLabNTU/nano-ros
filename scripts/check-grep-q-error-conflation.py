@@ -21,6 +21,11 @@ the searched text is certainly present-or-absent and no error is possible. So th
 existing sites are baselined by COUNT PER FILE and the gate fails when a file
 grows a new one. Lowering a baseline is always allowed; raising it is the thing
 that needs a reason.
+
+phase-395 W11 spent one of those lowerings: the 46 sites in the 21 scripts a
+`check-fast` gate INVOKES are converted, and those files are at 0. That is the
+population fan-out actually stresses, so it is the population where the
+conflation is not theoretical. The rest of the baseline is untouched debt.
 """
 
 import json
@@ -97,6 +102,124 @@ def scan():
     return {f: c for f in tracked() if f != me and (c := count(f))}
 
 
+HELPER = os.path.join(ROOT, "scripts", "lib", "grep-q.sh")
+
+# Every case runs the REAL helper in a real bash. A pure-regex selftest can only
+# show this gate still recognises the bad shape; it cannot show the sanctioned
+# replacement still behaves, and the replacement is the half that 46 converted
+# sites now depend on. The `-i`/`-E`/`-F`/`--` rows exist because the conversion
+# needed flag passthrough: if `nros_grep_q` ever drops the flags on the floor,
+# `grep -qi X` becomes a case-SENSITIVE search that quietly stops matching, and
+# a gate reading "if ! … then FAIL" would report a confident, specific, wrong
+# finding — issue 0726's exact failure mode arriving through the fix for it.
+#
+# The expected outcome is a STATUS *and* whether the helper returned or exited.
+# Those are not the same thing and the difference is the entire contract: on a
+# tool failure the helper must END THE SCRIPT, and a version that merely
+# `return`s 2 looks identical to `case $?` at the call site while letting the
+# caller sail on and verdict from evidence it never got. So every case runs a
+# marker statement after the call and the FATAL rows require it to be absent.
+RETURNS, FATAL = "returns", "fatal"
+MARKER = "__nros_reached_next_statement__"
+
+# (argv after the helper name, stdin, expected status, RETURNS|FATAL)
+HELPER_CASES = [
+    # The pre-existing no-flag contract, unchanged.
+    (["Hello"], "Hello\n", 0, RETURNS),
+    (["Nope"], "Hello\n", 1, RETURNS),
+    # -i is passed through: without it the same pattern must NOT match.
+    (["-i", "hello"], "Hello\n", 0, RETURNS),
+    (["hello"], "Hello\n", 1, RETURNS),
+    # -E is passed through: `x+` is a repetition in ERE, a literal `+` in BRE.
+    (["-E", "x+y"], "xxy\n", 0, RETURNS),
+    (["x+y"], "xxy\n", 1, RETURNS),
+    # -F is passed through: `x+y` matches only as a literal.
+    (["-F", "x+y"], "x+y\n", 0, RETURNS),
+    (["-F", "x+y"], "xxy\n", 1, RETURNS),
+    # A bundle keeping the original `-q` spelling still parses.
+    (["-qiE", "h(e)l+o"], "HELLO\n", 0, RETURNS),
+    # `--` ends the flags, so a pattern starting with `-` is a PATTERN. Without
+    # passthrough of `--`, `-v` would invert the match and this would be 1.
+    (["-F", "--", "-v"], "-v\n", 0, RETURNS),
+    # A flag taking a separate operand is refused rather than guessed at: a
+    # permissive parser would search for `1` inside the file named `Hello`.
+    (["-m", "1", "Hello"], "Hello\n", 2, FATAL),
+    (["--colour=always", "Hello"], "Hello\n", 2, FATAL),
+    # A missing file is a TOOL failure, with flags exactly as without them —
+    # and it must be FATAL, not a returned 2 the caller can walk past.
+    (["Hello", "/nonexistent/nros"], "", 2, FATAL),
+    (["-iE", "Hello", "/nonexistent/nros"], "", 2, FATAL),
+]
+
+# The `git grep` sibling: same three statuses over `git grep`'s own 0/1/128.
+# `-E` vs BRE is the discriminator that a dropped flag cannot fake — the
+# alternation is literal text under BRE, so it matches nothing.
+GIT_CASES = [
+    (["-E", "nros_(grep|git)_q", "--", "scripts/lib/grep-q.sh"], 0, RETURNS),
+    (["nros_(grep|git)_q", "--", "scripts/lib/grep-q.sh"], 1, RETURNS),
+    (["-i", "NROS_GREP_Q", "--", "scripts/lib/grep-q.sh"], 0, RETURNS),
+    (["NROS_GREP_Q", "--", "scripts/lib/grep-q.sh"], 1, RETURNS),
+    # `--` here separates the PATHSPECS, so it must survive to git untouched.
+    (["-E", "nros_(grep|git)_q", "--", "scripts/lib/tracked.py"], 1, RETURNS),
+    (["-E", "x", "--", "/nonexistent/outside/repo"], 2, FATAL),
+]
+
+
+# The flag allowlist is CLOSED, and end-to-end cases cannot show that: feed
+# `-m 1 Hello` to a permissive parser and grep itself errors out, so the helper
+# still exits 2 and the case passes for the wrong reason. These probe the
+# predicate directly, which is the only place the closure is decidable.
+FLAG_ACCEPT = ["-i", "-E", "-F", "-v", "-qiE", "-w", "-x", "-s",
+               "--ignore-case", "--fixed-strings"]
+FLAG_REJECT = ["-e", "-f", "-m", "-A", "-B", "-C", "-d", "-D", "-eE",
+               "--include=x", "--colour=always", "--max-count=1", "-", ""]
+
+
+def flag_allowlist_test():
+    fails = []
+    script = ('set -uo pipefail\n. "$1"\n'
+              'if _nros_grep_q_flag_ok "$2"; then echo ok; else echo no; fi\n')
+    for flag, want in ([(f, "ok") for f in FLAG_ACCEPT]
+                       + [(f, "no") for f in FLAG_REJECT]):
+        got = subprocess.run(
+            ["bash", "-c", script, "_", HELPER, flag],
+            capture_output=True, text=True, check=False,
+        ).stdout.strip()
+        if got != want:
+            fails.append(f"_nros_grep_q_flag_ok {flag!r}: want {want}, got {got!r}"
+                         f" — an operand-taking flag that slips through makes the"
+                         f" NEXT argument the pattern, silently")
+    return fails
+
+
+def _run_helper(fn, argv, stdin):
+    """(status, reached_next_statement)."""
+    script = (f'set -uo pipefail\n. "$1"\nshift\n{fn} "$@"\n'
+              f'rc=$?\nprintf "%s" "{MARKER}"\nexit "$rc"\n')
+    p = subprocess.run(
+        ["bash", "-c", script, "_", HELPER, *argv],
+        input=stdin, cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    return p.returncode, MARKER in p.stdout
+
+
+def helper_self_test():
+    fails = []
+    for fn, cases in (("nros_grep_q", [(a, s, w, k) for a, s, w, k in HELPER_CASES]),
+                      ("nros_git_grep_q", [(a, "", w, k) for a, w, k in GIT_CASES])):
+        for argv, stdin, want, kind in cases:
+            got, reached = _run_helper(fn, argv, stdin)
+            where = f"{fn} {' '.join(argv)!r}"
+            if got != want:
+                fails.append(f"{where}: want status {want}, got {got}")
+            elif reached != (kind is RETURNS):
+                fails.append(
+                    f"{where}: want it to {kind}, but the caller "
+                    f"{'CONTINUED' if reached else 'stopped'} after the call — a "
+                    f"tool failure must END the script, not hand back a status")
+    return fails + flag_allowlist_test()
+
+
 def self_test():
     """Both directions — a checker that stopped checking passes silently."""
     good = [
@@ -118,12 +241,17 @@ def self_test():
     for s in bad:
         if not COND.search(s):
             fails.append(f"MISSED: {s}")
+    helper_fails = helper_self_test()
+    fails += helper_fails
     if fails:
         print("check-grep-q-error-conflation --self-test FAILED:")
         print("\n".join("  " + f for f in fails))
         return 1
+    n_helper = (len(HELPER_CASES) + len(GIT_CASES)
+                + len(FLAG_ACCEPT) + len(FLAG_REJECT))
     print(f"check-grep-q-error-conflation --self-test: "
-          f"{len(good) + len(bad)} case(s) OK")
+          f"{len(good) + len(bad)} regex case(s) + {n_helper} live "
+          f"nros_grep_q/nros_git_grep_q case(s) OK")
     return 0
 
 
