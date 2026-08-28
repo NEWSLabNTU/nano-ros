@@ -15,8 +15,15 @@ name = "nros_platform_mps2_an385"
 # FreeRTOS consumer that reuses only this crate's Cortex-M timing (DWT) already
 # has picolibc from the board, so it must `default-features = false` here to
 # avoid a `duplicate symbol: strtol` link conflict; PRNG / sleep / timing stay.
-default = ["libc-stubs"]
+default = ["libc-stubs", "libc-heap"]
 libc-stubs = ["nros-baremetal-common/libc-stubs"]
+# phase-391 W5-endgame (issues 0816/0843) — the HEAP libc shims
+# (`malloc`/`free`/`realloc`/`calloc`, src/libc_stubs.rs) get their own gate so
+# a heap-free-tier image can drop the symbols entirely: the W1 link gate
+# (`check-no-alloc-image --tier heap-free`) counts a DEFINED `malloc` as an
+# allocation surface whether or not anything calls it. Default-on — every
+# existing consumer (zenoh's Z_MALLOC route, XRCE's wrapper) keeps them.
+libc-heap = []
 # TLS support (larger heap: 128 KB instead of 64 KB)
 link-tls = []
 # Phase 97.3.mps2-an385 — DDS / DDS DcpsDomainParticipant + builtin
