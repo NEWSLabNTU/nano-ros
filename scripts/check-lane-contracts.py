@@ -131,6 +131,60 @@ def tests_invoked(recipes, names):
     return out
 
 
+ID_RE = re.compile(r'require_compile_check(?:_bin)?\(\s*"([A-Za-z0-9_]+)"')
+
+
+def stamp_ids_used(test_name):
+    """The compile-check fixture ids a test names literally."""
+    path = os.path.join(TESTS_DIR, f"{test_name}.rs")
+    if not os.path.exists(path):
+        return set()
+    with open(path, encoding="utf8", errors="replace") as fh:
+        text = fh.read()
+    ids = set(ID_RE.findall(text))
+    # Most tests keep the ids in a `const FOO: &[&str] = &["a", "b"];` and pass
+    # the loop variable, so the literal call site names nothing. Fall back to
+    # every string literal that the manifest actually knows as a fixture id —
+    # over-broad is safe here, since an id that is not in the manifest is
+    # dropped by the caller.
+    ids |= set(re.findall(r'"([a-z][a-z0-9_]{3,})"', text))
+    return ids
+
+
+def builder_of_ids():
+    """{fixture id: builder} from the manifest — READ, never inferred."""
+    manifest = os.path.join(ROOT, "examples", "fixtures.toml")
+    if not os.path.exists(manifest):
+        return {}
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # python < 3.11
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            return {}
+    with open(manifest, "rb") as fh:
+        d = tomllib.load(fh)
+    return {
+        f["id"]: f.get("builder")
+        for f in d.get("compile_check_fixture", [])
+        if f.get("id")
+    }
+
+
+def lane_filters(recipes, reached):
+    """Every NROS_COMPILE_CHECK_LANES=... value the lane sets, as a set of
+    builder names. Empty set means the lane never filters (all builders)."""
+    out, filtered = set(), False
+    for r in reached:
+        for line in recipes.get(r, {}).get("body", []):
+            m = re.search(r"NROS_COMPILE_CHECK_LANES=([A-Za-z0-9,_-]+)", line)
+            if m:
+                filtered = True
+                out |= {x for x in re.split(r"[,\s]+", m.group(1)) if x}
+    return out if filtered else None
+
+
 def resolvers_used(test_name):
     path = os.path.join(TESTS_DIR, f"{test_name}.rs")
     if not os.path.exists(path):
@@ -155,6 +209,8 @@ def main():
             errs.append(f"{lane}: no such recipe — this gate's lane list is stale")
             continue
         reached = closure(recipes, lane)
+        lane_builders = lane_filters(recipes, reached)
+        id_builder = builder_of_ids()
         # Does the lane PRODUCE compile-stage stamps anywhere in its closure?
         produces_stamps = any(
             "compile-check-fixtures.sh" in line
@@ -198,6 +254,34 @@ def main():
                     f"      Have the gate build its own stamps (~13 s), as\n"
                     f"      `check-source-gates` does."
                 )
+                continue
+            # PRESENCE IS NOT ENOUGH, and this is the half that was missing.
+            # The rule above asks only "does the lane run the fixture builder at
+            # all", which a lane passes even while filtering OUT the very
+            # builder the test needs. `check-source-gates` requested
+            # `NROS_COMPILE_CHECK_LANES=cargo-check` while all nine
+            # `platform_hdr_*` rows are `cxx-syntax`, so the gate produced
+            # stamps, produced the WRONG ones, and this check stayed green. It
+            # failed only in CI, because locally the stamps already existed from
+            # an earlier unfiltered build.
+            if used and lane_builders is not None:
+                want = {
+                    id_builder[i] for i in stamp_ids_used(test)
+                    if i in id_builder and id_builder[i]
+                }
+                missing = sorted(want - lane_builders)
+                if missing:
+                    errs.append(
+                        f"{lane} reaches `{test}` (via `{via}`), whose stamps are built by\n"
+                        f"      {', '.join(missing)} — but the lane filters to\n"
+                        f"      NROS_COMPILE_CHECK_LANES={','.join(sorted(lane_builders))}.\n"
+                        f"      The builder RUNS and produces the wrong rows, so the test\n"
+                        f"      fails on a fresh checkout with 'Test fixture binary not\n"
+                        f"      prebuilt' while passing anywhere the stamps happen to\n"
+                        f"      survive from an earlier build.\n"
+                        f"      Builders are READ from examples/fixtures.toml; do not\n"
+                        f"      infer them from the fixture ids."
+                    )
 
     if errs:
         print(f"check-lane-contracts: {len(errs)} tier violation(s):\n", file=sys.stderr)
