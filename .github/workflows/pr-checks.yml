@@ -105,6 +105,16 @@ jobs:
       scaffold: ${{ steps.f.outputs.scaffold }}
       colcon: ${{ steps.f.outputs.colcon }}
       sdk_index: ${{ steps.f.outputs.sdk_index }}
+      # phase-395 — does this pull request touch anything `check` verifies?
+      # A docs-only change does not, and paying ~5 min of CLI build and source
+      # provisioning to lint markdown is not sane.
+      #
+      # This is a JOB-level filter, deliberately. Path-filtering the TRIGGER of
+      # a required workflow leaves its check Pending forever, which deadlocked
+      # #6 and #16 against each other; a skipped JOB reports Success. GitHub's
+      # guidance is explicit: "do not use path or branch filtering to skip
+      # workflow runs if the workflow is required".
+      code: ${{ steps.codeprobe.outputs.code }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -124,9 +134,58 @@ jobs:
               - 'scripts/sdk/check-qemu-configure.sh'
               - 'ci/nano-ros-sdk/scripts/build-qemu.sh'
 
+      # Computed explicitly rather than as a negated paths-filter pattern,
+      # because the failure mode is a FALSE GREEN on the required gate and the
+      # negation semantics were not something to guess at. FAIL-SAFE by
+      # construction: a path this cannot classify, an empty diff, or a failed
+      # diff all count as CODE, so the gate is never silenced by accident. The
+      # classifier was tested against every case below before it shipped.
+      - name: Does this pull request touch anything `check` verifies?
+        id: codeprobe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          code=true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            # The API, not `git diff`: `actions/checkout` is SHALLOW by default,
+            # so the base ref is usually absent and the diff would fail — which
+            # the fail-safe would turn into `code=true` forever, i.e. safe but
+            # never actually firing. `gh` answers exactly and needs no fetch.
+            if changed="$(gh pr view "${{ github.event.pull_request.number }}" \
+                            --repo "${{ github.repository }}" \
+                            --json files --jq '.files[].path' 2>/dev/null)" \
+                 && [ -n "$changed" ]; then
+              code=false
+              while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                case "$f" in
+                  *.md|docs/*|book/*) ;;
+                  *) code=true; break ;;
+                esac
+              done <<< "$changed"
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" = "true" ]; then
+            echo "code touched (or undetermined) — \`check\` will run"
+          else
+            echo "documentation only — \`check\` will skip, and \`CI\` will say so"
+          fi
+
   # ----- fast gate (always) -----
   check:
     name: check (fast on push; full on PR/nightly)
+    # `always()` is load-bearing: `changes` is skipped on a merge group, and a
+    # skipped dependency skips its dependents — without it, `check` would not
+    # run in the queue, which is the one place it matters most.
+    #
+    # So: run unless this is a pull request that touches ONLY documentation.
+    # Every other event runs it unconditionally.
+    needs: changes
+    if: >-
+      ${{ always() && (github.event_name != 'pull_request'
+          || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -520,7 +579,7 @@ jobs:
     # the aggregator is itself skipped, and a skipped required check reports
     # success, which is the vacuous green this exists to prevent.
     if: always()
-    needs: [check, scaffold-journey, colcon-parity, sdk-index]
+    needs: [changes, check, scaffold-journey, colcon-parity, sdk-index]
     runs-on: ubuntu-latest
     steps:
       - name: Require every gate to have actually passed
@@ -528,12 +587,22 @@ jobs:
           set -euo pipefail
           fail=0
 
-          # `check` is the gate. It runs on every event with no condition, so
-          # `skipped` here is never legitimate — it would mean the job did not
-          # run at all, which is exactly the state that must not read as green.
+          # `check` is the gate, so a skip has to be JUSTIFIED rather than
+          # accepted. Exactly one justification exists: a pull request that
+          # touched no code, where `changes` said so. Any other skip means the
+          # gate did not run, and that must never read as green — which is the
+          # vacuous pass this whole aggregator exists to prevent.
+          code_touched="${{ needs.changes.outputs.code }}"
           case "${{ needs.check.result }}" in
             success) echo "  ok       check" ;;
-            skipped) echo "  FAIL     check was SKIPPED — the gate did not run"; fail=1 ;;
+            skipped)
+              if [ "${{ github.event_name }}" = "pull_request" ] && [ "$code_touched" != "true" ]; then
+                echo "  skipped  check (docs-only pull request — no code to verify)"
+              else
+                echo "  FAIL     check was SKIPPED but this is not a docs-only PR"
+                echo "           event=${{ github.event_name }} code_touched=${code_touched:-<unset>}"
+                fail=1
+              fi ;;
             *)       echo "  FAIL     check: ${{ needs.check.result }}"; fail=1 ;;
           esac
 
