@@ -424,3 +424,77 @@ jobs:
       # must not drift (else prebuilt != source-built).
       - name: Check qemu configure flags match (index vs build script)
         run: ./scripts/sdk/check-qemu-configure.sh
+
+  # ---------------------------------------------------------------------------
+  # THE REQUIRED CHECK — phase-395 W20.
+  #
+  # One aggregator, and it is the ONLY context in the required set. This is
+  # GitHub's own recommended shape for a workflow with conditional jobs, and it
+  # exists because of a defect that froze this repo four separate ways in one
+  # day: a required check that fails to produce a VERDICT blocks forever, since
+  # GitHub cannot tell "not applicable" from "not yet".
+  #
+  #   always RED       a gate that could not pass on the runner (issue 0853)
+  #   always PENDING   a self-hosted required check with no runner
+  #   cannot REPORT    a required check with no `merge_group` trigger
+  #   never TRIGGERED  a `paths:` filter the pull request did not match
+  #
+  # The last one deadlocked two pull requests against each other: #16 carried
+  # the ROS-environment fix that #6's merge group needed, and #16 touched only
+  # `ci/docker/**`, which the filter did not list — so its required check had
+  # never run, and could never run.
+  #
+  # WHY AN AGGREGATOR FIXES THE CLASS. It has no `if:` on the job and no filter
+  # on the trigger, so it ALWAYS runs and therefore always reports. Every real
+  # job may then be skipped, filtered or renamed freely — the required set never
+  # changes, so it cannot drift out of sync with the workflow either.
+  #
+  # THE TRAP, which GitHub documents and which makes the naive version useless:
+  # A SKIPPED JOB REPORTS SUCCESS. So `needs:` alone is not a gate — an
+  # aggregator that merely depends on its jobs passes when they were all
+  # skipped. It has to INSPECT `needs.*.result`, which is what the step below
+  # does, and treat `skipped` as a deliberate decision rather than a pass.
+  ci-ok:
+    name: CI
+    # `always()` so a failed or skipped dependency still runs this — without it
+    # the aggregator is itself skipped, and a skipped required check reports
+    # success, which is the vacuous green this exists to prevent.
+    if: always()
+    needs: [check, scaffold-journey, colcon-parity, sdk-index]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every gate to have actually passed
+        run: |
+          set -euo pipefail
+          fail=0
+
+          # `check` is the gate. It runs on every event with no condition, so
+          # `skipped` here is never legitimate — it would mean the job did not
+          # run at all, which is exactly the state that must not read as green.
+          case "${{ needs.check.result }}" in
+            success) echo "  ok       check" ;;
+            skipped) echo "  FAIL     check was SKIPPED — the gate did not run"; fail=1 ;;
+            *)       echo "  FAIL     check: ${{ needs.check.result }}"; fail=1 ;;
+          esac
+
+          # The narrow lanes are path-gated BY DESIGN, so `skipped` is a real
+          # answer for them: their paths did not move. Only a failure counts.
+          for pair in \
+            "scaffold-journey:${{ needs.scaffold-journey.result }}" \
+            "colcon-parity:${{ needs.colcon-parity.result }}" \
+            "sdk-index:${{ needs.sdk-index.result }}"; do
+            name="${pair%%:*}"; res="${pair#*:}"
+            case "$res" in
+              success) echo "  ok       $name" ;;
+              skipped) echo "  skipped  $name (path-gated; its paths did not move)" ;;
+              *)       echo "  FAIL     $name: $res"; fail=1 ;;
+            esac
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo
+            echo "CI: at least one required gate did not pass." >&2
+            exit 1
+          fi
+          echo
+          echo "CI: every gate passed or was legitimately skipped."

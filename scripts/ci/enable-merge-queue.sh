@@ -74,14 +74,23 @@ RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 # the same ground inside the queue (check-fast + check-build + test-unit).
 #
 # `_assert_merge_group_triggers` enforces this rather than trusting the comment.
+# ONE context, an AGGREGATOR — phase-395 W20.
+#
+# Not `check` itself, and not a list of job names. `ci-ok` needs every job,
+# runs with `if: always()`, and inspects `needs.*.result`, so it ALWAYS reports
+# and the required set never has to change when a job is added, renamed,
+# filtered or skipped. That is the fix for the class that froze this repo four
+# ways in one day — a required check that produces no verdict blocks forever.
 HOSTED_CHECKS=(
-    "check (fast on push; full on PR/nightly)"
+    "CI"
 )
 # Runs but does NOT gate. `queue.yml`'s L1 job was DELETED in phase-395 W13 for
 # the reason that kept it out of this list: `pr-checks`'s `check` covers
 # strictly more, and both running meant compiling the same tree twice on every
 # merge group.
+# Run and are visible, but do not gate — the aggregator speaks for them.
 PR_ONLY_CHECKS=(
+    "check (fast on push; full on PR/nightly)"
     "L3 (cross build + link)"
 )
 # Added to the required set only with --self-hosted-ready.
