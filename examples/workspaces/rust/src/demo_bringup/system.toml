@@ -168,6 +168,21 @@ panic = "own"
 board = "native"
 launch = "system.launch.xml"
 
+# Issue 0831 — the RMW axis over this workspace. Each declares its backend and
+# gets it: the selection facade reads `[image.<id>].rmw` (falling back to
+# `[system] rmw`), so `build/posix-cyclonedds/` now holds a cyclonedds binary.
+# Before the fix these two coordinates were fixture rows claiming an RMW against
+# an image that declared none, and tier 2 ran zenoh for both.
+[image.native_cyclonedds]
+board = "native"
+launch = "system.launch.xml"
+rmw = "cyclonedds"
+
+[image.native_xrce]
+board = "native"
+launch = "system.launch.xml"
+rmw = "xrce"
+
 [image.native_action_client]
 board = "native"
 launch = "action_client.launch.xml"

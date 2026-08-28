@@ -316,7 +316,20 @@ pub fn render_manifest(
                     .join(", ")
             )
         };
-        out.push_str(&format!("{krate} = {{ path = \"{rel}\"{feats} }}\n"));
+        // `default-features = false`, because the SELECTION FACADE is the one
+        // place that names the board's RMW (issue 0831). A bare dep here
+        // re-enables `default = ["rmw-zenoh"]` and cargo unions it with the
+        // facade's `rmw-cyclonedds`: the image gets two backends and the
+        // runtime refuses to pick one. Cargo cannot subtract a default (issue
+        // 0270), so BOTH declarations have to be silent about it.
+        //
+        // Nothing is lost. The facade re-supplies the board's non-RMW defaults
+        // (`ethernet` on the mps2/esp32 boards, `image-runtime` — two lang
+        // items — on the NuttX ones), and `board_features` above still names
+        // whatever this entry needs in its own right.
+        out.push_str(&format!(
+            "{krate} = {{ path = \"{rel}\", default-features = false{feats} }}\n"
+        ));
     }
     // The platform feature is named EXPLICITLY even when a board crate carries
     // it. The hand-written freertos and zephyr entries both do this, and the

@@ -88,6 +88,38 @@ struct RuntimeDeps {
     rmw_backend: Option<(String, PathBuf)>,
 }
 
+/// The RMW the IMAGE that names `entry_name` declares, if there is one.
+///
+/// Issue 0831. `[image.<id>].rmw` used to reach exactly one thing on the cargo
+/// driver — `coordinate()`, which names the build DIRECTORY — while the backend
+/// came from here, off `[system] rmw`. So `[image.native_cyclonedds]` produced
+/// `build/posix-cyclonedds/…` containing a zenoh binary: measured 0 occurrences
+/// of "cyclone" and 1916 of "zenoh" in the artifact. A directory named for a
+/// backend it does not contain reads as coverage, and two of tier 2's fourteen
+/// coordinates were exactly that.
+///
+/// The facade is what selects the backend (through the board crate's `rmw-*`
+/// feature), and it is already keyed per ENTRY. An image names an entry —
+/// `package_name(image_id)` — so per-entry IS per-image, and the fix is to read
+/// the RMW from the image rather than from the system header.
+///
+/// Matched FORWARD, `package_name(id) == entry_name`, never by stripping
+/// `_entry` off the name: that function replaces `-`, `.` and `/` with `_`, so
+/// the reverse is ambiguous and would silently pick the wrong image for an id
+/// containing any of them.
+///
+/// `[image_defaults]` is folded in first, so an image inherits the workspace's
+/// RMW exactly as the builder resolves it. `None` means no image names this
+/// entry — a hand-written entry, or an unmigrated workspace — and the caller
+/// falls back to `[system] rmw`, which is what those have always used.
+fn image_rmw(entry_name: &str, sys: &SystemToml) -> Option<String> {
+    let base = sys.image_defaults.clone().unwrap_or_default();
+    sys.image
+        .iter()
+        .find(|(id, _)| crate::builder::entry::package_name(id) == entry_name)
+        .and_then(|(_, img)| img.with_base(&base).rmw)
+}
+
 /// Derive the selection for one entry and write its facade crate.
 ///
 /// Returns `Ok(None)` when the package is not an entry, or when the entry
@@ -125,7 +157,8 @@ pub fn write_facade(
 
     // ---- the three declared axes ------------------------------------------
     let edition = sys.system.ros_edition()?;
-    let rmw = crate::orchestration::rmw_resolver::resolve_rmw(&sys.system.rmw)
+    let declared_rmw = image_rmw(entry_name, sys).unwrap_or_else(|| sys.system.rmw.clone());
+    let rmw = crate::orchestration::rmw_resolver::resolve_rmw(&declared_rmw)
         .map_err(|e| eyre::eyre!("facade: {entry_name}: {e}"))?;
 
     // `nros` carries the edition and the capabilities; the BOARD crate carries
@@ -172,11 +205,31 @@ pub fn write_facade(
     // When the board has no such feature the facade stays silent about the RMW
     // for that dep — the entry's own selector is then the only one, which is
     // correct rather than a fallback.
+    //
+    // Issue 0831 — and the reason the dep is rendered `default-features = false`
+    // below. Naming `rmw-cyclonedds` while the board's `default = ["rmw-zenoh"]`
+    // still applies gets BOTH: cargo unions features, it cannot subtract a
+    // default (issue 0270). The image then carries two backends and the runtime
+    // refuses to pick — `more than one RMW backend is registered and no
+    // $NROS_RMW selector was set` — which is honest but is not a working image.
+    //
+    // So the defaults are carved out and re-supplied MINUS any `rmw-*`: the
+    // board keeps its `ethernet` / `image-runtime`, and the RMW is named once,
+    // by the facade.
     let board_features: Vec<String> = match deps.board.as_ref() {
-        Some((_, path)) if crate_declares_feature(path, rmw.cargo_feature) => {
-            vec![rmw.cargo_feature.to_string()]
+        Some((_, path)) => {
+            let mut f: Vec<String> = crate_default_features(path)
+                .into_iter()
+                .filter(|d| !d.starts_with("rmw-"))
+                .collect();
+            if crate_declares_feature(path, rmw.cargo_feature) {
+                f.push(rmw.cargo_feature.to_string());
+            }
+            f.sort();
+            f.dedup();
+            f
         }
-        _ => Vec::new(),
+        None => Vec::new(),
     };
 
     // A direct backend dep gets the edition (and any capability the backend
@@ -245,6 +298,34 @@ pub fn write_facade(
 /// Read from the manifest rather than assumed from the crate's name: the board
 /// crates genuinely disagree about whether they own the RMW axis, and guessing
 /// from a naming convention is what produced the zephyr breakage.
+/// The crate's own `[features] default` list.
+///
+/// Sibling of [`crate_declares_feature`], and read for the same reason: the
+/// board crate is the authority on what it declares, not a table here.
+///
+/// Used to CARVE OUT the board's default RMW without losing the rest of its
+/// defaults (issue 0831, the shape issue 0270 recorded). Boards do not put the
+/// same things there — `nros-board-linux` defaults to `["rmw-zenoh"]`, but
+/// `nros-board-esp32-qemu` and `nros-board-mps2-an385` default to
+/// `["ethernet", "rmw-zenoh"]` and the NuttX boards to `["image-runtime"]`,
+/// which carries two lang items. A blanket `default-features = false` would
+/// silently drop `ethernet` and the panic handler along with the backend.
+fn crate_default_features(dir: &Path) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+        return Vec::new();
+    };
+    toml::from_str::<toml::Value>(&raw)
+        .ok()
+        .and_then(|v| {
+            v.get("features")?.get("default")?.as_array().map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(ToString::to_string))
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
+}
+
 fn crate_declares_feature(dir: &Path, feature: &str) -> bool {
     let Ok(raw) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
         // Unreadable manifest: emit nothing rather than emit something cargo
@@ -346,7 +427,7 @@ fn render_manifest(
         // carry selection.
         if !board_features.is_empty() {
             s.push_str(&format!(
-                "{name} = {{ path = {:?}, features = [{}] }}\n",
+                "{name} = {{ path = {:?}, default-features = false, features = [{}] }}\n",
                 rel_from(facade_dir, path),
                 feat_list(board_features),
             ));
