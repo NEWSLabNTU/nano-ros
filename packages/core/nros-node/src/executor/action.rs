@@ -209,7 +209,7 @@ impl<'s> Executor<'s> {
         let send_goal_server = self
             .session
             .create_service(&send_goal_info, QoSProfile::services_default())
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            .map_err(NodeError::Transport)?;
 
         let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
         let cancel_goal_info = ServiceInfo::new(
@@ -221,7 +221,7 @@ impl<'s> Executor<'s> {
         let cancel_goal_server = self
             .session
             .create_service(&cancel_goal_info, QoSProfile::services_default())
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            .map_err(NodeError::Transport)?;
 
         let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
         let get_result_info = ServiceInfo::new(
@@ -233,7 +233,7 @@ impl<'s> Executor<'s> {
         let get_result_server = self
             .session
             .create_service(&get_result_info, QoSProfile::services_default())
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            .map_err(NodeError::Transport)?;
 
         let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
         let feedback_topic = TopicInfo::new(
@@ -245,7 +245,7 @@ impl<'s> Executor<'s> {
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            .map_err(NodeError::Transport)?;
 
         let status_keyexpr: heapless::String<256> = action_info.status_key();
         let status_topic = TopicInfo::new(
@@ -257,7 +257,7 @@ impl<'s> Executor<'s> {
         let status_publisher = self
             .session
             .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
-            .map_err(|_| NodeError::ActionCreationFailed)?;
+            .map_err(NodeError::Transport)?;
 
         let server = ActionServer {
             core: super::action_core::ActionServerCore {
@@ -668,19 +668,19 @@ impl<'s> Executor<'s> {
             (
                 session
                     .create_service(&send_goal_info, qos)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_service(&cancel_goal_info, qos)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_service(&get_result_info, qos)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_publisher(&feedback_topic, QoSProfile::QOS_PROFILE_DEFAULT)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_publisher(&status_topic, QoSProfile::QOS_PROFILE_ACTION_STATUS_DEFAULT)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
             )
         };
 
@@ -1134,19 +1134,28 @@ impl<'s> Executor<'s> {
             let session = self
                 .session_at_mut(session_idx)
                 .ok_or(NodeError::BackendMismatch)?;
+            // issue 0870 — these were `map_err(|_| NodeError::ActionCreationFailed)`,
+            // discarding a `TransportError` the caller could have used. An action
+            // client declares four entities back to back, so "one of them failed"
+            // is the least useful thing this seam can say. `NodeError` already
+            // carries `Transport(TransportError)` — nothing needed adding, the
+            // error simply was not passed on. Swept across all 17 session
+            // `create_*` sites here. The two `register_protocol_types` sites keep
+            // `ActionCreationFailed`: their `map_err(|()| …)` has no payload, so
+            // there the variant IS the whole truth.
             (
                 session
                     .create_client(&send_goal_info, QoSProfile::services_default())
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_client(&cancel_goal_info, QoSProfile::services_default())
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_client(&get_result_info, QoSProfile::services_default())
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
             )
         };
 
@@ -1304,16 +1313,16 @@ impl<'s> Executor<'s> {
             (
                 session
                     .create_client(&send_goal_info, QoSProfile::services_default())
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_client(&cancel_goal_info, QoSProfile::services_default())
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_client(&get_result_info, QoSProfile::services_default())
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
                 session
                     .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
-                    .map_err(|_| NodeError::ActionCreationFailed)?,
+                    .map_err(NodeError::Transport)?,
             )
         };
 
