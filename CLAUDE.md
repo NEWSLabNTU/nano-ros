@@ -360,6 +360,17 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   coordinate producing no runtime result. Exemptions have ONE spelling
   (`nros_tests::fixtures::staleness::exempt_probe_input`, gated by
   `check-staleness-probe-exemptions`) because per-arm subsets ARE 0442.
+- **A test result is only about the tree its FIXTURES were built from — check the mtimes
+  before filing (issues 0859/0860/0861/0862, all four retracted).** A sweep, then a rebase,
+  then reading the sweep's output is four ghost issues: the artifacts were built at 03:19
+  against a tree rebased past 04:48, so each red reproduced a bug that had ALREADY BEEN
+  FIXED, in convincing detail. Two of the four also got a confident wrong ROOT CAUSE written
+  into them (an allocator that was fine; a "no compilation inside tests" violation in a test
+  that answers in 82 ms), which is worse than the bogus filing — it aims the next person at
+  a dead end. Before filing from a failing fixture: `stat -c '%y' <artifact>` against
+  `git log -1 --format=%ci` of the code being blamed, and re-run the single test SOLO — a
+  60 s timeout under a 32-way build was 0.082 s alone. `Real failures: N` from the junit
+  rewrite counts what the RUN saw, not what is true of HEAD.
 - **Test greps use `nros_tests::output::*` constants, never literal strings** — example
   banners/markers get slimmed (phase-277 broke ~10 tests grepping `"Result:"`/`"[OK]"`/old
   banners while delivery worked). If a test times out, FIRST diff the grep pattern against what

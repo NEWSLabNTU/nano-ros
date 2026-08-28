@@ -2,12 +2,55 @@
 id: 862
 title: "`zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a
   static question"
-status: open
+status: resolved
+resolution: retracted
 type: bug
 area: testing, rmw
 related: [phase-391]
 ---
 
+> **RETRACTED — not a defect.** The original report is kept below
+> unaltered, because a retraction that deletes its own evidence cannot
+> be checked.
+
+## Retracted 2026-08-28 — the run that produced this was invalid
+
+This was filed from a `just ci-matrix` run whose FIXTURES PREDATED THE TREE.
+The sweep built its artifacts at 03:19, the tree was then rebased past 04:48,
+and the old results were read as current. Re-run against fixtures matching the
+tree, it passes.
+
+That is not a flake and not a partial fix: nothing about the reported behaviour
+was real. See the retraction note at the bottom for the shared cause, which took
+all four issues from that run.
+
+## Re-check
+
+```
+$ cargo nextest run -E 'test(zpico_sys_has_no_cmake_dep)'
+    PASS [   0.082s] (1/1) nros-tests::zpico_build_matrix zpico_sys_has_no_cmake_dep
+     Summary [   0.092s] 1 test run: 1 passed
+```
+
+**0.082 s solo, against a 60 s timeout in the sweep.** The issue's own step 1
+said to retest solo before treating the timeout as deterministic; doing that
+answers it. The machine was running a 32-way fixture build plus other agents'
+work at the time.
+
+## What I got wrong in the original analysis
+
+The core argument was wrong, and confidently so. I reasoned that "a build-graph
+question answered in 60 s is doing something other than reading the graph", and
+concluded the test probably compiles at run time — a "No compilation inside
+tests" violation worth fixing on its own. It answers in 82 ms. It reads the
+graph exactly as intended; it was starved, not misdesigned.
+
+A timeout under load is evidence about the MACHINE, not about the code. Reading
+it as a design defect produced a specific, false, and plausible-sounding claim.
+
+---
+
+# Original report (retracted, kept for the record)
 ## Symptom
 
 `nros-tests::zpico_build_matrix zpico_sys_has_no_cmake_dep` TIMEOUTs at exactly
