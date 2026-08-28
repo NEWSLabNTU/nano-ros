@@ -41,6 +41,12 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# issue 0726 — `if ! grep -qiE Status` names a specific phase doc as missing its
+# status line, so a grep that failed to start files a documentation finding
+# against a document that has one. `nros_grep_q` exits 2 and passes -iE through.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 missing=0
 checked=0
 
@@ -55,7 +61,7 @@ while IFS= read -r doc; do
     # first cut recognising only `**Status` flagged `303-xcdr2-interop`, and
     # reformatting the phase would have been "the gate bending the tree to
     # itself". Widening here keeps every shape listed above passing.
-    if ! grep -qiE '^[[:space:]]*(#+[[:space:]]*)?(\*\*)?Status\b' "$doc"; then
+    if ! nros_grep_q -iE '^[[:space:]]*(#+[[:space:]]*)?(\*\*)?Status\b' "$doc"; then
         if [ "$missing" -eq 0 ]; then
             echo "check-roadmap-status: active phase with no findable status line:" >&2
         fi

@@ -28,6 +28,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 fail=0
 
 for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo.toml; do
@@ -45,8 +48,6 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
     # index lookup rather than a directory walk (check-no-tracked-file-find).
     src_files=$(git ls-files -- "$dir/src/*.rs" | sort)
     [ -n "$src_files" ] || continue
-    # shellcheck disable=SC2086
-    src_text=$(cat $src_files)
     # Issue 0726 — capture what `cat` actually returned. Under a 32-way gate
     # fan-out this gate intermittently reports a missing anchor for an example
     # that plainly has one, and the read is the only step that can lose content
@@ -54,12 +55,18 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
     # scope test below. `cat` reports a per-file failure on stderr and CONTINUES
     # with the rest, so a partial read is indistinguishable from a real absence
     # by the time the anchor grep runs.
-    cat_rc=$?
+    #
+    # The capture is an `if`, not `cmd; rc=$?`: under this script's `set -e` a
+    # non-zero `cat` ends the shell at the assignment, so `cat_rc` could only
+    # ever hold 0 and the diagnostic that prints it could never say anything.
+    # Same shape as the anchor grep below, same fix.
+    # shellcheck disable=SC2086
+    if src_text=$(cat $src_files); then cat_rc=0; else cat_rc=$?; fi
     src_bytes=${#src_text}
     src="$dir/src"
 
     # Only examples that actually use the facade entry macro are in scope.
-    printf '%s' "$src_text" | grep -q 'zephyr_component_main!' || continue
+    nros_grep_q 'zephyr_component_main!' <<<"$src_text" || continue
 
     for pair in "rmw-zenoh:nros_rmw_zenoh:nros-rmw-zenoh" \
                 "rmw-xrce:nros_rmw_xrce_cffi:nros-rmw-xrce-cffi"; do
@@ -82,17 +89,17 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
         # forked grep can fail to start (EAGAIN) or be killed, and this gate
         # then reported a missing anchor for an example that has one: a
         # confident, specific, wrong finding, green->red under load and never
-        # the other way. Capture the status and treat >=2 as a hard error.
-        printf '%s' "$src_text" | grep -q "force_link_backend!(${krate})"
-        grep_rc=$?
-        if [ "$grep_rc" -ge 2 ]; then
-            echo "FATAL: grep failed (rc=$grep_rc) scanning $src for" >&2
-            echo "       force_link_backend!(${krate}). This is a TOOL failure," >&2
-            echo "       not a finding — refusing to report a missing anchor" >&2
-            echo "       on the strength of a grep that did not run (0726)." >&2
-            exit 2
-        fi
-        if [ "$grep_rc" -eq 1 ]; then
+        # the other way. `nros_grep_q` exits 2 on >=2 instead.
+        #
+        # It replaces a hand-rolled `grep -q …; rc=$?` that could not run: this
+        # script sets `-e`, so a `grep -q` returning 1 in STATEMENT position
+        # killed the shell before the next line, and the whole finding below —
+        # the diagnostics, the ERROR text, even "gate FAILED" — was unreachable.
+        # A genuinely missing anchor exited 1 in silence. Verified against this
+        # file at HEAD on a scratch tree with the anchor removed, and verified
+        # again after the change: the finding now prints. So the arms are a
+        # CONDITIONAL, which is also the only shape `set -e` leaves intact.
+        if ! nros_grep_q "force_link_backend!(${krate})" <<<"$src_text"; then
             # Issue 0726 — say what was READ, not just what was concluded. If
             # the anchor is present on disk but absent from `src_text`, this is
             # the fan-out flake and not a real finding; per-file greps below
@@ -105,7 +112,7 @@ for manifest in examples/zephyr/rust/*/Cargo.toml examples/zephyr/rust/*/*/Cargo
                 echo "    per-file re-read for force_link_backend!(${krate}):"
                 # shellcheck disable=SC2086
                 for f in $src_files; do
-                    if grep -q "force_link_backend!(${krate})" "$f" 2>/dev/null; then
+                    if nros_grep_q "force_link_backend!(${krate})" "$f"; then
                         echo "      PRESENT on disk: $f  <-- read lost it"
                     else
                         echo "      absent: $f ($(wc -c <"$f" 2>/dev/null) bytes)"

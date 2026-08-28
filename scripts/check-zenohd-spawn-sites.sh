@@ -47,6 +47,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — both conditionals below are `if ! grep -q`, one asserting the
+# fixture still carries its guards and one being this gate's own self-test. A
+# grep that failed to start makes the first announce that a live guard is gone
+# and the second announce that the detector is broken; neither is true and both
+# are specific. `nros_grep_q` exits 2 on a tool failure instead.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 FIXTURE="packages/testing/nros-tests/src/fixtures/zenohd_router.rs"
 
 [ -f "$FIXTURE" ] || {
@@ -89,7 +97,7 @@ fi
 # The guards must actually still be IN the fixture: a gate that only forbids
 # copies is worthless if the original loses the property it is protecting.
 for guard in set_new_process_group graceful_kill_process_group port_lease; do
-    if ! grep -q "$guard" "$FIXTURE"; then
+    if ! nros_grep_q "$guard" "$FIXTURE"; then
         echo "ERROR: $FIXTURE no longer uses $guard — the guarded property is gone" >&2
         fail=1
     fi
@@ -104,7 +112,7 @@ let child = Command::new(&zenohd)
     .args(["--listen", &endpoint, "--no-multicast-scouting"])
     .spawn();
 PROBE
-if ! grep -qE 'Command::new\(&?[A-Za-z_:]*zenohd' "$probe"; then
+if ! nros_grep_q -E 'Command::new\(&?[A-Za-z_:]*zenohd' "$probe"; then
     echo "check-zenohd-spawn-sites: self-test failed — the detector would not have" \
         "caught the private RouterHandle that issue 0573 removed" >&2
     exit 2

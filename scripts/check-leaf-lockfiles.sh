@@ -38,6 +38,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — the leaf classification below is three `grep -qE` arms in a
+# chain, and a grep that failed to run falls through to the `else` and files the
+# leaf as BROKEN with three lines of cargo output attached. That is a confident,
+# specific, wrong verdict about a leaf that is fine. `nros_grep_q` exits 2.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 BASELINE="scripts/leaf-lockfile-drift-baseline.txt"
 
 # --- INVARIANT: a lock is tracked only where it can resolve from a fresh clone
@@ -170,20 +177,20 @@ unsynced=()
 msg_drift=()
 while read -r lock; do
     dir="$(dirname "$lock")"
-    if grep -qE "$SKIP_RE" <<<"$dir"; then
+    if nros_grep_q -E "$SKIP_RE" <<<"$dir"; then
         continue
     fi
     if out="$( cd "$dir" && cargo metadata --locked --format-version 1 2>&1 >/dev/null )"; then
         continue
     fi
-    if grep -qE "$DRIFT_RE" <<<"$out"; then
+    if nros_grep_q -E "$DRIFT_RE" <<<"$out"; then
         if detail="$(msg_version_drift_only "$dir")"; then
             msg_drift+=("$dir")
             printf '%s\n' "$detail" >/dev/null
             continue
         fi
         drifted+=("$dir")
-    elif grep -qE "$UNSYNCED_RE" <<<"$out"; then
+    elif nros_grep_q -E "$UNSYNCED_RE" <<<"$out"; then
         unsynced+=("$dir")
     else
         broken+=("$dir")

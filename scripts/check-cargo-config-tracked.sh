@@ -24,6 +24,23 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# issue 0726 — `grep -q … || return 1` reads a grep that FAILED as "no include
+# line", i.e. as evidence about the leaf. `nros_grep_q` exits 2 there.
+#
+# Two conversions need care and both are noted at the site: the file-existence
+# tolerance the old `2>/dev/null` provided is now an explicit `[ -r ]` test (so
+# an absent config is still "not a finding" while an unreadable one is fatal),
+# and the two pipelines are split so the helper runs in THIS shell — a pipeline
+# segment is a subshell where `exit 2` would end only the segment and hand the
+# caller back a status it cannot tell from "no match".
+#
+# Note `projection_missing` is called once with `2>&1 >/dev/null` (the lazy
+# header probe) before the real call, so a FATAL message from that first call is
+# discarded. The exit status still ends the gate, which is the property that
+# matters; the second, unredirected call is simply never reached.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 # The canonical build-tree prune list (phase-300 W3). Without it the walk
 # descends into `build-zenoh/_deps/corrosion-src/test/…`, where vendored
 # corrosion ships its own hand-authored `.cargo/config.toml` fixtures — none of
@@ -128,9 +145,11 @@ untracked_projection=0
 projection_missing() {
     local cfg="$1" dir
     dir="$(dirname "$cfg")"
-    grep -q '^include' "$cfg" 2>/dev/null || return 1
-    sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]' |
-        grep -q 'nros-board\.toml' || return 1
+    [ -r "$cfg" ] || return 1
+    nros_grep_q '^include' "$cfg" || return 1
+    local includes
+    includes="$(sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]')" || true
+    nros_grep_q 'nros-board\.toml' <<<"$includes" || return 1
     git ls-files --error-unmatch "$dir/nros-board.toml" >/dev/null 2>&1 && return 1
     echo "    $cfg" >&2
     echo "      include -> 'nros-board.toml' — but $dir/nros-board.toml is NOT committed" >&2
@@ -166,8 +185,9 @@ projection_missing() {
 includes_committed_projection() {
     local cfg="$1" dir
     dir="$(dirname "$cfg")"
-    sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]' |
-        grep -q 'nros-board\.toml' || return 1
+    local includes
+    includes="$(sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]')" || true
+    nros_grep_q 'nros-board\.toml' <<<"$includes" || return 1
     git ls-files --error-unmatch "$dir/nros-board.toml" >/dev/null 2>&1
 }
 

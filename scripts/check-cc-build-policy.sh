@@ -24,13 +24,19 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — `if ! grep -q nros_cc_flags::` reads a grep that never ran as
+# "this build.rs is ungoverned", a specific claim about a file that is fine.
+# `nros_grep_q` exits 2 on a tool failure instead of returning "no match".
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 fail=0
 while IFS= read -r f; do
     # Doc-comment examples are not construction sites (`threadx_sources.rs` is
     # entirely `///` examples). Count only lines that are real code.
     n=$(grep -n "cc::Build::new()" "$f" | grep -vcE ':\s*(///|//!|\*|//)' )
     [ "${n:-0}" -eq 0 ] && continue
-    if ! grep -q "nros_cc_flags::" "$f"; then
+    if ! nros_grep_q "nros_cc_flags::" "$f"; then
         echo "  $f — $n cc::Build::new() and no nros_cc_flags:: call"
         fail=1
     fi

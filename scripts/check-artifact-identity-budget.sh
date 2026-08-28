@@ -103,6 +103,14 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — the selftest below branches on `grep -q` over captured output. A
+# grep that failed to START would read as "the gate printed no verdict", which
+# is a finding, so use `nros_grep_q` (exit 2 on a tool failure) and a
+# HERESTRING, not a pipe: a pipeline segment is a subshell and its `exit` would
+# end only that subshell.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 # issue 0661 — `--self-test`: the two era verdicts must match their own note.
 #
 # The failure this guards is not a wrong COUNT but wrong ADVICE. When the
@@ -139,10 +147,10 @@ if [ "${1:-}" = "--self-test" ]; then
     touch -d '2035-01-01 00:00:00' "$_st_deps/libother-9999999999999999.rlib"
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_a" \
         bash "$0" 2>&1 || true)"
-    if printf '%s' "$_st_out" | grep -q 'accumulation is ruled out'; then
+    if nros_grep_q 'accumulation is ruled out' <<<"$_st_out"; then
         echo "  FAIL (a): an UNFILTERED reading claimed accumulation was ruled out" >&2
         _st_fails=$((_st_fails + 1))
-    elif printf '%s' "$_st_out" | grep -q 'UNFILTERED'; then
+    elif nros_grep_q 'UNFILTERED' <<<"$_st_out"; then
         echo "  ok   (a) a widened reading says so and asks for a rebuild"
     else
         echo "  FAIL (a): no era verdict printed at all" >&2
@@ -158,7 +166,7 @@ if [ "${1:-}" = "--self-test" ]; then
     printf 'started_at=2010-01-01T00:00:00Z\n' > "$_st_stamp_b"
     _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_b" \
         bash "$0" 2>&1 || true)"
-    if printf '%s' "$_st_out" | grep -q 'accumulation is ruled out'; then
+    if nros_grep_q 'accumulation is ruled out' <<<"$_st_out"; then
         echo "  ok   (b) a filtered reading still keeps the evidence"
     else
         echo "  FAIL (b): a filtered reading lost its 'do not delete' advice" >&2

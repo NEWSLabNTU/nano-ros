@@ -18,6 +18,13 @@
 
 set -euo pipefail
 
+# issue 0726 — every arm below is `if ! grep -q <symbol>`, the shape that turns
+# a grep which failed to START into "the ABI mirror lost this symbol". That is
+# the exact false finding fan-out produced in `check-rmw-force-link-anchor`.
+# `nros_grep_q` exits 2 on a tool failure and passes -E / -F through.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$(dirname "$0")/lib/grep-q.sh"
+
 RUST="packages/platform/nros-platform-cffi/src/lib.rs"
 GENERATED="packages/platform/nros-platform-cffi/src/generated.rs"
 INCLUDE_DIR="packages/platform/nros-platform-api/include/nros"
@@ -77,11 +84,11 @@ check_header() {
     local missing_extern=()
     local missing_macro=()
     for sym in "${SYMBOLS[@]}"; do
-        if ! grep -qE "pub fn ${sym}\s*\(" "$GENERATED"; then
+        if ! nros_grep_q -E "pub fn ${sym}\s*\(" "$GENERATED"; then
             missing_extern+=("$sym")
         fi
         if [[ "$require_macro" == "1" ]]; then
-            if ! grep -qE "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then
+            if ! nros_grep_q -E "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then
                 missing_macro+=("$sym")
             fi
         fi
@@ -160,7 +167,7 @@ for entry in "${PLATFORM_CRATES[@]}"; do
             net)  sym="nros_platform_export_net!" ;;
             *)    echo "internal: unknown macro tag $part" >&2; exit 2 ;;
         esac
-        if ! grep -qF "$sym" "$path"; then
+        if ! nros_grep_q -F "$sym" "$path"; then
             echo "drift: $path missing invocation of $sym" >&2
             invocation_fail=1
         fi

@@ -17,6 +17,14 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# issue 0726 — the three searches below decide whether a line is a finding, and
+# two of them decide it by ABSENCE (`|| continue`, and the bootstrap.sh
+# neighbourhood). A grep that failed to start would therefore either skip a real
+# offender or report one that is licensed. HERESTRINGS, not pipes: the helper
+# must run in this shell for its `exit 2` to end the gate.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 fail=0
 while IFS=: read -r file line text; do
     # comment lines are not emitters
@@ -24,12 +32,13 @@ while IFS=: read -r file line text; do
         *'//'*'just setup'*) stripped="${text%%//*}";;
         *) stripped="$text";;
     esac
-    printf '%s' "$stripped" | grep -q '"[^"]*just setup' || continue
+    nros_grep_q '"[^"]*just setup' <<<"$stripped" || continue
     # a cmake `#` comment
-    printf '%s' "$stripped" | grep -qE '^[[:space:]]*#' && continue
+    nros_grep_q -E '^[[:space:]]*#' <<<"$stripped" && continue
     # licensed when bootstrap.sh appears within +/-3 lines
     lo=$((line > 3 ? line - 3 : 1))
-    if sed -n "${lo},$((line + 3))p" "$file" | grep -q 'bootstrap\.sh'; then
+    neighbourhood="$(sed -n "${lo},$((line + 3))p" "$file")"
+    if nros_grep_q 'bootstrap\.sh' <<<"$neighbourhood"; then
         continue
     fi
     echo "  $file:$line: prescribes a just recipe with no user spelling nearby" >&2

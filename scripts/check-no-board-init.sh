@@ -23,6 +23,14 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+# issue 0726 — both filters below are `grep -q … || continue`, so a grep that
+# failed to start SKIPS a line rather than inventing one. That direction is
+# quieter and worse: the gate reports the retired API stays dead having examined
+# nothing. `nros_grep_q` exits 2 rather than returning "no match", and the
+# searches are HERESTRINGS so its `exit` is not trapped in a pipeline subshell.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 # Legacy board_init tokens. `board_init` (the module) + the distinct trait /
 # marker names. Bare `Board` is intentionally omitted (too broad: `BoardConfig`
 # etc.); the module path `::board_init` covers the `Board` super-trait's home.
@@ -47,8 +55,8 @@ for f in "${files[@]}"; do
         code="${text%%//*}"
         stripped="$(printf '%s' "$code" | sed 's/^[[:space:]]*//')"
         case "$stripped" in ''|'*'*|'#'*) continue;; esac
-        printf '%s' "$code" | grep -qE "nros_board_common" || continue
-        printf '%s' "$code" | grep -qE "\b($legacy)\b" || continue
+        nros_grep_q -E "nros_board_common" <<<"$code" || continue
+        nros_grep_q -E "\b($legacy)\b" <<<"$code" || continue
         violations+=("$f:$num:$stripped")
     done < <(grep -nE "nros_board_common" "$f" 2>/dev/null || true)
 done

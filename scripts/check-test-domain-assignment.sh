@@ -29,6 +29,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — both arms below turn a `grep -qE` STATUS into a claim about an
+# assigner file, and they fail in OPPOSITE directions: a grep that never ran
+# reports the shared range as unmet on the first arm, and silently drops the
+# modulo-232 check on the second. `nros_grep_q` exits 2 rather than either.
+# HERESTRINGS, not pipes — a pipeline segment is a subshell and would swallow
+# that exit.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 fail=0
 
 # `git grep`, not a filesystem walk (check-no-tracked-file-find).
@@ -108,15 +117,15 @@ for f in packages/testing/nros-tests/src/lib.rs \
         -e 's@^[[:space:]]*\*.*$@@' \
         -e 's@^[[:space:]]*#([[:space:]].*|$)@@' \
         -e 's@^[[:space:]]*#[^dei].*$@@' "$f")"
-    if ! printf '%s' "$code" \
-        | grep -qE "(TEST_DOMAIN_MAX.*[^0-9]|% *)${NROS_TEST_DOMAIN_MAX_EXPECTED}([^0-9]|\$)"; then
+    if ! nros_grep_q -E \
+        "(TEST_DOMAIN_MAX.*[^0-9]|% *)${NROS_TEST_DOMAIN_MAX_EXPECTED}([^0-9]|\$)" <<<"$code"; then
         echo "ERROR: $f does not fold into the shared 1..=${NROS_TEST_DOMAIN_MAX_EXPECTED} range" >&2
         echo "  A domain above ${NROS_TEST_DOMAIN_MAX_EXPECTED} puts Cyclone's RTPS ports inside Linux's" >&2
         echo "  ephemeral range (32768+), so the bind can fail and the session never" >&2
         echo "  opens — a red that tracks machine load, not code (issue 0703)." >&2
         fail=1
     fi
-    if printf '%s' "$code" | grep -qE '% *232([^0-9]|$)'; then
+    if nros_grep_q -E '% *232([^0-9]|$)' <<<"$code"; then
         echo "ERROR: $f folds modulo 232 — that is the issue-0703 range" >&2
         fail=1
     fi

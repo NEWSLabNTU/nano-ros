@@ -18,6 +18,13 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+# issue 0726 — every conditional below is `if ! … grep -q …`, the shape that
+# reads a grep which failed to START as "the activation never delivered this".
+# `nros_grep_q` exits 2 there instead. The searches are HERESTRINGS rather than
+# `printf … | grep`: a pipeline puts the helper in a subshell, where its `exit`
+# ends only that subshell and hands the caller back the ambiguity it just fixed.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$REPO_ROOT/scripts/lib/grep-q.sh"
 FAILURES=0
 RAN=0
 
@@ -106,11 +113,11 @@ run_case() {
         printf '%s\n' "$out" | sed 's/^/    /' >&2
         return 0
     fi
-    if ! printf '%s' "$probe" | grep -q "repo=$REPO_ROOT "; then
+    if ! nros_grep_q "repo=$REPO_ROOT " <<<"$probe"; then
         fail "$shell/$label: NROS_REPO_DIR wrong or unset ($probe)"
         return 0
     fi
-    if ! printf '%s' "$probe" | grep -q 'root_unset=$'; then
+    if ! nros_grep_q 'root_unset=$' <<<"$probe"; then
         # `_nros_root` is unset by the file's last lines, so a shell that still
         # has it never got there — the file aborted partway (issue 0372's exact
         # symptom) or grew an early return. Note a zsh `nomatch` abort ends the
@@ -141,7 +148,7 @@ run_case() {
 
     # An unmatched-glob abort in a shell that reports it non-fatally would still
     # show up here, so treat the message itself as a failure regardless of rc.
-    if printf '%s\n' "$out" | grep -qi 'no matches\|bad pattern'; then
+    if nros_grep_q -i 'no matches\|bad pattern' <<<"$out"; then
         fail "$shell/$label: glob reached word expansion"
         printf '%s\n' "$out" | sed 's/^/    /' >&2
         return 0
@@ -181,7 +188,7 @@ done
 path_out="$(NROS_HOME="$versioned_store" NROS_QUIET_ACTIVATE=1 bash -c \
     ". '$REPO_ROOT/activate.sh'; printf '%s' \"\$PATH\"" 2>/dev/null)"
 for tool in espflash play_launch_parser; do
-    if ! printf '%s' "$path_out" | tr ':' '\n' | grep -q "^$versioned_store/sdk/$tool/"; then
+    if ! nros_grep_q "^$versioned_store/sdk/$tool/" <<<"${path_out//:/$'\n'}"; then
         fail "activate.sh: versioned $tool bin dir never reached PATH"
     fi
 done

@@ -27,21 +27,128 @@
 # every caller of this helper is a checker: continuing past a grep that did not
 # run means producing a verdict from missing evidence, and there is no useful
 # way for a caller to "handle" that.
+#
+# FLAGS. Leading `-…` arguments are passed through, so `grep -qi` / `grep -qE` /
+# `grep -qF` convert without rephrasing the pattern:
+#
+#     nros_grep_q -E 'a|b' "$file"
+#     nros_grep_q -qiE 'a|b' "$file"          # a literal q in the bundle is fine
+#     nros_grep_q -F -- "$maybe_dashy" "$f"   # `--` ends the flags
+#
+# Only flags that take NO separate operand are accepted, and the allowlist is
+# closed: `-e`, `-f`, `-m`, `-A/-B/-C` and every unknown long option are a FATAL
+# error rather than a guess. Guessing is the failure this file exists to remove
+# — `nros_grep_q -m 1 foo f` under a permissive parser would search for `1` in
+# `foo` and report a confident answer about the wrong thing.
+#
+# A PATTERN that may begin with `-` must be preceded by `--`; without it the
+# flag scanner sees it first. Every pattern in the tree today is a literal or a
+# variable that cannot start with `-`, and the fatal path catches the rest.
+_nros_grep_q_flag_ok() {
+    case "$1" in
+        # Long options that take no operand. Deliberately short: a long option
+        # not listed here is fatal, which is the safe direction.
+        --ignore-case | --extended-regexp | --fixed-strings | --basic-regexp \
+            | --perl-regexp | --invert-match | --word-regexp | --line-regexp \
+            | --no-messages | --text | --recursive | --dereference-recursive \
+            | --null-data | --quiet | --silent)
+            return 0
+            ;;
+        --*) return 1 ;;
+    esac
+    local rest="${1#-}"
+    [ -n "$rest" ] || return 1
+    while [ -n "$rest" ]; do
+        # Short flags that take no operand. `q` is allowed so a converted site
+        # may keep the `-qE` spelling it had; `-q` is passed to grep anyway.
+        case "${rest:0:1}" in
+            [EFGPUZabchIiLlnoqRrsUvwxyz]) ;;
+            *) return 1 ;;
+        esac
+        rest="${rest:1}"
+    done
+    return 0
+}
+
+_nros_grep_q_bad_flag() {
+    echo "FATAL: $1: unrecognised leading argument: $2" >&2
+    echo "       Only flags taking NO separate operand are passed through." >&2
+    echo "       -e/-f/-m/-A/-B/-C and unknown long options are refused, and a" >&2
+    echo "       PATTERN starting with '-' must be preceded by '--' — because" >&2
+    echo "       misreading one as the other is a confident wrong answer, which" >&2
+    echo "       is exactly what this helper exists to prevent (issue 0726)." >&2
+    exit 2
+}
+
 nros_grep_q() {
+    local flags=()
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                break
+                ;;
+            -) break ;; # `-` is grep's stdin FILE, not a flag
+            -*)
+                _nros_grep_q_flag_ok "$1" \
+                    || _nros_grep_q_bad_flag nros_grep_q "$1"
+                flags+=("$1")
+                shift
+                ;;
+            *) break ;;
+        esac
+    done
     local pat="${1:?nros_grep_q: pattern}"
     shift
     local rc
-    if [ "$#" -gt 0 ]; then
-        grep -q -- "$pat" "$@"
-        rc=$?
-    else
-        grep -q -- "$pat"
-        rc=$?
-    fi
+    grep -q ${flags[@]+"${flags[@]}"} -- "$pat" "$@"
+    rc=$?
     if [ "$rc" -ge 2 ]; then
         echo "FATAL: grep failed (rc=$rc) searching for: $pat" >&2
         echo "       This is a TOOL failure, not a finding. Refusing to draw a" >&2
         echo "       conclusion from a grep that did not run (issue 0726)." >&2
+        exit 2
+    fi
+    return "$rc"
+}
+
+# nros_git_grep_q — the same contract over `git grep`.
+#
+# Not a wrapper detail: `git grep` exits 1 for "no match" and 128 for a fatal
+# (bad pathspec, not a repository, a broken index), so it carries the identical
+# conflation, and a gate that greps the tree with it is exactly the shape issue
+# 0726 was about. It cannot share `nros_grep_q` because `--` means something
+# ELSE here — it separates the pattern from the PATHSPECS, not options from
+# operands — so the pattern is passed as `-e` and the caller's `-- <path>…`
+# survives untouched:
+#
+#     nros_git_grep_q -E 'pub fn run\b' -- "$dir/src"
+nros_git_grep_q() {
+    local flags=()
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --)
+                shift
+                break
+                ;;
+            -*)
+                _nros_grep_q_flag_ok "$1" \
+                    || _nros_grep_q_bad_flag nros_git_grep_q "$1"
+                flags+=("$1")
+                shift
+                ;;
+            *) break ;;
+        esac
+    done
+    local pat="${1:?nros_git_grep_q: pattern}"
+    shift
+    local rc
+    git grep -q ${flags[@]+"${flags[@]}"} -e "$pat" "$@"
+    rc=$?
+    if [ "$rc" -ge 2 ]; then
+        echo "FATAL: git grep failed (rc=$rc) searching for: $pat" >&2
+        echo "       This is a TOOL failure, not a finding. Refusing to draw a" >&2
+        echo "       conclusion from a git grep that did not run (issue 0726)." >&2
         exit 2
     fi
     return "$rc"

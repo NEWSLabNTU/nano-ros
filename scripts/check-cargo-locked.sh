@@ -25,6 +25,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# issue 0726 — all three conditionals below are `if ! grep -q`, so a grep that
+# failed to START would announce that activation stopped wiring the cargo shim
+# and send the reader after a mechanism that is intact. `nros_grep_q` exits 2.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 status=0
 shim="scripts/bin/cargo"
 
@@ -36,12 +42,12 @@ elif [ ! -x "$shim" ]; then
     status=1
 fi
 
-if ! grep -q 'scripts/bin' activate.sh; then
+if ! nros_grep_q 'scripts/bin' activate.sh; then
     echo "[FAIL] activate.sh no longer puts scripts/bin on PATH." >&2
     status=1
 fi
 
-if ! grep -q 'NROS_CARGO_FLAGS' activate.sh; then
+if ! nros_grep_q 'NROS_CARGO_FLAGS' activate.sh; then
     echo "[FAIL] activate.sh no longer defines NROS_CARGO_FLAGS." >&2
     status=1
 fi
@@ -49,7 +55,14 @@ fi
 # The shim must default to --locked. An empty default would disable the whole
 # mechanism while leaving every file in place, which is the failure mode most
 # likely to pass a casual review.
-if ! grep -qE 'NROS_CARGO_FLAGS[:-]?="?--locked' activate.sh scripts/bin/cargo 2>/dev/null; then
+# The old `2>/dev/null` existed for ONE case — a missing `scripts/bin/cargo`,
+# already reported above as its own FAIL — and it also hid every other grep
+# error. Name that case instead of muting the channel: search the shim only
+# when it is there, so an absent shim still reaches the same verdict it always
+# did while a grep that could not run is fatal.
+locked_sources=(activate.sh)
+[ -f "$shim" ] && locked_sources+=("$shim")
+if ! nros_grep_q -E 'NROS_CARGO_FLAGS[:-]?="?--locked' "${locked_sources[@]}"; then
     echo "[FAIL] neither activate.sh nor $shim defaults NROS_CARGO_FLAGS to --locked." >&2
     status=1
 fi

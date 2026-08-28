@@ -17,6 +17,13 @@
 
 set -euo pipefail
 
+# issue 0726 — `if ! grep -qE <sym>` is the exact shape that reports "the ABI
+# mirror lost this symbol" when the grep simply failed to run, which is what a
+# 32-way gate fan-out produces. `nros_grep_q` exits 2 on a tool failure and
+# passes `-E` through unchanged.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$(dirname "$0")/lib/grep-q.sh"
+
 RUST="packages/boards/nros-board-cffi/src/lib.rs"
 # RFC-0054 (phase-299): the extern-"C" declaration half is GENERATED from
 # the header (src/generated.rs); the (1) check survives as an
@@ -52,10 +59,10 @@ fi
 missing_extern=()
 missing_macro=()
 for sym in "${SYMBOLS[@]}"; do
-    if ! grep -qE "pub fn ${sym}\s*\(" "$GENERATED"; then
+    if ! nros_grep_q -E "pub fn ${sym}\s*\(" "$GENERATED"; then
         missing_extern+=("$sym")
     fi
-    if ! grep -qE "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then
+    if ! nros_grep_q -E "pub extern \"C\" fn ${sym}\s*\(" "$RUST"; then
         missing_macro+=("$sym")
     fi
 done
