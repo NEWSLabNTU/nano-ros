@@ -571,7 +571,64 @@ can afford; the cadence bounds the tier you can honestly claim.** The class neve
 CONFERS a tier — `FreertosPosix` is host-executable and free to run and a
 two-cell smoke, so it stays tier 2 and the way up is more cells.
 
-## W16 — `ci-l2`, and the tier-1 obligation it makes real
+## W16 — tier 1's lane must cover tier 1's platforms (DESIGNED + MEASURED, not landed)
+
+Investigated to a decision point and deliberately NOT shipped half-done; the
+partial change was reverted so the tree stays green. Four findings, each
+measured, and the first two overturn the original plan.
+
+**1. `ci-l2` as "run the host-executable group" is the wrong shape.** The
+host-executable platforms are **309 of 424 fixture coordinates — 73 %**
+(`linux` 196, `zephyr` native_sim 68, `threadx-linux` 43, `freertos-posix` 2).
+So `host-executable` means **needs no SDK**, NOT **few fixtures**; a lane
+running all of it per merge would cost close to running everything. The
+affordable shape is the greedy set COVER the lane machinery already computes.
+
+**2. Name-based filtering cannot express it, so there is no cheap path.** The
+matrix binaries' rstest case names are MIXED: `Platform__ThreadxLinux` carries
+the variant, `Platform__Freertos` carries only the family — it cannot separate
+`FreertosPosix` (host) from `FreertosMps2` (cross-run). Same finding as issues
+0357/0482 for tier 2, verified here by listing real case names.
+
+**3. So W16 is not a new lane — it is widening `CiLane::Tier1`.** Its pool was
+`PlatformId::Linux` alone, which made the lane narrower than the support tier:
+`board-support.toml` grants tier 1 to `ZephyrNativeSim` and `ThreadxLinux` too,
+and tier 1 promises runtime evidence every merge.
+
+**4. The pool is not what drives the cover — the SPEC is.** Widening the pool
+alone changed nothing: the cover stayed 10 coordinates and Linux-only, because
+`spec(Tier1)` is 1-wise(Workload, Kind) + pairwise(Lang × Rmw) with **no
+Platform axis**, so a platform that satisfies no requirement is never chosen.
+Adding `Axis::Platform` to the singles gives **12 coordinates covering all three
+tier-1 platforms** — two extra cells to keep the promise:
+
+    linux,{c,cpp,rust}×{cyclonedds,xrce,zenoh} + linux,mixed,zenoh
+    threadx-linux,c,zenoh
+    zephyr,rust,zenoh
+
+**What stops it landing today, and why that is not a detail.** Tier 1's RUN is
+name-scoped (`NROS_TEST_SCOPE=native`) and its BUILD is the `native` MODULE —
+and `lane-filter.sh native` excludes the `zephyr` and `threadx` tokens, so the
+new cells would be filtered out of the run while their fixtures went unbuilt.
+Shipping the cover alone produces exactly the mass "Binary not found" failure
+`fixture-lane.sh` documents. The remaining chain:
+
+  * `tier1_is_native_only` -> an invariant over the tier-1 PLATFORM SET, ideally
+    derived from `board-support.toml` so the lane and the registry cannot
+    disagree (the discipline `check-flavour-lanes.py` already establishes for
+    the `nostd` lane);
+  * the documented cell table, 16 -> 17;
+  * `lane-filter.sh`: a tier-1 scope that INCLUDES the tier-1 platforms rather
+    than excluding everything non-Linux;
+  * `nros_lane_build_lane`: tier 1 stops mapping to the `native` module;
+  * a COLD measurement of the resulting fixture build — zephyr native_sim and
+    threadx-linux fixtures are the new cost and it is unmeasured.
+
+That last item is the gate on the whole thing, and it is the same caution as
+before: every timing to hand is warm on a 24-core host, and warm numbers have
+produced two wrong answers in this campaign.
+
+## W16.a — `ci-l2` (superseded by W16)
 
 Tier 1 promises runtime evidence every merge, and **no lane delivers that today**
 — the host-executable group's ~50 runtime cells run only in the nightly sweep.
