@@ -37,7 +37,7 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | native, 1-wise w,k + pairwise l × r | 16 | 10 | 21 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 17 | 12 | 26 % |
 //! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 13 | 14 | 28 % |
 //! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 37 | 37 | 74 % |
 //! | tier 3 | everything | 194 | 50 | 100 % |
@@ -65,7 +65,7 @@
 //! pairwise(platform × lang) alone it costs ~4 more coordinates, and a lane that
 //! is not on the critical path should not trade coverage that cheap.
 //!
-//! Note the ladder is not monotone in CELLS — tier 1 picks 16 and tier 2 picks 11
+//! Note the ladder is not monotone in CELLS — tier 1 picks 17 and tier 2 picks 11
 //! — because tier 1's cells are all native and a native fixture is nearly free.
 //! Cell count is the wrong unit; `the_ladder_is_monotone_in_fixture_cost` asserts
 //! the ordering in coordinates so that confusion cannot come back.
@@ -230,7 +230,21 @@ impl CiLane {
             // `native`, a module-level superset of `coords(Tier1)`, so a
             // coordinate filter would skip host fixtures that were built and
             // buy nothing.
-            CiLane::Tier1 => RunScope::Native,
+            // phase-395 W19 — COORDINATES, not names.
+            //
+            // This was `Native`, a name-based filter, and that is the coarse end
+            // of "scope precisely rather than run-and-skip": it selects by test
+            // NAME, so a test it cannot name is either dragged in or excluded
+            // wholesale. It excluded `zephyr` and `threadx` outright — the very
+            // platforms tier 1 promises — and no token spelling fixes that,
+            // because `zephyr` also matches `zephyr_cortex_m_qemu`.
+            //
+            // Coordinate scoping is what tier 2 already does since phase-340 W3,
+            // and it makes the selection exact: the resolver deselects by
+            // coordinate, so the lane runs its cover and nothing else. It also
+            // makes the BUILD and the RUN the same question again, which is why
+            // `nros_lane_build_lane` can now map tier 1 to itself.
+            CiLane::Tier1 => RunScope::LaneCoords,
             // Every test binary still executes; the resolver skips fixtures
             // outside `coords(lane)` — exactly the rows `--coords-from` told the
             // build to omit.
@@ -280,9 +294,15 @@ fn pairs(c: &Cell, axes: &[Axis]) -> Vec<Req> {
 
 fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
     match lane {
-        // 1-wise(workload, kind) + pairwise(lang × rmw)
+        // 1-wise(platform, workload, kind) + pairwise(lang × rmw).
+        //
+        // `Platform` is what makes the pool above matter: the greedy walk is
+        // driven by REQUIREMENTS, not candidates, so a platform satisfying no
+        // requirement is never chosen. Measured — without it the cover stayed
+        // 10 cells and Linux-only however wide the pool got; with it, 12 cells
+        // covering all three tier-1 platforms.
         CiLane::Tier1 => (
-            vec![Axis::Workload, Axis::Kind],
+            vec![Axis::Platform, Axis::Workload, Axis::Kind],
             vec![Axis::Lang, Axis::Rmw],
         ),
         // 1-wise(platform, lang, rmw, kind) — every declared value once, no
@@ -303,8 +323,21 @@ fn spec(lane: CiLane) -> (Vec<Axis>, Vec<Axis>) {
 
 fn pool(lane: CiLane) -> Vec<&'static Cell> {
     match lane {
+        // phase-395 W19 — the tier-1 PLATFORMS, not just the host.
+        //
+        // `board-support.toml` is the SSoT for which platforms a tier promises,
+        // and this list is asserted equal to it by
+        // `tier1_pool_matches_board_registry` below. Hardcoding it WITHOUT that
+        // test is what made three places disagree: the registry promised three
+        // platforms, this pool named one, and `lane-filter.sh native` excluded
+        // the other two outright.
         CiLane::Tier1 => all_runtime_cells()
-            .filter(|c| matches!(c.platform, PlatformId::Linux))
+            .filter(|c| {
+                matches!(
+                    c.platform,
+                    PlatformId::Linux | PlatformId::ZephyrNativeSim | PlatformId::ThreadxLinux
+                )
+            })
             .collect(),
         CiLane::Tier2 | CiLane::Tier2Nightly => all_runtime_cells().collect(),
     }
@@ -395,13 +428,70 @@ mod tests {
     }
 
     #[test]
-    fn tier1_is_native_only() {
+    fn tier1_covers_only_host_executable_platforms() {
+        // Tier 1 promises runtime evidence EVERY MERGE, and only a
+        // host-executable platform can afford that cadence — a cross-run
+        // platform's evidence can only ever be nightly, which is tier 2's
+        // promise. `check-board-tiers` enforces the same rule on the registry;
+        // this is the lane's half.
         for c in cells(CiLane::Tier1) {
             assert!(
-                matches!(c.platform, PlatformId::Linux),
-                "tier 1 runs on the host only, got {c:?}"
+                matches!(
+                    c.platform,
+                    PlatformId::Linux | PlatformId::ZephyrNativeSim | PlatformId::ThreadxLinux
+                ),
+                "tier 1 runs host-executable platforms only, got {c:?}"
             );
         }
+    }
+
+    /// The pool above is a hardcoded list, and `board-support.toml` is the SSoT.
+    /// Hardcoding WITHOUT this assertion is exactly how the two drifted apart:
+    /// the registry promised three tier-1 platforms while the pool named one,
+    /// and nothing noticed because nothing compared them.
+    #[test]
+    fn tier1_pool_matches_board_registry() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        let out = std::process::Command::new("python3")
+            .arg(root.join("scripts/check-board-tiers.py"))
+            .arg("--print-tiers")
+            .current_dir(root)
+            .output();
+        let Ok(out) = out else {
+            crate::skip!("python3 unavailable — cannot read the board registry");
+        };
+        if !out.status.success() {
+            crate::skip!("check-board-tiers --print-tiers failed; the registry could not be read");
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut registry: Vec<&str> = text
+            .lines()
+            .filter_map(|l| {
+                let mut f = l.split('\t');
+                let plat = f.next()?;
+                let tier = f.next()?;
+                (tier == "1").then_some(plat)
+            })
+            .collect();
+        registry.sort_unstable();
+
+        let mut pooled: Vec<String> = pool(CiLane::Tier1)
+            .iter()
+            .map(|c| format!("{:?}", c.platform))
+            .collect();
+        pooled.sort_unstable();
+        pooled.dedup();
+
+        assert_eq!(
+            pooled, registry,
+            "the tier-1 POOL and packages/boards/board-support.toml disagree.\n\
+             The registry is the source of truth for which platforms a tier \
+             promises; update `pool(CiLane::Tier1)` to match, or change the tier \
+             in the registry deliberately."
+        );
     }
 
     /// Issue 0393 — `build-test-fixtures-leaves` narrows its fan-out by FILTERING
@@ -583,7 +673,7 @@ mod tests {
     /// defeating the point, so bound the ladder.
     ///
     /// Measured in COORDINATES, not cells. In cells the ladder is not even
-    /// monotone — tier 1 picks 16 cells and 1-wise tier 2 picks 11 — because tier
+    /// monotone — tier 1 picks 17 cells and 1-wise tier 2 picks 11 — because tier
     /// 1's cells are all native and a native fixture is nearly free. Cell count is
     /// the wrong unit for cost; asserting on it would encode the very confusion
     /// that put "tier 2 is 20 % of the sweep" in RFC-0061.
@@ -620,7 +710,7 @@ mod tests {
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 16, 10),
+            (CiLane::Tier1, 17, 12),
             (CiLane::Tier2, 13, 14),
             (CiLane::Tier2Nightly, 37, 37),
         ];

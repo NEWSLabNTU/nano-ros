@@ -214,12 +214,21 @@ nros_lane_build_lane() {
     case "$lane" in
         # Module-level lanes are their own build lane.
         all | native) echo "$lane" ;;
-        # `just ci` narrows its run to host binaries by NAME, which a `native`
-        # build covers exactly. Deliberately NOT `tier1`: `NROS_TEST_SCOPE=
-        # native` selects every host test BINARY, a broader set than
-        # `coords(Tier1)` (10 of 47), so a coordinate-scoped build would leave
-        # the rest absent.
-        tier1) echo native ;;
+        # phase-395 W19 — tier 1 maps to ITSELF now, like tier 2.
+        #
+        # It used to map to the `native` MODULE, and the reason was sound while
+        # it lasted: `just ci` narrowed its run by NAME
+        # (`NROS_TEST_SCOPE=native`), which selects every host test BINARY — a
+        # broader set than `coords(Tier1)` — so a coordinate-scoped build would
+        # have left the rest absent.
+        #
+        # That premise is gone. `just ci` now narrows by COORDINATE, so the run
+        # and the build ask the same question again and the answer is the lane
+        # itself. The old mapping had also become actively wrong: the `native`
+        # module does not build zephyr native_sim or threadx-linux fixtures, and
+        # tier 1 covers both — `lane-coords tier1 --modules` returns
+        # `native threadx_linux zephyr`.
+        tier1) echo "$lane" ;;
         # phase-340 W3 — these narrow their run at fixture-RESOLUTION time
         # (`RunScope::LaneCoords`; `NROS_TEST_COORDS` -> `fixtures::lane`), to
         # exactly the coordinates `--coords-from` told the build to produce. So
