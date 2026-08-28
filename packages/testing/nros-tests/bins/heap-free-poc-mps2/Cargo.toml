@@ -1,0 +1,34 @@
+[workspace]
+
+[package]
+name = "heap-free-poc-mps2"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "phase-391 W5-endgame (issues 0816/0843) — the heap-free-tier image: calls the real executor + component-install seam and links with NO allocation symbol at all"
+
+[[bin]]
+name = "heap-free-poc-mps2"
+test = false
+bench = false
+
+[dependencies]
+# The point of this image: `nros` WITHOUT the `alloc` feature. The macro-path
+# runtime (per-class static storage, placed cells, `install_node_typed_in`)
+# is available on `rmw-cffi` alone since the W5 endgame; if a future change
+# re-couples it to `alloc`, this leaf stops COMPILING — which is the cheapest
+# possible tripwire for issue 0843's regression class.
+nros = { path = "../../../../api/nros", default-features = false, features = ["rmw-cffi", "macros"] }
+# Platform primitives WITHOUT the heap libc shims: `default-features = false`
+# drops `libc-heap` (malloc/free/realloc/calloc) — a DEFINED `malloc` counts
+# as an allocation surface for the W1 gate whether or not anything calls it —
+# and `libc-stubs` (string helpers), which only C transports need.
+# `cffi-export` keeps `nros_platform_log_write` resolving for nros-log.
+nros-platform-mps2-an385 = { path = "../../../../platform/nros-platform-mps2-an385", default-features = false, features = ["cffi-export"] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", default-features = false }
+nros-log = { path = "../../../../core/nros-log", default-features = false }
+
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }

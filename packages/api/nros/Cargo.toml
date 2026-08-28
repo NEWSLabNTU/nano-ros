@@ -76,6 +76,7 @@ std = [
     "nros-serdes/std",
 ]
 alloc = [
+    "dep:portable-atomic-util",
     "nros-core/alloc",
     "nros-node/alloc",
     "nros-rmw/alloc",
@@ -226,7 +227,11 @@ nros-serdes = { version = "0.5.0", path = "../../core/nros-serdes", default-feat
 # decl_err_from_node's no_std diagnostic (std builds use eprintln!).
 log = { version = "0.4", default-features = false }
 portable-atomic = { version = "1", default-features = false }
-portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"] }
+# W5-endgame (issue 0843) — OPTIONAL and carried by the `alloc` feature:
+# only `node_runtime`'s alloc-gated dynamic half (`CellHandle::Pooled`)
+# names `Arc`, and the dep's own "alloc" feature links the `alloc` crate,
+# which demands a global allocator in every downstream image.
+portable-atomic-util = { version = "0.2", default-features = false, features = ["alloc"], optional = true }
 paste = "1"
 
 [dev-dependencies]
