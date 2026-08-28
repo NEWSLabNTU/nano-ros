@@ -158,10 +158,28 @@ jobs:
       # museum-binary class CLAUDE.md's fixture-mtime treadmill describes, and
       # exactly what a cache must never introduce.
       #
-      # GHA backend, not `actions/cache`: the justfile asks for a 30 GB cache
-      # while `actions/cache` has a 10 GB REPO-WIDE cap, so sharing it would
-      # evict the CLI cache that already works. The GHA backend is a separate
-      # store with its own eviction and needs no save/restore step.
+      # GHA backend. CORRECTION to an earlier version of this comment, which
+      # claimed the backend is "a separate store with its own eviction": it is
+      # NOT. sccache's GHA backend writes to the SAME GitHub Actions Cache
+      # service as `actions/cache`, and the 10 GB limit is per REPOSITORY across
+      # every cache in it regardless of which tool wrote it. Eviction is
+      # least-recently-used across that one pool, plus a 7-day unused sweep.
+      #
+      # So the CLI cache and this one DO compete, and GitHub warns about exactly
+      # the failure that creates — "cache thrashing, where caches are created
+      # and deleted at a high frequency". `SCCACHE_CACHE_SIZE=2G` below is a
+      # deliberate share of the pool rather than the justfile's 30 GB
+      # workstation figure, chosen to leave room for the CLI cache.
+      #
+      # What the backend genuinely buys over `actions/cache` is that it needs no
+      # save/restore step and no key: sccache reads and writes entries as it
+      # compiles, so a partial hit is still a hit. That is the real argument,
+      # and it does not depend on the pool claim that was wrong.
+      #
+      # UNVERIFIED: whether `SCCACHE_CACHE_SIZE` is honoured by the GHA backend
+      # at all — it is documented for the local disk cache, and GitHub's own
+      # eviction may be the only thing bounding this. The `--show-stats` step
+      # below is what would reveal thrashing.
       #
       # The binary is BAKED INTO THE IMAGE (ci/docker/ci-base), and the
       # justfile's `RUSTC_WRAPPER := command -v sccache` picks it up with no
