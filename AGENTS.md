@@ -221,32 +221,66 @@ nothing here).
 Scope is `refs/heads/main` only, and **`bypass_actors` is empty** — nobody,
 including admins, is exempt. A rule everyone can bypass is not a rule.
 
-**What actually changed for you.** Not the workflow — direct push to `main`
-still works. What changed is the *failure mode* of one specific mistake. An
-accidental merge commit (a bare `git pull`, or a `git rebase` you abandoned into
-a merge) used to LAND SILENTLY: three such commits are on `main` from
-2026-05-15, and nobody noticed for months. Now the push is rejected. Recover by
-rebasing:
+### DIRECT PUSH TO `main` NO LONGER WORKS (live since 2026-08-28)
+
+`git push origin main` is REJECTED:
 
 ```
-git fetch origin && git rebase origin/main      # then push again
+remote: - Changes must be made through a pull request.
+remote: - Changes must be made through the merge queue
+! [remote rejected] main -> main (push declined due to repository rule violations)
 ```
 
-Never "fix" a rejected push with `--force` — that is blocked too, and reaching
-for it means the rebase was the step you skipped.
+That is not a misconfiguration and there is no override — `bypass_actors` is
+empty, admins included. **The flow is now:**
 
-### Deliberately NOT in force yet
+```
+just claim issue-NNNN                  # so two agents do not do one job
+git switch -c fix/NNNN-<slug>
+# ... work ...
+just ci-l1                             # the SAME tier the merge group runs
+git push -u origin fix/NNNN-<slug>
+gh pr create --base main --fill
+gh pr merge --auto --rebase            # fire and forget; the queue lands it
+just claim-release issue-NNNN
+```
 
-**Required status checks and the merge queue are OFF.** Enabling either one ENDS
-direct-push, because a commit you are about to push has no check results yet, so
-the push is refused. That is a workflow change for every agent, not a setting,
-and it is gated on this section existing and on the workflow files being
-complete — which is why you are reading it here first.
+`gh pr merge` prints *"The merge strategy for main is set by the merge queue"* —
+that is INFORMATIONAL and the PR is queued. A FORCE-PUSH cancels auto-merge, so
+re-run `gh pr merge --auto --rebase` after any amend.
 
-When it flips, the flow becomes: branch, push, open a PR, let the queue land it.
-`queue.yml` and `post-submit.yml` already exist; `scripts/ci/enable-merge-queue.sh`
-prints the settings. Claim your work first (`just claim issue-NNNN`) so two
-agents do not open competing PRs for one issue.
+### The one required check is `CI`
+
+One aggregator job (`ci-ok`, context **`CI`**) gates everything. It `needs:`
+every job, runs `if: always()`, and inspects `needs.*.result`. Individual jobs
+may be skipped, path-filtered or renamed freely — only `CI` is required.
+
+**So do not add a job name to the required set, ever.** The reason is a defect
+that froze this repo four ways in one day: a required check that produces no
+VERDICT blocks forever, because GitHub cannot tell "not applicable" from "not
+yet". Path-filter a required workflow and a pull request touching other paths
+can NEVER merge — two PRs deadlocked on each other that way (#6 and #16).
+`scripts/ci/enable-merge-queue.sh` refuses to make a path-filtered context
+required, and will tell you so.
+
+### If everything is blocked and the blocker is CI itself
+
+That is a real state, not a mistake you made — the fix for CI can be blocked by
+CI. It happened on 2026-08-28. The break-glass, in order:
+
+1. **Confirm it is not just you**: `just queue-triage`. The same check failing
+   for several DIFFERENT pull requests is infrastructure, not your change.
+2. **Say so** on the issue or PR thread before anyone else burns an hour on it.
+3. **Drop only the required-checks RULE**, never the ruleset and never
+   enforcement — the other guardrails (no force-push, no merge commit, PR
+   required) must stay on. Read the ruleset, remove that one rule, PUT it back:
+   `gh api repos/<owner>/<repo>/rulesets/<id>` -> edit -> `-X PUT --input`.
+4. Land the unblocking PR, then **restore immediately** with
+   `scripts/ci/enable-merge-queue.sh --apply --with-queue`.
+
+Keep the window minutes, not hours, and say when you open and close it. Note
+that even with the check dropped you STILL cannot push to `main` — the PR and
+queue rules are independent, which is the point.
 
 ### What the ruleset does NOT touch, verified
 
