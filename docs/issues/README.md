@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-43 open. One line each — the detail lives in the issue file,
+42 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -95,7 +95,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
 - **#0859** (examples, testing) — `rust/action-server` diverges from its native copy on all four RTOS platforms — one copy of a portability group was edited alone See `0859-*`.
-- **#0860** (boards, rmw) — The ESP32-C3 workspace Entry boots ESP-IDF and never reaches `Application setup complete` — first runtime look since W2 broke the build See `0860-*`.
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
 - **#0873** (ci) — All three nightly platform jobs fail on `generate-lockfile --offline` against a cold registry — an infrastructure fault reported as platform overclaim See `0873-*`.
