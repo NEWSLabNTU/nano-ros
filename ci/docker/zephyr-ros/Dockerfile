@@ -14,6 +14,40 @@
 # bump `-rN` when the Dockerfile content changes without an SDK/distro bump.
 FROM ros:humble-ros-base
 
+# ---- ROS 2 environment, baked (issue 0866) --------------------------------
+#
+# The SAME gap ci-base has, and it does NOT inherit the fix: this image is
+# `FROM ros:humble-ros-base` directly, not `FROM` ci-base — despite ci-base's
+# own header saying "the Zephyr CI image is FROM this + the Zephyr SDK layer".
+# That comment is stale, so a reader who fixes one image and trusts it has
+# fixed neither.
+#
+# GitHub Actions runs a job's steps directly and does NOT use the image's
+# ENTRYPOINT, so `/ros_entrypoint.sh` never sources `setup.bash` and every
+# process runs with `AMENT_PREFIX_PATH` unset and ROS's site-packages off
+# `PYTHONPATH`. `ROS_DISTRO=humble` IS set by the base image, so probes that
+# read only that answered YES while nothing else was wired.
+#
+# Full reasoning, and the measurement the values come from, in
+# ci/docker/ci-base/Dockerfile — kept in ONE place rather than copied, but the
+# ENV must be repeated here because Docker has no include.
+#
+# The `-rN` tag revision is deliberately NOT bumped for this change. The
+# convention says to bump when content moves, but the image is only BUILT by a
+# push to `main`, so a new tag does not exist until after the merge — and the
+# lanes referencing it fail to pull in the meantime, which is exactly what
+# happened when this was first written as `-r3` ("Initialize containers"
+# failure on every zephyr job of the very PR carrying the fix). Overwriting the
+# existing tag in place is what ci-base already does with `humble`, and it is
+# the only option that keeps the lanes runnable across the merge.
+ENV AMENT_PREFIX_PATH=/opt/ros/humble \
+    LD_LIBRARY_PATH=/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib \
+    PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages \
+    ROS_VERSION=2 \
+    ROS_PYTHON_VERSION=3 \
+    ROS_LOCALHOST_ONLY=0
+ENV PATH=/opt/ros/humble/bin:$PATH
+
 # 0.17.4: the version the Zephyr 4.4 line requires (its west pulls zephyr-sdk-0.17);
 # Zephyr 3.7.0's FindZephyr-sdk enforces only a *minimum* SDK version (no upper
 # bound), so 0.17.4 serves BOTH lines from one baked SDK. (Baking 0.16.8 forced
