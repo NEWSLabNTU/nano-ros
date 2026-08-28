@@ -38,6 +38,49 @@ permissions:
   packages: read
 
 jobs:
+  # phase-395 W12 — `check-dep-chain`, moved off the merge path.
+  #
+  # 158 s measured, an 8-cell board×rmw matrix (`nros setup --dry-run` + codegen
+  # + `cargo tree` per cell). Its own header still claims it runs "in seconds",
+  # which was true per cell and stopped being true as cells accumulated.
+  #
+  # No single pull request changes the board×rmw wiring, so paying it on every
+  # merge bought little while adding 158 s to the critical path to landing. Here
+  # a regression is still bounded to one commit, which is what post-submit is
+  # for.
+  #
+  # HOSTED, unlike the matrix job below: this needs ROS and the CLI, both of
+  # which the ci-base image has, and nothing else. Gating it on a self-hosted
+  # runner that does not exist yet would have moved it from expensive to never.
+  dep-chain:
+    name: dep-chain (8 board×rmw cells)
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build nros CLI + provision sources
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
+            --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
+            --source micro-xrce-dds-client --source cyclonedds-src
+      # The same predicate that heads `check-build`: a stale CLI surfaces here as
+      # nine failed cells whose printed cause is a cargo resolution error
+      # (issue 0363), so ask the cheap question first.
+      - name: just check-cli-fresh
+        run: just check-cli-fresh
+      - name: just check-dep-chain
+        run: just check-dep-chain
+
   matrix:
     name: tier 2 (1-wise matrix)
     # Gated for the same reason as queue.yml's L3: this needs the RTOS
