@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-45 open. One line each — the detail lives in the issue file,
+44 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -94,7 +94,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0852** (rmw, platform) — the zenoh read task inherits the executor's priority on Zephyr — the declared priority is discarded by the port, so a 20 ms timeslice starves the polled serial RX and it overruns See `0852-*`.
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
-- **#0858** (testing) — `zephyr_prjconf_meets_backend_requirements` is red: phase-391 W3 moved the heap to an rlsf arena the gate cannot see, because its size is a compile-time ENV var and never appears in the `.conf` the gate reads See `0858-*`.
 - **#0859** (examples, testing) — `rust/action-server` diverges from its native copy on all four RTOS platforms — one copy of a portability group was edited alone See `0859-*`.
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
@@ -147,6 +146,17 @@ here was wrong and recorded as a hypothesis rather than a cause: the parallel `m
 SUCCESS line (`built: …`) last in the log, make's own exit 2 read as a bespoke status, and ~180 lines
 of benign newlib `_read is not implemented` warnings ended the stderr — so the inputsig stamp step
 looked responsible. It exits 0. See `archived/0833-*`. (2026-08-27)
+
+Recently resolved (2026-08-28): **#0858** (testing) — `zephyr_prjconf_meets_backend_requirements` went red
+when phase-391 W3 set `CONFIG_HEAP_MEM_POOL_SIZE=0` in the two c/talker confs (the funnel is rlsf-backed and
+no longer calls `k_malloc`) while the gate still required a positive kernel heap for every backend. Fixed by
+dropping that requirement from the zenoh and xrce rows and KEEPING it on cyclonedds, whose ddsrt really does
+allocate from the kernel pool. I had filed this claiming neither obvious move was right — that relaxing the
+rule would disable a live gate — and that was wrong: the footgun the gate exists for is the zenoh-pico `-80`
+mutex-count case, whose requirements are untouched, and the heap rule was a lower bound on a resource the
+unconverted confs may simply carry without needing. The discrimination I claimed impossible is per-BACKEND,
+which is the axis the table was already organized on; no Kconfig marker was needed. See `archived/0858-*`.
+(2026-08-28)
 
 Recently resolved (2026-08-28): **#0856** (examples) — `example_portability` went red because `f714e6a01`
 (phase-394) fixed a real CANCEL bug in the NATIVE action-server only: the server reported a cancelled goal as
