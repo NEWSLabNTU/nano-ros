@@ -475,6 +475,25 @@ Convert them to `nros_grep_q`; the helper and `check-grep-q-error-conflation`
 already exist. Then flip `check-fast` to the parallel runner and delete the
 stale "conflicting pair unidentified" note.
 
+The sweep was **two populations, not one**, because the first scoping stopped at
+`scripts/`. The other 30 sites live in the seven gate scripts under
+`packages/testing/nros-tests/tests/` that `check-{provider-index,build-root,
+workspace-order,cargo-target-spelling,fixture-groups,package-xml-comments}`
+invoke — all six are in the fan-out set, and issue 0732 had already pulled that
+directory into scope after `workspace_order_gate.sh` announced a false finding
+from a SIGPIPE. Both populations are now at 0 in `grep-q-baseline.json`.
+Measured after the second pass: five fan-out runs (three at `-P24`, two at
+`NROS_GATE_JOBS=64`), 133/133 gates green each time.
+
+What the two passes did NOT convert is the **capture form** — `hits="$(grep …
+|| true)"` followed by a test on emptiness. It carries the identical
+conflation, `check-grep-q-error-conflation` cannot see it (no `-q`), and there
+is no helper for it because the caller wants the LINE, not a status. Four sites
+in `build_root_derivation.sh` fail SILENT that way (an errored grep reads as
+"no literal remains"); the two that fail LOUD — a false "the shadowed provider
+was not reported" and a false "the case never ran" — were split by hand at the
+call site. A `nros_grep_lines` sibling would be the shared fix.
+
 ## W12 — `check-dep-chain` out of the merge path
 
 158 s measured, the single most expensive gate in the compile tier after the

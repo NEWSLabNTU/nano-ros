@@ -17,6 +17,14 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Issue 0726 — the installed-target probe below decides whether the
+# cross-pointer-size arm RUNS. `rustup … | grep -q` conflates "i686 is not
+# installed" (rc 1) with "the grep did not run" (rc>=2), and the second reads
+# as the first: the arm silently skips and the script still says OK. That is
+# the check-never-fires direction of the same conflation.
+# shellcheck source=../../../../scripts/lib/grep-q.sh
+. "$(git rev-parse --show-toplevel)/scripts/lib/grep-q.sh"
+
 # The REAL generated header, not the tracked stub. `packages/api/nros-c/include/
 # nros/nros_config_generated.h` is a Phase-119.3 placeholder that documents where
 # the real one goes and contains ZERO `#define NROS_*_SIZE` lines — so this
@@ -73,7 +81,12 @@ echo "=== 118.E.3 — cross-pointer-size validation (host vs 32-bit) ==="
 # 32-bit target if installed, capture sizes via the probe, and assert
 # pointer-size-dependent types shrink. Catches the case where the
 # probe accidentally reads host sizes during a cross build.
-if rustup target list --installed | grep -q '^i686-unknown-linux-gnu$'; then
+# CAPTURE, then test. A pipeline puts `nros_grep_q` in a subshell (its `exit 2`
+# would end only that segment) and `grep -q`'s early exit can SIGPIPE `rustup`,
+# which under `pipefail` turns a MATCH into a non-zero pipeline — issue 0732's
+# shape. A rustup that cannot run keeps the pre-existing behaviour: skip.
+if installed_targets="$(rustup target list --installed)" \
+        && nros_grep_q '^i686-unknown-linux-gnu$' <<<"$installed_targets"; then
     cargo clean -p nros-c >/dev/null
     cargo build -p nros-c --target i686-unknown-linux-gnu \
         --features cffi-zenoh-cffi,platform-posix,ros-humble \

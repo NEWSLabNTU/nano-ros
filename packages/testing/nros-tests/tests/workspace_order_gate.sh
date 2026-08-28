@@ -41,6 +41,15 @@ NROS="$ROOT/packages/cli/target/release/nros"
 # shellcheck source=../../../../scripts/build/check-skip.sh
 . "$ROOT/scripts/build/check-skip.sh"
 
+# Issue 0732 — this gate is where the class was OBSERVED: it announced "the
+# provider stopped being discoverable" from a pipeline that died rather than
+# answered. Splitting the pipeline (T2 below) fixed the SIGPIPE half; the other
+# half is that `grep -q` still cannot tell rc 1 from rc>=2, so a forked grep
+# that fails to start under the gate fan-out reads as a missing cycle report or
+# a cmake seam that stopped reordering. `nros_grep_q` exits 2 on rc>=2.
+# shellcheck source=../../../../scripts/lib/grep-q.sh
+. "$ROOT/scripts/lib/grep-q.sh"
+
 # The in-tree CLI is a BUILD PRODUCT, absent on the pristine worktree this
 # tier documents itself green on (issue 0650's list names it). Skip loudly —
 # the lane's closing report refuses to say "passed" over a skipped gate.
@@ -133,7 +142,7 @@ A2="$("$NROS" ws order --workspace "$WS2" --lines | cut -f1)"
 # failing to run at all is now distinct from the provider genuinely being absent.
 if ! PROVIDERS="$("$NROS" ws providers --workspace "$WS2" --nano-ros-root "$WS2" --kind rmw 2>&1)"; then
     bad T2 "ws providers errored: $PROVIDERS"
-elif ! grep -q "acme" <<<"$PROVIDERS"; then
+elif ! nros_grep_q "acme" <<<"$PROVIDERS"; then
     bad T2 "the provider stopped being discoverable"
 fi
 
@@ -146,9 +155,9 @@ mkpkg "$WS3" unrelated
 if CY="$("$NROS" ws order --workspace "$WS3" 2>&1)"; then
     bad T4 "a dependency cycle did not fail"
 else
-    grep -qi "cycle" <<<"$CY" || bad T4 "failed without saying 'cycle': $CY"
+    nros_grep_q -i "cycle" <<<"$CY" || bad T4 "failed without saying 'cycle': $CY"
     for n in a b c; do
-        grep -q "\b$n\b" <<<"$CY" || bad T4 "cycle report omits '$n': $CY"
+        nros_grep_q "\b$n\b" <<<"$CY" || bad T4 "cycle report omits '$n': $CY"
     done
 fi
 
@@ -157,7 +166,7 @@ if MISS="$("$NROS" ws order --workspace "$WS" --subdir src/talker_pkg \
         --subdir src/not_a_pkg 2>&1)"; then
     bad T5 "a subdir with no package.xml was silently dropped"
 else
-    grep -q "not_a_pkg" <<<"$MISS" || bad T5 "error does not name the bad subdir: $MISS"
+    nros_grep_q "not_a_pkg" <<<"$MISS" || bad T5 "error does not name the bad subdir: $MISS"
 fi
 
 # --- T6: an unrequested package still orders the requested ones --------------
@@ -197,7 +206,7 @@ GOT="$(grep -o 'GATE order=.*' <<<"$CM" || true)"
 # packages kept the relative order the caller asked for, because nothing
 # declares one between them. Both halves matter — see
 # `caller_order_wins_ties_so_undeclared_workspaces_are_untouched`.
-grep -q "GATE order=src/talker_pkg;src/listener_pkg;src/aaa_entry" <<<"$CM" ||
+nros_grep_q "GATE order=src/talker_pkg;src/listener_pkg;src/aaa_entry" <<<"$CM" ||
     bad T7 "cmake did not reorder as expected; got: $GOT"
 
 if [ "$fail" -ne 0 ]; then

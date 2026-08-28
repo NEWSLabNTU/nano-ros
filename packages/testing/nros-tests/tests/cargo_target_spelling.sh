@@ -53,6 +53,13 @@ set -uo pipefail
 cd "$(dirname "$0")/../../../.."
 REPO="$PWD"
 
+# Issue 0726 — both needle searches below are `if ! grep -qF`, so a grep that
+# failed to START would report "expected <needle>", i.e. that the resolver
+# emitted the wrong triple, and send the reader into `_nros_resolve_rust_target`
+# over a fork that never ran. `nros_grep_q` exits 2 on rc>=2 instead.
+# shellcheck source=../../../../scripts/lib/grep-q.sh
+. "$REPO/scripts/lib/grep-q.sh"
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/nros-target-spelling.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 
@@ -116,7 +123,7 @@ configure() {
             sed 's/^/      /' <"$log" | tail -8 >&2
             return
         fi
-        if ! grep -qF -- "$needle" "$log"; then
+        if ! nros_grep_q -F -- "$needle" "$log"; then
             bad "$label: expected $needle"
             grep -E "NROS_PROBE_" "$log" | sed 's/^/      /' >&2
             return
@@ -126,7 +133,7 @@ configure() {
             bad "$label: configure SUCCEEDED but must fail"
             return
         fi
-        if ! grep -qF -- "$needle" "$log"; then
+        if ! nros_grep_q -F -- "$needle" "$log"; then
             bad "$label: failed for the wrong reason (no '$needle')"
             sed 's/^/      /' <"$log" | tail -8 >&2
             return

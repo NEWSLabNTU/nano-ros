@@ -26,6 +26,17 @@ phase-395 W11 spent one of those lowerings: the 46 sites in the 21 scripts a
 `check-fast` gate INVOKES are converted, and those files are at 0. That is the
 population fan-out actually stresses, so it is the population where the
 conflation is not theoretical. The rest of the baseline is untouched debt.
+
+Then a second lowering for the SAME reason one directory over: the 30 sites in
+the 7 `packages/testing/nros-tests/tests/*.sh` gate scripts that
+`check-{provider-index,build-root,workspace-order,cargo-target-spelling,
+fixture-groups,package-xml-comments}` invoke, plus `size_probe_verify.sh`.
+Issue 0732 put that directory in scope after `workspace_order_gate.sh`
+announced a false finding from a SIGPIPE; these scripts are in the fan-out set
+too, so the conflation there is no more theoretical than it was in `scripts/`.
+Both lowerings left the CAPTURE form (`grep … || true` into a variable the
+caller then tests for emptiness) untouched where it survives — this gate does
+not see it, and there is no `-q` helper for it.
 """
 
 import json

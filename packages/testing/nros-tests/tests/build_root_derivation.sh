@@ -30,7 +30,22 @@ check() { # <what> <expected> <actual>  -- sets `rc` in the CURRENT shell
 }
 
 # scenario <<'EOF'-style: run a subshell body, propagate its exit status.
-scenario() { ( rc=0; eval "$1"; exit "$rc" ) || fail=1; }
+#
+# A body that ends >=2 did not FINISH its checks: that is `nros_grep_q` refusing
+# to verdict from a grep that did not run (issue 0726), and its `exit 2` can
+# only reach the subshell. Folding it into `fail=1` would print
+# "build_root_derivation: FAILED" — a claim that a checked property is broken —
+# for a tool failure, so it is re-raised here instead. `check` and the two
+# cannot-test aborts use 1, which is the ordinary failure path.
+scenario() {
+    local src=0
+    ( rc=0; eval "$1"; exit "$rc" ) || src=$?
+    if [ "$src" -ge 2 ]; then
+        echo "build_root_derivation: aborting — a check could not be run" >&2
+        exit "$src"
+    fi
+    [ "$src" -eq 0 ] || fail=1
+}
 
 # The function names `fixtures-build.sh` ships to its make leaves, read OUT of
 # the file (continuation lines included) so the leaf scenario below cannot pass
@@ -44,6 +59,14 @@ leaf_exported_fns() {
 
 # shellcheck source=scripts/build/build-root.sh
 source scripts/build/build-root.sh
+
+# Issue 0726 — the greps below are ASSERTIONS about other files (does the build
+# strip the authored flag? does the Rust mirror read NROS_BUILD_ROOT?), and
+# `grep -q` cannot tell "the text is absent" from "the grep did not run". Under
+# the parallel gate fan-out the second becomes the first, and the FAIL text
+# names a mechanism that is intact. `nros_grep_q` exits 2 on rc>=2.
+# shellcheck source=scripts/lib/grep-q.sh
+source scripts/lib/grep-q.sh
 
 echo "build-root derivation:"
 
@@ -215,7 +238,7 @@ scenario '
 echo "phase-340 W2 — build and staleness probe both strip:"
 scenario '
     for f in scripts/build/fixtures-build.sh scripts/test/rust-fixture-stale.sh; do
-        if grep -q "nros_fixture_strip_authored_target_dir" "$f"; then
+        if nros_grep_q "nros_fixture_strip_authored_target_dir" "$f"; then
             echo "  ok   $f strips the authored flag"
         else
             echo "  FAIL $f appends the group dir without stripping the authored one"
@@ -223,7 +246,10 @@ scenario '
         fi
     done
     # …and the make leaves get the helper, or they die "command not found".
-    if leaf_exported_fns | grep -q "nros_fixture_strip_authored_target_dir"; then
+    # Captured, not piped: in a pipeline nros_grep_q is a SUBSHELL and its
+    # exit 2 would end only that segment, restoring the ambiguity.
+    exported="$(leaf_exported_fns)"
+    if nros_grep_q "nros_fixture_strip_authored_target_dir" <<<"$exported"; then
         echo "  ok   the strip helper is shipped to the make leaves"
     else
         echo "  FAIL nros_fixture_strip_authored_target_dir is not in the export -f list"
@@ -408,8 +434,9 @@ scenario '
 # was pointed at a different env var entirely.
 scenario '
     f=packages/testing/nros-tests/src/lib.rs
-    if grep -q "env::var(\"NROS_BUILD_ROOT\")" "$f" && grep -q "pub fn build_root" "$f" \
-       && grep -q "pub fn build_dir" "$f"; then
+    if nros_grep_q "env::var(\"NROS_BUILD_ROOT\")" "$f" \
+       && nros_grep_q "pub fn build_root" "$f" \
+       && nros_grep_q "pub fn build_dir" "$f"; then
         echo "  ok   nros_tests mirror reads NROS_BUILD_ROOT"
     else
         echo "  FAIL nros_tests::build_root/build_dir mirror missing or ignores NROS_BUILD_ROOT"
@@ -445,7 +472,7 @@ for f in scripts/build/borrowed-e2e-fixture.sh \
          scripts/build/link-determinism-fixture.sh \
          scripts/build/fixture-make-driver.sh \
          scripts/build/zephyr-fixture-make-driver.sh; do
-    if grep -qF 'repo_root/build/' "$repo_root/$f"; then
+    if nros_grep_q -F -- 'repo_root/build/' "$repo_root/$f"; then
         echo "  FAIL $f still assigns a rooted literal"
         rc=1
     fi
@@ -507,7 +534,7 @@ scenario '
     else
         echo "  ok   no Rust copy of the eligibility list"
     fi
-    if grep -q "fixture-groups" "$rs/fixtures/groups.rs"; then
+    if nros_grep_q "fixture-groups" "$rs/fixtures/groups.rs"; then
         echo "  ok   the Rust resolver consumes the manifest group export"
     else
         echo "  FAIL fixtures/groups.rs no longer consumes fixture-groups"
