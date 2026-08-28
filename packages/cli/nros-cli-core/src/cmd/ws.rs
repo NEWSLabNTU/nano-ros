@@ -2701,10 +2701,7 @@ fn scan_one_pkg_dir_inner(
             manifest.display()
         );
     };
-    let is_msg_pkg = body.contains("rosidl_interface_packages")
-        || pkg_dir.join("msg").is_dir()
-        || pkg_dir.join("srv").is_dir()
-        || pkg_dir.join("action").is_dir();
+    let is_msg_pkg = crate::interface_package::is_interface_package(pkg_dir, &body);
     let is_rust_pkg = pkg_dir.join("Cargo.toml").is_file();
     let deps = extract_pkg_deps(&body);
     // Phase 212.M-F.21 — when single-pkg mode lands on an Entry pkg
@@ -2754,10 +2751,7 @@ fn scan_workspace(src_root: &Path, out: &mut Vec<WsPkg>) -> Result<()> {
         let Some(name) = extract_pkg_name(&body) else {
             continue;
         };
-        let is_msg_pkg = body.contains("rosidl_interface_packages")
-            || dir.join("msg").is_dir()
-            || dir.join("srv").is_dir()
-            || dir.join("action").is_dir();
+        let is_msg_pkg = crate::interface_package::is_interface_package(&dir, &body);
         let is_rust_pkg = dir.join("Cargo.toml").is_file();
         let deps = extract_pkg_deps(&body);
         out.push(WsPkg {

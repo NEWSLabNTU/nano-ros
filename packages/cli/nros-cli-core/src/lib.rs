@@ -22,6 +22,7 @@ pub mod cmd;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
+pub mod interface_package;
 pub mod source_stamp;
 pub mod stale_guard;
 // Issue 0455 — one `scratch_dir` for every unit test in this crate. Nine

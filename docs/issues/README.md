@@ -147,6 +147,17 @@ SUCCESS line (`built: …`) last in the log, make's own exit 2 read as a bespoke
 of benign newlib `_read is not implemented` warnings ended the stderr — so the inputsig stamp step
 looked responsible. It exits 0. See `archived/0833-*`. (2026-08-27)
 
+Recently resolved (2026-08-28): **#0864** (cli) — the DERIVED cmake root added interface packages as
+subdirs, so `examples/workspaces/features` needed a ROS install to configure and `build-test-fixtures
+lane=native` died on `find_package(ament_cmake)`. `custom_msgs` is a verbatim upstream ROS msg package on
+purpose (it must also build under colcon) and nano-ros routes `rosidl_generate_interfaces` through codegen
+instead; the hand-written root left it out of `_ws_subdirs` with the reason written down, and phase-383
+W10.a's derivation had only "has a CMakeLists". It landed because on a host WITH ROS it configures and looks
+right — the failure needs the ROS-less host tier 1 is contracted to run on. Fixed by skipping interface
+packages (the `rosidl_interface_packages` marker plus msg/srv/action probes) — and the predicate, which
+already had TWO identical spellings in `cmd::ws`, is now one `interface_package::is_interface_package`
+instead of a third (#0862). See `archived/0864-*`. (2026-08-28)
+
 Recently resolved (2026-08-28): **#0858** (testing) — `zephyr_prjconf_meets_backend_requirements` went red
 when phase-391 W3 set `CONFIG_HEAP_MEM_POOL_SIZE=0` in the two c/talker confs (the funnel is rlsf-backed and
 no longer calls `k_malloc`) while the gate still required a positive kernel heap for every backend. Fixed by
