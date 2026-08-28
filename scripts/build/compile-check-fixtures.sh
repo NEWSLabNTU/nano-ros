@@ -197,6 +197,26 @@ cmake_out="$(nros_build_dir "$NROS_KIND_CMAKE_FIXTURES")"
 # instead of printing a zero that means two different things.
 lane_skips=()
 
+# LANE FILTER — phase-395. Empty (the default) means every lane, which is what
+# `build-test-fixtures` wants.
+#
+# A caller that needs only ONE lane can now say so, and `check-source-gates`
+# does: `platform_header_compile` asserts the `platform_hdr_*` snippets, which
+# are `cargo-check` records, and nothing else. Building every lane to get them
+# dragged in `freertos_firmware` — a `cargo-build` record that needs the
+# FreeRTOS KERNEL SUBMODULE, which CI does not provision — and the gate died on
+# `missing include ... third-party/freertos/kernel`.
+#
+# That was a real regression from making the gate build its own fixtures: before
+# it built nothing and silently depended on someone else having done so, and
+# after it built far more than it needed. Neither is right; asking for the lane
+# you assert is.
+CC_LANES="${NROS_COMPILE_CHECK_LANES:-}"
+_lane_on() {
+    [ -z "$CC_LANES" ] && return 0
+    case " $CC_LANES " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
 _note_lane_skip() {
     lane_skips+=("$1")
     echo "$1 — skipping (recorded in the summary)" >&2
@@ -209,6 +229,11 @@ _lane_count() {
 
 cmake_skipped=""
 cmake_fixture_prereqs_ok() {
+    # A lane the caller filtered OUT must not run its prerequisite check either.
+    # The `nros` CLI check below is deliberately FATAL (a stale CLI is a defect,
+    # not a host capability), and leaving it reachable meant a caller asking for
+    # only `cargo-check` still died on a cmake prerequisite it had opted out of.
+    _lane_on cmake-configure || { cmake_skipped="not in NROS_COMPILE_CHECK_LANES"; return 1; }
     command -v cmake >/dev/null 2>&1 || {
         cmake_skipped="cmake absent"
         _note_lane_skip "cmake-fixtures: cmake absent"
@@ -500,21 +525,21 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$target" ] && continue
     run_fixture "$out_root/$id" "$id" "$builder" stage_and_check "$id" "$dir"
     write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
-done < <(compile_check_records cargo-check)
+done < <(_lane_on cargo-check && compile_check_records cargo-check || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
     run_fixture "$out_root/$id" "$id" "$builder" \
         stage_and_build "$id" "$dir" "${mdir:-.}" "${pkg:-demo_entry}"
     write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
-done < <(compile_check_records cargo-build)
+done < <(_lane_on cargo-build && compile_check_records cargo-build || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue
     run_fixture "$out_root/$id" "$id" "$builder" \
         stage_and_cross_build "$id" "$dir" "${mdir:-.}" "$pkg" "$target" "${profiles:-debug}"
     write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
-done < <(compile_check_records cross-build)
+done < <(_lane_on cross-build && compile_check_records cross-build || true)
 # C++ syntax-only compile-checks (id : snippet.cpp under
 # packages/testing/nros-tests/fixtures/cpp_compat_snippets/). `c++ -fsyntax-only`
 # the snippet against the nros-cpp / nros-c / compat include set — a compile-only
@@ -575,7 +600,7 @@ if cmake_fixture_prereqs_ok; then
         run_fixture "$cmake_out/$id" "$id" "$builder" build_cmake_fixture "$id" "$dir"
         write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$cmake_out/$id"
         cmake_n=$((cmake_n + 1))
-    done < <(compile_check_records cmake-configure)
+    done < <(_lane_on cmake-configure && compile_check_records cmake-configure || true)
     # Phase 246 — the ThreadX `threadx_bringup_rv64` configure-only baker-audit
     # leg is retired with `NanoRosThreadxSystemCodegen.cmake`; the bare-metal
     # riscv64 typed-carrier examples (examples/qemu-riscv64-threadx/{c,cpp}/*)
@@ -606,7 +631,7 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
         run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id"
         write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
         cxx_n=$((cxx_n + 1))
-    done < <(compile_check_records cxx-syntax)
+    done < <(_lane_on cxx-syntax && compile_check_records cxx-syntax || true)
 else
     cxx_skipped="no C++ compiler (${CXX:-c++})"
     _note_lane_skip "cxx-syntax: $cxx_skipped"
@@ -638,7 +663,7 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     else
         echo "   cargo-check FAILED for $id (no stamp)" >&2
     fi
-done < <(compile_check_records cargo-check)
+done < <(_lane_on cargo-check-target && compile_check_records cargo-check || true)
 
 # px4 xrce companion examples (#102 / #136 debt). Compile-check only: the
 # runtime needs PX4 SITL + a Micro-XRCE-DDS agent, but the generated CDR
@@ -659,7 +684,7 @@ px4_autopilot_dir="$repo_root/third-party/px4/PX4-Autopilot"
 px4_n=0
 px4_skipped=""
 px4_fail_n=0
-if [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
+if _lane_on px4 && [ -d "$px4_autopilot_dir/msg" ] && command -v nros >/dev/null 2>&1; then
     # issue 0520 — this script is invoked ONCE PER COMPILE-CHECK UNIT (87 of them
     # under `build-test-fixtures lane=all`, in parallel), and every invocation
     # regenerates px4_msgs into the SAME three `<leaf>/generated` dirs. The
