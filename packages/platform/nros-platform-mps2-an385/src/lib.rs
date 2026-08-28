@@ -11,6 +11,7 @@
 #![no_std]
 
 pub mod clock;
+#[cfg(feature = "libc-heap")]
 pub mod libc_stubs;
 pub mod memory;
 pub mod net;

@@ -2,7 +2,7 @@
 id: 843
 title: "`nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every
   cffi image needs a global allocator and the `heap-free` tier is unreachable"
-status: open
+status: resolved
 type: bug
 area: core, platform
 related: [phase-391, issue-0816, issue-0832]
