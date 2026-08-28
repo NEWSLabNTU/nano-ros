@@ -653,6 +653,46 @@ So a separate verb queries CI and reports which tier each platform's evidence
 actually supports. It does not gate, per the demotion policy above. Same split as
 `check-*` versus `merge-queue --readiness`.
 
+## W18 — scope precisely; a skip is not a selector
+
+A skip is a RUNTIME answer to "can this host run this test". Scope is a
+SELECTION answer to "is this test mine to run". Using the first where the second
+belongs is what makes "the lane passed with 200 skips" unreadable — and today
+`[SKIPPED:lane]` is the dominant class (13 of 16 emission sites).
+
+**Where the scope IS name-expressible, a lane skip is imprecision.** The test was
+selected, started, and discovered it was never wanted. Fixing the selector
+removes both the skip and the work.
+
+**Where it is NOT, the resolver IS the selector**, and this is not a defect to
+design away. Tier 2 is 1-wise over platform, so every platform is in the lane and
+the real narrowing is lang×rmw WITHIN a platform — which test names do not
+encode (0357/0482, confirmed 2026-08-28: `Platform__Freertos` cannot separate
+`FreertosPosix` from `FreertosMps2`). The selection therefore has to happen where
+the test↔fixture binding physically exists, and its output is reported through
+the only channel available, a skip.
+
+So the actionable half is REPORTING, not re-architecting:
+
+  * `lane` is a DESELECTION — by design, nobody acts on it.
+  * `capability` / `resource` are provisioning gaps — the only classes anyone
+    can act on.
+
+`check-skip-budget` now reports them separately (`N ran, M deselected,
+K skipped for an unmet precondition`) instead of one total, because burying the
+second in the first makes a lane with a real hole read exactly like one that
+merely narrowed its scope.
+
+The remaining structural work is W16's: tier 1's run is name-scoped
+(`NROS_TEST_SCOPE=native`), which is the coarse end of this. Making it
+coordinate-scoped would let the lane select precisely instead of selecting
+broadly and deselecting at the fixture — but that is the same change W16
+measured and did not land, for the same reason.
+
+**Not measured:** how many lane deselections a real tier-1 run actually emits.
+No representative junit was to hand, so the claim that tier 1's name scoping is
+coarse rests on reading the filter, not on counting its output.
+
 ## Not in scope
 
 - Replacing GitHub's merge queue with a third-party tool. The native one has
