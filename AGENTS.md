@@ -297,6 +297,55 @@ damage is bounded, but it is real and it is paid by other agents.
 push is what makes the cheap PR gate affordable for everyone else. Skipping it
 does not save you time; it moves your time onto three other agents.
 
+## When the merge queue rejects your pull request
+
+A merge group tests **`main` + your PR**, which is a commit that exists nowhere
+else — not on your branch, not on `main`. So "it passed on my PR" and "it failed
+in the queue" are both true and not in conflict. That is the whole point of the
+queue, and it is why the next step is never obvious from the PR page alone.
+
+**Start with `just queue-triage`.** GitHub already does the part people expect to
+do by hand: it tests speculative PREFIXES of the queue concurrently, ejects only
+the pull request it can attribute the failure to, and re-tests the innocent ones
+automatically. What it cannot tell you is whether the failure is yours.
+
+### If the check is red for several different PRs — it is not yours
+
+Rebasing will not fix it, and re-queuing burns a batch slot against a check that
+cannot go green for anyone. **Stop and say so** on the issue or the PR thread,
+then either fix the check or drop it from the required set until it is fixed.
+Ten agents independently rediscovering one broken gate is the expensive failure
+here.
+
+### If it is yours — reproduce the merged state, not your branch
+
+```
+git fetch origin && git rebase origin/main
+just ci-l1        # the SAME tier the merge group runs
+```
+
+Two things reproduce this way, and the second is the reason the queue exists:
+
+* **Your PR is simply broken.** The PR gate is deliberately cheap (source gates
+  only), so a compile error reaches the queue rather than your PR. Rebasing is
+  incidental; `just ci-l1` finds it.
+* **A semantic conflict.** Your change and something that landed while you
+  waited are each correct alone and wrong together — a caller you added against
+  a signature someone else changed. No textual conflict, so git merges cleanly
+  and only the merged state fails. Rebasing is what surfaces it, and nothing
+  cheaper can: it does not exist in either branch.
+
+### Never re-queue an unchanged commit
+
+The queue re-runs the same tree and fails the same way. Re-queue only with a new
+commit, or with evidence the failure was a flake — and if you believe it was a
+flake, **capture the merge-group log first and file it**, or the next author
+pays the same hour you just did.
+
+If it stays green locally after a rebase, you are looking at a flake or a
+host difference, not a defect you can fix by pushing again. That is a finding to
+record, not a reason to retry.
+
 ## Submitting work: what CI enforces, and what it cannot
 
 Three obligations. **One is a gate. Two are conventions, and they are labelled
