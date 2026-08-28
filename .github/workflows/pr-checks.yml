@@ -156,8 +156,13 @@ jobs:
       # the rapid push cadence. The build tier (PR/nightly) needs the CLI (codegen
       # for clippy) + every `-sys` source submodule (zenoh-pico/mbedtls/micro/
       # cyclonedds + px4-rs) so its clippy/cargo-tree gates resolve + compile.
-      - name: Cache CLI build (build tier)
-        if: ${{ github.event_name != 'push' }}
+      # phase-395 — the CLI and the `-sys` sources exist ONLY for the compile
+      # tier, so they are built ONLY where that tier runs. On a pull request
+      # this saves 79 s of a ~5 min gate, and `check-fast` is buildless and
+      # source-free by construction (its CLI-touching gates skip gracefully
+      # when the CLI is absent).
+      - name: Cache CLI build (compile tier)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         uses: actions/cache@v4
         with:
           path: packages/cli/target
@@ -165,8 +170,8 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
-      - name: Build nros CLI + provision build-tier sources (non-push)
-        if: ${{ github.event_name != 'push' }}
+      - name: Build nros CLI + provision compile-tier sources
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
@@ -185,8 +190,25 @@ jobs:
         run: just check-fast
 
       # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
-      - name: just check-build + no_std
-        if: ${{ github.event_name != 'push' && !cancelled() }}
+      # THE ARRANGEMENT, phase-395. This job is ONE required status context and
+      # it deliberately does DIFFERENT WORK per event:
+      #
+      #   pull_request  ->  check-fast only        ~5 min   fast feedback
+      #   merge_group   ->  + check-build, no_std, test-unit  ~15 min, per BATCH
+      #   schedule      ->  the same full tier, daily
+      #
+      # That is the whole economic argument for a merge queue: the expensive
+      # verification runs once per batch of up to four, not once per pull
+      # request AND again per batch. Measured on this runner, L1 is 587 s of a
+      # 878 s gate, so moving it off the per-PR path is most of the latency.
+      #
+      # What keeps the queue from eating bad batches is NOT this job — it is the
+      # agent running `just ci-l1` locally before pushing, which is the same
+      # tier. A compile error that reaches the queue ejects its batch-mates;
+      # GitHub then re-tests them in smaller groups, so the cost is bounded and
+      # paid rarely, against a 10 min saving on every PR.
+      - name: just check-build + no_std (compile tier)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           just check-build
           just check-no-std
@@ -204,11 +226,11 @@ jobs:
       # deliberately leaves open — the gap that let three clippy `-D warnings`
       # errors and an unregenerated pool inventory reach main on 2026-08-27.
       - name: just test-unit (completes L1)
-        if: ${{ github.event_name != 'push' && !cancelled() }}
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: just test-unit
 
       - name: just check-decoupling (advisory until Phase 104.A)
-        if: ${{ github.event_name != 'push' && !cancelled() }}
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         continue-on-error: true
         run: just check-decoupling
 
