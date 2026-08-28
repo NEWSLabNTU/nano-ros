@@ -1,7 +1,7 @@
 ---
 id: 870
-title: "NuttX C++ action client fails `create_action_client` with -100
-  (transport TX failed) on roughly two runs in three"
+title: "NuttX C++ action client fails `create_action_client` — the session
+  reports `Transport(ConnectionFailed)` against a router the server reached"
 status: open
 type: bug
 area: rmw, examples
@@ -59,8 +59,50 @@ Two candidates, neither yet tested:
   anything (issue 0460). An exhausted pool surfacing as a TX failure rather than
   as `-6` (`NROS_RET_FULL`) would also explain why the error names the transport.
 
+## Measured: the error was hidden behind THREE layers of collapse
+
+The guesses above (TX buffer sizing, queryable pool capacity) were both wrong,
+and so was the title. They were reached by reading return codes that lie. Three
+separate seams each replaced a typed error with a less specific one:
+
+1. `nros_cpp_action_client_create` — `Err(_) => NROS_CPP_RET_TRANSPORT_ERROR`,
+   discarding a typed `NodeError`. Fixed: it now calls `node_error_to_cpp_ret`,
+   which already existed and already prints the variant (issue 0557 built it for
+   exactly this collapse, one layer in).
+2. That revealed `NodeError::ActionCreationFailed` — itself a flattening of 17
+   `session.create_*` sites in `executor/action.rs`, every one
+   `map_err(|_| NodeError::ActionCreationFailed)`. `NodeError` ALREADY carries
+   `Transport(TransportError)`; nothing needed adding, the error was simply not
+   passed on. Swept all 17.
+3. Which finally names it:
+
+       [ERROR] nros: NodeError::Transport(ConnectionFailed)
+
+So `-100` was accidentally in the right FAMILY and useless about the cause: not
+a TX failure, a **connect** failure. The session cannot establish its link when
+the client declares its entities — while the action SERVER, on the same port and
+the same router, connected fine and printed its banner.
+
+## What that reframes
+
+The server reaching the router proves the router is up and reachable on that
+port, so this is not "the router was not started". Two QEMU guests each connect
+outward through their own slirp stack to `10.0.2.2:<port>`; the second one
+fails. Candidates, none tested:
+
+* the client's connect deadline is too short for a loaded host (two arm-virt
+  QEMUs under `-icount`), so the TCP connect times out and surfaces as
+  `ConnectionFailed`;
+* something about the second guest's slirp path to the same host port.
+
+Note this is NOT the 0867 ordering bug — that fix (start the client only after
+the server's banner) is in, and this cell still fails. If anything the ordering
+makes the client start LATER, so a connect-deadline theory has to explain why
+later is not better.
+
 ## Acceptance
 
 * The cell passes on its FIRST attempt, repeatably, on an idle host.
-* Whatever ran out is named by the error rather than reported as a generic
-  transport failure.
+* MET ALREADY: the failure names its own cause rather than reporting a generic
+  transport error — that half is fixed and is worth keeping independently of the
+  connect bug, since it is what made the connect bug findable at all.
