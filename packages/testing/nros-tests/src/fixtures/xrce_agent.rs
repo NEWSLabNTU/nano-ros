@@ -87,14 +87,64 @@ impl XrceAgent {
             ))
         })?;
 
-        // The Agent starts quickly — give it a short delay to bind the port
-        std::thread::sleep(Duration::from_millis(500));
-
-        Ok(Self {
+        let mut agent = Self {
             handle,
             port,
             _lease: None,
-        })
+        };
+        agent.wait_until_listening(Duration::from_secs(15))?;
+        Ok(agent)
+    }
+
+    /// Block until the agent actually holds `self.port`, or fail saying why.
+    ///
+    /// Issue 0869. This used to be `sleep(500ms)` with the comment "the Agent
+    /// starts quickly" — which is true on an idle host and a guess on a loaded
+    /// one. When the guess is wrong nothing reports it: the client sends its
+    /// session-open to a port nobody is listening on, gets no reply, and the
+    /// test fails much later as a missing RESULT. The C++ action client even
+    /// prints that as `Goal was rejected by server` (issue 0868), so a fixture
+    /// timing bug arrives dressed as a server decision.
+    ///
+    /// The probe is a bind attempt, which works because the port LEASE is a
+    /// lockfile and never holds the socket (issue 0470): while the agent owns
+    /// the port a second UDP bind fails, and before it does one succeeds. So
+    /// "bind failed" is exactly "the agent is listening", with no sleep and no
+    /// dependency on how loaded the host is.
+    ///
+    /// A dead agent is reported as a dead agent rather than waited out — that
+    /// is the case the old sleep turned into a 15-second silence followed by an
+    /// unrelated assertion.
+    fn wait_until_listening(&mut self, timeout: Duration) -> TestResult<()> {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            match self.handle.try_wait() {
+                Ok(Some(status)) => {
+                    return Err(TestError::ProcessFailed(format!(
+                        "XRCE Agent exited before binding udp4 port {} ({status})",
+                        self.port
+                    )));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    return Err(TestError::ProcessFailed(format!(
+                        "could not poll the XRCE Agent on port {}: {e}",
+                        self.port
+                    )));
+                }
+            }
+            if std::net::UdpSocket::bind(("127.0.0.1", self.port)).is_err() {
+                return Ok(());
+            }
+            if std::time::Instant::now() >= deadline {
+                return Err(TestError::ProcessFailed(format!(
+                    "XRCE Agent did not bind udp4 port {} within {:?} — it is running but not \
+                     listening, so every client on this port would time out",
+                    self.port, timeout
+                )));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
     }
 
     /// Start an agent on an OS-assigned ephemeral port (parallel-safe).
@@ -127,6 +177,81 @@ impl XrceAgent {
     /// Check if the agent is still running.
     pub fn is_running(&mut self) -> bool {
         matches!(self.handle.try_wait(), Ok(None))
+    }
+}
+
+#[cfg(test)]
+mod readiness_tests {
+    use super::*;
+
+    /// The probe must TIME OUT on a live process that never binds the port —
+    /// the case the old `sleep(500ms)` could not distinguish from success.
+    ///
+    /// A stand-in child (`sleep`) stands for an agent that is running and not
+    /// listening. Without a negative control this fix is a claim: the probe
+    /// returning `Ok` proves nothing unless it can also return `Err`.
+    #[test]
+    fn a_process_that_never_binds_times_out() {
+        let mut cmd = std::process::Command::new("sleep");
+        // Its own process group, so the Drop below reaps it immediately instead
+        // of waiting the child out — a 30-second unit test was the first
+        // version of this.
+        #[cfg(unix)]
+        crate::process::set_new_process_group(&mut cmd);
+        let handle = cmd
+            .arg("5")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn the stand-in child");
+        // A leased port so no concurrent fixture can bind it under us and make
+        // this pass for the wrong reason.
+        let lease = crate::port_lease::lease_port(crate::port_lease::Transport::Udp)
+            .expect("lease a udp port");
+        let mut agent = XrceAgent {
+            handle,
+            port: lease.port(),
+            _lease: Some(lease),
+        };
+
+        let err = agent
+            .wait_until_listening(Duration::from_millis(300))
+            .expect_err("a process that never binds must not report ready");
+        let _ = agent.handle.kill();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("did not bind"),
+            "the timeout must say the port was never bound, got: {msg}"
+        );
+    }
+
+    /// And it must NOTICE a dead agent rather than waiting out the timeout.
+    #[test]
+    fn a_child_that_exited_is_reported_as_exited() {
+        let handle = std::process::Command::new("true")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a child that exits immediately");
+        let lease = crate::port_lease::lease_port(crate::port_lease::Transport::Udp)
+            .expect("lease a udp port");
+        let mut agent = XrceAgent {
+            handle,
+            port: lease.port(),
+            _lease: Some(lease),
+        };
+        // Let it actually exit, so this tests the exited branch and not the
+        // still-running one.
+        let _ = agent.handle.wait();
+
+        let err = agent
+            .wait_until_listening(Duration::from_secs(5))
+            .expect_err("an exited agent must be an error");
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("exited before binding"),
+            "a dead agent must be named as dead, got: {msg}"
+        );
     }
 }
 

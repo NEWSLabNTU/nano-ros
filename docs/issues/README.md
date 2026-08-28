@@ -148,6 +148,20 @@ SUCCESS line (`built: …`) last in the log, make's own exit 2 read as a bespoke
 of benign newlib `_read is not implemented` warnings ended the stderr — so the inputsig stamp step
 looked responsible. It exits 0. See `archived/0833-*`. (2026-08-27)
 
+Recently resolved (2026-08-28): **#0869** (testing) — `XrceAgent::start` slept a fixed 500 ms instead of
+checking the port was bound ("the Agent starts quickly"), so under full-sweep load the client sent its
+session-open to a port nobody held, got no reply, and the test failed much later as a MISSING RESULT.
+Surfaced as a migrating flake among the XRCE cells of `native_example_reqresp_e2e` — `case_18` in one sweep,
+`case_09` in the next, 36/36 green in isolation. Compounded by #0868, whose client prints any non-OK
+`send_goal` as `Goal was rejected by server`, so a fixture timing bug arrived dressed as a server decision
+and sent the investigation into the backend inbox path first. Fixed with `wait_until_listening`: poll until a
+second UDP bind FAILS, which means the agent owns the port — sound because the port lease is a lockfile and
+never holds the socket (#0470). Negative controls included (a live process that never binds must time out; a
+dead child must be named dead), because a probe that only ever returns Ok proves nothing. Also faster: 5.8 s
+vs 6.4 s per run, since it returns on bind instead of always sleeping. NOT established: that this was the
+only cause — the flake was intermittent, so its absence needs several more sweeps to be a measurement. See
+`archived/0869-*`. (2026-08-28)
+
 Recently resolved (2026-08-28): **#0864** (cli) — the DERIVED cmake root added interface packages as
 subdirs, so `examples/workspaces/features` needed a ROS install to configure and `build-test-fixtures
 lane=native` died on `find_package(ament_cmake)`. `custom_msgs` is a verbatim upstream ROS msg package on
