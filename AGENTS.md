@@ -261,6 +261,42 @@ Agent branches are also untouched: the ruleset targets `refs/heads/main`, NOT
 which is the reason `~ALL` was rejected — it would have broken every agent and
 every outside contributor on day one.
 
+## Where each tier runs, and why your local run is load-bearing
+
+The merge queue exists so the expensive tier runs **once per batch of four**
+instead of once per pull request *and* again per batch. That only pays off if
+the PR gate is cheap, so the one required status context does DIFFERENT WORK
+depending on the event:
+
+| stage | runs | measured | gates? |
+| --- | --- | --- | --- |
+| local, before push | `just ci-l1` | ~6 min warm | you |
+| pull request | `check-fast` only (133 source gates) | ~5 min | **required** |
+| merge group | + `check-build`, `check-no-std`, `test-unit` | ~15 min ÷ 4 PRs | **required** |
+| push to `main` | `host-tests` (L2) | ~15 min | no |
+| schedule | `nightly` (L3/L4 matrix) | hours | no |
+
+Measured on the hosted runner: of an 878 s gate, `check-fast` is 131 s and
+`check-build` is 587 s. Moving that 587 s off the per-PR path is most of the
+latency, and it costs nothing in coverage because the merge group still runs it
+before anything lands.
+
+**No stage in the merge path builds fixtures.** `check-lane-contracts` enforces
+that: a lane in an affordability tier may resolve a compile-stage stamp only if
+it builds it (~13 s), and may never reach a runtime fixture. Fixture-bearing
+lanes are post-merge.
+
+### Why `just ci-l1` locally is not optional
+
+The PR gate no longer compiles. That means **a compile error in your branch is
+caught by the merge queue, not by your PR** — and there it ejects the other
+pull requests batched with it. GitHub re-tests them in smaller groups, so the
+damage is bounded, but it is real and it is paid by other agents.
+
+`just ci-l1` is exactly the tier the merge group runs. Running it before you
+push is what makes the cheap PR gate affordable for everyone else. Skipping it
+does not save you time; it moves your time onto three other agents.
+
 ## Submitting work: what CI enforces, and what it cannot
 
 Three obligations. **One is a gate. Two are conventions, and they are labelled
