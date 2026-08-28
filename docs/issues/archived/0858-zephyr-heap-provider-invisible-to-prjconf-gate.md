@@ -3,7 +3,7 @@ id: 858
 title: "`zephyr_prjconf_meets_backend_requirements` is red: phase-391 W3 moved the
   heap to an rlsf arena the gate cannot see, because its size is a compile-time
   ENV var and never appears in the `.conf` the gate reads"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [phase-391]
@@ -70,7 +70,27 @@ Filed rather than fixed: choosing how the invariant is expressed is a design
 decision inside an in-flight phase, and guessing it either re-breaks CI or
 silently disables a gate that catches a real runtime failure.
 
-## Workaround
+## Resolution (2026-08-28) — fixed upstream, and by the other option
 
-None needed for a `.conf` you are not editing. `just ci` stays red until this is
-settled.
+Fixed on main by dropping `Req::Positive("HEAP_MEM_POOL_SIZE")` from the zenoh
+and xrce backends and leaving it on cyclonedds, with the reason recorded at the
+requirement: *"Requiring pool > 0 here would force every image to carry BOTH
+heaps — the exact state W3 removed."*
+
+That is the second of the two moves this issue called wrong, and the issue was
+wrong about it. My objection was that relaxing the rule stops catching the
+footgun for the twenty-plus unconverted confs — but the footgun the gate exists
+for is the zenoh-pico `-80` mutex-count case, and those requirements
+(`MAX_PTHREAD_MUTEX_COUNT >= 8`, `MAX_PTHREAD_COND_COUNT >= 6`, `POSIX_API`) are
+untouched. The heap requirement was a lower bound on a resource those confs may
+simply carry without needing; dropping it loses no live check. Cyclone keeps
+its heap requirement because ddsrt genuinely allocates from the kernel pool,
+which is exactly the discrimination I claimed the gate could not make — it can,
+per BACKEND, which is the axis the table was already organized on.
+
+No Kconfig symbol was needed. This issue's "make the provider visible" direction
+solved a problem that only exists if the requirement is per-IMAGE; it is
+per-backend, and after W3 the answer for zenoh and xrce is the same for every
+image regardless of what its `.conf` says.
+
+Verified: `cargo test -p nros-tests --test zephyr_prjconf_requirements` passes.
