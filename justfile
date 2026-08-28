@@ -3444,6 +3444,15 @@ check-ps-zombie-blind:
 check-ci-doc-workflow-refs:
     @python3 scripts/check-ci-doc-workflow-refs.py
 
+# Triage a merge-queue ejection — answers the one question GitHub cannot:
+# is this MY defect, or is the check red for everybody? Re-queuing an unchanged
+# commit re-runs the same tree and fails the same way, one batch slot at a time.
+#
+#   just queue-triage          just queue-triage 6
+[group("setup")]
+queue-triage *ARGS:
+    @bash scripts/ci/queue-triage.sh {{ARGS}}
+
 # Show (or apply) the merge-queue + branch-protection settings — phase-395 W7.
 # Read-only by default; `--apply` touches branch protection, which affects
 # everyone, so it is never the default. `--status` shows what is set now.
