@@ -104,11 +104,14 @@ ruleset_id() {
 # be checked is printed as UNCHECKED rather than assumed green — the same rule
 # the fast line uses when a gate could not run.
 if [ "$READINESS" = 1 ]; then
-    ready=0; blocked=0
+    ready=0; blocked=0; s2_blocked=0; stage=2
     say() { # say <ok|no|skip> <label> <detail>
         case "$1" in
             ok)   printf '  [ok]      %s\n            %s\n' "$2" "$3"; ready=$((ready + 1)) ;;
-            no)   printf '  [BLOCKED] %s\n            %s\n' "$2" "$3"; blocked=$((blocked + 1)) ;;
+            no)   printf '  [BLOCKED] %s\n            %s\n' "$2" "$3"; blocked=$((blocked + 1))
+                  # `cmd && assign` as the LAST statement returns 1 when the
+                  # test is false, and under `set -e` that kills the caller.
+                  if [ "$stage" = 2 ]; then s2_blocked=$((s2_blocked + 1)); fi ;;
             *)    printf '  [uncheck] %s\n            %s\n' "$2" "$3" ;;
         esac
     }
@@ -131,13 +134,23 @@ if [ "$READINESS" = 1 ]; then
     # and most of them will not be in the required set. Reading the workflow
     # conclusion here reported a blocked stage over a `colcon-parity` failure
     # that could never have gated the queue.
-    runs=""
-    for _rid in $(gh run list --workflow pr-checks.yml --branch "$BRANCH" --limit 5 \
+    # Only CONCLUSIVE outcomes count. A cancelled run is not evidence of
+    # failure — `cancel-in-progress: true` produces them routinely whenever
+    # pushes land faster than CI, and a still-running job has no verdict at all.
+    # Counting either as non-green made this report a blocked stage over its own
+    # observation: five dispatches fired to measure a flake showed up here as
+    # `absent,absent,cancelled`.
+    runs=""; _seen=0
+    for _rid in $(gh run list --workflow pr-checks.yml --branch "$BRANCH" --limit 12 \
                     --json databaseId --jq '.[].databaseId' 2>/dev/null); do
+        [ "$_seen" -ge 5 ] && break
         _c="$(gh run view "$_rid" --json jobs --jq \
               "[.jobs[] | select(.name == \"${HOSTED_CHECKS[0]}\") | .conclusion] | first // \"absent\"" \
               2>/dev/null || echo absent)"
-        runs="${runs:+$runs,}$_c"
+        case "$_c" in
+            success|failure) runs="${runs:+$runs,}$_c"; _seen=$((_seen + 1)) ;;
+            *) ;;   # cancelled / skipped / still running / job absent
+        esac
     done
     ok_n="$(printf '%s' "$runs" | tr ',' '\n' | awk '$0 == "success"' | wc -l | tr -d ' ')"
     if [ -z "$runs" ]; then
@@ -177,6 +190,7 @@ if [ "$READINESS" = 1 ]; then
         "not machine-checkable: a running session carries the AGENTS.md it started with"
 
     echo
+    stage=3
     echo "== stage 3 readiness: add the self-hosted L3 check =="
     echo
     online="$(gh api "repos/$REPO/actions/runners" --jq \
@@ -189,14 +203,29 @@ if [ "$READINESS" = 1 ]; then
     fi
 
     echo
-    printf '%s precondition(s) met, %s BLOCKED.\n' "$ready" "$blocked"
-    if [ "$blocked" -eq 0 ]; then
-        echo "Stage 2 is unblocked. Land ONE trivial PR through the queue before"
-        echo "trusting it: a misconfigured queue does not error, it silently stops"
-        echo "merging, which reads as GitHub being slow."
+    # Per STAGE, because they gate different actions. A stage-3 blocker (no
+    # runner) is not a reason to withhold stage 2 — reporting one number
+    # conflated them and said "do not enable required checks" when the only
+    # blocker was a self-hosted lane stage 2 does not use.
+    printf '%s precondition(s) met, %s BLOCKED (%s of them in stage 2).\n' \
+        "$ready" "$blocked" "$s2_blocked"
+    echo
+    if [ "$s2_blocked" -eq 0 ]; then
+        echo 'STAGE 2 IS UNBLOCKED — `--apply --with-queue` may be run.'
+        echo "  Land ONE trivial PR through the queue before trusting it: a"
+        echo "  misconfigured queue does not error, it silently stops merging,"
+        echo "  which reads as GitHub being slow."
+        echo "  The one precondition no tool can check is whether the agents now"
+        echo "  RUNNING have read the policy; a live session carries the AGENTS.md"
+        echo "  it started with."
     else
-        echo "Do NOT enable required checks yet — each BLOCKED line above is a way"
-        echo "to freeze merging rather than to gate it."
+        echo "STAGE 2 BLOCKED — each line above is a way to FREEZE merging rather"
+        echo "  than to gate it. Do not enable required checks yet."
+    fi
+    if [ "$blocked" -ne "$s2_blocked" ]; then
+        echo
+        echo "STAGE 3 blocked, which is expected and does not hold up stage 2:"
+        echo "  the self-hosted L3 lane simply stays out of the required set."
     fi
     exit 0
 fi
