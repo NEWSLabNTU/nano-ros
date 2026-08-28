@@ -1613,7 +1613,15 @@ fn workspace_example_dir(name: &str) -> TestResult<PathBuf> {
     Ok(example_dir)
 }
 
-fn current_workspace_fixture_record(fixture_id: &str) -> TestResult<String> {
+/// One workspace row of `examples/fixtures.toml`, as the manifest reader
+/// renders it: `\x1f`-separated fields, field 4 the hand-written `entry`
+/// and field 13 the generated `image`.
+///
+/// `pub` so a GATE can read the manifest the same way the resolvers do
+/// (`rmw_coordinate_truth`, issue 0831). Re-deriving a row by parsing
+/// `fixtures.toml` in a second place is the split that issue 0393 spent a
+/// wave collapsing.
+pub fn current_workspace_fixture_record(fixture_id: &str) -> TestResult<String> {
     let root = project_root();
     // No `--platform` filter: workspace cmake fixtures span platforms (native +
     // the phase-263 C2a embedded threadx-linux row), and a cmake record is NOT
