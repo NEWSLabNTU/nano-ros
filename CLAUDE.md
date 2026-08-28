@@ -126,8 +126,13 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   force-pushes, deletions and MERGE COMMITS, with no bypass actors. So the old failure
   mode is gone: an accidental `git pull` merge used to LAND silently (three did, on
   2026-05-15) and now the push is REJECTED. Recovery is `git rebase origin/main`, never
-  `--force`. Direct push to `main` still works; that changes when the merge queue lands
-  (phase-395 W7) — read AGENTS.md "Branch policy" BEFORE the switch, not after.
+  `--force`. **DIRECT PUSH TO `main` NO LONGER WORKS** (live 2026-08-28): the
+  ruleset also requires a pull request and the merge queue, with no bypass. Work
+  goes `just claim` -> branch -> `just ci-l1` -> PR -> `gh pr merge --auto
+  --rebase`. ONE required check, the aggregator `CI` — never add a job name to
+  the required set, and never path-filter a required workflow: a check that
+  produces no verdict blocks forever, which deadlocked two PRs on 2026-08-28.
+  Read AGENTS.md "Branch policy" — it has the flow and the break-glass.
 - **Never `git add -A` / `git add .`** — stage the paths you actually changed
   (`git add <path>…`, or `git add -u <dir>` for tracked-only edits). A blanket add
   scoops up build output, leftover dirs and stray artifacts. Twice in one session it
