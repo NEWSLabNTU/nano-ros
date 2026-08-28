@@ -6,7 +6,7 @@ title: "The derived cmake root adds INTERFACE packages as subdirs, so a workspac
 status: resolved
 type: bug
 area: cli
-related: [phase-383, issue-0862]
+related: [phase-383]
 ---
 
 ## Problem
@@ -60,7 +60,8 @@ That predicate already existed **twice**, both spellings identical, in
 `cmd::ws`. Rather than write a third — which is the thing CLAUDE.md's class rule
 exists to prevent — it is now one function,
 `nros_cli_core::interface_package::is_interface_package`, and both `cmd::ws`
-sites call it. Filed as #0862 in passing; resolved by the same commit.
+sites call it. Consolidated as part of this fix rather than filed separately —
+it has no life independent of the caller that needed a third spelling.
 
 ### Verified
 

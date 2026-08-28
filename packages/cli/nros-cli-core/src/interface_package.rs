@@ -10,7 +10,8 @@
 //! not required.
 //!
 //! This predicate had two identical spellings in `cmd::ws` and was about to get
-//! a third in `builder::cmake_root` (issue 0862). It is one function now.
+//! a third in `builder::cmake_root`. It is one function now — see issue 0864,
+//! whose fix needed the third caller and consolidated the other two instead.
 //!
 //! The `member_of_group` marker is the canonical ROS declaration; the directory
 //! probes catch packages that carry schemas without having declared it, which
