@@ -602,6 +602,7 @@ check-build: \
     check-ps-zombie-blind \
     check-gate-selftests \
     check-lane-contracts \
+    check-skippable-tests-tolerant \
     check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
@@ -969,7 +970,10 @@ check-staticlib-symbols:
     #!/usr/bin/env bash
     set -e
     bash scripts/build/link-determinism-fixture.sh
-    cargo test -p nros-tests --test staticlib_duplicate_symbols
+    # Skip-capable: routed through the tolerant runner so an unmet
+    # precondition reads as a SKIP rather than a red naming a test the
+    # change never touched. Gated by `check-skippable-tests-tolerant`.
+    just _nextest-tolerant -p nros-tests --no-fail-fast --test staticlib_duplicate_symbols
 
 # Borrowed-view runtime E2E (RFC-0033 / #0423) — link the C + C++ proof binaries at
 # the build stage, then RUN them (they assert every borrowed view aliases the CDR
@@ -981,7 +985,10 @@ check-borrowed-e2e:
     #!/usr/bin/env bash
     set -e
     bash scripts/build/borrowed-e2e-fixture.sh
-    cargo test -p nros-tests --test borrowed_e2e
+    # Skip-capable: routed through the tolerant runner so an unmet
+    # precondition reads as a SKIP rather than a red naming a test the
+    # change never touched. Gated by `check-skippable-tests-tolerant`.
+    just _nextest-tolerant -p nros-tests --no-fail-fast --test borrowed_e2e
 
 # Embedded feature-unification guard — no `feature "std"` activation path may
 # reach an embedded target's production-link view. The `check.yml` step (SSoT).
@@ -3464,6 +3471,15 @@ rust-rtos-link-check: _require-leaf-includes
 [group("ci")]
 tier-health *args:
     @python3 scripts/ci/tier-health.py {{args}}
+
+# A test that can SKIP must be run by a runner that understands skips.
+# `nros_tests::skip!` PANICS with a `[SKIPPED]` marker (Rust's harness has no
+# native skip), and only `_nextest-tolerant` rewrites it before tallying — so a
+# bare runner turns an unmet precondition into a red naming a test the change
+# never touched.
+[private]
+check-skippable-tests-tolerant:
+    @python3 scripts/check-skippable-tests-tolerant.py
 
 # A tier's affordability claim must be TRUE. `ci-l1` says "NO FIXTURES"; it
 # reached a fixture-resolving test for as long as anyone had written the claim

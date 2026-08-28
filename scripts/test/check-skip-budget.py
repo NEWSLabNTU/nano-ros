@@ -104,11 +104,42 @@ def main(argv: list[str]) -> int:
 
     total = sum(by_class.values())
     breakdown = "  ".join(f"{k}={v}" for k, v in sorted(by_class.items())) or "none"
-    print(f"check-skip-budget: {total} skip(s) — {breakdown}")
+
+    # The ZERO-RAN FLOOR. Everything above asserts PROPERTIES of the skips, on
+    # purpose — an expected COUNT drifts with the host's toolchains and gets
+    # edited to match reality on every red, which is the failure #0196
+    # describes. But there is one bound that never drifts and was missing: a run
+    # in which NOTHING actually executed is not a pass.
+    #
+    # `_nextest-tolerant`'s own comment names the hazard — "'all failures were
+    # skips' is the sentence a lane that ran nothing also prints" — and the
+    # response stopped at properties. So a lane whose every precondition was
+    # absent printed `treating as pass` having verified nothing at all, which is
+    # the vacuous green this whole family of gates exists to prevent.
+    #
+    # A FLOOR, not a budget: "at least one test really ran". It cannot be
+    # tuned, so it cannot rot.
+    executed = 0
+    for case in root.iter("testcase"):
+        if case.find("skipped") is None and case.find("failure") is None:
+            executed += 1
+    print(f"check-skip-budget: {total} skip(s) — {breakdown}; {executed} test(s) ran")
     if not selected:
         print("  (no coordinate file; the out-of-lane assertion was NOT checked)")
 
     rc = 0
+    if executed == 0 and total > 0:
+        print("", file=sys.stderr)
+        print(
+            f"ERROR: {total} skip(s) and NOT ONE test actually ran.\n"
+            "  This lane verified nothing. 'All failures were [SKIPPED] preconditions'\n"
+            "  is true and means only that every precondition was absent — it is the\n"
+            "  same sentence a correctly-provisioned lane prints, which is what makes\n"
+            "  it dangerous.\n"
+            "  Provision what the skips name, or run a lane this host can satisfy.",
+            file=sys.stderr,
+        )
+        rc = 1
     if surprises:
         print("", file=sys.stderr)
         print(
