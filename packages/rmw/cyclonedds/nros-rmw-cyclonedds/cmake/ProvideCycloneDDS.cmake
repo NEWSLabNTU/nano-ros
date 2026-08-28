@@ -179,6 +179,26 @@ macro(nros_provide_cyclonedds)
             # EXCLUDE_FROM_ALL: built only because nros_rmw_cyclonedds links
             # CycloneDDS::ddsc, not as part of `all`.
             add_subdirectory("${CYCLONEDDS_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_cyclonedds" EXCLUDE_FROM_ALL)
+            # issue 0832 — ddsrt's heap goes through `nros_platform_alloc`, not
+            # libc. Set on the ddsrt targets rather than globally: the switch is
+            # read by ONE fork TU (src/ddsrt/src/heap/*/heap.c), and a global
+            # define would also reach idlc and the confgen host tools, which
+            # link no platform layer. `ddsrt` is the object library the static
+            # `ddsc` absorbs; `ddsrt-internal` is its tools-side twin, which
+            # must NOT get the define for exactly that reason.
+            # `ddsrt` is an INTERFACE target in this layout — its sources
+            # compile INSIDE `ddsc`, so that is where the define has to land.
+            # `ddsrt-internal` (the tools-side twin that idlc/confgen link) is
+            # deliberately left alone: those hosts link no platform layer.
+            foreach(_nros_cdds_tgt ddsc ddsrt)
+                if(TARGET ${_nros_cdds_tgt})
+                    get_target_property(_nros_cdds_type ${_nros_cdds_tgt} TYPE)
+                    if(NOT _nros_cdds_type STREQUAL "INTERFACE_LIBRARY")
+                        target_compile_definitions(${_nros_cdds_tgt}
+                            PRIVATE NROS_DDSRT_PLATFORM_FUNNEL)
+                    endif()
+                endif()
+            endforeach()
             # Where Cyclone generated its headers (dds/config.h, version.h, …) —
             # the backend needs this on the source path (see CMakeLists.txt).
             set(NROS_CYCLONEDDS_SOURCE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/_cyclonedds")
