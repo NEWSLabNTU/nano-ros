@@ -601,6 +601,7 @@ check-build: \
     check-ci-doc-workflow-refs \
     check-ps-zombie-blind \
     check-gate-selftests \
+    check-lane-contracts \
     check-no-alloc-image \
     check-lane-skip-class \
     check-grep-q-error-conflation \
@@ -871,6 +872,15 @@ check-version-lockstep:
 check-source-gates:
     #!/usr/bin/env bash
     set -e
+    # These tests assert a BUILD-STAGE stamp (`.compile-ok`), so this gate has
+    # to PRODUCE it. Without this line the lane silently depends on
+    # `build-test-fixtures`, which contradicts ci-l1's documented "NO FIXTURES"
+    # contract and made the required CI check permanently red the moment it
+    # became required: `BuildFailed("Test fixture binary not prebuilt")` on a
+    # runner that builds no fixtures. It costs ~13 s — the snippets are small
+    # `cargo check` template crates, which is the whole point of issue 0034's
+    # design. The push lane never noticed because it runs `check-fast` only.
+    bash scripts/build/compile-check-fixtures.sh
     cargo test -p nros-tests --test platform_header_compile
     cargo test -p nros-tests --test cross_libc_precedence_gate
     cargo test -p nros-tests --test zephyr_prjconf_requirements
@@ -3403,6 +3413,14 @@ rust-rtos-link-check: _require-leaf-includes
 # NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
+
+# A tier's affordability claim must be TRUE. `ci-l1` says "NO FIXTURES"; it
+# reached a fixture-resolving test for as long as anyone had written the claim
+# down, and nothing noticed until that lane became a REQUIRED status check and
+# CI went permanently red.
+[private]
+check-lane-contracts:
+    @python3 scripts/check-lane-contracts.py
 
 # A gate must exercise its own failure path EVERY time it runs, not once behind
 # a flag on the day it was written. A baseline ratchet: the debt may only

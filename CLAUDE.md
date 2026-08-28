@@ -57,6 +57,15 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     Run this before every push. It is `check` + `test-unit`, and it needs no
     fixture build, no SDK, no QEMU and no cross toolchain — only `test`/
     `test-all` depend on fixtures, and 74 of 163 test files never needed them.
+    **That claim is now GATED (`check-lane-contracts`) because it was FALSE**:
+    `check-source-gates` reached `platform_header_compile`, which resolves a
+    fixture stamp nothing in the lane produced, so the lane silently required
+    `build-test-fixtures`. Nobody noticed for as long as the claim had existed —
+    the push lane runs `check-fast` alone — until this lane became a REQUIRED
+    status check and every CI run went red on `BuildFailed("Test fixture binary
+    not prebuilt")`. A gate in an affordability tier may resolve a COMPILE-stage
+    stamp only if the lane BUILDS it (~13 s); a runtime fixture is banned
+    outright.
     It caught two reds on main in its first two runs (three clippy `-D warnings`
     errors and an unregenerated pool inventory), both in the compile tier that
     the `pre-push` `check-fast` hook deliberately excludes.
