@@ -794,6 +794,65 @@ is affordable per merge" until that is measured COLD.
 Steps 1–3 are mechanical and independently verifiable. Step 4 changes `just ci`
 for everyone, and 5 is the gate on believing any of it.
 
+## W20 — the design rule: a required check must be UNCONDITIONALLY reported
+
+Four times this campaign has frozen merging, and they are not four bugs. They
+are one design defect: **a required status check that fails to produce a verdict
+blocks forever, and GitHub cannot tell "not applicable" from "not yet".**
+
+| # | shape | what it looked like |
+| --- | --- | --- |
+| 1 | always RED | issue 0853 — the gate could not pass on the runner |
+| 2 | always PENDING | a self-hosted required check with no runner registered |
+| 3 | cannot REPORT | the check had no `merge_group` trigger |
+| 4 | never TRIGGERED | a `paths:` filter the PR's files did not match |
+
+**The mechanism, from GitHub's own docs, and it is the whole rule:**
+
+> If a workflow is skipped due to path filtering, branch filtering or a commit
+> message, then checks associated with that workflow will remain in a *Pending*
+> state. A pull request that requires those checks to be successful will be
+> blocked from merging.
+
+and, decisively:
+
+> If a job within a workflow is skipped due to a conditional, it will report its
+> status as **Success**. It will not prevent a pull request from merging, even if
+> it is a required check.
+
+So a skipped **workflow** blocks forever; a skipped **job** passes. GitHub states
+the conclusion outright: *"You should not use path or branch filtering to skip
+workflow runs if the workflow is required."*
+
+### The rule
+
+**If a check is REQUIRED, its workflow triggers unconditionally on every event
+where it is required, and ALL conditionality moves to job-level or step-level
+`if:`.** Cost control is not given up — it moves one level in, where a skip
+reports success instead of pending.
+
+**If a check is NOT required, trigger-level filtering is fine and cheaper**,
+because nothing waits on it. `nightly` and `host-tests` keep their filters.
+
+### What this validates and what it condemns
+
+Already correct, by instinct rather than by rule: `queue.yml`'s L3 job gates on
+`vars.NROS_SELF_HOSTED_READY` at JOB level, so with no runner it skips and
+reports success. Had that been a trigger condition it would have been failure
+mode 2 with extra steps.
+
+Condemned: `pr-checks.yml` on `main` still path-filters `pull_request`. PR #16
+touches only `ci/docker/**`, which the filter does not list, so its required
+check has NEVER RUN — and it carries the fix for the ROS environment gap that is
+failing PR #6's merge group. Two pull requests, each blocked on the other, and
+`bypass_actors` is empty by design so there is no override.
+
+### Enforced
+
+`enable-merge-queue.sh` refuses to make a context required when its workflow
+path-filters a required event, naming the remedy (move it to a job-level `if:`).
+Proved against the real state on `main`: rc 1.
+
 ## Not in scope
 
 - Replacing GitHub's merge queue with a third-party tool. The native one has
