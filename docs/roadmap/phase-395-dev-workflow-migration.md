@@ -693,6 +693,57 @@ measured and did not land, for the same reason.
 No representative junit was to hand, so the claim that tier 1's name scoping is
 coarse rests on reading the filter, not on counting its output.
 
+## W19 — one derivation for "which platforms does this tier cover"
+
+**The root the last three work items were symptoms of.** Three places answer
+that question independently, and they disagree — verified 2026-08-28:
+
+| source | says tier 1 is |
+| --- | --- |
+| `board-support.toml` (the promise) | `Linux`, `ZephyrNativeSim`, `ThreadxLinux` |
+| `ci_lane.rs` `pool(Tier1)` (what is selected) | `PlatformId::Linux`, hardcoded |
+| `lane-filter.sh native` (what may execute) | Linux only — it **excludes** `zephyr` and `threadx` |
+
+So the lane covers one of the three platforms the tier promises, and the run
+filter actively removes the other two. W15 (a tier claiming more than CI
+delivers), W16 (the pool narrower than the tier) and W18 (scope coarser than
+selection) are three faces of that one split.
+
+**Target: one derivation, three consumers** — the shape
+`check-flavour-lanes.py --print` -> `lane-filter.sh nostd` already has, whose own
+comment states the reason: *one derivation, used by the gate and by this lane,
+so they cannot disagree*.
+
+`board-support.toml` is the source of truth for (platform, tier,
+execution_class). `matrix_platform` is already spelled exactly as the
+`PlatformId` variant, so no name mapping is needed or invented.
+
+**Landed:** `check-board-tiers.py --print-tiers` emits
+`platform<TAB>tier<TAB>execution_class`. Additive, no behaviour change, and it
+is the keystone the rest hangs off.
+
+**The remaining steps, in dependency order:**
+
+1. **`lane-filter.sh tier1`** — an INCLUSION union over the tier-1 platforms
+   read from `--print-tiers`, replacing `native`'s exclusion list. Cheap, and it
+   is the step that stops the run filter contradicting the registry.
+2. **`pool(Tier1)` reads the same table.** Rust cannot read the TOML at compile
+   time, and the house answer to exactly that is a GENERATED committed file with
+   a staleness gate — `nros-rmw-cffi/src/generated.rs` (`check-abi-bindings`)
+   and `cli-source-dirs.txt` (`check-cli-source-dirs`) are the precedents. So:
+   generate the tier table into Rust, gate the drift.
+3. **`spec(Tier1)` gains `Axis::Platform`** — measured in W16: without it the
+   greedy cover is driven by requirements the pool cannot influence, and stays
+   Linux-only no matter what the pool holds. With it, 12 coordinates cover all
+   three platforms.
+4. **The build lane follows** — `nros_lane_build_lane` maps tier 1 to the
+   `native` MODULE, which does not contain zephyr or threadx-linux fixtures.
+   This is the expensive step and the one W16 stopped at.
+5. **Cold-measure it** before tier 1's per-merge promise depends on the result.
+
+Steps 1–3 are mechanical and independently verifiable. Step 4 changes `just ci`
+for everyone, and 5 is the gate on believing any of it.
+
 ## Not in scope
 
 - Replacing GitHub's merge queue with a third-party tool. The native one has

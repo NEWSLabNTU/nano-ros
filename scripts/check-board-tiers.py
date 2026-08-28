@@ -350,6 +350,39 @@ def check_maintainers(entry, crate, tier, baseline, errors, exempt, improved):
           "the row at the tier it can carry")
 
 
+def print_tiers(reg):
+    """Emit `platform<TAB>tier<TAB>execution_class`, one row per tiered board.
+
+    phase-395 W19 — the ONE derivation. `board-support.toml` is the source of
+    truth for which platforms a tier promises, and until now three places
+    answered that question independently and disagreed:
+
+        registry            tier 1 = Linux, ZephyrNativeSim, ThreadxLinux
+        ci_lane.rs pool     PlatformId::Linux, hardcoded
+        lane-filter native  Linux only — and it EXCLUDES zephyr and threadx
+
+    So the lane covered one of the three platforms the tier promised, and the
+    run filter actively removed the other two. W15 (a tier claiming more than
+    CI delivers), W16 (the pool narrower than the tier) and W18 (scope coarser
+    than the selection) are three symptoms of that one split.
+
+    Same shape as `check-flavour-lanes.py --print`, and for the same stated
+    reason: one derivation, consumed by the gate and by the lane, so they
+    cannot disagree.
+
+    `matrix_platform` is already spelled exactly as the `PlatformId` variant,
+    so no name mapping is needed or invented here.
+    """
+    for e in sorted(reg, key=lambda x: x.get("matrix_platform") or ""):
+        plat = e.get("matrix_platform")
+        tier = str(e.get("tier", ""))
+        cls = e.get("execution_class")
+        if not plat or tier not in ("1", "2", "3") or not cls:
+            continue
+        print(f"{plat}\t{tier}\t{cls}")
+    return 0
+
+
 def main():
     if "--self-test" in sys.argv:
         return self_test()
@@ -357,6 +390,8 @@ def main():
     # into a comment, and this rule's whole job is to fire.
     self_test(quiet=True)
     reg = parse_registry(REGISTRY.read_text())
+    if "--print-tiers" in sys.argv:
+        return print_tiers(reg)
     if "--write-baseline" in sys.argv:
         return write_baseline(reg)
     matrix_txt = MATRIX.read_text()
