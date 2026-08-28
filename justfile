@@ -2644,8 +2644,8 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
 # is the small subset `check-source-gates` actually asserts, so CI can afford it
 # as a step. `build-test-fixtures` calls THIS, so there is one spelling.
 [group("build")]
-build-compile-check-fixtures:
-    @bash scripts/build/compile-check-fixtures.sh
+build-compile-check-fixtures builder="":
+    @NROS_FIXTURE_BUILDER="{{builder}}" bash scripts/build/compile-check-fixtures.sh
 
 
 # Pre-build every example binary the test suite reaches.

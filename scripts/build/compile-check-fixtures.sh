@@ -377,7 +377,45 @@ stage_and_cross_build() {
 # `NROS_FIXTURE_ID=<id>` narrows to one row, matching workspace-fixtures-build.sh.
 id_filter="${NROS_FIXTURE_ID:-}"
 
+# `NROS_FIXTURE_BUILDER=<builder>[,<builder>…]` narrows to whole BUILDERS
+# (issue 0871). The id filter selects one row; this selects one kind of row, and
+# the difference matters for a caller that can only satisfy some prerequisites.
+#
+# CI's `check` job is the case that needed it: `check-source-gates` asserts the
+# `cxx-syntax` stamps, which need a C++ compiler and nothing else, while the
+# `cargo-check` and `cmake-configure` rows in the same manifest need
+# `nros-launch-resolve` and `play_launch_parser` from `activate.sh`. Building
+# everything there fails on prerequisites the job does not have and never
+# reaches the rows it actually needs.
+#
+# An unknown name is an ERROR, not an empty sweep — the issue-0406 rule the id
+# filter already follows one line down: a narrowing that selects nothing must
+# say so rather than "succeed".
+builder_filter="${NROS_FIXTURE_BUILDER:-}"
+_cc_all_builders="cargo-check cargo-build cross-build cmake-configure cxx-syntax"
+if [ -n "$builder_filter" ]; then
+    for _cc_want in ${builder_filter//,/ }; do
+        case " $_cc_all_builders " in
+            *" $_cc_want "*) ;;
+            *) echo "NROS_FIXTURE_BUILDER: unknown builder '$_cc_want' (known: $_cc_all_builders)" >&2
+               exit 2 ;;
+        esac
+    done
+fi
+
+# Is this builder in the current narrowing? No filter = every builder.
+_cc_builder_enabled() {
+    [ -z "$builder_filter" ] && return 0
+    case ",$builder_filter," in *",$1,"*) return 0 ;; esac
+    return 1
+}
+
 compile_check_records() {
+    # A disabled builder yields NO rows, so every per-builder loop below is
+    # narrowed by this one gate rather than by five copies of the same
+    # condition. The counts at the end then report 0 for it, which is honest:
+    # nothing was asked for and nothing was built.
+    _cc_builder_enabled "$1" || return 0
     python3 "$repo_root/scripts/build/fixtures-manifest.py" list-compile-checks \
         --builder "$1" ${id_filter:+--id "$id_filter"}
 }
@@ -389,7 +427,11 @@ compile_check_records() {
 if [ -n "$id_filter" ]; then
     _cc_matched=0
     for _cc_builder in cargo-check cargo-build cross-build cmake-configure cxx-syntax; do
-        _cc_matched=$((_cc_matched + $(compile_check_records "$_cc_builder" | wc -l)))
+        # Deliberately NOT `compile_check_records` — that honours the builder
+        # narrowing, and "this id is in a builder you did not ask for" is not
+        # the same fact as "this id does not exist" (issue 0406's distinction).
+        _cc_matched=$((_cc_matched + $(python3 "$repo_root/scripts/build/fixtures-manifest.py" \
+            list-compile-checks --builder "$_cc_builder" --id "$id_filter" | wc -l)))
     done
     if [ "$_cc_matched" -eq 0 ]; then
         # shellcheck source=scripts/build/fixture-id-guard.sh
