@@ -7,8 +7,12 @@
 # pinned, fetched per-run via install.sh) or any board SDK/source (provisioned
 # per-run by `nros setup`, the way a user does).
 #
-# This is the sibling base the zephyr CI image factors out of: the Zephyr CI image
-# is `FROM` this + the ~1 GB Zephyr SDK layer. `platform-ci.yml` + `host-unit-
+# Sibling of the zephyr CI image, which carries the ~1 GB Zephyr SDK layer. NOTE
+# they are SIBLINGS, not parent/child: `ci/docker/zephyr-ros/Dockerfile` is
+# `FROM ros:humble-ros-base` itself and inherits NOTHING from this file. This
+# header used to claim it was `FROM` this one, which is how a fix landing here
+# could look like it covered both (issue 0866). A change to the shared base
+# environment has to be made in BOTH. `platform-ci.yml` + `host-unit-
 # tests` run their cells in this image — no per-cell `setup-ros` / apt / tool
 # installs, and the AMENT/ROS gap that fails `nros generate-rust` is closed.
 #
@@ -17,6 +21,59 @@
 FROM ros:humble-ros-base
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# ---- ROS 2 environment, baked (issue 0866) --------------------------------
+#
+# The image HAS ROS; what it lacked was ROS's ENVIRONMENT. `ros:*` images ship
+# `/ros_entrypoint.sh`, which sources `setup.bash` — but GitHub Actions runs a
+# job's steps directly and does NOT use the image's ENTRYPOINT, so every `just`
+# invocation in these lanes ran with `AMENT_PREFIX_PATH` unset and ROS's
+# site-packages off `PYTHONPATH`.
+#
+# `ROS_DISTRO=humble` IS set by the base image, so "is ROS here?" probes that
+# read only that variable answered YES while nothing else was wired — which is
+# how this stayed invisible.
+#
+# What it broke: `scripts/cyclonedds/msg_to_cyclone_idl.py` resolves ROS's stock
+# `rosidl_adapter`, and requires not just the directory but that a subprocess
+# can `import rosidl_adapter`. Measured in this exact image:
+#
+#     $ docker run --entrypoint bash ros:humble-ros-base \
+#         -c 'python3 -c "import rosidl_adapter"'
+#     ModuleNotFoundError: No module named 'rosidl_adapter'
+#
+# which is verbatim the failure that script's own comment predicts for "a host
+# with ROS installed but not sourced through to the nested cmake/ninja
+# invocation". Every cold cyclonedds build in CI died on it
+# (`check-rmw-cyclonedds` → `AddTwoInts.idl` Error 1).
+#
+# Baked as ENV rather than sourced per-lane so it reaches EVERY process without
+# each workflow, recipe and nested build remembering to source it — the
+# propagation this exact bug is about. Values captured from
+# `. /opt/ros/humble/setup.bash` in this image, not hand-written:
+#
+#     docker run --entrypoint bash ros:humble-ros-base -c \
+#       'env|sort >/tmp/a; . /opt/ros/humble/setup.bash; env|sort >/tmp/b; diff /tmp/a /tmp/b'
+#
+# `LD_LIBRARY_PATH` names the arch triplet because setup.bash does; these lanes
+# run on x86_64 runners. `PATH` is extended here and the Rust block below
+# prepends to it, so cargo still wins.
+#
+# CAVEAT: this is a SNAPSHOT of what sourcing produces for THIS package set. It
+# holds for anything installed into the single `/opt/ros/humble` prefix (the apt
+# packages below are), but a ROS package that installs to a DIFFERENT prefix, or
+# one whose own setup extends these variables further, would need this block
+# updated — `ros-humble-rmw-zenoh-cpp` adding
+# `<prefix>/opt/zenoh_cpp_vendor/lib` to `LD_LIBRARY_PATH` is the case issue
+# 0774 is about. Re-run the capture command above after changing the ROS package
+# set rather than assuming.
+ENV AMENT_PREFIX_PATH=/opt/ros/humble \
+    LD_LIBRARY_PATH=/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib \
+    PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages \
+    ROS_VERSION=2 \
+    ROS_PYTHON_VERSION=3 \
+    ROS_LOCALHOST_ONLY=0
+ENV PATH=/opt/ros/humble/bin:$PATH
 
 # Host build deps shared across platforms + the arm cross-compiler (the setup-
 # time zenoh-pico build + freertos/nuttx/threadx/qemu cross builds need it on
