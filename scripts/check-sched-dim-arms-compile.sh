@@ -49,12 +49,31 @@ fail=0
 say()  { printf '  %s\n' "$*"; }
 head2() { printf '\n== %s ==\n' "$*"; }
 
+# A cross gcc on PATH is not a cross gcc that can COMPILE: the CI container
+# ships the bare binary without newlib, so `<string.h>` is absent and every
+# arm FAILs on a header this gate is not testing (the cross-libc gate already
+# skips on the same container for the same reason). Probe usability once —
+# presence of the compiler AND its libc headers — and let each arm skip
+# legibly on the same wording.
+arm_gcc_usable=""
+arm_gcc_unusable_why=""
+if command -v arm-none-eabi-gcc >/dev/null 2>&1; then
+    if printf '#include <string.h>\n#include <stdlib.h>\nint main(void){return 0;}\n' \
+        | arm-none-eabi-gcc -fsyntax-only -x c - >/dev/null 2>&1; then
+        arm_gcc_usable=1
+    else
+        arm_gcc_unusable_why="arm-none-eabi-gcc has no usable newlib (<string.h>/<stdlib.h> absent)"
+    fi
+else
+    arm_gcc_unusable_why="arm-none-eabi-gcc not on PATH"
+fi
+
 # --- freertos: vTaskCoreAffinitySet ----------------------------------------
 head2 "freertos core-pin arm (vTaskCoreAffinitySet)"
 if [ -z "${FREERTOS_DIR:-}" ] || [ ! -d "${FREERTOS_DIR}" ]; then
     nros_check_skip "check-sched-dim-arms(freertos)" "FREERTOS_DIR unset/absent (source ./activate.sh)"
-elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-    nros_check_skip "check-sched-dim-arms(freertos)" "arm-none-eabi-gcc not on PATH"
+elif [ -z "$arm_gcc_usable" ]; then
+    nros_check_skip "check-sched-dim-arms(freertos)" "$arm_gcc_unusable_why"
 else
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m3 -mthumb \
         -DconfigUSE_CORE_AFFINITY=1 \
@@ -105,8 +124,8 @@ fi
 head2 "nuttx core-pin arm (pthread_setaffinity_np)"
 if [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
     nros_check_skip "check-sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
-elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-    nros_check_skip "check-sched-dim-arms(nuttx)" "arm-none-eabi-gcc not on PATH"
+elif [ -z "$arm_gcc_usable" ]; then
+    nros_check_skip "check-sched-dim-arms(nuttx)" "$arm_gcc_unusable_why"
 elif [ ! -f "$NUTTX_DIR/nros-nuttx-export-arm/include/nuttx/config.h" ]; then
     # Issue 0525. The tree is SHARED SOURCE, but `nuttx/config.h` is build
     # OPTIONS, and one shared copy cannot hold two arches: it belongs to
@@ -155,8 +174,8 @@ fi
 head2 "threadx core-pin arm (tx_thread_smp_core_exclude)"
 if [ -z "${THREADX_DIR:-}" ] || [ ! -d "${THREADX_DIR}/common_smp/inc" ]; then
     nros_check_skip "check-sched-dim-arms(threadx)" "THREADX_DIR unset, or no common_smp/inc (source ./activate.sh)"
-elif ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-    nros_check_skip "check-sched-dim-arms(threadx)" "arm-none-eabi-gcc not on PATH"
+elif [ -z "$arm_gcc_usable" ]; then
+    nros_check_skip "check-sched-dim-arms(threadx)" "$arm_gcc_unusable_why"
 else
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 \
         -DTX_THREAD_SMP \
