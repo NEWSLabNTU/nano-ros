@@ -230,6 +230,89 @@ Two candidates, and the second is the stronger one:
    that fits one datagram needs no repair. That asymmetry matches the evidence
    better than anything excluded so far.
 
+> **The hypothesis this section ends on is superseded.** The ACKNACK-asymmetry
+> reading was the best fit for the evidence available at the time, and it is
+> wrong: the loss is below lwIP, in QEMU, and the next section has it. The
+> exclusions above still hold and are what made the real cause findable —
+> ruling `pbuf_alloc` out is why the search moved off the driver.
+
+## ROOT CAUSE FOUND and fixed in QEMU — 2026-08-28
+
+A full RX fifo was reported to the queue layer as an ERROR rather than as
+back-pressure, so QEMU discarded the frames instead of holding them.
+
+`net/queue.c` treats the NIC's return value as a verdict: `ret == 0` means
+"cannot take it now, requeue and retry", and **any other value — negative
+included — falls through to `sent_cb` + `g_free(packet)`**. `lan9118_receive`
+returned `-1` on a full fifo. Every frame arriving while the fifo was full was
+therefore dropped on the floor.
+
+`can_receive` (our own patch, issue 0830) does not prevent this. It gates the
+FIRST delivery attempt, but `qemu_net_queue_flush()` then drains the whole
+queue in a loop **without re-checking it** — so the first flushed frame fills
+the fifo and every frame behind it in that batch is discarded.
+
+Fixed on the fork at `c6f4c95716` ("a full RX fifo is back-pressure, not an
+error"), together with a second, smaller hunk: flush on the DATA-fifo pop,
+since that is where space is actually freed, while the existing flush sits in
+`rx_status_fifo_pop` one step earlier with the frame's data still resident.
+
+### A repro that needs no ROS 2, no Autoware, no tap and no root
+
+lwIP answers ICMP echo itself, so burst survival is measurable without any of
+the apparatus this issue originally required. Send N echo requests back to back
+over a `-net socket` backend and count replies (`tmp/burstprobe.py`, throwaway):
+
+| burst | before | after |
+| --- | --- | --- |
+| 8 | 6 | 6 |
+| 16 | 8 | **14** |
+| 32 | 8 | **30** |
+| 64 | 14 | **58** |
+
+Driver-side delivered-frame counter over one run: **38 -> 110**.
+
+### What the driver counters settled
+
+New `lan9118_lwip_rx_stats()` counters (this change) attribute every discard.
+Under the failing burst they read:
+
+```
+RXSTATS deliv=16 err=0 badlen=0 nopbuf=0 inerr=1 budget=0
+```
+
+* `nopbuf=0` — **the pbuf-exhaustion suspect recorded above is dead.** The
+  `pbuf_alloc`-failure `break` in `lan9118_lwip_poll` never fired.
+* `budget=0` — the 16-frame drain budget was never exhausted, so
+  `poll_interval_ms` was not the constraint either.
+* `deliv` tracked the reply count exactly, so the missing frames never reached
+  the driver at all — the loss was entirely upstream of it.
+
+Pacing the same 16 frames 50 ms apart (10x the poll interval) did NOT help,
+which is what ruled out every capacity- and cadence-shaped explanation.
+
+### Still open
+
+Residual loss of roughly **6-12%** remains and is NOT explained by this fix.
+The counters point above the driver, not at it: `inerr` (netif->input
+rejections) rises with burst size while every driver-side discard stays zero.
+That is the next thread, and it is a different bug from the one fixed here.
+
+### Corrections to earlier analysis in this issue
+
+* **`RX_DROP` is not readable.** The "Next" section proposed reading the
+  LAN9118's dropped-frame counter to confirm fifo overflow. QEMU hardcodes it:
+  `case CSR_RX_DROP: /* TODO: Implement dropped frames counter. */ return 0;`
+  It would have returned a convincing "no drops at the NIC" and pointed the
+  next reader away from the NIC entirely.
+* **The ~10 KB RX fifo figure is right, the reason given for it is not.** It is
+  hardcoded at reset (`rx_fifo_size = 2640` words); QEMU does not model the
+  TX/RX split, so `TX_FIF_SZ = 5` in `hw_init` has no effect on it. Lowering the
+  TX allocation would change nothing here (it would on real silicon).
+* **The measurement above was nearly taken on a stale image.** The built an536
+  artifact predated the commit that raised `PBUF_POOL_SIZE` 24 -> 128 by two
+  hours. → the mtime rule now in CLAUDE.md.
+
 ## Still unknown
 
 WHY ~89% of each burst is lost below the driver. The fragment count above

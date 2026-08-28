@@ -318,6 +318,18 @@ reset_done:
  * RX helpers
  * ======================================================================== */
 
+/* issue 0836 — RX drop visibility.
+ *
+ * `rx_receive` returns NULL for four different reasons and three of them have
+ * ALREADY consumed a frame. Without counters a discarded frame is
+ * indistinguishable from an empty FIFO, so "89% of a burst is missing" cannot
+ * be attributed to a cause. These make each reason countable. */
+static struct lan9118_rx_stats g_rx_stats;
+
+void lan9118_lwip_rx_stats(struct lan9118_rx_stats *out) {
+    if (out) *out = g_rx_stats;
+}
+
 static inline uint32_t rx_packets_pending(uint32_t base) {
     uint32_t inf = reg_read(base, REG_RX_FIFO_INF);
     return (inf & RX_FIFO_INF_RXSUSED_MASK) >> RX_FIFO_INF_RXSUSED_SHIFT;
@@ -345,12 +357,14 @@ static struct pbuf *rx_receive(uint32_t base) {
 
     /* Error check */
     if (rx_stat & RX_STAT_ES) {
+        g_rx_stats.err_status++;
         rx_discard(base);
         return NULL;
     }
 
     /* Length sanity (includes 4-byte FCS) */
     if (pkt_len < 4 || pkt_len > MAX_FRAME_SIZE) {
+        g_rx_stats.bad_length++;
         rx_discard(base);
         return NULL;
     }
@@ -360,6 +374,7 @@ static struct pbuf *rx_receive(uint32_t base) {
     /* Allocate pbuf for the Ethernet frame */
     struct pbuf *p = pbuf_alloc(PBUF_RAW, (u16_t)data_len, PBUF_POOL);
     if (p == NULL) {
+        g_rx_stats.no_pbuf++;
         rx_discard(base);
         return NULL;
     }
@@ -500,9 +515,17 @@ void lan9118_lwip_poll(struct netif *netif) {
             break;
 
         if (netif->input(p, netif) != ERR_OK) {
+            g_rx_stats.input_err++;
             pbuf_free(p);
+        } else {
+            g_rx_stats.delivered++;
         }
     }
+    /* Frames still queued when the budget ran out. Not a drop by itself — the
+     * next poll takes them — but it is the number that says whether
+     * `poll_interval_ms` is keeping up with a burst. */
+    if (rx_packets_pending(base) > 0)
+        g_rx_stats.budget_exhausted++;
 }
 
 int lan9118_lwip_link_is_up(struct netif *netif) {

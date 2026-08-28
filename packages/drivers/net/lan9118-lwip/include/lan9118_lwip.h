@@ -38,6 +38,31 @@ struct lan9118_config {
 };
 
 /**
+ * RX drop counters (issue 0836).
+ *
+ * The receive path discards a frame for three reasons that are otherwise
+ * invisible — a hardware error status, a length outside the sane range, and
+ * pbuf-pool exhaustion — and each one looks exactly like "the FIFO was empty"
+ * from outside. A burst that loses most of its frames cannot be attributed
+ * without these.
+ */
+struct lan9118_rx_stats {
+    uint32_t delivered;         /**< frames handed to lwIP and accepted */
+    uint32_t err_status;        /**< RX_STAT_ES set — discarded */
+    uint32_t bad_length;        /**< length < 4 or > MAX_FRAME_SIZE — discarded */
+    uint32_t no_pbuf;           /**< pbuf_alloc failed — discarded */
+    uint32_t input_err;         /**< netif->input() rejected it — freed */
+    uint32_t budget_exhausted;  /**< polls that returned with frames still pending */
+};
+
+/**
+ * Read the RX drop counters. Counters are cumulative and never reset.
+ *
+ * @param out  Filled with a snapshot. Ignored if NULL.
+ */
+void lan9118_lwip_rx_stats(struct lan9118_rx_stats *out);
+
+/**
  * lwIP netif init callback.
  *
  * Pass as the `init` argument to netif_add(). The `state` argument must
