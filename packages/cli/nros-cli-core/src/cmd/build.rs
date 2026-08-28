@@ -264,40 +264,15 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         .map_err(|e| eyre::eyre!("`[image.{image_id}]`: {e}"))?;
                 }
 
-                // `rmw` is INERT on this driver, so refuse rather than lie.
+                // `rmw` reaches the build on this driver too, since issue 0831.
                 //
-                // On the cmake driver the image's rmw becomes `-DNROS_RMW` and
-                // configures the build. On cargo it does not: the backend comes
-                // from the `<entry>_nros_selection` facade `nros sync`
-                // generates from the bringup's `[system] rmw`, and nothing
-                // consults the image. The only visible effect is the
-                // coordinate DIRECTORY name — so an image declaring
-                // `rmw = "cyclonedds"` produced `build/posix-cyclonedds/`
-                // holding a zenoh binary, which reads as coverage and is not.
-                //
-                // Measured while migrating `examples/workspaces/rust`
-                // (phase-383 W9.b): zero occurrences of "cyclone" in the
-                // artifact, 1916 of "zenoh". Fail loud until the facade can be
-                // generated per-image (issue 0831); a wrong answer that looks
-                // right is the one outcome worth refusing.
-                let system_rmw = bringup_rmw(&bringup_dir);
-                if let Some(want) = image.rmw.as_deref()
-                    && let Some(have) = system_rmw.as_deref()
-                    && want != have
-                {
-                    eyre::bail!(
-                        "`[image.{image_id}] rmw = \"{want}\"` cannot be honoured on \
-                         the cargo driver: the backend comes from the \
-                         `nros sync`-generated selection facade, which reads \
-                         `[system] rmw = \"{have}\"` in {}. Building anyway would \
-                         produce a `{have}` binary in a directory named for \
-                         `{want}`.\n\n\
-                         Either set `[system] rmw` to `{want}`, or drop the \
-                         `rmw` key from this image. Per-image RMW on the cargo \
-                         driver is issue 0831.",
-                        bringup_dir.join("system.toml").display(),
-                    );
-                }
+                // It used to be inert here and the build REFUSED an image whose
+                // rmw differed from `[system] rmw`, because the backend came
+                // from the `<entry>_nros_selection` facade and nothing
+                // consulted the image — so `[image.native_cyclonedds]` produced
+                // `build/posix-cyclonedds/` holding a zenoh binary. The facade
+                // now reads the image (`facade::image_rmw`), so the refusal is
+                // gone and the coordinate directory names what it contains.
                 // The cargo root lives at the WORKSPACE root, not under
                 // build/ — cargo requires members to sit below their root and
                 // resolves a package's workspace by walking up. An existing
@@ -827,20 +802,6 @@ fn generate_entry(
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
     Ok(Some(dir))
-}
-
-/// The bringup's declared `[system] rmw`, if it has one.
-///
-/// Read straight from `system.toml` rather than from the parsed model: this is
-/// a guard against a DECLARATION mismatch, and it must see what the author
-/// wrote even when the rest of the pipeline has folded defaults over it.
-fn bringup_rmw(bringup_dir: &std::path::Path) -> Option<String> {
-    let text = std::fs::read_to_string(bringup_dir.join("system.toml")).ok()?;
-    let doc: toml::Value = text.parse().ok()?;
-    doc.get("system")?
-        .get("rmw")?
-        .as_str()
-        .map(ToString::to_string)
 }
 
 /// Every cargo-driver entry directory of `bringup`, generated if need be.

@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-41 open. One line each — the detail lives in the issue file,
+40 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -83,7 +83,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0828** (testing) — Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is green only while an earlier `lane=all` build is still fresh See `0828-*`.
 - **#0829** (api, rmw) — Two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on depth — 1 in `nros-rmw`, 10 in the `nros::qos` façade, each with two callers See `0829-*`.
 - **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX See `0830-*`.
-- **#0831** (build) — `[image.<id>].rmw` configures nothing on the cargo driver — and a workspace fixture row's `rmw` does not either, so two tier-2 coordinates test zenoh while claiming cyclonedds and XRCE See `0831-*`.
 - **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
 - **#0834** (cmake) — The per-build `nros_cpp_config_generated.h` mirror can reach a state no re-run repairs — only wiping the west build dir recovers it See `0834-*`.
 - **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
@@ -100,6 +99,8 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
 
 <!-- END GENERATED open-issue list -->
+
+Recently resolved (2026-08-28): **#0831** (build) — `[image.<id>].rmw` selected NOTHING on the cargo driver: the backend came from the `nros sync` selection facade, off `[system] rmw`, so `[image.native_cyclonedds]` produced `build/posix-cyclonedds/` holding a zenoh binary and two of tier 2's fourteen coordinates ran zenoh while claiming otherwise. Two halves: the facade now reads the IMAGE (per-entry IS per-image — an image names its entry), and the board's `default = ["rmw-zenoh"]` is CARVED OUT with its non-RMW defaults re-supplied, because cargo unions features and cannot subtract a default (issue 0270) — naming a second backend got both, and the runtime then refused to pick. Measured after: 328 `dds_` / 0 zenoh, 232 `uxr_` / 0 zenoh, one backend each. The coordinate is now CHECKED against the artifact by `rmw_coordinate_truth`, which carries its own negative control. Bridges stay unmigrated — two backends in one image is a per-image backend list. See `archived/0831-*`.
 
 Recently resolved (2026-08-28): **#0855** (testing) — `c_port_posix_net.rs` named ports `56301`/`56302` as literals, and both sit INSIDE this host's ephemeral range (32768–60999), so the kernel hands them to anything asking for one. An unrelated ROS `component_node` from another session's Autoware stack held 56302 for 29 minutes and `udp_loopback_roundtrip` reported it as `nros_platform_udp_listen` returning `-1` — a product-shaped message for a host-shaped cause. Now binds port 0 and reads `local_addr()` back, so the kernel names a port nobody holds. See `archived/0855-*`.
 
@@ -209,15 +210,6 @@ building the header target directly, both failed; only `rm -rf` on the west buil
 stopped a whole `lane=all` sweep (the zephyr leg is not `-k`), which is the multi-hour prerequisite for
 `ci-matrix`. Unlike the rest of the 0088 family this is ABSORBING, not a race, so every documented remedy for that
 family is the wrong path. Survey for it with the three-line orphan-stamp scan in the issue. See `0834-*`.
-**#0831** (build, open 2026-08-27) — `[image.<id>].rmw` configures NOTHING on the cargo driver: it names the
-build DIRECTORY and nothing else, while the backend comes from the `nros sync` facade generated from `[system]
-rmw`. So an image declaring cyclonedds yields `build/posix-cyclonedds/` holding a zenoh binary. The same hole is
-live one layer up — `workspace-rust-native-cyclonedds` builds an artifact with 0 occurrences of "cyclone" and
-1916 of "zenoh", and `linux,rust,cyclonedds` is one of tier 2's fourteen coordinates. A cargo row's `rmw` is read
-only by `cmake_defs()` (cmake rows), `row_coord()` and the label printer; the driver never mentions it. Predates
-phase-383, which only made it visible. `nros build` now REFUSES a divergent per-image rmw rather than lying. See
-`0831-*`.
-
 
 Recently resolved (2026-08-27): **#0837** (cmake) — a cyclonedds submodule bump relinked NOTHING. The leg does
 visit the cells and ninja does rebuild `libddsc.a`; what it does not know is that `c_talker` depends on it,
