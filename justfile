@@ -2627,6 +2627,26 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
     else
         echo "All standard tests passed! (Miri skipped — run \`just test-miri\` or \`just test-all\`.)"
     fi
+# Build ONLY the compile-check fixtures (issue 0034 / issue 0871).
+#
+# `check-source-gates` runs three `cargo test`s that ASSERT a prebuilt
+# `.compile-ok` stamp. It sits in `check-build`, which CI runs on pull requests
+# in a job that builds no fixtures at all — so every PR failed with
+#
+#     Test fixture binary not prebuilt: build/compile-check-fixtures/
+#     platform_hdr_posix_cpp_heap/.compile-ok
+#
+# while `main` stayed green, because the same job runs only `check-fast` on
+# push. A gate `main` never runs is the issue-0196 class: the build side and the
+# test side disagreeing about what exists.
+#
+# Separate from `build-test-fixtures` because that builds the whole matrix; this
+# is the small subset `check-source-gates` actually asserts, so CI can afford it
+# as a step. `build-test-fixtures` calls THIS, so there is one spelling.
+[group("build")]
+build-compile-check-fixtures:
+    @bash scripts/build/compile-check-fixtures.sh
+
 
 # Pre-build every example binary the test suite reaches.
 #
@@ -2678,7 +2698,11 @@ build-test-fixtures lane="all": check-fast _require-build-sources _clear-fixture
     # Compile-check fixtures (issue 0034): build-stage `cargo check` of small
     # template crates whose tests only prove they compile — the test asserts the
     # `.compile-ok` stamp instead of running cargo at run time.
-    bash scripts/build/compile-check-fixtures.sh
+    #
+    # ONE spelling, because `check-source-gates` needs these too and CI runs it
+    # in a job that builds no fixtures (issue 0871). Calling the recipe rather
+    # than re-invoking the script keeps the two callers from drifting.
+    just build-compile-check-fixtures
     # Drop a stamp so `_require-fixtures` (the test-all/test preflight) can
     # fast-fail with a build hint instead of letting the suite run and
     # surface dozens of "Binary not found" failures. The body only runs

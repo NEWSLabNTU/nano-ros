@@ -403,6 +403,26 @@ jobs:
       # Restoring it means giving this job the artifacts first (PR #14 adds
       # `build-compile-check-fixtures`; the bindings half is unowned). Do that
       # before putting the tier back, not after.
+      # issue 0871 — `check-build` runs `check-source-gates`, whose tests ASSERT
+      # a prebuilt `.compile-ok` stamp that nothing in this job builds. phase-396
+      # W1 took the build tier OFF the merge group precisely because it was not
+      # runnable here, and named this step as one half of what restoring it needs
+      # ("PR #14 adds build-compile-check-fixtures; the bindings half is
+      # unowned"). This is that half: the tier below can now at least get past
+      # `check-source-gates` on the nightly/manual lane.
+      #
+      # Same condition as the step it feeds, deliberately — it exists only to
+      # serve `check-source-gates` and must never run on the cheap PR path.
+      #
+      # `builder=cxx-syntax`, not the whole manifest: the `cargo-check` and
+      # `cmake-configure` rows need `nros-launch-resolve` / `play_launch_parser`
+      # from `activate.sh`, which this job does not provision — an unfiltered run
+      # FAILS on those and never reaches the rows the gate asserts. Measured: 2 s
+      # filtered vs 428 s for everything.
+      - name: build compile-check fixtures (check-source-gates asserts them)
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: just build-compile-check-fixtures cxx-syntax
+
       - name: just check-build + no_std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
