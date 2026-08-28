@@ -94,8 +94,33 @@ def exposed_leaves():
 # Matched on both halves of the sentence so a message that merely contains the
 # word "offline" (a crate named `offline`, a path with it) is not misread.
 def _is_offline_cache_miss(stderr):
-    """True when cargo could not reach the network for a crate the lock names."""
+    """True when the failure is a property of THIS HOST's registry cache.
+
+    issue 0863 — the first version matched only the DOWNLOAD wordings, and cargo
+    has a third shape that carries no download at all: when the crate is absent
+    from the cache entirely, resolution fails during SELECTION.
+
+        error: no matching package named `clap` found
+        location searched: crates.io index
+        required by package `nros-launch-resolve v0.5.0 (…)`
+        note: offline mode (via `--offline`) can sometimes cause surprising
+              resolution failures
+
+    Reproduced locally with an empty `CARGO_HOME`, and identical line-for-line
+    to the CI red. Classified as a MISMATCH, it told an operator to
+    `lock-update` a byte-correct lock — the exact churn 0600 exists to prevent,
+    in the imperative, to a reader with no reason to doubt.
+
+    The last line is cargo ITSELF saying the verdict may be an offline artifact,
+    so key on it rather than on guessing which nouns appear. A genuine
+    `--locked` mismatch is disjoint: it says the lock file needs updating and
+    never mentions offline mode.
+    """
     text = stderr or ""
+    # cargo's own hedge about the whole verdict. Present in every offline-caused
+    # resolution failure and in no lock mismatch.
+    if "offline mode (via `--offline`)" in text:
+        return True
     if "--offline was specified" in text and "HTTP request" in text:
         return True
     # cargo words the pure cache miss differently in some versions; require the
@@ -145,12 +170,16 @@ def main():
 
         if cold:
             print(
-                f"[FAIL] {len(cold)} lock(s) name a crate this host has not cached:",
+                f"[UNVERIFIED] {len(cold)} lock(s) name a crate this host has not cached "
+                f"— NOT a failure, and NOT a pass:",
                 file=sys.stderr,
             )
             for rel, err, _ in cold:
                 print(f"\n  {rel}", file=sys.stderr)
-                for line in err[-4:]:
+                # HEAD, not tail: `no matching package named X` is the first
+                # line and names the crate. Printing `err[-4:]` discarded it,
+                # which is why the CI red could not be classified from its log.
+                for line in err[:6]:
                     print(f"      {line}", file=sys.stderr)
             print(
                 "\n  This is a HOST state, not a lock defect — the lock names the crate\n"
@@ -161,6 +190,13 @@ def main():
                 "  churn issues 0359/0378 exist to prevent (issue 0600).",
                 file=sys.stderr,
             )
+            print(
+                "\n  This did NOT verify those leaf/leaves — it is reported, not passed\n"
+                "  over. A cold cache is a host state, so failing on it makes the gate\n"
+                "  flaky (issue 0863) while telling the operator to edit a correct lock,\n"
+                "  which is worse than either outcome alone.",
+                file=sys.stderr,
+            )
 
         if mismatched:
             print(
@@ -169,7 +205,7 @@ def main():
             )
             for rel, err, _ in mismatched:
                 print(f"\n  {rel}", file=sys.stderr)
-                for line in err[-4:]:
+                for line in err[:6]:
                     print(f"      {line}", file=sys.stderr)
             print(
                 "\n  The submodule pointer moved and the lock did not follow (issue 0560).\n"
@@ -179,7 +215,19 @@ def main():
                 "  which is expected when a pinned tag moves, but should be seen.",
                 file=sys.stderr,
             )
-        return 1
+        # Only a MISMATCH is a defect in this repo. A cold cache says nothing
+        # about the lock, so it cannot be a red — but it is not a pass either,
+        # and the line above says so rather than letting it read as coverage.
+        if mismatched:
+            return 1
+
+    verified = checked - len([f for f in failures if f[2] == "cold-cache"])
+    if verified != checked:
+        print(
+            f"submodule-pinned locks: {verified}/{checked} leaf/leaves verified — "
+            f"{checked - verified} could NOT be checked (cold cache, see above)"
+        )
+        return 0
 
     print(f"submodule-pinned locks: OK ({checked} leaf/leaves resolve under --locked)")
     return 0

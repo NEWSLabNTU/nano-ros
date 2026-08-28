@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-42 open. One line each — the detail lives in the issue file,
+41 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -98,12 +98,12 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0860** (boards, rmw) — The ESP32-C3 workspace Entry boots ESP-IDF and never reaches `Application setup complete` — first runtime look since W2 broke the build See `0860-*`.
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
-- **#0863** (ci) — `check-submodule-pinned-locks` fails intermittently in CI on a commit that also passed — a flaky check inside the about-to-be-required set See `0863-*`.
 
 <!-- END GENERATED open-issue list -->
 
 Recently resolved (2026-08-28): **#0855** (testing) — `c_port_posix_net.rs` named ports `56301`/`56302` as literals, and both sit INSIDE this host's ephemeral range (32768–60999), so the kernel hands them to anything asking for one. An unrelated ROS `component_node` from another session's Autoware stack held 56302 for 29 minutes and `udp_loopback_roundtrip` reported it as `nros_platform_udp_listen` returning `-1` — a product-shaped message for a host-shaped cause. Now binds port 0 and reads `local_addr()` back, so the kernel names a port nobody holds. See `archived/0855-*`.
 
+- Recently resolved (2026-08-28): **#0863** — `check-submodule-pinned-locks` was flaky in CI because a COLD cargo cache fails `--offline` resolution during selection (`no matching package named X`), a third wording 0600's classifier did not match — so a correct lock was reported as a mismatch, telling the operator to `lock-update` it. The reporter also printed `err[-4:]`, discarding the head line that names the crate. See `archived/0863-*`.
 Recently resolved (2026-08-27): **#0840** (build) — four independent reds landed on main in ONE day
 across two commits, and every one was already covered by an existing gate: a lib test target that did
 not compile (all 69 tests in `nros-rmw-zenoh` dead), a file committed unformatted, a hardcoded cargo
