@@ -49,12 +49,36 @@ jobs:
       contents: read
       packages: write
     env:
-      # Tag = ROS distro (bump when the baked toolset changes, in lockstep with
-      # the consuming lanes' `container:`).
+      # TWO tags, deliberately:
+      #
+      #   humble              a floating alias — whatever was built last
+      #   humble-<sha12>      the CONTENT of the Dockerfile that built it
+      #
+      # The floating tag is what every consumer used, and it is why a toolset
+      # bump was invisible: the same tag silently means something different
+      # after a rebuild, so a lane could not tell which toolchain it ran on.
+      # The zephyr image below already avoids this (`humble-sdk0.17.4-r2`);
+      # ci-base did not.
+      #
+      # CONTENT-derived rather than a hand-bumped revision, because a
+      # hand-bumped one has the failure mode we are removing: it relies on
+      # somebody remembering. Any edit to what is baked yields a new tag by
+      # construction.
+      #
+      # Consumers still pin `humble` — moving them is a SEPARATE step, and it
+      # has to be, because this tag does not exist in the registry until this
+      # workflow has run on `main` at least once. Switching a `container:` in
+      # the same commit would reference an image that is not there yet.
       IMAGE: ghcr.io/newslabntu/nano-ros-ci
       TAG: humble
     steps:
       - uses: actions/checkout@v4
+      - name: Derive the content tag
+        id: ctag
+        run: |
+          sha="$(sha256sum ci/docker/ci-base/Dockerfile | cut -c1-12)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "content tag: ${{ env.IMAGE }}:humble-$sha"
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -68,7 +92,9 @@ jobs:
         with:
           context: ci/docker/ci-base
           push: true
-          tags: ${{ env.IMAGE }}:${{ env.TAG }}
+          tags: |
+            ${{ env.IMAGE }}:${{ env.TAG }}
+            ${{ env.IMAGE }}:${{ env.TAG }}-${{ steps.ctag.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
