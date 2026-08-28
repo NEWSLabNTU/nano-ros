@@ -220,8 +220,15 @@ when `CONFIG_UART_INTERRUPT_DRIVEN` is off. Board-side behaviour under it is
 clean — full bring-up in 0.27 s, **zero** `uart_err_check` overruns, **zero**
 ring overflows.
 
-It ships **disabled**, because the A/B against the polled path cannot currently
-be trusted. See below.
+It ships **disabled**. A later A/B with a `demo_nodes_cpp` talker on the same
+router as a live control settled it: with the polled build the board's node
+appears in `ros2 node list` alongside the host talker, and with the ISR build
+only the host talker appears. The router is provably healthy in the same
+instant, so the ISR path does break the board's declarations from reaching it —
+the board completes its handshake, registers every token and reports no
+overrun, and the declarations still do not land. Cause not yet identified;
+suspect the TX side, since `CONFIG_UART_INTERRUPT_DRIVEN` changes driver
+behaviour for a path that still uses `uart_poll_out`.
 
 ## The measurement is confounded — [issue 0864](0864-board-zid-is-identical-on-every-boot.md)
 
