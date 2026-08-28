@@ -202,16 +202,30 @@ dropped it, and overruns are reported:
   placed above a main thread already holding the top slot, so honouring the
   priority alone changes nothing.
 
-Measured on the action image, clean router, five goals per run:
+### The goal-completion numbers do NOT reproduce — treat them as withdrawn
 
-| | goals completing |
+An earlier revision of this issue recorded "0 of 5 goals before, 2 of 5 after"
+as a measured improvement from the priority fix. **That does not hold up.**
+
+Re-run under a fixed harness (`/tmp/trial.sh`: kill every 7447/serial holder by
+PID, start the router and wait for its "Started Zenoh router" line, reset the
+board exactly once, then measure) the result is **0 of 5 on both builds**, and
+also 0 of 5 when the goals are sent immediately after connect with no
+`ros2 node list` ahead of them. The 2 of 5 came from hand-run sequences whose
+timing was not controlled, and it has not been reproduced since.
+
+What IS reproducible and does hold:
+
+| | node visible in `ros2 node list` |
 | --- | --- |
-| before | **0 of 5** — the graph populated, no goal ever finished |
-| priority honoured + main lowered | **2 of 5**, and `SUCCEEDED` with the correct sequence |
+| polled | yes |
+| interrupt-driven | yes |
 
-Real but partial, which is what the polled path predicts: raising the reader's
-priority shrinks the window in which it is descheduled and cannot remove it,
-because a polling reader still has to be RUNNING to catch a byte.
+So the priority fix is still correct on its own terms — the three discard sites
+were real, the `(void)attr;` lines are gone, and a declared priority now takes
+effect — but **this issue can no longer claim a measured improvement in goal
+completion.** Whatever stops goals from completing has not been isolated, and
+the RX path is not currently implicated in it: both RX paths behave the same.
 
 **Written but NOT enabled (step 3).** Interrupt-driven RX is implemented on the
 zenoh-pico fork branch `fix/zephyr-serial-irq-rx`: `uart_fifo_read` in the ISR
@@ -220,34 +234,41 @@ when `CONFIG_UART_INTERRUPT_DRIVEN` is off. Board-side behaviour under it is
 clean — full bring-up in 0.27 s, **zero** `uart_err_check` overruns, **zero**
 ring overflows.
 
-It ships **disabled**. A later A/B with a `demo_nodes_cpp` talker on the same
-router as a live control settled it: with the polled build the board's node
-appears in `ros2 node list` alongside the host talker, and with the ISR build
-only the host talker appears. The router is provably healthy in the same
-instant, so the ISR path does break the board's declarations from reaching it —
-the board completes its handshake, registers every token and reports no
-overrun, and the declarations still do not land. Cause not yet identified;
-suspect the TX side, since `CONFIG_UART_INTERRUPT_DRIVEN` changes driver
-behaviour for a path that still uses `uart_poll_out`.
+It ships **disabled**, but not for the reason a previous revision gave.
 
-## The measurement is confounded — [issue 0864](0864-board-zid-is-identical-on-every-boot.md)
+That revision claimed the ISR path broke the board's declarations from reaching
+the router, on the strength of an A/B with a host talker as a control. With
+[issue 0864](archived/0864-board-zid-is-identical-on-every-boot.md) fixed — the
+board now draws a distinct zid per boot — **that claim is withdrawn**: the ISR
+build's node appears in `ros2 node list` normally. The apparent difference was
+the shared-zid confound, exactly as the first analysis said before it was
+over-corrected.
 
-The board presents the **same zenoh id on every boot**
-(`1322740661b45746fa29b1803f32f5eb`, verified across resets and reflashes;
-`CONFIG_TEST_RANDOM_GENERATOR` with no hardware entropy). A router therefore
-cannot tell a rebooted board from the peer it already has, so any run that
-crosses a reconnect depends on **router history** as much as on the firmware
-under test.
+One real defect was found in the ISR while chasing this, and is fixed: the
+handler guarded its loop with `uart_irq_is_pending()` and `break`-ed when RX was
+not ready. `uart_irq_is_pending` is also true for a TX cause, so that could exit
+with the interrupt still asserted and re-enter forever. It is now the canonical
+Zephyr shape — `uart_irq_update()` once, then drain while `uart_irq_rx_ready()`.
 
-That is not a footnote here. During this work an A/B appeared to show that
-interrupt-driven RX broke ROS graph discovery. It did not: the run was against a
-router that had failed to start (`Address already in use`, a stale process still
-holding 7447) while a previous router still owned the serial port. Repeating it
-with a genuinely clean router restored discovery on the polled build, and the
-ISR build's remaining difference cannot be separated from the shared-zid effect.
+It stays disabled because it is not yet shown to be BETTER, not because it is
+shown to be broken. Both paths currently complete zero goals.
 
-**Issue 0853 should be fixed before step 3 is judged.** Its acceptance test is
-two resets and two different zids.
+## The zid confound is fixed — [issue 0864](archived/0864-board-zid-is-identical-on-every-boot.md)
+
+The board drew the same zenoh id on every boot, so a router could not tell a
+rebooted board from the peer it already had, and every reconnect-shaped
+measurement depended on router history. That is fixed: three boots now give
+three distinct zids.
+
+Two claims in this issue were made under that confound and are corrected above:
+the goal-completion improvement (withdrawn) and the ISR-breaks-declarations
+finding (withdrawn).
+
+**A separate operational hazard remains.** z-serial has no link-level resync, so
+resetting the board while the router holds the link puts the router into a
+repeating `Unexpected Init flag in message` and the link never recovers. The
+router must be restarted after any board reset. This is not the same thing as
+the zid problem and survives its fix.
 
 ## Adjacent, found while tracing this
 
