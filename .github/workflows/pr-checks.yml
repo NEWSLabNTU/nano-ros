@@ -344,9 +344,17 @@ jobs:
       # Restoring it means giving this job the artifacts first (PR #14 adds
       # `build-compile-check-fixtures`; the bindings half is unowned). Do that
       # before putting the tier back, not after.
+      #
+      # The `source /opt/ros/humble/setup.bash` below is load-bearing, not
+      # boilerplate: `check-rmw-cyclonedds`'s from-msg targets run
+      # msg_to_cyclone_idl.py at BUILD time, which imports rosidl_adapter from
+      # /opt/ros. The configure-time probe only checks the converter script
+      # EXISTS (issue-0196 class: probe narrower than the rule), so an
+      # unsourced env fails at 80% of the build rather than at configure.
       - name: just check-build + no_std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
+          source /opt/ros/humble/setup.bash
           just check-build
           just check-no-std
 
