@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-41 open. One line each — the detail lives in the issue file,
+43 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -98,6 +98,8 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0860** (boards, rmw) — The ESP32-C3 workspace Entry boots ESP-IDF and never reaches `Application setup complete` — first runtime look since W2 broke the build See `0860-*`.
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
+- **#0865** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0865-*`.
+- **#0867** (testing, rmw) — `test_rtos_action_e2e` nuttx/C fails 3/3 SOLO — the client's goal send times out (-2) against a server sitting at its ready banner See `0867-*`.
 
 <!-- END GENERATED open-issue list -->
 
