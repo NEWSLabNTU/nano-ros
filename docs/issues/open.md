@@ -45,7 +45,6 @@ fails if this block drifts.
 - **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
-- **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
 - **#0847** (rmw) — An XRCE publisher outliving `executor.close()` segfaults in its own Drop: the entity destructor dereferences the session state that close already freed See `0847-*`.
 - **#0849** (cli) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the checkout makes cargo see two copies of every core crate and refuse the build on `links` See `0849-*`.
 - **#0852** (rmw, platform) — the zenoh read task inherits the executor's priority on Zephyr — the declared priority is discarded by the port, so a 20 ms timeslice starves the polled serial RX and it overruns See `0852-*`.
