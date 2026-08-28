@@ -725,8 +725,25 @@ is the keystone the rest hangs off.
 **The remaining steps, in dependency order:**
 
 1. **`lane-filter.sh tier1`** — an INCLUSION union over the tier-1 platforms
-   read from `--print-tiers`, replacing `native`'s exclusion list. Cheap, and it
-   is the step that stops the run filter contradicting the registry.
+   read from `--print-tiers`, replacing `native`'s exclusion list. It is the
+   step that stops the run filter contradicting the registry.
+
+   **Viability, checked rather than assumed.** Tier 1 is name-expressible where
+   tier 2 is not, and the reason is specific: `rtos_e2e`'s `Platform` enum is
+   `{Freertos, Nuttx, ThreadxLinux, ThreadxRiscv64}`, so `ThreadxLinux` carries
+   its variant in the case name, and the one family that does NOT split
+   (`Freertos`) is tier 2 on both its variants — so the ambiguity never reaches
+   tier 1's inclusion set.
+
+   **The remaining care is Zephyr.** Its binaries distinguish by NAME
+   (`zephyr` vs `zephyr_cortex_m_qemu`), so a bare `~zephyr` inclusion would
+   drag the cortex-m binary in; the union needs `and not test(~cortex_m)` or
+   equivalent. And two binaries are not obviously either variant —
+   `cli_bringup_zephyr`, `qos_zephyr_ros2_interop_e2e` — so which side they
+   belong on must be READ, not guessed. That is the same overlap hazard
+   `lane-filter.sh`'s `nostd` arm already documents ("the QemuBaremetal token is
+   qemu, and tests/nuttx_qemu.rs matches it"), and it is why this step is small
+   but not trivial.
 2. **`pool(Tier1)` reads the same table.** Rust cannot read the TOML at compile
    time, and the house answer to exactly that is a GENERATED committed file with
    a staleness gate — `nros-rmw-cffi/src/generated.rs` (`check-abi-bindings`)
