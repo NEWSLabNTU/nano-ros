@@ -252,18 +252,137 @@ void nros_platform_yield_now(void) {
 
 /* ---- Random ---- */
 
-uint8_t  nros_platform_random_u8(void)   { return (uint8_t)  sys_rand32_get(); }
-uint16_t nros_platform_random_u16(void)  { return (uint16_t) sys_rand32_get(); }
-uint32_t nros_platform_random_u32(void)  { return sys_rand32_get(); }
+/* issue 0853 — a board with no hardware entropy produced the SAME zenoh id on
+ * every boot.
+ *
+ * With `CONFIG_TEST_RANDOM_GENERATOR` (its own name says what it is) Zephyr
+ * backs `sys_rand32_get` with a timer reading. The path from reset to the point
+ * zenoh-pico draws its zid is deterministic, so that reading is the same number
+ * every time, and the MR-CANHUBK344 came up as
+ * `1322740661b45746fa29b1803f32f5eb` across resets, reflashes and power cycles.
+ *
+ * A zenoh id is the identity a router uses to hold a session's state for a
+ * lease. A board that reboots into the same one is, to the router, the peer it
+ * already has — so every reconnect-shaped measurement depends on router history
+ * rather than on the firmware under test. That confounded a real A/B during
+ * issue 0852.
+ *
+ * ONLY substituted when Zephyr's generator is the test stand-in. A board with
+ * `CONFIG_ENTROPY_GENERATOR` has a real source and keeps using it — this must
+ * not shadow good entropy with a PRNG.
+ *
+ * THIS IS NOT A CSPRNG AND MUST NOT BE USED AS ONE. It exists to make an
+ * IDENTITY unique, not to make a secret unguessable. Anything needing
+ * cryptographic randomness needs a real entropy source, which this part does
+ * not have wired today. */
+#if defined(CONFIG_TEST_RANDOM_GENERATOR) && !defined(CONFIG_ENTROPY_GENERATOR)
+
+#include <zephyr/sys/util.h>
+
+/* Survives a warm reset: Zephyr does not zero `.noinit`. That is the whole
+ * trick for reset-to-reset uniqueness — the previous boot's state is still
+ * here, and mixing it forward makes each boot differ from the last. At a COLD
+ * start the same location holds whatever the SRAM powered up as, which differs
+ * between parts and between power cycles. */
+static uint32_t nros_rand_seed_carry __attribute__((section(".noinit")));
+static uint32_t nros_rand_s[4];
+static bool nros_rand_ready;
+
+static uint32_t nros_rand_mix(uint32_t x) {
+    /* splitmix32 — spreads a weak seed across all 32 bits before it becomes
+     * PRNG state. Without this, two boots whose inputs differ in one low bit
+     * produce visibly related streams. */
+    x += 0x9e3779b9u;
+    x = (x ^ (x >> 16)) * 0x21f0aaadu;
+    x = (x ^ (x >> 15)) * 0x735a2d97u;
+    return x ^ (x >> 15);
+}
+
+static void nros_rand_init(void) {
+    /* Every independent thing this port can reach:
+     *   - the carried `.noinit` word (previous boot, or cold-start SRAM noise)
+     *   - a cycle counter, which is not constant across the reset paths
+     *   - the uptime, for the case the cycle counter is coarse
+     *   - the timer generator's own reading, which is at least not worse
+     * None is a real entropy source and the comment above says so. Together
+     * they satisfy what this issue asks: reset twice, get two ids. */
+    uint32_t seed = nros_rand_seed_carry;
+    seed = nros_rand_mix(seed ^ k_cycle_get_32());
+    seed = nros_rand_mix(seed ^ (uint32_t) k_uptime_get_32());
+    seed = nros_rand_mix(seed ^ sys_rand32_get());
+
+    /* Carry a DIFFERENT value forward than the one seeding this boot, so a
+     * reset that happens before any random is drawn still moves the state. */
+    nros_rand_seed_carry = nros_rand_mix(seed ^ 0xa5a5a5a5u);
+
+    for (int i = 0; i < 4; i++) {
+        seed = nros_rand_mix(seed);
+        nros_rand_s[i] = seed;
+    }
+    /* An all-zero xoshiro state is a fixed point and stays zero forever. */
+    if ((nros_rand_s[0] | nros_rand_s[1] | nros_rand_s[2] | nros_rand_s[3]) == 0u) {
+        nros_rand_s[0] = 0x9e3779b9u;
+        nros_rand_s[1] = 0x243f6a88u;
+        nros_rand_s[2] = 0xb7e15162u;
+        nros_rand_s[3] = 0xdeadbeefu;
+    }
+    nros_rand_ready = true;
+}
+
+/* xoshiro128** — small, fast, and well distributed. Not cryptographic. */
+static uint32_t nros_rand_u32(void) {
+    if (!nros_rand_ready) {
+        nros_rand_init();
+    }
+    const uint32_t r = nros_rand_s[1] * 5u;
+    const uint32_t result = ((r << 7) | (r >> 25)) * 9u;
+    const uint32_t t = nros_rand_s[1] << 9;
+    nros_rand_s[2] ^= nros_rand_s[0];
+    nros_rand_s[3] ^= nros_rand_s[1];
+    nros_rand_s[1] ^= nros_rand_s[2];
+    nros_rand_s[0] ^= nros_rand_s[3];
+    nros_rand_s[2] ^= t;
+    nros_rand_s[3] = (nros_rand_s[3] << 11) | (nros_rand_s[3] >> 21);
+    return result;
+}
+
+#define NROS_RAND_U32() nros_rand_u32()
+
+#else /* a real entropy source, or a generator this port should not second-guess */
+
+#define NROS_RAND_U32() sys_rand32_get()
+
+#endif
+
+uint8_t  nros_platform_random_u8(void)   { return (uint8_t)  NROS_RAND_U32(); }
+uint16_t nros_platform_random_u16(void)  { return (uint16_t) NROS_RAND_U32(); }
+uint32_t nros_platform_random_u32(void)  { return NROS_RAND_U32(); }
 
 uint64_t nros_platform_random_u64(void) {
-    uint64_t hi = sys_rand32_get();
-    uint64_t lo = sys_rand32_get();
+    uint64_t hi = NROS_RAND_U32();
+    uint64_t lo = NROS_RAND_U32();
     return (hi << 32) | lo;
 }
 
 void nros_platform_random_fill(void *buf, size_t len) {
+#if defined(CONFIG_TEST_RANDOM_GENERATOR) && !defined(CONFIG_ENTROPY_GENERATOR)
+    /* Byte-wise from the same stream, so `fill` cannot disagree with the
+     * scalar draws about which generator is in use. Filling from
+     * `sys_rand_get` here while the scalars used the seeded PRNG is exactly
+     * how a zid ends up deterministic while everything else looks fine. */
+    uint8_t *p = (uint8_t *) buf;
+    size_t i = 0;
+    while (i < len) {
+        uint32_t v = nros_rand_u32();
+        size_t n = (len - i) < 4u ? (len - i) : 4u;
+        for (size_t k = 0; k < n; k++) {
+            p[i + k] = (uint8_t) (v >> (8u * k));
+        }
+        i += n;
+    }
+#else
     sys_rand_get(buf, len);
+#endif
 }
 
 /* ---- Wall clock — unsupported without CONFIG_RTC ---- */

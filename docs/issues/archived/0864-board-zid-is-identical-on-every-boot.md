@@ -2,7 +2,7 @@
 id: 864
 title: "the board presents the SAME zenoh id on every boot — CONFIG_TEST_RANDOM_GENERATOR
   makes the zid deterministic, which confounds every reconnect measurement"
-status: open
+status: resolved
 type: bug
 area: platform, rmw
 related: [issue-0852, issue-0839]
@@ -74,3 +74,49 @@ twice, and require them to differ.
 is new here is that it has a measurable functional consequence today, in the
 one area the serial campaign is trying to characterise, rather than being a
 security-hardening item to fix before shipping.
+
+## Resolved (2026-08-28)
+
+`nros-platform-zephyr` now seeds a xoshiro128** PRNG and serves
+`nros_platform_random_*` from it — but **only** when
+`CONFIG_TEST_RANDOM_GENERATOR` is set and `CONFIG_ENTROPY_GENERATOR` is not. A
+board with a real entropy source keeps using it; this must not shadow good
+entropy with a PRNG.
+
+The seed mixes, through splitmix32:
+
+- a `__noinit` word carried across reset (Zephyr does not zero `.noinit`), which
+  is the previous boot's state on a warm reset and SRAM power-up noise on a cold
+  one — this is what makes reset-to-reset differ
+- `k_cycle_get_32()` and `k_uptime_get_32()`
+- the timer generator's own reading, which is at least not worse
+
+A different value than the one used for this boot is carried forward, so a reset
+that happens before any random is drawn still moves the state. The all-zero
+xoshiro state is a fixed point and is guarded against.
+
+`nros_platform_random_fill` draws from the SAME stream rather than falling
+through to `sys_rand_get` — a `fill` that disagrees with the scalar draws about
+which generator is in use is exactly how a zid stays deterministic while
+everything else looks fine.
+
+### Acceptance
+
+The test this issue asked for, three times:
+
+```
+boot 1 zid: 06f6a004dc9321cfda5fb1359a10e61e
+boot 2 zid: ac181f9c54a245950bca25d7ee814faa
+boot 3 zid: 9b1311b02b0e4c6a64fb5544281b75dc
+```
+
+Previously `1322740661b45746fa29b1803f32f5eb` on every boot.
+
+Cost: 24 B of RAM.
+
+### What this is NOT
+
+Not a CSPRNG, and the code says so at the top of the block. It makes an
+IDENTITY unique; it does not make a secret unguessable. The production gap —
+this part has no hardware entropy wired — is unchanged, and anything needing
+cryptographic randomness still needs it fixed.
