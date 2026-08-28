@@ -261,6 +261,59 @@ Agent branches are also untouched: the ruleset targets `refs/heads/main`, NOT
 which is the reason `~ALL` was rejected — it would have broken every agent and
 every outside contributor on day one.
 
+## Submitting work: what CI enforces, and what it cannot
+
+Three obligations. **One is a gate. Two are conventions, and they are labelled
+that way on purpose** — a rule CI cannot check, presented as though it could, is
+the same defect as a gate that cannot fail.
+
+### 1. A gate must run its own selftest — ENFORCED (`check-gate-selftests`)
+
+Every script backing a `check-*` recipe must exercise its own failure path, and
+must do it on the NORMAL path, not only behind `--selftest`. `check-board-tiers.py`
+states the reason in its own comment: *a negative control nobody runs decays
+into a comment.* A selftest behind a flag is run once, by its author, on the day
+it is written; after that it is prose. Running it every time turns "someone once
+demonstrated a red" from a claim in a commit message into something CI
+re-verifies on every push.
+
+Do NOT satisfy this by adding a second `--selftest` line to the justfile. That
+is twice the cost and still leaves every direct caller unprotected.
+
+It is a **baseline ratchet** (`.config/gate-selftest-baseline.txt`), because a
+blanket rule would red 129 of 166 scripts on day one and never land. The
+baseline may only shrink: the gate fails if a script outside it is
+non-compliant, if a baselined script GAINS a selftest (remove the line), or if a
+baselined script no longer exists (the issue-0743 stale-entry class). Today:
+**37 of 166 compliant.**
+
+### 2. Separate what you MEASURED from what you REASONED — convention
+
+State plainly which claims came from running something and which came from
+reading it, and give the command for the first kind. This is not enforceable —
+CI can check that a section exists, never that it is honest — but it is the
+single most valuable thing in an agent report, and the evidence is direct: the
+one-day sample that produced this section had four agents volunteer their
+unverified claims, and each one mattered. Two of four cache-key input classes
+declared UNCOVERED with reasons; a `gh` rejection string admitted to be
+unconfirmed against the real remote; an entire live registration path flagged as
+never executed.
+
+**Declining to claim something is a reason to trust a report more, not less.**
+
+### 3. RUN it; do not read it — convention
+
+Bugs that survive reading do not survive execution. In the same sample, running
+rather than reading found a `printf '%s'` that silently dropped the last element
+of a label list (so one label was never checked at all), a probe reading a bare
+shell instead of the `activate.sh` environment every lane uses, and integer
+formatting that printed `0 GiB` for every sub-gigabyte value. All three read
+fine.
+
+The corollary for whoever integrates the work: **re-run the evidence rather than
+reading the summary.** It costs seconds and it is the difference between trusted
+and verified.
+
 ## Practices & Pitfalls
 
 ### Agent Practices

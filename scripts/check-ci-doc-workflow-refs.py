@@ -87,7 +87,10 @@ def scan():
 
 def main():
     if "--selftest" in sys.argv:
-        return selftest()
+        return selftest(verbose=True)
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this rule's whole job is to fire.
+    selftest()
     problems, checked, existing = scan()
     if problems:
         print("check-ci-doc-workflow-refs: doc(s) cite a workflow that does not exist:\n",
@@ -110,7 +113,7 @@ def main():
     return 0
 
 
-def selftest():
+def selftest(verbose=False):
     """Prove it can fail. A gate that cannot fail reads as coverage."""
     import tempfile
     global DOCS, ROOT
@@ -118,7 +121,8 @@ def selftest():
 
     def check(desc, cond):
         nonlocal ok, fail
-        print(f"  {'ok   ' if cond else 'FAIL '} {desc}")
+        if verbose or not cond:
+            print(f"  {'ok   ' if cond else 'FAIL '} {desc}")
         if cond:
             ok += 1
         else:
@@ -161,8 +165,12 @@ def selftest():
 
     globals()["ROOT"], globals()["DOCS"] = real_root, real_docs
     globals()["WORKFLOWS"] = os.path.join(real_root, ".github", "workflows")
-    print(f"\n{ok} passed, {fail} failed")
-    return 1 if fail else 0
+    if verbose:
+        print(f"\n{ok} passed, {fail} failed")
+    if fail:
+        print("check-ci-doc-workflow-refs self-test: FAILED", file=sys.stderr)
+        raise SystemExit(1)
+    return 0
 
 
 if __name__ == "__main__":

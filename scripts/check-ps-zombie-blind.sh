@@ -60,6 +60,13 @@ if [ "${1:-}" = "--selftest" ]; then
     exit 0
 fi
 
+# Always, not only behind --selftest: a negative control nobody runs decays into
+# a comment, and this gate's whole job is to fire.
+"${BASH_SOURCE[0]}" --selftest >/dev/null || {
+    echo "check-ps-zombie-blind: its own selftest FAILED — the gate is not trustworthy" >&2
+    exit 1
+}
+
 bad=0
 scanned=0
 while IFS= read -r f; do

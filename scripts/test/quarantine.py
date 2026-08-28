@@ -110,7 +110,16 @@ def issue_status(num):
     return False, None
 
 
+# The selftest exercises `check()`, and `check()` runs the selftest — so the
+# re-entry has to be broken explicitly or the two call each other forever.
+_IN_SELFTEST = False
+
+
 def check():
+    # Always, not only behind a flag: a negative control nobody runs decays into
+    # a comment, and this gate's whole job is to fire.
+    if not _IN_SELFTEST:
+        selftest(quiet=True)
     entries = load()
     today = datetime.date.today()
     errs = []
@@ -283,8 +292,17 @@ SYNTHETIC = """<?xml version="1.0"?>
 """
 
 
-def selftest():
+def selftest(quiet=False):
     """Prove the failure paths. A gate that cannot fail reads as coverage."""
+    global _IN_SELFTEST
+    _IN_SELFTEST = True
+    try:
+        return _selftest_body(quiet)
+    finally:
+        _IN_SELFTEST = False
+
+
+def _selftest_body(quiet=False):
     import copy
     import tempfile
 
@@ -293,7 +311,8 @@ def selftest():
     def ok(desc, cond, detail=""):
         nonlocal passed, failed
         if cond:
-            print(f"  ok    {desc}")
+            if not quiet:
+                print(f"  ok    {desc}")
             passed += 1
         else:
             print(f"  FAIL  {desc}{(': ' + detail) if detail else ''}")
@@ -306,7 +325,7 @@ def selftest():
     }
     today = datetime.date.today()
 
-    print("--check refuses what it must")
+    (None if quiet else print("--check refuses what it must"))
     global load
     real_load = load
     for desc, mutate, want in [
@@ -341,7 +360,7 @@ def selftest():
         ok(f"an entry on a RESOLVED issue ({resolved}) fails", rc == 1, f"rc={rc}")
     load = real_load
 
-    print("\n--demote rewrites exactly the quarantined failure")
+    (None if quiet else print("\n--demote rewrites exactly the quarantined failure"))
     e = {**base, "test": "action_raw_goal_ships_one_cdr_header",
          "binary": "nros-tests::action_raw_goal_e2e"}
     load = lambda: [e]
@@ -375,7 +394,7 @@ def selftest():
         ok("demote is idempotent",
            sum(1 for c in root2.iter("testcase") if c.find("failure") is not None) == 2)
 
-    print("\nan rstest CASE under a quarantined parent is covered; a sibling is not")
+    (None if quiet else print("\nan rstest CASE under a quarantined parent is covered; a sibling is not"))
     e2 = {**base, "test": "parent", "binary": "b"}
     ok("`parent::case_1` matches", matches(e2, "b", "parent::case_1"))
     ok("`parent` matches", matches(e2, "b", "parent"))
@@ -384,10 +403,13 @@ def selftest():
     ok("a different binary does NOT match", not matches(e2, "other", "parent"))
     load = real_load
 
-    print(f"\n{passed} passed, {failed} failed")
+    if not quiet:
+        print(f"\n{passed} passed, {failed} failed")
     if failed:
-        print("selftest: FAILED")
-        return 1
+        print("quarantine self-test: FAILED", file=sys.stderr)
+        raise SystemExit(1)
+    if quiet:
+        return 0
     print("selftest: ok — expiry, a resolved issue and a missing field each FAIL;\n"
           "  demotion keeps the failure text, is idempotent, and is keyed on\n"
           "  binary+test so a same-named test elsewhere still blocks.")
