@@ -447,6 +447,65 @@ in `<leaf>/target` since the `target_dir` column was dropped).
 alone cannot key them; the caller names the coordinate (`--coord`), or the
 resolver passes its already-selected `GroupRow`.
 
+## W11 — Unblock issue 0726, then turn on gate fan-out
+
+**The largest measured latency win left**, and it helps every stage: `check-fast`
+runs on the pull request, on the merge group and on every push to `main`.
+
+`scripts/build/run-gates-parallel.sh` exists and is measured: **90 s serial ->
+~8.8 s at -P24**, because the 133 gates are 56 s of work spread over 90 s at
+1–2 runnable cores. It is opt-in because one gate went red under fan-out and
+green standalone.
+
+**That cause is already found and fixed; the note keeping it off is stale.**
+`scripts/lib/grep-q.sh` names it: under fan-out a forked `grep` can fail to
+start (EAGAIN) or be killed, and `grep -q` cannot distinguish that from "no
+match" — so the gate reported a missing anchor for an example that has one.
+Green-to-red under load and never the reverse, which is the signature.
+`check-rmw-force-link-anchor` now treats `rc >= 2` as fatal.
+
+Measured 2026-08-28, 420 s of watching across three full fan-out runs: **0 file
+transitions and 0 of 90,533 `git ls-files` short or errored** — so neither
+standing hypothesis (a gate rewriting another's inputs, index contention) has
+any support.
+
+What remains is the CLASS, not the instance: **46 `grep -q` sites across 21
+scripts reachable from a `check-fast` gate**, each the same latent conflation.
+Convert them to `nros_grep_q`; the helper and `check-grep-q-error-conflation`
+already exist. Then flip `check-fast` to the parallel runner and delete the
+stale "conflicting pair unidentified" note.
+
+## W12 — `check-dep-chain` out of the merge path
+
+158 s measured, the single most expensive gate in the compile tier after the
+backend lanes. It is an 8-cell board×rmw matrix (`nros setup --dry-run` +
+codegen + `cargo tree` per cell) — a MATRIX LANE wearing a gate's clothes, and
+its own header still claims it runs "in seconds", which was true per cell and
+stopped being true as cells accumulated.
+
+No single pull request changes the board×rmw wiring, so paying it per merge buys
+little. Move it to post-submit, where a regression is still bounded to one
+commit.
+
+## W13 — Delete `queue.yml`'s L1 job
+
+`pr-checks`'s `check` now runs the compile tier on `merge_group`, and it covers
+strictly more than `just ci-l1`. Both run on every merge group, so the same tree
+compiles twice on the critical path to landing. `queue.yml` keeps its L3 job,
+which is gated on a self-hosted runner and does something different.
+
+## W14 — A claim liveness supervisor
+
+`just claim-renew` is idempotent and cheap, and nothing drives it. A claim
+therefore lapses during exactly the work it is meant to protect — a long fixture
+build, a slow QEMU sweep — and another agent can legitimately steal live work,
+which is worse than no claim at all because the steal LOOKS sanctioned.
+
+The supervisor must key on the agent PROCESS being alive, not on progress
+between steps: 40 minutes inside one build is not death. `reserve-claim.sh`
+already prints that instruction on every successful claim; what is missing is
+something that obeys it.
+
 ## Not in scope
 
 - Replacing GitHub's merge queue with a third-party tool. The native one has
