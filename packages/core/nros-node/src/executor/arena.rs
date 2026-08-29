@@ -358,6 +358,126 @@ pub(crate) struct SubBufferedEntry<M, F> {
 /// The cost is that the report cannot name the topic — see `report_dropped_take`.
 static DROPPED_TAKES: portable_atomic::AtomicU32 = portable_atomic::AtomicU32::new(0);
 
+/// issue 0900 — has the arena-headroom advisory been emitted?
+///
+/// A STATIC, for the reason [`DROPPED_TAKES`] is one: an `Executor` field would
+/// move `EXECUTOR_OPAQUE_U64S` and therefore every image's executor footprint,
+/// to buy a diagnostic. Process-scoped rather than per-executor is also the
+/// RIGHT scope here, not merely the cheap one — the number this names
+/// (`NROS_EXECUTOR_ARENA_SIZE`) is a BUILD-TIME constant, identical for every
+/// executor in the image, so saying it twice adds nothing.
+static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+
+/// Report an arena that is far larger than the entities registered in it.
+///
+/// `ARENA_SIZE` is derived by budgeting EVERY slot at the ActionClient worst
+/// case (`nros-node/build.rs`), so an image with no action client carries
+/// several times what it can use — 74,240 bytes against ~16 KiB for a
+/// pub/sub-only workload at the defaults. The arena is a BUMP allocator, so
+/// `arena_used` is the exact claimed total rather than a reservation, and the
+/// allocator has therefore always known the right answer and never said it.
+///
+/// The override exists (`NROS_EXECUTOR_ARENA_SIZE`, or
+/// `CONFIG_NROS_EXECUTOR_ARENA_SIZE` on Zephyr) and is already load-bearing:
+/// the FreeRTOS action examples pin it to 8192 and still need a 64 KB app task
+/// stack, a number someone found by hitting "Invalid mbox" and working
+/// backwards. That is the shape of issues 0271/0739 — a knob nobody can
+/// enumerate is a knob nobody sets — and this turns it from folklore into a
+/// measurement.
+///
+/// **The arena is on the STACK**, not in `.bss`: `Executor` holds
+/// `arena: [MaybeUninit<u8>; ARENA_SIZE]` inline, so `mem-report` cannot see it
+/// and the cost lands on whichever task calls spin
+/// (`docs/reference/platform-implementation-notes.md`, FreeRTOS pitfalls).
+///
+/// `nros_log`, never stdio: this is reached on `no_std` targets and inside
+/// Zephyr `native_sim`, where a Rust `std` stdio call is FATAL (issue 0589).
+#[cold]
+fn report_arena_headroom(used: usize, capacity: usize) {
+    // Round the suggestion up so a small later registration still fits, and
+    // keep it a multiple of 1024 because that is the unit the knob is written
+    // in everywhere else in the tree.
+    let suggest = used.next_multiple_of(1024).max(1024);
+    nros_log::nros_info!(
+        nros_log::get_logger("nros"),
+        "executor arena is {capacity} bytes and {used} are claimed at first          spin. ARENA_SIZE budgets every slot at the ActionClient worst case, so          an image without one over-provisions; the arena is INLINE ON THE TASK          STACK, so this is stack headroom, not .bss. Set          NROS_EXECUTOR_ARENA_SIZE={suggest} (Zephyr:          CONFIG_NROS_EXECUTOR_ARENA_SIZE) if nothing registers after this point          — entities created later need their own room (issue 0900)"
+    );
+}
+
+/// One-shot arena-headroom check, called on the first `spin_once`.
+///
+/// First spin, not registration end, because there is no "registration end" —
+/// an app may register lazily, and this is why the message says
+/// "at first spin" and names what it measured rather than asserting a total.
+///
+/// Hot-path cost is one relaxed load on a branch that is taken exactly once.
+pub(crate) fn maybe_report_arena_headroom(used: usize, capacity: usize) {
+    if ARENA_ADVISORY_DONE.load(portable_atomic::Ordering::Relaxed) {
+        return;
+    }
+    // Only ever set, never cleared, so a racing second spin at worst emits the
+    // line twice — cheaper than an AcqRel on every spin to prevent a duplicate
+    // advisory.
+    ARENA_ADVISORY_DONE.store(true, portable_atomic::Ordering::Relaxed);
+    if arena_is_over_provisioned(used, capacity) {
+        report_arena_headroom(used, capacity);
+    }
+}
+
+/// Is this arena grossly larger than what registered in it?
+///
+/// Half is the threshold because the derivation's own error is a factor of
+/// ~4.5 at the defaults (74,240 bytes budgeted against ~16 KiB for a
+/// pub/sub-only image), so "under half" is unambiguous rather than a rounding
+/// artifact, and an image that genuinely uses most of its arena stays quiet.
+///
+/// A zero capacity is NOT over-provisioned: that is the sentinel bug issue 0460
+/// produced on Zephyr (a literal `0` forwarded instead of the derivation), and
+/// it fails loudly on the first registration. Calling it over-provisioned would
+/// bury a fatal misconfiguration under an advisory about wasted space.
+///
+/// Separated from [`maybe_report_arena_headroom`] so it is testable: the
+/// reporter is one-shot on a process-scoped flag, so a test that called it
+/// twice would silently check nothing the second time.
+pub(crate) const fn arena_is_over_provisioned(used: usize, capacity: usize) -> bool {
+    capacity != 0 && used.saturating_mul(2) <= capacity
+}
+
+#[cfg(test)]
+mod arena_headroom_tests {
+    use super::arena_is_over_provisioned;
+
+    #[test]
+    fn gross_over_provision_is_reported() {
+        // The measured shape: a talker's handful of entries against the
+        // worst-case-derived 74,240.
+        assert!(arena_is_over_provisioned(4_096, 74_240));
+        assert!(arena_is_over_provisioned(0, 74_240));
+    }
+
+    #[test]
+    fn a_well_sized_arena_stays_quiet() {
+        assert!(!arena_is_over_provisioned(60_000, 74_240));
+        // Exactly half is the boundary and IS reported; one byte more is not.
+        assert!(arena_is_over_provisioned(37_120, 74_240));
+        assert!(!arena_is_over_provisioned(37_121, 74_240));
+    }
+
+    #[test]
+    fn a_zero_capacity_arena_is_a_fault_not_headroom() {
+        // Issue 0460's sentinel bug. It fails on the first registration; an
+        // advisory about wasted space would bury that.
+        assert!(!arena_is_over_provisioned(0, 0));
+    }
+
+    #[test]
+    fn overflow_cannot_panic_the_check() {
+        // `used` is bounded by `capacity` in practice, but the doubling must
+        // not be the thing that decides that.
+        assert!(!arena_is_over_provisioned(usize::MAX, 74_240));
+    }
+}
+
 /// Say that a take was thrown away, on the first one and every 64th after.
 ///
 /// Issue 0757, RFC-0052 fail-loud. `try_recv_raw` returns `BufferTooSmall` when

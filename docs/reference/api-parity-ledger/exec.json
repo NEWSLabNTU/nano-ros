@@ -91,10 +91,6 @@
   "verdict": "declined",
   "why": "rclc's stuttering spelling -- the type name appears twice. Ours is `nros_executor_get_zero_initialized`, the method-style name on the type. See `c:get_zero_initialized_publisher`."
  },
- "c:executor_has_param": {
-  "verdict": "extension",
-  "why": "'is this parameter declared?', asked without the six `rcl_interfaces/srv/*` servers being up. Parameters live on the EXECUTOR here rather than on a node (see the param stage's `c:executor_register_parameter_services`), and a device that bakes its parameter set (RFC-0045) wants a local existence check that costs no queryable slot -- `ZPICO_MAX_QUERYABLES` is 8 on embedded (issue 0460)."
- },
  "c:executor_handle_invocation_t": {
   "verdict": "rename",
   "why": "LANDED 2026-08-26 (phase-379 W5) — the enum is now `nros_executor_handle_invocation_t`, matching rclc's `rclc_executor_handle_invocation_t` (cbindgen-regenerated in `nros_generated.h`). The enum VALUES (`NROS_EXECUTOR_ON_NEW_DATA` / `NROS_EXECUTOR_ALWAYS`) were not part of this row and did not move. CORRECTED 2026-08-27 (phase-379 W5): the sentence that followed still read, in the present tense, \"ours drops `handle_` from rclc's `rclc_executor_handle_invocation_t`\" -- that was the pre-rename statement of the defect and it is no longer true. Verified at HEAD: the live spelling is `nros_executor_handle_invocation_t` (`packages/api/nros-c/src/executor.rs:137`, header `nros_generated.h:649`) and no `nros_executor_invocation_t` survives in any source tree -- the only remaining hits are stale build artifacts under `packages/testing/nros-tests/bins/*/build-*/`. The REASON it landed stands: no platform reason, the shorter name cost a C user the rclc spelling for nothing, and the values were the same pair either way. This row stays `ours-only` in the report rather than collapsing to `same`, because the theirs half is filtered as plumbing (`rclc/executor_handle.h`, \"rclc's internal per-entity executor bookkeeping\" -- `scripts/api_parity/public_surface.py:79`), so one row carries both sides.",
@@ -104,6 +100,10 @@
    "status": "landed",
    "category": "A"
   }
+ },
+ "c:executor_has_param": {
+  "verdict": "extension",
+  "why": "'is this parameter declared?', asked without the six `rcl_interfaces/srv/*` servers being up. Parameters live on the EXECUTOR here rather than on a node (see the param stage's `c:executor_register_parameter_services`), and a device that bakes its parameter set (RFC-0045) wants a local existence check that costs no queryable slot -- `ZPICO_MAX_QUERYABLES` is 8 on embedded (issue 0460)."
  },
  "c:executor_is_valid": {
   "verdict": "extension",
@@ -637,6 +637,16 @@
  "rust:Executor::add_pre_shutdown_callback": {
   "verdict": "extension",
   "why": "The ORDER is the feature: pre-shutdown callbacks run while the session is still open and every entity still works -- which is how a device publishes a final state, answers a last request, parks an actuator or releases a bus -- and on-shutdown callbacks run after the close. rclrs has no shutdown hook at all -- no `Context` callback list, no free function -- so there is nothing on the rclrs side to correspond to. It exists because an RTOS node has nowhere else to release hardware while its entities still work. The platform constraint is no allocator: rclcpp's registration takes a `std::function<void()>` (a heap allocation per callback) and hands back a handle owning a `std::shared_ptr` to it. Ours is a fixed-capacity static table of `(extern \"C\" fn, void* context)` sized by `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (default 2, small on issue 0460's precedent that a per-entity static slot is a cost every image pays), and the handle is the SLOT INDEX with its phase packed in so it cannot remove the other phase's callback. rclcpp hangs these on `Context`; we have none (see `c:context_*` / `cpp:Context` in init.json), and the executor is what `shutdown` / `close` / `fini` is called on, so it owns the tables. Issue 0790."
+ },
+ "rust:Executor::arena_capacity": {
+  "verdict": "extension",
+  "why": "how many arena bytes an executor was GIVEN and how many its registered entities actually claimed. No upstream analogue because upstream has no arena: rclcpp allocates each entity on the heap, so \"how much of the pre-sized block is in use\" is not a question it can ask. Here `ARENA_SIZE` is derived by budgeting EVERY slot at the ActionClient worst case, and the arena is a BUMP allocator held INLINE in the `Executor` value -- on the task stack, where `mem-report` cannot see it. So the allocator has always known the exact claimed total and had no way to say it: a timer-only executor claims 32 bytes of 74,240. These two accessors are how an image, a test, or the boot advisory finds the number to put in `NROS_EXECUTOR_ARENA_SIZE`. Issue 0900.",
+  "bucket": "ours-only"
+ },
+ "rust:Executor::arena_used": {
+  "verdict": "extension",
+  "why": "how many arena bytes an executor was GIVEN and how many its registered entities actually claimed. No upstream analogue because upstream has no arena: rclcpp allocates each entity on the heap, so \"how much of the pre-sized block is in use\" is not a question it can ask. Here `ARENA_SIZE` is derived by budgeting EVERY slot at the ActionClient worst case, and the arena is a BUMP allocator held INLINE in the `Executor` value -- on the task stack, where `mem-report` cannot see it. So the allocator has always known the exact claimed total and had no way to say it: a timer-only executor claims 32 bytes of 74,240. These two accessors are how an image, a test, or the boot advisory finds the number to put in `NROS_EXECUTOR_ARENA_SIZE`. Issue 0900.",
+  "bucket": "ours-only"
  },
  "rust:Executor::close": {
   "verdict": "extension",

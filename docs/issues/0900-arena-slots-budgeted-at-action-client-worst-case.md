@@ -125,21 +125,47 @@ therefore cannot see this at all — sizing the change needs a stack-usage probe
 (worst-case frame at the spin call, or a high-water mark on a running RTOS
 image), not a symbol table.
 
-## Direction
+## Measured on a live executor: 32 bytes of 74,240
 
-Size a slot by the entity kind that will occupy it instead of by the worst kind
-that could. Registration already knows the kind, and `system.toml` / the
-`SystemModel` know the entity inventory ahead of the build for images that
-declare one. Two obvious shapes, not yet chosen:
+The derivation's error is not the ~4.5x this issue first estimated from the
+pub/sub-only formula. Opening a real `Executor` and registering one timer
+(`nros-tests/tests/component_dispatch.rs::executor_arena_is_over_provisioned_for_a_timer_only_image`)
+claims **32 bytes of 74,240** — a factor of **2,320**. The arena is a BUMP
+allocator (`Executor::arena_alloc` charges `size_of::<T>()` and reserves
+nothing per slot), so that number is exact, not a lower bound.
 
-1. **Per-kind slot budgets** — the arena becomes a sum over declared entities
-   rather than `MAX_CBS x worst_case`. Needs the inventory at build time.
-2. **A derived cap plus a diagnostic** — keep the worst-case derivation, but
-   report at boot (or fail the build) when the configured arena exceeds what the
-   registered entities can use, so the existing `NROS_EXECUTOR_ARENA_SIZE`
-   override becomes actionable rather than folklore.
+That reframes the fix: the allocator has always known the right answer and had
+no way to say it.
 
-(2) is strictly cheaper and does not need the model; (1) is the actual fix.
+## Landed: the executor can now say what it uses (W1)
+
+* `Executor::arena_used()` / `Executor::arena_capacity()` — public accessors,
+  ledgered as extensions (upstream has no arena to ask about; rclcpp
+  heap-allocates each entity).
+* A one-shot advisory on the first `spin_once` when the arena is grossly
+  over-provisioned, naming the `NROS_EXECUTOR_ARENA_SIZE` value to set. Emitted
+  through `nros_log`, never stdio (issue 0589), from a process-scoped static
+  rather than an `Executor` field — the same reason `DROPPED_TAKES` is a static:
+  a field would move `EXECUTOR_OPAQUE_U64S` and every image's executor footprint
+  to buy a diagnostic. Process scope is also correct here rather than merely
+  cheap, since the value it names is a build-time constant identical for every
+  executor in the image.
+* The threshold is a separate `const fn arena_is_over_provisioned` so it is
+  testable — the reporter is one-shot, so a test calling it twice would silently
+  check nothing the second time. Four unit tests cover the boundary, a
+  well-sized arena staying quiet, overflow, and the issue-0460 zero-capacity
+  sentinel (a fault, NOT headroom — calling it over-provisioned would bury a
+  fatal misconfiguration under an advisory about wasted space).
+
+This does not shrink anything by itself. It converts the folklore into a number
+a user can read, which is the precondition for the rest.
+
+**Not yet verified:** that the advisory line actually reaches a console on a
+real image. It did not appear in the `component_dispatch` run, most likely
+because a bare `cargo test` installs no `nros_log` sink — unconfirmed, and worth
+one check before relying on it in the field.
+
+## Direction for the rest
 
 ## Not to be confused with
 

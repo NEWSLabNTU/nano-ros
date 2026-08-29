@@ -3557,6 +3557,25 @@ impl<'s> Executor<'s> {
     // Arena-based callback registration
     // ========================================================================
 
+    /// Arena bytes claimed by registered entities so far.
+    ///
+    /// EXACT, not a worst case: the arena is a bump allocator and every
+    /// `arena_alloc` charges `size_of::<T>()`, so nothing is reserved per slot.
+    /// `ARENA_SIZE` itself is derived the other way — every slot budgeted at
+    /// the ActionClient worst case — which is issue 0900, and this accessor is
+    /// how an image can find out what it actually needs.
+    pub fn arena_used(&self) -> usize {
+        self.arena_used
+    }
+
+    /// Total arena bytes this executor was given.
+    ///
+    /// Inline in the `Executor` value, so on the board path this is stack, not
+    /// `.bss` (see `report_arena_headroom`).
+    pub fn arena_capacity(&self) -> usize {
+        self.arena.len()
+    }
+
     /// Bump-allocate space for `T` in the arena. Returns the byte offset.
     pub(crate) fn arena_alloc<T>(&mut self) -> Result<usize, NodeError> {
         let align = core::mem::align_of::<T>();
@@ -5460,6 +5479,11 @@ impl<'s> Executor<'s> {
 
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
+
+        // issue 0900 — one-shot advisory when the arena is far larger than what
+        // registered. First spin rather than "end of registration", because
+        // there is no such point: an app may register lazily.
+        super::arena::maybe_report_arena_headroom(self.arena_used, self.arena.len());
 
         // Phase 110.0 — cap against the backend's next internal-event
         // deadline (lease keepalive, heartbeat, ACK-NACK timeout, ...).
