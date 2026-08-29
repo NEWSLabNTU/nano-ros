@@ -249,6 +249,24 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
+**#0889** (rmw, open 2026-08-29) - the Cyclone RMW leaves `set_wake_callback` NULL, so
+`has_async_wake` is false, `spin_once` never uses its wake primitive, and the executor polls every reader on
+a timer. Measured on the an536 lane: 5,069 takes per reader for 42 deliveries - **0.8% of takes find data**.
+The executor's own comment already names the cost for poll-only backends ("a no-op sleep that starves
+reliable retransmission", phase-127.C.4). A participant-level `data_available` listener is implemented and
+builds, but is NOT landed: one run showed zero deliveries and so did a run with it reverted, because the
+lane's variance swamps the signal - and listener invocation consumes the communication status this backend
+polls, which `reset_on_invoke=false` is meant to prevent and nobody has confirmed. Needs a repeatable rig.
+See `0889-*`. (2026-08-29)
+
+**#0888** (rmw, RESOLVED 2026-08-29) - FreeRTOS was the only platform arm of the embedded Cyclone config with
+no `AllowMulticast`, so it inherited the Cyclone default (multicast for data) while ThreadX states `spdp` and
+native_sim states `false`. Not a platform limit - `LWIP_IGMP` is on, the netif carries `NETIF_FLAG_IGMP`, the
+LAN9118 driver sets `MCPAS`, and SPDP multicast demonstrably works - just a policy nobody wrote down, visible
+only as `writer_hbcontrol: ... multicasting` in a peer-side trace. Now states `spdp`, matching ThreadX. NOT a
+fix for 0836: with the peer already spdp-only, data was unicast regardless (97,976 sends to the island's
+unicast locator against 69 multicast, all discovery). See `0888-*`. (2026-08-29)
+
 **#0835** (testing, open 2026-08-27) — the cmake and rust fixture families RE-STALE EACH OTHER, so
 `check-fixtures-stale` never reaches a fixed point: three consecutive runs on a tree with a green `lane=all`
 build each reported the same 17 cmake + 23 rust as stale-and-rebuilt. The per-row probe converges (probe a row
