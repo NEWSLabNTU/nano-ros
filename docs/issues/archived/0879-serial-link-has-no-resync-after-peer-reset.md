@@ -2,7 +2,7 @@
 id: 879
 title: "the serial link cannot resynchronise after a peer reset — the router
   loops on `Unexpected Init flag in message` until it is restarted"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0852, issue-0839]
@@ -71,3 +71,46 @@ restarts.
 
 Interim, and worth writing into any bring-up runbook: **restart the router after
 any board reset.**
+
+
+## Resolved — the flood was the bug, not the router's error handling
+
+The board was sending **ten rapid INITs per reopen attempt**, and `_z_reopen`
+retries every second, so a failed link produced a storm — 840 INIT frames on the
+wire in one measured run.
+
+`zenoh-link-serial` treats an INIT on an established link as a protocol error
+and tears the link down. That part is *recoverable*: the teardown is exactly
+what should let the next handshake succeed. What prevented it was that the nine
+INITs following the first arrived **during the teardown-and-re-listen window**,
+each erroring again and re-wedging the link. Self-sustaining, which is why this
+issue originally recorded "only restarting the router recovers".
+
+The retry came from `b0afc537`, added for the **cold start** — an MCU's first
+frame goes out microseconds after reset into a disturbed line, and a single lost
+INIT left the link dead. That justification is about the first connect only. Its
+comment also claimed "a peer that is already initialised answers a second INIT
+with RESET", which is what the protocol says and **not** what this router does.
+
+Fix: full retries on the first connect, **one attempt** afterwards, and let
+`_z_reopen`'s own one-second backoff pace the rest.
+
+### Measured, direct link, mr_canhubk3/s32k344
+
+| | before | after |
+| --- | ---: | ---: |
+| INIT frames in 75 s of failed reopens | ~840 | **31** |
+| board reset under a live router | wedged forever | **recovers, 3 for 3** |
+| router `Unexpected Init` errors | endless | **one per reset, then recovery** |
+| self-reconnect after the router returns | never | **works, no board reset** |
+| cold start still connects | yes | **yes** (graph resolves) |
+
+Goal completion is unchanged within noise — 6/10 and 8/10 across two runs,
+against 9/10 for the allocator fix alone. This change is about the link
+recovering at all, not about throughput.
+
+### The upstream half is no longer required
+
+`zenoh-link-serial` accepting a mid-session INIT as "the peer restarted" would
+still be the tidier protocol behaviour, and is worth reporting. It is no longer
+needed for this board to recover.
