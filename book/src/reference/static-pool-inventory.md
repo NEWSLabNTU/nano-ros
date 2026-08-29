@@ -22,7 +22,7 @@ moves with it.
 | pool | bytes at default | formula | declared in |
 | --- | ---: | --- | --- |
 | `LARGE_PAYLOADS` | 131,072 | `ZPICO_MAX_LARGE_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_LARGE_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:200` |
-| `SLOTS` | 8,192 | `NROS_RMW_SUBSCRIBER_SLOTS * 1024` | `packages/rmw/cffi/src/rust_adapter.rs:99` |
+| `SLOTS` | 8,192 | `NROS_RMW_SUBSCRIBER_SLOTS * 1024` | `packages/rmw/cffi/src/rust_adapter.rs:102` |
 | `SMALL_PAYLOADS` | 32,768 | `ZPICO_MAX_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_BUFFER_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:199` |
 
 ## Every sizing knob

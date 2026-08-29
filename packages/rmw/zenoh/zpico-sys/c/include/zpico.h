@@ -84,9 +84,8 @@
 
 /**
  * Caller's buffer cannot hold the value, which is REFUSED rather than
- * truncated (phase-381 W1). Used by `zpico_liveliness_entry`: half a keyexpr
- * names a different, plausible entity, so a short buffer is an error and never
- * a partial answer.
+ * truncated (phase-381 W1) — a partial keyexpr names a different, plausible
+ * entity, so `zpico_liveliness_entry` never returns one.
  */
 #define ZPICO_ERR_BUFFER -10
 
@@ -278,6 +277,18 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * Phase 108.C.zenoh.4-followup — count of liveliness-token
  * replies on this slot. Used by the subscriber-side
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
+ */
+/**
+ * phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+ * Poll with `zpico_liveliness_get_check`, then read with the two below.
+ */
+/**
+ * How many keyexprs were STORED — compare against
+ * `zpico_liveliness_get_count` (how many ARRIVED) to detect truncation.
+ */
+/**
+ * Copy stored keyexpr `index` into `out`. Returns bytes written excluding
+ * the NUL, or a negative `ZPICO_ERR_*`.
  */
 /**
  * The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
@@ -755,53 +766,44 @@ int32_t zpico_liveliness_get_start(struct zpico_session_t *_session,
 int32_t zpico_liveliness_get_check(struct zpico_session_t *_session, int32_t _handle);
 
 /**
- * Phase 108.C.zenoh.4-followup — count of liveliness-token
- * replies on this slot. Used by the subscriber-side
- * `LivelinessChanged` bridge to surface `alive_count > 1`.
- */
-int32_t zpico_liveliness_get_count(struct zpico_session_t *_session, int32_t _handle);
-
-/**
  * phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
  *
- * `zpico_liveliness_get_start` answers "does anything match". Reading the ROS
- * graph needs "WHAT matched": a liveliness reply carries its information in the
- * keyexpr (`@ros2_lv/<domain>/<zid>/<nid>/<eid>/.../<namespace>/<node>`), and
- * the reply handler used to discard it.
- *
- * Same slot pool, same start/poll shape, same dropper — poll with
- * `zpico_liveliness_get_check`, then read with `zpico_liveliness_entry_count`
- * and `zpico_liveliness_entry`. Costs no extra storage: the slot's reply buffer
- * is dead weight on a liveliness query, whose token payload is empty.
- *
- * Returns the slot handle, or `ZPICO_ERR_*`.
+ * `zpico_liveliness_get_start` answers "does anything match"; reading the
+ * ROS graph needs "WHAT matched", and a liveliness reply carries all of it
+ * in the keyexpr. Same slot pool, same start/poll shape — poll with
+ * `zpico_liveliness_get_check`, then read with the two below. Costs no
+ * extra storage: the slot's reply buffer is dead weight on a liveliness
+ * query, whose token payload is empty.
  */
 int32_t zpico_liveliness_collect_start(struct zpico_session_t *_session,
                                        const char *_keyexpr,
                                        uint32_t _timeout_ms);
 
 /**
- * How many keyexprs the slot STORED.
- *
- * Distinct from `zpico_liveliness_get_count`, which reports how many replies
- * ARRIVED. They differ exactly when the buffer could not hold an entry, so a
- * caller learns the enumeration was truncated by comparing the two — entries
- * are dropped whole rather than truncated, so a stored entry is always valid.
- *
- * Returns `ZPICO_ERR_INVALID` for a bad handle or an unused slot.
+ * How many keyexprs the slot STORED — distinct from
+ * `zpico_liveliness_get_count`, which reports how many ARRIVED. They differ
+ * exactly when the buffer could not hold an entry, so comparing the two is
+ * how a caller learns the enumeration was truncated.
  */
 int32_t zpico_liveliness_entry_count(struct zpico_session_t *_session, int32_t _handle);
 
 /**
- * The PURE half of `zpico_liveliness_entry`: index into a NUL-separated run.
- *
- * Split out so it can be tested without a live session, because this is where
- * an off-by-one costs a WRONG keyexpr rather than a missing one — and a wrong
- * one names a real, different entity. The session-taking form below is a thin
- * wrapper; testing a copy of this loop instead would test a copy.
- *
- * Returns bytes written excluding the NUL, `ZPICO_ERR_INVALID` for a NULL
- * pointer or an index past `_count`, `ZPICO_ERR_BUFFER` when `_cap` is short.
+ * Copy stored keyexpr `index` into `out`, NUL-terminated. Returns the byte
+ * count excluding the NUL, `ZPICO_ERR_INVALID` for a bad handle or index,
+ * or `ZPICO_ERR_BUFFER` when `cap` cannot hold the entry plus its NUL — a
+ * short buffer is refused rather than truncated.
+ */
+int32_t zpico_liveliness_entry(struct zpico_session_t *_session,
+                               int32_t _handle,
+                               uint32_t _index,
+                               char *_out,
+                               size_t _cap);
+
+/**
+ * The PURE half of `zpico_liveliness_entry`: index into a NUL-separated
+ * run. Split out so the walk is testable WITHOUT a live session, because
+ * this is where an off-by-one costs a WRONG keyexpr rather than a missing
+ * one.
  */
 int32_t zpico_entry_at(const uint8_t *_buf,
                        size_t _len,
@@ -811,17 +813,11 @@ int32_t zpico_entry_at(const uint8_t *_buf,
                        size_t _cap);
 
 /**
- * Copy stored keyexpr `_index` into `_out`, NUL-terminated.
- *
- * Returns the byte count excluding the NUL, `ZPICO_ERR_INVALID` for a bad
- * handle or index, or `ZPICO_ERR_BUFFER` when `_cap` cannot hold the entry plus
- * its NUL.
+ * Phase 108.C.zenoh.4-followup — count of liveliness-token
+ * replies on this slot. Used by the subscriber-side
+ * `LivelinessChanged` bridge to surface `alive_count > 1`.
  */
-int32_t zpico_liveliness_entry(struct zpico_session_t *_session,
-                               int32_t _handle,
-                               uint32_t _index,
-                               char *_out,
-                               size_t _cap);
+int32_t zpico_liveliness_get_count(struct zpico_session_t *_session, int32_t _handle);
 
 /**
  * Register a reply waker callback for async service client support.

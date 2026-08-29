@@ -355,6 +355,28 @@ unsafe extern "C" {
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.
     pub fn zpico_liveliness_get_count(session: *mut zpico_session_t, handle: i32) -> i32;
 
+    /// phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+    /// Poll with `zpico_liveliness_get_check`, then read with the two below.
+    pub fn zpico_liveliness_collect_start(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+        timeout_ms: u32,
+    ) -> i32;
+
+    /// How many keyexprs were STORED — compare against
+    /// `zpico_liveliness_get_count` (how many ARRIVED) to detect truncation.
+    pub fn zpico_liveliness_entry_count(session: *mut zpico_session_t, handle: i32) -> i32;
+
+    /// Copy stored keyexpr `index` into `out`. Returns bytes written excluding
+    /// the NUL, or a negative `ZPICO_ERR_*`.
+    pub fn zpico_liveliness_entry(
+        session: *mut zpico_session_t,
+        handle: i32,
+        index: u32,
+        out: *mut core::ffi::c_char,
+        cap: usize,
+    ) -> i32;
+
     /// The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
     /// not a valid pool slot. Used to scope the Rust shim's process-global
     /// service-buffer / reply-waker tables per session (issue 0376).

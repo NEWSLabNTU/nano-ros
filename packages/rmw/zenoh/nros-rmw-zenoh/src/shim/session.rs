@@ -5,8 +5,8 @@ use nros_rmw::{
 };
 
 use super::{
-    CONFIG_PROPERTY_SIZE, Context, LOCATOR_BUFFER_SIZE, LivelinessToken, MAX_SESSION_PROPERTIES,
-    Ros2Liveliness, ZenohId,
+    CONFIG_PROPERTY_SIZE, Context, EntityKind, LOCATOR_BUFFER_SIZE, LivelinessToken,
+    MAX_SESSION_PROPERTIES, Ros2Liveliness, ZenohId,
     publisher::ZenohPublisher,
     service::{ZenohServiceClient, ZenohServiceServer},
     subscriber::ZenohSubscriber,
@@ -174,7 +174,35 @@ pub struct ZenohSession {
     /// portable-atomic supplies it (single-core fallback on the esp32 build,
     /// native atomics everywhere else).
     entity_counter: portable_atomic::AtomicU32,
+    /// phase-381 W3 — the domain, kept so a graph query can be built later.
+    /// Construction used `config.domain_id` and dropped it; enumeration needs
+    /// it every call.
+    domain_id: u32,
+    /// phase-381 W3 — the STANDING node-enumeration query.
+    ///
+    /// `get_node_names` may not block and takes no timeout, so it can only
+    /// report what has already arrived. One query is kept in flight: a call
+    /// drains whatever the slot holds now and starts the next one when this has
+    /// finished, so the view warms up over successive calls instead of stalling
+    /// the executor's only thread inside an introspection call.
+    ///
+    /// `None` when no query has been started yet.
+    graph_query: Option<i32>,
 }
+
+/// phase-381 W3 — how long a standing graph query waits for replies.
+///
+/// Not a caller budget: `get_node_names` never blocks. This is the zenoh
+/// dropper's window, i.e. how long the slot keeps accepting replies before it
+/// is finished and restarted.
+const GRAPH_QUERY_TIMEOUT_MS: u32 = 500;
+
+/// Longest liveliness keyexpr this enumeration will read.
+///
+/// A stack buffer, so it is bounded by construction. An entry longer than this
+/// is SKIPPED, never truncated — a partial keyexpr parses as a different,
+/// plausible node.
+const GRAPH_KEYEXPR_MAX: usize = 512;
 
 impl ZenohSession {
     /// Create a new shim session with the given configuration
@@ -343,6 +371,8 @@ impl ZenohSession {
             wake_cb: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             entity_counter: portable_atomic::AtomicU32::new(1),
+            domain_id: config.domain_id,
+            graph_query: None,
         };
 
         if !config.node_name.is_empty() {
@@ -784,6 +814,112 @@ impl Session for ZenohSession {
         } else {
             Err(TransportError::Timeout)
         }
+    }
+
+    /// phase-381 W3 — enumerate nodes from the standing liveliness query.
+    ///
+    /// Chains W1 and W2: `zpico_liveliness_collect_start` keeps the reply
+    /// keyexprs (they used to be counted and dropped), and
+    /// `Ros2Liveliness::parse` turns each into an entity, refusing anything it
+    /// does not recognise rather than reporting a plausible wrong node.
+    ///
+    /// **Does not block, and warms up.** The slot contract forbids blocking and
+    /// takes no timeout, so this reports what has ALREADY arrived: it drains the
+    /// standing query, and starts the next one once that has finished. The first
+    /// call after startup therefore returns a partial graph — which differs from
+    /// `rmw_zenoh_cpp`, whose cache is warm because a background thread has been
+    /// filling it, and is why phase-381's acceptance needs a settling window
+    /// rather than an immediate comparison.
+    ///
+    /// Truncation is not silent: `entry_count` (stored) is compared against
+    /// `zpico_liveliness_get_count` (arrived), and a short buffer is reported
+    /// rather than hidden.
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), Self::Error> {
+        let handle = match self.graph_query {
+            Some(h) => h,
+            None => {
+                let key = Ros2Liveliness::node_keyexpr_wildcard::<256>(self.domain_id);
+                let mut buf = [0u8; 257];
+                let bytes = key.as_bytes();
+                if bytes.len() >= buf.len() {
+                    return Err(TransportError::InvalidArgument);
+                }
+                buf[..bytes.len()].copy_from_slice(bytes);
+                buf[bytes.len()] = 0;
+                let h = unsafe {
+                    zpico_sys::zpico_liveliness_collect_start(
+                        self.context.handle(),
+                        buf.as_ptr() as *const core::ffi::c_char,
+                        GRAPH_QUERY_TIMEOUT_MS,
+                    )
+                };
+                if h < 0 {
+                    return Err(TransportError::Unsupported);
+                }
+                self.graph_query = Some(h);
+                // Nothing can have arrived yet on a query started this instant.
+                // Reporting an empty graph is the honest answer, and the next
+                // call sees whatever landed meanwhile.
+                return Ok(());
+            }
+        };
+
+        let stored =
+            unsafe { zpico_sys::zpico_liveliness_entry_count(self.context.handle(), handle) };
+        if stored < 0 {
+            // The slot was recycled underneath us; start again next call.
+            self.graph_query = None;
+            return Ok(());
+        }
+
+        for index in 0..stored as u32 {
+            let mut key = [0i8; GRAPH_KEYEXPR_MAX];
+            let n = unsafe {
+                zpico_sys::zpico_liveliness_entry(
+                    self.context.handle(),
+                    handle,
+                    index,
+                    key.as_mut_ptr() as *mut core::ffi::c_char,
+                    key.len(),
+                )
+            };
+            if n <= 0 {
+                // ZPICO_ERR_BUFFER for an entry longer than our stack buffer.
+                // Skipped rather than truncated — a partial keyexpr names a
+                // different, plausible node.
+                continue;
+            }
+            // SAFETY: the C side wrote `n` bytes and a NUL.
+            let bytes =
+                unsafe { core::slice::from_raw_parts(key.as_ptr() as *const u8, n as usize) };
+            let Ok(text) = core::str::from_utf8(bytes) else {
+                continue;
+            };
+            let Some(entity) = Ros2Liveliness::parse(text) else {
+                continue;
+            };
+            if entity.kind != EntityKind::Node {
+                continue;
+            }
+            let ns = Ros2Liveliness::demangle_topic_name::<128>(entity.namespace);
+            // `enclave` is None: the token carries one, but ours is always the
+            // root and reporting a value we do not track would be worse than
+            // saying we do not.
+            if !visit(entity.node_name, ns.as_str(), None) {
+                break;
+            }
+        }
+
+        // Restart once the query has finished, so the next call sees a fresh
+        // sweep rather than an ageing one.
+        let done = unsafe { zpico_sys::zpico_liveliness_get_check(self.context.handle(), handle) };
+        if done != 0 {
+            self.graph_query = None;
+        }
+        Ok(())
     }
 
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {

@@ -113,7 +113,9 @@ INERT_FAMILIES = {
     ),
     "graph-queries": (
         (
-            "get_node_names",
+            # phase-381 W3 — `get_node_names` LEFT this family: zenoh produces
+            # it now, from a standing liveliness query. The rest stay until
+            # their own W3 slots land.
             "get_topic_names_and_types",
             "get_service_names_and_types",
             "get_publisher_names_and_types_by_node",
@@ -123,12 +125,16 @@ INERT_FAMILIES = {
             "get_publishers_info_by_topic",
             "get_subscriptions_info_by_topic",
         ),
-        "introspecting the ROS graph. Cyclone's `graph.cpp` PUBLISHES this node's "
-        "participant info so other nodes can see it, and that is the half an "
-        "embedded image needs; reading the graph back means holding a discovered "
-        "view of every peer, which is unbounded memory on a target. Reserved, and "
-        "the distinction is worth keeping straight — `graph.cpp` existing has been "
-        "read as these being implemented",
+        "introspecting the ROS graph. NOT a decline any more — phase-381 is "
+        "implementing these, and `get_node_names` has already left this family. "
+        "The old reason here said reading the graph back needs a discovered view "
+        "of every peer and is unbounded memory on a target; issue 0791 refuted "
+        "that (a query-on-demand needs no cache, and we are ALREADY visible in "
+        "the graph while unable to read it, which is the actual defect), and "
+        "phase-381 measured that the reply buffer it would need already exists. "
+        "These are UNIMPLEMENTED-so-far, not reserved, and the distinction is "
+        "worth keeping straight — `graph.cpp` existing has been read as these "
+        "being implemented",
     ),
     "entity-counts": (
         ("count_publishers", "count_subscribers"),

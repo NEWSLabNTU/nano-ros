@@ -735,6 +735,28 @@ impl Ros2Liveliness {
     /// Build a wildcard liveliness keyexpr matching any service-server token
     /// for the given service.
     ///
+    /// phase-381 W3 — wildcard NODE liveliness keyexpr.
+    ///
+    /// Format: `@ros2_lv/<domain_id>/*/*/*/NN/%/*/*` — every field but the
+    /// domain and the entity KIND wildcarded, because "which nodes exist" is a
+    /// question about the whole domain.
+    ///
+    /// Node tokens use the fixed `0/0`, so `*/*` there is broader than we
+    /// declare — deliberately, for the same reason as issue 0890: the peers
+    /// worth enumerating are native `rmw_zenoh_cpp` nodes and their ids are not
+    /// ours to assume.
+    pub fn node_keyexpr_wildcard<const N: usize>(domain_id: u32) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/*/{}/{}/%/*/*",
+                LIVELINESS_PREFIX, domain_id, ENTITY_ANY, ENTITY_NODE
+            ),
+        );
+        key
+    }
+
     /// Phase 108.C.zenoh.4 — wildcard publisher liveliness keyexpr.
     ///
     /// Format: `@ros2_lv/<domain_id>/*/*/*/MP/%/*/*/<topic>/<type>/*/*`

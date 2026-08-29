@@ -39,7 +39,10 @@
 extern crate alloc;
 
 use alloc::boxed::Box;
-use core::{ffi::c_void, marker::PhantomData};
+use core::{
+    ffi::{c_char, c_void},
+    marker::PhantomData,
+};
 
 use nros_rmw::{
     ClientTrait, Publisher, QoSProfile, Rmw, RmwConfig, ServiceTrait, Session, SessionMode,
@@ -346,6 +349,11 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         ping_session: Some(ping_session_trampoline::<R>),
         subscription_supports_in_place: Some(subscription_supports_in_place_trampoline::<R>),
         process_raw_in_place: Some(process_raw_in_place_trampoline::<R>),
+        // phase-381 W3 — graph enumeration. The trait default is
+        // `Unsupported`, so a backend with no graph (XRCE) answers that rather
+        // than an empty one: "cannot tell you" and "nothing is there" are
+        // different answers and W6 keeps them distinguishable.
+        get_node_names: Some(get_node_names_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 
@@ -1241,6 +1249,70 @@ unsafe extern "C" fn ping_session_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
     match Session::ping_session(s, timeout_ms) {
+        Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+/// phase-381 W3 — bridge the C visitor to the Rust `Session::get_node_names`.
+///
+/// The C side hands a `rmw_node_visit_fn` plus an opaque `ctx`; the Rust trait
+/// takes a closure. This wraps the former in the latter, and the strings it
+/// passes are NUL-terminated on the stack because the C contract borrows them
+/// for the call only — no allocation on either side of the seam.
+///
+/// A name that does not fit the stack buffer is SKIPPED rather than truncated:
+/// a truncated node name is a different, plausible node.
+unsafe extern "C" fn get_node_names_trampoline<R: RustBackend>(
+    session: *const NrosRmwSession,
+    visit: Option<
+        unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, *const c_char) -> bool,
+    >,
+    ctx: *mut c_void,
+) -> NrosRmwRet {
+    let Some(visit) = visit else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Some(s) = (unsafe { session_mut::<R::Session>(session.cast_mut()) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+
+    /// Longest node name / namespace this seam will pass through.
+    const NAME_MAX: usize = 256;
+
+    let mut cb = |name: &str, namespace: &str, enclave: Option<&str>| -> bool {
+        let mut name_buf = [0u8; NAME_MAX];
+        let mut ns_buf = [0u8; NAME_MAX];
+        let mut enc_buf = [0u8; NAME_MAX];
+        // `< NAME_MAX`, not `<= `: the buffer must hold the bytes AND the NUL
+        // the C side reads to. Spelled as the strict compare clippy wants
+        // (`int_plus_one`) rather than the `len + 1 <= cap` that says it.
+        if name.len() >= NAME_MAX || namespace.len() >= NAME_MAX {
+            return true; // skip this one, keep enumerating
+        }
+        name_buf[..name.len()].copy_from_slice(name.as_bytes());
+        ns_buf[..namespace.len()].copy_from_slice(namespace.as_bytes());
+        let enc_ptr = match enclave {
+            Some(e) if e.len() < NAME_MAX => {
+                enc_buf[..e.len()].copy_from_slice(e.as_bytes());
+                enc_buf.as_ptr() as *const c_char
+            }
+            // NULL is the contract's "this backend does not track one", which
+            // is what lets one slot answer both `rmw_get_node_names` and
+            // `rmw_get_node_names_with_enclaves`.
+            _ => core::ptr::null(),
+        };
+        unsafe {
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const c_char,
+                ns_buf.as_ptr() as *const c_char,
+                enc_ptr,
+            )
+        }
+    };
+
+    match Session::get_node_names(s, &mut cb) {
         Ok(()) => NROS_RMW_RET_OK,
         Err(e) => ret_from_error(&e),
     }
