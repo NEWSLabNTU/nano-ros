@@ -143,6 +143,73 @@ touch of the leaf's `main.c`.
 Anyone continuing this issue must do that first, or they will measure the old
 binary — as I did.
 
+## ROOT CAUSE OF THE ASSERT, proven under gdb
+
+`gdb-multiarch` against the QEMU guest (`-s -S`), breaking on `__assert_func`:
+
+    #1  _z_wbuf_put
+    #2  __unsafe_z_prepare_wbuf
+    #3  _z_transport_tx_send_n_msg
+    #4  _z_write
+    #5  _z_publisher_put_impl
+    #6  zpico_publish_with_attachment
+
+It fires on `__unsafe_z_prepare_wbuf`'s OWN FIRST WRITE — the stream length
+prefix, `_z_wbuf_put(buf, 0, 0)` — immediately after `_z_wbuf_reset`. The buffer
+comes out of reset with no capacity at position 0.
+
+Why: `_z_wbuf_wrap_bytes` does
+
+    ios->_capacity = ios->_w_pos;   // "Block writing on this ioslice"
+
+and `_z_iosli_reset` clears only the positions:
+
+    static inline void _z_iosli_reset(_z_iosli_t *ios) {
+        ios->_r_pos = 0;
+        ios->_w_pos = 0;            // _capacity NOT restored
+    }
+
+So the truncation is PERMANENT and ratchets the owned slice down on every
+wrap-path publish, until nothing is writable. `_expansion_step` holds the true
+slice size (`_z_wbuf_make` sets it to the requested capacity and makes the first
+slice exactly that big), so it is recoverable.
+
+## Patch, and what it does and does not achieve
+
+In `_z_wbuf_reset`, restore an owned slice's capacity from `_expansion_step`,
+and stop skipping elements after a removal (the `i++`-past-a-shift bug already
+described above).
+
+Measured, three runs each, same reproduction:
+
+    before:  publishes 40, 40, 40   (assert every time, deterministic)
+    after:   publishes 19, 60, 67   (one run reached 67 with NO assert)
+
+So the capacity ratchet is A cause — the failure stops being deterministic — and
+it is NOT the only one. Stated plainly rather than shipped as a fix.
+
+## The remaining fault looks like use-after-free
+
+A later gdb run tripped the FREERTOS assert rather than zenoh-pico's, and the
+argument register held **`0xdeadbeef`** — a poison value, not a pointer. That
+points at freed memory being used, which is a different defect from the capacity
+ratchet and would explain why the two original assertions looked unrelated.
+
+That is the thread to pull next. The reproduction and the tooling are recorded
+below so it can be picked up directly.
+
+## Tooling notes for whoever continues
+
+* `arm-none-eabi-gdb` on this host is BROKEN — `libncursesw.so.5` missing. Use
+  `gdb-multiarch` with `set architecture arm`.
+* zenoh-pico is compiled without DWARF, so fields cannot be evaluated by name;
+  the backtrace above came from symbol names plus AAPCS argument registers
+  (`r0`, `r1`, `r2`).
+* Start the talker with `-s -S` and attach; the listener and router run normally.
+* **Apply the issue-0902 workaround first** or you will debug a stale binary:
+  touch a WATCHED zenoh-pico file (e.g. `src/net/primitives.c`) AND the leaf's
+  own `main.c`, or the edit reaches neither the archive nor the image.
+
 ## Acceptance
 
 * The talker survives a sustained run with a peer attached.
