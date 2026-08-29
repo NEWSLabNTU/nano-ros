@@ -1,5 +1,5 @@
 ---
-id: 879
+id: 887
 title: The macOS qemu dist links Homebrew libs and is not bundled
 status: resolved
 type: bug

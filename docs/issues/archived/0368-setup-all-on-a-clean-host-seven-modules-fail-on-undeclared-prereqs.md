@@ -51,7 +51,7 @@ per-item remedies in doctor. The failures cluster into a few classes.
   it named `libslirp` alone, while a bare `ubuntu:22.04` is missing SEVEN of the
   graph and dies on `libpixman-1.so.0` before slirp is ever reached. The finding
   came from one host that happened to have the other six. macOS followed in
-  `-nros6` (issue 0879, resolved), by a launcher rather than an rpath.
+  `-nros6` (issue 0887, resolved), by a launcher rather than an rpath.
 - **F5 DONE** — `[system.]{python3-dev, libz3, libclang-dev, clang}` (phase-327 W4).
 - **F6 DONE** — `scripts/setup-verus.sh` pins `release/0.2026.06.28.1847ab3` with
   a glibc guard (phase-327 W6).

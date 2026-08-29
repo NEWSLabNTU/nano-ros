@@ -56,7 +56,7 @@ version = "11.0.0-nros6"
 # alone — a bare ubuntu:22.04 was missing SEVEN of the graph and died on
 # libpixman before slirp was ever reached, so the declaration named the wrong
 # library and still made the user install what the tarball can carry.
-# macOS too, by a different mechanism (issue 0879): rewriting a Mach-O
+# macOS too, by a different mechanism (issue 0887): rewriting a Mach-O
 # invalidates its arm64 signature, so the dylibs sit in lib/ behind a launcher
 # that sets DYLD_LIBRARY_PATH — which substitutes by leaf name even for absolute
 # install names. Both builds PROVE the bundle wins rather than assuming it:
