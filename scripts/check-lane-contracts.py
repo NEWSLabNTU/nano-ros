@@ -171,20 +171,64 @@ def workflow_jobs():
 GATING_EVENTS = {"pull_request", "merge_group"}
 
 
+EVENT = r"(?:pull_request|merge_group|push|schedule|workflow_dispatch|workflow_run)"
+# `contains(fromJSON('["a","b"]'), github.event_name)` — the shape every step
+# guard in this repo uses, and the only one that is unambiguous.
+_IN_LIST = re.compile(r"fromJSON\(\s*'\[([^\]]*)\]'\s*\)\s*,\s*github\.event_name")
+# `github.event_name == 'x'` / `!= 'x'` — only when `github.event_name` is the
+# left side. A bare quoted event elsewhere in the expression is NOT a claim
+# about which events run.
+_EQ = re.compile(r"github\.event_name\s*==\s*['\"](" + EVENT + r")['\"]")
+_NE = re.compile(r"github\.event_name\s*!=\s*['\"](" + EVENT + r")['\"]")
+
+
 def _events_of(step_if, wf_events):
-    """Which events this step actually runs on."""
+    """Which events this guard can run on. Over-approximates on purpose.
+
+    phase-396 follow-up. The first version keyed on "the guard mentions an
+    event" and treated `!=` as exclusion unless an `==` appeared anywhere. That
+    is wrong on the one guard that matters most — `pr-checks`'s `check` job:
+
+        always() && (github.event_name != 'pull_request'
+                     || needs.changes.outputs.code == 'true')
+
+    The `==` there is about `needs.changes.outputs.code`, not about an event, so
+    the old rule saw "both operators" and fell through to `named & wf_events`,
+    concluding the job runs on `pull_request` ONLY. It runs on every event, and
+    merely narrows the pull-request case to code-touching diffs.
+
+    So: read only comparisons whose left side IS `github.event_name`, and when
+    an exclusion is OR-ed with anything else, do not treat it as an exclusion —
+    the other arm can still admit the event.
+
+    The bias is deliberate. This feeds "does this lane gate a merge", where
+    over-including costs an extra check and under-including silently drops a
+    gating lane from the contract. Fail toward checking more.
+    """
     if not step_if:
         return set(wf_events)
-    named = set(re.findall(r"'(pull_request|merge_group|push|schedule"
-                           r"|workflow_dispatch|workflow_run)'", step_if))
-    named |= set(re.findall(r'"(pull_request|merge_group|push|schedule'
-                            r'|workflow_dispatch|workflow_run)"', step_if))
-    if not named:
-        return set(wf_events)
-    # `!= 'pull_request'` style negation: everything the workflow has, minus.
-    if "!=" in step_if and "==" not in step_if:
-        return set(wf_events) - named
-    return named & set(wf_events) if wf_events else named
+    g = str(step_if)
+
+    in_list = _IN_LIST.search(g)
+    if in_list:
+        named = set(re.findall(r"['\"](" + EVENT + r")['\"]", in_list.group(1)))
+        if "!" in g[: in_list.start()].rstrip()[-1:]:
+            return set(wf_events) - named
+        return (named & set(wf_events)) or named
+
+    eq = set(_EQ.findall(g))
+    if eq:
+        return (eq & set(wf_events)) or eq
+
+    ne = set(_NE.findall(g))
+    if ne:
+        # An exclusion that is one arm of an `||` does not exclude: the other
+        # arm can admit the event. Only a lone negation narrows.
+        if "||" in g:
+            return set(wf_events)
+        return set(wf_events) - ne
+
+    return set(wf_events)
 
 RUNTIME_RESOLVERS = (
     "require_entry_binary",
@@ -656,17 +700,28 @@ def selftest(verbose=False):
     chk("no `if:` means every event the workflow declares",
         _events_of("", allev) == allev)
     chk("a fromJSON list narrows to exactly those events",
-        _events_of("""if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), x) }}""",
+        _events_of("""if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}""",
                    allev) == {"schedule"})
     chk("a merge_group step is still gating",
-        bool(_events_of("""if: ${{ contains(fromJSON('["merge_group"]'), x) }}""",
+        bool(_events_of("""if: ${{ contains(fromJSON('["merge_group"]'), github.event_name) }}""",
                         allev) & GATING_EVENTS))
     chk("a schedule-only step is NOT gating",
-        not (_events_of("""if: ${{ contains(fromJSON('["schedule"]'), x) }}""",
+        not (_events_of("""if: ${{ contains(fromJSON('["schedule"]'), github.event_name) }}""",
                         allev) & GATING_EVENTS))
-    chk("a `!=` guard subtracts rather than selects",
+    chk("a LONE `!=` guard subtracts rather than selects",
         _events_of("if: ${{ github.event_name != 'pull_request' }}", allev)
         == allev - {"pull_request"})
+    # The guard this got wrong. `pr-checks`'s `check` job runs on EVERY event
+    # and merely narrows the pull-request case to code-touching diffs; the old
+    # rule read "both != and == are present" and concluded pull_request ONLY.
+    chk("an exclusion OR-ed with a non-event condition does NOT exclude",
+        _events_of("if: ${{ always() && (github.event_name != 'pull_request'"
+                   " || needs.changes.outputs.code == 'true') }}", allev) == allev)
+    chk("a quoted event that is not compared to github.event_name is ignored",
+        _events_of("if: ${{ needs.x.outputs.name == 'merge_group' }}", allev) == allev)
+    chk("`github.event_name == 'x'` selects exactly x",
+        _events_of("if: ${{ github.event_name == 'pull_request' }}", allev)
+        == {"pull_request"})
 
     if verbose:
         print(f"\n{ok} passed, {fail} failed")
