@@ -2,7 +2,7 @@
 id: 882
 title: "`cmake --build --target <exe>` DELETES the NuttX kernel it is documented
   to produce — two producers write one path and only one can succeed"
-status: open
+status: resolved
 type: bug
 area: cmake, boards
 related: [issue-0475, issue-0870, phase-385]
@@ -80,6 +80,46 @@ since. Recorded as its own bug because it is one regardless of 0870.
 Found by following the "do not `rm -rf`, find the edge" practice: `ninja -t
 query <exe>` showed `<exe>_build` as an ORDER-ONLY (`||`) dependency, which is
 what prompted looking at who really writes the file.
+
+## Fixed
+
+Two changes that only work together:
+
+* **`BYPRODUCTS` on the copy** (`packages/api/nros-c/cmake/nros-nuttx.cmake`) —
+  names the real producer of `<build>/<name>`, so ninja stops attributing that
+  path to the carrier.
+* **`OUTPUT_NAME "<name>.carrier-do-not-run"` on the carrier** (BOTH board
+  modules) — moves the unbuildable link off the kernel's path.
+
+Verified against the command that destroyed the kernel, on both ports:
+
+    cpp_action_client   rc=0   SURVIVED
+    c_talker            rc=0   SURVIVED
+
+`rc=0`, not merely a harmless failure: with the paths separated and the owner
+declared, ninja no longer needs the carrier's link at all, so the invocation now
+does the right thing (`[1/1] Copying <name> to build directory`). The image still
+runs — `test_rtos_action_e2e` nuttx/C++ passes in 22.6 s.
+
+The two halves are now SELF-ENFORCING rather than a convention: `BYPRODUCTS`
+lives in the shared helper both ports use, so a port that declares it without
+renaming its carrier fails the configure outright with `multiple rules generate
+<name>`. That is exactly how the RISC-V port was found — fixing only ARM turned
+its silent collision into a loud one.
+
+## Migration hazard for anyone with an existing build dir
+
+Once ninja fails at LOAD with `multiple rules generate`, it cannot re-run cmake
+to regenerate itself — the error happens before any rule executes. A stale
+`build.ninja` from a half-updated tree is therefore a dead end that does not
+self-heal.
+
+The escape is a re-configure, NOT a wipe:
+
+    cmake <build-dir>          # re-runs configure from the cached settings
+
+Measured here: `re-configure rc=0`, 4 carrier renames, 0 collisions, and the
+full `just nuttx build-fixtures` then returned 0.
 
 ## Acceptance
 
