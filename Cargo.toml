@@ -197,6 +197,15 @@ exclude = [
     "examples/native/rust/action-client",
     # Phase 233.3 — PX4 XRCE-DDS companion (RFC-0039 Track B). Standalone
     # copy-out; carries a trimmed generated `px4_msgs` under `generated/`.
+    # phase-383 W10.a deleted `examples/workspaces/launch`'s workspace ROOT
+    # when it migrated that workspace to `nros build` (generated roots live
+    # under `build/<coord>/` now). Its two leaves resolved against that root,
+    # so with it gone cargo walks up to THIS manifest and claims them —
+    # "current package believes it's in a workspace when it's not", which broke
+    # `just format` for the whole repo. Sibling migrated workspaces still have
+    # a root, so these two are the only ones stranded. See issue 0894.
+    "examples/workspaces/launch/src/listener_pkg",
+    "examples/workspaces/launch/src/talker_pkg",
     "examples/px4/rust/companion/offboard-companion",
     # Phase 233.4 — fake-PX4 stub publishing /fmu/out/vehicle_odometry so the
     # companion round-trip is CI-able without PX4 SITL. Standalone copy-out.
