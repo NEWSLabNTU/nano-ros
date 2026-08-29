@@ -1790,6 +1790,26 @@ fn use_system_zenoh_pico() -> PathBuf {
 
 /// Build the C shim library
 ///
+/// issue 0899 / 0902 — opt-in DWARF for the vendored C, `NROS_ZPICO_DEBUG=1`.
+///
+/// cc-rs takes `-g` from cargo's `DEBUG`, which comes from the profile — and the
+/// C/C++ example path builds through corrosion, which pins its own profile, so
+/// neither `NROS_CARGO_PROFILE` nor `CMAKE_BUILD_TYPE` nor a `debug =` on a
+/// carve-out reaches it (all three measured: the build still reports
+/// `profile [optimized]`). The result was a debugger that could name
+/// `_z_wbuf_put` and nothing inside it — no line numbers, no `ptype`.
+///
+/// This is deliberately an ENV knob rather than a profile change: it is a
+/// debugging session's tool, and turning it on by default would put DWARF for a
+/// vendored library into every embedded image that links it.
+fn zpico_debug_requested() -> bool {
+    println!("cargo:rerun-if-env-changed=NROS_ZPICO_DEBUG");
+    matches!(
+        std::env::var("NROS_ZPICO_DEBUG").as_deref(),
+        Ok("1") | Ok("true")
+    )
+}
+
 /// Note: For Zephyr, C code is built by Zephyr's build system, not here.
 #[allow(clippy::too_many_arguments)]
 fn build_c_shim(
@@ -1915,6 +1935,9 @@ fn build_c_shim(
     shim.apply_to_cc(&mut build);
 
     build.opt_level(2);
+    if zpico_debug_requested() {
+        build.debug(true);
+    }
     build.compile("zpico");
 }
 
@@ -2176,6 +2199,9 @@ fn build_zenoh_pico_unified(
             build.opt_level_str(level);
         }
         None => {}
+    }
+    if zpico_debug_requested() {
+        build.debug(true);
     }
     if let Some(w) = plat.compile.warnings {
         build.warnings(w);
