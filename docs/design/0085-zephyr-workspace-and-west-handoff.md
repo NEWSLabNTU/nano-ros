@@ -254,6 +254,52 @@ workflow disagreed, and neither error message names a port — the image says
 Zephyr images carrying a locator, 34 set their own (fixtures allocate one) and
 1 rode the default.
 
+## D6 — user extension points stay Zephyr's, and the image adds exactly two
+
+**Decided 2026-08-29, by building one.** The obvious follow-on question to D2
+is what happens when a user adds a driver, a module, or an out-of-tree board.
+The answer falls out of D5 (the application is hand-written) and needs no new
+mechanism, but it was worth proving rather than asserting.
+
+| extension | declared in | ours? |
+| --- | --- | --- |
+| out-of-tree module | `ZEPHYR_EXTRA_MODULES` in the app's `CMakeLists.txt` | no |
+| driver sources | `zephyr_library_sources()` in the module | no |
+| DT bindings, boards, SoCs, arches, snippets | the module's own `zephyr/module.yml` `settings: {dts_root, board_root, soc_root, arch_root, snippet_root, module_ext_root}` | no |
+| per-image Kconfig fragment | `[image.*] conf` | **yes** → `EXTRA_CONF_FILE` |
+| per-image devicetree overlay | `[image.*] conf` (`.overlay`/`.dts`/`.dtsi`) | **yes** → `EXTRA_DTC_OVERLAY_FILE` |
+
+The split is not arbitrary: a module is a property of the APPLICATION and does
+not vary between that application's images, so putting it in an image key
+would be a second place to say one thing. What genuinely varies per image is
+which fragments are merged — which is the `conf` list, and already existed.
+
+**No image key for arbitrary `-D` defines**, deliberately. `west_args` emits
+four variables, all Zephyr's own. A module needing a define sets it in the
+app's `CMakeLists.txt`, which keeps one place to look.
+
+Verified: an out-of-tree module (own Kconfig, driver source gated on it, DT
+overlay declaring `user_widget`, binding shipped from the module's `dts_root`)
+added to `examples/workspaces/rust`'s entry and enabled via the image's `conf`
+built through `nros build` and printed at boot, beside the nano-ros nodes:
+
+```text
+user_extra: out-of-tree driver init, widget-id=42
+<inf> rust: rustapp: nros: zephyr workspace entry up (2 nodes)
+```
+
+`BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(user_widget)))` in the driver is what
+makes it a test: without the overlay reaching the build it fails to compile
+rather than silently skipping. `CONFIG_USER_EXTRA_DRIVER=y` was confirmed in
+the generated `.config`, so the image's fragment reached a Kconfig symbol that
+only the user's module defines.
+
+The scratch module was reverted after the run; the transcript is in
+`book/src/getting-started/integration-zephyr.md`. A permanent worked example
+was deliberately NOT added to `examples/workspaces/rust`: that workspace backs
+fixture rows, and giving it an extra module would change what every one of
+those legs compiles.
+
 ## Evidence
 
 * `zephyr/CMakeLists.txt:68` — `NROS_REPO_DIR = ${CMAKE_CURRENT_LIST_DIR}/..`,

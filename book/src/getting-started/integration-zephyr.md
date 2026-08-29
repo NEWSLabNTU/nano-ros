@@ -402,6 +402,64 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
   Deriving there is a coin flip, so `nros build` refuses and lists the
   candidates rather than picking one.
 
+#### Adding your own drivers, modules and boards
+
+**Everything Zephyr lets you extend, you still extend the Zephyr way.** The
+application `CMakeLists.txt` is yours (RFC-0065 D5) and `nros build` runs
+`west build` against it, so the extension points are untouched:
+
+| you want | you do | `nros build` involvement |
+| --- | --- | --- |
+| an out-of-tree module | `list(APPEND ZEPHYR_EXTRA_MODULES <dir>)` before `find_package(Zephyr)` | none |
+| a driver in that module | `zephyr_library()` + `zephyr_library_sources()`, gated on your own Kconfig | none |
+| its devicetree binding | `dts/bindings/` + `settings: {dts_root: .}` in the module's `zephyr/module.yml` | none |
+| an out-of-tree board / SoC / arch / snippet | the matching `*_root` in the same `module.yml` (`board_root`, `soc_root`, `arch_root`, `snippet_root`, `module_ext_root`) | none |
+| turning your Kconfig on for one image | a `conf` fragment on `[image.*]` | passed as `EXTRA_CONF_FILE` |
+| a devicetree overlay for one image | an `.overlay` in the same `conf` list | passed as `EXTRA_DTC_OVERLAY_FILE` |
+
+Only the last two rows are ours, and they are how an IMAGE differs from its
+siblings — the module itself is a property of the application, not of one
+image, so it belongs in the app's `CMakeLists.txt` where you would have put it
+anyway.
+
+`nros build` passes exactly four things to west — `APPLICATION_CONFIG_DIR`,
+`EXTRA_CONF_FILE`, `EXTRA_DTC_OVERLAY_FILE`, `FILE_SUFFIX`, all Zephyr's own
+variables — and there is deliberately **no image key for arbitrary `-D`
+defines**. If your module needs one, set it in your `CMakeLists.txt`: that
+keeps one place to look for what configures your application.
+
+Verified by building one. An out-of-tree module with its own Kconfig, a driver
+source gated on it, a devicetree overlay declaring a node and a binding shipped
+from the module's `dts_root`, added to `examples/workspaces/rust`'s entry and
+enabled through the image:
+
+```toml
+[image.zephyr]
+conf = ["prj-zenoh.conf", "prj-user-extra.conf", "user-widget.overlay"]
+```
+
+```text
+*** Booting Zephyr OS build v3.7.0 ***
+user_extra: out-of-tree driver init, widget-id=42
+<inf> rust: rustapp: nros: zephyr workspace entry up (2 nodes)
+<inf> rust: talker_pkg: talker publishing chatter seq=0
+```
+
+The driver's `BUILD_ASSERT(DT_NODE_EXISTS(DT_NODELABEL(user_widget)))` is what
+makes that a test rather than a screenshot: without the overlay reaching the
+build, it fails to compile instead of quietly doing nothing.
+
+A mistake in your module surfaces as Zephyr's own error, unmediated — a wrong
+`kconfig:` path in `module.yml` reports
+
+```text
+ERROR: "kconfig" key in …/extra_module/zephyr/module.yml has value
+"../Kconfig" which does not point to a valid Kconfig file.
+```
+
+which is the message you would get from a plain `west build`, because it is a
+plain `west build`.
+
 The transports + `px4-rs` come from the [prerequisites](#prerequisites) step
 (`west update` clones nano-ros but **not** its submodules). With the Zephyr SDK +
 `NROS_STD_MSGS_DIR` exported (also prerequisites), build your app — `nros` on
