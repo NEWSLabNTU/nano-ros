@@ -767,6 +767,66 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+    ///
+    /// `zpico_liveliness_get_start` answers "does anything match"; reading the
+    /// ROS graph needs "WHAT matched", and a liveliness reply carries all of it
+    /// in the keyexpr. Same slot pool, same start/poll shape — poll with
+    /// `zpico_liveliness_get_check`, then read with the two below. Costs no
+    /// extra storage: the slot's reply buffer is dead weight on a liveliness
+    /// query, whose token payload is empty.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_collect_start(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+        _timeout_ms: u32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// How many keyexprs the slot STORED — distinct from
+    /// `zpico_liveliness_get_count`, which reports how many ARRIVED. They differ
+    /// exactly when the buffer could not hold an entry, so comparing the two is
+    /// how a caller learns the enumeration was truncated.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_entry_count(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// Copy stored keyexpr `index` into `out`, NUL-terminated. Returns the byte
+    /// count excluding the NUL, `ZPICO_ERR_INVALID` for a bad handle or index,
+    /// or `ZPICO_ERR_BUFFER` when `cap` cannot hold the entry plus its NUL — a
+    /// short buffer is refused rather than truncated.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_entry(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+        _index: u32,
+        _out: *mut c_char,
+        _cap: usize,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// The PURE half of `zpico_liveliness_entry`: index into a NUL-separated
+    /// run. Split out so the walk is testable WITHOUT a live session, because
+    /// this is where an off-by-one costs a WRONG keyexpr rather than a missing
+    /// one.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_entry_at(
+        _buf: *const u8,
+        _len: usize,
+        _count: u32,
+        _index: u32,
+        _out: *mut c_char,
+        _cap: usize,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// Phase 108.C.zenoh.4-followup — count of liveliness-token
     /// replies on this slot. Used by the subscriber-side
     /// `LivelinessChanged` bridge to surface `alive_count > 1`.

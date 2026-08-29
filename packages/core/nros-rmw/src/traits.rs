@@ -1361,6 +1361,41 @@ pub trait Session {
         let _ = timeout_ms;
         Err(TransportError::Unsupported.into())
     }
+
+    /// phase-381 W3 — enumerate the nodes this session can see.
+    ///
+    /// A VISITOR, not a returned collection, because upstream's
+    /// `rcutils_string_array_t` allocates two levels deep and there is no
+    /// allocator at this seam. A caller-provided buffer is worse than it looks:
+    /// the graph has no bound the CALLER can know. So the backend streams from
+    /// state it already holds, peak extra RAM is one entry, and a caller with a
+    /// bound stops early by returning `false`.
+    ///
+    /// `namespace` and `name` are ROS names. `enclave` is `None` where the
+    /// backend does not track one — which is what lets this one method answer
+    /// both `rmw_get_node_names` and `rmw_get_node_names_with_enclaves`.
+    ///
+    /// Every string is BORROWED for the duration of the call.
+    ///
+    /// **Must not block on the wire, and takes no timeout.** It reports what has
+    /// ALREADY arrived, so the first call after startup legitimately returns a
+    /// partial graph — a backend feeds its view from `drive_io`. Letting this
+    /// block was considered and rejected: it would stall the executor's only
+    /// thread inside an introspection call, on a runtime whose premise is that
+    /// there is no other thread to do the work.
+    ///
+    /// Default body: `Err(Unsupported)` — a backend with no graph (XRCE) says
+    /// so, and the runtime can tell that from an empty graph.
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = visit;
+        Err(TransportError::Unsupported.into())
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See
