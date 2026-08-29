@@ -99,6 +99,9 @@ endif()
 if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_STACKS_IN_DTCM=1)
 endif()
+if(CONFIG_NROS_FAULT_LOG)
+    zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/nros_fault_log.c)
+endif()
 zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c

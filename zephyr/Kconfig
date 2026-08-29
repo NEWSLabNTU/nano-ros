@@ -302,6 +302,39 @@ config NROS_ZEPHYR_TASK_STACK_SIZE
       0 keeps upstream behaviour. Set it to size the zenoh tasks for their own
       deepest call chain, which is the expiry teardown, independently of main.
 
+config NROS_FAULT_LOG
+    bool "Record a post-mortem fault record that survives reset"
+    default n
+    help
+      Override `k_sys_fatal_error_handler` to capture the fault reason, the
+      faulting PC/LR/PSR and the thread NAME into a `.noinit` record, and print
+      it on the next boot.
+
+      This exists because a debugger is not a passive instrument on this class
+      of board. Attaching pyocd's RTT to read the console halts the core often
+      enough that a zenoh session misses its keepalives and expires, and issue
+      0879 then makes that permanent. A fault you can only see by attaching a
+      probe is a fault you have partly caused.
+
+      The handler writes a few stores and nothing else: it runs with interrupts
+      off, on a stack that may be the one that overflowed.
+
+      "Which thread" is the whole question for a stack overflow, so enable
+      CONFIG_THREAD_NAME alongside this or the record says "?".
+
+config NROS_FAULT_LOG_FLASH
+    bool "Also persist the fault record to the storage flash partition"
+    depends on NROS_FAULT_LOG && FLASH && FLASH_MAP
+    default n
+    help
+      Copy the record to flash at the next boot, from thread context where a
+      flash write is safe and a failure can be reported. `.noinit` already
+      survives the reset a fault produces; this adds survival across a power
+      cycle, and costs no SRAM.
+
+      Uses one slot at the start of `storage_partition`. A ring buffer would be
+      a second thing to get wrong while debugging the first.
+
 config NROS_ZEPHYR_STACKS_IN_DTCM
     bool "Place nano-ros task stacks in DTCM"
     default n
