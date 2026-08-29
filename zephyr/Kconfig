@@ -342,6 +342,29 @@ config NROS_FAULT_LOG_FLASH
       Uses one slot at the start of `storage_partition`. A ring buffer would be
       a second thing to get wrong while debugging the first.
 
+config NROS_ZENOH_AUTO_RECONNECT
+    bool "zenoh-pico reopens the session automatically when the transport fails"
+    default y
+    help
+      Maps to Z_FEATURE_AUTO_RECONNECT, which zenoh-pico defaults to 1. Until
+      issue 0882 there was no way for an image to say otherwise.
+
+      Turning it OFF is a diagnostic and a mitigation. The reconnect runs inside
+      `_zp_unicast_failed`, on the lease task, AFTER
+      `_z_common_transport_clear` has destroyed the transport's mutexes and
+      freed the lease task's own handle. On this board that reliably ends in
+
+          ASSERTION FAIL [z_spin_lock_valid(l)]  Invalid spinlock
+
+      with the offending lock inside the nano-ros heap — a mutex used after the
+      allocation holding it was released.
+
+      With this off, a transport failure ends the session instead of trying to
+      rebuild it under itself. That is a real loss of function: nothing
+      re-establishes the link. Prefer fixing the ordering upstream; this exists
+      so an image can choose a clean stop over an unsafe reopen while that
+      fix is pending.
+
 config NROS_ZEPHYR_STACKS_IN_DTCM
     bool "Place nano-ros task stacks in DTCM"
     default n

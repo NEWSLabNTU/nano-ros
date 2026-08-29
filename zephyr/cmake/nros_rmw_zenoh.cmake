@@ -158,6 +158,9 @@ _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_CAN)
 # RFC-0083 — CONFIG_NROS_ZENOH_LINK_ISOTP -> Z_FEATURE_LINK_ISOTP.
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_ISOTP)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_LINK_WS)
+# issue 0882 — CONFIG_NROS_ZENOH_AUTO_RECONNECT -> Z_FEATURE_AUTO_RECONNECT.
+# zenoh-pico defaults it ON and there was no way to say otherwise from an image.
+_nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_AUTO_RECONNECT)
 _nros_configure_zenoh_feature(CONFIG_NROS_ZENOH_RAWETH_TRANSPORT)
 
 # -------------------------------------------------------------------------
