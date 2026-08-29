@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-45 open. One line each — the detail lives in the issue file,
+44 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -87,7 +87,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
 - **#0834** (cmake) — The per-build `nros_cpp_config_generated.h` mirror can reach a state no re-run repairs — only wiping the west build dir recovers it See `0834-*`.
 - **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
-- **#0836** (rmw) — A FreeRTOS/lwIP image receives every small ROS topic and never a fragmented one — a 13 KiB Autoware trajectory never arrives See `0836-*`.
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
