@@ -74,6 +74,7 @@ Two fork commits and one build fix, in that dependency order:
 | `ddsrt`'s heap routed through the funnel | fork `6e2ad36f` |
 | the nested-build path bug that blocked editing `ddsi_config.c` | fork `556f79d4` |
 | the four ddsi sites that called libc directly | fork `8e6ff48a` |
+| one funnel heap for every port, not an arm inside POSIX's | fork `d97a71e2` |
 
 The middle one was not foreseen. `_confgen`'s hash check watches
 `ddsi_config.c`, which is the file two of the bypass edges live in, and its
@@ -108,6 +109,32 @@ and runs: `ddsrt_malloc`/`realloc`/`free` round-trip, then a domain and
 participant created and deleted with a `NetworkInterfaceAddress` config, which
 is what drives the two `ddsi_config.c` sites (its deprecation warning proves the
 path executed). Backend suite 22/22.
+
+### One route, not one per port
+
+The first commit was POSIX-only. It put the funnel arms inside
+`heap/posix/heap.c`, so FreeRTOS kept calling `pvPortMalloc` and ThreadX
+`tx_byte_allocate` — a second allocation route on precisely the ports whose
+heap is genuinely not libc's, which is where the tier promise means something.
+
+`d97a71e2` makes it one implementation: `heap/nros/heap.c` provides the whole
+`ddsrt_*` family on `nros_platform_{alloc,realloc,dealloc}`, and each port's
+own heap.c is compiled out by the same switch. Four identical arms would have
+been four copies of one rule.
+
+The file is in the COMMON source list rather than swapped in per port, because
+`ddsrt` is an INTERFACE library and `ddsrt-internal` compiles the same
+`INTERFACE_SOURCES` — a swap would hand the funnel to idlc and confgen, host
+tools that link no platform layer. The switch being a PRIVATE compile
+definition on `ddsc` is what keeps the two apart. Measured:
+`libddsrt-internal.a` has zero `nros_platform_*` references and its stock posix
+heap still defines the family, so the tools link.
+
+So `sysdeps.c`'s surviving libc `free` is not a hole in the promise. Its block
+is guarded to `__APPLE__ || (__linux && (__GLIBC__ || __UCLIBC__))` and
+`! DDSRT_WITH_FREERTOS`, so it does not exist on any target where the
+platform's heap and libc's differ, and where it does exist it pairs with a
+block `backtrace_symbols` allocated from glibc itself.
 
 **Still open: the XRCE half.** `get_ip_from_iface` was not touched, so the xrce
 row of the table above stands.
