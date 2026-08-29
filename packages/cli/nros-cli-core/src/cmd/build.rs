@@ -563,8 +563,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // W5 — overlays reach Zephyr through EXTRA_CONF_FILE and
                 // APPLICATION_CONFIG_DIR. Never CONF_FILE: that suppresses
                 // Zephyr's own boards/ and socs/ discovery entirely.
-                let overlays = crate::builder::zephyr::resolve(&bringup_dir, &board, &image)
-                    .map_err(|e| eyre::eyre!("{e}"))?;
+                // The application is resolved FIRST: its directory is where a
+                // Zephyr app keeps its own `prj-*.conf`, so the overlay search
+                // needs it (issue 0892).
+                let app = west_application_dir(&image_id, &image, descriptor, &found, &catalog)?
+                    .unwrap_or_else(|| bringup_dir.clone());
+                let overlays =
+                    crate::builder::zephyr::resolve_in(&bringup_dir, Some(&app), &board, &image)
+                        .map_err(|e| eyre::eyre!("{e}"))?;
                 // issue 0892 — Zephyr is not like the other drivers, and the
                 // handoff has to say so.
                 //
@@ -581,8 +587,6 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // command instead of emitting one that cannot work. That last
                 // part is `nros setup --system`'s sudo boundary applied here —
                 // compose the command, hand it over, do not pretend.
-                let app = west_application_dir(&image_id, descriptor, &found, &catalog)
-                    .unwrap_or_else(|| bringup_dir.clone());
                 let mut a = vec!["build".to_string(), "-b".to_string(), board.clone()];
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
@@ -1217,40 +1221,141 @@ fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBl
 /// target, and the failure is west's own "not an application", which names the
 /// directory. Inventing an application here would be worse — RFC-0065 D5 is
 /// explicit that a framework entry's authored Kconfig is not derivable.
+/// The workspace package that IS the framework application for `image_id`.
+///
+/// Two ways a package says it serves a deploy target, and BOTH are load-bearing
+/// because the two languages declare it in different files:
+///
+/// * Rust — `[package.metadata.nros.entry] deploy = "zephyr"` in `Cargo.toml`
+/// * C/C++ — `nano_ros_add_executable(... DEPLOY zephyr)` in `CMakeLists.txt`
+///
+/// Reading only the Rust one was a silent Rust-only restriction: the C, C++,
+/// mixed, realtime-c and realtime-cpp workspaces all have a `zephyr_entry`
+/// declaring `DEPLOY zephyr`, none of them has a `Cargo.toml` for it, so all
+/// five fell through to the bringup directory. That fallback is a real
+/// directory, so nothing errored — west was simply pointed at the wrong place,
+/// and the first thing to notice was a conf fragment "not found" in two paths
+/// that were the same path twice.
+///
+/// Ambiguity is an ERROR, not a first match. `realtime-cpp` has `zephyr_entry`
+/// and `fvp_entry`, both `DEPLOY zephyr`, both on `native_sim/native/64`, for
+/// two images that differ in payload rather than board. Whichever one a scan
+/// returns first is right half the time and silently wrong the other half, so
+/// the image names it (`entry = "fvp_entry"`) and this refuses until it does.
 fn west_application_dir(
     image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     found: &crate::builder::discover::Discovered,
     catalog: &crate::orchestration::board_descriptor::BoardCatalog,
-) -> Option<PathBuf> {
+) -> eyre::Result<Option<PathBuf>> {
     use crate::orchestration::board_descriptor::DeployResolution;
-    let _ = image_id;
+
+    // An explicit `entry` wins outright — it is the answer to the ambiguity
+    // below, so it must not be re-derived or second-guessed.
+    if let Some(name) = &image.entry {
+        let hit = found.packages.iter().find(|p| {
+            p.name.as_str() == name.as_str()
+                || p.dir.file_name().and_then(|n| n.to_str()) == Some(name.as_str())
+        });
+        return match hit {
+            Some(p) => Ok(Some(p.dir.clone())),
+            None => Err(eyre::eyre!(
+                "[image.{image_id}] names entry `{name}`, which is not a package in this \
+                 workspace.\n  Known packages: {}",
+                found
+                    .packages
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        };
+    }
+
+    let mut hits: Vec<PathBuf> = Vec::new();
     for pkg in &found.packages {
-        let Ok(text) = std::fs::read_to_string(pkg.dir.join("Cargo.toml")) else {
+        let Some(deploy) = package_deploy_token(&pkg.dir) else {
             continue;
         };
-        let Ok(doc) = text.parse::<toml::Value>() else {
-            continue;
-        };
-        let Some(deploy) = doc
-            .get("package")
-            .and_then(|p| p.get("metadata"))
-            .and_then(|m| m.get("nros"))
-            .and_then(|n| n.get("entry"))
-            .and_then(|e| e.get("deploy"))
-            .and_then(|d| d.as_str())
-        else {
-            continue;
-        };
-        if let DeployResolution::Board(d) = catalog.resolve_deploy(deploy)
+        if let DeployResolution::Board(d) = catalog.resolve_deploy(&deploy)
             // Identity is the NAME SET: a descriptor has several spellings
             // (`native_sim/native/64`, `zephyr`, …) and two descriptors are the
             // same board when their name lists are.
             && d.names == descriptor.names
             && pkg.dir.join("CMakeLists.txt").is_file()
         {
-            return Some(pkg.dir.clone());
+            hits.push(pkg.dir.clone());
         }
+    }
+
+    match hits.len() {
+        0 => Ok(None),
+        1 => Ok(Some(hits.remove(0))),
+        _ => Err(eyre::eyre!(
+            "[image.{image_id}] matches {} entry packages, so the application cannot be \
+             derived:\n{}\n  Name the one this image builds:\n\n    [image.{image_id}]\n    \
+             entry = \"{}\"",
+            hits.len(),
+            hits.iter()
+                .map(|h| format!("  {}", h.display()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            hits[0]
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("<pkg>")
+        )),
+    }
+}
+
+/// The deploy token a package declares, from whichever file its language uses.
+///
+/// The CMake side is matched textually rather than by evaluating cmake: the
+/// call is authored by hand in a fixed shape (`nano_ros_add_executable(` …
+/// `DEPLOY <token>`), and the alternative — configuring the project to ask it —
+/// costs a cmake run per candidate package during a plan that is supposed to be
+/// cheap enough for `--dry-run`.
+fn package_deploy_token(dir: &std::path::Path) -> Option<String> {
+    if let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml"))
+        && let Ok(doc) = text.parse::<toml::Value>()
+        && let Some(d) = doc
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.get("nros"))
+            .and_then(|n| n.get("entry"))
+            .and_then(|e| e.get("deploy"))
+            .and_then(|d| d.as_str())
+    {
+        return Some(d.to_string());
+    }
+    let text = std::fs::read_to_string(dir.join("CMakeLists.txt")).ok()?;
+    cmake_deploy_token(&text)
+}
+
+/// `DEPLOY <token>` out of a `nano_ros_add_executable`/`nano_ros_entry` call.
+///
+/// Scoped to the call, not to the file: `DEPLOY` also appears in comments
+/// ("`nano_ros_node_register` has no DEPLOY → component-only") and a
+/// file-wide regex would read those as declarations.
+fn cmake_deploy_token(text: &str) -> Option<String> {
+    let mut rest = text;
+    while let Some(i) = rest
+        .find("nano_ros_add_executable(")
+        .or_else(|| rest.find("nano_ros_entry("))
+    {
+        let open = rest[i..].find('(')? + i;
+        let close = rest[open..].find(')')? + open;
+        let call = &rest[open + 1..close];
+        let mut it = call.split_whitespace();
+        while let Some(tok) = it.next() {
+            if tok == "DEPLOY" {
+                if let Some(v) = it.next() {
+                    return Some(v.trim_matches('"').to_string());
+                }
+            }
+        }
+        rest = &rest[close + 1..];
     }
     None
 }
@@ -1732,5 +1837,72 @@ mod zephyr_base_tests {
             "a ZEPHYR_BASE that does not exist is not a Zephyr",
         );
         std::fs::remove_dir_all(&base).ok();
+    }
+}
+
+#[cfg(test)]
+mod west_application_tests {
+    use super::*;
+
+    /// The CMake half of the deploy declaration must be READ, not just the
+    /// Cargo half.
+    ///
+    /// Reading only `Cargo.toml` made the west application resolver silently
+    /// Rust-only: five workspaces (`c`, `cpp`, `mixed`, `realtime-c`,
+    /// `realtime-cpp`) declare their entry with
+    /// `nano_ros_add_executable(... DEPLOY zephyr)` and have no `Cargo.toml`
+    /// for it, so every one of them fell through to the bringup directory —
+    /// a real directory, so nothing errored and west was simply pointed at the
+    /// wrong tree.
+    #[test]
+    fn a_cmake_entry_declares_its_deploy_token() {
+        let text = r#"
+cmake_minimum_required(VERSION 3.20.0)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+nano_ros_add_executable(zephyr_entry
+    BOARD   zephyr
+    LANG    c
+    DEPLOY  zephyr)
+"#;
+        assert_eq!(cmake_deploy_token(text).as_deref(), Some("zephyr"));
+    }
+
+    /// `DEPLOY` in prose is not a declaration.
+    ///
+    /// `examples/workspaces/cpp/src/zephyr_entry/CMakeLists.txt` contains the
+    /// comment "nano_ros_node_register has no DEPLOY → component-only", one
+    /// line above the real call. A file-wide regex reads that as the answer;
+    /// scoping to the call arguments is what makes the difference, so it is
+    /// what gets tested.
+    #[test]
+    fn deploy_in_a_comment_is_not_a_declaration() {
+        let text = r#"
+# nano_ros_node_register has no DEPLOY -> component-only; the sidecar links them.
+nano_ros_add_executable(entry
+    BOARD zephyr
+    DEPLOY zephyr)
+"#;
+        assert_eq!(cmake_deploy_token(text).as_deref(), Some("zephyr"));
+
+        // …and a file with ONLY the comment declares nothing.
+        let comment_only = "# has no DEPLOY zephyr, component-only\n";
+        assert_eq!(cmake_deploy_token(comment_only), None);
+    }
+
+    /// A file with no entry call at all resolves to nothing rather than
+    /// panicking on the `?` chain.
+    #[test]
+    fn a_plain_cmakelists_declares_nothing() {
+        assert_eq!(
+            cmake_deploy_token("project(foo)\nadd_executable(a a.c)\n"),
+            None
+        );
+    }
+
+    /// A quoted token is the same token.
+    #[test]
+    fn a_quoted_deploy_token_is_unquoted() {
+        let text = "nano_ros_entry(e\n    DEPLOY \"zephyr\")\n";
+        assert_eq!(cmake_deploy_token(text).as_deref(), Some("zephyr"));
     }
 }

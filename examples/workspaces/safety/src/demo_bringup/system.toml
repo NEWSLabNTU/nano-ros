@@ -111,4 +111,5 @@ launch = "rust_safety_talker.launch.xml"
 
 [image.zephyr_rust_safety]
 board = "zephyr"
+conf = ["prj-zenoh.conf"]
 launch = "rust_safety.launch.xml"

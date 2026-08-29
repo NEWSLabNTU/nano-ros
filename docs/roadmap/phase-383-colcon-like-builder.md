@@ -461,6 +461,39 @@ found only because these trees are not uniform the way ours are.
       zephyr image through `nros build`, because every zephyr row still goes
       through `west-fixtures.sh`. Until a west application is GENERATED the way
       the cargo and cmake roots are, those rows cannot move.
+
+      **Update 2026-08-29 — the blocker is gone; a zephyr image now builds and
+      RUNS through `nros build`.** No generated west application was needed:
+      RFC-0085 D2 says west calls the workspace build rather than the reverse,
+      so the driver points at the entry package the image already names. Three
+      layers had to be fixed, each hidden behind the previous one:
+
+      1. **the application, for non-Rust entries.** The resolver read
+         `[package.metadata.nros.entry] deploy` from `Cargo.toml` only, so the
+         five C/C++ workspaces — whose entries declare
+         `nano_ros_add_executable(... DEPLOY zephyr)` — fell through to the
+         bringup. It now reads both, and refuses when several packages match
+         (six of fourteen images do; for `[image.zephyr_robot1]` first-match
+         picked the WRONG entry). RFC-0085 D4.
+      2. **the conf fragments.** Searched beside bringup and board dir, never
+         beside the application — which is where a Zephyr app keeps its
+         `prj-<rmw>.conf`, and these entries `FATAL_ERROR` without one. All 14
+         images now declare their overlay. RFC-0085 D5.
+      3. **the locator.** `zephyr/Kconfig` defaulted to `7456` where
+         `just zenohd` and `rmw_zenoh_cpp` both use `7447`, so the built image
+         could not reach the router the flow tells you to start.
+
+      Verified: `nros build demo_bringup:zephyr` in `examples/workspaces/rust`
+      → 1312/1312 → `zephyr.exe` → `talker publishing chatter`, and
+      `ros2 topic echo /chatter --once` → `data: 6`. `examples/workspaces/c`
+      builds the same way (1326/1326). All 14 images resolve to the right
+      application under `--dry-run`.
+
+      **What is still open is only the harness fields.** `west_build_name`,
+      `west_id` and `west_zenoh_locator` are per-ROW isolation (a private build
+      dir and port so parallel legs do not collide), not image properties, so
+      retargeting the 14 rows means deciding where those live — RFC-0085's
+      remaining open item, not a missing capability.
 - [x] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
       `cmake/` and codegen, so **`just ci-matrix`** at minimum.
 

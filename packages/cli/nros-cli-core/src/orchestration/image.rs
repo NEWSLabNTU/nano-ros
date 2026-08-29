@@ -110,6 +110,24 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conf: Vec<String>,
 
+    /// The workspace package that IS this image's framework application —
+    /// the directory a framework driver is pointed at (for Zephyr, the one
+    /// holding the `CMakeLists.txt` west builds).
+    ///
+    /// Normally UNSET and derived: an entry package declares the deploy token
+    /// it serves (`[package.metadata.nros.entry] deploy` in Cargo.toml,
+    /// `nano_ros_add_executable(... DEPLOY <token>)` in CMakeLists.txt), and
+    /// exactly one package in the workspace claims a given board.
+    ///
+    /// Set it when that is AMBIGUOUS. `examples/workspaces/realtime-cpp` has
+    /// two — `zephyr_entry` and `fvp_entry`, both `DEPLOY zephyr`, both on
+    /// `native_sim/native/64` — for two images that differ in what they
+    /// deploy, not in which board they target. Deriving there is a coin flip
+    /// between two right-looking answers, so the resolver refuses and names
+    /// the candidates instead of picking one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
+
     /// Capability axes for this image, over the system's own list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
@@ -143,6 +161,10 @@ impl ImageBlock {
             ros_edition: pick(&self.ros_edition, &base.ros_edition),
             profile: pick(&self.profile, &base.profile),
             variant: pick(&self.variant, &base.variant),
+            // Scalar, so it replaces: a base naming an entry is a default for
+            // the images that do not name one, and an image that does is
+            // making a choice the base cannot have made for it.
+            entry: pick(&self.entry, &base.entry),
             // Lists CONCATENATE base-then-specific: conf fragments are ordered
             // and later ones override earlier, which is exactly Zephyr's
             // CONF_FILE semantics. A specific block extends the base set rather

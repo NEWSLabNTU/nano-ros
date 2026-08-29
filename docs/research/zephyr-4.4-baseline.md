@@ -181,7 +181,7 @@ are untouched, awaiting the not-yet-version-gated `build-fixtures` path.
 ## E2E proof — 4.4 zenoh pub/sub over NSOS (2026-05-25)
 
 Ran c/talker → c/listener on Zephyr 4.4 (`native_sim/native/64`, NSOS host
-loopback) through the ROS router on `tcp/127.0.0.1:7456` (the default
+loopback) through the ROS router on `tcp/127.0.0.1:7447` (the default
 zephyr locator). Subscriber-first, 6 s stabilization. **Result: PASS** —
 talker published 0..15, listener received 0..15 (16/16). Confirms the 4.4
 zenoh native_sim line does real pub/sub at runtime, not just build/boot:

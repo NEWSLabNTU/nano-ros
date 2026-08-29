@@ -226,8 +226,12 @@ board = "threadx-linux"
 
 [image.zephyr]
 board = "native_sim/native/64"
+entry = "zephyr_entry"
+conf = ["prj-zenoh.conf"]
 
 [image.zephyr_robot1]
 board = "native_sim/native/64"
+entry = "zephyr_entry_robot1"
+conf = ["prj-zenoh.conf"]
 launch = "multihost.launch.xml"
 args = { host = "robot1" }

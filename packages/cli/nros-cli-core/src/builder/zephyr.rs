@@ -84,6 +84,30 @@ pub fn resolve(
     board: &str,
     image: &ImageBlock,
 ) -> Result<ZephyrOverlays, String> {
+    resolve_in(bringup_dir, None, board, image)
+}
+
+/// [`resolve`] with the west APPLICATION directory too.
+///
+/// issue 0892 / RFC-0085. `conf` fragments live beside the thing they configure,
+/// and on Zephyr that is the APPLICATION — `src/zephyr_entry/prj-zenoh.conf`,
+/// next to the `CMakeLists.txt` west is pointed at. Resolving only against the
+/// bringup was the assumption that the bringup IS the app, which the west
+/// driver's fix removed: a `conf = ["prj-zenoh.conf"]` on the image reported
+///
+/// ```text
+/// conf fragment `prj-zenoh.conf` not found. Looked in:
+///   …/src/demo_bringup/boards/native_sim_native_64/prj-zenoh.conf
+///   …/src/demo_bringup/prj-zenoh.conf
+/// ```
+///
+/// while the file sat in the entry package all along.
+pub fn resolve_in(
+    bringup_dir: &Path,
+    app_dir: Option<&Path>,
+    board: &str,
+    image: &ImageBlock,
+) -> Result<ZephyrOverlays, String> {
     let mut out = ZephyrOverlays::default();
 
     // The board's config directory. Zephyr takes prj.conf, boards/* and socs/*
@@ -102,7 +126,7 @@ pub fn resolve(
     // The image's own fragments (F3: per-image, not per-board — rt-eval builds
     // one app on one board twice, differing only here).
     for name in &image.conf {
-        let path = resolve_fragment(bringup_dir, &config_dir, name)?;
+        let path = resolve_fragment(bringup_dir, app_dir, &config_dir, name)?;
         if is_devicetree(&path) {
             out.extra_dtc_overlay_file.push(path);
         } else {
@@ -114,17 +138,33 @@ pub fn resolve(
 
 /// Where a named fragment lives: beside the board config first, then relative
 /// to the bringup package.
-fn resolve_fragment(bringup_dir: &Path, config_dir: &Path, name: &str) -> Result<PathBuf, String> {
-    let candidates = [config_dir.join(name), bringup_dir.join(name)];
+fn resolve_fragment(
+    bringup_dir: &Path,
+    app_dir: Option<&Path>,
+    config_dir: &Path,
+    name: &str,
+) -> Result<PathBuf, String> {
+    // Board config dir, then the application (where a Zephyr app keeps its own
+    // `prj-*.conf`), then the bringup. The application rung is the one issue
+    // 0892 needed: west is pointed at the entry package, and its fragments live
+    // there.
+    let mut candidates = vec![config_dir.join(name)];
+    if let Some(app) = app_dir {
+        candidates.push(app.join(name));
+    }
+    candidates.push(bringup_dir.join(name));
     for c in &candidates {
         if c.is_file() {
             return Ok(c.clone());
         }
     }
     Err(format!(
-        "conf fragment `{name}` not found. Looked in:\n  {}\n  {}",
-        candidates[0].display(),
-        candidates[1].display()
+        "conf fragment `{name}` not found. Looked in:\n{}",
+        candidates
+            .iter()
+            .map(|c| format!("  {}", c.display()))
+            .collect::<Vec<_>>()
+            .join("\n")
     ))
 }
 
@@ -193,6 +233,80 @@ mod tests {
             conf: conf.iter().map(|s| (*s).to_string()).collect(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn a_fragment_beside_the_application_resolves() {
+        // issue 0892 / RFC-0085. A Zephyr app keeps its own `prj-*.conf` next
+        // to the `CMakeLists.txt` west is pointed at, and once the west driver
+        // stopped assuming the bringup IS the app, an image naming one of them
+        // could no longer find it:
+        //
+        //   conf fragment `prj-zenoh.conf` not found. Looked in:
+        //     …/src/demo_bringup/boards/native_sim_native_64/prj-zenoh.conf
+        //     …/src/demo_bringup/prj-zenoh.conf
+        //
+        // while the file sat in `src/zephyr_entry/` the whole time. This is
+        // the real shape: `examples/workspaces/rust` keeps all four
+        // `prj-<rmw>.conf` in the entry package, and its hand-written
+        // CMakeLists FATAL_ERRORs without one, so the workspace could not
+        // build through `nros build` at all.
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("src/demo_bringup");
+        let app = tmp.path().join("src/zephyr_entry");
+        touch(&app.join("prj-zenoh.conf"));
+
+        let o = resolve_in(
+            &bringup,
+            Some(&app),
+            "native_sim/native/64",
+            &image(&["prj-zenoh.conf"]),
+        )
+        .expect("a fragment beside the application resolves");
+        assert_eq!(o.extra_conf_file, vec![app.join("prj-zenoh.conf")]);
+    }
+
+    #[test]
+    fn the_board_config_dir_still_wins_over_the_application() {
+        // Precedence is unchanged by the rung above: a board-specific
+        // fragment is the more specific answer, and adding the application to
+        // the search must not let a generic copy shadow it.
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("bringup");
+        let app = tmp.path().join("app");
+        let board_dir = bringup.join("boards/native_sim_native_64");
+        touch(&board_dir.join("prj-zenoh.conf"));
+        touch(&app.join("prj-zenoh.conf"));
+
+        let o = resolve_in(
+            &bringup,
+            Some(&app),
+            "native_sim/native/64",
+            &image(&["prj-zenoh.conf"]),
+        )
+        .expect("resolves");
+        assert_eq!(o.extra_conf_file, vec![board_dir.join("prj-zenoh.conf")]);
+    }
+
+    #[test]
+    fn a_missing_fragment_names_every_place_looked() {
+        // The error is the whole diagnostic for this class — it is what turned
+        // 0892's second layer from a guess into a two-minute fix — so it must
+        // list the application rung too, not silently search it.
+        let tmp = tempfile::tempdir().unwrap();
+        let bringup = tmp.path().join("bringup");
+        let app = tmp.path().join("app");
+        std::fs::create_dir_all(&app).unwrap();
+
+        let err = resolve_in(
+            &bringup,
+            Some(&app),
+            "native_sim/native/64",
+            &image(&["prj-zenoh.conf"]),
+        )
+        .expect_err("a fragment that exists nowhere is an error");
+        assert!(err.contains(&app.display().to_string()), "{err}");
+        assert!(err.contains(&bringup.display().to_string()), "{err}");
     }
 
     #[test]

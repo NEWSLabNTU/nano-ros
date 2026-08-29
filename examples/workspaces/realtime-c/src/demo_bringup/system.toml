@@ -203,3 +203,4 @@ board = "nuttx-qemu-riscv"
 
 [image.zephyr]
 board = "native_sim/native/64"
+conf = ["prj-zenoh.conf"]
