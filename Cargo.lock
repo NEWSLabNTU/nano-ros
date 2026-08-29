@@ -1816,15 +1816,6 @@ name = "nros-ghost-types"
 version = "0.5.0"
 
 [[package]]
-name = "nros-launch-parser"
-version = "0.5.0"
-dependencies = [
- "eyre",
- "nros-pkg-index",
- "quick-xml",
-]
-
-[[package]]
 name = "nros-lifecycle-msgs"
 version = "0.5.0"
 dependencies = [
@@ -1847,7 +1838,6 @@ dependencies = [
 name = "nros-macros"
 version = "0.5.0"
 dependencies = [
- "nros-launch-parser",
  "nros-orchestration-ir",
  "nros-pkg-index",
  "proc-macro2",
