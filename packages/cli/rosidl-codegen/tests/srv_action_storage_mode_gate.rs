@@ -120,7 +120,7 @@ fn the_inline_service_emitter_supports_heap_too() {
 #[test]
 fn borrowed_service_payload_gets_a_view_type() {
     let rs = gen_srv(&resolver(
-        r#""test_msgs/Adder_Response.summary" = { cap = 8, mode = "borrowed" }"#,
+        r#""test_msgs/Adder_Response.summary" = { cap = 8, mode = "view" }"#,
     ))
     .expect("borrowed on a service payload is supported since 0346");
 

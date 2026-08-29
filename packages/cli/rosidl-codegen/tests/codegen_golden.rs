@@ -195,7 +195,7 @@ fn corpus_emits_every_language_and_entity() {
         "Probe.action",
         "Shapes",
         "Nested", // entities
-        "owned/",
+        "inline/",
         "configured/", // storage-mode variants
     ] {
         assert!(

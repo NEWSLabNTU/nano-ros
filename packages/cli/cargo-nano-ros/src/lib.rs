@@ -218,6 +218,7 @@ pub fn generate_from_package_xml(config: GenerateConfig) -> Result<()> {
         manifest_dir,
         None,
     )?;
+    resolver.report_deprecations();
 
     if config.verbose {
         println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
@@ -781,6 +782,7 @@ pub fn generate_bindings(config: BindgenConfig) -> Result<()> {
     // (`generate_from_package_xml`) discovers from the manifest directory.
     let resolver =
         rosidl_codegen::CapacityResolver::discover(&config.output_dir, None).unwrap_or_default();
+    resolver.report_deprecations();
     let result = generator::generate_package(
         &package,
         &config.output_dir,
@@ -842,6 +844,7 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
         &args.output_dir,
         None,
     )?;
+    resolver.report_deprecations();
 
     if config.verbose {
         println!("Generating C bindings for package: {}", args.package_name);
@@ -1019,6 +1022,7 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
         manifest_dir,
         None,
     )?;
+    resolver.report_deprecations();
 
     if config.verbose {
         println!("Package: {} v{}", pkg_xml.name, pkg_xml.version);
@@ -1440,6 +1444,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
         &args.output_dir,
         None,
     )?;
+    resolver.report_deprecations();
 
     if config.verbose {
         println!("Generating C++ bindings for package: {}", args.package_name);

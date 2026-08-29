@@ -49,7 +49,7 @@ const CODEGEN_TOML: &str = include_str!("../tests/fixtures/fingerprint-corpus/nr
 /// which have their own emitter arms and must move the fingerprint when they
 /// change.
 fn resolvers() -> Vec<(&'static str, CapacityResolver)> {
-    let mut v = vec![("owned", CapacityResolver::empty())];
+    let mut v = vec![("inline", CapacityResolver::empty())];
     if let Ok(r) = CapacityResolver::from_toml_str(CODEGEN_TOML) {
         v.push(("configured", r));
     }

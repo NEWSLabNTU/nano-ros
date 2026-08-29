@@ -184,7 +184,7 @@ pub struct NrosField {
     /// `nros_core::heap::{Vec, String}` rather than a fixed-capacity `heapless`
     /// container. Changes the deserialize codegen (growable, no `CapacityExceeded`).
     pub is_heap: bool,
-    /// RFC-0033 `mode = "borrowed"` (Phase 229.6, issue 0007) — in the generated
+    /// RFC-0033 `mode = "view"` (Phase 229.6, issue 0007) — in the generated
     /// borrowed *view* (`{Msg}View<'a>`), this field is a zero-copy slice
     /// borrowing the receive buffer rather than an owned container. The owned
     /// `{Msg}` struct still renders this field with [`rust_type`](Self::rust_type)
@@ -218,7 +218,7 @@ pub struct MessageNrosTemplate<'a> {
     /// True if any field is a large array (> 32 elements), requiring manual Default impl
     pub has_large_array: bool,
     /// RFC-0033 `borrowed` mode (Phase 229.6): true if any field resolves to
-    /// `mode = "borrowed"`, which additionally emits a `{Msg}View<'a>` zero-copy
+    /// `mode = "view"`, which additionally emits a `{Msg}View<'a>` zero-copy
     /// view + a `{Msg}Borrow` marker alongside the owned `{Msg}`.
     pub has_borrowed: bool,
     /// When true, uses nros_core:: prefixed imports instead of direct use statements
@@ -437,7 +437,7 @@ pub struct CField {
     /// pattern) rather than an inline fixed-capacity buffer. The deserialize
     /// codegen mallocs; `<struct>_fini` frees.
     pub is_heap: bool,
-    /// RFC-0033: `mode = "borrowed"` (Phase 235, issue 0021). The owned
+    /// RFC-0033: `mode = "view"` (Phase 235, issue 0021). The owned
     /// `{Msg}` struct keeps a fixed-capacity container for the publish path;
     /// the additionally-emitted `{Msg}_View` borrows this field zero-copy via
     /// [`borrowed_c_type`](Self::borrowed_c_type) /
@@ -474,7 +474,7 @@ pub struct MessageCHeaderTemplate<'a> {
     pub dependencies: Vec<String>,
     pub type_includes: Vec<String>,
     pub has_fields: bool,
-    /// RFC-0033 borrowed (Phase 235): any field is `mode = "borrowed"`, so the
+    /// RFC-0033 borrowed (Phase 235): any field is `mode = "view"`, so the
     /// `{Msg}_View` + `{Msg}_deserialize_borrowed` + `<nros/borrowed.h>` include
     /// are emitted.
     pub has_borrowed: bool,
@@ -648,7 +648,7 @@ pub struct CppFfiField {
     /// The element's repr(C) type (e.g. `u8`, `f32`) — used by the heap
     /// deserialize codegen for `size_of::<T>()` and the `*mut T` cast.
     pub element_repr_type: String,
-    /// RFC-0033 `mode = "borrowed"` (Phase 235). The `{Msg}ViewRepr` FFI struct
+    /// RFC-0033 `mode = "view"` (Phase 235). The `{Msg}ViewRepr` FFI struct
     /// stores this field as `nros_cpp_borrow_t`; `{Msg}_ffi_deserialize_borrowed`
     /// fills it via [`borrowed_reader_call`](Self::borrowed_reader_call).
     pub is_borrowed: bool,
@@ -672,7 +672,7 @@ pub struct CppField {
     pub is_heap: bool,
     pub cap: Option<usize>,
     pub current_package: String,
-    /// RFC-0033 `mode = "borrowed"` (Phase 235): emitted in `{Msg}View`.
+    /// RFC-0033 `mode = "view"` (Phase 235): emitted in `{Msg}View`.
     pub is_borrowed: bool,
     /// Borrowed view type for `{Msg}View` (`nros::StringView` / `Span<T>` /
     /// `LeSpan<T>`). Empty unless [`is_borrowed`](Self::is_borrowed).
@@ -712,7 +712,7 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub has_fields: bool,
     pub serialized_size_max: usize,
     /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_borrowed`
-    /// + `<nros/span.hpp>` when any field is `mode = "borrowed"`.
+    /// + `<nros/span.hpp>` when any field is `mode = "view"`.
     pub has_borrowed: bool,
     /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_borrowed`).
     pub ffi_deserialize_borrowed_fn: String,
