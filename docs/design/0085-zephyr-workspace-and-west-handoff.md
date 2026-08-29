@@ -228,6 +228,106 @@ now declare their RMW overlay, which is what their hand-written CMakeLists
 already required (`FATAL_ERROR "… requires an RMW overlay"`) and what the
 fixture rows already said as `conf_files`.
 
+## D7 — the board is a NAME on a descriptor, not a free-form west argument
+
+`[image.*] board` does two jobs from one string. It is passed to `west build
+-b` verbatim, AND it is resolved against nano-ros's board catalog, where a
+descriptor carries a **name set**:
+
+```toml
+# packages/boards/zephyr/nros-board.toml
+names = ["zephyr", "native_sim/native/64"]
+platform = "zephyr"
+entry_kind = "zephyr-staticlib"
+```
+
+So the Zephyr board target is one spelling of a nano-ros board. It is not
+free-form, and a board the catalog does not know is refused with the list:
+
+```console
+$ nros build demo_bringup:zephyr        # board = "qemu_cortex_m3"
+Error: `[image.zephyr] board = "qemu_cortex_m3"` matches no board.
+Known boards: … native_sim/native/64, … zephyr.
+Out-of-tree boards are added through `$NROS_EXTRA_BOARD_PATH`.
+```
+
+**Why gated rather than passed through.** The `-b` string is one field of a
+descriptor that also supplies the platform, the toolchain channel, the entry
+kind, the declared capabilities, the supported netstacks and the priority plan.
+Accepting an unknown board would mean building with a descriptor nobody wrote —
+the fields would have to be defaulted, and a default capability set is a claim
+about hardware.
+
+**Adding one takes no repo edit.** `$NROS_EXTRA_BOARD_PATH` is PATH-style and
+names roots shaped like `packages/boards/` — immediate subdirectories carrying
+`nros-board.toml`. Verified by doing it:
+
+```console
+$ cp packages/boards/zephyr/nros-board.toml ~/myboards/qemu-cortex-m3/
+$ # names = ["qemu-cortex-m3", "qemu_cortex_m3"]
+$ NROS_EXTRA_BOARD_PATH=~/myboards nros build demo_bringup:zephyr --dry-run
+nros build: demo_bringup:zephyr -> board qemu_cortex_m3 (platform zephyr)
+… west build -b qemu_cortex_m3 …/src/zephyr_entry -- -DEXTRA_CONF_FILE=…
+```
+
+An out-of-tree Zephyr BOARD DEFINITION (the devicetree, the `board.yml`) is a
+separate thing and stays Zephyr's, contributed through the module's
+`board_root` — D6's table. This descriptor is what nano-ros needs to know
+about it.
+
+## D8 — `ZEPHYR_BASE` and `NROS_ZEPHYR_WORKSPACE` are not redundant; they belong
+## to different PHASES
+
+They name directories one level apart, which makes them look like two spellings
+of one fact. They are not, and the reason is temporal rather than structural.
+
+| | names | owned by | live during |
+| --- | --- | --- | --- |
+| `ZEPHYR_BASE` | the Zephyr tree | **Zephyr** | the build |
+| `NROS_ZEPHYR_WORKSPACE` | the workspace root | **us** | setup |
+
+**Setup names a directory that does not contain a Zephyr yet.** That is the
+argument that settles it: `scripts/zephyr/setup.sh` ends at
+
+```sh
+west init -l --mf "$MANIFEST" "$WORKSPACE_DIR/$NANO_ROS_NAME"
+```
+
+`WORKSPACE_DIR` is where the workspace is about to be CREATED. There is no
+`zephyr/` beneath it at that moment, so `ZEPHYR_BASE` cannot express the
+destination — it would have to point at something that does not exist.
+
+**The root also carries non-Zephyr siblings.** `just/zephyr.just` builds
+`ZEPHYR_WORKSPACE / ".venv312/bin"` for the 4.4 line; that venv is a property
+of the workspace, not of Zephyr.
+
+**And `ZEPHYR_BASE` is not ours to replace.** It is Zephyr's own variable,
+already exported by `zephyr-env.sh` and by every Zephyr CI setup. Ignoring it
+would break the promise that this is a plain west build.
+
+**Deriving one from the other works only where D1 says it must not be
+required.** `west topdir` recovers the root from `ZEPHYR_BASE` — measured, run
+from an unrelated directory — but only when a `.west/` exists above it:
+
+```console
+$ ZEPHYR_BASE=<ws>/zephyr west topdir          # a real west workspace
+<ws>
+
+$ ZEPHYR_BASE=<no-.west>/zephyr west topdir    # freestanding
+… - Run "west init -h" for additional information.
+```
+
+The second case is exactly the freestanding application D1 relies on, so the
+root is not recoverable in general. Nothing in the tree guesses it by taking
+the parent of `ZEPHYR_BASE` — checked, and it should stay that way, because a
+manifest may place Zephyr anywhere.
+
+**So: keep both, and state the division.** `ZEPHYR_BASE` is the build's input;
+`NROS_ZEPHYR_WORKSPACE` is setup's. `nros build` reads the second only as a
+convenience rung, so a user who ran `just zephyr setup` does not have to export
+the first as well. That is the whole of the overlap, and it buys one less thing
+to remember rather than a second source of truth.
+
 ## Verified end to end
 
 `examples/workspaces/rust`, 2026-08-29, on this tree:

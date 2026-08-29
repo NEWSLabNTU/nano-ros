@@ -393,6 +393,8 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
   the bringup — the app rung matters because a Zephyr app keeps its
   `prj-<rmw>.conf` next to the `CMakeLists.txt` west builds. These entries
   `FATAL_ERROR` without an RMW overlay, so the image has to say which one.
+* **`board`** is the Zephyr board target — and also a name nano-ros must know.
+  See below.
 * **`entry`** names the application package. Normally leave it out: an entry
   declares the deploy target it serves — `[package.metadata.nros.entry] deploy`
   in `Cargo.toml`, `nano_ros_add_executable(... DEPLOY zephyr)` in
@@ -401,6 +403,37 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
   `DEPLOY zephyr`, on the same board, for two images that differ in payload).
   Deriving there is a coin flip, so `nros build` refuses and lists the
   candidates rather than picking one.
+
+#### Which boards you can name
+
+`board` does two jobs from one string: it is passed to `west build -b`
+verbatim, and it is looked up in nano-ros's board catalog, where a descriptor
+carries a set of names:
+
+```toml
+names = ["zephyr", "native_sim/native/64"]
+```
+
+So it is not free-form. A board the catalog does not know is refused with the
+list of ones it does, because the descriptor supplies more than the `-b` string
+— the platform, the toolchain, the entry kind, the declared capabilities. There
+is no safe default for those.
+
+**Adding a board needs no edit to nano-ros.** `$NROS_EXTRA_BOARD_PATH` is
+PATH-style and names directories shaped like `packages/boards/` — each
+immediate subdirectory holding an `nros-board.toml`:
+
+```bash
+mkdir -p ~/myboards/my-board
+# names = ["my-board", "<the west board target>"] …
+export NROS_EXTRA_BOARD_PATH=~/myboards
+nros build demo_bringup:zephyr
+```
+
+`nros new board <name> --for-platform zephyr` scaffolds one. Note this is the
+*nano-ros* descriptor; an out-of-tree Zephyr board **definition** (its
+devicetree and `board.yml`) is contributed the Zephyr way, through your
+module's `board_root`.
 
 #### Adding your own drivers, modules and boards
 
