@@ -245,7 +245,7 @@ const nros_rmw_vtable_t kVtable = {
      * callback into those listeners is a follow-up (lives in the
      * listener-installation path, not this static vtable). nullptr
      * today; runtime drains on deadline-bound cv-wait boundary. */
-    /*set_wake_callback*/         nullptr,
+    /*set_wake_callback*/         session_set_wake_callback,
 
     /* Phase 124.A — zero-copy ABI. Cyclone DDS supports loan via
      * dds_loan_sample / dds_return_loan; wire-up is a follow-up

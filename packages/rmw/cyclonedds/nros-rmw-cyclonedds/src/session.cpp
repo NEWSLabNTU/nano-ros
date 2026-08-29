@@ -47,6 +47,12 @@ struct SessionState {
     dds_entity_t domain{0};
     dds_entity_t participant{0};
     GraphState graph{};  // Phase 177.36 — ros_discovery_info publisher state
+    /* Phase 124.B.1 wake path (issue 0889). Written by
+     * `session_set_wake_callback` on the runtime thread, read by
+     * `on_data_available` on a Cyclone worker thread. */
+    void (*wake_cb)(void *){nullptr};
+    void *wake_ctx{nullptr};
+    dds_listener_t *listener{nullptr};
 };
 
 inline SessionState* as_state(rmw_session_t* s) {
@@ -162,6 +168,89 @@ constexpr const char* kEmbeddedCycloneConfig =
 
 } // namespace
 
+namespace {
+
+/// Cyclone calls this from its own receive/delivery thread the moment a reader
+/// has data. Handing that to the executor is the WHOLE point: without it
+/// `spin_once` has no asynchronous wake and its wait degenerates to a blind
+/// sleep, so the runtime polls on a timer and mostly misses (measured on the
+/// an536 lane: 5,069 takes per reader for 42 deliveries, a 0.8% hit rate).
+///
+/// Safe to call from a foreign thread by contract: the runtime callback does a
+/// flag write plus a condvar signal and nothing else. That is what separates
+/// this from the STATUS-event listeners `subscriber.cpp` deliberately declines
+/// — those would need a buffer, a lock, and a safe context to deliver into.
+void on_data_available(dds_entity_t /*reader*/, void *arg) {
+    auto *state = static_cast<SessionState *>(arg);
+    if (state == nullptr) {
+        return;
+    }
+    /* Read once: a concurrent clear could otherwise null it between the test
+     * and the call. */
+    void (*cb)(void *) = state->wake_cb;
+    void *ctx = state->wake_ctx;
+    if (cb != nullptr) {
+        cb(ctx);
+    }
+}
+
+} // namespace
+
+rmw_ret_t session_set_wake_callback(rmw_session_t* session,
+                                    void (*cb)(void*),
+                                    void* ctx) {
+    if (session == nullptr || session->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    auto* state = as_state(session);
+
+    if (cb == nullptr) {
+        /* Detach FIRST, then drop the stored pair: after `dds_set_listener`
+         * returns with no data_available handler, Cyclone will not call us
+         * again, so nothing can observe the half-cleared state. */
+        if (state->listener != nullptr) {
+            (void)dds_set_listener(state->participant, nullptr);
+            dds_delete_listener(state->listener);
+            state->listener = nullptr;
+        }
+        state->wake_cb = nullptr;
+        state->wake_ctx = nullptr;
+        return NROS_RMW_RET_OK;
+    }
+
+    /* Publish the pair BEFORE the listener exists, so the first callback
+     * cannot see a null cb. */
+    state->wake_ctx = ctx;
+    state->wake_cb = cb;
+
+    if (state->listener == nullptr) {
+        state->listener = dds_create_listener(state);
+        if (state->listener == nullptr) {
+            state->wake_cb = nullptr;
+            state->wake_ctx = nullptr;
+            return NROS_RMW_RET_ERROR;
+        }
+        /* On the PARTICIPANT, not per reader: DDS propagates an unhandled
+         * event up to the parent, so one listener covers every reader this
+         * session will ever create, including ones created later. Readers set
+         * no data_available handler of their own (subscriber.cpp polls), so
+         * nothing is being overridden.
+         *
+         * reset_on_invoke = false: this is a level signal, not a one-shot. The
+         * executor may still be draining an earlier batch when the next one
+         * lands, and it must be woken again. */
+        dds_lset_data_available_arg(state->listener, on_data_available, state, false);
+        if (dds_set_listener(state->participant, state->listener) < 0) {
+            dds_delete_listener(state->listener);
+            state->listener = nullptr;
+            state->wake_cb = nullptr;
+            state->wake_ctx = nullptr;
+            return NROS_RMW_RET_ERROR;
+        }
+    }
+    return NROS_RMW_RET_OK;
+}
+
 rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,
                             const char* node_name, const rmw_session_options_t* options,
                             rmw_session_t* out) {
@@ -264,6 +353,12 @@ GraphState* session_graph(rmw_session_t* session) {
 }
 
 rmw_ret_t session_destroy(rmw_session_t* session) {
+    /* Drop the wake path before anything it points at goes away — the ctx
+     * belongs to the executor, and Cyclone must stop calling us first. */
+    if (session != nullptr && session->backend_data != nullptr) {
+        (void)session_set_wake_callback(session, nullptr, nullptr);
+    }
+
     if (session == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
