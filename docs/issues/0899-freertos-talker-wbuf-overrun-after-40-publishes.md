@@ -143,7 +143,12 @@ touch of the leaf's `main.c`.
 Anyone continuing this issue must do that first, or they will measure the old
 binary — as I did.
 
-## ROOT CAUSE OF THE ASSERT, proven under gdb
+## SUPERSEDED — the gdb backtrace, and the ratchet reading it produced
+
+The backtrace below is sound and still useful. The conclusion drawn from it —
+that the capacity ratchet is what empties the buffer — is not; see "Retractions"
+at the end. Kept because the frames are the evidence that led to the real cause.
+
 
 `gdb-multiarch` against the QEMU guest (`-s -S`), breaking on `__assert_func`:
 
@@ -174,7 +179,8 @@ wrap-path publish, until nothing is writable. `_expansion_step` holds the true
 slice size (`_z_wbuf_make` sets it to the requested capacity and makes the first
 slice exactly that big), so it is recoverable.
 
-## Patch, and what it does and does not achieve
+## SUPERSEDED — the patch tried against that reading
+
 
 In `_z_wbuf_reset`, restore an owned slice's capacity from `_expansion_step`,
 and stop skipping elements after a removal (the `i++`-past-a-shift bug already
@@ -188,15 +194,12 @@ Measured, three runs each, same reproduction:
 So the capacity ratchet is A cause — the failure stops being deterministic — and
 it is NOT the only one. Stated plainly rather than shipped as a fix.
 
-## The remaining fault looks like use-after-free
+## The remaining fault looked like use-after-free — and it is
 
-A later gdb run tripped the FREERTOS assert rather than zenoh-pico's, and the
-argument register held **`0xdeadbeef`** — a poison value, not a pointer. That
-points at freed memory being used, which is a different defect from the capacity
-ratchet and would explain why the two original assertions looked unrelated.
-
-That is the thread to pull next. The reproduction and the tooling are recorded
-below so it can be picked up directly.
+A later gdb run tripped the FREERTOS assert rather than zenoh-pico's. The
+`0xdeadbeef` read off an argument register there turned out to be the debugger's
+(see "Retractions"), but the instinct it prompted was right: the next section
+proves a use-after-free, and it accounts for BOTH assertions.
 
 ## Tooling notes for whoever continues
 
@@ -214,6 +217,127 @@ below so it can be picked up directly.
   the archive. The example RELINK edge (issue 0475's class) is still open on the
   cargo path, so on that path touching the leaf's `main.c` may still be
   required.
+
+## ROOT CAUSE: the lease task frees the transport under the publishing task
+
+Both assertions are one use-after-free, and the packet capture names its trigger.
+
+**What the image does, every twenty seconds.** Probes on `_z_mutex_init` /
+`_z_mutex_drop` (zenoh-pico's own FreeRTOS `system.c` — NOT `platform_aliases.c`;
+that arm is for ThreadX) print the transport's three mutexes being created and
+destroyed over and over on a talker that is doing nothing but publishing at 1 Hz:
+
+    !!! ZMUTEX-INIT slot=0x200e7124 h=0x200e73a8 from=_z_unicast_transport_create_inner task=app
+    ...  Publishing: 'Hello World: 19'
+    !!! ZMUTEX-DROP slot=0x200e7124 h=0x200e73a8 from=_z_common_transport_clear  task=zpico_lease
+
+Created by `app`. Destroyed by **`zpico_lease`**. `_z_common_transport_clear`
+runs `vSemaphoreDelete(_mutex_tx)` and `_z_wbuf_clear(&_wbuf)` with nothing
+holding off a publisher that is inside the same transport at that moment. The
+window is one publish wide and it opens every lease period.
+
+**Which is exactly what the two asserts are.** They are the two ways to lose
+that race, one per freed object:
+
+* `_z_wbuf_clear` leaves `_ioss` empty, so the next
+  `__unsafe_z_prepare_wbuf` → `_z_wbuf_put(buf, 0, 0)` walks a zero-length
+  slice list and trips `iobuf.c:374`, `assert(i < _z_iosli_svec_len(...))` —
+  the originally reported failure.
+* `vSemaphoreDelete` frees the queue, so the next `_z_mutex_lock` reaches
+  `xQueueTakeMutexRecursive` on freed memory and trips
+  `queue.c`'s `configASSERT(pxQueue->uxItemSize == 0)`:
+
+      !!! SEMTAKE-BAD q=0x200e73a8 itemSize=537821688 len=1 waiting=33 task=app
+                     ret=xQueueTakeMutexRecursive
+
+  `q=0x200e73a8` is `_mutex_tx`'s handle from the FIRST init above — the one
+  `zpico_lease` had already deleted. `itemSize=537821688` is `0x200E7378`, a
+  heap pointer 0x30 below the block: free-list bookkeeping written over the
+  Queue_t.
+
+One writer, two victims, and the address identity ties the crash to the drop.
+
+**Why the lease task tears anything down.** A probe on the expiry branch says
+so directly, and it fires on schedule:
+
+    !!! LEASE-EXPIRED nothing received in 10000ms
+
+`_zp_unicast_lease_task` closes a client session when `_received` was false for
+a whole lease period. The read task marks it on every RX batch — and it runs
+exactly ONCE per session, at open, then blocks for the full ten seconds.
+
+**Because the router really does go silent.** `tshark` on the loopback side of
+the slirp forward, one 45 s run, filtering on payload only:
+
+    router -> guest, tcp.len>0:   0.004 s  76 B
+                                  0.006 s   8 B
+                                  0.011 s  12 B
+                                 19.522 s  76 B   <- a NEW handshake
+                                 19.522 s   8 B
+                                 19.523 s  12 B
+                                 40.086 s  76 B   <- and another
+    guest -> router, tcp.len>0:  40 frames (the 1 Hz publishes)
+
+Three frames in the first twelve milliseconds, then nothing until the session
+has already been declared dead and rebuilt. `rmw_zenohd` sends this session no
+periodic KeepAlive at all, and zenoh-pico's client lease expires on silence.
+
+## This is TWO defects, and only the second one is FreeRTOS's
+
+**A — the reconnect churn is platform-independent.** The same capture against
+the NATIVE Linux `c_talker`, same router, same port:
+
+    0.000 s 76 B / 0.000 s 8 B / 0.000 s 12 B / 20.075 s 76 B ...
+
+Identical: silence, expiry, fresh handshake at ~20 s. Every zenoh-pico client
+we ship drops and rebuilds its session every twenty seconds against the ROS
+router. Native survives it (no assert fires), so it has been invisible — but a
+session that dies on a timer is a plausible cause of interop flakiness far
+beyond this issue, and it should be filed and chased on its own.
+
+**B — the teardown race is the crash.** Defect A only supplies a trigger;
+`_zp_unicast_failed` freeing a live transport from the lease task is unsafe
+whatever caused the lease to lapse (a real link drop does it too). Fixing A
+alone would make this crash rare instead of fixed.
+
+## Direction
+
+For B, in order of preference: have `_zp_unicast_failed` take `_mutex_tx` (and
+`_mutex_rx`) for the teardown so a publisher cannot be inside the transport, or
+defer the clear to the task that owns the session rather than doing it on the
+lease task. Note the FreeRTOS mutex is RECURSIVE by construction
+(`nros_platform_mutex_init` says so deliberately, and zenoh-pico's own FreeRTOS
+`_z_mutex_init` uses `xSemaphoreCreateRecursiveMutex` too), so a lock taken for
+teardown will not deadlock against an outer hold in the same task — and equally,
+it will not protect against one.
+
+For A, establish first whether the router is expected to keepalive here or
+whether zenoh-pico must keepalive to keep its OWN lease refreshed; the talker
+never sends one because `_transmitted` is true every second, which suppresses
+it. That is a protocol question, not a port question.
+
+## Retractions
+
+Three earlier readings in this issue were wrong and are withdrawn:
+
+* **The lwIP concurrency theory.** `lan9118_lwip.c:502` calls
+  `netif->input(p, netif)`, and the board registers `tcpip_input` as that
+  callback (`board_mps2.c:101`) — frames ARE marshalled into `tcpip_thread`.
+  The driver header's example still names `ethernet_input`, which is what the
+  claim was read off; the header comment is stale, the code is correct.
+* **The `0xdeadbeef` "poison".** It came from a gdb script dereferencing `wbf`
+  in a frame with no DWARF, i.e. from the debugger, not the image. Nothing in
+  the firmware writes that pattern.
+* **The `_z_wbuf_reset` capacity ratchet as the cause.** The two defects in
+  that function are real — the removal loop still does `i++` after
+  `_z_iosli_svec_remove` shifts the vector down, so one of the two adjacent
+  non-alloc slices `_z_wbuf_wrap_bytes` appends survives every reset; and
+  `_z_iosli_reset` never restores the `_capacity` that `wrap_bytes` truncated.
+  But `_z_buf_encode` only calls `wrap_bytes` when `_expansion_step != 0`, and
+  the transport `_wbuf` is built `_z_wbuf_make(mtu, false)` — non-expandable.
+  It never holds a non-alloc slice, so neither defect can reach it. The
+  40/40/40 → 19/60/67 shift attributed to "fixing" this was run-to-run
+  variance. Worth reporting upstream on its own merits; not this bug.
 
 ## Acceptance
 
