@@ -277,10 +277,28 @@ which picks the large class when the hint exceeds
 `M::MAX_SERIALIZED_SIZE_XCDR1`/`_XCDR2` as PROVIDED consts computed from the
 schema, plus `size::bound_fits::<M>` which takes the larger of the two.
 
-What is missing is that **nothing sets the hint**. The only setter in the tree
-is one bench site; `rust_adapter` passes a literal `0`. So every real
-subscription takes the small class, and the large pool — 2 x 4 x 16384 =
-131,072 B, already reserved — sits unused.
+What was missing, at survey time, is that **nothing set the hint**. The only
+setter in the tree was one bench site; `rust_adapter` passed a literal `0`. So
+every real subscription took the small class, and the large pool — 2 x 4 x 16384
+= 131,072 B, already reserved — sat unused.
+
+**Corrected 2026-08-29: the RUST half of that is fixed and the C/C++ half is
+not.** `2adf2b739` wired `create_subscription::<M>` to pass
+`subscription_rx_hint::<M>(RX_BUF)` — the type's own bound, falling back to
+`RX_BUF` only where no bound exists. A Rust subscription to a 4 KiB type now
+routes large.
+
+A C or C++ subscription to the same type still hints 0. The field is declared,
+`rust_adapter` reads it, the shim routes by it — and no source under
+`packages/api/nros-c`, `packages/api/nros-cpp`, `packages/cli/rosidl-*` or
+`examples/` writes it. The producer is the Rust executor and nothing else, so
+W3a's saving applies to half the tree.
+[Issue 0896](../issues/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
+carries the survey and the constraint that decides the design: the bound is a
+PROVIDED const computed from `FIELDS`, a C message has no such trait, and
+whatever carries the number to the C call site must not become a SECOND
+computation of it — that is the sizes-header mirror class
+(0088 -> 0114 -> 0122 -> 0123 -> 0245 -> 0268) one lane over.
 
 The cost of that shows up in the build error `create_subscription` raises when a
 type does not fit: *"Raise the knob to at least the type's bound."* That knob is
@@ -300,7 +318,9 @@ const of a type parameter cannot be used as a const-generic argument
 (`error: generic parameters may not be used in const operations`, checked on
 edition 2024). So:
 
-- **W3a — route the zenoh block by the type's bound.** `rx_buffer_hint` is a
+- **W3a — route the zenoh block by the type's bound. LANDED for Rust
+  (`2adf2b739`); the C/C++ half is issue 0896 and is NOT done.**
+  `rx_buffer_hint` is a
   runtime `usize`, so `create_subscription::<M>` can pass
   `max(XCDR1, XCDR2)` with no unstable feature. A type between the small size
   and `ZPICO_SUBSCRIBER_LARGE_SIZE` stops being a build error and starts being
@@ -330,6 +350,14 @@ edition 2024). So:
   Tested from OUTSIDE the crate (a macro body resolves in the caller, so an
   in-crate test would see private names a consumer cannot), including use in
   const-generic position — the property the whole wave exists for.
+
+**W3 has no MEASURED saving yet.** W3a changes which size class a subscription
+routes to; it does not by itself shrink a pool, and the 98,304 B in the table
+above is an avoided COST on a hypothetical 4 KiB type, not an observed delta on
+a real image. Per this phase's rule, W3 claims nothing until `just mem-report
+--json --baseline` shows it on an image with a type large enough to route
+differently — and no example in the tree has one today, which is its own finding
+about the fixture corpus rather than about the wave.
 
 **W4 — drop the network stack from serial images.** 27,760 B.
 
