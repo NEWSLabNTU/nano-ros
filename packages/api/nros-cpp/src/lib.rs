@@ -1861,6 +1861,249 @@ pub unsafe extern "C" fn nros_cpp_executor_ping(
     }
 }
 
+/// phase-381 W4 — visit one node on the graph. `enclave` is NULL where the
+/// backend tracks none. Strings are BORROWED for the call. Return `false` to
+/// stop.
+pub type nros_cpp_node_visit_fn = Option<
+    unsafe extern "C" fn(
+        ctx: *mut c_void,
+        node_name: *const core::ffi::c_char,
+        node_namespace: *const core::ffi::c_char,
+        enclave: *const core::ffi::c_char,
+    ) -> bool,
+>;
+
+/// phase-381 W4 — visit one name and the types on it. `types_count` may be 0 on
+/// a partially discovered graph. Strings are BORROWED. Return `false` to stop.
+pub type nros_cpp_names_and_types_visit_fn = Option<
+    unsafe extern "C" fn(
+        ctx: *mut c_void,
+        name: *const core::ffi::c_char,
+        types: *const *const core::ffi::c_char,
+        types_count: usize,
+    ) -> bool,
+>;
+
+/// phase-381 W4 — every node on the graph, with its namespace.
+///
+/// Reports what has been DISCOVERED and never blocks: an empty enumeration
+/// means "nobody seen yet", not "nobody exists". `NROS_CPP_RET_UNSUPPORTED`
+/// from a backend with no graph, which stays distinct from an empty one.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_get_node_names(
+    handle: *mut c_void,
+    visit: nros_cpp_node_visit_fn,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(visit) = visit else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    const NAME_MAX: usize = 256;
+    let mut cb = |name: &str, ns: &str, enclave: Option<&str>| -> bool {
+        // NUL-terminated on the stack; the contract borrows for the call only.
+        // A name that does not fit is SKIPPED, never truncated — a truncated
+        // node name is a different, plausible node.
+        let mut name_buf = [0u8; NAME_MAX];
+        let mut ns_buf = [0u8; NAME_MAX];
+        let mut enc_buf = [0u8; NAME_MAX];
+        if name.len() >= NAME_MAX || ns.len() >= NAME_MAX {
+            return true;
+        }
+        name_buf[..name.len()].copy_from_slice(name.as_bytes());
+        ns_buf[..ns.len()].copy_from_slice(ns.as_bytes());
+        let enc_ptr = match enclave {
+            Some(e) if e.len() < NAME_MAX => {
+                enc_buf[..e.len()].copy_from_slice(e.as_bytes());
+                enc_buf.as_ptr() as *const core::ffi::c_char
+            }
+            _ => core::ptr::null(),
+        };
+        unsafe {
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const core::ffi::c_char,
+                ns_buf.as_ptr() as *const core::ffi::c_char,
+                enc_ptr,
+            )
+        }
+    };
+    match cpp.executor.get_node_names(&mut cb) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+            NROS_CPP_RET_UNSUPPORTED
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// The shared body for the two names-and-types entry points below.
+///
+/// A private helper rather than a macro: cbindgen does not expand macros, so a
+/// macro-generated `#[no_mangle]` gets no header declaration and is uncallable
+/// from C++ while every Rust signal stays green. Measured on the C side in this
+/// same phase — see `nros-c/tests/compile/graph_query_entry_points.c`.
+///
+/// # Safety
+/// Same contract as its callers.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn cpp_names_and_types(
+    handle: *mut c_void,
+    visit: nros_cpp_names_and_types_visit_fn,
+    ctx: *mut c_void,
+    services: bool,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(visit) = visit else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    const NAME_MAX: usize = 256;
+    const TYPES_MAX: usize = 8;
+    let mut cb = |name: &str, types: &[&str]| -> bool {
+        let mut name_buf = [0u8; NAME_MAX];
+        if name.len() >= NAME_MAX {
+            return true;
+        }
+        name_buf[..name.len()].copy_from_slice(name.as_bytes());
+        let mut type_bufs = [[0u8; NAME_MAX]; TYPES_MAX];
+        let mut ptrs: [*const core::ffi::c_char; TYPES_MAX] = [core::ptr::null(); TYPES_MAX];
+        let mut n = 0usize;
+        for t in types.iter().take(TYPES_MAX) {
+            if t.len() >= NAME_MAX {
+                continue;
+            }
+            type_bufs[n][..t.len()].copy_from_slice(t.as_bytes());
+            ptrs[n] = type_bufs[n].as_ptr() as *const core::ffi::c_char;
+            n += 1;
+        }
+        unsafe {
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const core::ffi::c_char,
+                ptrs.as_ptr(),
+                n,
+            )
+        }
+    };
+    let r = if services {
+        cpp.executor.get_service_names_and_types(&mut cb)
+    } else {
+        cpp.executor.get_topic_names_and_types(&mut cb)
+    };
+    match r {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+            NROS_CPP_RET_UNSUPPORTED
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// phase-381 W4 — every topic on the graph, with the types on it. One call per
+/// distinct TOPIC.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_get_topic_names_and_types(
+    handle: *mut c_void,
+    visit: nros_cpp_names_and_types_visit_fn,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    unsafe { cpp_names_and_types(handle, visit, ctx, false) }
+}
+
+/// phase-381 W4 — every service on the graph, with its types.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_get_service_names_and_types(
+    handle: *mut c_void,
+    visit: nros_cpp_names_and_types_visit_fn,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    unsafe { cpp_names_and_types(handle, visit, ctx, true) }
+}
+
+/// The shared body for the two counts.
+///
+/// # Safety
+/// Same contract as its callers.
+#[cfg(feature = "rmw-cffi")]
+unsafe fn cpp_count_on_topic(
+    handle: *mut c_void,
+    topic_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+    subscribers: bool,
+) -> nros_cpp_ret_t {
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    if topic_name.is_null() || out_count.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let Ok(topic) = (unsafe { core::ffi::CStr::from_ptr(topic_name) }).to_str() else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let r = if subscribers {
+        cpp.executor.count_subscribers(topic)
+    } else {
+        cpp.executor.count_publishers(topic)
+    };
+    match r {
+        Ok(n) => {
+            unsafe { *out_count = n };
+            NROS_CPP_RET_OK
+        }
+        Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+            NROS_CPP_RET_UNSUPPORTED
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// phase-381 W4 — how many publishers are visible on `topic_name`. The count
+/// reflects what has been DISCOVERED and is never a proof of absence.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext`; `topic_name` NUL-terminated;
+/// `out_count` writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_count_publishers(
+    handle: *mut c_void,
+    topic_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    unsafe { cpp_count_on_topic(handle, topic_name, out_count, false) }
+}
+
+/// phase-381 W4 — how many subscribers are visible on `topic_name`.
+///
+/// # Safety
+/// `handle` must be a valid `CppContext`; `topic_name` NUL-terminated;
+/// `out_count` writable.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_count_subscribers(
+    handle: *mut c_void,
+    topic_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> nros_cpp_ret_t {
+    unsafe { cpp_count_on_topic(handle, topic_name, out_count, true) }
+}
+
 // =============================================================================
 // Phase 110.B / 110.C — SchedContext FFI for the C++ wrapper
 // =============================================================================

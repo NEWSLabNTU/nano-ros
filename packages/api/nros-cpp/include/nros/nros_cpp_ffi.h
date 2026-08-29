@@ -329,6 +329,25 @@ typedef struct nros_cpp_node_options_t {
 } nros_cpp_node_options_t;
 
 /**
+ * phase-381 W4 — visit one node on the graph. `enclave` is NULL where the
+ * backend tracks none. Strings are BORROWED for the call. Return `false` to
+ * stop.
+ */
+typedef bool (*nros_cpp_node_visit_fn)(void *ctx,
+                                       const char *node_name,
+                                       const char *node_namespace,
+                                       const char *enclave);
+
+/**
+ * phase-381 W4 — visit one name and the types on it. `types_count` may be 0 on
+ * a partially discovered graph. Strings are BORROWED. Return `false` to stop.
+ */
+typedef bool (*nros_cpp_names_and_types_visit_fn)(void *ctx,
+                                                  const char *name,
+                                                  const char *const *types,
+                                                  size_t types_count);
+
+/**
  * `nros::SchedContext` mirror passed to
  * [`nros_cpp_create_sched_context`]. Time fields use `0` as
  * "absent" sentinel (mirrors the Rust `OptUs` newtype).
@@ -873,6 +892,64 @@ nros_cpp_ret_t nros_cpp_spin_for(void *handle, uint32_t duration_ms, int32_t pol
  * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
  */
 nros_cpp_ret_t nros_cpp_executor_ping(void *handle, int32_t timeout_ms);
+
+/**
+ * phase-381 W4 — every node on the graph, with its namespace.
+ *
+ * Reports what has been DISCOVERED and never blocks: an empty enumeration
+ * means "nobody seen yet", not "nobody exists". `NROS_CPP_RET_UNSUPPORTED`
+ * from a backend with no graph, which stays distinct from an empty one.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_node_names(void *handle,
+                                                nros_cpp_node_visit_fn visit,
+                                                void *ctx);
+
+/**
+ * phase-381 W4 — every topic on the graph, with the types on it. One call per
+ * distinct TOPIC.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_topic_names_and_types(void *handle,
+                                                           nros_cpp_names_and_types_visit_fn visit,
+                                                           void *ctx);
+
+/**
+ * phase-381 W4 — every service on the graph, with its types.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_service_names_and_types(void *handle,
+                                                             nros_cpp_names_and_types_visit_fn visit,
+                                                             void *ctx);
+
+/**
+ * phase-381 W4 — how many publishers are visible on `topic_name`. The count
+ * reflects what has been DISCOVERED and is never a proof of absence.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext`; `topic_name` NUL-terminated;
+ * `out_count` writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_count_publishers(void *handle,
+                                                  const char *topic_name,
+                                                  size_t *out_count);
+
+/**
+ * phase-381 W4 — how many subscribers are visible on `topic_name`.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext`; `topic_name` NUL-terminated;
+ * `out_count` writable.
+ */
+nros_cpp_ret_t nros_cpp_executor_count_subscribers(void *handle,
+                                                   const char *topic_name,
+                                                   size_t *out_count);
 
 /**
  * Identifier of the auto-created default `Fifo` SC. Phase 110.B.

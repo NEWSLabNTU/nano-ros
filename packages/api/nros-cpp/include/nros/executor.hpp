@@ -185,6 +185,63 @@ class Executor {
         return Result(nros_cpp_executor_ping(storage_, timeout_ms));
     }
 
+    /// phase-381 W4 — every node on the graph, with its namespace.
+    ///
+    /// `visit(name, ns, enclave)` is called once per node; `enclave` is
+    /// `nullptr` where the backend tracks none, which is what lets one call
+    /// answer both `rmw_get_node_names` forms. Return `false` to stop early.
+    ///
+    /// Takes a plain function pointer plus `ctx` rather than a `std::function`:
+    /// this header is compiled `-nostdinc++` against Zephyr's minimal libcpp in
+    /// embedded builds, where `<functional>` does not exist (issue 0112). Every
+    /// string is BORROWED for the duration of the call.
+    ///
+    /// **Reports what has been DISCOVERED and never blocks.** The first call
+    /// after startup legitimately sees a partial graph — the backend keeps a
+    /// standing query fed by the spin loop — so poll rather than calling once
+    /// and concluding. An empty enumeration means "nobody seen yet", never
+    /// "nobody exists", and `ErrorCode::Unsupported` (a backend with no graph)
+    /// stays distinct from it.
+    Result get_node_names(nros_cpp_node_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_node_names(storage_, visit, ctx));
+    }
+
+    /// phase-381 W4 — every topic on the graph, with the types on it.
+    ///
+    /// `visit(name, types, types_count)` is called once per distinct TOPIC: a
+    /// topic carrying two types is one call with two entries, not two calls.
+    /// `types_count` may legitimately be 0 on a partially discovered graph.
+    /// Same discovery caveat as [`get_node_names`].
+    Result get_topic_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_topic_names_and_types(storage_, visit, ctx));
+    }
+
+    /// phase-381 W4 — every service on the graph, with its types. As
+    /// [`get_topic_names_and_types`], over servers and clients.
+    Result get_service_names_and_types(nros_cpp_names_and_types_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_service_names_and_types(storage_, visit, ctx));
+    }
+
+    /// phase-381 W4 — how many publishers are visible on `topic_name`.
+    ///
+    /// `topic_name` is a ROS name (`"/chatter"`). The count reflects what has
+    /// been DISCOVERED, so it can be low right after startup and is never a
+    /// proof of absence.
+    Result count_publishers(const char* topic_name, size_t* out_count) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_count_publishers(storage_, topic_name, out_count));
+    }
+
+    /// phase-381 W4 — how many subscribers are visible on `topic_name`. See
+    /// [`count_publishers`] for the caveats.
+    Result count_subscribers(const char* topic_name, size_t* out_count) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_count_subscribers(storage_, topic_name, out_count));
+    }
+
     /// Spin until this executor is shut down (blocking) — `rclcpp::Executor::spin`.
     ///
     /// Issue 0338 — this verb used to mean the OPPOSITE here: `spin` was the
