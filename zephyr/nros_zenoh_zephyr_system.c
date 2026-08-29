@@ -88,11 +88,56 @@ void _z_task_exit(void) {
     pthread_exit(NULL);
 }
 
+/* issue 0882 — a task must not free the storage it is RUNNING ON.
+ *
+ * zenoh-pico's `_zp_unicast_failed` executes on the lease task and calls
+ * `_z_unicast_transport_clear(ztu, true)`, which detaches and frees
+ * `_lease_task` -- the caller's own handle. It then calls `_z_reopen`, which
+ * starts a NEW lease task, and `z_malloc` hands back the block that was just
+ * freed. Two live threads then share one `pthread_t` slot.
+ *
+ * That is fatal here rather than merely untidy, because
+ * `nros_zephyr_task_slot_release` keys the stack-slot table on `pthread_t`
+ * (issues 0822, 0839): a second thread holding the same handle releases the
+ * first thread's stack while it is still running on it, and the next task to
+ * claim that slot writes over a live stack. The observed symptom is an
+ * assertion on a `k_spinlock` that landed in the reused memory:
+ *
+ *     ASSERTION FAIL [z_spin_lock_valid(l)]  Invalid spinlock
+ *     lr -> z_spinlock_validate_post / _z_task_free / _zp_unicast_failed
+ *
+ * Fixing this upstream means not freeing the caller's own task in
+ * `_z_common_transport_clear`, which is a change to shared code on a path
+ * every platform takes. Refusing the self-free HERE is the same guarantee at
+ * the only layer that can identify the caller, and it cannot regress a port
+ * that never had the problem.
+ *
+ * The handle is deferred, not leaked: it is released on the next free that
+ * comes from a different thread, so at most one stale handle is outstanding.
+ * It cannot be freed here at any later point in this function either -- the
+ * thread is about to call `pthread_exit`, and pthread internals still need it.
+ */
+static void *nros_deferred_task_handle;
+
 void _z_task_free(_z_task_t **task) {
-    if (task != NULL && *task != NULL) {
-        k_free(*task);
-        *task = NULL;
+    if (task == NULL || *task == NULL) {
+        return;
     }
+
+    if (pthread_equal(*(*task), pthread_self()) != 0) {
+        /* Self-free. Hand the previous deferral to the allocator -- that thread
+         * is long gone -- and hold this one in its place. */
+        void *stale = nros_deferred_task_handle;
+        nros_deferred_task_handle = (void *) *task;
+        *task = NULL;
+        if (stale != NULL) {
+            k_free(stale);
+        }
+        return;
+    }
+
+    k_free(*task);
+    *task = NULL;
 }
 
 z_result_t _z_mutex_init(_z_mutex_t *m) {
