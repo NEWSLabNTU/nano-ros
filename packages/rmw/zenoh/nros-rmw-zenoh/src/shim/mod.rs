@@ -263,6 +263,29 @@ static EXECUTOR_WAKE: std::sync::LazyLock<(std::sync::Mutex<bool>, std::sync::Co
 
 impl From<ZpicoError> for TransportError {
     fn from(err: ZpicoError) -> Self {
+        // issue 0870 — `Generic` and `Session` both become `ConnectionFailed`
+        // below, so by the time a caller sees it the reason is gone. Issue 0465
+        // records what that costs: an exhausted session pool "spent two months
+        // looking like `Transport(ConnectionFailed)` — a router/network
+        // problem, and chased as one". Naming the variant here is the same
+        // remedy 0465 applied one frame up, and it only runs on a path that has
+        // already failed.
+        //
+        // `nros_log`, not `eprintln!`: this crate reaches `no_std` targets, and
+        // std stdio is FATAL on Zephyr native_sim (issue 0589).
+        // ONLY the two ambiguous variants. This conversion is on the hot
+        // path — `drive_io` maps `Timeout` on every quiet tick (issue 0387),
+        // so logging unconditionally would flood the console of a working
+        // image. `Generic` and `Session` are the pair that collapse into one
+        // `ConnectionFailed`, and they are the only ones whose identity is
+        // lost here; every other variant maps 1:1 and needs no announcement.
+        if matches!(err, ZpicoError::Generic | ZpicoError::Session) {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "zpico {:?} -> ConnectionFailed (the two are indistinguishable downstream)",
+                err
+            );
+        }
         match err {
             ZpicoError::Generic => TransportError::ConnectionFailed,
             ZpicoError::Config => TransportError::InvalidArgument,

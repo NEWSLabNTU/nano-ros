@@ -1146,16 +1146,44 @@ impl<'s> Executor<'s> {
             (
                 session
                     .create_client(&send_goal_info, QoSProfile::services_default())
-                    .map_err(NodeError::Transport)?,
+                    .map_err(|e| {
+                        nros_log::nros_error!(
+                            nros_log::get_logger("nros_node"),
+                            "action client: send_goal client failed: {:?}",
+                            e
+                        );
+                        NodeError::Transport(e)
+                    })?,
                 session
                     .create_client(&cancel_goal_info, QoSProfile::services_default())
-                    .map_err(NodeError::Transport)?,
+                    .map_err(|e| {
+                        nros_log::nros_error!(
+                            nros_log::get_logger("nros_node"),
+                            "action client: cancel_goal client failed: {:?}",
+                            e
+                        );
+                        NodeError::Transport(e)
+                    })?,
                 session
                     .create_client(&get_result_info, QoSProfile::services_default())
-                    .map_err(NodeError::Transport)?,
+                    .map_err(|e| {
+                        nros_log::nros_error!(
+                            nros_log::get_logger("nros_node"),
+                            "action client: get_result client failed: {:?}",
+                            e
+                        );
+                        NodeError::Transport(e)
+                    })?,
                 session
                     .create_subscription(&feedback_topic, QoSProfile::BEST_EFFORT)
-                    .map_err(NodeError::Transport)?,
+                    .map_err(|e| {
+                        nros_log::nros_error!(
+                            nros_log::get_logger("nros_node"),
+                            "action client: feedback subscription failed: {:?}",
+                            e
+                        );
+                        NodeError::Transport(e)
+                    })?,
             )
         };
 
