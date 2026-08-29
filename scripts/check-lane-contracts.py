@@ -47,10 +47,144 @@ JUSTFILE = os.path.join(ROOT, "justfile")
 TESTS_DIR = os.path.join(ROOT, "packages", "testing", "nros-tests", "tests")
 
 # Tiers that promise affordability, and what each promises.
+#
+# AUTHORED, and deliberately so: these two make a claim in CLAUDE.md that a
+# reader relies on. Everything else this gate checks is DERIVED from the
+# workflows (see `ci_job_lanes`), because a hand-maintained list of "tiers CI
+# runs" is exactly what went stale — phase-395 put `check-build` on the merge
+# group, nothing here knew, and the required check was red for every pull
+# request for a day (phase-396).
 LANES = {
     "ci-l1": "compile + unit, NO fixture build (CLAUDE.md)",
     "check-fast": "buildless and source-only",
 }
+
+WORKFLOW_DIR = os.path.join(ROOT, ".github", "workflows")
+
+# Recipes that PRODUCE the artifacts a tier may need. A CI job that runs a tier
+# needing one of these must run the producer too — in the same job, since
+# nothing carries a build dir between jobs.
+PRODUCERS = (
+    "build-test-fixtures",
+    "build-compile-check-fixtures",
+    "generate-bindings",
+    "build-examples",
+)
+
+
+PRODUCER_CALL = re.compile(r"just\s+(build-test-fixtures|build-compile-check-fixtures"
+                           r"|generate-bindings|build-examples)")
+
+
+def required_producers(recipes, reached):
+    """{producer: recipe} for every recipe in `reached` that HARD-FAILS telling
+    you to run a producer first.
+
+    The declaration is the recipe's own remediation text. `native::check` ends:
+
+        echo "  Run 'just generate-bindings' (or 'just build-test-fixtures')..."
+        exit 1
+
+    which is a precondition stated in the only place it was ever stated. Keyed
+    on the pair (mentions a producer, can exit non-zero) so an ADVISORY mention
+    — a comment, a hint printed on success — does not count.
+    """
+    out = {}
+    for r in reached:
+        body = "\n".join(recipes.get(r, {}).get("body", []))
+        if "exit 1" not in body and "exit 2" not in body:
+            continue
+        for m in PRODUCER_CALL.finditer(body):
+            out.setdefault(m.group(1), r)
+    return out
+
+
+def workflow_jobs():
+    """[(workflow, job, [just recipes the job runs], [producers it runs])].
+
+    Text-scanned rather than YAML-parsed: the `run:` blocks are shell, the
+    `if:` guards are GitHub expressions, and this gate only needs "which
+    recipes does this job invoke" — a question the text answers exactly.
+    """
+    out = []
+    if not os.path.isdir(WORKFLOW_DIR):
+        return out
+    job_re = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
+    just_re = re.compile(r"(?:^|[;&|]|\s)just\s+((?:[a-z0-9-]+\s*)+)")
+    for fn in sorted(os.listdir(WORKFLOW_DIR)):
+        if not fn.endswith((".yml", ".yaml")):
+            continue
+        path = os.path.join(WORKFLOW_DIR, fn)
+        with open(path, encoding="utf8", errors="replace") as fh:
+            lines = fh.read().split("\n")
+        # Workflow-level events, used when a step carries no `if:`.
+        wf_events = set(re.findall(r"^\s{2}(pull_request|merge_group|push|schedule"
+                                   r"|workflow_dispatch|workflow_run)\s*:", "\n".join(lines),
+                                   re.M))
+        job, recipes = None, []
+        step_if = ""
+        in_jobs = False
+        for line in lines:
+            if line.startswith("jobs:"):
+                in_jobs = True
+                continue
+            if not in_jobs:
+                continue
+            m = job_re.match(line)
+            if m:
+                if job:
+                    out.append((fn, job, recipes))
+                job, recipes, step_if = m.group(1), [], ""
+                continue
+            # A new step resets the guard; `if:` inside a step sets it. Steps
+            # are the granularity that matters — one job runs `check-fast` on
+            # every event and `check-build` on only some, and treating the job
+            # as uniform is how a nightly-only tier reads as a required one.
+            if re.match(r"^\s*- (name|uses|run):", line):
+                if re.match(r"^\s*- (name|uses):", line):
+                    step_if = ""
+            if re.match(r"^\s+if:", line):
+                step_if = line
+            # Only `run:` shell counts. A step NAMED "just check-build + no_std"
+            # is a label, and reading it as an invocation attributed the recipe
+            # to every event the workflow has — which is precisely the
+            # nightly-vs-required distinction this is here to make.
+            if re.match(r"^\s*-?\s*(name|uses):", line):
+                continue
+            if job and "just " in line and not line.lstrip().startswith("#"):
+                ev = _events_of(step_if, wf_events)
+                for jm in just_re.finditer(line):
+                    recipes.extend(
+                        (w, ev) for w in jm.group(1).split()
+                        if not w.startswith("-")
+                    )
+        if job:
+            out.append((fn, job, recipes))
+    return [
+        (w, j, r, [x for x, _ in r if x in PRODUCERS]) for w, j, r in out
+    ]
+
+
+# Events on which a merge cannot happen without the step passing. A tier that
+# runs here MUST be satisfiable by its own job; anywhere else a broken tier is a
+# bad lane, not a frozen repository.
+GATING_EVENTS = {"pull_request", "merge_group"}
+
+
+def _events_of(step_if, wf_events):
+    """Which events this step actually runs on."""
+    if not step_if:
+        return set(wf_events)
+    named = set(re.findall(r"'(pull_request|merge_group|push|schedule"
+                           r"|workflow_dispatch|workflow_run)'", step_if))
+    named |= set(re.findall(r'"(pull_request|merge_group|push|schedule'
+                            r'|workflow_dispatch|workflow_run)"', step_if))
+    if not named:
+        return set(wf_events)
+    # `!= 'pull_request'` style negation: everything the workflow has, minus.
+    if "!=" in step_if and "==" not in step_if:
+        return set(wf_events) - named
+    return named & set(wf_events) if wf_events else named
 
 RUNTIME_RESOLVERS = (
     "require_entry_binary",
@@ -62,21 +196,56 @@ RUNTIME_RESOLVERS = (
 # Legitimate in a compile tier, when the gate produces them itself.
 COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin")
 
-RECIPE = re.compile(r"^([a-z][a-z0-9-]*)\s*(?:[a-z_]+=\S*\s*)*:(.*)$")
+# Parameters may be UPPERCASE and their defaults quoted — `check JOBS="75%":`
+# is a real recipe header, and the old `[a-z_]+=\S*` matched neither the
+# name nor the `"75%"`. It therefore skipped `native::check`, which is the
+# one recipe whose missing precondition froze the merge queue (phase-396).
+RECIPE = re.compile(
+    r"^([a-z][a-z0-9-]*)"
+    r"(?:\s+[A-Za-z_][A-Za-z0-9_]*(?:=(?:\"[^\"]*\"|'[^']*'|\S+))?)*"
+    r"\s*:(.*)$"
+)
 CARGO_TEST = re.compile(r"--test\s+([A-Za-z0-9_]+)")
 
 
 def parse_justfile():
-    """{recipe: {deps, body}} — enough to walk a dependency closure."""
-    with open(JUSTFILE, encoding="utf8") as fh:
-        lines = fh.read().split("\n")
+    """{recipe: {deps, body}} across the root justfile AND `just/*.just`.
+
+    phase-396 W5 — modules were invisible, and that is where the defect lived.
+    `check-build`'s last dependency is `native::check`, which hard-requires
+    generated message bindings; the closure walk stopped at the root justfile,
+    so the gate could not see it and reported the tier clean while the required
+    check was red for every pull request.
+
+    Module recipes are keyed `<module>::<recipe>`, which is how the root
+    justfile already spells them.
+    """
+    recipes = {}
+    sources = [(None, JUSTFILE)]
+    mod_dir = os.path.join(ROOT, "just")
+    if os.path.isdir(mod_dir):
+        sources += [
+            (fn[:-5], os.path.join(mod_dir, fn))
+            for fn in sorted(os.listdir(mod_dir)) if fn.endswith(".just")
+        ]
+    for mod, path in sources:
+        try:
+            with open(path, encoding="utf8", errors="replace") as fh:
+                recipes.update(_parse_one(fh.read().split("\n"), mod))
+        except OSError:
+            continue
+    return recipes
+
+
+def _parse_one(lines, mod):
+    """Parse one justfile; `mod` prefixes every recipe name when not None."""
     recipes, cur = {}, None
     i = 0
     while i < len(lines):
         line = lines[i]
         m = RECIPE.match(line)
         if m and not line.startswith((" ", "\t")):
-            cur = m.group(1)
+            cur = f"{mod}::{m.group(1)}" if mod else m.group(1)
             dep_text = m.group(2)
             # A trailing `\` continues the dependency list onto later lines —
             # `check-build` spells its 30-odd dependencies that way.
@@ -84,6 +253,9 @@ def parse_justfile():
                 i += 1
                 dep_text = dep_text.rstrip()[:-1] + " " + lines[i]
             deps = [d for d in re.split(r"[\s()]+", dep_text) if d and not d.startswith("#")]
+            # A bare dep inside a module refers to that module's own recipe.
+            if mod:
+                deps = [d if "::" in d else f"{mod}::{d}" for d in deps]
             recipes[cur] = {"deps": deps, "body": []}
         elif cur and line.startswith((" ", "\t")):
             recipes[cur]["body"].append(line)
@@ -201,7 +373,7 @@ def main():
     # into a comment.
     selftest()
 
-    recipes = parse_justfile()
+    recipes = recipes_map = parse_justfile()
     errs, checked = [], 0
 
     for lane, promise in LANES.items():
@@ -283,6 +455,95 @@ def main():
                         f"      infer them from the fixture ids."
                     )
 
+    # ---- phase-396 W5 — the same rule, for every tier a CI JOB invokes ----
+    #
+    # The loop above checks two AUTHORED tiers. That is not where this bit us:
+    # phase-395 put `check-build` on the merge group, `check-build` reaches
+    # `native::check` (generated message bindings) and `check-source-gates`
+    # (`.compile-ok` stamps), the job produces neither, and the required check
+    # was red for EVERY pull request for a day. Nothing here looked, because
+    # `check-build` was not in LANES.
+    #
+    # So the lane list is now DERIVED: every `just <recipe>` any workflow job
+    # runs is a lane, and the artifacts it may resolve are the ones that JOB
+    # produces — not the ones some other job, or a developer's tree, happens to
+    # have.
+    #
+    # A RATCHET, because the derived set legitimately contains known-bad states
+    # today (the nightly arm of `pr-checks/check` still runs `check-build`
+    # without a producer — same defect, on a lane issue 0878 has already
+    # established nobody is watching). Recording them is the point: a new one
+    # fails, and refreshing the baseline is a deliberate act.
+    ci_findings = []
+    for wf, job, recipes, producers in workflow_jobs():
+        if producers:
+            continue  # the job builds artifacts; it may resolve them
+        for recipe, events in sorted({(r, tuple(sorted(e))) for r, e in recipes}):
+            if recipe not in recipes_map:
+                continue
+            # Only lanes that GATE a merge. A broken tier on `schedule` is a bad
+            # nightly (issue 0878's territory); a broken tier on `merge_group`
+            # or `pull_request` is a repository nobody can merge into, which is
+            # a different severity and the one this gate exists for.
+            if not (set(events) & GATING_EVENTS):
+                continue
+            reached = closure(recipes_map, recipe)
+            job_makes_stamps = any(
+                "compile-check-fixtures.sh" in line
+                for r in reached
+                for line in recipes_map.get(r, {}).get("body", [])
+            )
+            for producer, via in sorted(required_producers(recipes_map, reached).items()):
+                ci_findings.append(f"{wf}:{job} runs `{recipe}` -> `{via}` "
+                                   f"hard-requires `just {producer}`, which the job never runs")
+            for test, via in sorted(tests_invoked(recipes_map, reached).items()):
+                used, found = resolvers_used(test)
+                if not found or not used:
+                    continue
+                runtime = sorted(u for u in used if u in RUNTIME_RESOLVERS)
+                if runtime:
+                    ci_findings.append(f"{wf}:{job} runs `{recipe}` -> `{test}` "
+                                       f"needs RUNTIME fixture ({','.join(runtime)})")
+                elif not job_makes_stamps:
+                    ci_findings.append(f"{wf}:{job} runs `{recipe}` -> `{test}` "
+                                       f"needs a COMPILE stamp nothing in the job builds")
+
+    base_path = os.path.join(ROOT, ".config", "lane-contract-baseline.json")
+    if "--update" in sys.argv:
+        os.makedirs(os.path.dirname(base_path), exist_ok=True)
+        import json as _json
+        with open(base_path, "w", encoding="utf8") as fh:
+            _json.dump({
+                "_comment": (
+                    "CI jobs that run a tier needing an artifact the job does not "
+                    "build (phase-396 W5). Each line is a required check that "
+                    "cannot pass on a clean runner. Refresh with --update and say "
+                    "why in the commit."
+                ),
+                "findings": sorted(set(ci_findings)),
+            }, fh, indent=2)
+            fh.write("\n")
+        print(f"check-lane-contracts: baseline written — {len(set(ci_findings))} known.")
+        return 0
+
+    known = set()
+    if os.path.exists(base_path):
+        import json as _json
+        with open(base_path, encoding="utf8") as fh:
+            known = set(_json.load(fh)["findings"])
+    for f in sorted(set(ci_findings) - known):
+        errs.append(
+            f"{f}.\n"
+            f"      A CI job may resolve an artifact only if that JOB builds it —\n"
+            f"      nothing carries a build dir between jobs, and a developer tree\n"
+            f"      where `build-test-fixtures` has run is not the runner. This is\n"
+            f"      the shape that froze the merge queue (phase-396): a required\n"
+            f"      check red for every input looks exactly like a broken PR.\n"
+            f"      Add the producer to the job, or take the tier off that event.\n"
+            f"      If it is intended, record it:\n"
+            f"        python3 scripts/check-lane-contracts.py --update"
+        )
+
     if errs:
         print(f"check-lane-contracts: {len(errs)} tier violation(s):\n", file=sys.stderr)
         for e in errs:
@@ -295,9 +556,15 @@ def main():
         )
         return 1
 
+    gating = sum(
+        1 for _w, _j, r, p in workflow_jobs() if not p
+        for _rec, ev in {(a, tuple(sorted(b))) for a, b in r}
+        if set(ev) & GATING_EVENTS
+    )
     print(
         f"check-lane-contracts OK — {checked} test target(s) across "
-        f"{len(LANES)} affordability tier(s); none resolves a runtime fixture."
+        f"{len(LANES)} affordability tier(s) and {gating} merge-gating CI "
+        f"lane invocation(s); none resolves an artifact its job does not build."
     )
     return 0
 
@@ -361,6 +628,46 @@ def selftest(verbose=False):
             "t_runtime" in tests_invoked(r, closure(r, "ci-l1")))
 
     globals()["JUSTFILE"], globals()["TESTS_DIR"] = real
+    # ---- phase-396 W5: the pieces that were BLIND, each with a case ----
+
+    # The recipe header regex skipped `check JOBS="75%":` — uppercase parameter,
+    # quoted default with a `%`. That one miss hid `native::check`, which is the
+    # recipe whose unmet precondition froze the queue.
+    mod = _parse_one(['check JOBS="75%":', '    echo hi', '', 'other:', '    x'], "native")
+    chk("a recipe with an UPPERCASE quoted-default parameter is parsed",
+        "native::check" in mod)
+    chk("module recipes are keyed <module>::<recipe>", "native::other" in mod)
+    bare = _parse_one(["a: b", "    x", "b:", "    y"], "native")
+    chk("a bare dep inside a module resolves to that module",
+        bare["native::a"]["deps"] == ["native::b"])
+
+    # The producer rule: a hard-failing remediation IS the declaration.
+    rp = {"r": {"deps": [], "body": ["    echo \"Run 'just generate-bindings' first\"",
+                                     "    exit 1"]}}
+    chk("a hard-failing 'run just <producer> first' is a declared precondition",
+        required_producers(rp, ["r"]) == {"generate-bindings": "r"})
+    advisory = {"r": {"deps": [], "body": ["    echo 'hint: just generate-bindings'"]}}
+    chk("an ADVISORY mention with no failure path is not a precondition",
+        required_producers(advisory, ["r"]) == {})
+
+    # Event attribution decides required-vs-nightly, which is the whole severity
+    # split. A step's `if:` wins over the workflow's event list.
+    allev = {"pull_request", "merge_group", "push", "schedule"}
+    chk("no `if:` means every event the workflow declares",
+        _events_of("", allev) == allev)
+    chk("a fromJSON list narrows to exactly those events",
+        _events_of("""if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), x) }}""",
+                   allev) == {"schedule"})
+    chk("a merge_group step is still gating",
+        bool(_events_of("""if: ${{ contains(fromJSON('["merge_group"]'), x) }}""",
+                        allev) & GATING_EVENTS))
+    chk("a schedule-only step is NOT gating",
+        not (_events_of("""if: ${{ contains(fromJSON('["schedule"]'), x) }}""",
+                        allev) & GATING_EVENTS))
+    chk("a `!=` guard subtracts rather than selects",
+        _events_of("if: ${{ github.event_name != 'pull_request' }}", allev)
+        == allev - {"pull_request"})
+
     if verbose:
         print(f"\n{ok} passed, {fail} failed")
     if fail:
