@@ -162,7 +162,7 @@ vs 6.4 s per run, since it returns on bind instead of always sleeping. NOT estab
 only cause — the flake was intermittent, so its absence needs several more sweeps to be a measurement. See
 `archived/0869-*`. (2026-08-28)
 
-Recently resolved (2026-08-28): **#0864** (cli) — the DERIVED cmake root added interface packages as
+Recently resolved (2026-08-28): **#0886** (cli) — the DERIVED cmake root added interface packages as
 subdirs, so `examples/workspaces/features` needed a ROS install to configure and `build-test-fixtures
 lane=native` died on `find_package(ament_cmake)`. `custom_msgs` is a verbatim upstream ROS msg package on
 purpose (it must also build under colcon) and nano-ros routes `rosidl_generate_interfaces` through codegen
@@ -171,7 +171,7 @@ W10.a's derivation had only "has a CMakeLists". It landed because on a host WITH
 right — the failure needs the ROS-less host tier 1 is contracted to run on. Fixed by skipping interface
 packages (the `rosidl_interface_packages` marker plus msg/srv/action probes) — and the predicate, which
 already had TWO identical spellings in `cmd::ws`, is now one `interface_package::is_interface_package`
-instead of a third. See `archived/0864-*`. (2026-08-28)
+instead of a third. See `archived/0886-*`. (2026-08-28)
 
 Recently resolved (2026-08-28): **#0858** (testing) — `zephyr_prjconf_meets_backend_requirements` went red
 when phase-391 W3 set `CONFIG_HEAP_MEM_POOL_SIZE=0` in the two c/talker confs (the funnel is rlsf-backed and
