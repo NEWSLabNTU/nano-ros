@@ -29,13 +29,11 @@ fails if this block drifts.
 - **#0793** (api, params) — C ships two disjoint parameter stores — parameters declared on the node-local one are invisible to `ros2 param`, and its accept/reject callback fires for nobody See `0793-*`.
 - **#0794** (build, codegen, boot) — The baked boot config carries four fields and the C/C++ emitter sets one — a launch-declared namespace, domain or locator never reaches a C image See `0794-*`.
 - **#0798** (examples) — `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that hardcodes `mps2-an385-freertos` — the pairing fails all three arms of `_nra_board_active`, so the image links without its platform glue See `0798-*`.
-- **#0808** (rmw) — `create_session`'s flat argument list cannot carry session config, and the structural fix has been deferred twice into issues that are now closed See `0808-*`.
 - **#0809** (build) — `provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` honours `.nros-ignore` — the only spelling that exists on disk is the one the order-walk ignores See `0809-*`.
 - **#0810** (core) — The executor arena is sized at MAX_CBS x sizeof(ActionClient) whatever the entries actually are, so every real image ships a hand-picked override and undersizing fails at runtime instead of at link See `0810-*`.
 - **#0814** (rmw) — The whole zero-copy surface sits behind `feature = \"lending\"`, which only a posix test crate ever enables See `0814-*`.
 - **#0815** (tooling) — The static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure See `0815-*`.
 - **#0816** (tooling) — The book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property See `0816-*`.
-- **#0819** (rmw) — XRCE payloads at/above the transport MTU are DELIVERED CORRUPTED rather than refused See `0819-*`.
 - **#0820** (cmake, testing) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no dependency edge on the Rust world, and hardcoded `--release` past a miscompile carve-out See `0820-*`.
 - **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
 - **#0828** (testing) — Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is green only while an earlier `lane=all` build is still fresh See `0828-*`.
@@ -49,13 +47,20 @@ fails if this block drifts.
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
-- **#0852** (rmw) — zenoh-pico's Zephyr serial RX is polled with no interrupt buffering and no error check, so it silently drops bytes under load See `0852-*`.
+- **#0847** (rmw) — An XRCE publisher outliving `executor.close()` segfaults in its own Drop: the entity destructor dereferences the session state that close already freed See `0847-*`.
+- **#0849** (cli) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the checkout makes cargo see two copies of every core crate and refuse the build on `links` See `0849-*`.
+- **#0852** (rmw, platform) — the zenoh read task inherits the executor's priority on Zephyr — the declared priority is discarded by the port, so a 20 ms timeslice starves the polled serial RX and it overruns See `0852-*`.
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
 - **#0859** (examples, testing) — `rust/action-server` diverges from its native copy on all four RTOS platforms — one copy of a portability group was edited alone See `0859-*`.
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
+- **#0865** (examples, docs) — parameter services are implemented and tested but undiscoverable: no example calls them, and the C header declares the entry point unconditionally so a caller without the feature gets a bare `undefined reference` See `0865-*`.
+- **#0868** (examples, testing) — A `send_goal` TIMEOUT prints as `Goal was rejected by server`, so an intermittent XRCE action failure reads as a deterministic server decision See `0868-*`.
+- **#0871** (ci, testing) — Every PR is red on a fixture CI never builds — and `main` cannot see it, because the required gate does not run on push See `0871-*`.
 - **#0873** (ci) — All three nightly platform jobs fail on `generate-lockfile --offline` against a cold registry — an infrastructure fault reported as platform overclaim See `0873-*`.
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
+- **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
+- **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
 
 <!-- END GENERATED open-issue list -->
