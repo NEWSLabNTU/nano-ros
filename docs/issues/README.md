@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-47 open. One line each — the detail lives in the issue file,
+48 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -104,8 +104,18 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
 - **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
+- **#0889** (rmw) — The Cyclone RMW installs no wake callback, so the executor polls on a timer and mostly misses See `0889-*`.
 
 <!-- END GENERATED open-issue list -->
+
+Recently resolved (2026-08-29): **#0888** (rmw) — FreeRTOS was the only platform arm of the embedded
+Cyclone config with no `AllowMulticast`, so it inherited the Cyclone default (multicast for data) while
+ThreadX states `spdp` and native_sim states `false`. Not a platform limit — `LWIP_IGMP` is on, the netif
+carries `NETIF_FLAG_IGMP`, the LAN9118 driver sets `MCPAS`, and SPDP multicast demonstrably works — just a
+policy nobody wrote down, visible only as `writer_hbcontrol: ... multicasting` in a peer-side trace. Now
+states `spdp`, matching ThreadX. NOT a fix for 0836: with the peer already spdp-only, data was unicast
+regardless (97,976 sends to the island's unicast locator against 69 multicast, all discovery).
+See `archived/0888-*`.
 
 Recently resolved (2026-08-28): **#0855** (testing) — `c_port_posix_net.rs` named ports `56301`/`56302` as literals, and both sit INSIDE this host's ephemeral range (32768–60999), so the kernel hands them to anything asking for one. An unrelated ROS `component_node` from another session's Autoware stack held 56302 for 29 minutes and `udp_loopback_roundtrip` reported it as `nros_platform_udp_listen` returning `-1` — a product-shaped message for a host-shaped cause. Now binds port 0 and reads `local_addr()` back, so the kernel names a port nobody holds. See `archived/0855-*`.
 
@@ -258,14 +268,6 @@ builds, but is NOT landed: one run showed zero deliveries and so did a run with 
 lane's variance swamps the signal - and listener invocation consumes the communication status this backend
 polls, which `reset_on_invoke=false` is meant to prevent and nobody has confirmed. Needs a repeatable rig.
 See `0889-*`. (2026-08-29)
-
-**#0888** (rmw, RESOLVED 2026-08-29) - FreeRTOS was the only platform arm of the embedded Cyclone config with
-no `AllowMulticast`, so it inherited the Cyclone default (multicast for data) while ThreadX states `spdp` and
-native_sim states `false`. Not a platform limit - `LWIP_IGMP` is on, the netif carries `NETIF_FLAG_IGMP`, the
-LAN9118 driver sets `MCPAS`, and SPDP multicast demonstrably works - just a policy nobody wrote down, visible
-only as `writer_hbcontrol: ... multicasting` in a peer-side trace. Now states `spdp`, matching ThreadX. NOT a
-fix for 0836: with the peer already spdp-only, data was unicast regardless (97,976 sends to the island's
-unicast locator against 69 multicast, all discovery). See `0888-*`. (2026-08-29)
 
 **#0835** (testing, open 2026-08-27) — the cmake and rust fixture families RE-STALE EACH OTHER, so
 `check-fixtures-stale` never reaches a fixed point: three consecutive runs on a tree with a green `lane=all`
