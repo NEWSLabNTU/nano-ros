@@ -30,7 +30,7 @@ when upstream releases.
 
 ## What the fork adds
 
-19 commits, 45 files, +2353/−130 against the 0.10.x boundary `5041f356`.
+20 commits, 51 files, +2361/−138 against the 0.10.x boundary `5041f356`.
 Seven groups.
 
 Re-measured 2026-08-29 and it had drifted BOTH ways: the headline said 15
@@ -120,11 +120,12 @@ its own netconn semaphore. ddsrt creates its own threads and never called
 `sem != NULL`. `thread_start_routine` is the point they have in common. Found by
 phase-370 W4, the first work to boot an embedded Cyclone image at all.
 
-### 6. The platform allocation funnel (1 commit)
+### 6. The platform allocation funnel (2 commits)
 
 | commit | subject |
 | --- | --- |
 | `6e2ad36f` | ddsrt/posix: route the heap through nano-ros's platform allocation funnel |
+| `8e6ff48a` | ddsi: allocate and free through ddsrt, not libc, in four mismatched places |
 
 Behind `-DNROS_DDSRT_PLATFORM_FUNNEL`, set by `ProvideCycloneDDS.cmake` on
 `ddsc` only (never on the tools-side `ddsrt-internal`: idlc and confgen link no
@@ -134,6 +135,22 @@ UNREFERENCED in native cyclone images; it now has 4 inbound edges and the whole
 `ddsrt_{malloc,malloc_s,calloc_s,realloc_s,free}` family is off `malloc@plt`.
 Compile-time rather than weak-linked on purpose: weak linkage leaves the libc
 branch in the binary, and its absence is what a tier gate has to read.
+
+Routing `ddsrt` was not enough, because four ddsi sites called libc DIRECTLY —
+and three of them were already a bug before the funnel existed. They allocate
+from one heap and release to the other: a listelem `malloc`'d in
+`network_interface_find_or_append` but freed by `free_all_elements`'
+`ddsrt_free`; `split_at_comma`'s `ddsrt_malloc`'d array released with libc
+`free`; a `calloc`'d `->verbatim` released through `dds_stream_free_sample`,
+whose allocator is `{ddsrt_malloc, ddsrt_realloc, ddsrt_free}`; and a
+`ddsrt_asprintf` string freed with `free`. On POSIX both heaps are glibc so
+nothing faults; on ThreadX, FreeRTOS and Zephyr — and under the funnel — they
+are genuinely different heaps.
+
+`sysdeps.c`'s `free` stays libc on purpose (`backtrace_symbols` allocated it),
+and `q_freelist.c`'s `free` is a function PARAMETER, not libc. After the sweep
+`libddsc.a` has exactly one object referencing a raw libc allocator, which is
+the `sysdeps.c` one.
 
 ### 7. Nested-build path resolution (1 commit)
 
@@ -212,10 +229,10 @@ Then, two recipes that cross-check each other:
 
 ```sh
 # by boundary: 5041f356 is the newest upstream 0.10.x commit the stack sits on
-git log --oneline 5041f356..origin/nano-ros          # -> 19
+git log --oneline 5041f356..origin/nano-ros          # -> 20
 
 # by authorship, as an independent check
-git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 19
+git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 20
 ```
 
 Do not count `origin/master..origin/nano-ros` alone: it sweeps in upstream 0.10.x
