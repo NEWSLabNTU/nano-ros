@@ -298,6 +298,9 @@ The counters point above the driver, not at it: `inerr` (netif->input
 rejections) rises with burst size while every driver-side discard stays zero.
 That is the next thread, and it is a different bug from the one fixed here.
 
+**Superseded** — this was measured before the `MEMP_NUM_TCPIP_MSG_INPKT` fix
+below, which is where those `inerr` rejections were coming from.
+
 ### Corrections to earlier analysis in this issue
 
 * **`RX_DROP` is not readable.** The "Next" section proposed reading the
@@ -312,6 +315,37 @@ That is the next thread, and it is a different bug from the one fixed here.
 * **The measurement above was nearly taken on a stale image.** The built an536
   artifact predated the commit that raised `PBUF_POOL_SIZE` 24 -> 128 by two
   hours. → the mtime rule now in CLAUDE.md.
+
+### An independent measurement, folded in from PR #27
+
+A second instrumentation pass, taken in parallel with the one above and with a
+different counter set, reached the same verdict on a far larger sample:
+
+```
+RXWHY polls=62000 ok=84524 allocfail=0 es=0 badlen=0 empty=0 abort_pending=0 pendmax=16
+```
+
+* `allocfail=0` over **84,524 received frames** — `pbuf_alloc` never failed
+  once, so `PBUF_POOL_SIZE=128` is holding. Same conclusion as `nopbuf=0`
+  above, two orders of magnitude more evidence behind it.
+* `abort_pending=0` — the drain never walked away with frames still queued.
+  The break-on-NULL path is real in the code and simply never taken here.
+* `pendmax=16` — deepest the RX status FIFO was ever seen at poll entry,
+  nowhere near overflow.
+
+**It also corrects the ~89% figure this issue repeated throughout.** That came
+from a run recording 3,200 frames; a healthy run of the same length records
+84,524. The earlier run was starved for an unrelated reason, so the "deficit"
+was a comparison against the wrong denominator. Frames arrive in volume — the
+loss was never a NIC-throughput story.
+
+That pass closed by proposing the next measurement: turn on `LWIP_STATS` /
+`MEMP_STATS` (compiled out in `lwipopts.h`) and read the memp pools, on the
+reasoning that "if Cyclone's receive thread cannot drain [the mbox] during a
+burst, lwIP discards datagrams silently". **That aim was right and the answer
+is below**: the constraint was a memp pool — `MEMP_NUM_TCPIP_MSG_INPKT`, whose
+default 8 sat under a 64-deep mbox. Recording it because the direction was
+called correctly from the counters alone, before the pool was read.
 
 ## RESOLVED — it was TWO bugs, and the second is ours
 
@@ -357,16 +391,15 @@ a counter rather than an argument:
 
 ### What remains
 
-The QEMU half (`c6f4c95716`) is pushed to the fork but reaches users only in an
-SDK re-cut; it should ride the `-nros3` cut queued for issue 0368. Until then a
-user on the shipped SDK still loses frames past the fifo, though the pool fix
-alone removes the hard 8-frame cap.
+The QEMU half (`c6f4c95716`) needed an SDK re-cut to reach users. **That
+shipped**: `qemu-11.0.0-nros4`, and the index now pins `-nros6`. Note the SDK
+store accumulates — a checkout that provisioned qemu before 2026-08-29 still
+has `11.0.0-nros2` and still loses frames past the fifo, though the pool fix
+alone removes the hard 8-frame cap. Re-run `nros setup --tool qemu`.
 
-## Still unknown
-
-WHY ~89% of each burst is lost below the driver. The fragment count above
-settled the half-question this section used to pose — they do reach lwIP — so
-what remains is the RX FIFO / drain cadence, not Cyclone's defragmentation.
+Nothing else remains: the ~89% figure was a measurement artifact (see the
+folded PR #27 pass above), and the residual 6-12% noted earlier was measured
+before the `MEMP_NUM_TCPIP_MSG_INPKT` fix.
 
 ## Why it matters
 
