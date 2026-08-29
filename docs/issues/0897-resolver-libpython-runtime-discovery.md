@@ -188,12 +188,27 @@ The `.so` itself is located beside the driver via `current_exe()`, never by
 
 ### The cases that must produce a message, not a crash
 
-| host state | XML/YAML | `.launch.py` |
-| --- | --- | --- |
-| no `python3` at all | works | error: names the file, says Python launch files need an interpreter |
-| `python3` present, no shared libpython (`Py_ENABLE_SHARED=0`) | works | error: names the interpreter and that it was built without `--enable-shared` |
-| `python3` older than the abi3 floor | works | error: names both versions |
-| `python3` ≥ floor, shared lib present | works | works |
+**CORRECTION.** An earlier draft of this issue said "XML/YAML always works
+without Python". That is wrong, and the parser says why in its own header:
+
+> `substitution/eval.rs` — *Always delegates to Python's `eval()` via PyO3,
+> matching ROS 2's behavior exactly. `$(eval)` is defined as Python evaluation
+> in the ROS 2 launch specification.*
+
+`$(eval …)` appears in **XML** launch files too, `substitution/types.rs` calls
+`evaluate_expression`, and the XML traverser resolves substitutions. So the
+honest promise is:
+
+| input | no usable interpreter |
+| --- | --- |
+| XML / YAML **without** `$(eval)` | works |
+| XML / YAML **with** `$(eval)` | error naming the file AND the expression |
+| `.launch.py` | error naming the file |
+
+That is why the backend trait needs **two** methods rather than one. A design
+around a single `exec_file` would have let `$(eval)` in an XML file reach a
+`None` backend somewhere with no good message — a latent copy of the very crash
+this issue removes.
 
 The third and fourth rows are the point of the change. Today every row above the
 last is a loader abort with no message from us; since `c0215ec2c` it is at least
@@ -346,6 +361,56 @@ should be a gate rather than a convention.
 - **Performance under the limited API.** The parser carries deliberate
   optimisation (dashmap, LRU). Measure a real bringup before and after; do not
   assume it is free.
+
+
+## The shape, measured
+
+Current (`src/ros-launch-resolve/`):
+
+```
+cli/
+resolve/                     pyo3: auto-initialize, py-clone   -> links libpython
+parser/crates/
+  play_launch_parser/        pyo3: auto-initialize, py-clone   -> links libpython
+    src/  actions/ 2845  captures 80   condition 84  error 111
+          ir 293         lib 1015      main 289      params 466
+          python/ 8505   record/ 1165  substitution/ 3599
+          traverser/ 3395              xml/ 925
+  python/                    pyo3: extension-module            -> no libpython
+```
+
+After:
+
+```
+parser/crates/
+  play_launch_parser/        NO pyo3.  rlib.  ~11,700 lines
+                             + trait PythonBackend { exec_file(..); eval_expr(..) }
+  play_launch_parser_pyexec/ pyo3 + core.  ~8,500 lines (python/ moves here)
+                               rlib   -> libpython linked, today's behaviour, opt-in
+                               cdylib -> extension-module + abi3-py310, no DT_NEEDED
+  play_launch_pyload/        NEW. dlopen(libpython, RTLD_GLOBAL) then pyexec.so.
+                             ONE implementation, used by resolve/ and play_launch/
+  python/                    unchanged (the Rust -> Python bindings)
+```
+
+### The split line is four crossings, and they are all small
+
+| crossing | site | becomes |
+| --- | --- | --- |
+| `crate::python::PythonExecutor` | `traverser/python_exec.rs` (294 ln) | the trait call site — already its own file |
+| `crate::python::bridge::find_package_executable` | `record/generator.rs:24` | ament lookup, pure Rust; move DOWN into core |
+| `impl From<pyo3::PyErr> for ParseError` | `error.rs:70` | moves to pyexec, or sits behind a cfg |
+| Python `eval()` | `substitution/eval.rs` | the SECOND trait method (see the correction above) |
+
+Downward dependencies from `python/` into core are fine and stay as-is: 6 ×
+`substitution`, 4 × `record`, 4 × `error`, 1 each `params` / `captures`.
+
+### What it buys play_launch itself
+
+`src/play_launch` — the runtime — links libpython today only because it consumes
+the parser rlib. After the split it depends on core alone and acquires the Python
+half through `pyload` at the moment one is needed, so replaying a recorded XML
+launch stops requiring an interpreter that matches ours.
 
 ## Not doing
 
