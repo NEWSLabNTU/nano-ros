@@ -69,6 +69,25 @@ as everything else here) or abi3 linkage.
 Today the loser is whoever ran second: `just build-test-fixtures lane=native`
 dies in `generate-bindings` mid-sync.
 
+#### CORRECTION (2026-08-29): the abi3 direction below DOES NOT WORK
+
+Checked against PyO3's documentation while fixing the same coupling elsewhere:
+**abi3 is an extension-module mechanism and does not apply to embedding.** For
+an embedded interpreter the ABI is fixed by the `libpython` linked at build
+time, not by `Py_LIMITED_API`; there is no supported link against a
+version-agnostic `libpython3.so`; and upstream's answer for "one artifact across
+CPython versions with an embedded interpreter" is to stop embedding and become a
+cdylib extension module.
+
+The caveat this section lists — "confirm neither pyo3's embedding path nor the
+launch parser's Python usage needs a non-limited symbol" — is moot, because the
+premise fails one level above it.
+
+The real direction is **`dlopen` at runtime**, tracked in
+[issue 0897](../0897-resolver-libpython-runtime-discovery.md). Read that instead
+of the section below, which is kept because a recommendation that looked settled
+for months is worth leaving visible next to its refutation.
+
 #### Recommended direction: abi3 (stable-ABI) linkage, not a per-side path
 
 The per-side-path option (route the resolver's target dir through
