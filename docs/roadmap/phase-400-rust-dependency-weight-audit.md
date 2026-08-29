@@ -1,8 +1,16 @@
 # Phase 400 — Rust dependency weight audit
 
-**Status (2026-08-29). IN PROGRESS — W1 landed; W2 (the 42.6 % pair) and W3
-measured and specified, neither implemented. Waves are ordered by measured
-value, not by discovery order.** Opened because a Zephyr build profile showed cargo dominating the
+**Status (2026-08-30). IN PROGRESS — W1 and W2a landed. W2's orchestration half
+was ATTEMPTED AND REVERTED: its 43-crate estimate measured as 6, because
+`nros-orchestration-ir` is needed by every arm of the macro and is itself what
+pulls the heavy tail. The lever moves to splitting that crate; see W2. W3
+measured and specified, not implemented. Waves are ordered by measured value,
+not by discovery order.**
+
+**Read the W2 table with W2a's caveat**: the 50.4 s pair assumes BOTH halves
+ship, because the 27.4 s contested pool only frees when the last consumer of
+those units goes. W2a alone frees the cbindgen-exclusive 8.1 s, not its share of
+the pool. Opened because a Zephyr build profile showed cargo dominating the
 wall clock. This phase is about what the image COMPILES, not about how the build
 is scheduled — phase-371 (CLOSED) covered scheduling and is worth reading first
 for its record of six retracted hypotheses.
@@ -78,25 +86,86 @@ its `src/`. Confirmed independently by `cargo-machete`. Removed.
 because a dependency nobody references is a false statement about what the crate
 needs, not because it is fast.
 
-## W2 — proposed, measured, NOT implemented: gate the orchestration half
+## W2 — orchestration half: ATTEMPTED 2026-08-30, REVERTED. The 43-crate figure was wrong.
 
-Put `main_macro.rs` and `source_metadata_sidecars.rs` (and their five deps)
-behind a `launch` feature on `nros-macros`, off by default, forwarded by `nros`.
+The original plan, kept here because the correction is the finding: put
+`main_macro.rs` and `source_metadata_sidecars.rs` (and their five deps) behind a
+`launch` feature on `nros-macros`, off by default, forwarded by `nros`. Upper
+bound quoted as **43 crates leave the graph**, measured by subtree difference.
 
-**Upper bound, measured by subtree difference: 43 crates leave the graph** (42
-net of `nros-macros` itself, which stays for `node!`). `syn`, `quote`,
-`proc-macro2` and `unicode-ident` remain — they are the macro machinery, not the
-orchestration.
+**Implemented far enough to measure, and the number is 6, not 43.** With the
+feature added and the four launch-only deps made optional:
 
-The time saving is **NOT yet measured**. It cannot be, without implementing the
-gate: the 24.0 CPU-s figure above includes `syn`, which stays. Quoting the full
-20 s delta as the saving would be wrong. What is measured is the crate-count
-delta and the fact that the graph is reachable-but-unused for these leaves.
+```
+feature OFF: 46 crates      feature ON: 52 crates
+leaves: eyre, indenter, nros-pkg-index, quick-xml, same-file, walkdir
+```
 
-Design note for whoever takes it: per the `std`-deletion rule in CLAUDE.md, whose
-requirement it is decides the spelling. Launch orchestration is a capability the
-CONSUMER picks, so the feature is REQUIRED (a `compile_error!` naming `launch`
-when `main!(launch = …)` is expanded without it), not silently granted.
+`zerocopy`, `yaml-rust2`, `hashlink`, `ahash`, `serde`, `toml`, `indexmap` — the
+whole heavy tail the wave was built to shed — **all stay**.
+
+**Why: `nros-orchestration-ir` cannot be gated with `main_macro.rs`.** It is not
+launch-only. Every arm of the macro, including bare `main!()` and the board
+resolution path shared with `node!`-only entries, reaches into it:
+
+| item | where it is needed |
+| --- | --- |
+| `board_path_for` | board resolution, every arm |
+| `FRAMEWORKS`, `framework_for_board_key`, `is_known_framework` | framework resolution, every arm |
+| `executor_sizing::{LIFECYCLE_SERVICE_SLOTS, PARAM_SERVICE_SLOTS}` | executor sizing, every arm |
+
+The compiler found this, not the plan: gating the crate produced
+`unresolved import nros_orchestration_ir` at six sites outside the model branch.
+The 43-crate subtree difference had silently assumed `nros-orchestration-ir`
+leaves with the macro — and since that crate depends on all three
+`ros-launch-manifest-*` crates itself, it is the one holding the tail. Gating
+`ros-launch-manifest-model` at the `nros-macros` level is a no-op for the same
+reason: it arrives through `nros-orchestration-ir` regardless.
+
+This is the same failure mode this document already records once for the 31.9 %
+figure: **a subtree difference is an upper bound on what COULD leave, never a
+measurement of what DOES.** Both times the error was optimistic, and both times
+only building it settled the question.
+
+**The refactor was reverted rather than shipped.** Six light crates
+(`walkdir`, `quick-xml`, `eyre`, ...) do not appear in the timings table at all,
+and the cost to keep them out is a `launch` feature threaded through ~22 leaf
+manifests plus the codegen emitter, a required-feature `compile_error!` path, a
+`TierBake` boundary type to keep `ResolvedTierTable` out of the shared emit path,
+13 `unused_mut` suppressions, and another round of leaf-lockfile churn. Against
+the doc's own rule — *measure the pair; do not ship half and quote this table* —
+that is not a trade worth making.
+
+### Where the orchestration lever actually is: split `nros-orchestration-ir`
+
+The measurement relocates the work rather than cancelling it.
+**`nros-macros` needs a thin constant slice of `nros-orchestration-ir` and pays
+for the whole model/tier/sched schema.** The slice is board paths, the framework
+table, and the executor-sizing constants. The schema is what drags
+`ros-launch-manifest-{types,sched,model}` -> `yaml-rust2` -> `hashlink` ->
+`hashbrown` -> `ahash` -> `zerocopy` (6.9-7.3 CPU-s, the single largest unit in
+the profile).
+
+It is not a clean file-level cut, which is why it needs its own wave rather than
+a follow-up commit. Of the crate's ten modules, six reference
+`ros_launch_manifest` (`lib.rs`, `derive.rs`, `mapper_input.rs`,
+`rtos_realizer.rs`, `cyclonedds_type_sizing.rs`, **and `executor_sizing.rs`**) and
+four do not (`model_location.rs`, `qos_override.rs`, `sidecar_slots.rs`,
+`wcet.rs`). Both `lib.rs` and `executor_sizing.rs` are on the every-arm path AND
+touch the model types, so the split has to separate items, not files.
+
+Sketch for whoever takes it: extract the board/framework/sizing constants into a
+zero-dep crate (or a default-off `model` feature on `nros-orchestration-ir`,
+with `nros-cli-core` enabling it), then re-run the `nros-macros` crate-delta
+above. Only after that does gating `main_macro.rs` pay, and the two must be
+measured together for the same reason W2a and this half must be.
+
+Design note, still valid for whenever the gate lands: per the `std`-deletion rule
+in CLAUDE.md, whose requirement it is decides the spelling. Launch orchestration
+is a capability the CONSUMER picks, so the feature is REQUIRED (a
+`compile_error!` naming `launch` when `main!(launch = ...)` is expanded without
+it), not silently granted. That error path was written and worked; it is in the
+reverted diff if it is wanted again.
 
 ## W2 measured on the real build — `cargo build --timings`, cold
 
@@ -151,7 +220,7 @@ lever lands and nothing else changes.
 
 | wave | lever | exclusive | share |
 | --- | --- | --- | --- |
-| W2 | gate orchestration **and** cbindgen, together | **50.4 s** | **42.6 %** |
+| W2 | gate orchestration **and** cbindgen, together | ~~**50.4 s**~~ see below | ~~42.6 %~~ |
 | W3 | `bindgen` -> committed output | 20.6 s | 17.4 % |
 | W4 | attribute the contested pool inside the leaf's graph | (enabling) | — |
 | W1 | *landed* — unused dep removed | 1 crate | — |
@@ -163,7 +232,13 @@ separate W5.
 
 ### W2 — gate the orchestration half AND move cbindgen, as ONE change
 
-**50.4 s, 42.6 % — and only if both halves land.** This is the phase's main
+**Recorded as measured, then corrected — read the W2 section above before
+quoting this.** The 27.4 s contested pool only frees if BOTH halves land, and
+the orchestration half does not land as specified: gating `main_macro.rs`
+removes 6 light crates, not the orchestration tail. W2a landed alone, so the
+realised saving is the cbindgen-exclusive 8.1 s, not 50.4 s.
+
+**50.4 s, 42.6 % — and only if both halves land.** This was the phase's main
 finding and it is not visible from either half alone:
 
     orchestration-exclusive                    14.9 s   12.6 %
@@ -192,7 +267,7 @@ without it fails naming the feature; cold `--timings` on the same leaf shows
 `zerocopy`, `yaml-rust2`, `serde`, `toml` and the `clap` stack ABSENT. Measure
 the pair; do not ship half and quote this table.
 
-### W2a — the cbindgen half is smaller and safer than first written
+### W2a — LANDED 2026-08-30. The cbindgen half was smaller and safer than first written
 
 Issue 0452 already did the hard part. `nros-cbindgen-headers` is **the only
 writer** of the committed headers (`just regen-c-headers`, `--check` via
@@ -232,6 +307,94 @@ editing an in-tree source that feeds a committed header makes
 `check-cbindgen-headers` FAIL; (3) editing a `.msg` in a leaf still regenerates
 its message code and relinks the image — asserted by a test, because the whole
 risk of this wave is that (3) silently stops happening.
+
+#### What landed, and what each acceptance criterion actually showed
+
+`cbindgen` is now `optional = true` in `nros-build-helpers` and
+`nros-zpico-build`, behind a `cbindgen-drift-check` feature that defaults OFF.
+`nros-cbindgen-headers` — the single writer — turns it on, so `just
+regen-c-headers` and `just check-cbindgen-headers` are unchanged. The
+`rerun-if-changed` edges on the committed headers were deliberately left
+UNCONDITIONAL: those describe the build's own inputs (the C stub includes the
+header), and moving them behind the feature would have converted an opt-in
+diagnostic into a missing dependency edge, which is issue 0475 one crate over.
+
+**(1) — met, at the compile level, not just the graph level.** A cold `cargo
+build -p nros-c` into a fresh target dir:
+
+| | units | `cbindgen`/`clap` units | CPU (user+sys) |
+| --- | --- | --- | --- |
+| baseline | 113 | 6 | 24.9 s |
+| W2a | 61 | 0 | 8.4 s |
+
+The 52-unit drop is cbindgen plus its exclusive transitive stack (`clap` x3,
+`anstream`/`anstyle` x4, `rustix`, `tempfile`, `heck`, `strsim`, `getrandom`,
+`fastrand`, `toml_parser`, ...).
+
+**Do not read 16.5 CPU-s as the Zephyr-build saving.** That standalone leaf had
+nothing else pulling `syn`/`serde`/`toml`, so the whole stack vanished. In the
+Zephyr profile those units are CONTESTED — other build-deps need them anyway —
+which is exactly why the table above this section attributes only **8.1 s** to
+cbindgen-exclusive. The honest claim is: 8.1 s on the profiled Zephyr leaf,
+up to ~16 s on a leaf where cbindgen is the sole consumer of its stack.
+
+**(2) — met, and tested rather than argued.** Appending a `#[repr(C)]` struct
+and a `#[unsafe(no_mangle)]` fn to `nros-c/src/clock.rs`, with the feature OFF,
+made the gate hard-fail:
+
+```
+[FAIL] these committed headers are STALE against their crate sources:
+         .../nros-c/include/nros/nros_generated.h
+```
+
+Reverting restored `check-cbindgen-headers: OK (3 committed headers match)`.
+The gate works precisely because the regenerator enables the feature for itself.
+
+**(3) — NOT satisfied, and on inspection it does not apply to this wave.** The
+criterion was written for the "committed output" shape, where a build SKIPS a
+regeneration step. W2a introduces no skip: since issue 0452 the build already
+never regenerated these headers, it only re-rendered them to COMPARE and print
+a warning. What was removed is a redundant comparison, not a generation. The
+`.msg` path (`nros_generate_interfaces()` / `nros generate-rust` and the #182
+CONFIGURE_DEPENDS edge) is untouched — no file in the diff belongs to it.
+Carry the criterion to W3, where committing bindgen output DOES create a real
+skip and the test has to exist. It is not written yet.
+
+#### The consequence nobody predicted: 18 leaf lockfiles
+
+An optional-but-unactivated dependency drops out of a resolve, so every leaf
+lock that carried cbindgen had to move — 18 files, **-5582 / +184 lines**, all
+removals except the `[patch.unused]` bookkeeping. Moved with the sanctioned
+`just lock-update "" "" <dir>`, never a bare `generate-lockfile`.
+
+Two things came out of that:
+
+* **The NuttX `libc` patch turned "unused".** `packages/boards/
+  nros-board-nuttx-qemu/nros-nuttx-ffi/.cargo/config.toml` patches `libc` to the
+  NuttX fork for `-Z build-std`; cbindgen's HOST stack was the only thing pulling
+  `libc` into the main resolve, so removing it makes cargo warn the patch is
+  unused. **This does not change the firmware.** Verified by building the leaf
+  both ways to the same (unrelated, pre-existing) `APP_MAIN_CPP not set` failure
+  and diffing unit sets: target-side (`armv7a-nuttx-eabihf`) units are
+  IDENTICAL; only 20 host units disappear. The warning is a main-graph artifact,
+  because build-std resolves separately.
+* **The lock refresh also swept up staleness this branch had already caused.**
+  Ten of the eighteen still listed `nros-launch-parser`, dropped from
+  `nros-macros` by W1 earlier on this same branch without the leaf locks being
+  moved. `--locked` tolerated the extra entries, so nothing was red — which is
+  why it survived. It is fixed here, but it belonged to W1.
+
+**`check-cbindgen-pin` now reads 1 tracked lock, down from 19**, and its header
+comment says why. That is not lost coverage: the hazard it watched — a lockless
+leaf resolving the caret to a different patch release — no longer exists,
+because no leaf resolves cbindgen at all. Arms 1 and 2 and the vacuity guard are
+unchanged.
+
+*Lanes run:* `just check-fast` (135/135 gates OK), `cargo clippy` on both
+feature states, `cargo +nightly fmt --check`, `check-cbindgen-pin`,
+`check-cbindgen-headers`, `check-leaf-lockfiles`, and a `--locked`
+`cargo metadata` on all 18 updated leaves. NOT run: `ci-l1`, any fixture build,
+any cross/QEMU lane.
 
 ### W3 — build-time `bindgen` to committed output
 
