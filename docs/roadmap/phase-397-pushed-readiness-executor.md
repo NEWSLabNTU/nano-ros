@@ -1,4 +1,4 @@
-# Phase 396 — Pushed readiness: the wake says WHO, and the executor stops scanning
+# Phase 397 — Pushed readiness: the wake says WHO, and the executor stops scanning
 
 **Status (2026-08-28). Not started.** Implements
 [RFC-0084](../design/0084-readiness-is-pushed-not-scanned.md).
