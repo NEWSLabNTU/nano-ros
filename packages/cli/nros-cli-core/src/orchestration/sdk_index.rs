@@ -270,7 +270,7 @@ pub struct CheckProbe {
     /// false negative on a host that genuinely has it.
     #[serde(default)]
     pub header: Option<String>,
-    /// phase-397 W2 — the resolved binary EXECUTES.
+    /// phase-398 W2 — the resolved binary EXECUTES.
     ///
     /// Not `cmd`, which is `command_exists`: a PATH lookup, and a store dist is
     /// not on PATH. This is the probe the motivating failure needed — the QEMU
@@ -282,7 +282,7 @@ pub struct CheckProbe {
     /// execute" is not "absent".
     #[serde(default)]
     pub runs: Option<String>,
-    /// phase-397 W2 — a file that must exist inside the provider's checkout.
+    /// phase-398 W2 — a file that must exist inside the provider's checkout.
     ///
     /// For `source`/`submodule` providers, which have no PATH entry and no
     /// soname: today their presence test is "the directory exists", which is
@@ -609,7 +609,7 @@ impl SdkIndex {
     /// Where a prereq's `path` probe resolves against, if its provider has a
     /// checkout at all.
     ///
-    /// phase-397 W2. Only `submodule`/`source` providers have one: an OS
+    /// phase-398 W2. Only `submodule`/`source` providers have one: an OS
     /// package has no directory we own, and a `sdk` dist lives in the store
     /// under a version we do not know here. Returning `None` makes the probe
     /// abstain (`Unknown`) rather than test against a guessed root.
@@ -1072,7 +1072,7 @@ check = { cmd = "west" }
         // A tool naming an undefined system key is a validation error.
         let dangling = SdkIndex::parse("[tool.qemu]\nversion=\"1\"\nsystem=[\"nope\"]\n").unwrap();
         let err = dangling.validate().unwrap_err().to_string();
-        // phase-397 W4 — the message names `[prereq.*]`, the table a reader
+        // phase-398 W4 — the message names `[prereq.*]`, the table a reader
         // should add the entry to now. The validator checks the MERGED set, so
         // a `[system.*]` entry still satisfies the reference while the alias
         // lives; only the wording moved.

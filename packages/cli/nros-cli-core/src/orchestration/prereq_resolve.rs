@@ -1,4 +1,4 @@
-//! phase-397 W3 — resolve a workspace's `<depend>` names.
+//! phase-398 W3 — resolve a workspace's `<depend>` names.
 //!
 //! RFC-0062 (amended 2026-08-29) settled the ladder. A `<depend>` is resolved
 //! by asking, in order:

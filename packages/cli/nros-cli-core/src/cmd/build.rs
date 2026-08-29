@@ -151,7 +151,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         .clone()
         .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
         .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&root));
-    // phase-397 W3 — every `<depend>` resolves, or the build stops.
+    // phase-398 W3 — every `<depend>` resolves, or the build stops.
     //
     // Runs once per invocation, before anything is generated, because an
     // undeclared prerequisite is cheapest to report before a toolchain is
@@ -1252,7 +1252,7 @@ fn collect_images(
     Ok(out)
 }
 
-/// phase-397 W3 — resolve every `<depend>` a workspace declares, or fail.
+/// phase-398 W3 — resolve every `<depend>` a workspace declares, or fail.
 ///
 /// The ladder is RFC-0062's, amended 2026-08-29: workspace package → generated
 /// message → `[prereq.*]` key → ROS package (ament index) → error.
