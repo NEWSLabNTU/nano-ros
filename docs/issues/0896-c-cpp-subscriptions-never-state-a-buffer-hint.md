@@ -84,44 +84,174 @@ available at generation time.
 
 That makes option 1 viable, and it is the one to take.
 
-## The shape of the fix
+## Surveyed again 2026-08-29 — the registry shortcut does not exist
 
-`nros_serdes::size::size_bound` never reads `Field::offset` (checked: zero
-references). The offsets are the only part of a `Field` that codegen cannot
-know, so codegen can construct real `Field` values with `offset: 0` and call
-`max_serialized_size` — THE function, not a copy of its rule. `&'static`
-recursion (`FieldType::Nested(&NestedType)`, `Array(_, &FieldType)`) is
-satisfiable by leaking in a short-lived CLI process.
+Considered: skip the emitter work by having the C side look the bound up in a
+generated `&[(type_name, bound)]` table sourced from the Rust message crates'
+own `MAX_SERIALIZED_SIZE_*` consts. Same consts, no second computation, no ABI
+change. **A C image does not link those crates, so there is nothing to source
+the table from.**
 
-The one hazard is the mapping. `render_field_type_expr` maps a rosidl
-`FieldType` to a STRING today. Adding a second mapping to a VALUE, beside it, is
-the sizes-header mirror defect being written on purpose. The mapping must go
-VALUE-FIRST — build the `nros_serdes::FieldType`, then render the string from
-it — so there is one mapping with two outputs. That refactor is the bulk of the
-work and it lands in a heavily-tested emitter.
+* `packages/api/nros-c/Cargo.toml` deps are `nros`, `nros-node`, `nros-rmw`,
+  `nros-core`, `nros-platform`, `nros-log`, `nros-platform-cffi`, the optional
+  RMW backends, `paste`, `panic-halt`, `critical-section`. **No message crate.**
+* The Rust packages cmake builds for the pure-C workspace are exactly three:
+  `packages/rmw/cffi`, `packages/api/nros-c`, `packages/api/nros-cpp`. There is
+  no `nros_ws_runtime` umbrella — that crate is generated only for a workspace
+  that has Rust nodes (`examples/workspaces/mixed` has one; `c` does not).
+* No generated Rust message crate exists anywhere under
+  `examples/workspaces/c`.
+
+So the number must be EMITTED at generation time. Layers 1-2 stand.
+
+## The emit point is a template line, not a new emitter
+
+C message headers are rendered from a minijinja pack —
+`packages/cli/rosidl-codegen/packs/c/message.h.jinja`, registered in
+`render.rs:93`, context built as `MessageCHeaderTemplate` at
+`generator/msg.rs:406`. The header already emits `#define {constant_prefix}_…`
+rows for message constants (`message.h.jinja:29`), so a
+`#define {constant_prefix}_MAX_SERIALIZED_SIZE_XCDR2 <n>` is one template line
+plus one context field. C++ has the sibling pack.
+
+That is cheap. The cost stays where this issue already put it: computing `<n>`
+through `nros_serdes::size::max_serialized_size` rather than a second walk, and
+the value-first mapping refactor that makes that possible.
+
+## The publisher side has the same defect, and the same number fixes it
+
+Every generated typed publish helper stacks a buffer of a GLOBAL guessed size
+(`message.h.jinja:116-121`):
+
+```c
+#ifndef NROS_PUB_BUFFER_SIZE
+#define NROS_PUB_BUFFER_SIZE 256
+#endif
+static inline nros_ret_t std_msgs_msg_int32_publish(...) {
+    uint8_t buf[NROS_PUB_BUFFER_SIZE];
+```
+
+One `#define` for every message type in the image, default 256, checked against
+nothing. A type larger than it fails to serialize and the helper returns
+non-zero, which the call sites in `examples/workspaces/c` do not distinguish
+from a transport failure. Per-type `MAX_SERIALIZED_SIZE_*` replaces the guess
+with the exact number and costs less stack on every type under 256 bytes.
+
+## The C subscription is type-erased BY DESIGN, so layer 5 is the delivery
+
+Not an accident of the ABI. RFC-0043 typed components subscribe RAW, carrying
+the ROS type name as a string — `examples/workspaces/c/src/listener_pkg/
+CMakeLists.txt` says so in as many words ("raw `/chatter` subscription carries
+the type name as a string, so no generated C bindings are needed"), and
+`nros-c/src/subscription.rs:487` builds the `TopicInfo` from those bytes.
+
+Consequence: nothing in the C path can infer which `#define` belongs to a given
+subscription, because the type is only ever a string there. **The hint has to be
+supplied at the call site.** That makes layer 5 the actual delivery mechanism,
+not ergonomic polish on top of a working feature — and it is the layer to design
+first, because it decides what layers 3-4 must carry.
+
+Also unnamed until now: the same call site allocates
+`RawSubscription::<{ config::MESSAGE_BUFFER_SIZE }>`, a const generic off global
+config. That is a SECOND per-subscription buffer on the C path, charged
+identically to every subscription in the image, and it is not addressed by
+`rx_buffer_hint` at all.
+
+## Bounds in the `.msg` already work — this is a diagnostics job
+
+`sequence<T,N>`, `string<=N`, `wstring<=N` and the combined forms already parse
+and map to `nros_serdes::FieldType::{BoundedSequence, BoundedString,
+BoundedWString}` (`generator/common.rs:1371-1425`), straight into the schema
+`size_bound` walks, and `SizeBound.bounded` goes false only on a genuinely
+unbounded member. So "bound the field in the `.msg`" is the first thing to tell
+a user and it needs no code.
+
+What it needs is a diagnostic: when the bound comes back `None`, name the
+offending FIELD, not just the type. Today the caller gets `None` and no way to
+learn which member cost them the bound. Cheapest useful change in this issue.
+
+## An out-of-band bound is a different guarantee — do not conflate them
+
+A bound stated somewhere other than the `.msg` (nano-ros config, or a launch /
+contract declaration) is NOT the same object as an IDL bound, and the two must
+not share a spelling:
+
+* **Bounded in the `.msg`.** The publisher honours it too; an over-long message
+  cannot be constructed. A real bound.
+* **Bounded only out-of-band.** The publisher knows nothing about it. An
+  oversize sample arrives and is dropped. That is a TRUNCATION CONTRACT, and it
+  has to be loud at runtime — same class as `report_dropped_take`.
+
+Where both exist they must not silently disagree: clamp to the smaller, or
+refuse. A whole-type "max size" convenience knob is fine, but it must be an
+`rx_buffer_hint` OVERRIDE, never a claimed schema bound — the one-computation
+rule is the point of this issue.
+
+## Discovering subscribers from the model is AUTHORING, not discovery
+
+The spec models exactly what a per-subscription sizing pass would want
+(`ros-launch-manifest/model/src/lib.rs:646`):
+
+```rust
+pub struct TopicWiring {
+    pub msg_type: String,        // required, not Option
+    pub publishers: Vec<String>,
+    pub subscribers: Vec<String>,
+}
+```
+
+and `Structure.topics` holds them (`lib.rs:166`). `msg_type` being non-optional
+is a real advantage: a wiring row cannot exist without its type.
+
+But **0 of the 144 model files in this tree carry any topic wiring.** The field
+is `skip_serializing_if = "BTreeMap::is_empty"`, so an absent `topics:` key
+means an empty map, not an omission — the count is exact. `structure` is
+`scopes` + `nodes` and nothing else, Autoware-derived models included. The
+`contracts` layer holds `node_paths.input`/`output` (topic NAMES) and
+`PubContract { min_rate_hz, .. }` — no `msg_type` — and no contracts are
+authored anywhere in the tree either.
+
+The reason is structural, not an oversight: **a launch file does not declare
+topics or their types.** It declares nodes, remaps and parameters. Which topic a
+node subscribes to, and with what type, lives in the node's code. The resolver
+cannot invent it.
+
+This is the same trap phase-392 W5.b2 hit for service servers — the spec models
+`ServiceWiring.server`, and the verb built on it returned 0 for all 115 models
+including `service_server_model.yaml`. Recorded here so the third instance is
+recognised before code is written.
+
+So the model route works, but only once someone AUTHORS the wiring. Warning on
+absent wiring is therefore the primary UX for as long as that stays true, not an
+edge case.
 
 ## Layers, in order
 
+0. **Name the field that cost the bound.** When `max_serialized_size` returns
+   `None`, report which member is unbounded. No new surface; makes the existing
+   `.msg` fix actionable.
 1. **Value-first field mapping in `rosidl-codegen`**, rendering the existing
-   string from the value. No behaviour change; the existing emitter tests are
-   the check.
+   Rust schema string from the value. No behaviour change; the existing emitter
+   tests are the check.
 2. **The bound, computed by `max_serialized_size` over those values**, nested
-   types resolved by the same closure the RIHS path already uses. Emitted into
-   the generated C/C++ message header. A test must assert it equals the Rust
-   `MAX_SERIALIZED_SIZE_XCDR*` const for the same type — same input, same
-   function, so a disagreement means the value mapping is wrong.
-3. **`nros_subscription_options_t` grows an `rx_buffer_hint`.** Note this is an
-   ABI CHANGE: the struct documents itself as extensible through
-   `_reserved[2]`, and a `uint32_t` does not fit in two bytes. `generated.rs`
-   must be regenerated (`scripts/gen-abi-bindings.sh`) and `check-abi-bindings`
-   gates it.
-4. **`nros-c` forwards it** into `rmw_subscription_options_t`, and **`nros-cpp`**
-   through `options.hpp`.
-5. **A user-facing spelling**, the C analogue of W3b's `nros::rx_buffer_for!`:
-   the caller names the type once and gets a number that cannot drift.
+   types resolved by the same closure the RIHS path already uses. Emitted as a
+   `#define` from `packs/c/message.h.jinja` (and the C++ sibling). A test must
+   assert it equals the Rust `MAX_SERIALIZED_SIZE_XCDR*` const for the same
+   type — same input, same function, so a disagreement means the value mapping
+   is wrong. Retarget `NROS_PUB_BUFFER_SIZE` onto it in the same change.
+3. **Design the call-site spelling** — the C analogue of W3b's
+   `nros::rx_buffer_for!`. Do this BEFORE 4-5: the C subscription is raw by
+   design, so this is how the number reaches the runtime at all, and it decides
+   what the ABI must carry.
+4. **`nros_subscription_options_t` grows an `rx_buffer_hint`.** ABI CHANGE: the
+   struct extends through `_reserved[2]`, and a `uint32_t` does not fit in two
+   bytes. `generated.rs` must be regenerated (`scripts/gen-abi-bindings.sh`);
+   `check-abi-bindings` gates it.
+5. **`nros-c` forwards it** into the `TopicInfo` it already builds
+   (`subscription.rs:487`, one line), and **`nros-cpp`** through `options.hpp`.
 
-Steps 3-5 are the ones that decide whether this is ergonomic or merely possible,
-and they are worth designing before writing.
+Out-of-band bounds (config / model) are a SEPARATE track that reuses layer 3's
+spelling. They are not needed for any type whose `.msg` already bounds it.
 
 ## Not to be confused with
 
