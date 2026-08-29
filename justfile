@@ -1090,6 +1090,52 @@ phase-new slug="":
 [group("main")]
 bump-manifest tag="" flag="":
     @bash scripts/bump-manifest.sh {{tag}} {{flag}}
+# Dev utilities — REPORT what is missing, never install it (issue 0885).
+#
+# nano-ros does not provision Python, and `scripts/check-python-deps.py` opens
+# with why: PEP 668 externally-managed interpreters, `--user` vs venv vs pipx,
+# and three interpreters that can be in play at once. A setup script that
+# guesses wrong fails far away, four frames inside cmake. So this prints the
+# exact `pip install` for the interpreter it probed and stops.
+[group("docs")]
+dev-tools *args:
+    @python3 scripts/check-python-deps.py dev-tools {{args}}
+
+# Add a changelog fragment (issue 0885). One file per change, so two pull
+# requests never edit the same region of CHANGELOG.md — towncrier's whole
+# argument, and the same fix issue 0884 applied to the issue ledger.
+#
+#   just changelog-add 885 feat "just issues queries the ledger offline"
+#
+# QUOTE THE TEXT, and prefer single quotes if it contains backticks: the
+# argument reaches a bash recipe, so `like this` is COMMAND SUBSTITUTION and
+# your prose silently disappears. Measured while writing this recipe — a
+# fragment came out as "towncrier fragments replace a shared CHANGELOG;
+# writes one", with the backticked words evaluated and gone. Markdown code
+# spans are exactly what a changelog line wants, so this will bite.
+[group("docs")]
+changelog-add issue type text:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{type}}" in
+        fix|feat|perf|breaking|docs) ;;
+        *) echo "type must be one of: fix feat perf breaking docs" >&2; exit 2 ;;
+    esac
+    f="changelog.d/$(printf '%04d' "{{issue}}").{{type}}.md"
+    if [ -e "$f" ]; then echo "exists: $f" >&2; exit 2; fi
+    printf '%s\n' "{{text}}" > "$f"
+    echo "wrote $f"
+
+# Preview the assembled release notes WITHOUT consuming the fragments.
+[group("docs")]
+changelog:
+    @python3 -m towncrier build --draft --version "$(git describe --tags --abbrev=0 2>/dev/null || echo unreleased)"
+
+# Consume fragments into CHANGELOG.md and DELETE them. Release-time only.
+[group("docs")]
+changelog-release version:
+    @python3 -m towncrier build --yes --version "{{version}}"
+
 
 # Reserve the next free issue id ATOMICALLY across parallel sessions, and print
 # it. Use this instead of eyeballing the highest existing number: that is a

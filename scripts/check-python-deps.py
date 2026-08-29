@@ -98,6 +98,24 @@ GROUPS = {
         "scripts/sdk/verify-index.py on Python older than 3.11 (needs tomllib)",
         [("tomllib", "tomli")],
     ),
+    # issue 0885 — the DEV utilities: tools a contributor runs, not a build.
+    #
+    # These were previously undeclared, which is why `clang-format==17.0.5`
+    # existed only as a literal inside the CI Dockerfile and a contributor's
+    # host version silently reformatted the tree differently. A version that
+    # matters is a version that belongs in a group where `--list` shows it.
+    #
+    # Still REPORT-ONLY, like every group here: this module does not provision
+    # Python and says so at the top. The value is that `just dev-tools` now
+    # names what is missing and the exact `pip install` for it, instead of a
+    # lane failing four frames deep in a tool nobody knew was required.
+    "dev-tools": (
+        "`just changelog*` (towncrier) and `just format` (clang-format)",
+        [
+            ("towncrier", "towncrier"),
+            ("clang_format", "clang-format==17.0.5"),
+        ],
+    ),
 }
 
 # Groups whose absence is normal on many hosts, so a bare run does not imply
