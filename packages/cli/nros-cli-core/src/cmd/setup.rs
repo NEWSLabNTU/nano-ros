@@ -195,7 +195,7 @@ pub fn run(args: Args) -> Result<()> {
     }
     if args.system {
         // The index lives AT the repo root, so its parent is the base a
-        // `path` probe resolves against (phase-397 W2). Derived rather than
+        // `path` probe resolves against (phase-398 W2). Derived rather than
         // re-discovered, so the probe and the provisioner cannot disagree
         // about where a checkout is.
         let root = args.index.parent().map(std::path::Path::to_path_buf);
@@ -1286,7 +1286,7 @@ fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> Pro
 
 /// [`run_probe`] with the base directory a `path` probe resolves against.
 ///
-/// phase-397 W2. Split rather than threaded through all nine call sites,
+/// phase-398 W2. Split rather than threaded through all nine call sites,
 /// because only a provider that HAS a checkout can answer a `path` probe — the
 /// OS-package callers have no base and must keep passing none, which then reads
 /// `Unknown` rather than inventing a root to test against.
@@ -1361,7 +1361,7 @@ fn run_probe_in(
             answered_missing = true;
         }
     }
-    // phase-397 W2 — `runs`: the resolved binary EXECUTES. `cmd` above is a
+    // phase-398 W2 — `runs`: the resolved binary EXECUTES. `cmd` above is a
     // PATH lookup and cannot see a store dist at all; this is the probe the
     // libslirp failure needed, where the path existed and the loader disagreed.
     if let Some(line) = &check.runs {
@@ -1387,7 +1387,7 @@ fn run_probe_in(
             }
         }
     }
-    // phase-397 W2 — `path`: a file inside the provider's checkout. Answerable
+    // phase-398 W2 — `path`: a file inside the provider's checkout. Answerable
     // only with a base; without one the probe abstains rather than guessing a
     // root, which is the same `Unknown` discipline `sharedlib` uses off Linux.
     if let Some(rel) = &check.path {
@@ -1508,7 +1508,7 @@ fn run_system(
         println!("nros setup --system: every probed [system.*] entry is present.");
         return Ok(());
     }
-    // phase-397 W5 — the rosdep backend that used to fill an unmapped manager
+    // phase-398 W5 — the rosdep backend that used to fill an unmapped manager
     // here is DELETED (RFC-0062, amended 2026-08-29). It answered for one
     // provider of four, could not carry a `check`, and being consulted only
     // where it happened to be installed made one tree resolve two ways. A key

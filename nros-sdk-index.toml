@@ -986,7 +986,7 @@ why = "pinned formatter (.clang-format-version); just setup-clang-format install
 check = { cmd = "clang-format" }
 
 # ---------------------------------------------------------------------------
-# phase-397 W2 — probes for the providers that had none.
+# phase-398 W2 — probes for the providers that had none.
 #
 # Measured before writing these: `[system.*]` carried a `check` on 22 of 25
 # entries, `[tool.*]` on 0 of 14 and `[source.*]` on 0 of 15. Presence for the
@@ -1033,7 +1033,7 @@ why = "the Cyclone backend builds this fork"
 provider = "submodule"
 check = { path = "CMakeLists.txt" }
 
-# phase-397 W3 — found by the `<depend>` ladder, not by inspection: both were
+# phase-398 W3 — found by the `<depend>` ladder, not by inspection: both were
 # declared in `examples/workspaces/mixed/src/rust_heartbeat_pkg/package.xml` and
 # resolved to nothing, silently, for as long as that file has existed.
 

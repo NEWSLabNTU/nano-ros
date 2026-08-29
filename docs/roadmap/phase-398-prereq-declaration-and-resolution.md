@@ -1,4 +1,4 @@
-# Phase 397 — `[prereq.*]`: one prerequisite namespace, four providers
+# Phase 398 — `[prereq.*]`: one prerequisite namespace, four providers
 
 **Status (2026-08-29). COMPLETE — W1–W5 landed.** `[prereq.*]` is the
 declaration table, `[system.*]` is gone from the index, every `<depend>` must
