@@ -179,26 +179,82 @@ macro(nros_provide_cyclonedds)
             # EXCLUDE_FROM_ALL: built only because nros_rmw_cyclonedds links
             # CycloneDDS::ddsc, not as part of `all`.
             add_subdirectory("${CYCLONEDDS_SOURCE_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/_cyclonedds" EXCLUDE_FROM_ALL)
-            # issue 0832 — ddsrt's heap goes through `nros_platform_alloc`, not
-            # libc. Set on the ddsrt targets rather than globally: the switch is
-            # read by ONE fork TU (src/ddsrt/src/heap/*/heap.c), and a global
-            # define would also reach idlc and the confgen host tools, which
-            # link no platform layer. `ddsrt` is the object library the static
-            # `ddsc` absorbs; `ddsrt-internal` is its tools-side twin, which
-            # must NOT get the define for exactly that reason.
+            # issue 0832 — ddsrt's heap goes through `nros_platform_alloc`,
+            # not libc.
+            #
+            # The define and the LINK DEPENDENCY are one decision, made here.
+            # Compiling the funnel in turns three platform-ABI symbols into
+            # undefined references in every archive that absorbs `heap.c`, so a
+            # build that sets the define without linking a provider does not
+            # fail at the switch — it fails much later, at whichever executable
+            # happens to link ddsc first. That is why the provider is resolved
+            # BEFORE the define is set, and why the same block does both.
+            #
+            # Resolution is by target, not by guess: `NanoRos::Platform` is the
+            # Phase-138 §A canonical alias every platform module exposes, and
+            # every port defines the three symbols. When it is absent — the
+            # standalone `just cyclonedds ci` project builds the backend with no
+            # platform layer at all — the funnel stays OFF and Cyclone keeps its
+            # libc heap, which is the correct answer for a build that has no
+            # platform to funnel into. Both outcomes print, because a silently
+            # disabled funnel and an enabled one look identical from the recipe.
+            #
+            # The `unified`-tier gate (`scripts/check-no-alloc-image.py`) is what
+            # makes "off" safe to allow: it measures the linked ELF, so an image
+            # that was supposed to funnel and did not is caught there rather
+            # than trusted here.
+            #
+            # SCOPE, measured: this is the SELF-PROVISION branch, so the funnel
+            # reaches only builds that compile Cyclone from source. A
+            # find_package build links a Cyclone whose `heap.c` was already
+            # compiled — there is nothing left to define into it — and on a host
+            # with an SDK-store or ROS Cyclone that is what a NATIVE build
+            # resolves. Which is the right split for the tier model: `unified`
+            # is an embedded promise, a cross build skips find_package outright
+            # (see the CMAKE_CROSSCOMPILING branch above) and so always lands
+            # here with a platform target present.
+            #
+            # NOT a global define: the switch is read by ONE fork TU
+            # (src/ddsrt/src/heap/*/heap.c), and a global would also reach idlc
+            # and the confgen host tools, which link no platform layer.
             # `ddsrt` is an INTERFACE target in this layout — its sources
-            # compile INSIDE `ddsc`, so that is where the define has to land.
-            # `ddsrt-internal` (the tools-side twin that idlc/confgen link) is
-            # deliberately left alone: those hosts link no platform layer.
-            foreach(_nros_cdds_tgt ddsc ddsrt)
-                if(TARGET ${_nros_cdds_tgt})
-                    get_target_property(_nros_cdds_type ${_nros_cdds_tgt} TYPE)
-                    if(NOT _nros_cdds_type STREQUAL "INTERFACE_LIBRARY")
-                        target_compile_definitions(${_nros_cdds_tgt}
-                            PRIVATE NROS_DDSRT_PLATFORM_FUNNEL)
+            # compile INSIDE `ddsc`, so that is where both the define and the
+            # dependency have to land. `ddsrt-internal` (the tools-side twin
+            # idlc/confgen link) is deliberately left alone for the same reason.
+            if(TARGET NanoRos::Platform)
+                foreach(_nros_cdds_tgt ddsc ddsrt)
+                    if(TARGET ${_nros_cdds_tgt})
+                        get_target_property(_nros_cdds_type ${_nros_cdds_tgt} TYPE)
+                        if(NOT _nros_cdds_type STREQUAL "INTERFACE_LIBRARY")
+                            target_compile_definitions(${_nros_cdds_tgt}
+                                PRIVATE NROS_DDSRT_PLATFORM_FUNNEL)
+                            # PUBLIC: the reference lives in ddsc's own objects,
+                            # and consumers must get the provider AFTER ddsc on
+                            # the link line. Expressing it as a dependency is
+                            # what orders it — the alternative (a weak fallback
+                            # definition) would resolve the reference by
+                            # reintroducing the libc heap this issue exists to
+                            # remove, which the issue-0050 audit has no legal
+                            # `body:` label for.
+                            #
+                            # `$<BUILD_INTERFACE:>` because Cyclone `install
+                            # (EXPORT)`s `ddsc`, and an exported target may not
+                            # name a dependency outside its own export set —
+                            # without the genex, configure dies with "requires
+                            # target nros_platform_posix_iface that is not in
+                            # any export set". We never install this Cyclone
+                            # (it is added EXCLUDE_FROM_ALL and consumed from
+                            # the build tree), so the dependency is exactly a
+                            # build-tree one and the genex says so.
+                            target_link_libraries(${_nros_cdds_tgt}
+                                PUBLIC $<BUILD_INTERFACE:NanoRos::Platform>)
+                        endif()
                     endif()
-                endif()
-            endforeach()
+                endforeach()
+                message(STATUS "nano-ros: CycloneDDS ddsrt heap -> nros_platform_alloc (issue 0832)")
+            else()
+                message(STATUS "nano-ros: CycloneDDS ddsrt heap -> libc (no NanoRos::Platform target to funnel into)")
+            endif()
             # Where Cyclone generated its headers (dds/config.h, version.h, …) —
             # the backend needs this on the source path (see CMakeLists.txt).
             set(NROS_CYCLONEDDS_SOURCE_BUILD_DIR "${CMAKE_CURRENT_BINARY_DIR}/_cyclonedds")
