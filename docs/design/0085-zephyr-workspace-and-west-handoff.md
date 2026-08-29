@@ -171,6 +171,89 @@ first.
   ones. Whether they become image keys, stay row keys, or move into the
   handoff's native args is what currently blocks phase-383 W9.b's last 14 rows.
 
+## D4 — the application is named by its own DEPLOY declaration, in whichever
+## file its language uses; ambiguity is an error
+
+**Decided 2026-08-29, by running the flow rather than reasoning about it.**
+
+An image resolves to an application package. The link is the package's own
+declaration of the deploy target it serves, and the two languages put it in
+different files:
+
+| language | where |
+| --- | --- |
+| Rust  | `[package.metadata.nros.entry] deploy = "zephyr"` in `Cargo.toml` |
+| C/C++ | `nano_ros_add_executable(... DEPLOY zephyr)` in `CMakeLists.txt` |
+
+Reading only the first was a **silent Rust-only restriction**. The `c`, `cpp`,
+`mixed`, `realtime-c` and `realtime-cpp` workspaces each have a `zephyr_entry`
+declaring `DEPLOY zephyr` and no `Cargo.toml` for it, so all five fell through
+to the fallback — the bringup directory. That is a real directory, so nothing
+errored; west was simply pointed at the wrong tree, and the first symptom was a
+conf fragment reported "not found" in two paths that were the same path twice.
+
+**Ambiguity is refused, not resolved by order.** Six of the fourteen Zephyr
+images match more than one entry package: `realtime-cpp` has `zephyr_entry` and
+`fvp_entry` (both `DEPLOY zephyr`, same board, different payloads),
+`examples/workspaces/rust` has `zephyr_entry` and `zephyr_entry_robot1`, and
+`features` has three. A first-match scan returns a right-looking answer in every
+one of those cases and a WRONG one in some — `[image.zephyr_robot1]` would have
+built `zephyr_entry`. So the resolver lists the candidates and stops, and the
+image says which:
+
+```toml
+[image.zephyr_robot1]
+entry = "zephyr_entry_robot1"
+```
+
+This is why `entry` is an image key rather than a derived value, and it is the
+only new key this RFC adds.
+
+## D5 — a fragment is searched beside the APPLICATION, not only the bringup
+
+Corollary of D2 that only appeared once the driver stopped assuming the bringup
+IS the application. A Zephyr app keeps its `prj-<rmw>.conf` next to the
+`CMakeLists.txt` west builds, so the fragment search is board config dir →
+application → bringup. Before this, an image naming a fragment that lived with
+its app got
+
+```text
+conf fragment `prj-zenoh.conf` not found. Looked in:
+  …/src/demo_bringup/boards/native_sim_native_64/prj-zenoh.conf
+  …/src/demo_bringup/prj-zenoh.conf
+```
+
+while the file sat in `src/zephyr_entry/` the whole time. All 14 Zephyr images
+now declare their RMW overlay, which is what their hand-written CMakeLists
+already required (`FATAL_ERROR "… requires an RMW overlay"`) and what the
+fixture rows already said as `conf_files`.
+
+## Verified end to end
+
+`examples/workspaces/rust`, 2026-08-29, on this tree:
+
+```text
+nros sync
+nros build demo_bringup:zephyr        → west build → 1312/1312 → zephyr.exe
+just zenohd                           → rmw_zenohd on tcp/127.0.0.1:7447
+./build/zephyr/zephyr.exe             → "zephyr workspace entry up (2 nodes)"
+ros2 topic echo /chatter --once       → data: 6
+```
+
+`examples/workspaces/c` builds the same way (1326/1326) through the D4 CMake
+rung; its runtime needs a `zeth` TAP interface, which is host setup requiring
+root, not part of this flow.
+
+**One defect this surfaced, now fixed.** `zephyr/Kconfig`'s
+`NROS_ZENOH_LOCATOR` defaulted to `tcp/127.0.0.1:7456`, while
+`scripts/dev/zenohd.sh` (`just zenohd`, `nros_router_hint`) and `rmw_zenoh_cpp`
+itself all use `7447`. The two halves of our own documented
+workflow disagreed, and neither error message names a port — the image says
+`Transport(ConnectionFailed)` and a `ros2` node on the other router says
+"Unable to connect to a Zenoh router". Measured before changing it: of 35 built
+Zephyr images carrying a locator, 34 set their own (fixtures allocate one) and
+1 rode the default.
+
 ## Evidence
 
 * `zephyr/CMakeLists.txt:68` — `NROS_REPO_DIR = ${CMAKE_CURRENT_LIST_DIR}/..`,

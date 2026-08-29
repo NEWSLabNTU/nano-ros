@@ -200,7 +200,7 @@ and interface codegen still needs the ROS message definitions.
    install or any dir holding the `.msg` files.
 
 The RMW host daemon must be **running** before an example connects
-(for zenoh: `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false'
+(for zenoh: `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false'
 ros2 run rmw_zenoh_cpp rmw_zenohd`; the Micro-XRCE-DDS agent for xrce).
 
 ## Configure
@@ -319,6 +319,89 @@ may act.
 `nros build` is the convenience that applies an image's overlays for you; it
 never becomes a required layer between you and west.
 
+#### The whole flow, end to end
+
+Five commands, run from your workspace. This is the `examples/workspaces/rust`
+transcript, verbatim:
+
+```bash
+# 0. once: a Zephyr. Either export ZEPHYR_BASE, or point nros at the workspace
+#    that contains `zephyr/`:
+export NROS_ZEPHYR_WORKSPACE=/path/to/zephyr-workspace
+
+# 1. generate the message bindings this workspace's packages depend on.
+#    `nros build` refuses with "this workspace has never been synced" until
+#    you do — it will not silently build against absent bindings.
+nros sync
+
+# 2. build. This resolves the application, applies the image's overlays and
+#    runs `west build` for you.
+nros build demo_bringup:zephyr
+
+# 3. start the router ROS itself uses — the one `rmw_zenoh_cpp` ships, so it
+#    cannot drift from the RMW your ROS 2 nodes use. Separate terminal; it
+#    keeps running. Listens on tcp/127.0.0.1:7447.
+ros2 run rmw_zenoh_cpp rmw_zenohd
+
+# 4. run the image.
+./build/zephyr/zephyr.exe
+```
+
+```text
+*** Booting Zephyr OS build v3.7.0 ***
+<inf> nros_net_wait: Network ready (NSOS — host kernel sockets)
+<inf> rust: rustapp: nros: zephyr workspace entry up (2 nodes)
+<inf> rust: talker_pkg: talker publishing chatter seq=0
+<inf> rust: talker_pkg: talker publishing chatter seq=1
+```
+
+and from a ROS 2 shell on the same router, the nodes are ordinary ROS nodes:
+
+```console
+$ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
+$ ros2 topic echo /chatter --once
+data: 6
+---
+```
+
+Step 3 is not optional and its ORDER does not matter, but the **locator** does:
+zenoh-pico is a client, so with no router the image gets
+
+```text
+<err> rust: nros: zephyr entry — executor open failed: Transport(ConnectionFailed)
+```
+
+which names no port. Both sides default to `tcp/127.0.0.1:7447` — the port
+`rmw_zenohd` listens on and a `rmw_zenoh_cpp` node connects to. Override with
+`CONFIG_NROS_ZENOH_LOCATOR` on the image side (via a `conf` fragment) and
+`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:<port>"]'` on the
+router, and change **both**.
+
+#### What an image declares
+
+The Zephyr images in `examples/workspaces/*` are the worked examples:
+
+```toml
+[image.zephyr]
+board = "native_sim/native/64"
+entry = "zephyr_entry"          # only when several entries match, see below
+conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
+```
+
+* **`conf`** names the app's own Kconfig fragments, in order. They are looked
+  for beside the board config dir, then **beside the application**, then beside
+  the bringup — the app rung matters because a Zephyr app keeps its
+  `prj-<rmw>.conf` next to the `CMakeLists.txt` west builds. These entries
+  `FATAL_ERROR` without an RMW overlay, so the image has to say which one.
+* **`entry`** names the application package. Normally leave it out: an entry
+  declares the deploy target it serves — `[package.metadata.nros.entry] deploy`
+  in `Cargo.toml`, `nano_ros_add_executable(... DEPLOY zephyr)` in
+  `CMakeLists.txt` — and one package usually claims a given board. Set it when
+  several do (`realtime-cpp` has `zephyr_entry` and `fvp_entry`, both
+  `DEPLOY zephyr`, on the same board, for two images that differ in payload).
+  Deriving there is a coin flip, so `nros build` refuses and lists the
+  candidates rather than picking one.
+
 The transports + `px4-rs` come from the [prerequisites](#prerequisites) step
 (`west update` clones nano-ros but **not** its submodules). With the Zephyr SDK +
 `NROS_STD_MSGS_DIR` exported (also prerequisites), build your app — `nros` on
@@ -336,7 +419,7 @@ west build -b qemu_cortex_a9 apps/my_app
 
 (Verified end-to-end on a fresh BYO west workspace: this builds to
 `zephyr.exe` and runs to `Published: 0` against a router started with
-`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd`.
+`ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd`.
 On the Zephyr 4.4 line, `find_package(Python3)` requires ≥ 3.12 and you
 select the RMW with `-S nros-zenoh` instead of the overlay.)
 
@@ -376,10 +459,10 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
 
 ```bash
 # 1. Start the router (ROS's `rmw_zenohd` — nano-ros ships no router
-#    of its own) on port 7456, the port your app's Kconfig default
+#    of its own) on port 7447, the port your app's Kconfig default
 #    picks up (CONFIG_NROS_ZENOH_LOCATOR defaults to
-#    "tcp/127.0.0.1:7456"; change either side to match):
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7456"];scouting/multicast/enabled=false' \
+#    "tcp/127.0.0.1:7447"; change either side to match):
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # 2. Boot the app from your BYO west workspace:
@@ -423,7 +506,7 @@ in 30 seconds:
 2. Check `CONFIG_NETWORKING=y`, `CONFIG_NET_IPV4=y`, `CONFIG_NET_TCP=y`
    in `prj.conf` — Zephyr networking is opt-in.
 3. Confirm `zenohd` reachable from the simulated network (Slirp
-   needs `10.0.2.2:7456` on QEMU; native_sim uses host loopback).
+   needs `10.0.2.2:7447` on QEMU; native_sim uses host loopback).
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 **Zephyr 4.x build gotchas.**

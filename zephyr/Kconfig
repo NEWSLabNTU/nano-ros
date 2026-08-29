@@ -653,11 +653,36 @@ config NROS_SERVICE_BUFFER_SIZE
 
 config NROS_ZENOH_LOCATOR
     string "Zenoh router locator"
-    default "tcp/127.0.0.1:7456"
+    default "tcp/127.0.0.1:7447"
     help
       Zenoh router address. Supported formats:
-        TCP:    "tcp/IP:PORT"       (e.g. "tcp/127.0.0.1:7456")
+        TCP:    "tcp/IP:PORT"       (e.g. "tcp/127.0.0.1:7447")
         Serial: "serial/DEVICE#baudrate=RATE"
+
+      7447 is the port `rmw_zenoh_cpp` uses on BOTH sides of a ROS 2
+      deployment: it is what `ros2 run rmw_zenoh_cpp rmw_zenohd` listens on
+      and what a `rmw_zenoh_cpp` node connects to, and it is what our own
+      launcher defaults to (`just zenohd` -> `nros_router_exec
+      "${ZENOH_LOCATOR:-tcp/127.0.0.1:7447}"`, `nros_router_hint`).
+
+      This default was 7456, which is nothing's default but this line's. The
+      two halves of our OWN documented workflow therefore disagreed: a user
+      who ran `just zenohd` and then their Zephyr image got
+
+          executor open failed: Transport(ConnectionFailed)
+
+      with a router running the whole time, and a `ros2 topic echo` against
+      the 7456 router got "Unable to connect to a Zenoh router" from the ROS
+      side for the mirror-image reason. Neither message names a port.
+
+      Safe to move because a fixture that needs an isolated router ALLOCATES
+      one and passes it explicitly (`west_zenoh_locator`, or the role-leaf
+      formula in `scripts/build/zephyr-fixture-leaves.sh` -> a
+      `-DCONFIG_NROS_ZENOH_LOCATOR` define), so this default is what a USER
+      gets, not what the matrix runs on. Measured over the built tree when
+      this changed: of 35 zephyr images carrying a locator, 34 set their own
+      and 1 (`build-logging-smoke`, which publishes nothing) rode the
+      default. No fixture claims 7447.
 
 config NROS_TRANSPORT_SERIAL
     bool "Enable serial/UART transport"

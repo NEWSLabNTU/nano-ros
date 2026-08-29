@@ -244,6 +244,11 @@ launch = "freertos_system.launch.xml"
 
 [image.fvp]
 board = "native_sim/native/64"
+# Two entry packages target this board (`zephyr_entry`, `fvp_entry`) and both
+# declare `DEPLOY zephyr`, so the application cannot be derived — see
+# `[image.zephyr]` below, which is the other one.
+entry = "fvp_entry"
+conf = ["prj-cyclonedds.conf"]
 
 [image.native]
 board = "native"
@@ -264,3 +269,5 @@ board = "nuttx-qemu-riscv"
 
 [image.zephyr]
 board = "native_sim/native/64"
+entry = "zephyr_entry"
+conf = ["prj-zenoh.conf"]

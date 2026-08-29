@@ -190,7 +190,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 Default ports: `tcp/127.0.0.1:7447` on POSIX,
 `tcp/10.0.2.2:7451` on QEMU FreeRTOS (Slirp forwards to host),
 `7452` NuttX, `7453` ThreadX-RV, `7454` ESP32, `7455`
-ThreadX-Linux, `7456` Zephyr.
+ThreadX-Linux, `7447` Zephyr.
 
 ### B2. C: `NROS_CHECK failed: nros_support_init(...) -> -4`
 

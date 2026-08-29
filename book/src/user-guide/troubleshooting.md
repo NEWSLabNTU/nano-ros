@@ -180,7 +180,7 @@ calls are forwarded to host syscalls, so there is no emulated L2 stack and
 no TAP bridge. Point each example at a host-loopback zenohd / XRCE Agent:
 
 ```bash
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd  # or any host-accessible address
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd  # or any host-accessible address
 ```
 
 Multiple `native_sim` instances can coexist without bridge configuration.

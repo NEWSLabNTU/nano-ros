@@ -303,12 +303,18 @@ launch = "rust_remap.launch.xml"
 
 [image.zephyr_rust_lifecycle]
 board = "zephyr"
+entry = "zephyr_rust_lifecycle_entry"
+conf = ["prj-zenoh.conf"]
 launch = "rust_lifecycle.launch.xml"
 
 [image.zephyr_rust_params]
 board = "zephyr"
+entry = "zephyr_rust_params_entry"
+conf = ["prj-zenoh.conf"]
 launch = "rust_params.launch.xml"
 
 [image.zephyr_rust_qos]
 board = "zephyr"
+entry = "zephyr_rust_qos_entry"
+conf = ["prj-zenoh.conf"]
 launch = "rust_qos.launch.xml"

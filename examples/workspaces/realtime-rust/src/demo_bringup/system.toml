@@ -177,3 +177,4 @@ board = "threadx-linux"
 
 [image.zephyr]
 board = "zephyr"
+conf = ["prj-zenoh.conf"]

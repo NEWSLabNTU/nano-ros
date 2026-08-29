@@ -248,3 +248,4 @@ board = "threadx-linux"
 
 [image.zephyr]
 board = "native_sim/native/64"
+conf = ["prj-zenoh.conf"]
