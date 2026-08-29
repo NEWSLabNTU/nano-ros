@@ -88,7 +88,31 @@ void _z_task_exit(void) {
     pthread_exit(NULL);
 }
 
-/* issue 0882 — a task must not free the storage it is RUNNING ON.
+/* issue 0882 — FREE WITH THE ALLOCATOR THAT ALLOCATED, and never free the
+ * storage this task is RUNNING ON.
+ *
+ * The handle comes from zenoh-pico:
+ *
+ *     _zp_start_read_task():  _z_task_t *task = z_malloc(sizeof(_z_task_t));
+ *
+ * and `z_malloc` is `nros_platform_alloc`, i.e. the nano-ros TLSF arena. This
+ * function used `k_free`, which is Zephyr's `_system_heap` -- a DIFFERENT
+ * allocator. `k_free` reads a `struct k_heap *` from the words preceding the
+ * block, so on a TLSF block it reads that block's metadata as a heap pointer
+ * and then takes a spinlock inside it. Caught under gdb:
+ *
+ *     k_heap_free (heap=0x2040f4f0 <HEAP+656>, mem=0x2040f504 <HEAP+676>)
+ *     k_free                       mempool.c:70
+ *     _z_task_free                 nros_zenoh_zephyr_system.c
+ *     _zp_unicast_failed           lease.c:63
+ *
+ * which asserts "Invalid spinlock 0x2040f504" -- an address inside our own
+ * arena, because that is exactly where the bogus heap pointer pointed.
+ *
+ * The mismatch was invisible for as long as the transport never failed: this
+ * is the only path that frees a task handle.
+ *
+ * Second, unrelated hazard on the same function, kept:
  *
  * zenoh-pico's `_zp_unicast_failed` executes on the lease task and calls
  * `_z_unicast_transport_clear(ztu, true)`, which detaches and frees
@@ -131,12 +155,12 @@ void _z_task_free(_z_task_t **task) {
         nros_deferred_task_handle = (void *) *task;
         *task = NULL;
         if (stale != NULL) {
-            k_free(stale);
+            z_free(stale);
         }
         return;
     }
 
-    k_free(*task);
+    z_free(*task);
     *task = NULL;
 }
 
