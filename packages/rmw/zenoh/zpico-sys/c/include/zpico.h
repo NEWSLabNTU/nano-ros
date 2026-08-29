@@ -285,6 +285,8 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
 /**
  * How many keyexprs were STORED — compare against
  * `zpico_liveliness_get_count` (how many ARRIVED) to detect truncation.
+ * Has the collecting sweep FINISHED? `zpico_liveliness_get_check` returns
+ * 1 on the FIRST reply, so restarting on that truncates enumeration.
  */
 /**
  * Copy stored keyexpr `index` into `out`. Returns bytes written excluding
@@ -778,6 +780,12 @@ int32_t zpico_liveliness_get_check(struct zpico_session_t *_session, int32_t _ha
 int32_t zpico_liveliness_collect_start(struct zpico_session_t *_session,
                                        const char *_keyexpr,
                                        uint32_t _timeout_ms);
+
+/**
+ * Has the collecting sweep FINISHED (dropper fired)? Distinct from
+ * `zpico_liveliness_get_check`, which reports the FIRST reply.
+ */
+int32_t zpico_liveliness_collect_done(struct zpico_session_t *_session, int32_t _handle);
 
 /**
  * How many keyexprs the slot STORED — distinct from

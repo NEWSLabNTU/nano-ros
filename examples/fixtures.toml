@@ -1353,6 +1353,31 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 
+# phase-381 acceptance — the graph probe. Enumerates the ROS graph and prints
+# what it can SEE, so `graph_interop.rs` can compare it against `ros2 node
+# list`. The one fixture in the phase whose subject is DISCOVERY: every other
+# check tested our code against our own builders and parser, and all of them
+# passed while the feature did not work (issue 0903).
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "zenoh"
+dir = "packages/testing/nros-tests/bins/graph-probe"
+no_default_features = true
+features = ["rmw-zenoh"]
+
+# phase-381 step 2 — the CYCLONE build of the graph probe. W5 gave Cyclone a
+# `ros_discovery_info` READER and only zenoh was ever run live; given that
+# zenoh's path had THREE stacked defects every unit test passed (issue 0903),
+# Cyclone's is assumed broken until a run says otherwise.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/graph-probe"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+
 # Generic Int32 sink (phase-277 W4 — was the example listener's
 # `NROS_SUB_TOPIC` escape hatch; the example flipped to the official
 # std_msgs/String chatter, so the Int32 side-topic observer role moved here).

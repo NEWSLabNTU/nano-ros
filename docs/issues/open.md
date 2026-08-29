@@ -67,5 +67,6 @@ fails if this block drifts.
 - **#0899** (rmw, boards) — The FreeRTOS C talker dies mid-run inside zenoh-pico's write buffer — two different asserts, both after tens of successful publishes See `0899-*`.
 - **#0900** (core, memory) — Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use See `0900-*`.
 - **#0902** (build, rmw) — Editing zenoh-pico rebuilds nothing — `zpico-sys` watches 7 hand-listed files out of the whole library, so a patch is silently not compiled See `0902-*`.
+- **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
 
 <!-- END GENERATED open-issue list -->

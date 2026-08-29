@@ -784,6 +784,16 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Has the collecting sweep FINISHED (dropper fired)? Distinct from
+    /// `zpico_liveliness_get_check`, which reports the FIRST reply.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_liveliness_collect_done(
+        _session: *mut zpico_session_t,
+        _handle: i32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// How many keyexprs the slot STORED — distinct from
     /// `zpico_liveliness_get_count`, which reports how many ARRIVED. They differ
     /// exactly when the buffer could not hold an entry, so comparing the two is

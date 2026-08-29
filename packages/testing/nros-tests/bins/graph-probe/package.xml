@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>graph-probe</name>
+  <version>0.1.0</version>
+  <description>phase-381 acceptance fixture — prints the ROS graph as this node sees it, for comparison against ros2 node list</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+
+  <!-- The interface packages this bin's `generated/` is produced FROM.
+       `scripts/regenerate-bindings.sh` section 3 finds this file and runs
+       `nros generate-rust` here; without it the leaf was invisible to the
+       regenerator, which is why its `generated/` had to be committed. -->
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

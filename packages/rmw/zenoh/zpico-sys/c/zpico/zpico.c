@@ -3286,17 +3286,73 @@ int32_t zpico_liveliness_get_start(zpico_session_t* session, const char* keyexpr
  */
 int32_t zpico_liveliness_collect_start(zpico_session_t* session, const char* keyexpr,
                                        uint32_t timeout_ms) {
-    int32_t slot = zpico_liveliness_get_start(session, keyexpr, timeout_ms);
-    if (slot < 0) {
-        return slot;
-    }
-    /* Set AFTER the start so the slot is already claimed and reset. The query
-     * is in flight by now, so a reply could already be running the handler —
-     * on a single-threaded image it cannot (replies arrive under `zp_read`),
-     * and on a multi-threaded one the worst case is that the first reply is
-     * counted but not stored, which `reply_count > entry_count` reports. */
+    /* Deliberately NOT `zpico_liveliness_get_start` + set the flag.
+     *
+     * That was the first shape and it LOST EVERY REPLY. `collect` has to be
+     * true before the query goes on the wire: zenoh-pico's RX task runs the
+     * reply handler as soon as replies arrive, and against a local router with
+     * latched liveliness tokens they arrive within microseconds — reliably
+     * inside the window between `z_liveliness_get` returning and the caller
+     * setting the flag. Replies in that window take the SINGLE-RESPONSE path,
+     * which sets `received`, copies a payload nobody reads, and leaves
+     * `entry_count` at zero.
+     *
+     * Measured against a live `rmw_zenoh_cpp` talker (issue 0903): the entity
+     * enumeration returned zero every time while node enumeration worked, and
+     * widening the wildcard to `@ros2_lv/<domain>/**` changed nothing — because
+     * the pattern was never the problem.
+     *
+     * The comment this replaces called the race "worst case the first reply is
+     * counted but not stored". That was wrong in two ways: it is not the first
+     * reply, it is all of them, and a multi-threaded RX task is the DEFAULT on
+     * POSIX rather than an edge case. */
     struct zpico_session* s = (struct zpico_session*)session;
-    s->pending_gets[slot].ctx.collect = true;
+    if (!s->session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+
+    int32_t slot = -1;
+    for (int32_t i = 0; i < ZPICO_MAX_PENDING_GETS; i++) {
+        if (s->pending_gets[i].in_use && s->pending_gets[i].ctx.done) {
+            s->pending_gets[i].in_use = false;
+        }
+        if (!s->pending_gets[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return ZPICO_ERR_FULL;
+    }
+
+    pending_get_slot_t* ps = &s->pending_gets[slot];
+    ps->ctx.len = 0;
+    ps->ctx.received = false;
+    ps->ctx.done = false;
+    ps->ctx.reply_count = 0;
+    ps->ctx.entry_count = 0;
+    ps->ctx.collect = true; /* BEFORE the query, which is the whole point */
+    ps->in_use = true;
+
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        ps->in_use = false;
+        return ZPICO_ERR_KEYEXPR;
+    }
+
+    z_liveliness_get_options_t opts;
+    z_liveliness_get_options_default(&opts);
+    opts.timeout_ms = (uint64_t)timeout_ms;
+
+    z_owned_closure_reply_t callback;
+    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, _zpico_pack_ctx(s, slot));
+
+    z_result_t zret = z_liveliness_get(z_session_loan(&s->session), z_view_keyexpr_loan(&ke),
+                                       z_move(callback), &opts);
+    if (zret < 0) {
+        ps->in_use = false;
+        return ZPICO_ERR_GENERIC;
+    }
     return slot;
 }
 
@@ -3310,6 +3366,32 @@ int32_t zpico_liveliness_collect_start(zpico_session_t* session, const char* key
  *
  * Returns ZPICO_ERR_INVALID for a bad handle or a slot not in use.
  */
+/* Has the collecting sweep FINISHED — dropper fired, no more replies coming?
+ *
+ * `zpico_liveliness_get_check` cannot answer this. It returns 1 as soon as ONE
+ * reply has arrived, which is the right signal for "is the service up?" (its
+ * only caller before phase-381) and the wrong one for enumeration: a caller
+ * that restarts its query on that truncates every sweep to whatever landed in
+ * the poll window, and never sees the rest of the graph.
+ *
+ * Measured against a live `rmw_zenoh_cpp` talker: collecting until `get_check`
+ * went non-zero captured 2 tokens of the dozen it declares. This is the
+ * distinction that fixes that.
+ *
+ * Returns 1 finished, 0 still collecting, ZPICO_ERR_INVALID for a bad handle.
+ */
+int32_t zpico_liveliness_collect_done(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+    pending_get_slot_t* ps = &s->pending_gets[handle];
+    if (!ps->in_use) {
+        return ZPICO_ERR_INVALID;
+    }
+    return __atomic_load_n(&ps->ctx.done, __ATOMIC_SEQ_CST) ? 1 : 0;
+}
+
 int32_t zpico_liveliness_entry_count(zpico_session_t* session, int32_t handle) {
     struct zpico_session* s = (struct zpico_session*)session;
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {

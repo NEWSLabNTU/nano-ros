@@ -364,6 +364,14 @@ pub enum Workload {
     /// `nros_platform_task_init` prove `errno` is PER-THREAD (issue 0680).
     /// Single image, self-contained, no peer.
     Errno,
+    /// phase-381 — READ the ROS graph. The node enumerates a live stock
+    /// `rmw_zenoh_cpp` peer and is compared against `ros2 node list`.
+    ///
+    /// Its own workload because it is the only one whose subject is DISCOVERY
+    /// rather than delivery: every other cell asks "did the message arrive",
+    /// this one asks "can we see who is there", and the two fail for different
+    /// reasons.
+    Graph,
 }
 
 impl Workload {
@@ -389,6 +397,7 @@ impl Workload {
             // Needs no port: the fixture opens no socket and has no peer.
             // The offset only has to be unique within the band.
             Workload::Errno => 94,
+            Workload::Graph => 95,
         }
     }
 

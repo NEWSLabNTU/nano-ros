@@ -225,6 +225,22 @@ pub const CELLS: &[InteropCell] = &[
        c(Linux, Rust, Cyclonedds, Service, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), BiDir, "interop_e2e"),
 
+    // ── phase-381 — READ the graph a stock ROS 2 node is in ──────────────
+    // tests/graph_interop.rs. The only cell whose subject is DISCOVERY rather
+    // than delivery, and the one that would have caught issue 0903: twelve
+    // slots were produced, reachable from three languages, mutation-tested and
+    // `check-api-parity`-clean while the feature did not work, because every
+    // check tested our code against our own assumptions.
+    ic("native-graph-rust-zenoh-r2n",
+       c(Linux, Rust, Zenoh, Graph, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), RosToNano, "graph_interop"),
+    // Cyclone's half. `graph.cpp` PUBLISHED `ros_discovery_info` since
+    // phase-177.36 and only gained a reader in W5, which has never been run
+    // against a live participant.
+    ic("native-graph-rust-cyclone-r2n",
+       c(Linux, Rust, Cyclonedds, Graph, Interop, Runtime),
+       NativeFixtures, RosEdition(Cyclonedds), RosToNano, "graph_interop"),
+
     // ── Native nano XRCE ↔ Agent ↔ fastrtps ─────────────────────────────
     // tests/xrce_ros2_interop.rs.
     ic("native-pubsub-rust-xrce-n2r",

@@ -759,6 +759,13 @@ impl Ros2Liveliness {
 
     /// phase-381 W3 — wildcard ENTITY liveliness keyexpr, all four kinds.
     ///
+    /// NOTE (issue 0903): a `**` pattern was tried here to collapse this and
+    /// the node wildcard into ONE standing query, because two concurrent
+    /// liveliness gets do not both receive replies. It made things WORSE —
+    /// measured, `**` delivered 2 tokens and none of them a node token, so node
+    /// enumeration regressed from working to empty. Reverted; the concurrency
+    /// problem is real and is NOT solved by widening the pattern.
+    ///
     /// Format: `@ros2_lv/<domain_id>/*/*/*/*/%/*/*/*/*/*/*` — 13 chunks, every
     /// one wildcarded but the prefix and the domain, including the KIND, so a
     /// single standing query answers questions about publishers, subscribers,

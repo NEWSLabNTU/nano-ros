@@ -1,0 +1,42 @@
+[workspace]
+
+[package]
+name = "graph-probe"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "phase-381 acceptance fixture — opens a session, polls the graph until it settles, and prints what it can SEE (nodes, topics, counts). The interop test compares this against `ros2 node list` / `ros2 topic list` for the same graph, which is the one claim phase-381 could not make from unit tests: every other check in that phase is against our own builders, our own parser and our own vtable."
+
+[[bin]]
+name = "graph-probe"
+path = "src/main.rs"
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    "std", "alloc", "env",
+    "rmw-cffi",
+    "ros-humble",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+], optional = true }
+nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = [
+    "platform-posix",
+], optional = true }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }
