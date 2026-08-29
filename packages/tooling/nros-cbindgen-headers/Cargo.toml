@@ -30,8 +30,17 @@ host-only-reason = "developer tool, regenerates committed headers on the host"
 # leaves), and lockfiles move only when a dev means it (issues 0359/0378). A
 # separate crate keeps the tool's dependencies out of every build script's graph:
 # only the root lock gains the new member.
+# phase-400 W2a — this crate is the one that actually NEEDS cbindgen, so it is
+# the one that turns the feature on. Everyone else (every C/C++ build script in
+# the tree) gets `nros-build-helpers` with cbindgen absent from its graph, which
+# is the whole saving.
+#
+# `nros-zpico-build` is taken WITHOUT the feature on purpose: only
+# `post_process_header` / `is_plausible_generated_header` are used from it, both
+# cbindgen-free. Enabling it here would drag a second copy of the render path in
+# for nothing.
 [dependencies]
-nros-build-helpers = { workspace = true }
+nros-build-helpers = { workspace = true, features = ["cbindgen-drift-check"] }
 nros-zpico-build = { path = "../../rmw/zenoh/nros-zpico-build" }
 
 [lints]

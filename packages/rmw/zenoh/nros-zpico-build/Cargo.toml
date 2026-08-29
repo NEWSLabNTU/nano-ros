@@ -18,8 +18,22 @@ repository.workspace = true
 host-only = true
 host-only-reason = "host build-script helper for zenoh-pico"
 
+# phase-400 W2a — same shape as nros-build-helpers, same reason: since issue
+# 0452 `generate_header` below only re-renders `zpico.h` to COMPARE it against
+# the committed copy and warn. `nros-cbindgen-headers` is the single writer and
+# `check-cbindgen-headers` the enforcement, so the render is a diagnostic — and
+# a diagnostic should not make every cold leaf build compile cbindgen.
+#
+# Note the two halves this crate contributes are NOT both gated:
+# `post_process_header` and `is_plausible_generated_header` live in `lib.rs`,
+# take a `&str`, and touch no cbindgen — the regenerator calls those directly
+# and needs no feature from here.
+[features]
+default = []
+cbindgen-drift-check = ["dep:cbindgen"]
+
 [dependencies]
-cbindgen = { workspace = true }
+cbindgen = { workspace = true, optional = true }
 cc = "1.0"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.

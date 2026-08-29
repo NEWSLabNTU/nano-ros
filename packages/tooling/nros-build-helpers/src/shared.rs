@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    env, fs,
+    env,
     path::{Path, PathBuf},
 };
 
@@ -154,6 +154,11 @@ pub fn picolibc_include() -> Option<String> {
 /// `[parse.expand]` off, so no dependency graph and no `cargo expand` are
 /// involved, which is exactly what lets a standalone binary reproduce what a
 /// build script used to produce in place.
+///
+/// phase-400 W2a — behind `cbindgen-drift-check`, which the regenerator binary
+/// turns on and no build script does. See the manifest for why the default is
+/// off.
+#[cfg(feature = "cbindgen-drift-check")]
 pub fn render_cbindgen_header(manifest_dir: &Path, config_name: &str) -> Result<String, String> {
     let config_path = manifest_dir.join(config_name);
     let config = cbindgen::Config::from_file(&config_path)
@@ -191,10 +196,33 @@ pub fn render_cbindgen_header(manifest_dir: &Path, config_name: &str) -> Result<
 /// mid-edit divergence is the normal state while someone is changing an FFI
 /// signature, and failing their build would teach them to bypass this. The
 /// enforcement point is `check-cbindgen-headers`, which runs in `just check`.
+///
+/// phase-400 W2a — the COMPARISON is behind `cbindgen-drift-check` and off by
+/// default; the `rerun-if-changed` on the committed header is NOT, because that
+/// edge is about the build's own inputs (the C stub `#include`s the header) and
+/// has nothing to do with drift reporting. Dropping it with the warning would
+/// have turned an opt-in diagnostic into a missing dependency edge — issue
+/// 0475's shape, one crate over.
 pub fn generate_cbindgen_header(manifest_dir: &Path, config_name: &str, output_rel: &str) {
     let output_path = manifest_dir.join(output_rel);
     println!("cargo:rerun-if-changed={}", output_path.display());
 
+    #[cfg(not(feature = "cbindgen-drift-check"))]
+    let _ = config_name;
+
+    #[cfg(feature = "cbindgen-drift-check")]
+    drift_check_committed_header(manifest_dir, config_name, output_rel, &output_path);
+}
+
+/// The drift comparison itself. Split out so the unconditional
+/// `rerun-if-changed` above cannot be lost behind the `cfg`.
+#[cfg(feature = "cbindgen-drift-check")]
+fn drift_check_committed_header(
+    manifest_dir: &Path,
+    config_name: &str,
+    output_rel: &str,
+    output_path: &Path,
+) {
     let fresh = match render_cbindgen_header(manifest_dir, config_name) {
         Ok(s) => s,
         Err(e) => {
@@ -210,10 +238,10 @@ pub fn generate_cbindgen_header(manifest_dir: &Path, config_name: &str, output_r
         let name = Path::new(output_rel)
             .file_name()
             .unwrap_or_else(|| std::ffi::OsStr::new("cbindgen-header"));
-        let _ = fs::write(Path::new(&out_dir).join(name), &fresh);
+        let _ = std::fs::write(Path::new(&out_dir).join(name), &fresh);
     }
 
-    match fs::read_to_string(&output_path) {
+    match std::fs::read_to_string(output_path) {
         Ok(committed) if committed == fresh => {}
         Ok(_) => {
             println!(
