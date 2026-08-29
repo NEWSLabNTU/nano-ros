@@ -55,6 +55,14 @@ extern uint32_t nros_zephyr_current_cpu(void);
 /* issue 0758 W4 — see zephyr/nros_platform_zephyr_shims.c. */
 extern void nros_zephyr_epoch_acquire_configured(void);
 
+/* phase-8 W4 — callback tracing. The shim is an unconditional symbol whose
+ * body is `#ifdef CONFIG_TRACING_CTF`; the setter is an unconditional export
+ * from nros-c whose body is feature-gated. So this pair links in EVERY
+ * configuration and costs a single stored null pointer when either half is
+ * absent — which is what lets the call below stay unguarded. */
+extern void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg);
+extern void nros_set_trace_sink(void (*sink)(uint32_t, uint32_t));
+
 extern int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                         const char* name, size_t stack_bytes,
                                         uint32_t core_plus1, int* pin_rc);
@@ -499,6 +507,12 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
      * the cargo lane (issue 0460). One decision in C is the only shape in which
      * the two arms cannot drift. */
     nros_zephyr_epoch_acquire_configured();
+
+    /* phase-8 W4 — install the CTF sink BEFORE the executor is opened, so the
+     * registration events emitted as callbacks are added are not lost. A sink
+     * installed later is not an error, but every callback registered before it
+     * decodes as a bare `handle N` with no name. */
+    nros_set_trace_sink(nros_zephyr_trace_marker);
 
     /* --- Open the primary (owning) executor on the boot thread --- */
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";

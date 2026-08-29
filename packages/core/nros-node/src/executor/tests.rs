@@ -5015,7 +5015,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
     let ptr = (&mut entry) as *mut _ as *mut u8;
 
     // No request pending → no work, and certainly no accept.
-    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0, 0) }.unwrap();
     assert!(!did_work, "an idle server must report no work");
     assert_eq!(ACCEPTED_CALLS.load(SeqCst), 0);
 
@@ -5023,7 +5023,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
     let (req, len) = mk_send_goal_req(&g);
     entry.core.send_goal_server.load(req, len);
 
-    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0, 0) }.unwrap();
     assert!(did_work);
     assert_eq!(
         ACCEPTED_CALLS.load(SeqCst),
@@ -5046,7 +5046,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
     assert_eq!(entry.core.active_goals.len(), 1);
 
     // Spinning again with nothing pending must not re-fire the hook.
-    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0, 0) }.unwrap();
     assert!(!did_work);
     assert_eq!(
         ACCEPTED_CALLS.load(SeqCst),
@@ -5059,7 +5059,7 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
     let g2 = GoalId { uuid: [0x5Au8; 16] };
     let (req2, len2) = mk_send_goal_req(&g2);
     entry.core.send_goal_server.load(req2, len2);
-    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0) }.unwrap();
+    let did_work = unsafe { action_server_raw_try_process::<GB, RB, FB, MG>(ptr, 0, 0) }.unwrap();
     assert!(did_work);
     assert_eq!(
         ACCEPTED_CALLS.load(SeqCst),

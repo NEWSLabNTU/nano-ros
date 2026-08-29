@@ -3262,6 +3262,35 @@ extern void nros_platform_sleep_us(size_t us);
 extern uint64_t nros_platform_time_now_ns(void);
 
 /**
+ * Install the callback trace sink, or clear it with `NULL`.
+ *
+ * `sink` is called as `sink(marker_id, arg)` — the signature of a
+ * two-`uint32` platform trace event, chosen so a platform shim is
+ * installable verbatim:
+ *
+ * | `marker_id` | event    | `arg`                                     |
+ * |-------------|----------|-------------------------------------------|
+ * | 16          | register | `handle << 8 \| kind`                     |
+ * | 17          | name     | next 4 name bytes, byte *i* in bits `8*i` |
+ * | 18          | start    | `handle`                                  |
+ * | 19          | end      | `handle`                                  |
+ *
+ * Call it once at startup, BEFORE anything is registered on the executor: a
+ * sink installed later misses the registration events, and the decoder then
+ * has handles with no names.
+ *
+ * No-op unless the crate was built with `trace-callbacks`.
+ *
+ * # Safety
+ * `sink` must be a valid function pointer with the C ABI above, or `NULL`.
+ * It is called from the executor's dispatch path — including from an
+ * OS-priority worker task, i.e. a different thread — so it must be
+ * re-entrant and must not unwind. It must remain valid until it is replaced
+ * or cleared.
+ */
+NROS_PUBLIC void nros_set_trace_sink(void (*sink)(uint32_t, uint32_t));
+
+/**
  * Phase 115.C — register a custom transport vtable.
  *
  * Must be called BEFORE `nros_support_init`. Subsequent calls

@@ -91,6 +91,18 @@ signal-fd-wake = ["dep:libc"]
 # the host harness drains over UART (141.C). Off by default —
 # production builds stay clean.
 wake-latency-probe = ["portable-atomic/fallback"]
+# Phase 8 (autoware-safety-island `docs/design/callback_tracing.rst`) —
+# callback-level dispatch tracing. Emits `nros_callback_register(handle,
+# kind, name)` once per executor entry at registration, then
+# `callback_start(handle)` / `callback_end(handle)` around each leaf
+# callback invocation in `executor/arena.rs`. Same shape as
+# `wake-latency-probe` above and for the same reason: hot-path hooks that
+# must VANISH in production, so a Cargo feature (not the `tracing` crate
+# facade, whose no-op subscriber still costs span construction per
+# dispatch). The sink is a runtime-installed `extern "C" fn(u32, u32)` —
+# core names no platform; the board/app installs one at startup
+# (`executor::callback_trace::set_trace_sink`). Off by default.
+trace-callbacks = []
 # Phase 128.C.3 — per-backend `rmw-*-cffi` features deleted. The
 # walker (`nros_rmw_cffi_walk_init_section`) discovers whichever
 # backend the manifest pulled in; `rmw-cffi` alone gates the vtable
