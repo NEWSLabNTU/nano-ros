@@ -194,7 +194,12 @@ pub fn run(args: Args) -> Result<()> {
         return Ok(());
     }
     if args.system {
-        return run_system(&index, args.check, args.sudo);
+        // The index lives AT the repo root, so its parent is the base a
+        // `path` probe resolves against (phase-397 W2). Derived rather than
+        // re-discovered, so the probe and the provisioner cannot disagree
+        // about where a checkout is.
+        let root = args.index.parent().map(std::path::Path::to_path_buf);
+        return run_system(&index, args.check, args.sudo, root.as_deref());
     }
     // #0390 — must precede the generic `--check` below: `--build-sources --check`
     // is its own preflight, not the all-deps doctor pass.
@@ -1276,6 +1281,19 @@ enum ProbeResult {
 /// blocks `nros setup --tool esp32-qemu` and prints a sudo command for a
 /// package that is already installed.
 fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> ProbeResult {
+    run_probe_in(check, None)
+}
+
+/// [`run_probe`] with the base directory a `path` probe resolves against.
+///
+/// phase-397 W2. Split rather than threaded through all nine call sites,
+/// because only a provider that HAS a checkout can answer a `path` probe — the
+/// OS-package callers have no base and must keep passing none, which then reads
+/// `Unknown` rather than inventing a root to test against.
+fn run_probe_in(
+    check: Option<&crate::orchestration::sdk_index::CheckProbe>,
+    base: Option<&std::path::Path>,
+) -> ProbeResult {
     let Some(check) = check else {
         return ProbeResult::Unknown;
     };
@@ -1343,6 +1361,43 @@ fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> Pro
             answered_missing = true;
         }
     }
+    // phase-397 W2 — `runs`: the resolved binary EXECUTES. `cmd` above is a
+    // PATH lookup and cannot see a store dist at all; this is the probe the
+    // libslirp failure needed, where the path existed and the loader disagreed.
+    if let Some(line) = &check.runs {
+        let mut it = line.split_whitespace();
+        if let Some(exe) = it.next() {
+            let args: Vec<&str> = it.collect();
+            match std::process::Command::new(exe)
+                .args(&args)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+            {
+                Ok(st) if st.success() => return ProbeResult::Present,
+                // Ran and failed: a loader error, a missing sub-dependency, a
+                // broken dist. That IS absent for our purposes.
+                Ok(_) => answered_missing = true,
+                // Could not spawn at all. `command_exists` distinguishes "not
+                // installed" from "here but unrunnable"; without it this would
+                // report a foreign-platform tool as broken rather than
+                // unanswerable.
+                Err(_) if command_exists(exe) => answered_missing = true,
+                Err(_) => {}
+            }
+        }
+    }
+    // phase-397 W2 — `path`: a file inside the provider's checkout. Answerable
+    // only with a base; without one the probe abstains rather than guessing a
+    // root, which is the same `Unknown` discipline `sharedlib` uses off Linux.
+    if let Some(rel) = &check.path {
+        if let Some(base) = base {
+            if base.join(rel).exists() {
+                return ProbeResult::Present;
+            }
+            answered_missing = true;
+        }
+    }
     if answered_missing {
         ProbeResult::Missing
     } else {
@@ -1358,7 +1413,12 @@ fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> Pro
 /// sudo-less remainder of a setup flow; issue 0368 F1). `--check` reports
 /// probe results and exits 1 on any missing (the doctor surface). `--sudo`
 /// executes the composed command.
-fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> {
+fn run_system(
+    index: &SdkIndex,
+    check_only: bool,
+    run_sudo: bool,
+    repo_root: Option<&std::path::Path>,
+) -> Result<()> {
     let prereqs = index.prereqs();
     if prereqs.is_empty() {
         println!("nros setup --system: index declares no [prereq.*] / [system.*] entries.");
@@ -1370,7 +1430,8 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
     let mut unknown: Vec<&String> = Vec::new();
     let mut present = 0usize;
     for (key, dep) in &prereqs {
-        match run_probe(dep.check.as_ref()) {
+        let base = repo_root.and_then(|r| index.prereq_checkout_dir(key, dep, r));
+        match run_probe_in(dep.check.as_ref(), base.as_deref()) {
             ProbeResult::Present => present += 1,
             ProbeResult::Missing => missing.push((key, dep)),
             ProbeResult::Unknown => unknown.push(key),
@@ -2027,5 +2088,118 @@ mod tests {
         // Nothing to build => nothing to warn about (warn_source_builds is a
         // no-op on an empty slice).
         assert!(source_build_names(&idx, &["mbedtls"], &root, "linux-x86_64").is_empty());
+    }
+}
+
+#[cfg(test)]
+mod probe_kind_tests {
+    use super::*;
+    use crate::orchestration::sdk_index::CheckProbe;
+
+    fn probe(c: CheckProbe, base: Option<&std::path::Path>) -> ProbeResult {
+        run_probe_in(Some(&c), base)
+    }
+
+    /// `runs` distinguishes three states, and the third is the point: a tool
+    /// that cannot be executed here (foreign platform, no emulator) is NOT
+    /// absent, and must not vote (issue 0487's rule).
+    #[test]
+    fn runs_separates_broken_from_unrunnable() {
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    runs: Some("true".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Present,
+        );
+        // Present on PATH, exits non-zero: a broken dist, a loader failure —
+        // the libslirp shape. That IS absent for our purposes.
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    runs: Some("false".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Missing,
+        );
+        // Not on PATH at all: unanswerable, not broken.
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    runs: Some("nros-no-such-binary --x".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Unknown,
+        );
+    }
+
+    /// `path` answers only with a base. Without one it abstains rather than
+    /// testing against a guessed root — the same discipline `sharedlib` uses
+    /// off Linux.
+    #[test]
+    fn path_needs_a_base_and_abstains_without_one() {
+        let d = std::env::temp_dir().join(format!("nros-w2-{}-{}", std::process::id(), line!()));
+        std::fs::create_dir_all(&d).expect("mkdir");
+        std::fs::write(d.join("present.h"), "").expect("write");
+
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    path: Some("present.h".into()),
+                    ..Default::default()
+                },
+                Some(&d)
+            ),
+            ProbeResult::Present,
+        );
+        // The uninitialised-submodule case: the directory exists, the file does
+        // not. That is exactly what "the path exists" could never catch.
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    path: Some("absent.h".into()),
+                    ..Default::default()
+                },
+                Some(&d)
+            ),
+            ProbeResult::Missing,
+        );
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    path: Some("present.h".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Unknown,
+            "no base ⇒ abstain, never guess a root",
+        );
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// Probes stay OR-ed across the new kinds too: one answering PRESENT wins,
+    /// which is issue 0487's libgcrypt rule applied to a stronger probe.
+    #[test]
+    fn the_new_kinds_compose_with_the_old_or() {
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    cmd: Some("nros-no-such-binary".into()),
+                    runs: Some("true".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Present,
+            "a failing cmd must not veto a passing runs",
+        );
     }
 }

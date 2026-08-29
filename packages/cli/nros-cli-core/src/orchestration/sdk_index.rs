@@ -270,6 +270,27 @@ pub struct CheckProbe {
     /// false negative on a host that genuinely has it.
     #[serde(default)]
     pub header: Option<String>,
+    /// phase-397 W2 — the resolved binary EXECUTES.
+    ///
+    /// Not `cmd`, which is `command_exists`: a PATH lookup, and a store dist is
+    /// not on PATH. This is the probe the motivating failure needed — the QEMU
+    /// dist's path existed and the dynamic loader was the first thing to
+    /// disagree (`libslirp.so.0` missing).
+    ///
+    /// The value is a command line; a zero exit is PRESENT. `Unknown` where it
+    /// cannot answer — a foreign-platform tool cannot be run here, and "cannot
+    /// execute" is not "absent".
+    #[serde(default)]
+    pub runs: Option<String>,
+    /// phase-397 W2 — a file that must exist inside the provider's checkout.
+    ///
+    /// For `source`/`submodule` providers, which have no PATH entry and no
+    /// soname: today their presence test is "the directory exists", which is
+    /// true of an uninitialised submodule. Relative to the provider's own
+    /// `dest`, so the probe does not restate a location the provider already
+    /// declares.
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
 impl CheckProbe {
@@ -585,6 +606,36 @@ pub struct GatedPackage {
 }
 
 impl SdkIndex {
+    /// Where a prereq's `path` probe resolves against, if its provider has a
+    /// checkout at all.
+    ///
+    /// phase-397 W2. Only `submodule`/`source` providers have one: an OS
+    /// package has no directory we own, and a `sdk` dist lives in the store
+    /// under a version we do not know here. Returning `None` makes the probe
+    /// abstain (`Unknown`) rather than test against a guessed root.
+    ///
+    /// The location comes from the provider's own `dest`, so the prereq entry
+    /// never restates a path the `[source.*]` entry already declares — one
+    /// fact, one place.
+    #[must_use]
+    pub fn prereq_checkout_dir(
+        &self,
+        key: &str,
+        dep: &PrereqDep,
+        repo_root: &Path,
+    ) -> Option<std::path::PathBuf> {
+        let wants_checkout = dep
+            .provider_chain()
+            .iter()
+            .any(|p| matches!(p, Provider::Submodule | Provider::Source));
+        if !wants_checkout {
+            return None;
+        }
+        let class_key = dep.source.as_deref().unwrap_or(key);
+        let dest = self.source.get(class_key)?.dest.as_ref()?;
+        Some(repo_root.join(dest))
+    }
+
     /// Every prerequisite, `[prereq.*]` and `[system.*]` together.
     ///
     /// THE accessor: no consumer reads either table directly, because one that
