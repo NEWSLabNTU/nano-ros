@@ -167,10 +167,14 @@ its symptom is `SESSION_OPAQUE_U64S undeclared` rather than a self-describing
 `#error`, and issue 0088 records that being latent for a whole phase), names the
 offending directory, and prints the only recovery that works.
 
-2.0 s over 221 000 directories — the naive walk was 8.2 s, and pruning the trees
-that cannot contain a generated dir (cargo's `deps`/`.fingerprint`/`incremental`,
-CMake/Zephyr interiors) is the difference between a fast-lane gate and one
-nobody runs.
+**0.05 s, and no walk.** The first two versions walked the tree — 8.2 s naive,
+2.0 s pruned, 221 000 directories to find 650 candidates — and
+`check-no-tracked-file-find` (issue 0844) rejected that, correctly: its own
+message says to scope an artifact scan to a build dir rather than to `examples/`
+or `packages/`. The locations now come from the git INDEX (`git ls-files
+'*Cargo.toml'` → the leaf dirs whose `target*/` siblings are the cargo target
+dirs) plus the roots no manifest points at (`target/`, `build/`,
+`zephyr-workspace/build-*/nros-rust`). Only those are stat-ed.
 
 Mutation-checked against the real tree: removing the live header makes it fail
 and name the exact path; restoring it makes it pass. Its own negative control
