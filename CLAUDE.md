@@ -25,6 +25,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | A specific design decision (stable vs evolving) | [docs/design/](docs/design/README.md) — numbered RFCs |
 | A known bug / limitation / tech-debt (troubleshooting) | [docs/issues/](docs/issues/README.md) — numbered issues (open) + `archived/` |
 | Build / test / SDK tiers / jobserver / zephyr versions | [AGENTS.md](AGENTS.md) + [docs/development/](docs/development/) + `just/*.just` |
+| Dev utilities (towncrier, clang-format) | `just dev-tools [--install]` — checks the interpreter you chose and installs the repo's OWN tools into it; never creates a venv, never touches build groups (issue 0885) |
 | Long-form practices + pitfalls (cmake, tests, multi-session) | AGENTS.md “Practices & Pitfalls” (this file keeps the one-liners) |
 | `nros setup` / provisioning / `nros-sdk-index.toml` | RFC-0014 + AGENTS.md “Toolchain & SDK Provisioning” |
 | ROS 2 on a host with no apt ROS (Arch, Fedora, NixOS) | [docs/development/ros2-on-non-ubuntu.md](docs/development/ros2-on-non-ubuntu.md) — Ubuntu distrobox; `scripts/dev/ros2-{distrobox-setup,box-env}.sh`. **Box in play ⇒ EVERY job in the box, on its OWN tree** (`ros2-box-sync.sh`): different compiler + libc, shared artifacts, nothing checks they agree — refused since issue 0759 |
