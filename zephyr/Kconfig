@@ -322,6 +322,13 @@ config NROS_FAULT_LOG
       "Which thread" is the whole question for a stack overflow, so enable
       CONFIG_THREAD_NAME alongside this or the record says "?".
 
+      COVERAGE, measured on S32K344 and not a general Zephyr property: this SoC
+      zeroes SRAM and both TCMs after a DESTRUCTIVE reset, below Zephyr, because
+      ECC memory must be written by a 64-bit master first. A record therefore
+      survives a functional reset (SYSRESETREQ) and NOT a destructive one
+      (power-on, pin reset). Closing that gap needs the flash write to happen in
+      the fault handler rather than at the next boot; see the file comment.
+
 config NROS_FAULT_LOG_FLASH
     bool "Also persist the fault record to the storage flash partition"
     depends on NROS_FAULT_LOG && FLASH && FLASH_MAP
