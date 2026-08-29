@@ -308,8 +308,44 @@ jobs:
         if: ${{ github.event_name == 'pull_request' && !cancelled() }}
         run: just check-compile-smoke
 
-      - name: just check-build + no_std (compile tier)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+      # phase-396 W1 — the build tier is NOT on the merge group.
+      #
+      # It was (phase-395, `197eef4fa`, "PR cheap, batch thorough"), and the
+      # amortisation argument was right: pay for expensive verification once per
+      # batch instead of once per push. What it missed is that `check-build` was
+      # never RUNNABLE here. It ends with `native::check`, which hard-requires
+      # generated message bindings, and includes `check-source-gates`, which
+      # asserts prebuilt `.compile-ok` fixtures. This job builds the CLI,
+      # provisions sources, and stops — so neither exists, and the required
+      # check failed for EVERY pull request, not for any one of them:
+      #
+      #   native check: 40 example(s) are missing their generated message bindings
+      #   BuildFailed("Test fixture binary not prebuilt: …/platform_hdr_posix_cpp_heap/.compile-ok")
+      #
+      # A merge queue routes around a change-specific failure by ejecting the
+      # culprit and re-testing the rest. It cannot route around a check that is
+      # red before it sees your change: every entry is the culprit. Six merge
+      # groups, three different authors, one failing job, nothing merged for a
+      # day.
+      #
+      # So the required set is now exactly `ci-l1` — `check-fast` + `test-unit`,
+      # the tier CLAUDE.md tells every agent to run before pushing, and the one
+      # `check-lane-contracts` proves is fixture-free. A required check should be
+      # the thing the contributor was told to run.
+      #
+      # WHAT THIS GIVES UP, plainly: the merge group no longer catches a
+      # compile-tier break in the merged state. `post-submit.yml` catches it on
+      # `main` minutes later — it already runs tier-2 fixtures and `just
+      # ci-matrix` — and that is the standard three-bucket split (required =
+      # cheap and deterministic; heavy = post-merge with a revert path). It is a
+      # real reduction in pre-merge coverage, and still the right trade: a check
+      # that has never once passed provides no coverage at all.
+      #
+      # Restoring it means giving this job the artifacts first (PR #14 adds
+      # `build-compile-check-fixtures`; the bindings half is unowned). Do that
+      # before putting the tier back, not after.
+      - name: just check-build + no_std (nightly / manual only)
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           just check-build
           just check-no-std
