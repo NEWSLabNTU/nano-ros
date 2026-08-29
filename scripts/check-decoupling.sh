@@ -36,10 +36,25 @@ FEATURE_RE='dep:nros-rmw-(zenoh|dds|xrce-cffi|cyclonedds)|dep:nros-platform-(pos
 
 check_manifest() {
     local crate=$1
-    local manifest="packages/core/$crate/Cargo.toml"
+    # Resolve the LAYER rather than hardcoding it. `nros` moved from
+    # `packages/core/` to `packages/api/`, so this printed
+    #
+    #     FAIL: packages/core/nros/Cargo.toml not found
+    #
+    # on every run: a FAILING verdict whose stated reason was false, about a
+    # crate that was never checked at all. The guard is advisory
+    # (`continue-on-error` in pr-checks.yml, and deliberately outside
+    # `just check` since RFC-0031 superseded the goal it guards), so nothing was
+    # gated on the lie — it just made the one output nobody could trust.
+    #
+    # A glob keeps the answer right across the next move too. `head -1` because
+    # two crates of one name in different layers is itself a defect, and this
+    # guard is not the place to discover it.
+    local manifest
+    manifest=$(ls -d packages/*/"$crate"/Cargo.toml 2>/dev/null | head -1)
 
-    if [[ ! -f "$manifest" ]]; then
-        echo "FAIL: $manifest not found"
+    if [[ -z "$manifest" || ! -f "$manifest" ]]; then
+        echo "FAIL: no packages/*/$crate/Cargo.toml found"
         return 1
     fi
 
