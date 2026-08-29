@@ -111,31 +111,6 @@ INERT_FAMILIES = {
         "driving several backends can use; the per-entity trio is reserved for "
         "parity",
     ),
-    "graph-queries": (
-        (
-            # phase-381 W3 — `get_node_names`, `get_topic_names_and_types` and
-            # `get_service_names_and_types` have LEFT this family: zenoh
-            # produces them from two standing liveliness queries. The
-            # per-node and per-topic forms stay until their own slots land.
-            "get_publisher_names_and_types_by_node",
-            "get_subscriber_names_and_types_by_node",
-            "get_service_names_and_types_by_node",
-            "get_client_names_and_types_by_node",
-            "get_publishers_info_by_topic",
-            "get_subscriptions_info_by_topic",
-        ),
-        "introspecting the ROS graph. NOT a decline any more — phase-381 is "
-        "implementing these, and `get_node_names` has already left this family. "
-        "The old reason here said reading the graph back needs a discovered view "
-        "of every peer and is unbounded memory on a target; issue 0791 refuted "
-        "that (a query-on-demand needs no cache, and we are ALREADY visible in "
-        "the graph while unable to read it, which is the actual defect), and "
-        "phase-381 measured that the reply buffer it would need already exists. "
-        "These are UNIMPLEMENTED-so-far, not reserved, and the distinction is "
-        "worth keeping straight — `graph.cpp` existing has been read as these "
-        "being implemented",
-    ),
-
     "graph-guard": (
         ("node_get_graph_guard_condition",),
         "a guard condition fired on graph change. Guard conditions here are a "
@@ -176,6 +151,16 @@ ASSIGN = (
     r"/\*\s*([a-z_0-9]+)\s*\*/\s*([^,\n]+),",       # positional, annotated
     r"\.\s*([a-z_0-9]+)\s*=\s*([^,\n]+),",           # C designated
     r"(?m)^\s*([a-z_0-9]+):\s*([^,\n]+),",           # Rust struct literal
+    # Rust struct literal, WRAPPED. The pattern above needs the value and its
+    # comma on one line, so rustfmt breaking a long initializer —
+    #     get_publisher_names_and_types_by_node: Some(
+    #         get_publisher_names_and_types_by_node_trampoline::<R>,
+    #     ),
+    # — made a WIRED slot read as unwired. A false negative in the one gate
+    # whose job is telling those apart, and it fires on exactly the slots with
+    # the longest names. Captures the opening `Some(`, which is not a null
+    # literal, so `None,` cannot match it (phase-381 W3).
+    r"(?m)^\s*([a-z_0-9]+):\s*(Some\()\s*$",
 )
 
 
@@ -256,6 +241,14 @@ def self_test():
         bad.append("designated producer detection")
     if producers_in("    take: None,\n    publish: Some(t),\n", slots) != {"publish"}:
         bad.append("rust producer detection")
+    # phase-381 W3 — rustfmt wraps a long initializer, and the wrapped form must
+    # still read as WIRED. Both directions, because an arm that matched `None`
+    # too would be worse than the blind spot it replaces.
+    wrapped = "    publish: Some(\n        some_very_long_trampoline_name::<R>,\n    ),\n"
+    if producers_in(wrapped, slots) != {"publish"}:
+        bad.append("wrapped rust producer not detected")
+    if producers_in("    take: None,\n", slots):
+        bad.append("a None slot was read as produced")
 
     # The narrow consumer pattern, and the false positive it exists to avoid.
     if consumers_in("if let Some(f) = self.vtable.take {", slots) != {"take"}:

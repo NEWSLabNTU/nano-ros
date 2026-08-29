@@ -56,6 +56,15 @@ use crate::{
     NrosRmwSubscription, NrosRmwVtable, event_kind_from_c, ret_from_error, rmw_publisher_options_t,
     rmw_subscription_options_t,
 };
+// phase-381 W3 — the endpoint-info slots marshal the generated ABI types
+// directly. Imported from `generated` rather than re-exported through the crate
+// root: these are bindgen output and the root deliberately re-exports only the
+// hand-maintained surface.
+use crate::generated::{
+    NROS_RMW_DURABILITY_UNKNOWN, NROS_RMW_HISTORY_UNKNOWN, NROS_RMW_RELIABILITY_UNKNOWN,
+    rmw_endpoint_type_t, rmw_gid_t, rmw_liveliness_kind_t, rmw_qos_profile_t,
+    rmw_topic_endpoint_info_t,
+};
 
 #[cfg(all(target_os = "none", not(feature = "std")))]
 mod static_subscriber_storage {
@@ -358,6 +367,23 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         count_subscribers: Some(count_subscribers_trampoline::<R>),
         get_topic_names_and_types: Some(get_topic_names_and_types_trampoline::<R>),
         get_service_names_and_types: Some(get_service_names_and_types_trampoline::<R>),
+        // phase-381 W3 — the last six. The trait defaults are `Unsupported`, so
+        // a backend with no graph still answers "cannot tell you" rather than
+        // an empty graph.
+        get_publisher_names_and_types_by_node: Some(
+            get_publisher_names_and_types_by_node_trampoline::<R>,
+        ),
+        get_subscriber_names_and_types_by_node: Some(
+            get_subscriber_names_and_types_by_node_trampoline::<R>,
+        ),
+        get_service_names_and_types_by_node: Some(
+            get_service_names_and_types_by_node_trampoline::<R>,
+        ),
+        get_client_names_and_types_by_node: Some(
+            get_client_names_and_types_by_node_trampoline::<R>,
+        ),
+        get_publishers_info_by_topic: Some(get_publishers_info_by_topic_trampoline::<R>),
+        get_subscriptions_info_by_topic: Some(get_subscriptions_info_by_topic_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 
@@ -1459,6 +1485,261 @@ names_and_types_trampoline!(
     get_service_names_and_types_trampoline,
     get_service_names_and_types
 );
+
+/// phase-381 W3 — the four `*_by_node` slots, one body.
+///
+/// Longhand callers, shared implementation: they differ only by which
+/// `GraphEntityKind` they pass, and four copies of this marshalling is four
+/// chances for one of them to drift.
+///
+/// # Safety
+/// Same contract as the slots that call it.
+unsafe fn by_node_impl<R: RustBackend>(
+    session: *const NrosRmwSession,
+    node_name: *const c_char,
+    node_namespace: *const c_char,
+    no_demangle: bool,
+    visit: Option<
+        unsafe extern "C" fn(*mut c_void, *const c_char, *const *const c_char, usize) -> bool,
+    >,
+    ctx: *mut c_void,
+    kind: nros_rmw::GraphEntityKind,
+) -> NrosRmwRet {
+    // `no_demangle` asks for the WIRE spelling; we report ROS names, so
+    // honouring it would mean re-mangling what was just demangled. Refused
+    // rather than ignored — ignoring answers a different question than asked.
+    if no_demangle {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    if node_name.is_null() || node_namespace.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(visit) = visit else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Some(s) = (unsafe { session_mut::<R::Session>(session.cast_mut()) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (Ok(name), Ok(ns)) = (
+        unsafe { core::ffi::CStr::from_ptr(node_name) }.to_str(),
+        unsafe { core::ffi::CStr::from_ptr(node_namespace) }.to_str(),
+    ) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+
+    const NAME_MAX: usize = 256;
+    const TYPES_MAX: usize = 8;
+    let mut cb = |n: &str, types: &[&str]| -> bool {
+        let mut name_buf = [0u8; NAME_MAX];
+        if n.len() >= NAME_MAX {
+            return true;
+        }
+        name_buf[..n.len()].copy_from_slice(n.as_bytes());
+        let mut type_bufs = [[0u8; NAME_MAX]; TYPES_MAX];
+        let mut ptrs: [*const c_char; TYPES_MAX] = [core::ptr::null(); TYPES_MAX];
+        let mut count = 0usize;
+        for t in types.iter().take(TYPES_MAX) {
+            if t.len() >= NAME_MAX {
+                continue;
+            }
+            type_bufs[count][..t.len()].copy_from_slice(t.as_bytes());
+            ptrs[count] = type_bufs[count].as_ptr() as *const c_char;
+            count += 1;
+        }
+        unsafe {
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const c_char,
+                ptrs.as_ptr(),
+                count,
+            )
+        }
+    };
+    match Session::get_names_and_types_by_node(s, kind, name, ns, &mut cb) {
+        Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+macro_rules! by_node_trampoline {
+    // Upstream gives `no_demangle` to the publisher and subscriber forms and
+    // NOT to the service and client ones. Mirrored rather than smoothed over —
+    // RFC-0054 makes these headers the ABI SSoT, so an asymmetry upstream has
+    // is one we have.
+    ($name:ident, $kind:ident, no_demangle) => {
+        unsafe extern "C" fn $name<R: RustBackend>(
+            session: *const NrosRmwSession,
+            node_name: *const c_char,
+            node_namespace: *const c_char,
+            no_demangle: bool,
+            visit: Option<
+                unsafe extern "C" fn(
+                    *mut c_void,
+                    *const c_char,
+                    *const *const c_char,
+                    usize,
+                ) -> bool,
+            >,
+            ctx: *mut c_void,
+        ) -> NrosRmwRet {
+            unsafe {
+                by_node_impl::<R>(
+                    session,
+                    node_name,
+                    node_namespace,
+                    no_demangle,
+                    visit,
+                    ctx,
+                    nros_rmw::GraphEntityKind::$kind,
+                )
+            }
+        }
+    };
+    // The service and client forms, which upstream gives no `no_demangle`.
+    ($name:ident, $kind:ident) => {
+        unsafe extern "C" fn $name<R: RustBackend>(
+            session: *const NrosRmwSession,
+            node_name: *const c_char,
+            node_namespace: *const c_char,
+            visit: Option<
+                unsafe extern "C" fn(
+                    *mut c_void,
+                    *const c_char,
+                    *const *const c_char,
+                    usize,
+                ) -> bool,
+            >,
+            ctx: *mut c_void,
+        ) -> NrosRmwRet {
+            unsafe {
+                by_node_impl::<R>(
+                    session,
+                    node_name,
+                    node_namespace,
+                    false,
+                    visit,
+                    ctx,
+                    nros_rmw::GraphEntityKind::$kind,
+                )
+            }
+        }
+    };
+}
+
+by_node_trampoline!(
+    get_publisher_names_and_types_by_node_trampoline,
+    Publisher,
+    no_demangle
+);
+by_node_trampoline!(
+    get_subscriber_names_and_types_by_node_trampoline,
+    Subscriber,
+    no_demangle
+);
+by_node_trampoline!(get_service_names_and_types_by_node_trampoline, Service);
+by_node_trampoline!(get_client_names_and_types_by_node_trampoline, Client);
+
+/// phase-381 W3 — the two `*_info_by_topic` slots, one body.
+///
+/// # Safety
+/// Same contract as the slots that call it.
+unsafe fn endpoint_info_impl<R: RustBackend>(
+    session: *const NrosRmwSession,
+    topic_name: *const c_char,
+    no_mangle: bool,
+    visit: Option<unsafe extern "C" fn(*mut c_void, *const rmw_topic_endpoint_info_t) -> bool>,
+    ctx: *mut c_void,
+    publishers: bool,
+) -> NrosRmwRet {
+    if no_mangle {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    if topic_name.is_null() {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    let Some(visit) = visit else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Some(s) = (unsafe { session_mut::<R::Session>(session.cast_mut()) }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let Ok(topic) = (unsafe { core::ffi::CStr::from_ptr(topic_name) }).to_str() else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+
+    const NAME_MAX: usize = 256;
+    let mut cb = |info: &nros_rmw::GraphEndpointInfo<'_>| -> bool {
+        let mut name_buf = [0u8; NAME_MAX];
+        let mut ns_buf = [0u8; NAME_MAX];
+        let mut ty_buf = [0u8; NAME_MAX];
+        if info.node_name.len() >= NAME_MAX
+            || info.node_namespace.len() >= NAME_MAX
+            || info.topic_type.len() >= NAME_MAX
+        {
+            return true; // skip, never truncate
+        }
+        name_buf[..info.node_name.len()].copy_from_slice(info.node_name.as_bytes());
+        ns_buf[..info.node_namespace.len()].copy_from_slice(info.node_namespace.as_bytes());
+        ty_buf[..info.topic_type.len()].copy_from_slice(info.topic_type.as_bytes());
+        // The struct has no "qos known" flag, by design: the ABI expresses an
+        // unreadable policy with the `*_UNKNOWN` sentinels and the contract on
+        // `publisher_get_actual_qos` spells it out — write UNKNOWN for what you
+        // cannot determine and return OK; `UNSUPPORTED` means no read-back AT
+        // ALL, not "I know some of it".
+        //
+        // zenoh's liveliness token DOES carry a QoS chunk, but decoding it is
+        // deferred rather than guessed: it is the DECLARING side's own profile
+        // and this seam promises a GRANTED one, so shipping it now would be the
+        // plausible wrong answer this slot exists to avoid. `GraphEndpointInfo::qos`
+        // is `None` from every backend today, so this is always the UNKNOWN arm.
+        let mut qos: rmw_qos_profile_t = unsafe { core::mem::zeroed() };
+        qos.reliability = NROS_RMW_RELIABILITY_UNKNOWN as u8;
+        qos.durability = NROS_RMW_DURABILITY_UNKNOWN as u8;
+        qos.history = NROS_RMW_HISTORY_UNKNOWN as u8;
+        qos.liveliness_kind = rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_UNKNOWN as u8;
+        let c_info = rmw_topic_endpoint_info_t {
+            node_name: name_buf.as_ptr() as *const c_char,
+            node_namespace: ns_buf.as_ptr() as *const c_char,
+            topic_type: ty_buf.as_ptr() as *const c_char,
+            endpoint_type: if info.is_publisher {
+                rmw_endpoint_type_t::RMW_ENDPOINT_PUBLISHER
+            } else {
+                rmw_endpoint_type_t::RMW_ENDPOINT_SUBSCRIPTION
+            },
+            endpoint_gid: rmw_gid_t {
+                implementation_identifier: core::ptr::null(),
+                data: info.endpoint_gid,
+            },
+            qos_profile: qos,
+        };
+        unsafe { visit(ctx, &c_info as *const rmw_topic_endpoint_info_t) }
+    };
+    match Session::get_endpoint_info_by_topic(s, publishers, topic, &mut cb) {
+        Ok(()) => NROS_RMW_RET_OK,
+        Err(e) => ret_from_error(&e),
+    }
+}
+
+macro_rules! endpoint_info_trampoline {
+    ($name:ident, $publishers:expr) => {
+        unsafe extern "C" fn $name<R: RustBackend>(
+            session: *const NrosRmwSession,
+            topic_name: *const c_char,
+            no_mangle: bool,
+            visit: Option<
+                unsafe extern "C" fn(*mut c_void, *const rmw_topic_endpoint_info_t) -> bool,
+            >,
+            ctx: *mut c_void,
+        ) -> NrosRmwRet {
+            unsafe {
+                endpoint_info_impl::<R>(session, topic_name, no_mangle, visit, ctx, $publishers)
+            }
+        }
+    };
+}
+
+endpoint_info_trampoline!(get_publishers_info_by_topic_trampoline, true);
+endpoint_info_trampoline!(get_subscriptions_info_by_topic_trampoline, false);
 
 unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,
