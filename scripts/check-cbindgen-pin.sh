@@ -18,6 +18,19 @@
 # `packages/testing/nros-bench/wake-latency-cortex-m3` was measured building
 # 0.29.4 while the root lock said 0.29.3.
 #
+# phase-400 W2a NARROWED THIS, AND THE COUNT BELOW WILL SAY SO.
+#
+# cbindgen is now an OPTIONAL dependency of `nros-build-helpers` /
+# `nros-zpico-build`, activated only by `nros-cbindgen-headers` (the single
+# writer). So no leaf resolves cbindgen at all any more, and the "a lockless
+# leaf resolves the caret freshly" hazard above is closed STRUCTURALLY rather
+# than by this gate. That moved arm 3 from 19 tracked locks to 1 (the root).
+#
+# That is a real reduction in what this gate can observe, and it is not a
+# regression: what it used to watch no longer exists. The pin still matters —
+# the regenerator's output is the committed headers — so arm 1 and arm 2 are
+# unchanged, and the vacuity guard at the bottom still refuses a silent zero.
+#
 # This is deliberately NOT the `.clang-format-version` / bindgen-cli treatment.
 # Those are PATH binaries with no resolver, so they need a version file plus a
 # provisioning recipe. cbindgen is a cargo dependency: cargo's resolver IS the
@@ -64,6 +77,11 @@ fi
 # them looked for locks containing `nros-build-helpers` (3); the invariant is
 # about locks containing CBINDGEN (17). A gate whose coverage is narrower than
 # the rule it enforces is issue 0196's shape, and this is the fix for it here.
+#
+# Since phase-400 W2a only the root lock carries cbindgen (see the header note),
+# so this arm reads one file. Keep it derived from a `git grep` rather than
+# hardcoding "the root lock": if anything ever activates the
+# `cbindgen-drift-check` feature again, the arm widens on its own.
 locks_checked=0
 if [ -n "$pin" ]; then
     off_pin=""

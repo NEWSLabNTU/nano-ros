@@ -853,7 +853,14 @@ pub fn run() {
         );
     }
 
-    // Generate C header from Rust FFI declarations
+    // phase-400 W2a — the committed `zpico.h` is an INPUT to the C shim
+    // compiled below, so its rebuild edge is unconditional; only the drift
+    // COMPARISON is behind the feature.
+    println!(
+        "cargo:rerun-if-changed={}",
+        include_dir.join("zpico.h").display()
+    );
+    #[cfg(feature = "cbindgen-drift-check")]
     generate_header(&manifest_dir, &include_dir);
 
     // phase-290 — pick the manifest platform up front so the RFC-0049 knob
@@ -1651,7 +1658,15 @@ fn probe_net_type_sizes(
     );
 }
 
-/// Generate C header from Rust FFI declarations using cbindgen
+/// Compare the committed `zpico.h` against a fresh cbindgen render and warn on
+/// drift.
+///
+/// phase-400 W2a — the whole body is behind `cbindgen-drift-check` and off by
+/// default. Since issue 0452 this writes nothing, so with the feature off the
+/// build simply uses the committed header, exactly as it did with the feature
+/// on; what is lost is the early warning, not the check
+/// (`check-cbindgen-headers` is unconditional and hard-fails).
+#[cfg(feature = "cbindgen-drift-check")]
 fn generate_header(manifest_dir: &Path, include_dir: &Path) {
     // Create include directory if needed
     if !include_dir.exists() {
