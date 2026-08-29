@@ -465,7 +465,21 @@ pub struct Ros2Liveliness;
 // rmw_zenoh liveliness protocol constants
 const LIVELINESS_PREFIX: &str = "@ros2_lv";
 const PROTO_VERSION_NODE: &str = "0/0";
-const PROTO_VERSION_TOPIC: &str = "0/11";
+/// The `<node_id>/<entity_id>` pair a DISCOVERY query must not pin (issue 0890).
+///
+/// There is no `PROTO_VERSION_TOPIC` any more. The name was always wrong: the
+/// two chunks are a node id and an ENTITY id, not a protocol version, and
+/// issue 0292 measured what pinning them costs — every entity of an action
+/// server collided at id 11 in `rmw_zenoh_cpp`'s graph cache and deduped to
+/// one, so `ros2 action list` was empty. 0292 fixed the four DECLARATION
+/// builders and left the two WILDCARD builders on the constant, where the same
+/// literal stops being a collision and becomes a filter: a query pinned to
+/// `0/11` matches only the eleventh entity a session declares.
+///
+/// A discovery query wildcards BOTH chunks. Not `0/*`: our own nodes use node
+/// id 0, but the peers worth discovering are native `rmw_zenoh_cpp` ones, and
+/// their node id is not ours to assume.
+const ENTITY_ANY: &str = "*/*";
 const ENTITY_NODE: &str = "NN";
 const ENTITY_PUBLISHER: &str = "MP";
 const ENTITY_SUBSCRIBER: &str = "MS";
@@ -510,7 +524,7 @@ impl Ros2Liveliness {
 
     /// Build a publisher liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/MP/%/<mangled_ns>/<node_name>/<topic>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/<entity_id>/MP/%/<mangled_ns>/<node_name>/<topic>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn publisher_keyexpr<const N: usize>(
         domain_id: u32,
@@ -553,7 +567,7 @@ impl Ros2Liveliness {
 
     /// Build a subscriber liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/MS/%/<mangled_ns>/<node_name>/<topic>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/<entity_id>/MS/%/<mangled_ns>/<node_name>/<topic>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn subscriber_keyexpr<const N: usize>(
         domain_id: u32,
@@ -593,7 +607,7 @@ impl Ros2Liveliness {
 
     /// Build a service server liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SS/%/<mangled_ns>/<node_name>/<service>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/<entity_id>/SS/%/<mangled_ns>/<node_name>/<service>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn service_server_keyexpr<const N: usize>(
         domain_id: u32,
@@ -633,7 +647,7 @@ impl Ros2Liveliness {
 
     /// Build a service client liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SC/%/<mangled_ns>/<node_name>/<service>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/<entity_id>/SC/%/<mangled_ns>/<node_name>/<service>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn service_client_keyexpr<const N: usize>(
         domain_id: u32,
@@ -676,7 +690,7 @@ impl Ros2Liveliness {
     ///
     /// Phase 108.C.zenoh.4 — wildcard publisher liveliness keyexpr.
     ///
-    /// Format: `@ros2_lv/<domain_id>/*/0/11/MP/%/*/*/<topic>/<type>/*/*`
+    /// Format: `@ros2_lv/<domain_id>/*/*/*/MP/%/*/*/<topic>/<type>/*/*`
     /// — wildcards on zid, namespace, node, type_hash, qos. Used by
     /// `ZenohSubscriber`'s LivelinessChanged emulation: the subscriber
     /// periodically polls this keyexpr via `liveliness_get_start` to
@@ -694,7 +708,7 @@ impl Ros2Liveliness {
                 "{}/{}/*/{}/{}/%/*/*/{}/{}/*/*",
                 LIVELINESS_PREFIX,
                 domain_id,
-                PROTO_VERSION_TOPIC,
+                ENTITY_ANY,
                 ENTITY_PUBLISHER,
                 topic_mangled.as_str(),
                 crate::keyexpr::DdsTypeName(topic.type_name),
@@ -703,7 +717,7 @@ impl Ros2Liveliness {
         key
     }
 
-    /// Format: `@ros2_lv/<domain_id>/*/0/11/SS/%/*/*/<service>/<type>/*/*`
+    /// Format: `@ros2_lv/<domain_id>/*/*/*/SS/%/*/*/<service>/<type>/*/*`
     /// — wildcards on zid, namespace, node, type_hash, and qos. Used by
     /// `Client::wait_for_service` to discover any matching server before
     /// the first request, mirroring `rclcpp::ClientBase::wait_for_service`.
@@ -719,7 +733,7 @@ impl Ros2Liveliness {
                 "{}/{}/*/{}/{}/%/*/*/{}/{}/*/*",
                 LIVELINESS_PREFIX,
                 domain_id,
-                PROTO_VERSION_TOPIC,
+                ENTITY_ANY,
                 ENTITY_SERVICE_SERVER,
                 service_mangled.as_str(),
                 crate::keyexpr::DdsTypeName(service.type_name),
@@ -914,6 +928,84 @@ mod tests {
         // Nested namespace: "/ns/sub" mangles to "%ns%sub"
         let keyexpr2 = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/ns/sub", "my_node");
         assert!(keyexpr2.as_str().contains("/0/0/NN/%/%ns%sub/my_node"));
+    }
+
+    /// Zenoh's chunk matcher, enough of it to state the property below: a
+    /// single `*` matches exactly ONE chunk, everything else is literal.
+    #[cfg(test)]
+    fn keyexpr_matches(pattern: &str, key: &str) -> bool {
+        let mut p = pattern.split('/');
+        let mut k = key.split('/');
+        loop {
+            match (p.next(), k.next()) {
+                (None, None) => return true,
+                (Some(pc), Some(kc)) if pc == "*" || pc == kc => continue,
+                _ => return false,
+            }
+        }
+    }
+
+    /// Issue 0890 — a DISCOVERY wildcard must match an entity whatever its id.
+    ///
+    /// The wildcard builders used to put `PROTO_VERSION_TOPIC` ("0/11") in the
+    /// `<node_id>/<entity_id>` position. Issue 0292 had already measured what
+    /// that literal costs on the DECLARATION side — every entity of an action
+    /// server collided at id 11 and deduped to one — and fixed the four
+    /// declaration builders, leaving the two wildcard builders behind. On this
+    /// side the same literal is not a collision but a FILTER: after 0292 ids
+    /// start at 1 and increment, so the query matched only a session's
+    /// eleventh entity.
+    ///
+    /// The test is the property, not the spelling: build a declaration with an
+    /// arbitrary id and require the wildcard to match it.
+    #[test]
+    fn publisher_wildcard_matches_any_entity_id() {
+        let zid = ZenohId::from_bytes([0u8; 16]);
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+        let wildcard = Ros2Liveliness::publisher_keyexpr_wildcard::<256>(0, &topic);
+
+        // 11 included deliberately: it is the one id the old code DID match, so
+        // a regression that re-pins the field still passes on 11 alone.
+        for entity_id in [1u32, 2, 7, 11, 4096] {
+            let declared = Ros2Liveliness::publisher_keyexpr::<256>(
+                0, &zid, entity_id, "/", "my_node", &topic, &qos,
+            );
+            assert!(
+                keyexpr_matches(wildcard.as_str(), declared.as_str()),
+                "wildcard {} must match a publisher declared with entity_id {}: {}",
+                wildcard.as_str(),
+                entity_id,
+                declared.as_str(),
+            );
+        }
+    }
+
+    /// The same property for the service-server wildcard, which
+    /// `Client::wait_for_service` polls.
+    #[test]
+    fn service_server_wildcard_matches_any_entity_id() {
+        let zid = ZenohId::from_bytes([0u8; 16]);
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts_",
+            "RIHS01_svc",
+        );
+        let qos = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
+        let wildcard = Ros2Liveliness::service_server_keyexpr_wildcard::<256>(0, &service);
+
+        for entity_id in [1u32, 3, 11, 900] {
+            let declared = Ros2Liveliness::service_server_keyexpr::<256>(
+                0, &zid, entity_id, "/", "srv_node", &service, &qos,
+            );
+            assert!(
+                keyexpr_matches(wildcard.as_str(), declared.as_str()),
+                "wildcard {} must match a server declared with entity_id {}: {}",
+                wildcard.as_str(),
+                entity_id,
+                declared.as_str(),
+            );
+        }
     }
 
     #[test]
