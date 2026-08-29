@@ -984,3 +984,51 @@ pip = "clang-format"
 version = "17.0.6"
 why = "pinned formatter (.clang-format-version); just setup-clang-format installs the wheel"
 check = { cmd = "clang-format" }
+
+# ---------------------------------------------------------------------------
+# phase-397 W2 — probes for the providers that had none.
+#
+# Measured before writing these: `[system.*]` carried a `check` on 22 of 25
+# entries, `[tool.*]` on 0 of 14 and `[source.*]` on 0 of 15. Presence for the
+# latter two was "the path exists" — which is true of an uninitialised
+# submodule, and was true of the QEMU dist whose `libslirp.so.0` was missing.
+#
+# `check` answers "is the capability usable?", never "did provider X install
+# it?" (RFC-0062, amended 2026-08-29), so these are ordinary probes on ordinary
+# prereq entries; the provider only says where to look.
+#
+# A `path` probe is relative to the provider's own `dest`, so no entry here
+# restates a location `[source.*]` already declares.
+# ---------------------------------------------------------------------------
+
+[prereq.qemu]
+why = "QEMU runs every emulated platform test"
+provider = "sdk"
+# `runs`, not `cmd`: the store dist is not on PATH, and its path EXISTING is
+# exactly the state that let a missing libslirp.so.0 reach the loader.
+check = { runs = "qemu-system-arm --version" }
+
+[prereq.freertos-kernel]
+why = "FreeRTOS builds compile the kernel from this checkout"
+provider = "submodule"
+check = { path = "include/FreeRTOS.h" }
+
+[prereq.threadx]
+why = "ThreadX builds compile the kernel from this checkout"
+provider = "submodule"
+check = { path = "common/inc/tx_api.h" }
+
+[prereq.zenoh-pico]
+why = "the zenoh backend's C library"
+provider = "submodule"
+check = { path = "include/zenoh-pico.h" }
+
+[prereq.nuttx-kernel]
+why = "NuttX builds configure and build this checkout"
+provider = "submodule"
+check = { path = "Kconfig" }
+
+[prereq.cyclonedds-src]
+why = "the Cyclone backend builds this fork"
+provider = "submodule"
+check = { path = "CMakeLists.txt" }

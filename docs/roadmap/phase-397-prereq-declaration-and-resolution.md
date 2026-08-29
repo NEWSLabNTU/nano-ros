@@ -60,7 +60,7 @@ ignored by construction — so a missing prereq has no way to be noticed early.
       one that read `[system.*]` alone would see a shrinking half of the SSoT
       while the migration runs.
 
-- [ ] **W2** The two new `check` kinds the current four cannot express:
+- [x] **W2** The two new `check` kinds the current four cannot express:
       `runs` (the resolved binary EXECUTES — `cmd` is `command_exists`, a PATH
       lookup, and a store dist is not on PATH) and `path` (a file inside a
       checkout, for providers whose only test today is "the directory exists",
@@ -72,6 +72,23 @@ ignored by construction — so a missing prereq has no way to be noticed early.
       `[system.*]` 22 of 25 have one; `[tool.*]` 0 of 14 and `[source.*]` 0 of
       15 have none** — their presence test is "the path exists", which is the
       state the motivating failure exploited.
+
+      **Done.** `runs` and `path` land with the tri-state honoured, and six
+      entries gain probes: `qemu` (sdk, `runs`) and five submodule checkouts
+      (`path` on a sentinel header). `nros setup --system --check` goes
+      22 → 28 present.
+
+      Both kinds mutation-checked in the real index, restored after:
+      hollowing out `freertos-kernel`'s `FreeRTOS.h` reports `[MISSING]` — the
+      uninitialised-submodule case "the directory exists" could never catch —
+      and for `runs`, a non-zero exit reports MISSING (broken dist, loader
+      failure: the libslirp shape) while a binary absent from PATH reports
+      UNPROBED, because "cannot execute here" is not "absent".
+
+      `path` resolves against the provider's own `dest` via
+      `SdkIndex::prereq_checkout_dir`, so no prereq entry restates a location
+      `[source.*]` already declares. Without a base it ABSTAINS rather than
+      guessing a root.
 
 - [ ] **W3** `package.xml` as a declaration site, and the fail-on-unknown
       behaviour change. **This is the wave with blast radius**: it touches every
