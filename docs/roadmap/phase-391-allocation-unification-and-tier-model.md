@@ -1,10 +1,23 @@
 # Phase 391 — one funnel, one arena, a constant-time allocator behind it, and a link-time gate that proves it
 
-**Status (2026-08-26). Plan, one prerequisite landed.** Opened from a
+**Status (2026-08-30). W1-W5 landed; the tier is real and gated.** Opened from a
 memory-allocation review. [Issue 0817](../issues/archived/0817-platform-funnel-bypassed-in-zephyr-port.md)
-(the sixteen Zephyr funnel bypasses) is fixed and archived; everything below is
-unstarted. Depends on [phase 390](phase-390-storage-mode-rename-inline-heap-view.md)
-for vocabulary only, not for code.
+(the sixteen Zephyr funnel bypasses) is fixed and archived.
+
+Landed since: **W1/W1b/W4** (`heap-free` tier declared per image and gated in
+`ci-l3` on a real heap-free build), **W2** (rlsf behind the funnel, O(1)
+alloc/free, pool bound compiler-checked, measured before/after on a named
+image), **W3** (Zephyr's funnel is rlsf-backed; `kheap` 65,536 -> 1,024,
+measured A/B on `build-c-talker-zenoh`), and the **W5 endgame** — per-class
+exact cell registries via `Node::ENTITY_BOUNDS`, trampoline contexts moved into
+the cell, and `node_runtime` finally dropping its `alloc` gate, which was the
+finish signal this phase was written to reach.
+
+Read the per-wave "LANDED — measured" blocks below rather than this summary
+before quoting a number; each carries its own A/B.
+
+Depends on [phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for
+vocabulary only, not for code.
 
 ## Where this starts from
 

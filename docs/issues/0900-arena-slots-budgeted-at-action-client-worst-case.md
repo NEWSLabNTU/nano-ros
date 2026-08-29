@@ -5,7 +5,7 @@ status: open
 area: core, memory
 severity: medium
 found: 2026-08-29
-related: [0896, 0271, 0739, phase-392]
+related: [0896, 0271, 0739, phase-392, phase-392-W2]
 ---
 
 # The arena is sized for the entity an image does not have
@@ -235,6 +235,28 @@ first-spin advisory, set the knob, and be told plainly if it was set too low.
 **Not yet done:** nothing sets it automatically. Deriving `action_clients` from
 a declared entity inventory is still the real fix, and still blocked on the
 inventory existing — see below.
+
+## This is phase-392 W2, found from the other end
+
+Filed from a measurement — `ARENA_SIZE` is 74,240 bytes on every generated
+config in the tree — and only afterwards met
+[phase-392](../roadmap/phase-392-static-memory-space-campaign.md)'s **W2,
+"precise executor arena"**, which had already planned this work and even
+anticipated the runtime-measurement half:
+
+> the likely answer is a runtime high-water mark reported at teardown plus a CI
+> lane that fails when it exceeds the configured arena
+
+W1 here delivered that half (exactly, not approximately: the arena is a bump
+allocator, so `arena_used()` is the claimed total rather than a high-water
+estimate). W2 here added `NROS_EXECUTOR_ACTION_CLIENTS`, a lever the phase did
+not have.
+
+Still owed to the phase: the STATIC half — `NROS_ARENA_REQUIRED` emitted by
+entry codegen, checked by `nm` — plus a CI lane. **With one correction the phase
+could not have known:** the arena is inline on the TASK STACK, not in `.bss`, so
+a linker-symbol check cannot see it. That half needs rethinking, not just
+writing.
 
 ## Direction for the rest
 
