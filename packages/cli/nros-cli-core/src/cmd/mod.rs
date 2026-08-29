@@ -22,6 +22,7 @@ pub mod completions;
 pub mod config;
 pub mod doctor;
 pub mod emit_package_xml;
+pub mod entity_facts;
 pub mod explain;
 pub mod generate;
 pub mod generate_px4;

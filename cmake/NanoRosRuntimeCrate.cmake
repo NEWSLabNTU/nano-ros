@@ -305,6 +305,12 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     # workspace member's own `.cargo/config.toml` never does (corrosion invokes
     # cargo from the workspace root).
     nros_board_facts_env(nros_ws_runtime-static)
+    # phase-392 W5.c — and the entity figures the RMW sizes its queryable table
+    # from. Applied HERE, once, because this staticlib is shared by every entry
+    # in the configure and the accumulation is complete only after the SUBDIRS
+    # loop above has processed them all.
+    include("${NANO_ROS_ROOT}/cmake/NanoRosEntityFacts.cmake")
+    nros_entity_facts_env(nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR
             "nros_synth_runtime_umbrella: Corrosion did not create "

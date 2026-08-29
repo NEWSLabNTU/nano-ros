@@ -99,6 +99,18 @@ pub enum Sub {
     #[command(name = "board-facts")]
     BoardFacts(crate::cmd::board_facts::BoardFactsArgs),
 
+    /// phase-392 W5.b/W5.c — print the ENTITY figures a backend sizes its
+    /// tables from (`NROS_DECLARED_SERVICE_SERVERS`,
+    /// `NROS_DECLARED_INFRA_QUERYABLES`), as `KEY=VALUE` lines, for whoever is
+    /// about to invoke cargo.
+    ///
+    /// Same delivery seam and same reason as `board-facts`: the process
+    /// environment is the only carrier that reaches a workspace member's cargo
+    /// invocation (issue 0460). Different QUESTION — this one is answered by
+    /// the resolved SystemModel, not by the board.
+    #[command(name = "entity-facts")]
+    EntityFacts(crate::cmd::entity_facts::EntityFactsArgs),
+
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
     /// across the search path: the nano-ros tree, then this workspace.
@@ -375,6 +387,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::ModelDims(a) => run_model_dims(a),
         Sub::CheckBoardProjections(a) => run_check_board_projections(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
+        Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
     }

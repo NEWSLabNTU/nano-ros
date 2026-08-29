@@ -30,6 +30,21 @@ use super::{
     },
 };
 
+/// phase-392 W5.b2 — how many zenoh queryables ONE action server costs.
+///
+/// An action is three services on the wire (`send_goal`, `cancel_goal`,
+/// `get_result`; the feedback and status channels are topics, not queryables),
+/// so a launch file declaring one action server is declaring THREE entries in
+/// the backend's queryable table. A consumer sizing that table from a model
+/// must multiply, and this is the multiplier.
+///
+/// Defined here rather than in the consumer for the reason issue 0827 measured:
+/// a count restated where it cannot be derived drifts from the code that
+/// decides it. `check-infra-queryable-counts` ties this to the distinct
+/// `create_service` calls below, so adding a fourth action channel fails the
+/// gate instead of silently under-sizing every image that declares an action.
+pub const ACTION_SERVER_QUERYABLES: usize = 3;
+
 // ============================================================================
 // Raw action registration specs
 // ============================================================================
