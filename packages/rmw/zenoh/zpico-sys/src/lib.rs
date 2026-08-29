@@ -365,6 +365,10 @@ unsafe extern "C" {
 
     /// How many keyexprs were STORED — compare against
     /// `zpico_liveliness_get_count` (how many ARRIVED) to detect truncation.
+    /// Has the collecting sweep FINISHED? `zpico_liveliness_get_check` returns
+    /// 1 on the FIRST reply, so restarting on that truncates enumeration.
+    pub fn zpico_liveliness_collect_done(session: *mut zpico_session_t, handle: i32) -> i32;
+
     pub fn zpico_liveliness_entry_count(session: *mut zpico_session_t, handle: i32) -> i32;
 
     /// Copy stored keyexpr `index` into `out`. Returns bytes written excluding

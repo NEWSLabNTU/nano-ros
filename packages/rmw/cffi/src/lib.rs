@@ -1518,6 +1518,76 @@ unsafe extern "C" fn node_visit_trampoline(
     cb(name, ns, enc)
 }
 
+/// phase-381 — the C names-and-types visitor, back into a Rust closure call.
+///
+/// # Safety
+/// Called only by a backend slot this crate handed `ctx` to.
+unsafe extern "C" fn names_and_types_visit_trampoline(
+    ctx: *mut core::ffi::c_void,
+    name: *const core::ffi::c_char,
+    types: *const *const core::ffi::c_char,
+    types_count: usize,
+) -> bool {
+    if ctx.is_null() || name.is_null() {
+        return true; // skip this entry, keep enumerating
+    }
+    let cb = unsafe { &mut *(ctx as *mut &mut dyn FnMut(&str, &[&str]) -> bool) };
+    let Ok(name) = (unsafe { core::ffi::CStr::from_ptr(name) }).to_str() else {
+        return true;
+    };
+    // Bounded on the stack: the C side owns the array for this call only, and a
+    // type that is not valid UTF-8 is SKIPPED rather than lossily converted — a
+    // mangled type name is a different, plausible type.
+    const TYPES_MAX: usize = 8;
+    let mut buf: [&str; TYPES_MAX] = [""; TYPES_MAX];
+    let mut n = 0usize;
+    if !types.is_null() {
+        for i in 0..types_count.min(TYPES_MAX) {
+            let p = unsafe { *types.add(i) };
+            if p.is_null() {
+                continue;
+            }
+            if let Ok(t) = (unsafe { core::ffi::CStr::from_ptr(p) }).to_str() {
+                buf[n] = t;
+                n += 1;
+            }
+        }
+    }
+    cb(name, &buf[..n])
+}
+
+/// Shared body for `count_publishers` / `count_subscribers`.
+fn count_on_topic(
+    view: &NrosRmwSession,
+    f: unsafe extern "C" fn(
+        *const NrosRmwSession,
+        *const core::ffi::c_char,
+        *mut usize,
+    ) -> NrosRmwRet,
+    topic_name: &str,
+) -> Result<usize, TransportError> {
+    // NUL-terminate on the stack; the C side borrows for the call only.
+    const NAME_MAX: usize = 256;
+    if topic_name.len() >= NAME_MAX {
+        return Err(TransportError::InvalidArgument);
+    }
+    let mut buf = [0u8; NAME_MAX];
+    buf[..topic_name.len()].copy_from_slice(topic_name.as_bytes());
+    let mut out: usize = 0;
+    let rc = unsafe {
+        f(
+            view as *const NrosRmwSession,
+            buf.as_ptr() as *const core::ffi::c_char,
+            &mut out,
+        )
+    };
+    if rc == NROS_RMW_RET_OK {
+        Ok(out)
+    } else {
+        Err(error_from_ret(rc))
+    }
+}
+
 impl CffiSession {
     /// Domain this session was opened on. Authoritative: it is the value the
     /// backend actually got, not a re-derivation that can disagree with it.
@@ -2188,6 +2258,79 @@ impl Session for CffiSession {
         } else {
             Err(error_from_ret(rc))
         }
+    }
+
+    /// phase-381 / issue 0903 — the REST of the graph family.
+    ///
+    /// W5 added `get_node_names` here and stopped, which made this the same
+    /// defect one method wide: every other graph call fell through to the trait
+    /// default and returned `Unsupported`, so the zenoh backend — which reaches
+    /// the runtime through this vtable — answered node names and NOTHING else.
+    /// Measured against a live `rmw_zenoh_cpp` talker: node enumeration worked
+    /// and `get_topic_names_and_types` returned empty, because the entity query
+    /// was never even STARTED.
+    ///
+    /// Fixing one method of eleven is how the first version passed every unit
+    /// test in the phase.
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), TransportError> {
+        let Some(f) = self.vtable.get_topic_names_and_types else {
+            return Err(TransportError::Unsupported);
+        };
+        let view = self.make_view();
+        let mut cb: &mut dyn FnMut(&str, &[&str]) -> bool = visit;
+        let rc = unsafe {
+            f(
+                &view as *const NrosRmwSession,
+                false,
+                Some(names_and_types_visit_trampoline),
+                &mut cb as *mut _ as *mut core::ffi::c_void,
+            )
+        };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
+    }
+
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), TransportError> {
+        let Some(f) = self.vtable.get_service_names_and_types else {
+            return Err(TransportError::Unsupported);
+        };
+        let view = self.make_view();
+        let mut cb: &mut dyn FnMut(&str, &[&str]) -> bool = visit;
+        let rc = unsafe {
+            f(
+                &view as *const NrosRmwSession,
+                Some(names_and_types_visit_trampoline),
+                &mut cb as *mut _ as *mut core::ffi::c_void,
+            )
+        };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
+    }
+
+    fn count_publishers(&mut self, topic_name: &str) -> Result<usize, TransportError> {
+        let Some(f) = self.vtable.count_publishers else {
+            return Err(TransportError::Unsupported);
+        };
+        count_on_topic(&self.make_view(), f, topic_name)
+    }
+
+    fn count_subscribers(&mut self, topic_name: &str) -> Result<usize, TransportError> {
+        let Some(f) = self.vtable.count_subscribers else {
+            return Err(TransportError::Unsupported);
+        };
+        count_on_topic(&self.make_view(), f, topic_name)
     }
 
     fn ping_session(&mut self, timeout_ms: i32) -> Result<(), TransportError> {

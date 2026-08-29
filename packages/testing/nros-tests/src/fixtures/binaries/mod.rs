@@ -3427,6 +3427,25 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
 /// `examples/native/c/listener` drop its `NROS_SUB_TYPE` type switch: the
 /// zenoh->cyclonedds bridge e2e was the last caller that needed an Int32
 /// listener speaking a transport this bin could not.
+/// phase-381 — resolve the prebuilt `graph-probe` fixture (cached).
+///
+/// Prints the ROS graph as the node sees it, so `graph_interop.rs` can compare
+/// that against `ros2 node list`. Zenoh only for now: it is the backend whose
+/// twelve graph slots are filled, and the one issue 0903 was measured against.
+pub fn build_graph_probe() -> TestResult<&'static Path> {
+    static BIN: OnceCell<PathBuf> = OnceCell::new();
+    BIN.get_or_try_init(|| {
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/graph-probe",
+            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Zenoh),
+        )?;
+        let profile = cargo_target_profile_dir();
+        let rel = PathBuf::from(format!("{profile}/graph-probe"));
+        require_prebuilt_row_binary_fresh(row, &rel)
+    })
+    .map(|p| p.as_path())
+}
+
 pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
     static XRCE_BIN: OnceCell<PathBuf> = OnceCell::new();

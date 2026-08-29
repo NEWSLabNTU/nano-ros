@@ -930,6 +930,11 @@ pub const POSIX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 /// FAIL into a timeout, which reads as a hang and hides the finding.
 pub const ERRNO_ISOLATION_VERDICT: &str = "errno-isolation: verdict";
 pub const ERRNO_ISOLATION_PASS: &str = "errno-isolation: verdict PASS per-thread errno";
+
+/// phase-381 — the graph probe's verdict line. Like `ERRNO_ISOLATION_PASS`,
+/// this is not delivery: it is the fixture saying it saw the peer it was told
+/// to expect, which is the only thing a discovery workload can assert.
+pub const GRAPH_PROBE_SAW: &str = "GRAPH_PROBE_SAW";
 pub const ERRNO_ISOLATION_FAIL: &str = "errno-isolation: verdict FAIL shared errno";
 pub const ERRNO_ISOLATION_SETUP: &str = "errno-isolation: verdict SETUP failed";
 

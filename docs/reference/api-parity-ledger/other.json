@@ -115,6 +115,10 @@
     "verdict": "extension",
     "why": "runtime-pluggable transport vtable (`nros_transport_ops_t`: abi_version + open/close/write/read + `user_data`). An RTOS image often reaches the network over a link ROS 2 never sees -- USB-CDC, BLE, RS-485, a semihosting bridge -- and which one is a board fact decided after the library is built, so the hook has to be a runtime call rather than a link-time backend choice. rcl has no transport concept at all (rmw is selected at link time); the nearest thing anywhere is micro-ROS's `rmw_uros_set_custom_transport`, which this deliberately mirrors. Fn pointers rather than a trait object because a `Box<dyn>` would force `alloc` on every no_std port (`nros-rmw/src/custom_transport.rs`)."
   },
+  "c:set_trace_sink": {
+    "verdict": "extension",
+    "why": "rclc has no callback-level trace hook — it leaves tracing to LTTng userspace tracepoints, which need a tracer, a session daemon and a filesystem none of the RTOS targets have. `nros_set_trace_sink` is the embedded substitute: one function pointer, no allocation, no I/O, deliberately ungated so the symbol exists whether or not the tracing feature is on."
+  },
   "c:wake_state_get_zero_initialized": {
     "verdict": "extension",
     "why": "rcl's zero-init idiom under our naming, applied to the caller-owned `nros_wake_state_t` slot a polling entity's wake callback is registered with. Naming: see `c:publisher_get_zero_initialized` in the pubsub stage (ours is method-style `nros_<thing>_get_zero_initialized` at all 15 sites, rcl's is `rcl_get_zero_initialized_<thing>`); the slot itself: see `c:service_set_wake_callback`."

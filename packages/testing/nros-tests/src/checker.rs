@@ -58,6 +58,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // Not delivery at all — the fixture's own verdict line. `assert_delivery`
         // counting it once is exactly the contract.
         Workload::Errno => output::ERRNO_ISOLATION_PASS,
+        // Also a verdict rather than delivery: a discovery workload proves it
+        // SAW the peer, which no message count can express.
+        Workload::Graph => output::GRAPH_PROBE_SAW,
     }
 }
 
