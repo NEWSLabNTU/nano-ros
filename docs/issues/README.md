@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-42 open. One line each — the detail lives in the issue file,
+43 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -99,6 +99,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0861** (core, examples) — `[lifecycle] autostart = \"active\"` does not reach `active` at boot in the rust workspace-features cell See `0861-*`.
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
+- **#0876** (platform-zephyr) — `CONFIG_HEAP_MEM_POOL_SIZE=0` from phase-391 W3 makes the Zephyr c/talker unbuildable on native_sim — latent because no native_sim build dir has reconfigured since See `0876-*`.
 
 <!-- END GENERATED open-issue list -->
 
