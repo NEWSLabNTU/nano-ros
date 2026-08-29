@@ -2,7 +2,7 @@
 id: 882
 title: "`_zp_unicast_failed` -> `_z_task_free` panics on an invalid spinlock —
   zenoh-pico's transport-failure path crashes, and latency makes it reliable"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0852, issue-0822, issue-0839, issue-0881]
@@ -293,3 +293,64 @@ already fixed here.
 
 Acceptance is the table above inverted: goals complete through the tap, which is
 currently 0 of 8.
+
+
+## ROOT CAUSE, found under gdb — a mismatched allocator
+
+Breaking on `assert_post_action` and taking a backtrace named it outright:
+
+```
+#2  k_heap_free (heap=0x2040f4f0 <HEAP+656>, mem=0x2040f504 <HEAP+676>)
+#3  k_free                       mempool.c:70
+#4  _z_task_free                 nros_zenoh_zephyr_system.c
+#5  _zp_unicast_failed           lease.c:63
+#6  _zp_unicast_lease_task       lease.c:118
+```
+
+zenoh-pico allocates the task handle with `z_malloc`
+(`session.c:458` — `_z_task_t *task = (_z_task_t *)z_malloc(sizeof(_z_task_t))`),
+and `z_malloc` is `nros_platform_alloc`, i.e. the **nano-ros TLSF arena**. This
+port freed it with **`k_free`**, which is Zephyr's **`_system_heap`** — a
+different allocator.
+
+`k_free` recovers its `struct k_heap *` from the words preceding the block. On a
+TLSF block those words are allocator metadata, so it read `heap = 0x2040f4f0` —
+an address inside our own arena — and took a spinlock there. Hence "Invalid
+spinlock 0x2040f504", always at the same heap address, always TLSF metadata,
+always on the first transport failure.
+
+**It was never a race.** Every concurrency hypothesis tested clean because there
+was no concurrency involved. The mismatch stayed invisible for as long as the
+transport never failed: `_zp_unicast_failed` is the only path that frees a task
+handle.
+
+Fix: `z_free` rather than `k_free`, at both sites in `_z_task_free`.
+
+## Verified
+
+The idle reproducer — board carrying no traffic, router killed to force the
+lease to expire — panicked 21 ms after the expiry message. With the fix:
+
+```
+faults: 0
+[46.241] Reopen failed, next try in 1s
+[59.513] Reopen failed, next try in 1s
+[72.785] Reopen failed, next try in 1s
+```
+
+It survives the teardown and retries cleanly.
+
+## The acceptance criterion this issue wrote is NOT met, and was the wrong one
+
+"Goals complete through the tap" still reads **0/8**. That is not the crash. With
+the board no longer dying, the wire fills with board→router `INIT` frames — 840
+of them in one run — and the router logs `Unexpected Init flag in message`.
+
+That is [issue 0879](0879-serial-link-has-no-resync-after-peer-reset.md): the
+serial link cannot resynchronise, so a reopen can never be accepted once the
+router holds the link. **Fixing this crash exposed it** — previously the board
+died and went quiet, so the reopen storm never had the chance to happen.
+
+So the criterion measured a path that two defects block, and passing it was
+never within this issue's reach. The criterion that does test this defect, and
+passes, is the one above: **no fault when the transport fails.**
