@@ -26,9 +26,34 @@
  * fail -- and the flash write happens at the NEXT boot, from thread context,
  * where it is safe and where a failure can be reported.
  *
- * `.noinit` survives the reset that a fault produces (Zephyr does not zero that
- * section), which is exactly the case this is for. Flash then carries it across
- * a power cycle as well.
+ * WHAT THIS DOES NOT SURVIVE, measured on the S32K344 and NOT a general Zephyr
+ * property.
+ *
+ * `.noinit` is not zeroed by Zephyr, but this SoC zeroes it below Zephyr. Its
+ * `soc_early_reset_hook` (`soc/nxp/s32/s32k3/s32k3xx_startup.S`) must
+ * initialise SRAM and both TCMs to a known value after a DESTRUCTIVE reset,
+ * because ECC-protected memory cannot be read by a 32-bit master until a 64-bit
+ * master has written it. So:
+ *
+ *     destructive reset (power-on, pin reset)  -> SRAM, ITCM and DTCM ZEROED
+ *     functional reset  (SYSRESETREQ)          -> contents retained
+ *
+ * Verified: after a fault, `pyocd reset` (a hardware reset by default) produced
+ * a clean boot with no record, because the ECC init had already run over it.
+ *
+ * The consequence is that `.noinit` alone covers only the functional-reset case,
+ * and the flash copy below is therefore NOT a nice-to-have on this part -- it is
+ * the only thing that survives a destructive reset. But it is written at the
+ * NEXT boot from a record that a destructive reset has already destroyed, so as
+ * written this file does not yet close that gap.
+ *
+ * Closing it means writing to flash FROM THE FAULT HANDLER, which is a
+ * different risk profile: a flash write with interrupts off, on a stack that
+ * may be the damaged one. That is the follow-up, and it is deliberately not
+ * smuggled in here. Until then this is honest about its coverage:
+ *
+ *     fault -> functional reset  -> record reported, and persisted   [works]
+ *     fault -> destructive reset -> record already gone              [GAP]
  */
 
 #include <zephyr/kernel.h>
