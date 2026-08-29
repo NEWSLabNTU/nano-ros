@@ -552,6 +552,16 @@ use crate::executor::{EmbeddedServiceServer, NodeError};
 // the build surface simple.
 pub use crate::config::PARAM_SERVICE_BUFFER_SIZE as LIFECYCLE_SERVICE_BUFFER_SIZE;
 
+/// How many zenoh queryables the REP-2002 lifecycle services claim on a node.
+///
+/// Issue 0827 — FIVE, not six. `change_state`, `get_state`,
+/// `get_available_states`, `get_available_transitions`, `get_transition_graph`.
+/// Both places that stated a number for these stated six, which is where the
+/// widely-quoted "twelve slots before the application declares anything" came
+/// from; it is eleven. See [`crate::parameter_services::PARAM_SERVICE_QUERYABLES`]
+/// for why the count lives here rather than in the RMW.
+pub const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
+
 type LcSrv<Svc> =
     EmbeddedServiceServer<Svc, LIFECYCLE_SERVICE_BUFFER_SIZE, LIFECYCLE_SERVICE_BUFFER_SIZE>;
 

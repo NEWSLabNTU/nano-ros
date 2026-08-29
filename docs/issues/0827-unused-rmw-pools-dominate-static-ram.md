@@ -165,3 +165,72 @@ the totals were wrong by 2,417–2,598 bytes and the "identical to the byte"
 claim was wrong by 16. Trust the group directory, and check an artifact's mtime
 against its sources before quoting it. `--json` plus `--baseline` shows the delta
 between any two images, which is how a fix should be reported.
+
+## Design settled 2026-08-29 — and why const generics are not the answer
+
+**Const generics reach no non-Rust consumer, and are still wrong here.**
+Traced the boundary: `SERVICE_BUFFERS` is a private `static mut` — no header,
+no `#[no_mangle]`, no `repr(C)`. C round-trips one opaque `*mut c_void` token
+(`session_index * ZPICO_MAX_QUERYABLES + local`) that it never does arithmetic
+on, and validates its own handles against its own table. So the two tables are
+NOT layout-coupled; this is not the 0135 class. If Rust's N exceeded C's, Rust
+would admit a server C then refuses — a clean error, not corruption.
+
+They are wrong anyway because a const generic needs a TYPE to carry it. A Rust
+entry has one (`Node::ENTITY_BOUNDS`, the W5 shape). A C/C++ entry does not —
+it is cmake-driven through `nano_ros_entry()`. Pushing the generic up leaves
+two exits, both bad: a non-generic C entry point that picks some N (a
+hand-picked number again, the thing being removed), or a sizing parameter on
+the C API, which stops it being a thin wrapper of Rust.
+
+**The direction this need runs is C -> Rust.** `*_OPAQUE_U64S` is the existing
+thin-wrapper channel and it flows Rust -> C: Rust owns the type, a build step
+computes `size_of`, a generated header carries the number, C declares opaque
+storage. Here the application declares how many services it has and the backend
+consumes it — the reverse. That channel is specified but unbuilt: phase-392 W2's
+`NROS_ARENA_REQUIRED`. So this is a second consumer of a planned mechanism, not
+a new one.
+
+**One declaration site serves both languages.** The feature-forwarding plan (add
+`param-services`/`lifecycle-services` passthrough to `zpico-sys`, forward at
+~15 leaves, gate the forwarding) is unnecessary: the resolved model already
+carries it. `system.toml` declares `features = ["param_services", "lifecycle"]`
+and the plan schema has `PlanParamServices` / `PlanLifecycle` as first-class
+fields. Rust entries reach it through the macro, C/C++ entries through
+`nano_ros_entry()` reading the same model.
+
+Division of labour, which keeps issue 0460 closed: the model says WHETHER the
+infrastructure services exist; Rust says HOW MANY, beside the code that creates
+them. Codegen must never own that number — it sees the user's entities and
+never the runtime's.
+
+**Net C/C++ API change: none.** No new function, no parameter, no generic in a
+header. One more `#define` in a file that is already generated.
+
+**Decided: an undeclared image fails loudly.** A bare `cargo build` of a leaf,
+and the standalone `check-rmw-*` projects, have no model. Rather than keep
+today's generous 32 (safe, and 144,128 bytes of service buffers whether or not
+the image has a single service), the model-less path is a build-time failure
+that names what to declare. Per this issue's own `.max(1)` finding, a fallback
+that silently yields a working-but-wasteful number is the shape that reads as
+satisfied and is not.
+
+### Landed already (the count itself)
+
+The counts now have one definition each, beside the code that creates them:
+`parameter_services::PARAM_SERVICE_QUERYABLES` (6) and
+`lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES` (5). They had SEVEN
+spellings and no definition; two were wrong, both saying lifecycle was 6, which
+is where "twelve slots" came from. It is eleven.
+
+`check-infra-queryable-counts` ties each constant to the number of
+`create_param_srv::<_>` / `create_lc_srv::<_>` statements, so a seventh service
+fails until the constant moves — a constant alone is still a hand-typed literal
+and would have drifted exactly as the prose did. It also forbids an RMW backend
+from restating a count it cannot derive: that gate found the seventh mirror on
+its first run.
+
+### Still open
+
+The sizing itself. Wants its own work item — it is the W5 restructuring one
+layer down, and should not be smuggled in beside a comment fix.

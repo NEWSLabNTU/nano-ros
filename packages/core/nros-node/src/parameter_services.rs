@@ -1218,6 +1218,25 @@ use crate::executor::{EmbeddedServiceServer, NodeError};
 // NROS_PARAM_SERVICE_BUFFER_SIZE env var (default 4096).
 pub use crate::config::PARAM_SERVICE_BUFFER_SIZE;
 
+/// How many zenoh queryables the ROS parameter services claim on a node.
+///
+/// Issue 0827 — a service server IS a queryable, so this number is a term in
+/// every service-buffer pool the RMW sizes. It had SIX spellings and no
+/// definition: the count of `create_param_srv::<_>` statements in
+/// `executor/spin.rs`, two doc comments, `nros-zpico-build`'s default-picking
+/// comment, the RMW's own exhaustion message, and CLAUDE.md. Two of them had
+/// already drifted to the wrong value for the lifecycle sibling.
+///
+/// Kept BESIDE the code that creates them, not in the RMW: only the runtime
+/// knows it creates these on the node's behalf. Deriving the number from the
+/// user's entity set is issue 0460's defect — codegen sees the application's
+/// services and never these.
+///
+/// Gated with the same `param-services` feature that compiles the servers, so
+/// an image without it contributes zero rather than eleven.
+/// `check-infra-queryable-counts` holds it to the number of creation sites.
+pub const PARAM_SERVICE_QUERYABLES: usize = 6;
+
 /// Type alias for a parameter service server with standard buffer sizes.
 type ParamServer<Svc> =
     EmbeddedServiceServer<Svc, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>;

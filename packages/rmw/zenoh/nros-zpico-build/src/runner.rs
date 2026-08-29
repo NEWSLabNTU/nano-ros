@@ -30,15 +30,26 @@ fn shim_config_from_env() -> ShimConfig {
     // costs RAM whether or not it is used. 8 is an embedded budget, and it was
     // applied to hosted targets too, where the same RAM argument does not hold.
     //
-    // A service server IS a queryable. An entry that enables the ROS parameter
-    // services (6) and the REP-2002 lifecycle services (6) needs twelve before
-    // the application declares anything of its own, so on a hosted target the
+    // A service server IS a queryable, and the runtime registers its own
+    // before the application declares anything — so on a hosted target the
     // 8-slot table overflowed at boot and every entry in
     // `examples/workspaces/features` died with a bare
     // `Transport(ServiceServerCreationFailed)`.
     //
     // Hosted targets get headroom; `target_os = "none"` keeps the embedded
     // budget exactly as before. Override with the env var on either side.
+    //
+    // issue 0827 — this comment used to say "(6)" and "(6)" and "needs
+    // twelve". Lifecycle is FIVE, so it is eleven, and "twelve" propagated
+    // from here into other prose. The counts are now
+    // `nros_node::parameter_services::PARAM_SERVICE_QUERYABLES` and
+    // `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`, beside
+    // the code that creates them. This crate cannot READ them — a build script
+    // sees neither another crate's constants nor its features — which is
+    // exactly why `32` below is a guess rather than a derivation, and why it
+    // costs a hosted image 144,128 bytes of service buffers whether or not it
+    // has a single service. Replacing the guess needs the declaration to reach
+    // here from the resolved model; see issue 0827.
     let hosted = std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none");
     let queryable_default = if hosted { 32 } else { 8 };
     ShimConfig {
