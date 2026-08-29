@@ -1987,7 +1987,7 @@ check-book-no-just:
 check-emitter-just-spelling:
     @bash scripts/check-emitter-just-spelling.sh
 
-# The "Open issues" list in docs/issues/README.md must name EXACTLY the files in
+# The "Open issues" list in docs/issues/open.md must name EXACTLY the files in
 # docs/issues/. The rule is already written in that file's Conventions #3 —
 # nothing enforced it, and it drifted twice in two consecutive pulls (#0465,
 # #0474): each was archived with a `git mv` while its README row stayed in the

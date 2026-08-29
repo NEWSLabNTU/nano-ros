@@ -39,7 +39,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX = os.path.join(ROOT, "docs", "issues", "README.md")
+INDEX = os.path.join(ROOT, "docs", "issues", "open.md")
 
 BEGIN = "<!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->"
 END = "<!-- END GENERATED open-issue list -->"
@@ -91,12 +91,19 @@ def open_issues():
 
 
 def render(rows):
+    # issue 0884 — NO COUNT LINE, deliberately. A running total is one line that
+    # EVERY issue-touching pull request rewrites at the same position, which is
+    # the worst possible shape for concurrent edits: differing counts make git
+    # keep both lines under `merge=union`, and matching counts merge silently to
+    # a WRONG total (measured: two agents each taking 3 -> 4 produced "4" for
+    # five issues). The number is derivable by counting the rows below it and
+    # buys a reader nothing the list does not already show.
     lines = [
         BEGIN,
         "",
-        f"{len(rows)} open. One line each — the detail lives in the issue file,",
-        "which already has it. Regenerate with `scripts/gen-issue-index.py`;",
-        "`check-issue-index` fails if this block drifts.",
+        "One line each — the detail lives in the issue file, which already has",
+        "it. Regenerate with `scripts/gen-issue-index.py`; `check-issue-index`",
+        "fails if this block drifts.",
         "",
     ]
     for r in rows:
@@ -123,7 +130,7 @@ def main():
     else:
         if args.check:
             print(
-                "gen-issue-index: no generated block in docs/issues/README.md.\n"
+                "gen-issue-index: no generated block in docs/issues/open.md.\n"
                 "Run scripts/gen-issue-index.py to create it."
             )
             return 1

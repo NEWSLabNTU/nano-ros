@@ -653,7 +653,8 @@ and verified.
 
 - **Parallel agent sessions push to `main` concurrently.** `git fetch` + check
   `origin/main`'s highest issue id (including `archived/`) immediately before
-  filing a `docs/issues/` entry; expect `docs/issues/README.md` rebase conflicts
+  filing a `docs/issues/` entry. The generated list is `docs/issues/open.md` and is
+  `merge=union` (issue 0884), so two agents filing concurrently no longer conflict
   (merge both sides, renumber only your own files). Stash-wrap local-only files
   (`packages/rmw/zenoh/zpico-sys/c/include/zpico.h`-style) around every rebase.
 - **Write full logs of background builds/tests to files** and grep afterwards;
