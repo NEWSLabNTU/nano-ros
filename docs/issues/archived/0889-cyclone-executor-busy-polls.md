@@ -2,7 +2,7 @@
 id: 889
 title: "The Cyclone RMW installs no wake callback, so the executor polls on a
   timer and mostly misses"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0836, issue-0780, phase-385]
@@ -66,21 +66,34 @@ Implemented and building:
   is torn down from `session_destroy` before the ctx can go away
 * the vtable slot points at it
 
-**It is not landed because it could not be verified.** One run with it showed
-zero deliveries — but so did a run with the change reverted. The an536 lane's
-run-to-run variance is large enough to swamp the signal (documented in 0836:
-3,200 frames in one run against 84,524 in another of the same length), so
-neither run proves anything about the patch.
+**Landed** in `bd522b841`, as a participant-level `data_available` listener:
+one listener covers every reader the session creates, because DDS propagates an
+unhandled event to the parent. Installed when the runtime hands over its
+callback, torn down in `session_destroy` before the ctx it points at can go
+away.
 
-There is also a real mechanism for harm that a stable rig must rule out:
-invoking a listener consumes the communication status, and this backend's
-`take`/`has_data` path polls that status. `reset_on_invoke = false` is meant to
-prevent exactly that, and needs to be confirmed rather than assumed.
+The listener is safe here for a reason worth stating, because `subscriber.cpp`
+deliberately declines listeners for STATUS events: those would need a buffer, a
+lock, and a delivery context. A wake callback needs none — the runtime side
+writes a flag and signals a condvar, which is exactly what the contract permits
+a backend to do from its transport thread.
 
-## What would settle it
+## What was verified, and what was not
 
-A rig where delivery is repeatable — a native or QEMU lane with a fixed
-publisher, not the full Autoware stack — running the poll/delivery counters
-above with and without the listener. If the hit rate rises and delivery is
-unchanged, land it; if `has_data` goes quiet, the status-consumption concern is
-real and the wake path needs a waitset on its own thread instead.
+The concrete risk was that invoking a listener consumes the communication
+status this backend's `take`/`has_data` path polls — `reset_on_invoke = false`
+is meant to prevent that, and asserting it was not enough. Two runs of the ASI
+an536 lane with the change: the island receives its inputs in both
+(acceleration after 6 and 5 waits), with a trajectory in one — the same spread
+the unpatched lane shows. So the polling path still sees data with the listener
+attached, and the status-consumption failure mode did not happen.
+
+What is NOT measured is the hit rate this issue opened on. The rig that would
+settle it — a fixed publisher, poll/delivery counters with and without the
+listener — was attempted twice and neither attempt held: the in-tree native
+Cyclone talker/listener test needs seven provisioned build sources in a fresh
+worktree, and the ASI freertos-posix island segfaults on this host UNPATCHED,
+so it cannot serve as a control. The claim here is therefore "delivery is not
+broken by the listener", not a number.
+
+This does not fix 0836: the trajectory remains intermittent on that lane.
