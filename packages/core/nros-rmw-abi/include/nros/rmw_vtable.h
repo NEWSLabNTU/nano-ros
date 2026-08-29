@@ -775,16 +775,34 @@ typedef struct nros_rmw_vtable_t {
      *  comparable with another carrying the same identifier, which matters here
      *  because `nros_rmw_cffi_register_named` admits several backends at once.
      *
-     *  NULL slot: the runtime answers with the name the backend registered
-     *  under, so this is a slot a backend only needs when it wants to report
-     *  something other than its registry name. */
+     *  RESERVED, and NULL in every backend. **There is no runtime fallback**:
+     *  this doc said the runtime answered with the registry name, and no such
+     *  code was ever written — nothing in the tree calls this slot, so a NULL
+     *  one is not "answered elsewhere", it is unanswerable. Corrected 2026-08-29
+     *  (phase-393 W2) after grepping for the promised fallback and finding only
+     *  this sentence.
+     *
+     *  Filling it is NOT what makes the identity correct. The identity that is
+     *  load-bearing today is the one a backend stamps into `rmw_gid_t`, because
+     *  `rmw_compare_gids_equal` compares that string before the bytes — so what
+     *  matters is that a backend has ONE spelling of its name, not that it can
+     *  be asked for it. Cyclone's `kImplementationIdentifier` is that shape.
+     *
+     *  Do not fill this slot to move a counter: `check-rmw-slot-producers`
+     *  classifies any slot with a producer as `produced` whether or not
+     *  anything reads it, which is exactly the overstatement issue 0800 exists
+     *  to catch. It earns a body when a CALLER exists — a bridge image asking
+     *  which of two linked backends it is on. */
     const char *(*get_implementation_identifier)(void);
 
     /** Upstream `rmw_get_serialization_format`.
      *
-     *  NULL slot: the runtime answers `"cdr"`. A backend overrides only if it
-     *  speaks something else — and a bridge image linking two backends is
-     *  exactly why this is per-BACKEND rather than a build-time constant. */
+     *  RESERVED, and NULL in every backend. As above, the "runtime answers
+     *  `cdr`" fallback this doc used to promise does not exist in code.
+     *
+     *  Every backend here speaks CDR, nothing asks, and no divergence is
+     *  possible to guard against — so a body would be parity shape with no
+     *  reader. It becomes real work the day a backend speaks something else. */
     const char *(*get_serialization_format)(void);
 
     /** Upstream `rmw_feature_supported`.
