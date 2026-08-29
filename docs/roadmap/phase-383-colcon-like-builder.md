@@ -430,12 +430,37 @@ found only because these trees are not uniform the way ours are.
       none carries `args` (so the 3 args-bearing entries have no image). Both
       would generate an entry that builds and is WRONG. Close with the first
       workspace migration.
-- [ ] **W9.b** Update `examples/fixtures.toml` rows to invoke `nros build`.
-      **Not started deliberately.** 337 rows drive every fixture build in the
-      repo; retargeting them is only verifiable by the tier-2 run in W9.c, and
-      an unverified change here breaks every lane at once.
-      A row already describes `(image, board)`, so it becomes an invocation
-      rather than a description of one.
+- [x] **W9.b** Update `examples/fixtures.toml` rows to invoke `nros build`.
+      **Done for every row it can apply to. The "337 rows" figure conflated two
+      tables that are not the same kind of thing** — measured 2026-08-29:
+
+      | rows | state |
+      | --- | --- |
+      | 96 of 110 `[[workspace_fixture]]` | **invoke `nros build`** (`image =`) |
+      | 14 of 110 `[[workspace_fixture]]` | blocked — see below |
+      | 314 `[[fixture]]` | **out of scope by design** |
+
+      **The 314 are not workspaces.** Zero of their 192 distinct dirs carry an
+      `[image.*]` bringup, and `nros build` refuses them by construction:
+
+          $ cd examples/native/rust/talker && nros build --all --dry-run
+          Error: this workspace declares no `[image.*]`. An image is the
+          buildable unit — see RFC-0065 D6.
+
+      They are RFC-0026 standalone copy-out leaves — a single package, no
+      workspace walk-up, deliberately buildable on their own. Giving them a
+      bringup so `nros build` could drive them would contradict the contract
+      that makes them copy-outable. The row already IS the invocation for them;
+      there is nothing to retarget.
+
+      **The 14 are all framework entries** — 13 zephyr/west, 1 esp32/idf — and
+      they are blocked on **issue 0892**: `nros build`'s west driver points at
+      the BRINGUP, which has no `CMakeLists.txt` and so is not a west
+      application, and runs west from the nros workspace, which is not a west
+      workspace (`west: unknown command "build"`). Nothing had ever built a
+      zephyr image through `nros build`, because every zephyr row still goes
+      through `west-fixtures.sh`. Until a west application is GENERATED the way
+      the cargo and cmake roots are, those rows cannot move.
 - [x] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
       `cmake/` and codegen, so **`just ci-matrix`** at minimum.
 
