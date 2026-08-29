@@ -60,6 +60,16 @@ KNOB_PATTERNS = [
     # wrapper is the natural thing to write when several knobs share a
     # resolution rule, so match the shape rather than asking each crate not to.
     re.compile(r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*\)'),
+    # `env_usize_min("NAME", default, floor)` — a knob whose reader REFUSES a
+    # value below a floor instead of silently rounding it up (issue 0827). The
+    # reported figure is the DEFAULT, exactly as for every other spelling: the
+    # floor is a validity rule on what a user may ask for, not a size the image
+    # pays. Added with the spelling, not after it: renaming the two zpico reads
+    # to this wrapper made `ZPICO_SUBSCRIBER_RING_DEPTH` and
+    # `ZPICO_MAX_LARGE_SUBSCRIBERS` invisible here, and with them the byte
+    # figures for BOTH payload pools -- the `SLOTS` regression this list already
+    # records, one wrapper later.
+    re.compile(r'\benv_usize_min\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*,\s*[0-9_]+\s*\)'),
 ]
 
 # `// nros-pool: NAME = KNOB * KNOB * 4` — products of knobs and integers only.
@@ -90,7 +100,7 @@ def crate_of(rel):
 # the ones issue-0271's failure mode hides (executor arena, zpico batch/frag
 # buffers: the LARGEST consumers). They must appear in the table, not be
 # silently dropped by a literal-only regex.
-KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat)?|knob)\(\s*"([A-Z0-9_]+)"')
+KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat|_min)?|knob)\(\s*"([A-Z0-9_]+)"')
 
 
 def scan(files=None):
@@ -222,7 +232,15 @@ def self_test():
     assert got == 128 and err is None, f"product at defaults wrong: {got} {err}"
     got, err = pool_bytes("A * NOPE", knobs)
     assert got is None and "NOPE" in err, "an unknown knob must not silently vanish"
-    probe = 'let x = env_usize("NROS_PROBE_SLOTS", 12);\n// nros-pool: P = NROS_PROBE_SLOTS * 8\n'
+    # Every reader spelling gets a probe line. A spelling with no case here is
+    # a spelling that can be added, break the scan, and still self-test green —
+    # which is how `env_usize_min` deleted two knobs and two pool figures.
+    probe = (
+        'let x = env_usize("NROS_PROBE_SLOTS", 12);\n'
+        'let y = env_usize_min("NROS_PROBE_DEPTH", 3, 1);\n'
+        '// nros-pool: P = NROS_PROBE_SLOTS * 8\n'
+        '// nros-pool: Q = NROS_PROBE_DEPTH * NROS_PROBE_SLOTS\n'
+    )
     tmp = os.path.join(ROOT, "tmp")
     os.makedirs(tmp, exist_ok=True)
     p = os.path.join(tmp, "_pool_probe.rs")
@@ -231,8 +249,16 @@ def self_test():
     k, pl = scan([os.path.relpath(p, ROOT)])
     os.unlink(p)
     assert k.get("NROS_PROBE_SLOTS", (None,))[0] == 12, "knob not scanned"
-    assert pl and pl[0][0] == "P", "pool annotation not scanned"
-    assert pool_bytes(pl[0][1], k)[0] == 96, "annotated pool bytes wrong"
+    assert k.get("NROS_PROBE_DEPTH", (None,))[0] == 3, (
+        "env_usize_min knob not scanned — its DEFAULT is the reported figure, "
+        "not its floor (issue 0827)"
+    )
+    by_name = {name: expr for name, expr, *_ in pl}
+    assert "P" in by_name, "pool annotation not scanned"
+    assert pool_bytes(by_name["P"], k)[0] == 96, "annotated pool bytes wrong"
+    assert pool_bytes(by_name["Q"], k)[0] == 36, (
+        "a pool sized by an env_usize_min knob must resolve to bytes"
+    )
     sys.stdout.write("gen-pool-inventory self-test: OK\n")
 
 
