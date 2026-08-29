@@ -67,6 +67,16 @@ pub struct Args {
     #[arg(long)]
     pub cmake: bool,
 
+    /// Select the image whose ENTRY is this package, instead of naming an
+    /// image id.
+    ///
+    /// The question a west build actually has. cmake knows the application
+    /// directory it was pointed at and nothing else — not which `[image.*]`
+    /// named it — so asking by image id would mean cmake deriving the image,
+    /// which is the derivation this verb exists to remove.
+    #[arg(long, value_name = "PKG")]
+    pub for_entry: Option<String>,
+
     /// Print nothing and exit 0 when this directory is not in a nano-ros
     /// workspace, or declares no such image.
     ///
@@ -131,7 +141,9 @@ pub fn run(args: Args) -> Result<()> {
         nano_ros_path: args.nano_ros_path.clone(),
         // A query resolves; it never runs west, so no Zephyr is looked for.
         zephyr_workspace: None,
-        all: false,
+        // Selecting BY ENTRY means every image has to be resolved before one
+        // can be chosen.
+        all: args.for_entry.is_some(),
         dry_run: true,
         offline: true,
         native_args: Vec::new(),
@@ -148,11 +160,28 @@ pub fn run(args: Args) -> Result<()> {
         }
         Err(e) => return Err(e),
     };
-    let Some(plan) = plans.first() else {
+    let selected = match &args.for_entry {
+        Some(pkg) => plans
+            .iter()
+            .find(|p| p.entry_package.as_deref() == Some(pkg.as_str())),
+        None => plans.first(),
+    };
+    let Some(plan) = selected else {
         if args.if_present {
             return Ok(());
         }
-        bail!("no image resolved in {}", root.display());
+        match &args.for_entry {
+            Some(pkg) => bail!(
+                "no image in {} has entry `{pkg}`.\n  Images: {}",
+                root.display(),
+                plans
+                    .iter()
+                    .map(|p| p.qualified.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            None => bail!("no image resolved in {}", root.display()),
+        }
     };
 
     if args.cmake {
