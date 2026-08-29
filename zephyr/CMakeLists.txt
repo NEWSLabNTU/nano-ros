@@ -237,6 +237,29 @@ if(_nros_panic_feature)
     set(_nros_panic_suffix ",${_nros_panic_feature}")
 endif()
 
+# phase-8 W4 — callback tracing. This is the ONE read of
+# `CONFIG_NROS_TRACE_CALLBACKS`; every feature string below appends the result,
+# so the knob cannot reach one cargo build and miss another.
+#
+# It is spelled as a suffix rather than as a per-site `if()` (the shape
+# `param-services` uses) because the C/C++ lane compiles nros-c AND nros-cpp
+# from the same nros-node dep graph, in two separate cargo invocations, and
+# BOTH are linked into a C++-only image (see the `NOT CONFIG_NROS_C_API` block
+# below, whose own comment requires "the SAME RMW + platform feature set").
+# Two cargo units of nros-node differing in a feature is the 0135 ABI-split
+# class, not a missing optimisation — so the sites must move together, and one
+# variable is how they are kept in step.
+#
+# Appended to the feature STRINGS, not to the `nros_cargo_build` FEATURES
+# argument like `_nros_panic_suffix`, because the mixed-workspace umbrella
+# re-splits `_nros_cpp_features` (`string(REPLACE "," ";" ...)` below) and
+# would otherwise build the one archive that actually gets linked without the
+# feature.
+set(_nros_trace_suffix "")
+if(CONFIG_NROS_TRACE_CALLBACKS)
+    set(_nros_trace_suffix ",trace-callbacks")
+endif()
+
 # =============================================================================
 # C API path: build nros-c via Cargo and link it
 # =============================================================================
@@ -288,6 +311,9 @@ if(CONFIG_NROS_C_API)
     if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
         string(APPEND _nros_features ",std")
     endif()
+
+    # phase-8 W4 — callback tracing (see `_nros_trace_suffix` above).
+    string(APPEND _nros_features "${_nros_trace_suffix}")
 
     # Build nros-c static library via Cargo
     nros_cargo_build(
@@ -502,6 +528,11 @@ if(CONFIG_NROS_CPP_API)
         add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
     endif()
 
+    # phase-8 W4 — callback tracing (see `_nros_trace_suffix` above). Appended
+    # BEFORE the umbrella's `string(REPLACE "," ";" _umb_feats ...)` below, so
+    # a mixed workspace's single linked archive carries it too.
+    string(APPEND _nros_cpp_features "${_nros_trace_suffix}")
+
     # Phase 168.X gap 1 — `nros_log_emit` + `nros_log_emit_fmt`
     # symbols (the C-side log glue every `NROS_LOG_*` macro from
     # `<nros/log.h>` expands to) ship only with `libnros_c.a`.
@@ -530,6 +561,10 @@ if(CONFIG_NROS_CPP_API)
         if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
             string(APPEND _nros_c_for_cpp_features ",std")
         endif()
+        # phase-8 W4 — callback tracing. MUST match the nros-cpp string above:
+        # both archives are linked into this image from one nros-node dep
+        # graph, and a feature that reaches only one of them splits the unit.
+        string(APPEND _nros_c_for_cpp_features "${_nros_trace_suffix}")
         nros_cargo_build(
             PACKAGE nros-c
             FEATURES "${_nros_c_for_cpp_features}${_nros_panic_suffix}"

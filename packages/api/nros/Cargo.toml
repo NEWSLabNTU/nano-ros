@@ -120,6 +120,13 @@ rmw-cyclonedds = ["nros-node/needs-type-descriptors"]
 # feature for backend support matrix.
 rmw-lending = ["nros-node/rmw-lending"]
 
+# Phase 8 (autoware-safety-island `docs/design/callback_tracing.rst`) —
+# callback-level dispatch tracing. Pure forward to `nros-node`, which owns the
+# hooks and the runtime-installed `extern "C" fn(u32, u32)` sink; see the
+# rationale on `nros-node/trace-callbacks`. Off by default — the hooks sit on
+# the executor's hot path and must vanish in production.
+trace-callbacks = ["nros-node/trace-callbacks"]
+
 # Phase 128.G — bridge surface. `bridge` re-exports `nros_bridge`'s
 # Rust API (PubSubBridge etc.); `config` additionally pulls the TOML
 # loader (`run_from_config`).

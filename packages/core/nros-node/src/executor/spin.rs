@@ -21,7 +21,7 @@ use super::{
         ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
         SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
         SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry, SubInplaceEntry,
-        TimerEntry, TimerHeader, TimerOverrunPolicy, always_ready, buffered_region_size,
+        TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size,
         drop_entry, guard_has_data, guard_try_process, no_pre_sample,
         service_client_callback_try_process, service_client_raw_try_process, srv_has_data,
         srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_borrowed_has_data,
@@ -43,6 +43,26 @@ use super::{
         Trigger,
     },
 };
+
+// ============================================================================
+// Phase 8 — callback registration event (paired stubs)
+// ============================================================================
+//
+// `docs/design/callback_tracing.rst`. Paired stubs (the `entry_tiers.rs`
+// idiom) so `emplace_entry` reads identically whether or not the feature is
+// on, and the `#[cfg]` lives in exactly one place.
+
+/// Emit `nros_callback_register(handle, kind, name)` for a newly installed
+/// executor entry.
+#[cfg(feature = "trace-callbacks")]
+#[inline]
+fn trace_register(slot: usize, kind: EntryKind, name: TraceName<'_>) {
+    super::callback_trace::register(slot, kind, name);
+}
+
+#[cfg(not(feature = "trace-callbacks"))]
+#[inline]
+fn trace_register(_slot: usize, _kind: EntryKind, _name: TraceName<'_>) {}
 
 // ============================================================================
 // Executor::open() factory method
@@ -3737,6 +3757,29 @@ impl<'s> Executor<'s> {
             .ok_or(NodeError::ExecutorFull)
     }
 
+    /// Install a finished [`CallbackMeta`] into its slot.
+    ///
+    /// phase-8 (`docs/design/callback_tracing.rst`) — the ONE choke point
+    /// every registration site funnels through, so the
+    /// `nros_callback_register(handle, kind, name)` event is emitted once,
+    /// here, rather than at the 25 sites that build a `CallbackMeta`. The
+    /// design's registration half is deliberately EXHAUSTIVE across every
+    /// `EntryKind` even though the leaf hooks are staged: a callback that was
+    /// registered but never observed then prints as "registered, not
+    /// instrumented" instead of being silently absent, so an incomplete hook
+    /// set announces itself in the output rather than looking like a
+    /// measurement.
+    ///
+    /// It is the assignment — not [`next_entry_slot`](Self::next_entry_slot)
+    /// — because a slot is claimed BEFORE the fallible work (session lookup,
+    /// arena allocation, handle creation) that can still return `Err`.
+    /// Emitting at slot-claim time would announce callbacks that do not
+    /// exist.
+    pub(crate) fn emplace_entry(&mut self, slot: usize, meta: CallbackMeta, name: TraceName<'_>) {
+        trace_register(slot, meta.kind, name);
+        self.entries[slot] = Some(meta);
+    }
+
     /// Typed buffered subscription core (the `node_mut(id).subscription(t)
     /// .typed::<M>()` builder lowers here). Routes the typed subscription
     /// through the [`NodeId`]'s session + identity (rclcpp `add_node` pattern).
@@ -3815,7 +3858,7 @@ impl<'s> Executor<'s> {
                         },
                     );
                 }
-                self.entries[slot] = Some(CallbackMeta {
+                let meta = CallbackMeta {
                     offset: entry_offset,
                     kind: EntryKind::Subscription,
                     try_process: sub_inplace_try_process::<M, F>,
@@ -3823,7 +3866,8 @@ impl<'s> Executor<'s> {
                     pre_sample: no_pre_sample,
                     invocation: InvocationMode::OnNewData,
                     drop_fn: drop_entry::<SubInplaceEntry<M, F>>,
-                });
+                };
+                self.emplace_entry(slot, meta, TraceName::Text(topic_name));
                 self.apply_node_default_sched(slot, Some(node_id), group);
                 return Ok(HandleId(slot));
             }
@@ -3857,7 +3901,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_try_process::<M, F>,
@@ -3865,7 +3909,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         // Phase 104.C.4 — apply Node's default SchedContext.
         self.apply_node_default_sched(slot, Some(node_id), group);
         Ok(HandleId(slot))
@@ -4026,7 +4071,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_borrowed_try_process::<B, F>,
@@ -4034,7 +4079,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<B, F>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
@@ -4100,7 +4146,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_raw_info_try_process::<F, RX_BUF>,
@@ -4108,7 +4154,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<F, RX_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
@@ -4177,7 +4224,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_raw_safety_try_process::<F, RX_BUF>,
@@ -4185,7 +4232,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<F, RX_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
@@ -4250,7 +4298,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_raw_try_process::<F>,
@@ -4258,7 +4306,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<F>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Slot("sub", slot));
         Ok(HandleId(slot))
     }
 
@@ -4325,7 +4374,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_info_try_process::<M, F, RX_BUF>,
@@ -4333,7 +4382,8 @@ impl<'s> Executor<'s> {
             pre_sample: sub_info_pre_sample::<M, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
@@ -4402,7 +4452,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_safety_try_process::<M, F, RX_BUF>,
@@ -4410,7 +4460,8 @@ impl<'s> Executor<'s> {
             pre_sample: sub_safety_pre_sample::<M, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
@@ -4484,7 +4535,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Service,
             try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
@@ -4492,7 +4543,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(service_name));
         Ok(HandleId(slot))
     }
 
@@ -4560,7 +4612,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Service,
             try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
@@ -4568,7 +4620,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, Some(node_id), None);
         Ok(HandleId(slot))
     }
@@ -4633,7 +4686,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
@@ -4641,7 +4694,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
         Ok(HandleId(slot))
     }
 
@@ -4678,7 +4732,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
@@ -4686,7 +4740,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::TimerPeriod(delay.as_micros()));
         Ok(HandleId(slot))
     }
 
@@ -4730,7 +4785,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
@@ -4738,7 +4793,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
         // Phase 273 — apply group sched binding (group > node default > SC 0).
         self.apply_node_default_sched(slot, node_id, group);
         Ok(HandleId(slot))
@@ -4819,7 +4875,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset: entry_offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_raw_c_try_process,
@@ -4827,7 +4883,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SubBufferedRawCEntry>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, group);
         Ok(HandleId(slot))
     }
@@ -4895,7 +4952,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_raw_info_c_try_process::<RX_BUF>,
@@ -4903,7 +4960,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<RX_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
@@ -4979,7 +5037,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_buffered_raw_safety_c_try_process::<RX_BUF>,
@@ -4987,7 +5045,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<RX_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
@@ -5125,7 +5184,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::Service,
             try_process: srv_raw_try_process::<REQ_BUF, REPLY_BUF>,
@@ -5133,7 +5192,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
@@ -5276,7 +5336,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ServiceClient,
             try_process: service_client_raw_try_process::<REPLY_BUF>,
@@ -5284,7 +5344,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<ServiceClientRawArenaEntry<REPLY_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok(HandleId(slot))
     }
@@ -5357,7 +5418,7 @@ impl<'s> Executor<'s> {
             &mut (*entry_ptr).hdr as *mut ServiceClientSendHeader<REPLY_BUF>
         };
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ServiceClient,
             try_process: service_client_callback_try_process::<Svc, F, REPLY_BUF>,
@@ -5365,7 +5426,8 @@ impl<'s> Executor<'s> {
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<ServiceClientCallbackEntry<Svc, F, REPLY_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(service_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok((HandleId(slot), hdr_ptr))
     }
@@ -5411,7 +5473,7 @@ impl<'s> Executor<'s> {
                 guard_handle.set_wake_cb(nros_rmw_runtime_wake_cb, ctx);
             }
 
-            self.entries[slot] = Some(CallbackMeta {
+            let meta = CallbackMeta {
                 offset,
                 kind: EntryKind::GuardCondition,
                 try_process: guard_try_process::<F>,
@@ -5419,7 +5481,8 @@ impl<'s> Executor<'s> {
                 pre_sample: no_pre_sample,
                 invocation: InvocationMode::OnNewData,
                 drop_fn: drop_entry::<GuardConditionEntry<F>>,
-            });
+            };
+            self.emplace_entry(slot, meta, TraceName::Slot("guard", slot));
 
             Ok((HandleId(slot), guard_handle))
         }
@@ -5844,10 +5907,20 @@ impl<'s> Executor<'s> {
 
         if !trigger_passes {
             // Timers still need delta accumulation even when trigger doesn't pass
-            for meta in self.entries.iter().flatten() {
+            //
+            // phase-8 — `.enumerate()` (rather than a bare `.flatten()`) because
+            // `try_process` now carries the entry's slot index for the callback
+            // trace hooks. This sweep FIRES timer callbacks, so it is a real
+            // dispatch path and must attribute them like the drain below does.
+            for (i, meta) in self
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| e.as_ref().map(|m| (i, m)))
+            {
                 if matches!(meta.kind, EntryKind::Timer) {
                     let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-                    let _ = unsafe { (meta.try_process)(data_ptr, delta_us) };
+                    let _ = unsafe { (meta.try_process)(data_ptr, delta_us, i as u8) };
                 }
             }
 
@@ -6105,6 +6178,11 @@ impl<'s> Executor<'s> {
                         arena_offset: meta.offset,
                         try_process: meta.try_process,
                         delta_us,
+                        // phase-8 — the worker runs the leaf on a DIFFERENT
+                        // thread, so it has to carry the slot index with it;
+                        // nothing on the far side can recover it from the
+                        // arena address alone.
+                        desc_idx: i as u8,
                     };
                     // phase-359 W10 — `try_dispatch` now reports whether the
                     // entry was actually handed to a worker. It can decline:
@@ -6180,6 +6258,7 @@ impl<'s> Executor<'s> {
         // corresponding `entries[i]` slot was `Some`; no Executor
         // mutation happens between that scan and this dispatch.
         let dispatch_one = |meta: &CallbackMeta,
+                            desc_idx: usize,
                             arena_ptr: *mut u8,
                             delta_us: u64,
                             result: &mut SpinOnceResult| {
@@ -6197,7 +6276,11 @@ impl<'s> Executor<'s> {
                 super::wake_probe::on_dispatch();
             }
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
-            match unsafe { (meta.try_process)(data_ptr, delta_us) } {
+            // phase-8 — `desc_idx` is the entry slot index, threaded through so
+            // the leaf hooks in `arena.rs` can name the callback they bracket.
+            // `MAX_CALLBACK_SLOTS` is 64 (enforced by the `u64` ready-set
+            // bitmask), so the `as u8` cannot truncate a live slot.
+            match unsafe { (meta.try_process)(data_ptr, delta_us, desc_idx as u8) } {
                 Ok(true) => match meta.kind {
                     EntryKind::Subscription => result.subscriptions_processed += 1,
                     EntryKind::Service
@@ -6345,7 +6428,7 @@ impl<'s> Executor<'s> {
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
                     let start_us = measure_us.then(&read_us);
-                    dispatch_one(meta, arena_ptr, delta_us, &mut result);
+                    dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);
@@ -6385,7 +6468,7 @@ impl<'s> Executor<'s> {
                     // no_std arm this replaces — the std arm used to measure
                     // unconditionally.
                     let start_us = measure_us.then(&read_us);
-                    dispatch_one(meta, arena_ptr, delta_us, &mut result);
+                    dispatch_one(meta, i, arena_ptr, delta_us, &mut result);
                     let elapsed_us: Option<u32> = start_us
                         .map(|t0| read_us().saturating_sub(t0))
                         .map(|d| d.min(u32::MAX as u64) as u32);

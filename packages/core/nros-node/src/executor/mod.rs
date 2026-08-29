@@ -27,6 +27,13 @@ pub mod action_core;
 pub(crate) mod activator;
 #[cfg(any(has_rmw, test))]
 mod arena;
+// Phase 8 (autoware-safety-island `docs/design/callback_tracing.rst`) —
+// callback-level dispatch tracing. Same gating shape as `wake_probe`, for the
+// same reason: hot-path hooks that must vanish in production. The module ALSO
+// self-gates (`#![cfg(feature = "trace-callbacks")]`), so the call sites use
+// paired stubs rather than naming it directly.
+#[cfg(all(any(has_rmw, test), feature = "trace-callbacks"))]
+pub mod callback_trace;
 #[cfg(any(has_rmw, test))]
 pub(crate) mod dispatcher;
 #[cfg(any(has_rmw, test))]
