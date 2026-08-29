@@ -452,10 +452,40 @@ Net C/C++ API change: none. No function, no parameter, no generic in a header.
   sites, because a constant alone is still a hand-typed literal that drifts the
   same way the prose did.
 
-* **W5.b — the model answers the question.** NEXT. A `nros ws` verb reports, per
-  entry, the declared service-server count and whether the infrastructure
-  features are on. One implementation, shared with cmake and the Rust macro
-  path, per the `model-dims` precedent.
+* **W5.b — the model answers the question.** SPLIT, after looking at what the
+  model actually contains. This wave was written assuming the resolved model
+  could answer both halves. It cannot, and the difference decides who can do
+  the work.
+
+  MEASURED — every resolved model in the tree
+  (`examples/*/build/nros/models/*/*.yaml`), full key set: `meta`, `structure`
+  (`scopes`, `nodes` -> `pkg`, `exec`, `node_name`, `params`, `remaps`,
+  `lifecycle_autostart`, `scope`), `execution` (`deploy`, `features`, `tiers`,
+  `bridges`, `bindings`). There is NO entity inventory: a node's publishers,
+  subscriptions and service servers appear nowhere.
+
+  * **W5.b1 — the infrastructure flags, available today.** `execution.features`
+    carries `param_services` and `lifecycle` verbatim, which is exactly the half
+    a build script cannot otherwise see (cargo exposes no other crate's
+    features). A `nros ws` verb reporting it, delivered by W5.c, lets the
+    consumer resolve `infra` for real and keeps only an app-side headroom
+    constant. On a talker that is 32 -> 8 slots, ~108,096 B of the 143,456 B
+    W5.d measured — most of the win, with one guess left instead of six.
+
+  * **W5.b2 — the application's own service-server count, NOT available.** Two
+    candidate sources and both need work this phase cannot assume:
+    - Extend the model. The resolver is `ros-launch-resolve` in the `play_launch`
+      repo (layer 2, RFC-0060) — a different repository, and the entity set is
+      not a launch-file concept, so this is a schema question, not a patch.
+    - Use the Rust `Node::ENTITY_BOUNDS`, which already declares
+      `service_servers` exactly. That works for the macro path and NOT for
+      C/C++, whose entities are created at runtime in C with no declaration
+      site — which is the same asymmetry that ruled const generics out above.
+      Solving it for one language only would reintroduce it.
+
+  Until W5.b2, the app term stays a constant. That is a smaller and honest
+  version of the same defect this wave exists to remove, and it should be
+  labelled as such in the code rather than presented as a derivation.
 
 * **W5.c — delivery.** The figure rides the phase-351 W5 path to the backend's
   build script. Both entry front-ends produce the same fact from the same model.
