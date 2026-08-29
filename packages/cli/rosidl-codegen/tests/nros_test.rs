@@ -403,7 +403,7 @@ fn borrowed_mode_emits_zero_copy_view() {
     let resolver = CapacityResolver::from_toml_str(
         r#"
         [fields]
-        "my_msgs/Frame.pixels" = { cap = 1000, mode = "borrowed" }
+        "my_msgs/Frame.pixels" = { cap = 1000, mode = "view" }
         "#,
     )
     .unwrap();

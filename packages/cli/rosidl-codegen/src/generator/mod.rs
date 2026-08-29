@@ -532,9 +532,9 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "e2e_msgs/Borrowed.label"  = { cap = 64,  mode = "borrowed" }
-            "e2e_msgs/Borrowed.data"   = { cap = 256, mode = "borrowed" }
-            "e2e_msgs/Borrowed.ranges" = { cap = 256, mode = "borrowed" }
+            "e2e_msgs/Borrowed.label"  = { cap = 64,  mode = "view" }
+            "e2e_msgs/Borrowed.data"   = { cap = 256, mode = "view" }
+            "e2e_msgs/Borrowed.ranges" = { cap = 256, mode = "view" }
             "#,
         )
         .unwrap();
@@ -566,9 +566,9 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "e2e_msgs/Borrowed.label"  = { cap = 64,  mode = "borrowed" }
-            "e2e_msgs/Borrowed.data"   = { cap = 256, mode = "borrowed" }
-            "e2e_msgs/Borrowed.ranges" = { cap = 256, mode = "borrowed" }
+            "e2e_msgs/Borrowed.label"  = { cap = 64,  mode = "view" }
+            "e2e_msgs/Borrowed.data"   = { cap = 256, mode = "view" }
+            "e2e_msgs/Borrowed.ranges" = { cap = 256, mode = "view" }
             "#,
         )
         .unwrap();
@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn test_c_borrowed_view_generation() {
-        // RFC-0033 `borrowed` (Phase 235): a `mode = "borrowed"` field emits a
+        // RFC-0033 `borrowed` (Phase 235): a `mode = "view"` field emits a
         // `{Msg}_View` (borrowed field as an `nros/borrowed.h` view, copied
         // fields owned) + `{Msg}_deserialize_borrowed`, alongside the unchanged
         // owned struct.
@@ -602,7 +602,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "test_msgs/Image.data" = { cap = 921600, mode = "borrowed" }
+            "test_msgs/Image.data" = { cap = 921600, mode = "view" }
             "#,
         )
         .unwrap();
@@ -653,8 +653,8 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "test_msgs/Scan.label" = { cap = 256, mode = "borrowed" }
-            "test_msgs/Scan.ranges" = { cap = 4096, mode = "borrowed" }
+            "test_msgs/Scan.label" = { cap = 256, mode = "view" }
+            "test_msgs/Scan.ranges" = { cap = 4096, mode = "view" }
             "#,
         )
         .unwrap();
@@ -686,7 +686,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "test_msgs/Names.names" = { cap = 16, mode = "borrowed" }
+            "test_msgs/Names.names" = { cap = 16, mode = "view" }
             "#,
         )
         .unwrap();
@@ -707,8 +707,8 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "test_msgs/Image.data" = { cap = 921600, mode = "borrowed" }
-            "test_msgs/Image.ranges" = { cap = 4096, mode = "borrowed" }
+            "test_msgs/Image.data" = { cap = 921600, mode = "view" }
+            "test_msgs/Image.ranges" = { cap = 4096, mode = "view" }
             "#,
         )
         .unwrap();
@@ -771,7 +771,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "test_msgs/Tag.label" = { cap = 256, mode = "borrowed" }
+            "test_msgs/Tag.label" = { cap = 256, mode = "view" }
             "#,
         )
         .unwrap();
@@ -794,7 +794,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "test_msgs/Cloud.pts" = { cap = 16, mode = "borrowed" }
+            "test_msgs/Cloud.pts" = { cap = 16, mode = "view" }
             "#,
         )
         .unwrap();
@@ -931,7 +931,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "my_msgs/Blob.data" = { cap = 100, mode = "borrowed" }
+            "my_msgs/Blob.data" = { cap = 100, mode = "view" }
             "#,
         )
         .unwrap();
@@ -960,7 +960,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "my_msgs/Image.data" = { cap = 921600, mode = "borrowed" }
+            "my_msgs/Image.data" = { cap = 921600, mode = "view" }
             "#,
         )
         .unwrap();
@@ -1026,7 +1026,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "my_msgs/Scan.ranges" = { cap = 1080, mode = "borrowed" }
+            "my_msgs/Scan.ranges" = { cap = 1080, mode = "view" }
             "#,
         )
         .unwrap();
@@ -1060,7 +1060,7 @@ mod tests {
         let resolver = crate::config::CapacityResolver::from_toml_str(
             r#"
             [fields]
-            "my_msgs/M.tags" = { cap = 16, mode = "borrowed" }
+            "my_msgs/M.tags" = { cap = 16, mode = "view" }
             "#,
         )
         .unwrap();
@@ -1076,7 +1076,7 @@ mod tests {
             Ok(_) => panic!("expected unsupported borrowed-element error"),
             Err(e) => e.to_string(),
         };
-        assert!(err.contains("borrowed"), "{err}");
+        assert!(err.contains("view"), "{err}");
         assert!(err.contains("nested"), "{err}");
     }
 

@@ -210,7 +210,7 @@ fn generated_borrowed_c_service_compiles() {
     let resolver = CapacityResolver::from_toml_str(
         r#"
         [fields]
-        "my_srvs/Peek_Request.name" = { cap = 0, mode = "borrowed" }
+        "my_srvs/Peek_Request.name" = { cap = 0, mode = "view" }
         "#,
     )
     .unwrap();

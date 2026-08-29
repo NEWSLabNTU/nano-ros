@@ -146,11 +146,11 @@ impl LoweredStorage {
         match *self {
             LoweredStorage::Inline => FieldStorage {
                 cap: 0,
-                mode: StorageMode::Owned,
+                mode: StorageMode::Inline,
             },
             LoweredStorage::Fixed { cap } | LoweredStorage::Bounded { cap } => FieldStorage {
                 cap,
-                mode: StorageMode::Owned,
+                mode: StorageMode::Inline,
             },
             LoweredStorage::Heap => FieldStorage {
                 cap: 0,
@@ -158,7 +158,7 @@ impl LoweredStorage {
             },
             LoweredStorage::Borrowed { cap } => FieldStorage {
                 cap,
-                mode: StorageMode::Borrowed,
+                mode: StorageMode::View,
             },
         }
     }
@@ -282,9 +282,9 @@ fn lower_field(
         FieldType::String | FieldType::WString => {
             let s = config.resolve(package, message, name, FieldKind::String);
             let storage = match s.mode {
-                StorageMode::Owned => LoweredStorage::Fixed { cap: s.cap },
+                StorageMode::Inline => LoweredStorage::Fixed { cap: s.cap },
                 StorageMode::Heap => LoweredStorage::Heap,
-                StorageMode::Borrowed => LoweredStorage::Borrowed { cap: s.cap },
+                StorageMode::View => LoweredStorage::Borrowed { cap: s.cap },
             };
             (FieldShape::Str, storage, Some(CdrOp::String), 4, false)
         }
@@ -310,9 +310,9 @@ fn lower_field(
             let (op, elem_align, _) = element_facts(element_type, target);
             let s = config.resolve(package, message, name, FieldKind::Sequence);
             let storage = match s.mode {
-                StorageMode::Owned => LoweredStorage::Bounded { cap: s.cap },
+                StorageMode::Inline => LoweredStorage::Bounded { cap: s.cap },
                 StorageMode::Heap => LoweredStorage::Heap,
-                StorageMode::Borrowed => LoweredStorage::Borrowed { cap: s.cap },
+                StorageMode::View => LoweredStorage::Borrowed { cap: s.cap },
             };
             (FieldShape::Sequence, storage, op, elem_align.max(4), false)
         }

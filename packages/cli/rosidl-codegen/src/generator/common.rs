@@ -33,7 +33,7 @@ pub enum GeneratorError {
     #[error(
         "{package}/{message}.{field}: storage mode '{mode}' is not supported on {entity} \
          payloads — only messages implement it today (issue 0343). Set this field to \
-         'owned' in nros-codegen.toml, or move the payload into a .msg."
+         'inline' in nros-codegen.toml, or move the payload into a .msg."
     )]
     UnsupportedStorageModeForPayload {
         entity: String,
@@ -44,13 +44,14 @@ pub enum GeneratorError {
     },
 
     #[error(
-        "{package}/{message}.{field}: `borrowed` mode does not support element \
+        "{package}/{message}.{field}: `view` mode does not support element \
          type `{element}` — only fixed-width primitive sequences (`uint8[]`, \
-         `int8[]`, `bool[]`, `float32[]`, `uint16[]`, …) and strings can borrow \
-         zero-copy. Sequences of strings or nested messages have no fixed-width \
-         byte span; use `mode = \"heap\"` or `\"owned\"` for those fields."
+         `int8[]`, `bool[]`, `float32[]`, `uint16[]`, …) and strings can be \
+         viewed zero-copy. Sequences of strings or nested messages have no \
+         fixed-width byte span; use `mode = \"heap\"` or `\"inline\"` for those \
+         fields."
     )]
-    UnsupportedBorrowedElement {
+    UnsupportedViewElement {
         package: String,
         message: String,
         field: String,
@@ -78,7 +79,7 @@ fn nros_borrowed_view_for_field(
     message_name: &str,
     field_name: &str,
 ) -> Result<(String, String), GeneratorError> {
-    let unsupported = |elem: &str| GeneratorError::UnsupportedBorrowedElement {
+    let unsupported = |elem: &str| GeneratorError::UnsupportedViewElement {
         package: package_name.to_string(),
         message: message_name.to_string(),
         field: field_name.to_string(),
@@ -143,7 +144,7 @@ fn c_borrowed_view_for_field(
     message_name: &str,
     field_name: &str,
 ) -> Result<(String, String), GeneratorError> {
-    let unsupported = |elem: &str| GeneratorError::UnsupportedBorrowedElement {
+    let unsupported = |elem: &str| GeneratorError::UnsupportedViewElement {
         package: package_name.to_string(),
         message: message_name.to_string(),
         field: field_name.to_string(),
@@ -317,7 +318,7 @@ pub(super) fn ensure_supported_storage_for_payload(
         };
         let storage = resolver.resolve(package_name, message_name, &field.name, kind);
         let rejected = match (storage.mode, lang) {
-            (StorageMode::Owned, _) => false,
+            (StorageMode::Inline, _) => false,
             // Rust gained heap in 0344 (`_nros_field.jinja`); C gained it in
             // 0345 (`_c_field.jinja` + a generated `_fini` per payload struct).
             (StorageMode::Heap, _) => false,
@@ -326,7 +327,7 @@ pub(super) fn ensure_supported_storage_for_payload(
             // in both languages. Both directions read from a raw buffer (the
             // service callback's `request_data`, the client's `response`), so the
             // view's lifetime story matches a subscription's.
-            (StorageMode::Borrowed, _) => false,
+            (StorageMode::View, _) => false,
         };
         if rejected {
             return Err(GeneratorError::UnsupportedStorageModeForPayload {
@@ -418,7 +419,7 @@ pub(super) fn field_to_nros_field_with_mode(
             .unwrap_or_else(|| resolver.resolve(package_name, message_name, &field.name, kind));
         cap = storage.cap;
         match storage.mode {
-            StorageMode::Owned => {}
+            StorageMode::Inline => {}
             StorageMode::Heap => {
                 is_heap = true;
             }
@@ -426,7 +427,7 @@ pub(super) fn field_to_nros_field_with_mode(
             // struct keeps a default-capacity owned container for the publish
             // path; the additionally-emitted `{Msg}View<'a>` borrows this field
             // zero-copy (see `borrowed_rust_type` / `borrowed_read_expr`).
-            StorageMode::Borrowed => {
+            StorageMode::View => {
                 is_borrowed = true;
                 let (bt, expr) = nros_borrowed_view_for_field(
                     &field.field_type,
@@ -592,7 +593,7 @@ pub(super) fn build_c_field(
             pre_storage.unwrap_or_else(|| resolver.resolve(package, message_name, name, kind));
         cap = storage.cap;
         match storage.mode {
-            StorageMode::Owned => {
+            StorageMode::Inline => {
                 if matches!(field_type, FieldType::Sequence { .. }) {
                     owned_seq_cap = Some(storage.cap);
                 }
@@ -610,7 +611,7 @@ pub(super) fn build_c_field(
             // struct keeps its resolved-capacity container for the publish path;
             // the emitted `{Msg}_View` borrows this field zero-copy (see
             // `borrowed_c_type` / `borrowed_read_fn`).
-            StorageMode::Borrowed => {
+            StorageMode::View => {
                 is_borrowed = true;
                 let (bt, bfn) = c_borrowed_view_for_field(field_type, package, message_name, name)?;
                 borrowed_c_type = bt;
@@ -748,7 +749,7 @@ pub(super) enum CppStorage {
     Borrowed(CppBorrow, Option<usize>),
 }
 
-/// The borrowed C++ view kind for a `mode = "borrowed"` field (Phase 235).
+/// The borrowed C++ view kind for a `mode = "view"` field (Phase 235).
 /// Carries `'static` strings so `CppStorage` stays `Copy`.
 #[derive(Clone, Copy)]
 pub(super) enum CppBorrow {
@@ -799,7 +800,7 @@ fn cpp_borrow_kind(
     message_name: &str,
     field_name: &str,
 ) -> Result<CppBorrow, GeneratorError> {
-    let unsupported = |elem: &str| GeneratorError::UnsupportedBorrowedElement {
+    let unsupported = |elem: &str| GeneratorError::UnsupportedViewElement {
         package: package_name.to_string(),
         message: message_name.to_string(),
         field: field_name.to_string(),
@@ -888,7 +889,7 @@ pub(super) fn resolve_cap_override(
     let storage =
         pre_storage.unwrap_or_else(|| resolver.resolve(package, message_name, name, kind));
     match storage.mode {
-        StorageMode::Owned => Ok(CppStorage::Owned(Some(storage.cap))),
+        StorageMode::Inline => Ok(CppStorage::Owned(Some(storage.cap))),
         StorageMode::Heap => {
             // Heap is only bridgeable for primitive sequences (see
             // cpp_type_for_field_heap); reject heap strings / non-primitive seqs.
@@ -898,7 +899,7 @@ pub(super) fn resolve_cap_override(
                 Err(unsupported("heap"))
             }
         }
-        StorageMode::Borrowed => Ok(CppStorage::Borrowed(
+        StorageMode::View => Ok(CppStorage::Borrowed(
             cpp_borrow_kind(field_type, package, message_name, name)?,
             Some(storage.cap),
         )),
