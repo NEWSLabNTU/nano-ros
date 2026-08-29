@@ -238,7 +238,7 @@ empty, admins included. **The flow is now:**
 just claim issue-NNNN                  # so two agents do not do one job
 git switch -c fix/NNNN-<slug>
 # ... work ...
-just ci-l1                             # the SAME tier the merge group runs
+just ci-l1                             # STRICTER than the gate (see below)
 git push -u origin fix/NNNN-<slug>
 gh pr create --base main --fill
 gh pr merge --auto --rebase            # fire and forget; the queue lands it
@@ -376,7 +376,22 @@ may resolve an artifact only if that JOB builds it.
 | --- | --- | --- | --- |
 | local, before push | `just ci-l1` | ~6 min warm | you |
 | pull request | `check-fast` only (133 source gates) | ~5 min | **required** |
-| merge group | + `test-unit` (= `ci-l1`) | ~9 min ÷ 5 PRs | **required** |
+| merge group | + `test-unit` | ~9 min | **required** |
+
+**`just ci-l1` is NOT what CI runs, and that is deliberate** (phase-399 W3).
+CI's required context is `check-fast` + `test-unit`; `ci-l1` additionally runs
+`check-build` and `check-api-parity`. So the local tier is a SUPERSET of the
+gate — you catch compile-tier breakage before the queue does, and the queue
+stays cheap and always-satisfiable. This line used to say "the SAME tier the
+merge group runs", which stopped being true when phase-396 W1 took `check-build`
+off the merge group (it could never pass there — it needs generated bindings and
+prebuilt `.compile-ok` that no CI job builds).
+
+**Exactly one CI job builds a fixture:** `post-submit`'s `build-test-fixtures
+lane=tier2`, after merge. Everything pre-merge is fixture-free by construction,
+which is why `ci-l1`'s "NO FIXTURES" claim has to hold and why
+`check-lane-contracts` enforces it — a CI job may resolve an artifact only if
+that job builds it.
 | push to `main` | `host-tests` (L2) | ~15 min | no |
 | schedule | `nightly` (L3/L4 matrix) | hours | no |
 
@@ -449,7 +464,7 @@ here.
 
 ```
 git fetch origin && git rebase origin/main
-just ci-l1        # the SAME tier the merge group runs
+just ci-l1        # STRICTER than the gate (see 'Where each tier runs')
 ```
 
 Two things reproduce this way, and the second is the reason the queue exists:
