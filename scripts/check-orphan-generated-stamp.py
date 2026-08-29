@@ -48,19 +48,62 @@ ROOT = subprocess.run(
 # an undeclared macro rather than an `#error`.
 GEN_DIRS = ("nros-c-generated", "nros-cpp-generated")
 
-# Directories that cannot CONTAIN a `nros-*-generated` and are expensive to
-# walk. The generated dirs sit directly inside a cargo target dir, so nothing
-# below cargo's own bookkeeping or a CMake/Zephyr build tree can hold one —
-# and those are where essentially all the files are. Pruning them took the
-# whole-repo scan from 8.2 s to well under a second, which is the difference
-# between a fast-lane gate and one nobody runs.
-SKIP = {
-    ".git", "node_modules", "__pycache__", ".claude", "external", "third-party",
-    # cargo bookkeeping
-    "deps", ".fingerprint", "incremental",
-    # CMake / Zephyr / west build interiors
-    "CMakeFiles", "zephyr", "modules", "_deps",
-}
+# The generated dirs live inside CARGO TARGET DIRS, nowhere else. So the
+# locations come from the git INDEX plus the known build roots, and only those
+# are stat-ed — never a walk of `examples/` or `packages/`.
+#
+# `check-no-tracked-file-find` (issue 0844) rejects a recursive walk for exactly
+# this, and it was right to: the first version of this gate walked 221 000
+# directories in 2.0 s to find 650 candidates. Asking the index where the leaves
+# are is both faster and honest about what is being looked for — untracked build
+# artifacts, at locations tracked files imply.
+GEN_DIRS = ("nros-c-generated", "nros-cpp-generated")
+
+# Build roots that hold a target dir but no tracked manifest beside it.
+FIXED_ROOTS = ("target", "build")
+
+
+def candidate_target_dirs(root):
+    """Every plausible cargo target dir, WITHOUT walking the tree.
+
+    A leaf's target dir sits beside its `Cargo.toml`, so the index names the
+    parents; `zephyr-workspace/build-*/nros-rust` and the repo-level `target/`
+    and `build/` are the roots no manifest points at.
+    """
+    out = []
+    for fixed in FIXED_ROOTS:
+        out.append(os.path.join(root, fixed))
+    # west build dirs: `zephyr-workspace/build-<leaf>/nros-rust`
+    ws = os.path.join(root, "zephyr-workspace")
+    try:
+        for entry in os.scandir(ws):
+            if entry.is_dir() and entry.name.startswith("build-"):
+                out.append(os.path.join(entry.path, "nros-rust"))
+    except OSError:
+        pass
+    # Leaf target dirs, located from the INDEX rather than by walking.
+    try:
+        tracked = subprocess.run(
+            ["git", "ls-files", "*Cargo.toml"],
+            cwd=root, capture_output=True, text=True, check=True,
+        ).stdout.split()
+    except subprocess.CalledProcessError:
+        tracked = []
+    seen = set()
+    for manifest in tracked:
+        leaf = os.path.join(root, os.path.dirname(manifest))
+        if leaf in seen:
+            continue
+        seen.add(leaf)
+        try:
+            for entry in os.scandir(leaf):
+                # `target`, `target-fixtures`, `target-safety`, … — the
+                # phase-340 per-row dirs all start with `target`.
+                if entry.is_dir() and entry.name.startswith("target"):
+                    out.append(entry.path)
+        except OSError:
+            pass
+    return out
 
 
 def orphans_in(dirpath):
@@ -80,13 +123,9 @@ def orphans_in(dirpath):
 
 def scan(root):
     found = []
-    for dirpath, dirnames, _ in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP]
-        base = os.path.basename(dirpath)
-        if base in GEN_DIRS:
-            found.extend(orphans_in(os.path.join(dirpath, "nros")))
-            # Nothing below a generated dir holds another one.
-            dirnames[:] = []
+    for target_dir in candidate_target_dirs(root):
+        for gen in GEN_DIRS:
+            found.extend(orphans_in(os.path.join(target_dir, gen, "nros")))
     return found
 
 
@@ -96,7 +135,12 @@ def self_test():
 
     bad = []
     with tempfile.TemporaryDirectory() as d:
-        gen = os.path.join(d, "build-x", "nros-cpp-generated", "nros")
+        # `target/` is one of FIXED_ROOTS, so this is a location the real scan
+        # actually looks at — the previous fixture used a path the index-driven
+        # scan never visits, and this control caught that when the walk was
+        # replaced. A negative control that does not track the code it guards
+        # is worth nothing.
+        gen = os.path.join(d, "target", "nros-cpp-generated", "nros")
         os.makedirs(gen)
         header = os.path.join(gen, "nros_cpp_config_generated.h")
         stamp = header + ".stamp"
