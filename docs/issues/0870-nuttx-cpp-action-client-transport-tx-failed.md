@@ -100,6 +100,66 @@ the server's banner) is in, and this cell still fails. If anything the ordering
 makes the client start LATER, so a connect-deadline theory has to explain why
 later is not better.
 
+## Measured: the real error is `ZpicoError::Generic`, and it is DETERMINISTIC
+
+A fourth collapse sat below the three already fixed: `From<ZpicoError> for
+TransportError` maps BOTH `Generic` and `Session` to `ConnectionFailed`, so even
+the corrected chain could not say which. Issue 0465 records the cost of exactly
+this pair — an exhausted session pool "spent two months looking like
+`Transport(ConnectionFailed)` — a router/network problem, and chased as one".
+
+With a diagnostic naming the variant (restricted to those two: this conversion is
+on `drive_io`'s hot path, where `Timeout` converts on every quiet tick, so
+logging unconditionally would flood a WORKING image):
+
+    [ERROR] nros: zpico Generic -> ConnectionFailed
+    [ERROR] nros: NodeError::Transport(ConnectionFailed)
+    create_action_client(client, "/fibonacci") -> -100
+
+`Generic` is C-shim return code `-1` (`zpico.rs:84`).
+
+**And it reproduces BY HAND**: router up, server given a 32 s head start, idle
+host, two QEMU. So this is not load, not the harness, and not the 0867 ordering
+race — it is deterministic in the C++ image. The **C** action client, through the
+SAME `register_action_client_raw`, succeeds under the same conditions.
+
+## CORRECTION: it is INTERMITTENT, not deterministic
+
+An earlier revision of this issue said the failure "reproduces BY HAND …
+deterministic in the C++ image". That was wrong, and the way it was wrong is
+worth recording because it nearly produced a false fix.
+
+The hand-run reproduced it once, and a handful of test runs failed, so it was
+called deterministic. Later, after a rebuild, the same cell passed 3/3 twice in
+a row — which looked like a fix, from instrumentation that only logs on the
+FAILURE path and therefore cannot run at all on a passing one. Reverting the
+instrumentation and rebuilding: still 3/3.
+
+The discriminating run was a rebuild with EVERY diagnostic removed:
+
+    run 1: FAIL    run 2: PASS    run 3: FAIL
+
+So the cell is flaky at roughly two failures in three — exactly what this issue
+originally reported — and three consecutive passes was luck, not evidence. Two
+consecutive clean sets of three had a prior of about 0.1 %, which is precisely
+why "it passes now" should not have been treated as a result.
+
+**Nothing is fixed.** The build sequence that produced the passes is recorded
+here only so the next person does not mistake it for one.
+
+## Not yet known
+
+Which of the four declarations returns `-1`. `register_action_client_raw` makes
+three `create_client` calls plus one `create_subscription`, and the C client
+makes the same four. Ruled out as the source: `ZenohServiceClient::new` (returns
+`TopicNameInvalid` / `ServiceClientCreationFailed`, never `Generic`) and
+`declare_entity_liveliness` (swallows errors with `.ok()`). Finding it needs
+per-call instrumentation in the shim — the next step, and the last layer.
+
+Worth fixing regardless of cause: `TransportError::ServiceClientCreationFailed`
+exists and is precise for a failure inside `create_client`; `ConnectionFailed` is
+the wrong name for it and is what sent both earlier diagnoses at the network.
+
 ## Acceptance
 
 * The cell passes on its FIRST attempt, repeatably, on an idle host.
