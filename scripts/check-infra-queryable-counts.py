@@ -22,6 +22,7 @@ only ever classify as flag-only and land in a baseline that may only shrink.
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -58,6 +59,32 @@ def read(root, rel):
         return fh.read()
 
 
+MIRROR = re.compile(r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES): usize = (\d+);", re.M)
+
+
+def rmw_rust_files(root, rmw_dir):
+    """Tracked `.rs` under `rmw_dir`, via the git index rather than a walk.
+
+    `check-no-tracked-file-find` measured 7m36s -> 0.8s for the same paths, and
+    it is right: this gate reads every RMW source on the fast line.
+    """
+    out = subprocess.run(
+        ["git", "-C", root, "ls-files", f"{rmw_dir}/*.rs"],
+        capture_output=True, text=True,
+    )
+    if out.returncode == 0:
+        return [p for p in out.stdout.split() if "/target/" not in p]
+    found = []
+    # walk-ok: the self-test builds a synthetic tree that is not a git
+    # repository, so there is no index to query. Never reached on the real tree.
+    for dirpath, dirnames, filenames in os.walk(os.path.join(root, rmw_dir)):
+        dirnames[:] = [d for d in dirnames if d not in ("target", "build")]
+        for fn in filenames:
+            if fn.endswith(".rs"):
+                found.append(os.path.relpath(os.path.join(dirpath, fn), root))
+    return found
+
+
 def check(root, rmw_dir="packages/rmw"):
     """Return a list of problem strings (empty == pass)."""
     problems = []
@@ -92,25 +119,46 @@ def check(root, rmw_dir="packages/rmw"):
                 f"sized from it moves too."
             )
 
-    rmw_root = os.path.join(root, rmw_dir)
-    for dirpath, dirnames, filenames in os.walk(rmw_root):
-        dirnames[:] = [d for d in dirnames if d not in ("target", "build")]
-        for fn in filenames:
-            if not fn.endswith(".rs"):
-                continue
-            full = os.path.join(dirpath, fn)
-            try:
-                with open(full, encoding="utf8", errors="replace") as fh:
-                    for i, line in enumerate(fh, 1):
-                        if RESTATE.search(line):
-                            rel = os.path.relpath(full, root)
-                            problems.append(
-                                f"{rel}:{i} states an infrastructure-queryable count. "
-                                f"Name the knob and the cause; the counts live beside "
-                                f"the code that creates them."
-                            )
-            except OSError:
-                continue
+    # phase-392 W5.d — `nros-zpico-build` MIRRORS both counts, and cannot do
+    # otherwise: it is a build-script helper, so it can neither depend on
+    # `nros-node` to read the constants nor see that crate's features. A mirror
+    # is acceptable only while something holds it to the definition — that is
+    # the whole difference between this and the seven prose spellings it
+    # replaced, of which two had drifted.
+    definitions = {}
+    for _, _, const, const_rel in GROUPS:
+        try:
+            definitions[const] = declared(read(root, const_rel), const)
+        except OSError:
+            definitions[const] = None
+
+    for rel in rmw_rust_files(root, rmw_dir):
+        full = os.path.join(root, rel)
+        try:
+            with open(full, encoding="utf8", errors="replace") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        for i, line in enumerate(text.split("\n"), 1):
+            if RESTATE.search(line):
+                problems.append(
+                    f"{rel}:{i} states an infrastructure-queryable count. "
+                    f"Name the knob and the cause; the counts live beside "
+                    f"the code that creates them."
+                )
+        for m in MIRROR.finditer(text):
+            const, value = m.group(1), int(m.group(2))
+            want = definitions.get(const)
+            if want is None:
+                problems.append(
+                    f"{rel} mirrors {const}, but the definition could not be read."
+                )
+            elif value != want:
+                problems.append(
+                    f"{rel} mirrors {const} = {value}, definition is {want}. "
+                    f"A build-script helper cannot read the constant, so the "
+                    f"mirror is held here instead (phase-392 W5.d)."
+                )
     return problems
 
 
@@ -136,6 +184,10 @@ def self_test():
         ((7, 5, 6, 5, "// nothing"), 1, "a 7th parameter service was added"),
         ((0, 5, 6, 5, "// nothing"), 1, "creation-site pattern stopped matching"),
         ((6, 5, 6, 5, "// parameter services use 6"), 1, "an RMW restated a count"),
+        ((6, 5, 6, 5, "const PARAM_SERVICE_QUERYABLES: usize = 6;"), 0,
+         "a build-script mirror that agrees"),
+        ((6, 5, 6, 5, "const PARAM_SERVICE_QUERYABLES: usize = 7;"), 1,
+         "a build-script mirror that drifted"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()
