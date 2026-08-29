@@ -10,3 +10,8 @@ west-commands:
       - name: fvp
         class: FvpRun
         help: run a nano-ros FVP board in the Arm Fast Models simulator
+  - file: scripts/west_commands/nros.py
+    commands:
+      - name: nros
+        class: NrosRun
+        help: run the nano-ros CLI against this west workspace

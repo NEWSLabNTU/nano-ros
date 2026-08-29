@@ -408,6 +408,33 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
   Deriving there is a coin flip, so `nros build` refuses and lists the
   candidates rather than picking one.
 
+#### If you live in west: `west nros`
+
+Everything above assumes you stand in your nano-ros workspace and name the
+Zephyr one. If you work the other way round — inside the west workspace — west
+already knows where Zephyr is, so it can tell `nros` for you:
+
+```bash
+cd ~/zephyr-workspace
+west nros build --workspace ~/my_robot demo_bringup:zephyr
+```
+
+No `ZEPHYR_BASE`, no `NROS_ZEPHYR_WORKSPACE`, no `--zephyr-workspace`. Every
+argument after `nros` is passed straight through, so anything `nros` accepts
+works here unchanged.
+
+It picks up automatically in any workspace whose manifest lists nano-ros — the
+same route `west fvp` takes. Two things worth knowing:
+
+* **It only exists inside a west workspace.** West loads extension commands
+  from the manifest, so from an unrelated directory you get
+  `west: unknown command "nros"`. That is why this is an addition rather than a
+  replacement: it swaps which of the two trees you have to name, trading the
+  Zephyr path (which differs per machine) for your own workspace path (which
+  you chose).
+* **It never overwrites a `ZEPHYR_BASE` you set yourself** — an exported one is
+  a deliberate choice, and this only fills in a missing answer.
+
 #### Which boards you can name
 
 `board` does two jobs from one string: it is passed to `west build -b`

@@ -37,8 +37,9 @@ use clap::Args as ClapArgs;
 use eyre::{Result, WrapErr, bail};
 use toml_edit::{Array, DocumentMut, value};
 
-use crate::orchestration::cargo_metadata_schema::{
-    DeployTarget, SystemComponentEntry, SystemHeader, SystemToml,
+use crate::orchestration::{
+    cargo_metadata_schema::{SystemComponentEntry, SystemHeader, SystemToml},
+    image::ImageBlock,
 };
 
 #[derive(Debug, ClapArgs)]
@@ -331,35 +332,35 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         })
         .collect();
 
-    let mut deploy: std::collections::BTreeMap<String, DeployTarget> =
+    // An IMAGE, not a `[deploy.*]` target.
+    //
+    // The scaffold wrote the vocabulary `nros build` deprecates, so a freshly
+    // scaffolded workspace could not be built by the verb that scaffolded it:
+    //
+    //     $ nros new system demo_bringup --components talker_pkg
+    //     $ nros build --all
+    //     Error: this workspace declares no `[image.*]`. An image is the
+    //     buildable unit — see RFC-0065 D6.
+    //
+    // A scaffold is the first thing a user sees and the template they copy, so
+    // it has to speak the model it is scaffolding for (RFC-0065 D6).
+    let mut image: std::collections::BTreeMap<String, ImageBlock> =
         std::collections::BTreeMap::new();
-    deploy.insert(
+    image.insert(
         "native".to_string(),
-        DeployTarget {
-            // phase-351 W1 — the site block is authored, never synthesised here.
-            nros: None,
-            kind: Some("self".to_string()),
-            target: None,
-            launch: None,
-            board: None,
-            framework: None,
-            rmw: None,
-            profile: None,
-            optimize: None,
-            features: Vec::new(),
-            domain_id: None,
-            locator: None,
-            // Placement is stated in the launch file for a scaffolded
-            // system; an empty list means "this block governs every node".
-            nodes: Vec::new(),
+        ImageBlock {
+            board: Some("native".to_string()),
+            ..Default::default()
         },
     );
 
     let model = SystemToml {
-        image: Default::default(),
+        image,
         image_defaults: None,
         system: SystemHeader {
-            default_images: Vec::new(),
+            // The image `nros build` builds when given no argument — the
+            // `[image.*]` counterpart of the `default_target` below.
+            default_images: vec!["native".to_string()],
             name: system_name,
             rmw: "zenoh".to_string(),
             domain_id: 0,
@@ -368,11 +369,14 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             ros_edition: None,
             locator: None,
             default_launch: Some("system.launch.xml".to_string()),
-            default_target: Some("native".to_string()),
+            // Deprecated alongside `[deploy.*]`; the scaffold stops emitting it
+            // so a new workspace carries no vocabulary it will be asked to
+            // migrate off.
+            default_target: None,
             features: Vec::new(),
         },
         components: entries,
-        deploy,
+        deploy: Default::default(),
         domains: Vec::new(),
         bridges: Vec::new(),
         models: Vec::new(),
@@ -589,8 +593,15 @@ mod tests {
             sys.system.default_launch.as_deref(),
             Some("system.launch.xml")
         );
-        assert_eq!(sys.system.default_target.as_deref(), Some("native"));
-        assert!(sys.deploy.contains_key("native"));
+        // The buildable unit is an IMAGE (RFC-0065 D6). This asserted
+        // `default_target` + `[deploy.native]` — the vocabulary the scaffold
+        // has stopped emitting, which is why it had to move with it rather
+        // than be deleted: what it was really checking is that the scaffold
+        // declares SOMETHING to build, and that claim still needs a test.
+        assert_eq!(sys.system.default_target, None);
+        assert!(sys.deploy.is_empty());
+        assert_eq!(sys.system.default_images, vec!["native".to_string()]);
+        assert!(sys.image.contains_key("native"));
         assert_eq!(sys.components.len(), 2);
         assert_eq!(sys.components[0].pkg, "talker_pkg");
         assert_eq!(sys.components[1].pkg, "listener_pkg");
@@ -741,5 +752,59 @@ mod tests {
         let out = scaffold_bringup(&s).unwrap();
         assert!(out.readme.is_none());
         assert!(!out.bringup_dir.join("README.md").exists());
+    }
+}
+
+#[cfg(test)]
+mod scaffold_vocabulary_tests {
+    use super::*;
+
+    /// The scaffold must speak the model it is scaffolding FOR.
+    ///
+    /// It emitted `[deploy.native]` + `default_target` — the vocabulary
+    /// RFC-0065 D6 replaced with `[image.*]` — so a freshly scaffolded
+    /// workspace was rejected by the verb that had just created it:
+    ///
+    /// ```text
+    /// $ nros new system demo_bringup --components talker_pkg
+    /// $ nros build --all
+    /// Error: this workspace declares no `[image.*]`. An image is the
+    /// buildable unit — see RFC-0065 D6.
+    /// ```
+    ///
+    /// A scaffold is the first thing a user sees and the template they copy
+    /// from, so deprecated vocabulary in it propagates by hand into every
+    /// workspace that starts here.
+    #[test]
+    fn the_scaffold_declares_an_image_and_no_deploy_target() {
+        let out = render_system_toml("demo_bringup", &["talker_pkg".to_string()])
+            .expect("render the scaffolded system.toml");
+
+        assert!(out.contains("[image.native]"), "{out}");
+        assert!(out.contains("default_images"), "{out}");
+
+        // The two spellings the migration is retiring. `default_target` is
+        // checked as a whole line so `default_images` cannot satisfy it.
+        assert!(
+            !out.contains("[deploy."),
+            "still emits a deploy target:\n{out}"
+        );
+        assert!(
+            !out.lines()
+                .any(|l| l.trim_start().starts_with("default_target")),
+            "still emits default_target:\n{out}"
+        );
+    }
+
+    /// The image has to name a board, or it resolves to nothing and the
+    /// scaffold has produced a file that parses and cannot build.
+    #[test]
+    fn the_scaffolded_image_names_a_board() {
+        let out = render_system_toml("demo_bringup", &["talker_pkg".to_string()]).expect("render");
+        let image = out
+            .split("[image.native]")
+            .nth(1)
+            .expect("an [image.native] block");
+        assert!(image.contains("board = \"native\""), "{out}");
     }
 }

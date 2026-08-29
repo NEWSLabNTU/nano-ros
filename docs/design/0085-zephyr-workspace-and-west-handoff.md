@@ -408,6 +408,88 @@ This does not make D8 wrong: the two variables still belong to different
 phases, and setup still names a directory with no Zephyr in it yet. What the
 flag removes is the need to remember either one at build time.
 
+## D11 — REJECTED: the Zephyr workspace path does not go in `system.toml`
+
+Proposed as the fix for "a user forgets to set the env", including by me. It is
+the wrong shape, and the objection that settles it is simple: **the user would
+have to guarantee the path exists**, in a file that is committed and shared.
+
+* `system.toml` is checked in, so a path in it is a claim about **every machine
+  that clones the workspace**. The one thing a repository cannot know is the
+  layout outside itself.
+* Relative does not save it. `../zephyr-workspace` still asserts a layout above
+  the repo root, and when it is wrong the "fix" is a commit that is correct on
+  one machine.
+* The ladder already serves the uniform-layout case with two conventions
+  (`<workspace>/zephyr-workspace`, `../nano-ros-workspace`). Those are
+  FALLBACKS: wrong ones cost nothing, because resolution moves to the next
+  rung. A declaration is an ASSERTION — it should fail loudly when wrong, which
+  is precisely what you do not want committed.
+* And it would be a third name for one directory, after `ZEPHYR_BASE` and
+  `NROS_ZEPHYR_WORKSPACE`. This RFC has already recorded what that costs once,
+  when 0892's first fix invented a 61st spelling.
+
+The rule this leaves: **machine state stays out of committed files.** It is
+named on the command line (D10), in the environment (D8), or supplied by a tool
+that already knows it (D12).
+
+## D12 — `west nros …`, for the user who lives in west
+
+The thin wrapper the D3 sketch called a fallback, built and measured, because
+it turns out to answer the forgetting problem from the other side.
+
+Inside a west workspace, nothing needs guessing: west knows where Zephyr is
+because Zephyr is a project in its manifest. So `west nros …` asks west and
+hands the answer to `nros` as `ZEPHYR_BASE`:
+
+```console
+$ cd ~/zephyr-workspace
+$ west nros build --workspace ~/my_robot demo_bringup:zephyr
+nros build: demo_bringup:zephyr -> board native_sim/native/64, driver west
+ZEPHYR_BASE=…/zephyr-workspace/zephyr west build -b native_sim/native/64 …
+```
+
+with `ZEPHYR_BASE` and `NROS_ZEPHYR_WORKSPACE` both unset (measured with
+`env -u`).
+
+**A thin wrapper, deliberately.** Every argument is forwarded verbatim and the
+exit status propagated, so there is no argument schema to drift out of step
+with `nros build`'s. A flag added to `nros` is available through `west nros`
+the same day. It also does not overwrite an existing `ZEPHYR_BASE`: someone who
+exported one has named a Zephyr on purpose, and this supplies a missing answer
+rather than overruling a given one.
+
+### What it does NOT do, measured
+
+West loads extension commands only when it can find a workspace:
+
+```console
+$ cd /tmp && env -u ZEPHYR_BASE west fvp run --help
+west: unknown command "fvp"; do you need to run this inside a workspace?
+
+$ cd /tmp && ZEPHYR_BASE=<ws>/zephyr west fvp run --help
+usage: west fvp run [-h] [-d BUILD_DIR]
+```
+
+So `west nros` exists when you are standing in the west workspace, or have
+`ZEPHYR_BASE` pointed into one — which is the variable it was meant to spare
+you. **It therefore does not remove the two-tree problem; it turns it around.**
+Instead of naming the Zephyr path you name your own workspace:
+
+| standing in | you type | you must know |
+| --- | --- | --- |
+| your nano-ros workspace | `nros build --zephyr-workspace <dir> …` | where Zephyr is — machine-specific, varies per host |
+| the west workspace | `west nros build --workspace <dir> …` | where your project is — yours |
+
+Both name the other tree. The difference is WHICH half is the forgettable one,
+and the second trades a path that changes per machine for one the user chose.
+That is a real improvement for a west-first user and no improvement at all for
+a nano-ros-first one, which is why this is an addition and not a replacement.
+
+Registered through `scripts/west-commands.yml`, the same route `west fvp`
+already takes, so any workspace whose manifest lists nano-ros picks it up with
+no `west config` step.
+
 ## Verified end to end
 
 `examples/workspaces/rust`, 2026-08-29, on this tree:
