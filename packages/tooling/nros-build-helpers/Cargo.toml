@@ -18,8 +18,26 @@ publish = false
 host-only = true
 host-only-reason = "build-script helper library, runs on the host"
 
+# phase-400 W2a — OFF BY DEFAULT, and the default is the point.
+#
+# Nothing in a normal build NEEDS cbindgen: since issue 0452 the committed
+# headers have exactly one writer (`nros-cbindgen-headers`), and a build script
+# only re-renders them to COMPARE and print a `cargo::warning` on drift. That
+# comparison cost every cold leaf build the compilation of cbindgen and its
+# `clap` stack — 8.1 CPU-s of the 118.3 s Zephyr profile (6.8 %), paid to
+# produce a warning that `check-cbindgen-headers` already turns into a hard
+# failure in `just check`.
+#
+# So the drift warning is opt-in (`--features cbindgen-drift-check`) for
+# someone mid-edit on an FFI signature who wants it locally, and the ENFORCEMENT
+# is unchanged and unconditional. Turning this off can only cost you an early
+# warning; it cannot let a stale header land.
+[features]
+default = []
+cbindgen-drift-check = ["dep:cbindgen"]
+
 [dependencies]
-cbindgen = { workspace = true }
+cbindgen = { workspace = true, optional = true }
 cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.
