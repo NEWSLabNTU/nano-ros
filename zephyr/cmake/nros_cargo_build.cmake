@@ -253,6 +253,11 @@ function(nros_resolve_knobs)
     # whole class (nros-node + nros-params sizing knobs) in one place.
     _nros_resolve_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
         "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}")
+    # issue 0900 — how many slots the arena derivation charges at ActionClient
+    # size. Read by nros-node/build.rs through the derived CONFIG_<name> lookup,
+    # like its siblings above.
+    _nros_resolve_knob(NROS_EXECUTOR_ACTION_CLIENTS
+        "${CONFIG_NROS_EXECUTOR_ACTION_CLIENTS}")
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SC "${CONFIG_NROS_EXECUTOR_MAX_SC}")
     _nros_resolve_knob(NROS_EXECUTOR_MAX_NODES "${CONFIG_NROS_EXECUTOR_MAX_NODES}")
     # issue 0790 — shutdown-hook slots per phase. Read by nros-node/build.rs

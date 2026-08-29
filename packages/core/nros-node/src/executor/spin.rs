@@ -3690,6 +3690,14 @@ impl<'s> Executor<'s> {
         let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
         let new_used = aligned_offset + size;
         if new_used > self.arena.len() {
+            // issue 0900 — `BufferTooSmall` is returned by a dozen other paths,
+            // so on a target where a return code is all you get, arena
+            // exhaustion is indistinguishable from a message that did not fit.
+            super::arena::report_arena_exhausted(
+                new_used - self.arena.len(),
+                self.arena_used,
+                self.arena.len(),
+            );
             return Err(NodeError::BufferTooSmall);
         }
         self.arena_used = new_used;

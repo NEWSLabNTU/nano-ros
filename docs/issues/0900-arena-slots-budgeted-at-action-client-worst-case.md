@@ -189,6 +189,53 @@ test for the same reason (a separate test would observe an already-consumed
 flag and assert nothing, the vacuous shape `check-no-vacuous-tests` exists to
 catch).
 
+## Landed: the derivation is per-kind (W2)
+
+`NROS_EXECUTOR_ACTION_CLIENTS` — how many of the `MAX_CBS` slots the arena
+budgets at ActionClient size rather than pub/sub size:
+
+```rust
+let derived_arena = (action_clients * action_client_entry
+    + max_cbs.saturating_sub(action_clients) * pubsub_entry
+    + ARENA_BASE_OVERHEAD).max(ARENA_FLOOR);
+```
+
+Measured, by building both ways:
+
+| `NROS_EXECUTOR_ACTION_CLIENTS` | `ARENA_SIZE` |
+| --- | ---: |
+| unset (defaults to `MAX_CBS` = 4) | 74,240 |
+| `0` | **16,384** |
+
+**The default is byte-identical to the old formula**, so no existing image
+moves — gated by `the_default_derivation_is_unchanged`, which recomputes the
+historical arithmetic and compares. That is the point of the wave: the knob
+exists so an image CAN shrink its arena, not so every image silently does, and
+a change that moves the default moves every image's task-stack frame.
+
+A COUNT rather than a "which entity is heaviest" enum, because Kconfig knobs
+are ints and `knob_usize` is the one spelling that reaches the Zephyr Rust lane
+(issue 0460). An enum would need a second reader shape for no gain. Forwarded
+in `nros_cargo_build.cmake` and declared in `zephyr/Kconfig`, so it reaches the
+Zephyr Rust lane rather than being silently defaulted; `check-kconfig-knob-
+forwarding` covers it, and `check-pool-inventory` caught the new knob and
+required it be enumerated — which is the gate for exactly the 0271/0739 failure
+this issue keeps citing.
+
+Lowering it too far fails at REGISTRATION, not at link, so `arena_alloc`'s
+`BufferTooSmall` path now names both knobs and the numbers involved
+(`report_arena_exhausted`, one-shot, `nros_log`, inside the 256-byte budget).
+`BufferTooSmall` is returned by a dozen other paths, so without this, arena
+exhaustion is indistinguishable from a message that did not fit a receive
+buffer on a target where a return code is all you get.
+
+Together with W1 the loop closes: build once at the defaults, read the
+first-spin advisory, set the knob, and be told plainly if it was set too low.
+
+**Not yet done:** nothing sets it automatically. Deriving `action_clients` from
+a declared entity inventory is still the real fix, and still blocked on the
+inventory existing — see below.
+
 ## Direction for the rest
 
 ## Not to be confused with

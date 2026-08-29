@@ -826,6 +826,24 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       number of subscriptions the image creates. Pool size is this x 1024
       bytes. Read by nros-rmw-cffi build.rs.
 
+config NROS_EXECUTOR_ACTION_CLIENTS
+    int "Callback slots to budget at ActionClient size"
+    default 4
+    help
+      How many of NROS_EXECUTOR_MAX_CBS slots the arena derivation budgets at
+      ACTION CLIENT size (~18 KiB each) rather than pub/sub size (~3.5 KiB).
+      Defaults to MAX_CBS, which reproduces the historical arithmetic exactly,
+      so leaving it alone changes nothing.
+
+      Set it to 0 on an image with no action client: at the defaults that takes
+      the arena from 74240 bytes to 16384. The arena is INLINE ON THE TASK
+      STACK, not in .bss, so this is stack headroom -- see the FreeRTOS
+      "Invalid mbox" note in docs/reference/platform-implementation-notes.md.
+
+      Too small fails at REGISTRATION with BufferTooSmall, not at link. The
+      executor reports what it actually used on its first spin, so build once,
+      read the advisory, then set this. Issue 0900.
+
 config NROS_EXECUTOR_ARENA_SIZE
     int "Executor arena size in bytes (0 = derive)"
     default 0
