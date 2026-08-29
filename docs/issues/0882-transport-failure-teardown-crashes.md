@@ -144,6 +144,62 @@ Two distinct defects on that path:
    heap-allocated mutex used after its allocation was released. That is the
    remaining defect and it is where the real fix belongs.
 
+## The faulting "spinlock" is allocator metadata — read off the halted board
+
+The assert address is **identical on every run**: `0x2040f504`. Corrupt reused
+memory would move; a fixed offset means a specific block. Reading it while the
+board sat halted after the fault:
+
+```
+2040f4f0:  00000011  2040f3a0  00000002  0000001a
+2040f500:  00000011  2040f4f0  80000000  00000000
+2040f510:  00000011  2040f500  80000001  00000000
+```
+
+A repeating 16-byte header whose second word points at the previous block —
+**TLSF free-block metadata**, written by `FreeListHeap` into a block when it is
+freed. So the object being locked is a **freed heap block**.
+
+That also explains the assert's exact wording. `z_spin_lock_valid` does not test
+for valid memory:
+
+```c
+if (thread_cpu != 0U && (thread_cpu & 3U) == _current_cpu->id) return false;
+```
+
+Here `thread_cpu` reads `0x2040f4f0` — a heap pointer, low two bits zero, so it
+compares equal to CPU 0 and the lock is declared invalid. The message says
+"Invalid spinlock" but the condition it actually detects is "this CPU already
+holds it"; both readings arrive at the same place because the memory is not a
+lock at all.
+
+**Use-after-free is therefore established at the memory level**, not inferred.
+
+## Two hypotheses tested and what they showed
+
+**Self-free of the running task — fixed, insufficient.** `_z_task_free` now
+refuses to free the caller's own handle. Correct on its own terms; the crash
+reproduces with it in.
+
+**Reuse of a freed mutex by a later allocation — falsified as stated.** A
+quarantine holding the last eight dropped `k_mutex` objects back from the arena
+did not help (still 0/8 through the tap, same address). The reason matters:
+TLSF writes its metadata into a block **at the moment of free**, not when the
+block is next handed out. So delaying *reuse* cannot help — only not freeing,
+or not holding the reference, can. The quarantine was reverted rather than kept
+as an unexplained change.
+
+## What is still unknown
+
+Which object. It is freed early enough that its address is stable across boots,
+and it is not among the last eight mutexes dropped, so it is not simply one of
+the transport mutexes released by `_z_common_transport_clear`.
+
+The next step that would settle it is to record the allocation: log the pointer
+returned for each `k_mutex` / `k_condvar` / task allocation at startup and see
+which one is `0x2040f504`. That is cheap — the address is deterministic — and it
+names the object rather than reasoning about it.
+
 ## Fix direction
 
 `_z_common_transport_clear` must not tear down state that the reopen on the
