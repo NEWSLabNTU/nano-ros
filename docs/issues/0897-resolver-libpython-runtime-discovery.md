@@ -226,6 +226,127 @@ a diagnostic, but XML/YAML still cannot run.
 All of this is upstream work in the `play_launch` submodule, where the pyo3
 dependency lives — not a nano-ros-only edit.
 
+
+## Measured in this tree (2026-08-29) — the design is de-risked
+
+Three experiments, run against `play_launch` at `838ce948` and reverted:
+
+**1. The `#[pyclass]` mocks ARE limited-API compatible.** Adding `abi3-py310`
+to `play_launch_parser`'s pyo3 dependency and building the lib:
+
+```
+Compiling play_launch_parser v0.1.0
+ Finished `dev` profile [optimized + debuginfo] target(s) in 14.50s
+```
+
+That was open question 1, the one that would have collapsed the version-agnostic
+half. It compiles. `pyproject.toml` already declares `requires-python = ">=3.10"`,
+so `abi3-py310` matches the floor the project has chosen.
+
+**2. abi3 does NOT remove the version pin for an embedded binary** — now
+measured here, not just read from upstream docs. The same crate built as a
+BINARY, with abi3 on:
+
+```
+$ readelf -d target/debug/play_launch_parser | grep -i python
+  (NEEDED)  Shared library: [libpython3.10.so.1.0]
+```
+
+So issue 0400's recommendation is refuted with evidence from this repository,
+not only by citation.
+
+**3. A cdylib with `extension-module` leaves the symbols undefined**, which is
+what the dlopen design needs. `parser/crates/python` (which already exists, for
+the opposite direction — exposing Rust *to* Python):
+
+```
+$ readelf -d libplay_launch_parser.so | grep -i python
+  (none)
+$ nm -D libplay_launch_parser.so | grep -c ' U Py_\| U _Py'
+  11
+```
+
+Eleven Python symbols left for the loader, no `DT_NEEDED`. That artifact shape
+is exactly the "Python half" the design calls for, and the repo already builds
+one — so the machinery is not speculative.
+
+## Applying it to `play_launch` itself
+
+`play_launch` is ours (`NEWSLabNTU/play_launch`, `branch = main`), so this is a
+normal change there, not a fork-patch.
+
+**The problem is wider upstream than it is here.** Three crates independently
+enable `auto-initialize`, and that is what links `libpython`:
+
+```
+src/play_launch/Cargo.toml                        auto-initialize, py-clone
+src/ros-launch-resolve/resolve/Cargo.toml         auto-initialize, py-clone
+.../parser/crates/play_launch_parser/Cargo.toml   auto-initialize, py-clone
+.../parser/crates/python/Cargo.toml               extension-module
+```
+
+So `play_launch`'s own runtime cannot start on a host without the matching
+`libpython` **even to replay an XML launch file** — the same defect nano-ros
+has, one layer down, and it is the reason fixing it only in nano-ros would not
+work: the parser is an rlib and every consumer inherits its linkage.
+
+### The split
+
+1. **`play_launch_parser` (core) loses pyo3.** XML, YAML, IR, traverser,
+   substitution — all already pyo3-free (`src/xml/` has no pyo3 reference). It
+   gains a `PythonLaunchBackend` trait, and the existing single dispatch arm
+   becomes:
+
+   ```rust
+   "py" => match &self.py_backend {
+       Some(b) => b.execute(path, configs),
+       None    => Err(Error::PythonBackendUnavailable { path: path.into() }),
+   },
+   ```
+
+   Requirement 1 then holds **by type**, not by linkage accident: a build with no
+   backend still scans, still resolves XML/YAML, and fails on the first
+   `.launch.py` naming that file.
+
+2. **`play_launch_parser_pyexec` (new)** takes `src/python/**` — the executor and
+   the Rust-implemented `launch` / `launch_ros` / `launch_xml` mocks. Depends on
+   pyo3 + core, implements the trait, and is built BOTH ways: `rlib` for
+   consumers that want libpython linked (a container shipping a known Python —
+   today's behaviour, kept as opt-in), and `cdylib` + `extension-module` +
+   `abi3-py310` for the dlopen path.
+
+3. **One loader crate**, used by `play_launch` and `ros-launch-resolve` alike:
+   discover interpreter → `dlopen(libpython, RTLD_NOW|RTLD_GLOBAL)` →
+   `dlopen(pyexec.so)` → hand back a `PythonLaunchBackend`. Two consumers, one
+   implementation — otherwise the interpreter-selection rule acquires a second
+   spelling and they drift.
+
+### The boundary must be C, not Rust
+
+Rust has no stable ABI, so a trait object cannot cross a `dlopen` boundary. The
+export is `extern "C"`, JSON in and JSON out, paired with a free function —
+which costs nothing new, because the resolver already exchanges JSON with its
+caller and the crate already depends on `serde_json` and `pythonize`.
+
+### Cargo feature unification is a trap here
+
+pyo3 features unify across a build graph, and `extension-module` +
+`auto-initialize` together is a documented footgun. Today `parser/crates/python`
+is insulated only because it declares its own `[workspace]`. After the split the
+insulation must be deliberate — the pyexec cdylib build must not pull a
+consumer that turns `auto-initialize` back on, or the "no `DT_NEEDED`" property
+silently reverts. That property is checkable (`readelf -d | grep python`), so it
+should be a gate rather than a convention.
+
+### Remaining unknowns, reduced to two
+
+- **Initialisation.** Nothing has started the interpreter, so the cdylib must
+  call it explicitly rather than via `auto-initialize` (which is not for
+  extension modules). Confirm the entry pyo3 uses is in the stable ABI at 3.10.
+- **Performance under the limited API.** The parser carries deliberate
+  optimisation (dashmap, LRU). Measure a real bringup before and after; do not
+  assume it is free.
+
 ## Not doing
 
 - **Dropping `.launch.py` support.** It is in the ROS 2 standard and
