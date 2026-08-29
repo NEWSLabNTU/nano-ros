@@ -162,11 +162,11 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # on NEWSLabNTU/nano-ros-sdk, so `nros setup --tool sccache` falls back to the
 # source recipe (`cargo install sccache`).
 [tool.sccache]
-version = "0.8.2-nros1"
-upstream = "0.8.2" # = source.ref (mozilla/sccache release tag, without the `v`)
+version = "0.17.0-nros1"
+upstream = "0.17.0" # = source.ref (mozilla/sccache release tag, without the `v`)
 [tool.sccache.source]
 git = "https://github.com/mozilla/sccache"
-ref = "v0.8.2"
+ref = "v0.17.0"
 # vendored-openssl: the default features pull openssl-sys, which hard-fails
 # on any host without libssl-dev (observed 2026-08-03; the RFC-0062 class —
 # an undeclared system dep). Vendoring removes the system dep entirely.
