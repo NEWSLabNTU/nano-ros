@@ -354,3 +354,18 @@ died and went quiet, so the reopen storm never had the chance to happen.
 So the criterion measured a path that two defects block, and passing it was
 never within this issue's reach. The criterion that does test this defect, and
 passes, is the one above: **no fault when the transport fails.**
+
+## Effect on ordinary operation
+
+Direct link, no tap, reconnect on — ten goals:
+
+| | goals completing |
+| --- | ---: |
+| before the fix | 7/10 |
+| after the fix | **9/10** |
+
+So the crash was also costing goals on the normal path, not only under the
+tap's added latency. The remaining 1 in 10 is not this defect: it is a
+transport failure that the board now survives but that
+[issue 0879](../0879-serial-link-has-no-resync-after-peer-reset.md) prevents it
+from recovering from.
