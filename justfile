@@ -2003,6 +2003,7 @@ check-emitter-just-spelling:
 # OPEN spelling, so the index advertised an open issue whose file was gone.
 [private]
 check-issue-index:
+    @python3 scripts/gen-issue-index.py --self-test
     @bash scripts/check-issue-index.sh
     @python3 scripts/gen-issue-index.py --check
 

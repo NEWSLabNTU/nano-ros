@@ -7,7 +7,7 @@
 #
 #   3. **"Open issues" below lists exactly the files in `docs/issues/`** — one row
 #      per open issue, no more. A resolved issue keeps a row only under "Recently
-#      resolved" … Verify with: `ls docs/issues/0*.md` versus the `**#NNN**` rows.
+#      resolved" … Verify with: `ls docs/issues/[0-9]*.md` versus the `**#NNN**` rows.
 #
 # It just had nothing enforcing it, and it drifts in ONE direction: an issue gets
 # resolved, its file is moved to `archived/`, and its README row is left in the
@@ -79,8 +79,8 @@ rows="$(grep -oE '^(- )?\*\*#[0-9]+\*\*' "$readme" \
 # `scripts/gen-issue-index.py` — the generator lists the new issue, the checker
 # says the row names no file, and the two are unresolvable by editing either
 # one. Both sides must enumerate the same set. → phase-395
-files="$(git ls-files --cached --others --exclude-standard 'docs/issues/0*.md' \
-         | sed -E 's#.*/([0-9]{4}).*#\1#' \
+files="$(git ls-files --cached --others --exclude-standard 'docs/issues/[0-9]*.md' \
+         | sed -E 's#.*/([0-9]+)-.*#\1#' \
          | sort -u)"
 
 missing_file="$(comm -23 <(printf '%s\n' "$rows") <(printf '%s\n' "$files"))"
@@ -113,7 +113,7 @@ fi
 
 # A file living in docs/issues/ must still be OPEN. See header note 1.
 resolved_in_open=""
-for f in $(git ls-files --cached --others --exclude-standard 'docs/issues/0*.md' | sort -u); do
+for f in $(git ls-files --cached --others --exclude-standard 'docs/issues/[0-9]*.md' | sort -u); do
     st="$(sed -n 's/^status:[[:space:]]*//p' "$f" | head -1 | tr -d '[:space:]')"
     case "$st" in
         open|"") ;;
@@ -125,7 +125,7 @@ if [ -n "$resolved_in_open" ]; then
     echo "check-issue-index: file in docs/issues/ is not open:" >&2
     for entry in $resolved_in_open; do
         f="${entry%%|*}"; st="${entry##*|}"
-        id="$(printf '%s' "$f" | sed -E 's#.*/([0-9]{4}).*#\1#')"
+        id="$(printf '%s' "$f" | sed -E 's#.*/([0-9]+)-.*#\1#')"
         echo "  ${f} — frontmatter says status: ${st}" >&2
         echo "        git mv it to docs/issues/archived/ and convert its row:" >&2
         echo "        Recently resolved (YYYY-MM-DD): **#${id}** — … See \`archived/${id}-*\`." >&2

@@ -115,7 +115,6 @@ scripts/dev/clang-format.sh
 scripts/gen-abi-bindings.sh
 scripts/gen-board-support-table.py
 scripts/gen-cli-source-dirs.py
-scripts/gen-issue-index.py
 scripts/gen-rmw-feature-matrix.py
 scripts/gen-sched-matrix.py
 scripts/gen-support-status.py

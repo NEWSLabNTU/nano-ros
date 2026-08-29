@@ -64,7 +64,7 @@ def open_issues():
     # new issue while the generator reported it had written the list.
     out = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard",
-         "docs/issues/0*.md"],
+         ISSUE_PATHSPEC],
         cwd=ROOT, capture_output=True, text=True, check=True,
     ).stdout.split()
     out = sorted(set(out))
@@ -78,7 +78,7 @@ def open_issues():
         fm = m.group(1)
         if field(fm, "status") != "open":
             continue
-        num = os.path.basename(rel)[:4]
+        num = re.match(r"\d+", os.path.basename(rel)).group(0)
         rows.append(
             {
                 "id": num,
@@ -112,10 +112,86 @@ def render(rows):
     return "\n".join(lines)
 
 
+# The pathspec BOTH this generator and `scripts/check-issue-index.sh` enumerate
+# with. It must stay in step with the copy there — `--self-test` asserts that.
+#
+# `[0-9]*`, NOT `0*`. The old spelling assumed every id begins with a zero, which
+# is true only below 1000. At id 1000 the glob silently stops matching: the
+# generator drops the issue from the list, the checker cannot see the file
+# either, so the two agree about a set that is missing it and the gate passes
+# GREEN. A ceiling that reports success is worse than one that errors — nothing
+# would have pointed at this file.
+ISSUE_PATHSPEC = "docs/issues/[0-9]*.md"
+
+
+def self_test():
+    """Prove the pathspec matches ids at and beyond the old 1000 ceiling.
+
+    Runs `git ls-files` against a throwaway repo rather than asserting on a
+    regex: what broke was GIT PATHSPEC matching, so testing anything else would
+    pass while the real enumeration still dropped files.
+    """
+    import shutil, tempfile
+
+    names = ["0001-a.md", "0999-b.md", "1000-c.md", "9999-d.md", "10000-e.md",
+             "README.md", "open.md"]
+    want = {"0001-a.md", "0999-b.md", "1000-c.md", "9999-d.md", "10000-e.md"}
+    tmp = tempfile.mkdtemp()
+    try:
+        d = os.path.join(tmp, "docs", "issues")
+        os.makedirs(d)
+        for n in names:
+            with open(os.path.join(d, n), "w", encoding="utf8") as fh:
+                fh.write("---\nid: 1\nstatus: open\n---\n")
+        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)
+        out = subprocess.run(
+            ["git", "ls-files", "--cached", "--others", "--exclude-standard",
+             ISSUE_PATHSPEC],
+            cwd=tmp, capture_output=True, text=True, check=True,
+        ).stdout.split()
+        got = {os.path.basename(x) for x in out}
+        if got != want:
+            print("gen-issue-index --self-test FAILED")
+            print(f"  pathspec {ISSUE_PATHSPEC!r}")
+            print(f"  missed:  {sorted(want - got)}")
+            print(f"  extra:   {sorted(got - want)}")
+            return 1
+
+        # The id must be read from the WHOLE leading run of digits. A fixed
+        # 4-char slice returns '1000' for '10000-e.md' — a different issue.
+        for n in names:
+            if n in want:
+                m = re.match(r"\d+", n)
+                assert m and n.startswith(m.group(0) + "-"), n
+        if re.match(r"\d+", "10000-e.md").group(0) != "10000":
+            print("gen-issue-index --self-test FAILED: id truncated")
+            return 1
+
+        # The shell checker must enumerate the SAME set, or the two disagree
+        # about which files exist and the gate compares mismatched sets.
+        sh = os.path.join(ROOT, "scripts", "check-issue-index.sh")
+        if os.path.exists(sh):
+            with open(sh, encoding="utf8") as fh:
+                sh_text = fh.read()
+            if f"'{ISSUE_PATHSPEC}'" not in sh_text:
+                print("gen-issue-index --self-test FAILED: "
+                      f"check-issue-index.sh does not enumerate {ISSUE_PATHSPEC!r}")
+                return 1
+        print("gen-issue-index self-test: OK "
+              "(pathspec matches ids >= 1000; checker agrees)")
+        return 0
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
 
     rows = open_issues()
     block = render(rows)
