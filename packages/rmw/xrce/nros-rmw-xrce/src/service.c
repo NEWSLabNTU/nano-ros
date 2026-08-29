@@ -117,7 +117,7 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node, const char* service_name,
     }
 
     xrce_service_server_state* ss =
-        (xrce_service_server_state*)calloc(1, sizeof(xrce_service_server_state));
+        (xrce_service_server_state*)nros_xrce_calloc(1, sizeof(xrce_service_server_state));
     if (ss == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -160,7 +160,7 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node, const char* service_name,
     uint8_t statuses[1] = {0};
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
     if (cret != NROS_RMW_RET_OK) {
-        free(ss);
+        nros_xrce_free(ss);
         return cret;
     }
 
@@ -206,7 +206,7 @@ rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
     uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
-    free(ss);
+    nros_xrce_free(ss);
     server->backend_data = NULL;
     return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
@@ -527,7 +527,7 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const char* service_name,
     }
 
     xrce_service_client_state* cs =
-        (xrce_service_client_state*)calloc(1, sizeof(xrce_service_client_state));
+        (xrce_service_client_state*)nros_xrce_calloc(1, sizeof(xrce_service_client_state));
     if (cs == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -564,7 +564,7 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const char* service_name,
     uint8_t statuses[1] = {0};
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 1);
     if (cret != NROS_RMW_RET_OK) {
-        free(cs);
+        nros_xrce_free(cs);
         return cret;
     }
 
@@ -605,7 +605,7 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
     uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, cs->requester_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
-    free(cs);
+    nros_xrce_free(cs);
     client->backend_data = NULL;
     return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }

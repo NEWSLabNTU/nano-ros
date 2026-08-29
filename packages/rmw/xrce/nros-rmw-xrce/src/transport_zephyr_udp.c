@@ -26,8 +26,8 @@ static bool zephyr_udp_close(struct uxrCustomTransport *t) {
     if (b->endpoint != NULL) {
         nros_platform_udp_free_endpoint(b->endpoint);
     }
-    free(b->sock);
-    free(b->endpoint);
+    nros_xrce_free(b->sock);
+    nros_xrce_free(b->endpoint);
     b->sock = NULL;
     b->endpoint = NULL;
     return true;
@@ -41,8 +41,8 @@ static void zephyr_udp_bridge_cleanup(xrce_zephyr_udp_bridge *b) {
     if (b->endpoint != NULL) {
         nros_platform_udp_free_endpoint(b->endpoint);
     }
-    free(b->sock);
-    free(b->endpoint);
+    nros_xrce_free(b->sock);
+    nros_xrce_free(b->endpoint);
     b->sock = NULL;
     b->endpoint = NULL;
 }
@@ -77,8 +77,8 @@ rmw_ret_t xrce_zephyr_udp_init(xrce_session_state_t *st,
     }
 
     xrce_zephyr_udp_bridge *bridge = (xrce_zephyr_udp_bridge *)&st->udp_bridge;
-    bridge->sock = calloc(1, sizeof(int));
-    bridge->endpoint = calloc(1, sizeof(void *));
+    bridge->sock = nros_xrce_calloc(1, sizeof(int));
+    bridge->endpoint = nros_xrce_calloc(1, sizeof(void *));
     if (bridge->sock == NULL || bridge->endpoint == NULL) {
         zephyr_udp_bridge_cleanup(bridge);
         return NROS_RMW_RET_ERROR;
