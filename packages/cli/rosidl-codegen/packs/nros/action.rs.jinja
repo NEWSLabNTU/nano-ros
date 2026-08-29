@@ -741,7 +741,7 @@ pub struct {{ action_name }}GoalView<'a> {
 {%- endfor %}
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for {{ action_name }}GoalView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}GoalView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -769,7 +769,7 @@ pub struct {{ action_name }}ResultView<'a> {
 {%- endfor %}
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for {{ action_name }}ResultView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}ResultView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -797,7 +797,7 @@ pub struct {{ action_name }}FeedbackView<'a> {
 {%- endfor %}
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for {{ action_name }}FeedbackView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for {{ action_name }}FeedbackView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {

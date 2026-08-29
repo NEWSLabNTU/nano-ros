@@ -417,11 +417,11 @@ fn borrowed_mode_emits_zero_copy_view() {
         "borrowed slice missing:\n{rs}"
     );
     assert!(
-        rs.contains("impl<'a> nros_core::DeserializeBorrowed<'a> for FrameView<'a>"),
-        "DeserializeBorrowed missing:\n{rs}"
+        rs.contains("impl<'a> nros_core::DeserializeView<'a> for FrameView<'a>"),
+        "DeserializeView missing:\n{rs}"
     );
     assert!(
-        rs.contains("impl nros_core::BorrowedMessage for FrameBorrow"),
+        rs.contains("impl nros_core::ViewableMessage for FrameViewable"),
         "marker impl missing:\n{rs}"
     );
     // Owned struct is preserved for publishers.

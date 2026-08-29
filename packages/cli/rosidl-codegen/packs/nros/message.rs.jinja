@@ -133,7 +133,7 @@ impl RosMessage for {{ message_name }} {
 // Zero-copy view: fields marked `mode = "borrowed"` slice directly into the
 // receive buffer (no `heapless::Vec`/`String` copy). Other fields are copied.
 // The view is valid only for the subscription-callback scope (lifetime `'a`).
-// Subscribe with `node.create_subscription_borrowed::<{{ message_name }}Borrow, _>()`.
+// Subscribe with `node.create_subscription_viewable::<{{ message_name }}Viewable, _>()`.
 
 /// Borrowed (zero-copy) view of [`{{ message_name }}`].
 pub struct {{ message_name }}View<'a> {
@@ -142,7 +142,7 @@ pub struct {{ message_name }}View<'a> {
 {%- endfor %}
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
+impl<'a> nros_core::DeserializeView<'a> for {{ message_name }}View<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -156,9 +156,9 @@ impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
 }
 
 /// Zero-sized borrowed-family marker for [`{{ message_name }}`] (Phase 229.6).
-pub struct {{ message_name }}Borrow;
+pub struct {{ message_name }}Viewable;
 
-impl nros_core::BorrowedMessage for {{ message_name }}Borrow {
+impl nros_core::ViewableMessage for {{ message_name }}Viewable {
     type View<'a> = {{ message_name }}View<'a>;
     const TYPE_NAME: &'static str = "{{ package_name }}::msg::dds_::{{ message_name }}_";
     const TYPE_HASH: &'static str = "{{ type_hash }}";

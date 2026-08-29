@@ -274,7 +274,7 @@ pub struct {{ service_name }}RequestView<'a> {
 {%- endfor %}
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for {{ service_name }}RequestView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for {{ service_name }}RequestView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -302,7 +302,7 @@ pub struct {{ service_name }}ResponseView<'a> {
 {%- endfor %}
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for {{ service_name }}ResponseView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for {{ service_name }}ResponseView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {

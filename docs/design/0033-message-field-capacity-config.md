@@ -232,8 +232,8 @@ callback-borrow dispatch above. See phase-229 § 229.6.
 
 Rust `view` shipped in Phase 229.6: `mode = "view"` emits `{Msg}View<'a>`
 (`view` fields `&'a [u8]` / `&'a str` / `LeSliceView<'a, T>`, copied fields inline) +
-a `{Msg}Borrow` ZST marker + `impl DeserializeBorrowed`, dispatched via
-`create_subscription_borrowed` (a Rust API name the rename has NOT yet
+a `{Msg}Borrow` ZST marker + `impl DeserializeView`, dispatched via
+`create_subscription_viewable` (a Rust API name the rename has NOT yet
 reached — see phase-390 W5). C and C++ `view` (phase-235) mirror the *view shape*
 but differ in **who walks the CDR**, following the project rule that **C++ wraps the
 Rust API and never re-implements serdes**:

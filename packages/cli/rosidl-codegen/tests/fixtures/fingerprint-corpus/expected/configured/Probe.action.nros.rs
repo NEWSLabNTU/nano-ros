@@ -591,7 +591,7 @@ pub struct ProbeGoalView<'a> {
     pub name: heapless::String<256>,
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for ProbeGoalView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for ProbeGoalView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {

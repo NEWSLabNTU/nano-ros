@@ -133,8 +133,8 @@ fn borrowed_service_payload_gets_a_view_type() {
         "the borrowed field must take the view type:\n{rs}"
     );
     assert!(
-        rs.contains("impl<'a> nros_core::DeserializeBorrowed<'a> for AdderResponseView<'a>"),
-        "the view must implement DeserializeBorrowed:\n{rs}"
+        rs.contains("impl<'a> nros_core::DeserializeView<'a> for AdderResponseView<'a>"),
+        "the view must implement DeserializeView:\n{rs}"
     );
     // The OWNED struct must survive untouched — it is still the publish path.
     assert!(
