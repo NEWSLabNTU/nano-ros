@@ -828,10 +828,69 @@ pub fn nros_store_bin(tool: &str, exe: &str) -> Option<std::path::PathBuf> {
     for entry in std::fs::read_dir(root.join(tool)).ok()?.flatten() {
         let cand = entry.path().join("bin").join(exe);
         if cand.is_file() {
+            assert_store_bin_loadable(tool, &cand);
             return Some(cand);
         }
     }
     None
+}
+
+/// A provisioned tool must be able to LOAD, not merely exist.
+///
+/// The store's dists link some libraries dynamically against the host — QEMU
+/// links `libslirp.so.0`, which stock Ubuntu does not ship. `nros-sdk-index.toml`
+/// already declares that (`[tool.qemu] system = ["libslirp"]`, probed via
+/// `[system.libslirp] check.sharedlib`) and says why in its own comment:
+/// "Declared so setup/doctor can say so BEFORE the smoke check fails with a
+/// bare loader error."
+///
+/// It could not do that here. This resolver returned the path and the first
+/// thing to notice was the dynamic loader, so the failure arrived as
+/// `error while loading shared libraries` from a tool nobody had asked about —
+/// with the diagnosis sitting in the index, unread. The declaration was fine;
+/// nothing consulted it on the path where it mattered.
+///
+/// Checked once per resolved binary and cached, so repeated lookups in one test
+/// process cost a single `ldd`.
+///
+/// `ldd` absent (or not meaningful, as on macOS) is NOT a failure: the check
+/// reports nothing rather than inventing a verdict it cannot support.
+fn assert_store_bin_loadable(tool: &str, bin: &std::path::Path) {
+    use std::sync::{Mutex, OnceLock};
+    static SEEN: OnceLock<Mutex<std::collections::HashSet<std::path::PathBuf>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(std::collections::HashSet::new()));
+    if let Ok(mut s) = seen.lock()
+        && !s.insert(bin.to_path_buf())
+    {
+        return;
+    }
+
+    let Ok(out) = std::process::Command::new("ldd").arg(bin).output() else {
+        return; // no `ldd` here — report nothing rather than guess
+    };
+    if !out.status.success() {
+        return;
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    let missing: Vec<&str> = text
+        .lines()
+        .filter(|l| l.contains("not found"))
+        .filter_map(|l| l.split_whitespace().next())
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "the provisioned `{tool}` at {} cannot load: {} missing.\n\
+         This is an OS package, not part of the SDK dist. The index declares it \
+         (`[tool.{tool}] system = [..]`, probed by `[system.*].check`), so:\n\
+         \n    nros setup --system --check     # names the missing key\n    \
+         nros setup --system                # prints the install command\n\
+         \n\
+         Without this you would have seen only the loader's \
+         `error while loading shared libraries`, with no mention of the \
+         package or of `nros setup`.",
+        bin.display(),
+        missing.join(", "),
+    );
 }
 
 /// Resolve the `nros` CLI binary the same way `scripts/build/cargo.sh::nros_cli_bin`
