@@ -44,7 +44,7 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     }
 
     xrce_publisher_state *ps = (xrce_publisher_state *)
-        calloc(1, sizeof(xrce_publisher_state));
+        nros_xrce_calloc(1, sizeof(xrce_publisher_state));
     if (ps == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -87,7 +87,7 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     uint8_t  statuses[3] = { 0, 0, 0 };
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
     if (cret != NROS_RMW_RET_OK) {
-        free(ps);
+        nros_xrce_free(ps);
         return cret;
     }
 
@@ -113,7 +113,7 @@ rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
                                             ps->datawriter_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
-    free(ps);
+    nros_xrce_free(ps);
     publisher->backend_data = NULL;
     return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }

@@ -36,6 +36,37 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 #   defaults it to the pinned third-party submodule, sccache-accelerated).
 # So a bare cmake build needs no `just cyclonedds` pre-step. Sets
 # NROS_CYCLONEDDS_PROVENANCE (target|find_package|source).
+# ---- Platform implementation (issue 0881) ----------------------------------
+# The funnel is enabled by `nros_provide_cyclonedds()` only when a platform
+# target exists to funnel INTO, so before this block the standalone project
+# built Cyclone with its libc heap and the funnel-ON path had no lane at all:
+# a native nano-ros build resolves Cyclone through `find_package` (already
+# compiled, nothing to define into), and only a cross build reached the
+# funnel — tier 2, a day of latency, and a cross toolchain.
+#
+# That mattered because the funnel is a LINK-shape change. It was this
+# project's three test executables that caught the missing link dependency the
+# first time; after the dependency landed, this project stopped compiling the
+# funnel and the next regression of that shape would have surfaced in tier 2.
+#
+# The location arrives as a cache PATH defaulted to the sibling project, the
+# same convention `CYCLONEDDS_SOURCE_DIR` and the header vars already use, so
+# this file still never searches the tree and a consumer can override it.
+# Guarded on the targets not already existing, so a parent project providing
+# its own platform wins.
+set(NROS_PLATFORM_IMPL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/nros-platform-posix"
+    CACHE PATH "Path to a project providing the nros platform ABI implementation")
+if(NOT TARGET nros_platform_posix AND NOT TARGET NanoRos::Platform
+   AND EXISTS "${NROS_PLATFORM_IMPL_DIR}/CMakeLists.txt")
+    add_subdirectory("${NROS_PLATFORM_IMPL_DIR}" nros_platform_impl_build)
+endif()
+# `NanoRos::Platform` is the Phase-138 §A canonical alias the funnel gate asks
+# for. A parent nano-ros build already defines it over its INTERFACE wrapper;
+# standalone there is no wrapper, so alias the archive directly.
+if(NOT TARGET NanoRos::Platform AND TARGET nros_platform_posix)
+    add_library(NanoRos::Platform ALIAS nros_platform_posix)
+endif()
+
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/ProvideCycloneDDS.cmake")
 nros_provide_cyclonedds()
 

@@ -35,53 +35,29 @@ rmw_ret_t nros_rmw_cffi_register_named(const char *name, const nros_rmw_vtable_t
     return NROS_RMW_RET_OK;
 }
 
-/* The platform clock + sleep this backend's session drive loop calls. Same
- * reason as the UDP stubs below. */
-uint64_t nros_platform_clock_ns(void) { return 0; }
-void nros_platform_sleep_ms(size_t ms) { (void) ms; }
-void nros_platform_udp_set_recv_timeout(const void *sock, uint32_t timeout_ms) {
-    (void) sock;
-    (void) timeout_ms;
-}
-
-/* Issue 0787 — the platform UDP primitives this backend's `nros_udp`
- * transport calls. They live in the Rust platform layer, which a standalone C
- * build of this backend does not link, so the smoke test stubs them exactly as
- * it already stubs the registry entry point. Every one FAILS: the test never
- * opens a transport, and a stub that pretended to succeed would make the test
- * assert against a socket that does not exist.
+/* Issue 0832 — the platform clock, sleep and UDP primitives are NOT stubbed
+ * here any more.
  *
- * Without these the test did not LINK, which is why nothing built this backend
- * on a host and why five phase-376 signature changes crossed it unchecked. */
-int8_t nros_platform_udp_create_endpoint(void *ep, const uint8_t *address,
-                                         const uint8_t *port) {
-    (void) ep;
-    (void) address;
-    (void) port;
-    return -1;
-}
-void nros_platform_udp_free_endpoint(void *ep) { (void) ep; }
-int8_t nros_platform_udp_open(void *sock, const void *endpoint, uint32_t timeout_ms) {
-    (void) sock;
-    (void) endpoint;
-    (void) timeout_ms;
-    return -1;
-}
-void nros_platform_udp_close(void *sock) { (void) sock; }
-size_t nros_platform_udp_read(const void *sock, uint8_t *buf, size_t len) {
-    (void) sock;
-    (void) buf;
-    (void) len;
-    return 0;
-}
-size_t nros_platform_udp_send(const void *sock, const uint8_t *buf, size_t len,
-                              const void *endpoint) {
-    (void) sock;
-    (void) buf;
-    (void) len;
-    (void) endpoint;
-    return 0;
-}
+ * Issue 0787 added nine local definitions because "they live in the Rust
+ * platform layer, which a standalone C build of this backend does not link".
+ * That is no longer true: the backend allocates through `nros_platform_alloc`,
+ * so this project links `nros_platform_posix`, and the same archive defines
+ * every one of these — `clock_ns` and `sleep_ms` in `platform.c`, all fifteen
+ * `udp_*` entry points in `net.c`.
+ *
+ * Keeping the stubs would be a second implementation of the platform ABI
+ * chosen by link order, and the two disagree: the stubs deliberately FAIL every
+ * call while the real ones work. Only two collided at link time — `clock_ns`
+ * and `sleep_ms` — because the linker pulls an archive member only for an
+ * already-unresolved reference, so the local UDP definitions meant `net.c.o`
+ * was never reached. A silent win by link order is exactly the hazard the
+ * issue-0050 weak-symbol policy exists to prevent, arrived at without any weak
+ * symbol.
+ *
+ * `nros_rmw_cffi_register{,_named}` above stay stubbed: those live in the Rust
+ * cffi crate, which this project genuinely does not link, and the stub IS the
+ * assertion — it records the vtable the backend hands over.
+ */
 
 /* Issue 0782 — the streamed-publish chunk loop.
  *

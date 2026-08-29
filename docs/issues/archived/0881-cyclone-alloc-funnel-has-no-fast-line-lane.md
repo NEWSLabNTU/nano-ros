@@ -1,7 +1,7 @@
 ---
 id: 881
 title: "Cyclone's platform-alloc funnel has no fast-line lane — the only build that compiles it has no platform to funnel into"
-status: open
+status: resolved
 area: ci
 severity: medium
 found: 2026-08-29
@@ -94,3 +94,36 @@ breakage, at no new build.
 Funnel-off on native is not a defect. `unified` is an embedded promise, native
 hosts have a real libc heap, and a `find_package` Cyclone cannot be funnelled at
 all. The gap is in TESTING the embedded shape cheaply, not in the shape itself.
+
+## Resolved (2026-08-29)
+
+Candidate 2, as expected — and the XRCE half of issue 0832 forced the same
+change one project over, which is what settled it. `nros-rmw-xrce`'s shim
+started allocating through the funnel, so its standalone project stopped
+linking until it gained a platform implementation; the pattern that fixed it
+transfers verbatim.
+
+The cyclone project now resolves `NROS_PLATFORM_IMPL_DIR` (a cache PATH
+defaulted to the sibling `nros-platform-posix`, the same convention
+`CYCLONEDDS_SOURCE_DIR` and the header vars already use) and aliases it as
+`NanoRos::Platform`, which is what the funnel gate asks for. Both guarded on
+the targets not already existing, so a parent nano-ros build still wins.
+
+Measured on `just check-rmw-cyclonedds`:
+
+```
+-- nano-ros: CycloneDDS ddsrt heap -> nros_platform_alloc (issue 0832)
+libddsc.a  heap.c.o -> U nros_platform_{alloc,realloc,dealloc}
+           one object left on a raw libc allocator (sysdeps.c.o's free)
+nros_rmw_cyclonedds_ros2_{sub,srv_client,srv_server}: 7 funnel call sites each
+100% tests passed, 0 tests failed out of 22
+```
+
+Those three executables are the ones that caught the original missing link
+dependency, so the lane is back to covering the shape it covered before the
+dependency fix — this time with the funnel actually compiled, and end to end
+rather than at link only.
+
+Cost: the lane builds a platform archive it did not build before. Cyclone
+itself was already built from source here, so there is no second Cyclone build
+and the ~22 s figure in the recipe's own comment is unaffected in kind.

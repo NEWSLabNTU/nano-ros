@@ -41,12 +41,12 @@ static bool nros_udp_close(struct uxrCustomTransport *t) {
     if (b == NULL) return true;
     if (b->sock != NULL) {
         nros_platform_udp_close(b->sock);
-        free(b->sock);
+        nros_xrce_free(b->sock);
         b->sock = NULL;
     }
     if (b->endpoint != NULL) {
         nros_platform_udp_free_endpoint(b->endpoint);
-        free(b->endpoint);
+        nros_xrce_free(b->endpoint);
         b->endpoint = NULL;
     }
     return true;
@@ -91,11 +91,11 @@ rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
     }
 
     xrce_nros_udp_bridge *bridge = (xrce_nros_udp_bridge *)&st->udp_bridge;
-    bridge->sock = calloc(1, XRCE_NROS_SOCK_STORAGE_BYTES);
-    bridge->endpoint = calloc(1, XRCE_NROS_ENDPOINT_STORAGE_BYTES);
+    bridge->sock = nros_xrce_calloc(1, XRCE_NROS_SOCK_STORAGE_BYTES);
+    bridge->endpoint = nros_xrce_calloc(1, XRCE_NROS_ENDPOINT_STORAGE_BYTES);
     if (bridge->sock == NULL || bridge->endpoint == NULL) {
-        free(bridge->sock);
-        free(bridge->endpoint);
+        nros_xrce_free(bridge->sock);
+        nros_xrce_free(bridge->endpoint);
         bridge->sock = NULL;
         bridge->endpoint = NULL;
         return NROS_RMW_RET_ERROR;
@@ -104,16 +104,16 @@ rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
     if (nros_platform_udp_create_endpoint(bridge->endpoint,
                                           (const uint8_t *)host,
                                           (const uint8_t *)port) != 0) {
-        free(bridge->sock);
-        free(bridge->endpoint);
+        nros_xrce_free(bridge->sock);
+        nros_xrce_free(bridge->endpoint);
         bridge->sock = NULL;
         bridge->endpoint = NULL;
         return NROS_RMW_RET_ERROR;
     }
     if (nros_platform_udp_open(bridge->sock, bridge->endpoint, 100) != 0) {
         nros_platform_udp_free_endpoint(bridge->endpoint);
-        free(bridge->sock);
-        free(bridge->endpoint);
+        nros_xrce_free(bridge->sock);
+        nros_xrce_free(bridge->endpoint);
         bridge->sock = NULL;
         bridge->endpoint = NULL;
         return NROS_RMW_RET_ERROR;
@@ -127,8 +127,8 @@ rmw_ret_t xrce_nros_udp_init(xrce_session_state_t *st,
         bridge, {
             nros_platform_udp_close(bridge->sock);
             nros_platform_udp_free_endpoint(bridge->endpoint);
-            free(bridge->sock);
-            free(bridge->endpoint);
+            nros_xrce_free(bridge->sock);
+            nros_xrce_free(bridge->endpoint);
             bridge->sock = NULL;
             bridge->endpoint = NULL;
         });

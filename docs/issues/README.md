@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-49 open. One line each — the detail lives in the issue file,
+47 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -82,7 +82,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0829** (api, rmw) — Two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on depth — 1 in `nros-rmw`, 10 in the `nros::qos` façade, each with two callers See `0829-*`.
 - **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX See `0830-*`.
 - **#0831** (build) — `[image.<id>].rmw` configures nothing on the cargo driver — and a workspace fixture row's `rmw` does not either, so two tier-2 coordinates test zenoh while claiming cyclonedds and XRCE See `0831-*`.
-- **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
 - **#0834** (cmake) — The per-build `nros_cpp_config_generated.h` mirror can reach a state no re-run repairs — only wiping the west build dir recovers it See `0834-*`.
 - **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
 - **#0836** (rmw) — A FreeRTOS/lwIP image receives every small ROS topic and never a fragmented one — a 13 KiB Autoware trajectory never arrives See `0836-*`.
@@ -105,7 +104,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
 - **#0880** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0880-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
-- **#0881** (ci) — Cyclone's platform-alloc funnel has no fast-line lane — the only build that compiles it has no platform to funnel into See `0881-*`.
 
 <!-- END GENERATED open-issue list -->
 
