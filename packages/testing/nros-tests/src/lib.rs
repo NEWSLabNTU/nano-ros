@@ -1222,3 +1222,27 @@ mod tests {
         }
     }
 }
+
+/// `nros::Executor` is re-exported behind the `nros` crate's own `rmw-cffi`
+/// feature (the type needs an active transport backend), and in THIS crate that
+/// arrives via `component-runtime-test`, not via `trigger-test` — which enables
+/// `nros-node/rmw-cffi` and leaves the umbrella's re-export gated. Gated on the
+/// feature that actually brings the type in rather than the one whose name
+/// matches, which cost two builds to find out.
+#[cfg(all(test, feature = "component-runtime-test"))]
+mod w4_reachability {
+    /// phase-381 W4 — the graph entry points are reachable through the PUBLIC
+    /// façade, not merely present on an internal type.
+    ///
+    /// Compile-only: it takes the method as a function value, which fails to
+    /// build if the method is missing, private, or on a type `nros::Executor`
+    /// does not alias. Nothing is called, so no session or router is needed.
+    #[test]
+    fn graph_entry_points_exist_on_the_public_executor() {
+        let _ = nros::Executor::get_node_names;
+        let _ = nros::Executor::get_topic_names_and_types;
+        let _ = nros::Executor::get_service_names_and_types;
+        let _ = nros::Executor::count_publishers;
+        let _ = nros::Executor::count_subscribers;
+    }
+}
