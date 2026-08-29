@@ -1,8 +1,7 @@
 # Phase 396 — the merge queue never blocked anyone; the required check is red for every input
 
-**Status (2026-08-29). W1 landed — the merge group runs `ci-l1`. W2/W3 need a
-decision from the maintainer (auto-merge convention, ruleset numbers); W4 is
-blocked on PR #19; W5 is open.** Opened from "if one PR fails the merge check, it blocks everyone —
+**Status (2026-08-29). W1, W3, W4, W5 landed. W2 is a convention, applied to
+the open PRs and to be written into AGENTS.md.** Opened from "if one PR fails the merge check, it blocks everyone —
 find a better policy". The premise turns out not to describe what happened here,
 and the real defect is one layer down — but the policy question is still worth
 answering, because the settings that would have contained a real blocking
@@ -136,10 +135,7 @@ Current: `ALLGREEN`, build 4, merge 4, min 1, wait 5 min, timeout 60 min.
 - **`check_response_timeout_minutes: 60`** is right for a 30-ish minute lane;
   the usual rule is ~2× observed duration.
 
-### W4 — a circuit breaker for the case a queue cannot handle
-
-**Blocked on PR #19**, which is where `queue-notify.yml` lives; it is not on
-`main` yet, so this wave cannot be written until that lands.
+### W4 — a circuit breaker for the case a queue cannot handle — LANDED (on PR #19)
 
 `scripts/ci/queue-triage.sh` already answers "is this red mine, or is it red for
 everyone?" by looking for one check failing across several *different* pull
@@ -155,16 +151,43 @@ Same shape as phase-395's merge-queue INFRA/MINE split and issue 0878's
 verdict/no-verdict split for nightly. Third instance of one idea: **a red that
 is not about your change must not be reported as though it were.**
 
-### W5 — the gap that let this happen
+### W5 — the gap that let this happen — LANDED
 
 `check-lane-contracts` proves `ci-l1` is affordable. Nothing proves the same of
 the tier the merge group actually runs. Extend it to assert the contract for
 *every* tier a CI job invokes: a gate may resolve a build-stage artifact only if
 its lane produces it.
 
-That would have failed on `native::check` and `check-source-gates` the moment
-the merge group started running `check-build`, in the fast line, before any of
-this reached the queue.
+It does. Three blind spots had to be closed, and each is worth naming because
+each looked like a detail:
+
+- **Module recipes were invisible.** The walk read only the root `justfile`, and
+  `check-build`'s last dependency is `native::check`, which lives in
+  `just/native.just`.
+- **The recipe-header regex skipped it anyway.** `check JOBS="75%":` has an
+  uppercase parameter and a quoted default containing `%`; the old
+  `(?:[a-z_]+=\S*\s*)*` matched neither. One regex, and the one recipe that
+  mattered.
+- **A precondition is not always a `require_*` resolver.** `native::check`
+  states its own in the only place it was ever stated — a remediation string
+  followed by `exit 1`. That pair (names a producer, can fail) is now the
+  declaration the gate reads.
+
+Plus event attribution, so severity is right: a broken tier on `schedule` is a
+bad nightly (issue 0878's territory), while the same tier on `merge_group` or
+`pull_request` is a repository nobody can merge into.
+
+Verified by putting `check-build` back on `merge_group` — the exact pre-W1
+state — and watching it fire:
+
+```
+check-lane-contracts: 2 tier violation(s):
+  - pr-checks.yml:check runs `check-build` -> `native::check` hard-requires
+    `just build-test-fixtures`, which the job never runs.
+  - ...and `just generate-bindings`, likewise.
+```
+
+then green again with W1 restored. 17 self-test assertions, on the normal path.
 
 ## Not doing
 
