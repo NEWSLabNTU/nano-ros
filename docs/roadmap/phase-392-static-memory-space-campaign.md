@@ -1,7 +1,21 @@
 # Phase 392 — 27% of a safety-island image is message buffers nobody can price
 
-**Status (2026-08-26). Survey + plan, nothing landed.** Opened from a
-memory-allocation review that measured a real 320 KiB-class board image. Sizes
+**Status (2026-08-30). W1, W3 and most of W5 landed; W2 is now issue 0900.**
+Opened from a memory-allocation review that measured a real 320 KiB-class board
+image.
+
+Landed since: **W1** (pool inventory to full coverage, plus `just mem-report`
+and the `static_memory_declared_pools` test that makes a published pool figure
+answer to the linker), **W3a/W3b** (a subscription buffer sized from the
+message's own `MAX_SERIALIZED_SIZE_*` rather than by hand — Rust only; the
+C/C++ half is [issue 0896](../issues/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)),
+and **W5.b1/c/d/e/f** (the queryable table sized by declaration — 143,456 B off
+a talker — with an exhausted table that names the declaration and a knob that is
+checked at build time).
+
+Still open: **W5.g**, which is the MEASUREMENT of W5 on a real cmake workspace
+image and has not been run; W5.d's 143,456 B was measured on a pure-cargo leaf
+that this wave changes by zero bytes. Sizes
 below are `nm` output from `build-board/zephyr/zephyr.elf` on
 mr_canhubk3/s32k344 (zenoh over serial), not estimates. Depends on
 [phase 390](phase-390-storage-mode-rename-inline-heap-view.md) for vocabulary
@@ -263,6 +277,29 @@ it away**: the likely answer is a runtime high-water mark reported at teardown
 plus a CI lane that fails when it exceeds the configured arena — the generated
 path proves its number statically, the hand-written path measures it, and both
 report through one figure.
+
+**W2 IS [issue 0900](../issues/0900-arena-slots-budgeted-at-action-client-worst-case.md),
+and its runtime half has landed.** The issue was filed from the other end —
+measuring that `ARENA_SIZE` is 74,240 bytes on every generated config in the
+tree, a talker included, while a timer-only executor claims **32 bytes** — and
+only then met this wave. Recorded here so the two do not diverge into separate
+efforts against one defect.
+
+Delivered against the plan above:
+
+* the runtime measurement this wave predicted — `Executor::arena_used()` /
+  `arena_capacity()` plus a one-shot first-spin advisory naming the
+  `NROS_EXECUTOR_ARENA_SIZE` value to set. The arena is a BUMP allocator, so
+  that figure is exact rather than a high-water estimate;
+* `NROS_EXECUTOR_ACTION_CLIENTS`, which stops every slot being budgeted at the
+  ActionClient worst case (74,240 -> 16,384 at the defaults, with the default
+  byte-identical to the old formula so no image moves).
+
+Still owed by this wave: the STATIC half — `NROS_ARENA_REQUIRED` emitted by
+entry codegen and checked by `nm` — and a CI lane. Note the correction issue
+0900 records: the arena is **inline on the task stack**, not in `.bss`, so
+`mem-report` cannot see it and a linker-symbol check will not either. Sizing it
+needs a stack probe, which this wave's `nm` plan did not anticipate.
 
 **W3 — per-subscriber wire sizing.** Lever 1. Requires W1 so the saving is
 measured rather than asserted.
