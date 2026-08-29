@@ -70,6 +70,16 @@ COMMENT = re.compile(r"^\s*#")
 RECIPE_DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)(?:\s+[^:\n]*)?:(?!=)", re.M)
 ALIAS_DEF = re.compile(r"^alias\s+([A-Za-z0-9_-]+)\s*:=", re.M)
 MOD_DEF = re.compile(r"^mod\s+([A-Za-z0-9_-]+)\s+'([^']+)'", re.M)
+# `import "just/x.just"` merges that file's recipes into the ROOT namespace —
+# unlike `mod`, which namespaces them. This gate followed `mod` and not
+# `import`, so every imported recipe read as UNDEFINED.
+#
+# It had been blind to `sdk-env.just`'s recipes since that import was added and
+# nobody noticed, because no recipe body happened to call one by name. phase-399
+# moved 200 `check-*` recipes into an imported `just/check.just`, and the gate
+# reported all of them missing at once — a latent hole surfacing as a flood
+# rather than as a single wrong answer.
+IMPORT_DEF = re.compile(r'^import\s+[\'"]([^\'"]+)[\'"]', re.M)
 
 
 def names_in(path):
@@ -88,9 +98,15 @@ def recipe_namespace():
     everything it advertises.
     """
     root_file = REPO / "justfile"
+    text = root_file.read_text()
     roots = names_in(root_file)
+    # `import` is a MERGE, so its names belong to the root namespace.
+    for rel in IMPORT_DEF.findall(text):
+        f = REPO / rel
+        if f.exists():
+            roots |= names_in(f)
     mods = {}
-    for name, rel in MOD_DEF.findall(root_file.read_text()):
+    for name, rel in MOD_DEF.findall(text):
         mods[name] = names_in(REPO / rel)
     return roots, mods
 
@@ -278,5 +294,46 @@ def main():
     return 1
 
 
+def selftest(verbose=False):
+    """Prove the import/mod distinction is honoured. Runs on every invocation."""
+    import tempfile
+    ok = fail = 0
+
+    def chk(desc, cond):
+        nonlocal ok, fail
+        if verbose or not cond:
+            print(f"  {'ok   ' if cond else 'FAIL '} {desc}")
+        ok += 1 if cond else 0
+        fail += 0 if cond else 1
+
+    chk("`import \"x.just\"` is recognised",
+        IMPORT_DEF.findall('import "just/check.just"\n') == ["just/check.just"])
+    chk("single-quoted import too",
+        IMPORT_DEF.findall("import 'just/check.just'\n") == ["just/check.just"])
+    chk("`mod` is NOT read as an import — it namespaces, it does not merge",
+        IMPORT_DEF.findall("mod native 'just/native.just'\n") == [])
+    chk("an indented `import` inside a body is not a declaration",
+        IMPORT_DEF.findall("recipe:\n    import 'x'\n") == [])
+
+    with tempfile.TemporaryDirectory() as d:
+        f = Path(d) / "x.just"
+        f.write_text("# c\nfoo-bar:\n    echo hi\n\nalias fb := foo-bar\n")
+        got = names_in(f)
+        chk("names_in reads recipes and aliases from an imported file",
+            {"foo-bar", "fb"} <= got)
+
+    if verbose:
+        print(f"\n{ok} passed, {fail} failed")
+    if fail:
+        print("check-just-recipe-refs self-test: FAILED", file=sys.stderr)
+        raise SystemExit(1)
+    return 0
+
+
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(selftest(verbose=True))
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment.
+    selftest()
     sys.exit(main())
