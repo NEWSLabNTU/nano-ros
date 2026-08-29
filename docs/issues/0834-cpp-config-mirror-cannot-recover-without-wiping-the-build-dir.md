@@ -92,6 +92,92 @@ established. Both are XRCE, which is suggestive and not conclusive on n=2.
   `SESSION_OPAQUE_U64S undeclared`, which issue 0088 records as having been
   latent for a whole phase.
 
+## Investigated 2026-08-29 — one mechanism reproduced, one still unrooted
+
+### The inferred mechanism was wrong in its details
+
+The report inferred: "cargo considers the crate up to date, prints `Finished`
+without re-running the build script, so the byproduct is not re-emitted".
+
+Half right, and the wrong half matters. The build script **does** run, and it
+declines to write:
+
+```rust
+// packages/tooling/nros-build-helpers/src/cpp.rs:230
+if exact_executor == 0 {
+    // `cargo check --no-default-features` / `cargo doc` path — probe yielded
+    // nothing. Skip writing the per-build header.
+    return;
+}
+```
+
+Reproduced in seconds on the host copy, on today's tree:
+
+```
+$ rm target/nros-cpp-generated/nros/nros_cpp_config_generated.h
+$ cargo build -p nros-cpp
+warning: nros-cpp: EXECUTOR_SIZE probe returned 0 — likely a
+         `cargo check --no-default-features` run
+    Finished `dev` profile in 0.10s
+$ ls target/nros-cpp-generated/nros/*.h    # still absent
+```
+
+The script ran — its warnings printed — and wrote nothing. Touching `build.rs`
+does not change it, because the script is not being skipped; it is returning.
+A build WITH a backend feature restores the header immediately.
+
+So the absorbing property is not "cargo won't re-run the script". It is: **the
+only writer may legitimately decline, and nothing notices the result.** The
+decline is correct on its own terms — the comment is right that no RMW backend
+means no executor sizes to ship, and the stub's `#error` is the intended
+outcome for that configuration. What is wrong is that the same decline, over a
+target dir where the header is missing for some OTHER reason, reports success
+and leaves consumers reading the stub.
+
+### Also established
+
+* `write_header_to_target_dir` writes header then stamp, unconditionally, in
+  one function — so the pair the survey found (stamp, no header) is a state the
+  writers **cannot produce**.
+* `write_header_if_absent_or_verify` and `write_header_to_target_dir` both
+  self-heal an absent header — but only when reached.
+* `write_atomic` is genuinely atomic (temp + rename, panics on failure), so a
+  half-written header is not the explanation.
+* The `add_custom_command` mirror **does** declare its destinations as `OUTPUT`
+  and the mirror script exits 1 on a missing source, naming issue 0805. Note
+  that script landed at 21:04 on 2026-08-27 — **7.5 hours after this issue was
+  filed at 13:38** — so the report's step (2) was observed against a mechanism
+  that has since changed.
+
+### Still unrooted
+
+**How the two XRCE build dirs lost their header while keeping the stamp.** The
+recovery was `rm -rf`, which destroyed the evidence. Nothing in the tree deletes
+a `.h` without its `.stamp`; no such code path was found.
+
+That is why the fix below is a GATE and not a repair: the state is detectable in
+milliseconds and self-describing, whatever produced it, whereas a repair for an
+unrooted cause would be a guess.
+
+## Fixed — `check-orphan-generated-stamp` (fast lane)
+
+The survey from this report, as a gate. Walks both generated trees
+(`nros-c-generated` and `nros-cpp-generated` — the C side matters most, since
+its symptom is `SESSION_OPAQUE_U64S undeclared` rather than a self-describing
+`#error`, and issue 0088 records that being latent for a whole phase), names the
+offending directory, and prints the only recovery that works.
+
+2.0 s over 221 000 directories — the naive walk was 8.2 s, and pruning the trees
+that cannot contain a generated dir (cargo's `deps`/`.fingerprint`/`incremental`,
+CMake/Zephyr interiors) is the difference between a fast-lane gate and one
+nobody runs.
+
+Mutation-checked against the real tree: removing the live header makes it fail
+and name the exact path; restoring it makes it pass. Its own negative control
+runs on every invocation and covers three cases — a healthy pair, the 0834
+state, and a header with no stamp, which is NOT this defect and must not trip
+it.
+
 ## Directions
 
 1. **Make the mirror a real edge with the byproduct as a declared input**, so

@@ -497,7 +497,7 @@ check-fast-serial: _check-skip-reset \
     check-infra-queryable-counts \
     check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \
     check-subtree-guard \
-    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-no-tracked-workspace-roots check-generated-schema-coverage \
+    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-no-tracked-workspace-roots check-orphan-generated-stamp check-generated-schema-coverage \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
@@ -1744,6 +1744,17 @@ check-no-tracked-models:
 [private]
 check-no-tracked-workspace-roots:
     @python3 scripts/check-no-tracked-workspace-roots.py
+
+# issue 0834 — a per-build sizes header must never lose its `.stamp` twin.
+#
+# The pair is written by ONE function, header first, so a stamp with no header
+# is a state the writers cannot produce — and it does not repair itself: a build
+# whose probe yields 0 declines to write the header and reports success. The
+# consumer-side symptom is a stub `#error` (C++) or an undeclared macro (C),
+# from a file nobody was looking at. This names the directory instead.
+[private]
+check-orphan-generated-stamp:
+    @python3 scripts/check-orphan-generated-stamp.py
 
 # issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
 # PATH shim (cargo has no config/env knob for it, and per-site flags would miss
