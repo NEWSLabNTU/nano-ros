@@ -263,6 +263,21 @@ can NEVER merge — two PRs deadlocked on each other that way (#6 and #16).
 `scripts/ci/enable-merge-queue.sh` refuses to make a path-filtered context
 required, and will tell you so.
 
+### You WILL be told if the queue ejects you
+
+GitHub records an ejection only in the PR timeline — no comment, no
+notification, nothing that reaches an agent who has moved on. `queue-notify`
+closes that: when a merge-group run fails it comments on the ejected pull
+request with the run log and the triage command.
+
+It is a SEPARATE workflow on `workflow_run`, not a step inside the failing run,
+because a failing run cannot reliably report on itself — the failure may be the
+runner, the container, or a cancellation, and a notifier that shares a fate with
+the thing it reports is not a notifier.
+
+So: an `OPEN` PR with no ejection comment is still queued. One WITH a comment is
+waiting on you, and the comment says what to do.
+
 ### If everything is blocked and the blocker is CI itself
 
 That is a real state, not a mistake you made — the fix for CI can be blocked by
