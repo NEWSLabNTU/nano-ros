@@ -1765,17 +1765,74 @@ fn resolve_system_models(scan: &[WsPkg], verbose: bool, model_dir: Option<&Path>
 /// installs to catch a dev-tree hazard.
 fn verify_resolver_pin(resolver: &std::path::Path) -> Result<()> {
     const OURS: &str = env!("NROS_PLAY_LAUNCH_SHA");
-    if OURS == "unknown" {
-        return Ok(());
-    }
+    // The `--version` probe runs even when OURS is `unknown`. It answers TWO
+    // questions and only one of them is about the pin: the other is "can this
+    // binary run at all", which matters on every build.
     let Ok(out) = std::process::Command::new(resolver)
         .arg("--version")
         .output()
     else {
-        return Ok(());
+        return Ok(()); // could not spawn; the caller's own not-found check reports that
     };
     if !out.status.success() {
+        // A resolver that CANNOT LOAD is not a resolver that predates
+        // `--version`, and treating them alike is why a missing interpreter
+        // surfaced as a raw loader message N packages later:
+        //
+        //   sync: nros-launch-resolve failed for `pkg` (bringup.launch.py):
+        //   …: error while loading shared libraries: libpython3.10.so.1.0:
+        //   cannot open shared object file: No such file or directory
+        //
+        // The resolver embeds CPython (pyo3) because `.launch.py` files ARE
+        // Python and ROS compatibility requires executing them, so `libpython`
+        // is a hard DT_NEEDED — the loader fails before `main`, and the binary
+        // itself can never report it. This is the one place that can.
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        if stderr.contains("error while loading shared libraries") {
+            let missing = stderr
+                .split("error while loading shared libraries: ")
+                .nth(1)
+                .and_then(|s| s.split(':').next())
+                .unwrap_or("libpython")
+                .trim()
+                .to_string();
+            let host = std::process::Command::new("python3")
+                .arg("-c")
+                .arg("import sys;print('%d.%d' % sys.version_info[:2])")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty());
+            bail!(
+                "sync: `{}` cannot start — it needs `{}`, which this host does not have.\n\
+                 \n\
+                 nano-ros supports Python launch files because they are part of the ROS 2\n\
+                 standard, so the resolver embeds CPython and links one specific\n\
+                 `libpython`. That link is resolved by the loader BEFORE the program runs,\n\
+                 which is why the message above comes from `ld.so` and not from us.\n\
+                 \n\
+                 {}\n\
+                 Fix it either way:\n\
+                 \n    just setup-launch-resolve     # rebuild against THIS host's interpreter\n\
+                 \n  or install the interpreter it was built for ({}).\n\
+                 \n\
+                 XML and YAML launch files need no interpreter; only `.launch.py` does.",
+                resolver.display(),
+                missing,
+                match &host {
+                    Some(v) => format!(
+                        "This host's `python3` is {v}; the resolver was built against a different one."
+                    ),
+                    None => "No `python3` was found on this host at all.".to_string(),
+                },
+                missing,
+            );
+        }
         return Ok(()); // predates `--version`; nothing to compare
+    }
+    if OURS == "unknown" {
+        return Ok(());
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let Some(theirs) = text
