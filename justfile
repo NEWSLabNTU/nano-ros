@@ -494,6 +494,7 @@ check-fast-serial: _check-skip-reset \
     check-ci-image-python-deps check-kconfig-overridden-values \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
+    check-infra-queryable-counts \
     check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \
     check-subtree-guard \
     check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-generated-schema-coverage \
@@ -1892,6 +1893,14 @@ check-cpp-freestanding-includes:
 [private]
 check-weak-symbols:
     @bash scripts/check-weak-symbols.sh
+
+# Issue 0827 — the infrastructure-queryable counts have ONE definition each,
+# tied to the number of servers actually created. A service server IS a zenoh
+# queryable, so these are a term in every service-buffer pool the RMW sizes;
+# they had SEVEN spellings and no definition, two of them already wrong.
+[private]
+check-infra-queryable-counts:
+    @python3 scripts/check-infra-queryable-counts.py
 
 # Phase 176.3 — verify the orchestration generator's PlatformProfile
 # board-crate references match the actual board crates (existence +

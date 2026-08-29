@@ -315,16 +315,28 @@ impl ZenohServiceServer {
             NEXT_SERVICE_BUFFER_INDEX[session_index].fetch_sub(1, Ordering::SeqCst);
             // issue 0406 — this table is the reason, and the bare
             // `ServiceServerCreationFailed` never said so. A service server IS a
-            // queryable, and the ROS parameter services (6) plus the REP-2002
-            // lifecycle services (6) consume twelve slots before an application
-            // declares anything, so an entry enabling both overflowed an 8-slot
-            // table AT BOOT and reported only "creation failed" — which reads as
-            // a transport or naming fault, not a capacity limit. Name the knob.
+            // queryable, and the runtime registers its own before the
+            // application declares anything, so an entry enabling the parameter
+            // and lifecycle services overflowed an 8-slot table AT BOOT and
+            // reported only "creation failed" — which reads as a transport or
+            // naming fault, not a capacity limit. Name the knob.
+            //
+            // issue 0827 — this message used to quote those counts ("param
+            // services use 6 and lifecycle services use 6"). It was wrong
+            // (lifecycle is 5) and it could not be otherwise: this crate does
+            // not depend on `nros-node` and cannot see either the counts or
+            // whether their features are even compiled in. A number stated
+            // where it cannot be derived is a number that drifts, and this was
+            // one of six such spellings. The counts now live beside the code
+            // that creates them, as `PARAM_SERVICE_QUERYABLES` and
+            // `LIFECYCLE_SERVICE_QUERYABLES`; the message names the knob and
+            // the cause, which is all this layer actually knows.
             #[cfg(feature = "std")]
             log::error!(
                 "service server rejected: ZPICO_MAX_QUERYABLES={} exhausted for \
-                 session {} (a service server is a queryable; ROS param services \
-                 use 6 and lifecycle services use 6). Raise ZPICO_MAX_QUERYABLES \
+                 session {} (a service server is a queryable, and the ROS \
+                 parameter and REP-2002 lifecycle services claim theirs before \
+                 the application declares anything). Raise ZPICO_MAX_QUERYABLES \
                  and rebuild.",
                 ZPICO_MAX_QUERYABLES,
                 session_index,
@@ -337,11 +349,18 @@ impl ZenohServiceServer {
             // `nros` prints it verbatim — which is how the three zephyr
             // `workspaces/features` entries finally named their own failure
             // instead of dying quietly after "Network ready".
+            // issue 0827 — this string used to quote the counts (6 and 5, and
+            // 11 for the pair). Correct at the time, and still the wrong place
+            // for them: this crate cannot see `nros-node`'s constants or
+            // whether their features are compiled in, so the numbers could only
+            // ever be copies. Seven copies existed; two had drifted to the
+            // wrong value. Say what this layer knows — the table, the knob, and
+            // that the runtime claims slots first.
             return Err(TransportError::Backend(
                 "zenoh queryable table exhausted — raise CONFIG_NROS_MAX_QUERYABLES \
-                 (env ZPICO_MAX_QUERYABLES). A service server IS a queryable: the ROS \
-                 parameter services use 6 and the REP-2002 lifecycle services 5, so an \
-                 entry declaring both needs 11 before its own callbacks.",
+                 (env ZPICO_MAX_QUERYABLES). A service server IS a queryable, and the \
+                 ROS parameter and REP-2002 lifecycle services claim theirs before an \
+                 entry's own callbacks.",
             ));
         }
         let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
