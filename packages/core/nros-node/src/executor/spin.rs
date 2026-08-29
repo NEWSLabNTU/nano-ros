@@ -3392,6 +3392,88 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
+    /// phase-381 W4 — every node on the graph, with its namespace.
+    ///
+    /// `visit(name, namespace, enclave)` is called once per node and returns
+    /// `false` to stop early. A VISITOR rather than a returned collection
+    /// because there is no allocator at this layer and the graph has no bound
+    /// the caller can know; peak extra memory is one entry. Every string is
+    /// BORROWED for the duration of the call.
+    ///
+    /// `enclave` is `None` where the backend does not track one, which is what
+    /// lets one call answer both `rmw_get_node_names` and
+    /// `rmw_get_node_names_with_enclaves`.
+    ///
+    /// **This reports what has already been DISCOVERED, and never blocks.** The
+    /// first call after startup legitimately sees a partial graph — the backend
+    /// keeps a standing query fed by `spin`, so the view fills in over
+    /// successive calls. Code that waits for a peer should poll, not call once
+    /// and conclude. An empty result is "nobody seen yet", never "nobody
+    /// exists".
+    ///
+    /// `Err(Transport(Unsupported))` from a backend with no graph — distinct
+    /// from an empty graph, deliberately.
+    pub fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .get_node_names(visit)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — every topic on the graph, with the types on it.
+    ///
+    /// `visit(topic_name, types)` is called once per distinct TOPIC — a topic
+    /// carrying two types is one call with two entries, not two calls. `types`
+    /// may legitimately be empty on a partially discovered graph: reporting the
+    /// name without a type beats dropping it.
+    ///
+    /// Same discovery caveat as [`Self::get_node_names`].
+    pub fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .get_topic_names_and_types(visit)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — every service on the graph, with its types.
+    /// As [`Self::get_topic_names_and_types`], over servers and clients.
+    pub fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .get_service_names_and_types(visit)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — how many publishers are visible on `topic_name`.
+    ///
+    /// `topic_name` is a ROS name (`"/chatter"`). A count reflects what has
+    /// been DISCOVERED, so it can be low right after startup and is never a
+    /// proof of absence — see [`Self::get_node_names`].
+    pub fn count_publishers(&mut self, topic_name: &str) -> Result<usize, NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .count_publishers(topic_name)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — how many subscribers are visible on `topic_name`.
+    /// See [`Self::count_publishers`] for the caveats.
+    pub fn count_subscribers(&mut self, topic_name: &str) -> Result<usize, NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .count_subscribers(topic_name)
+            .map_err(NodeError::Transport)
+    }
+
     /// Get a mutable reference to an action client core in the arena by entry index.
     ///
     /// # Safety
