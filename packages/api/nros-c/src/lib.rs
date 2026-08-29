@@ -270,6 +270,11 @@ mod opaque_sizes;
 mod parameter;
 mod platform;
 mod qos;
+// phase-8 — `nros_set_trace_sink`. Deliberately UNGATED so the symbol exists
+// in every build (the body is what the feature gates), which is also what puts
+// it in the generated `c_surface_anchor` and keeps DCE from dropping it when
+// `nros-c` is bundled as an rlib by the `nros-cpp` umbrella.
+mod trace;
 mod transport;
 mod util;
 

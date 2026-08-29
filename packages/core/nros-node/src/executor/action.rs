@@ -12,7 +12,7 @@ use super::{
     action_core::{ActionClientCore, ActionServerCore, RawActiveGoal},
     arena::{
         ActionClientCallbackEntry, ActionClientRawArenaEntry, ActionServerArenaEntry,
-        ActionServerRawArenaEntry, BufferStrategy, CallbackMeta, EntryKind,
+        ActionServerRawArenaEntry, BufferStrategy, CallbackMeta, EntryKind, TraceName,
         action_client_callback_try_process, action_client_raw_try_process,
         action_server_raw_try_process, action_server_try_process, always_ready,
         as_active_goal_count, as_complete_goal, as_for_each_active_goal, as_publish_feedback,
@@ -300,7 +300,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionServer,
             has_data: always_ready,
@@ -318,7 +318,8 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<
                 Entry<A, GoalF, CancelF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
             >,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(action_name));
 
         Ok(ActionServerHandle {
             entry_index: slot,
@@ -724,7 +725,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionServer,
             has_data: always_ready,
@@ -737,7 +738,8 @@ impl<'s> Executor<'s> {
                 MAX_GOALS,
             >,
             drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(spec.action_name));
         self.apply_node_default_sched(slot, node_id, None);
 
         Ok(ActionServerRawHandle {
@@ -1180,7 +1182,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
             has_data: always_ready,
@@ -1188,7 +1190,8 @@ impl<'s> Executor<'s> {
             invocation: InvocationMode::Always,
             try_process: action_client_raw_try_process::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
             drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(spec.action_name));
         self.apply_node_default_sched(slot, node_id, None);
 
         Ok(ActionClientRawHandle { entry_index: slot })
@@ -1370,7 +1373,7 @@ impl<'s> Executor<'s> {
             &mut (*entry_ptr).core as *mut ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
         };
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
             has_data: always_ready,
@@ -1386,7 +1389,8 @@ impl<'s> Executor<'s> {
                 FEEDBACK_BUF,
             >,
             drop_fn: drop_entry::<Entry<A, GRespF, FbF, ResF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(action_name));
         self.apply_node_default_sched(slot, node_id, None);
         Ok((HandleId(slot), core_ptr))
     }
@@ -1431,7 +1435,7 @@ impl<'s> Executor<'s> {
             );
         }
 
-        self.entries[slot] = Some(CallbackMeta {
+        let meta = CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
             has_data: always_ready,
@@ -1439,7 +1443,8 @@ impl<'s> Executor<'s> {
             invocation: InvocationMode::Always,
             try_process: action_client_raw_try_process::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
             drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
-        });
+        };
+        self.emplace_entry(slot, meta, TraceName::Slot("action_client", slot));
 
         Ok(ActionClientRawHandle { entry_index: slot })
     }

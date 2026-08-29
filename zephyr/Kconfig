@@ -168,6 +168,39 @@ config NROS_SNTP_TIMEOUT_MS
       reach a time source still runs, it just cannot stamp absolute time.
 
 # =============================================================================
+# Callback-level tracing (phase-8)
+# =============================================================================
+
+config NROS_TRACE_CALLBACKS
+    bool "Emit callback register / start / end trace events"
+    help
+      Turn on the `trace-callbacks` cargo feature, so the executor emits a
+      registration event per callback at init and a start/end pair around
+      every dispatch. With this off the hooks are not compiled: the feature
+      is absent from the cargo feature string, so the dispatch path is the
+      same code it is today rather than a branch that is never taken.
+
+      What it buys: a capture attributes time to EVERY registered callback,
+      including the ones nobody thought to instrument. Thread-level tracing
+      cannot do this — a callback does not run on a thread of its own, it
+      runs inside an executor wake as an ordinary function call, so the
+      tracer sees the carrier and not the payload.
+
+      Where the events GO is the consumer's business, not this symbol's.
+      The core calls an installed sink (`set_trace_sink`) whose signature is
+      a plain `extern "C" fn(uint32_t, uint32_t)`; nothing here presumes CTF.
+      On a Zephyr image that also sets CONFIG_TRACING_CTF, the sink that the
+      entry path installs (`nros_zephyr_trace_marker`, in
+      `nros_platform_zephyr_shims.c`) forwards to an out-of-tree `app_marker`
+      CTF event; without CONFIG_TRACING_CTF that shim is empty and the events
+      cost a call and a return. Enabling this alone therefore instruments the
+      executor but records nothing — pair it with a tracing backend.
+
+      Cost, stated honestly: two events per dispatch, none in steady state
+      for registration. The per-event cost has NOT been measured in isolation
+      on any target, so this is opt-in and defaults off.
+
+# =============================================================================
 # Cyclone DDS tuning
 # =============================================================================
 

@@ -91,8 +91,17 @@ pub(crate) const MAX_PRIORITY_LEVELS: usize = 8;
 pub(crate) struct WorkItem {
     pub(crate) arena_base: usize,
     pub(crate) arena_offset: usize,
-    pub(crate) try_process: unsafe fn(*mut u8, u64) -> Result<bool, nros_rmw::TransportError>,
+    pub(crate) try_process: unsafe fn(*mut u8, u64, u8) -> Result<bool, nros_rmw::TransportError>,
     pub(crate) delta_us: u64,
+    /// The entry's slot index, carried so the leaf callback hooks can name
+    /// the callback they bracket (phase 8,
+    /// `docs/design/callback_tracing.rst`). This path is the reason those
+    /// hooks had to be thread-safe from day one: it runs `try_process` on a
+    /// WORKER task, so two callbacks can legitimately be in flight at once
+    /// and their events interleave in the capture. Keying every event on the
+    /// handle — rather than holding an open span in a single slot — is what
+    /// lets the decoder pair them anyway.
+    pub(crate) desc_idx: u8,
 }
 
 // SAFETY: Phase 110.F per-DescIdx exclusive-access invariant — the activator
@@ -137,7 +146,7 @@ unsafe extern "C" fn worker_entry(arg: *mut c_void) -> *mut c_void {
             // arena, which outlives this task — `Executor::drop` halts and
             // JOINS every worker before the arena is released.
             let data = (item.arena_base as *mut u8).wrapping_add(item.arena_offset);
-            let _ = unsafe { (item.try_process)(data, item.delta_us) };
+            let _ = unsafe { (item.try_process)(data, item.delta_us, item.desc_idx) };
         }
         // Bounded wait: the producer signals after every enqueue, and the
         // timeout bounds how long a halt takes to observe.

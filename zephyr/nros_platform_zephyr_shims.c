@@ -159,6 +159,46 @@ void nros_zephyr_epoch_acquire_configured(void) {
 #endif
 }
 
+/* phase-8 W4 — callback-tracing sink for the Zephyr CTF backend.
+ *
+ * This is the C ABI the core's `set_trace_sink` takes:
+ * `unsafe extern "C" fn(u32, u32)`, chosen to BE this signature. The core
+ * calls whatever pointer is installed and knows nothing about Zephyr; the
+ * entry path installs this function; the dependency stays one-directional.
+ *
+ * WHY THE DECISION LIVES IN C, same reason as
+ * `nros_zephyr_epoch_acquire_configured` above. Two facts force it:
+ *
+ *  1. `sys_trace_app_marker` is an OUT-OF-TREE Zephyr patch carried by the
+ *     consumer, not by nano-ros (`patches/zephyr/0002-ctf-app-marker-event.patch`
+ *     in autoware-safety-island; absent from `zephyr/patches/` here). If any
+ *     nano-ros crate or TU named the symbol unconditionally, every Zephyr image
+ *     built WITHOUT that patch would fail to link. Naming it only inside this
+ *     `#ifdef`, in a TU the module already compiles, keeps an unpatched image
+ *     linking against an empty function.
+ *  2. The symbol exists only under `CONFIG_TRACING_CTF`, and Kconfig knobs
+ *     reach the Zephyr C lane and NOT the cargo one (issue 0460) — so no Rust
+ *     arm can hold this `#ifdef` without a build-script knob read.
+ *
+ * Declared `extern` at the call site rather than by including
+ * <zephyr/tracing/tracing.h>: the header's `sys_trace_*` set is macro-driven
+ * and an out-of-tree event is not in it, so the declaration has to be local
+ * either way, and keeping it inside the guard means the name appears in the
+ * TU only when the patch that defines it is present.
+ *
+ * `marker_id` / `arg` are the wire encoding agreed with the decoder
+ * (`scripts/parse-zephyr-ctf.py`); this shim is a pure forwarder and imposes
+ * no meaning on either field. */
+void nros_zephyr_trace_marker(uint32_t marker_id, uint32_t arg) {
+#ifdef CONFIG_TRACING_CTF
+    extern void sys_trace_app_marker(uint32_t, uint32_t);
+    sys_trace_app_marker(marker_id, arg);
+#else
+    (void)marker_id;
+    (void)arg;
+#endif
+}
+
 /* Phase 110.E.b — periodic timer for Sporadic-server budget refill.
  * Wraps `k_timer_*` (static inlines) plus a per-timer bridge struct
  * holding (callback, user_data) so the Rust side can pass an
