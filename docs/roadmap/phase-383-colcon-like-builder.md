@@ -468,13 +468,35 @@ found only because these trees are not uniform the way ours are.
 
 ## W10 — Retire the old paths (RFC-0065 D13, stage 3)
 
-- [ ] **W10.a** Delete the nine tracked root `CMakeLists.txt` and the eight
+- [x] **W10.a** Delete the nine tracked root `CMakeLists.txt` and the eight
       root `[workspace]` manifests, plus the entry packages W9 made derivable.
+
+      **Done — all 15 example workspaces, zero tracked roots.** The count grew
+      past "nine + eight" because the survey predated `bridge-*`, `sizing` and
+      `managed`. West and FVP entries stay hand-written: they carry authored
+      Kconfig no image declaration expresses (D5).
+
+      The two BRIDGES were the last, and they needed a real derivation rather
+      than a migration. A bridge's binary links TWO backends — it selects per
+      domain at run time — which `[image.<id>].rmw` cannot say. It did not need
+      new syntax either: the bringup already declares `[[domain]]` with an
+      `rmw` each, which is the same set the `nros::main!` macro derives for its
+      own `register()` emission. So the facade and the entry generator now read
+      it from there, and the entry's backend CRATE names come from the board
+      crate's own `rmw-<x> = ["dep:<crate>"]` features rather than a fourth
+      copy of the macro's `rmw_crate_ident` table.
 - [ ] **W10.b** Delete `[deploy.*]` parsing at the version boundary W1.e
       declared.
-- [ ] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
+- [x] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
       return. Every gate in this repo exists because a class recurred; this one
       is cheap and the class is "someone re-adds a hand-written root".
+
+      **Done.** The class recurred DURING W10.a: a `git add -A` re-added three
+      generated roots (`features`, `realtime-rust`, `sizing`) to the index, and
+      `.gitignore` cannot prevent that — it does not apply to a file git already
+      tracks. The gate matches exactly one level below `examples/workspaces/`,
+      so package manifests are untouched, and it runs its own negative control
+      on every invocation (2 shapes that must flag, 5 that must not).
 - [x] **W10.d** Book sweep: `examples/workspaces/*/README.md` still print the
       six-command ritual this phase deletes.
 
