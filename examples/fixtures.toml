@@ -112,7 +112,7 @@ lang = "rust"
 rmw = "cyclonedds"
 dir = "examples/workspaces/bridge-cyclonedds"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 target_dir = "target-fixtures"
 
 # phase-267 (xrce variant) — the declarative bridge's XRCE sibling. Same flow, but
@@ -127,7 +127,7 @@ lang = "rust"
 rmw = "xrce"
 dir = "examples/workspaces/bridge-xrce"
 bringup = "src/demo_bringup"
-entry = "native_entry"
+image = "native"
 target_dir = "target-fixtures"
 
 # phase-263 A1 (Track D) — the cross-process AddTwoInts service round-trip. In-process

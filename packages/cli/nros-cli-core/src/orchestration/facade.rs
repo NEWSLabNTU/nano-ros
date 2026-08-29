@@ -120,6 +120,42 @@ fn image_rmw(entry_name: &str, sys: &SystemToml) -> Option<String> {
         .and_then(|(_, img)| img.with_base(&base).rmw)
 }
 
+/// Every RMW an image's binary must LINK, not just the one it defaults to.
+///
+/// The image's own `rmw` plus one per declared `[[domain]]`. A bridge is the
+/// case: `examples/workspaces/bridge-cyclonedds` declares
+///
+/// ```toml
+/// [[domain]] name = "zen" rmw = "zenoh"
+/// [[domain]] name = "dds" rmw = "cyclonedds"
+/// [[bridge]] name = "gw" from = "zenoh:zen" to = "cyclonedds:dds"
+/// ```
+///
+/// so its one binary needs BOTH backends compiled in — it selects per domain at
+/// run time rather than having a single default. The hand-written entry listed
+/// the extra backend crates by hand, which is exactly the authored knowledge
+/// RFC-0065 D4 says should be derived: the bringup already declares it.
+///
+/// No new syntax and no new registry field, because the board crate already
+/// carries one `rmw-*` feature per backend and enabling several is additive —
+/// `rmw-cyclonedds` pulls `nros-rmw-cyclonedds-sys`, which depends on
+/// `nros-rmw-cyclonedds`; `rmw-xrce` pulls `nros-rmw-xrce-cffi`. Those are the
+/// same crates the two hand-written bridge entries name.
+///
+/// Ordered and deduped so the emitted manifest is stable across machines.
+fn image_backends(entry_name: &str, sys: &SystemToml) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if let Some(r) = image_rmw(entry_name, sys) {
+        out.push(r);
+    }
+    for d in &sys.domains {
+        out.push(d.rmw.clone());
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
 /// Derive the selection for one entry and write its facade crate.
 ///
 /// Returns `Ok(None)` when the package is not an entry, or when the entry
@@ -222,8 +258,26 @@ pub fn write_facade(
                 .into_iter()
                 .filter(|d| !d.starts_with("rmw-"))
                 .collect();
-            if crate_declares_feature(path, rmw.cargo_feature) {
-                f.push(rmw.cargo_feature.to_string());
+            // One `rmw-*` per backend this image must LINK, not only its
+            // default — see `image_backends`. A bridge needs two; every other
+            // image resolves to exactly the one it already had.
+            let mut wanted = vec![rmw.cargo_feature.to_string()];
+            for extra in image_backends(entry_name, sys) {
+                match crate::orchestration::rmw_resolver::resolve_rmw(&extra) {
+                    Ok(r) => wanted.push(r.cargo_feature.to_string()),
+                    // A domain naming an unknown RMW is the SYSTEM's error and
+                    // is reported where the system is resolved; silently
+                    // dropping it here would emit a facade missing a backend
+                    // and fail at link with no mention of the declaration.
+                    Err(e) => {
+                        return Err(eyre::eyre!("facade: {entry_name}: {e}"));
+                    }
+                }
+            }
+            for cf in wanted {
+                if crate_declares_feature(path, &cf) {
+                    f.push(cf);
+                }
             }
             f.sort();
             f.dedup();

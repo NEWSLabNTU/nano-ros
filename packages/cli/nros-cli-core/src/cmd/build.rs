@@ -794,6 +794,10 @@ fn generate_entry(
                     "nros-bridge = {{ path = \"{rel}\", features = [\"std\", \"config\"] }}"
                 ));
             }
+            v.extend(
+                bridge_entry_deps(bringup_dir, &entry_dir_for_deps, nros_root, &candidates)
+                    .map_err(|e| eyre::eyre!("{e}"))?,
+            );
             v
         },
     };
@@ -802,6 +806,165 @@ fn generate_entry(
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
     Ok(Some(dir))
+}
+
+/// The crates a BRIDGE entry must name directly, derived from the bringup.
+///
+/// `nros::main!` emits `::<crate>::register()` for every backend the bridge
+/// spans and `::nros_rmw_cyclonedds::register::<M>()` for each non-flat egress
+/// type, so those crates have to be in the ENTRY's dependency list — a feature
+/// on the board crate compiles and links them but does not put their names in
+/// scope. The two hand-written bridge entries listed them by hand; this is the
+/// same list, derived.
+///
+/// **Backends.** The set is the image's own RMW plus every `[[domain]].rmw` —
+/// the same derivation `facade::image_backends` and the MACRO's `bridge_rmws`
+/// both make. The crate name is then read out of the BOARD crate's own
+/// `rmw-<x> = ["dep:<crate>"]` feature rather than from a table here. That is
+/// deliberate: the macro carries its own three-arm `rmw_crate_ident`, and a
+/// fourth copy would be the extra spelling that drifts. The board's answers
+/// agree with the macro's today (`zenoh` → `nros_rmw_zenoh`, `cyclonedds` →
+/// `nros_rmw_cyclonedds_sys`, `xrce` → `nros_rmw_xrce_cffi`), and if one ever
+/// stops agreeing the build fails with the missing name rather than silently
+/// linking the wrong backend.
+///
+/// **Message crates.** `nros sync` writes `<bringup>/nros-bridge.toml` with a
+/// `[[register_type]] rust_path = "std_msgs::msg::Header"` per non-flat egress
+/// type; the crate is the first segment, and it lives in `generated/`.
+fn bridge_entry_deps(
+    bringup_dir: &std::path::Path,
+    entry_dir: &std::path::Path,
+    nros_root: &std::path::Path,
+    candidates: &[&str],
+) -> Result<Vec<String>> {
+    let Ok(text) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+        return Ok(Vec::new());
+    };
+    let Ok(doc) = text.parse::<toml::Value>() else {
+        return Ok(Vec::new());
+    };
+    // Only a bringup that declares a bridge needs any of this.
+    if doc
+        .get("bridge")
+        .and_then(|b| b.as_array())
+        .is_none_or(|a| a.is_empty())
+    {
+        return Ok(Vec::new());
+    }
+
+    let mut out = Vec::new();
+
+    // ---- backends, via the board crate's own feature table -----------------
+    let board_dir = crate::builder::entry::macro_board_crate(candidates)
+        .map(|k| nros_root.join("packages/boards").join(k));
+    let board_manifest = board_dir
+        .as_ref()
+        .and_then(|d| std::fs::read_to_string(d.join("Cargo.toml")).ok())
+        .and_then(|t| t.parse::<toml::Value>().ok());
+
+    let mut rmws: Vec<String> = doc
+        .get("domain")
+        .and_then(|d| d.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|d| d.get("rmw").and_then(|r| r.as_str()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    rmws.sort();
+    rmws.dedup();
+
+    for rmw in &rmws {
+        let feature = format!("rmw-{rmw}");
+        let Some(krate) = board_manifest
+            .as_ref()
+            .and_then(|m| m.get("features")?.get(&feature)?.as_array().cloned())
+            .and_then(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str())
+                    .find_map(|v| v.strip_prefix("dep:").map(str::to_string))
+            })
+        else {
+            // The board does not carry this backend. Not an error here: a board
+            // that cannot host a domain is the SYSTEM's problem and is reported
+            // where the system resolves, with the board named.
+            continue;
+        };
+        // `packages/rmw/<family>/<crate>` — located rather than assumed, since
+        // the family directory is not the crate name (`nros-rmw-xrce-cffi`
+        // lives under `xrce/`).
+        let Some(path) = ["zenoh", "cyclonedds", "xrce", "uorb", "dds"]
+            .iter()
+            .map(|fam| nros_root.join("packages/rmw").join(fam).join(&krate))
+            .find(|p| p.join("Cargo.toml").is_file())
+        else {
+            continue;
+        };
+        let rel = crate::builder::paths::relative_or_err(entry_dir, &path)
+            .map_err(|e| eyre::eyre!("{e}"))?;
+        out.push(format!("{krate} = {{ path = \"{rel}\" }}"));
+    }
+
+    // ---- message crates named by the generated bridge config ---------------
+    if let Ok(cfg) = std::fs::read_to_string(bringup_dir.join("nros-bridge.toml"))
+        && let Ok(cfg) = cfg.parse::<toml::Value>()
+    {
+        let rows = cfg
+            .get("register_type")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // A cyclonedds `register_type` makes the macro emit
+        // `::nros_rmw_cyclonedds::register::<M>()` — the WRAPPER crate, not the
+        // `-sys` one the board feature pulls. `-sys` depends on it, so it is
+        // already linked; what is missing is only the NAME in the entry's
+        // scope. Keyed on the row's own `rmw` field, which is what the macro
+        // filters on, rather than on "cyclonedds is among the domains": a
+        // bridge can span cyclonedds and still register no non-flat type, and
+        // then the macro emits no such call.
+        if rows
+            .iter()
+            .any(|t| t.get("rmw").and_then(|r| r.as_str()) == Some("cyclonedds"))
+            && let Some(path) = ["cyclonedds"]
+                .iter()
+                .map(|fam| {
+                    nros_root
+                        .join("packages/rmw")
+                        .join(fam)
+                        .join("nros-rmw-cyclonedds")
+                })
+                .find(|p| p.join("Cargo.toml").is_file())
+        {
+            let rel = crate::builder::paths::relative_or_err(entry_dir, &path)
+                .map_err(|e| eyre::eyre!("{e}"))?;
+            out.push(format!("nros-rmw-cyclonedds = {{ path = \"{rel}\" }}"));
+        }
+
+        let mut msg_crates: Vec<String> = rows
+            .iter()
+            .filter_map(|t| t.get("rust_path")?.as_str())
+            .filter_map(|p| p.split("::").next().map(str::to_string))
+            .collect();
+        msg_crates.sort();
+        msg_crates.dedup();
+        for m in msg_crates {
+            let path = bringup_dir
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|ws| ws.join("generated").join(&m));
+            let Some(path) = path.filter(|p| p.join("Cargo.toml").is_file()) else {
+                continue;
+            };
+            let rel = crate::builder::paths::relative_or_err(entry_dir, &path)
+                .map_err(|e| eyre::eyre!("{e}"))?;
+            out.push(format!(
+                "{m} = {{ path = \"{rel}\", default-features = false }}"
+            ));
+        }
+    }
+
+    Ok(out)
 }
 
 /// Every cargo-driver entry directory of `bringup`, generated if need be.
