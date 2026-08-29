@@ -102,6 +102,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0870** (rmw, examples) — NuttX C++ action client fails `create_action_client` — the session reports `Transport(ConnectionFailed)` against a router the server reached See `0870-*`.
 - **#0873** (ci) — All three nightly platform jobs fail on `generate-lockfile --offline` against a cold registry — an infrastructure fault reported as platform overclaim See `0873-*`.
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
+- **#0877** (testing, boards) — FreeRTOS pubsub delivers by hand and delivers NOTHING under the test harness — and the talker trips a FreeRTOS queue assert See `0877-*`.
 
 <!-- END GENERATED open-issue list -->
 
