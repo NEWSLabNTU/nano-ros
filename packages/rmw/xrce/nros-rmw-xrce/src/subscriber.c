@@ -139,7 +139,7 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
     }
 
     xrce_subscriber_state *ss = (xrce_subscriber_state *)
-        calloc(1, sizeof(xrce_subscriber_state));
+        nros_xrce_calloc(1, sizeof(xrce_subscriber_state));
     if (ss == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -179,7 +179,7 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
     uint8_t  statuses[3] = { 0, 0, 0 };
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
     if (cret != NROS_RMW_RET_OK) {
-        free(ss);
+        nros_xrce_free(ss);
         return cret;
     }
 
@@ -234,7 +234,7 @@ rmw_ret_t xrce_subscription_destroy(rmw_subscription_t *subscriber) {
                                             ss->datareader_oid);
     (void)uxr_run_session_time(&st->session, 0);
 
-    free(ss);
+    nros_xrce_free(ss);
     subscriber->backend_data = NULL;
     return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }

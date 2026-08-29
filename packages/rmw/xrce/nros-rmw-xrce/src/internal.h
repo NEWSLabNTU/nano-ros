@@ -13,6 +13,7 @@
  * module-static `XrceSessionState` it relies on.
  */
 
+#include "nros/platform.h"
 #include "nros/rmw_entity.h"
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
@@ -24,9 +25,50 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <string.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* Issue 0832 — this backend allocates through the platform funnel, never libc.
+ *
+ * The shim is linked ABOVE the platform layer, so libc's heap is not
+ * necessarily the heap the platform owns: on Zephyr, FreeRTOS, ThreadX and
+ * NuttX it is a different allocator entirely, and the `unified` tier promises
+ * that every allocation reaches `nros_platform_alloc`. A raw `calloc`/`free`
+ * here allocates from one heap and, once a board routes the other way, frees
+ * to another.
+ *
+ * The zeroing lives in the helper rather than at the call sites. Every
+ * allocation in this backend was `calloc(1, sizeof(X))` on a struct whose
+ * fields are then only partly assigned, so the zeroing is load-bearing — and a
+ * `memset` that has to be remembered at nine call sites is one that gets
+ * forgotten at the tenth.
+ */
+static inline void *nros_xrce_calloc(size_t count, size_t size) {
+    size_t total;
+    void *ptr;
+
+    if (count == 0 || size == 0) {
+        count = size = 1;
+    }
+    /* The multiply is the one thing calloc does that alloc cannot, so keep its
+       overflow check rather than trusting the product. */
+    total = count * size;
+    if (total / size != count) {
+        return NULL;
+    }
+    if ((ptr = nros_platform_alloc(total)) != NULL) {
+        memset(ptr, 0, total);
+    }
+    return ptr;
+}
+
+static inline void nros_xrce_free(void *ptr) {
+    /* `nros_platform_dealloc` is a documented no-op on NULL, matching free(). */
+    nros_platform_dealloc(ptr);
+}
 
 /* ---- Tunables (must mirror packages/rmw/xrce/nros-rmw-xrce/build.rs
  *      defaults so the C backend behaves the same as the Rust one

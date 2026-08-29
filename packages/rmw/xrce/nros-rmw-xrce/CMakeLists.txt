@@ -173,6 +173,25 @@ foreach(_rel IN LISTS _ucdr_src)
     list(APPEND _ucdr_all_src "${MICROCDR_DIR}/src/c/${_rel}")
 endforeach()
 
+# ---- Platform implementation ----------------------------------------------
+# Issue 0832 — the backend ALLOCATES through `nros_platform_alloc` (see the
+# `nros_xrce_calloc`/`nros_xrce_free` helpers in src/internal.h), so headers
+# alone are no longer enough to link. `nros-rmw-xrce-cffi`'s build.rs states
+# the same contract for the image path: these sources compile on every target
+# "as long as the consumer links a platform-provider library". This project
+# was the one consumer that did not.
+#
+# Same convention as the two header vars above: the location arrives as a
+# cache PATH defaulted to the sibling project, so an out-of-tree consumer can
+# point it elsewhere and this file still never searches the tree. Guarded on
+# the target not already existing, so a parent project that provides its own
+# platform wins.
+set(NROS_PLATFORM_IMPL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../platform/nros-platform-posix"
+    CACHE PATH "Path to a project providing the nros platform ABI implementation")
+if(NOT TARGET nros_platform_posix AND EXISTS "${NROS_PLATFORM_IMPL_DIR}/CMakeLists.txt")
+    add_subdirectory("${NROS_PLATFORM_IMPL_DIR}" nros_platform_impl_build)
+endif()
+
 # ---- Static library --------------------------------------------------------
 add_library(nros_rmw_xrce STATIC
     src/vtable.c
@@ -203,6 +222,22 @@ target_include_directories(nros_rmw_xrce
         ${CMAKE_CURRENT_BINARY_DIR}/uxr_generated
         ${CMAKE_CURRENT_BINARY_DIR}/ucdr_generated
 )
+
+# PUBLIC so consumers get the provider AFTER this archive on the link line:
+# the references live in this library's own objects, and being a dependency is
+# what orders it. Without it the smoke test fails with `undefined reference to
+# nros_platform_alloc` from `transport_nros_udp.c.o` — the same shape as the
+# cyclone funnel's link (issue 0832), and fixed the same way rather than with a
+# weak fallback, which would resolve the reference by calling libc and put back
+# exactly the second heap this change removes.
+if(TARGET nros_platform_posix)
+    target_link_libraries(nros_rmw_xrce PUBLIC nros_platform_posix)
+    message(STATUS "nano-ros: nros-rmw-xrce allocates via nros_platform_alloc (issue 0832)")
+else()
+    message(FATAL_ERROR
+        "nros-rmw-xrce needs a platform ABI implementation (nros_platform_alloc/dealloc). "
+        "Set -DNROS_PLATFORM_IMPL_DIR=<path> or define an `nros_platform_posix` target.")
+endif()
 
 target_compile_definitions(nros_rmw_xrce PRIVATE
     # POSIX feature gate — `time.c` calls `clock_gettime`, which

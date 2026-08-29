@@ -302,7 +302,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         return NROS_RMW_RET_ERROR;
     }
 
-    xrce_session_state_t* st = (xrce_session_state_t*)calloc(1, sizeof(xrce_session_state_t));
+    xrce_session_state_t* st = (xrce_session_state_t*)nros_xrce_calloc(1, sizeof(xrce_session_state_t));
     if (st == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
@@ -344,7 +344,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t ret = xrce_custom_transport_install(st, /*framing=*/false);
         if (ret != NROS_RMW_RET_OK) {
-            free(st);
+            nros_xrce_free(st);
             return ret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
@@ -353,7 +353,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t sret = xrce_posix_serial_init(st, serial_path);
         if (sret != NROS_RMW_RET_OK) {
-            free(st);
+            nros_xrce_free(st);
             return sret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
@@ -376,7 +376,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         if (parse_host_port(addr_locator, host, sizeof(host), &port) == 0) {
             size_t hlen = strlen(addr_locator);
             if (hlen == 0 || hlen + 1 > sizeof(host)) {
-                free(st);
+                nros_xrce_free(st);
                 return NROS_RMW_RET_INVALID_ARGUMENT;
             }
             memcpy(host, addr_locator, hlen + 1);
@@ -390,7 +390,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         st->use_custom_transport = true;
         rmw_ret_t udp_ret = xrce_nros_udp_init(st, host, port_str);
         if (udp_ret != NROS_RMW_RET_OK) {
-            free(st);
+            nros_xrce_free(st);
             return udp_ret;
         }
         uxr_init_session(&st->session, &st->custom.comm, hash_session_key(node_name));
@@ -408,7 +408,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
         /* Both UDP and `custom://` paths now go through
          * uxrCustomTransport — close via custom_transport. */
         uxr_close_custom_transport(&st->custom);
-        free(st);
+        nros_xrce_free(st);
         return NROS_RMW_RET_ERROR;
     }
 
@@ -436,7 +436,7 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
     if (cret != NROS_RMW_RET_OK) {
         (void)uxr_delete_session(&st->session);
         uxr_close_custom_transport(&st->custom);
-        free(st);
+        nros_xrce_free(st);
         return cret;
     }
 
@@ -458,7 +458,7 @@ rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
      * UDP through the same surface to match xrce-sys's legacy
      * shape. Close once, regardless of `use_custom_transport`. */
     uxr_close_custom_transport(&st->custom);
-    free(st);
+    nros_xrce_free(st);
     session->backend_data = NULL;
     return NROS_RMW_RET_OK;
 }

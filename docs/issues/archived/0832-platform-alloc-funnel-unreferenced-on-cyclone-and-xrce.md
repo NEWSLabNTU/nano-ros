@@ -2,7 +2,7 @@
 id: 832
 title: "`nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and
   xrce native images — the vendor allocators bypass the funnel"
-status: open
+status: resolved
 type: bug
 area: platform, rmw
 related: [phase-391, issue-0817]
@@ -136,11 +136,55 @@ is guarded to `__APPLE__ || (__linux && (__GLIBC__ || __UCLIBC__))` and
 platform's heap and libc's differ, and where it does exist it pairs with a
 block `backtrace_symbols` allocated from glibc itself.
 
-**Still open: the XRCE half.** `get_ip_from_iface` was not touched, so the xrce
-row of the table above stands.
+## Resolution, XRCE half (2026-08-29)
 
-**Also open: coverage.** The funnel-ON path is built by no fast-line lane — see
-issue 0881. The verification above is by hand.
+The bypass was never where this issue said it was. `get_ip_from_iface` is a
+**zenoh-pico** symbol (`src/system/{unix,windows,freertos,rpi_pico}/network.c`)
+and appears nowhere in the XRCE tree, so that row was a misattribution. The
+vendored micro-XRCE-DDS-Client and micro-CDR call no allocator directly at all.
+
+The real bypass is **our own shim** — 38 raw `calloc`/`free` calls across six
+files of `packages/rmw/xrce/nros-rmw-xrce/src/`, in-tree code needing no fork:
+
+| file | calloc | free |
+| --- | ---: | ---: |
+| `session.c` | 1 | 7 |
+| `service.c` | 2 | 4 |
+| `publisher.c` | 1 | 2 |
+| `subscriber.c` | 1 | 2 |
+| `transport_nros_udp.c` | 2 | 10 |
+| `transport_zephyr_udp.c` | 2 | 4 |
+
+All of them go through `nros_xrce_calloc` / `nros_xrce_free` in `src/internal.h`,
+two `static inline`s over `nros_platform_alloc`/`_dealloc`. The zeroing lives in
+the helper rather than at the call sites: every allocation was
+`calloc(1, sizeof(X))` on a struct only partly assigned afterwards, so it is
+load-bearing, and a `memset` to be remembered nine times is one forgotten at the
+tenth.
+
+Measured: `libnros_rmw_xrce.a` — vendored client and micro-CDR included — has
+**zero** objects referencing a raw libc allocator, and 10 funnel references.
+
+Two things fell out of it. The standalone check project took platform HEADERS
+via a cache var but linked no implementation, so it stopped linking the moment
+the shim called the funnel; it now pulls `nros-platform-posix` in the same
+style, which is what `nros-rmw-xrce-cffi`'s build.rs already required of the
+image path ("as long as the consumer links a platform-provider library"). And
+`tests/smoke.c` carried NINE local definitions of platform symbols, added by
+issue 0787 for exactly the reason that no longer holds. They are deleted: the
+real archive defines every one. Only two collided at link time (`clock_ns`,
+`sleep_ms`) because the linker pulls an archive member only for an
+already-unresolved reference, so the local UDP definitions meant `net.c.o` was
+never reached — a second implementation of the platform ABI selected silently by
+link order, which is the hazard the issue-0050 policy exists to prevent,
+arrived at with no weak symbol involved.
+
+## Coverage (2026-08-29)
+
+Closed too — see issue 0881. The standalone cyclone project now links a
+platform implementation, so the fast-line lane compiles the funnel: the three
+executables that caught the original missing link dependency each carry 7 funnel
+call sites and run as part of the 22-test suite.
 
 ## Method note
 
