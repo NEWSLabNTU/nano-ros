@@ -131,6 +131,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 
     // ---- stage 2 --------------------------------------------------------
     let bringups = collect_images(&found.packages)?;
+
     let requested: Vec<String> = if args.all {
         plan::all_images(&bringups)
             .into_iter()
@@ -150,6 +151,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         .clone()
         .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
         .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&root));
+    // phase-397 W3 — every `<depend>` resolves, or the build stops.
+    //
+    // Runs once per invocation, before anything is generated, because an
+    // undeclared prerequisite is cheapest to report before a toolchain is
+    // touched (RFC-0065 D2's reasoning, applied to dependencies).
+    check_declared_depends(&root, &found.packages, nano_ros_root.as_deref())?;
+
     let catalog = match &nano_ros_root {
         Some(r) => crate::orchestration::board_descriptor::BoardCatalog::load(r)
             .map_err(|e| eyre::eyre!("loading board descriptors from {}: {e}", r.display()))?,
@@ -1219,6 +1227,10 @@ fn native_handoff(
     }
 }
 
+/// `(bringup name, bringup dir, its images)` per bringup — the shape every
+/// stage after DISCOVER passes around.
+type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
+
 /// Read every bringup's `[image.*]`.
 ///
 /// Bringups are derived from the packages stage 1 ALREADY found — a bringup is
@@ -1227,10 +1239,6 @@ fn native_handoff(
 /// root and so cannot see the canonical `<root>/src/<name>_bringup/` layout;
 /// and deliberately not a second walk of our own, which would be a third
 /// opinion about what a package is (issue 0809's class).
-/// `(bringup name, bringup dir, its images)` per bringup — the shape every
-/// stage after DISCOVER passes around.
-type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
-
 fn collect_images(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
 ) -> Result<Bringups> {
@@ -1242,6 +1250,105 @@ fn collect_images(
         eprintln!("nros build: {w}");
     }
     Ok(out)
+}
+
+/// phase-397 W3 — resolve every `<depend>` a workspace declares, or fail.
+///
+/// The ladder is RFC-0062's, amended 2026-08-29: workspace package → generated
+/// message → `[prereq.*]` key → ROS package (ament index) → error.
+///
+/// Fails by default. The alternative is what shipped for years: a name matching
+/// nothing was dropped in silence, and the first run of this check over the
+/// tree found three `<exec_depend>` entries naming packages that do not exist,
+/// stale since a rename, in workspaces that build green.
+///
+/// `NROS_ALLOW_UNRESOLVED_DEPS=1` downgrades it to a warning. That is an escape
+/// hatch for a tree mid-migration, not a mode — it names itself in the output
+/// so a build that used it cannot be mistaken for one that passed.
+fn check_declared_depends(
+    root: &std::path::Path,
+    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<()> {
+    use crate::orchestration::prereq_resolve as pr;
+
+    let declared = pr::declared_depends(root);
+    if declared.is_empty() {
+        return Ok(());
+    }
+
+    let ws: std::collections::BTreeSet<String> = packages.iter().map(|p| p.name.clone()).collect();
+
+    // Generated message crates: whatever `nros sync` has already written, plus
+    // the core pre-generated set. A message package that has not been generated
+    // YET must not read as unresolved — that is a `nros sync` away, not a
+    // missing declaration.
+    let mut generated: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for dir in [root.join("generated"), root.join("build/nros/generated")] {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            generated.extend(
+                rd.flatten()
+                    .map(|e| e.file_name().to_string_lossy().into_owned()),
+            );
+        }
+    }
+    if let Some(nr) = nano_ros_root
+        && let Ok(rd) = std::fs::read_dir(nr.join("packages/interfaces"))
+    {
+        // The committed `nros-`prefixed msg crates are reached by their ROS
+        // name in a `package.xml`, so strip the prefix the crate carries.
+        generated.extend(rd.flatten().map(|e| {
+            let n = e.file_name().to_string_lossy().into_owned();
+            n.strip_prefix("nros-").unwrap_or(&n).to_string()
+        }));
+    }
+
+    let prereq_keys: std::collections::BTreeSet<String> = nano_ros_root
+        .map(|nr| nr.join("nros-sdk-index.toml"))
+        .filter(|p| p.is_file())
+        .and_then(|p| crate::orchestration::sdk_index::SdkIndex::load(&p).ok())
+        .map(|i| i.prereqs().keys().cloned().collect())
+        .unwrap_or_default();
+
+    let ros = pr::ros_packages();
+
+    let mut unresolved: Vec<pr::Unresolved> = Vec::new();
+    for (name, files) in &declared {
+        if pr::classify(name, &ws, &generated, &prereq_keys, &ros) == pr::Resolution::Unknown {
+            unresolved.push(pr::Unresolved {
+                name: name.clone(),
+                declared_by: files.clone(),
+            });
+        }
+    }
+    if unresolved.is_empty() {
+        return Ok(());
+    }
+
+    let mut msg = format!(
+        "{} <depend> name(s) resolve to nothing:\n",
+        unresolved.len()
+    );
+    for u in &unresolved {
+        msg.push_str(&format!(
+            "  {} — declared by {}\n",
+            u.name,
+            u.declared_by.join(", ")
+        ));
+    }
+    msg.push_str(
+        "\nEach must be one of: a package in this workspace, a message package \
+         `nros sync` generates, a `[prereq.*]` key in nros-sdk-index.toml, or a \
+         package the ambient ROS install provides (source its setup.bash so \
+         AMENT_PREFIX_PATH is set).\n\
+         \n  NROS_ALLOW_UNRESOLVED_DEPS=1  to continue with a warning.",
+    );
+
+    if std::env::var_os("NROS_ALLOW_UNRESOLVED_DEPS").is_some() {
+        eprintln!("nros build: WARNING (NROS_ALLOW_UNRESOLVED_DEPS=1): {msg}");
+        return Ok(());
+    }
+    eyre::bail!("{msg}")
 }
 
 /// [`collect_images`], with the deprecation warnings RETURNED rather than

@@ -5,7 +5,7 @@
   <description>Entry pkg — boots the parameterised system on Zephyr (west app, zenoh RMW).</description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
-  <exec_depend>param_talker_pkg</exec_depend>
+  <exec_depend>rust_param_talker_pkg</exec_depend>
   <exec_depend>demo_bringup</exec_depend>
   <export>
     <build_type>ament_cargo</build_type>
