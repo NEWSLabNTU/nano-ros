@@ -16,6 +16,23 @@
 
 namespace {
 
+/* This backend's identity, in ONE place.
+ *
+ * It used to be two string literals in this file — the name passed to
+ * `nros_rmw_cffi_register_named` and the one stamped into every gid by
+ * `cyclone_get_gid_for_publisher` — with nothing checking they agreed. They did
+ * agree, which is why it survived; the hazard is what a divergence COSTS.
+ * `rmw_compare_gids_equal` compares the identifier STRING before the bytes
+ * (`same_impl`, nros-rmw-cffi), and `nros_rmw_cffi_register_named` admits
+ * several backends in one image precisely so that comparison has work to do. So
+ * renaming one spelling and missing the other does not fail to build and does
+ * not raise an error: two gids naming the SAME publisher start comparing
+ * unequal, silently.
+ *
+ * One constant is the whole fix. The `get_implementation_identifier` vtable
+ * slot stays NULL deliberately — see the note at the vtable's identity slots. */
+constexpr const char *kImplementationIdentifier = "cyclonedds";
+
 /* issue 0800 — `set_log_severity` had a slot, a runtime dispatcher and stub
  * tests since phase-376 W5, and no backend body: every image answered
  * UNSUPPORTED while Cyclone has had `dds_set_log_mask` all along. That is the
@@ -83,8 +100,9 @@ static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher,
     static_assert(sizeof(guid.v) <= RMW_GID_STORAGE_SIZE, "cyclone GUID must fit rmw_gid_t");
     std::memcpy(gid->data, guid.v, sizeof(guid.v));
     /* The identifier is what makes two gids comparable at all (rmw_entity.h);
-     * a gid without it can be compared against a foreign backend's by mistake. */
-    gid->implementation_identifier = "cyclonedds";
+     * a gid without it can be compared against a foreign backend's by mistake.
+     * Same constant the registration uses — see `kImplementationIdentifier`. */
+    gid->implementation_identifier = kImplementationIdentifier;
     return NROS_RMW_RET_OK;
 }
 
@@ -386,7 +404,7 @@ extern "C" rmw_ret_t nros_rmw_cyclonedds_register(void) {
     // `NROS_RMW=cyclonedds`; the generic
     // `"dds"` slot is not aliased per user direction (always
     // reference Cyclone by its specific name, not the generic one).
-    return nros_rmw_cffi_register_named("cyclonedds", &kVtable);
+    return nros_rmw_cffi_register_named(kImplementationIdentifier, &kVtable);
 }
 
 // Phase 128.B.4 — `.nros_rmw_init` self-registration via the canonical

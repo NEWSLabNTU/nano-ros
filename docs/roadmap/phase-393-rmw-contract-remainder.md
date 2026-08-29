@@ -49,9 +49,40 @@ Do this one first. It is the only item here that is a bug.
 | --- | --- |
 | `publisher_count_matched_subscriptions`, `subscription_count_matched_publishers` | "why is nothing arriving" answered in one call; cyclone has `dds_get_matched_*` |
 | `get_gid_for_publisher` | GIDs travel in the attachment today; an out-of-band read costs little |
-| `get_implementation_identifier`, `get_serialization_format` | the runtime answers both; a bridge image linking two backends is where a per-backend answer stops being decoration |
+| ~~`get_implementation_identifier`, `get_serialization_format`~~ | **WRONG — corrected 2026-08-29, see W2a below.** "The runtime answers both" is not true: no such fallback was ever written. |
 
 Each is small, each has a live backend primitive, none changes a contract.
+
+## W2a — what the identity item actually was (done 2026-08-29)
+
+The row above claimed the runtime answers both slots and that filling them buys
+a bridge image a per-backend answer. Grepping for that fallback found **only the
+sentence promising it**. Nothing in the tree calls either slot, so a NULL one is
+not "answered elsewhere" — it is unanswerable, and the header said otherwise for
+two phases.
+
+Filling them would also have been the campaign's own trap. `check-rmw-slot-
+producers` classifies any slot with a producer as `produced` **whether or not
+anything reads it** (`if s in produced` precedes the consumer test), so two
+bodies nothing calls would have moved inert 27 -> 25 and changed nothing
+observable. That is issue 0800's overstatement, re-created by the doc written to
+prevent it.
+
+What was real, in the same area:
+
+**Cyclone spelled its identity twice** — `nros_rmw_cffi_register_named(
+"cyclonedds", ...)` and `gid->implementation_identifier = "cyclonedds"`, in one
+file, with nothing checking they agreed. `rmw_compare_gids_equal` compares that
+STRING before the bytes, and `register_named` admits several backends in one
+image precisely so the comparison has work to do. Renaming one and missing the
+other does not fail to build and raises no error: two gids naming the same
+publisher start comparing unequal, silently. Now one `kImplementationIdentifier`.
+
+`get_serialization_format` has no such half. Every backend speaks CDR, nothing
+asks, no divergence is possible — it is parity shape, and it stays NULL.
+
+Both slot docs in `rmw_vtable.h` now say they are reserved and unanswerable
+rather than claiming a fallback, and say what filling them would need: a caller.
 
 ## W3 — reservations that should STAY reserved
 
