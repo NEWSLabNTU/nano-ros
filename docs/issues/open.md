@@ -68,5 +68,6 @@ fails if this block drifts.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
 - **#0899** (rmw, boards) — The FreeRTOS C talker dies mid-run inside zenoh-pico's write buffer — two different asserts, both after tens of successful publishes See `0899-*`.
 - **#0900** (core, memory) — Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use See `0900-*`.
+- **#0905** (cli, build) — A workspace copied out of the nano-ros checkout cannot resolve its leaf `.cargo/config.toml` include, and it is not established whether `nros sync` repairs it See `0905-*`.
 
 <!-- END GENERATED open-issue list -->

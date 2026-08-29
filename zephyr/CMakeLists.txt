@@ -154,10 +154,15 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_cyclonedds.cmake)
 
 if(CONFIG_NROS_RMW_ZENOH)
     nros_zephyr_configure_rmw_zenoh()
+    set(_nros_kconfig_rmw "zenoh")
 elseif(CONFIG_NROS_RMW_XRCE)
     nros_zephyr_configure_rmw_xrce()
+    set(_nros_kconfig_rmw "xrce")
 elseif(CONFIG_NROS_RMW_CYCLONEDDS)
     nros_zephyr_configure_rmw_cyclonedds()
+    set(_nros_kconfig_rmw "cyclonedds")
+else()
+    set(_nros_kconfig_rmw "")
 endif() # RMW backend
 
 # =============================================================================
@@ -712,5 +717,21 @@ void nros_app_register_backends(void) {
         endif()
     endif()
 endif()
+
+# RFC-0085 D14 — Kconfig above is the MECHANISM; when this application belongs
+# to a nano-ros workspace its `[image.*]` is a second answer to the same
+# question, and the two must not disagree silently. A plain Zephyr app is in no
+# workspace, and this is a no-op for it.
+#
+# LAST, not beside the RMW block it checks: the nros CLI is resolved by
+# `nros_generate_interfaces.cmake`, included further down, so a call up there
+# found no CLI and returned having checked nothing — silently, because a
+# missing CLI must never fail a build that was not asking it anything.
+# `_nros_kconfig_rmw` is captured where the choice is made and read here.
+# `NanoRosCodegenCore.cmake` supplies `nros_resolve_cli`, which the check uses
+# when no lane has already populated a tool cache var.
+include("${NROS_REPO_DIR}/cmake/NanoRosCodegenCore.cmake")
+include("${NROS_REPO_DIR}/cmake/NanoRosImageAgreement.cmake")
+nros_check_image_agreement(KCONFIG_RMW "${_nros_kconfig_rmw}")
 
 endif() # CONFIG_NROS
