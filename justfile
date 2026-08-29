@@ -467,7 +467,7 @@ check-fast: _check-skip-reset \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \
     check-subtree-guard \
-    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-generated-schema-coverage \
+    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-no-tracked-workspace-roots check-generated-schema-coverage \
     check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
     check-nested-workspace-excludes check-nuttx-links-snapshot \
     check-board-cargo-config-applied check-staleness-probe-exemptions \
@@ -1643,6 +1643,18 @@ check-lane-scope-consumers:
 [private]
 check-no-tracked-models:
     @bash scripts/check-no-tracked-models.sh
+
+# phase-383 W10.c — an example workspace ROOT is generated, never tracked.
+#
+# `nros build` emits it from the discovered packages plus `[image.*]` (RFC-0065
+# D3); a tracked one is used AS-IS instead, so it silently overrides the
+# declarations it came from. The class is "someone re-adds a hand-written root",
+# and it already happened once during the migration that removed them — a
+# `git add -A` re-added three, which `.gitignore` cannot prevent because it does
+# not apply to files git already tracks.
+[private]
+check-no-tracked-workspace-roots:
+    @python3 scripts/check-no-tracked-workspace-roots.py
 
 # issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
 # PATH shim (cargo has no config/env knob for it, and per-site flags would miss
