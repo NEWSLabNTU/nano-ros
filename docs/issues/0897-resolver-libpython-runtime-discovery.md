@@ -89,9 +89,142 @@ reads as settled, and nobody would re-check it.
 3. **Build per-interpreter and select at runtime.** Honest, unglamorous, and
    multiplies build cost by the number of supported interpreters.
 
-Option 1 is preferred: it removes the coupling without changing who owns the
-process, and it is the only one that turns the failure into something a program
-can handle rather than something a loader kills.
+**The design below supersedes this list**, and is a hybrid rather than any one
+of them. Option 1's virtue is that we keep owning the process; option 2's is
+that abi3 becomes usable. Those are not in tension once the Python half is a
+cdylib *we* load — we dlopen libpython ourselves, then load an abi3 extension
+object against it, which is what a CPython process does for its own extension
+modules. Option 1 alone cannot get abi3 (it is still an embedded binary);
+option 2 alone gives up process ownership to a Python entry point. Option 3
+stays the fallback if the limited-API check in the open questions fails.
+
+
+## Design (2026-08-29)
+
+Two requirements, and they decide the shape between them:
+
+1. **No Python on the host ⇒ the resolver still runs.** It scans and resolves
+   XML/YAML launch files normally, and fails only when it actually reaches a
+   `.launch.py` — naming that file.
+2. **Python present ⇒ we choose which one**, and one build works across
+   versions.
+
+### Requirement 1 is a LINKAGE problem, not a restructuring one
+
+The parser already dispatches by extension, and the Python boundary is a single
+call site (`play_launch_parser/src/lib.rs`):
+
+```rust
+match ext {
+    "py"           => return self.execute_python_file(path, …),
+    "yaml" | "yml" => { self.process_yaml_launch_file(path)?; return Ok(()); }
+    _ => {}
+}
+// … XML below, roxmltree only
+```
+
+`src/xml/` contains no pyo3 reference. So the XML/YAML path is *already* Python-
+free at the source level; what stops it running is that `libpython` is a
+`DT_NEEDED` on the binary, so the loader refuses the process before `main`. Fix
+the linkage and requirement 1 falls out — no dispatch rework.
+
+### Shape: a thin driver plus a loadable Python half
+
+```
+nros-launch-resolve            pure Rust, NO Python symbols, no DT_NEEDED
+  ├── scan / XML / YAML        works with no interpreter at all
+  └── first `.launch.py`:
+        1. discover interpreter          (below)
+        2. dlopen(libpython, RTLD_NOW|RTLD_GLOBAL)
+        3. dlopen(libnros_launch_py.so, RTLD_NOW)
+        4. call its exported entry point
+
+libnros_launch_py.so           the pyo3 parser, built as an ABI3 CDYLIB,
+                               libpython NOT linked — symbols left undefined
+```
+
+Step 2 before step 3 is the whole trick, and it is the documented one:
+`RTLD_GLOBAL` makes libpython's symbols available for resolution of
+*subsequently* loaded objects, which is exactly how a normal CPython process
+satisfies an extension module's undefined symbols. We are doing by hand what the
+interpreter does for itself.
+
+**This is also where abi3 finally applies.** abi3 is an extension-module
+mechanism — useless for the embedded *binary* we have today (see the correction
+on issue 0400), and correct for a cdylib. Building the Python half as
+`abi3-py3N` makes one `.so` valid for every CPython ≥ floor, so version
+selection becomes a runtime choice rather than a build-time pin.
+
+### Why two artifacts rather than one binary with undefined symbols
+
+A single binary could work: link it `-Wl,--unresolved-symbols=ignore-all` and
+dlopen libpython before first use. Rejected — that flag tolerates *every*
+undefined symbol, so a genuine link error in unrelated code stops being a build
+failure and becomes a runtime crash. The split confines "symbols resolved later"
+to the one object that needs it, and the driver keeps a normal, strict link.
+
+### Interpreter selection
+
+Discovery is a query, not a guess — ask the interpreter where its library is:
+
+```
+python3 -c "import sysconfig; print(sysconfig.get_config_var('INSTSONAME'),
+                                    sysconfig.get_config_var('LIBDIR'),
+                                    sysconfig.get_config_var('Py_ENABLE_SHARED'))"
+# libpython3.10.so.1.0 /usr/lib/x86_64-linux-gnu 1
+```
+
+Order, mirroring `scripts/build/zephyr-python.sh` so the tree has ONE answer to
+"which interpreter":
+
+1. `$NROS_PYTHON` — the existing repo-wide knob. Explicit wins, usable or not.
+2. `python3` on `PATH`.
+3. Nothing else. **No scanning for `libpython*.so` on the filesystem** — that is
+   the same class as the `$PATH` lookup issue 0285 removed: it finds *an*
+   answer, not the *right* one.
+
+The `.so` itself is located beside the driver via `current_exe()`, never by
+`$PATH` or `LD_LIBRARY_PATH`, for the same reason.
+
+### The cases that must produce a message, not a crash
+
+| host state | XML/YAML | `.launch.py` |
+| --- | --- | --- |
+| no `python3` at all | works | error: names the file, says Python launch files need an interpreter |
+| `python3` present, no shared libpython (`Py_ENABLE_SHARED=0`) | works | error: names the interpreter and that it was built without `--enable-shared` |
+| `python3` older than the abi3 floor | works | error: names both versions |
+| `python3` ≥ floor, shared lib present | works | works |
+
+The third and fourth rows are the point of the change. Today every row above the
+last is a loader abort with no message from us; since `c0215ec2c` it is at least
+a diagnostic, but XML/YAML still cannot run.
+
+### Open questions, in the order that would kill the design
+
+1. **Do the parser's `#[pyclass]` mocks fit the limited API?** The parser
+   reimplements `launch` / `launch_ros` / `launch_xml` in Rust and injects them
+   into `sys.modules` behind a `sys.meta_path` blocker. That is a large pyclass
+   surface, and abi3 restricts pyclass features. **Check this first** — if the
+   mocks cannot be limited-API, the version-agnostic half collapses and only the
+   graceful-degradation half survives (still worth having, and still requires
+   the split).
+2. **Initialisation under abi3.** Nothing has initialised the interpreter, so
+   the cdylib must call it explicitly rather than relying on pyo3's
+   `auto-initialize` (which is documented as not for extension modules). Confirm
+   the init entry pyo3 uses is in the stable ABI at the chosen floor.
+3. **Floor choice.** Humble ships Python 3.10, Jazzy 3.12. A lower floor works
+   on more hosts and permits less C API; pick the lowest the parser compiles
+   against.
+4. **Performance.** The parser carries deliberate optimisation work (dashmap,
+   LRU caches). The limited API is slower on some paths; measure before and
+   after on a real bringup rather than assuming it is free.
+5. **Where the `.so` ships.** It becomes a second artifact that
+   `just setup-launch-resolve` must produce and that every consumer must find.
+   That is new surface for the 0285 class of bug, and needs the same absolute-
+   path discipline.
+
+All of this is upstream work in the `play_launch` submodule, where the pyo3
+dependency lives — not a nano-ros-only edit.
 
 ## Not doing
 
