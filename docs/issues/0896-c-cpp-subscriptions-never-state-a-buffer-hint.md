@@ -243,15 +243,88 @@ edge case.
    `nros::rx_buffer_for!`. Do this BEFORE 4-5: the C subscription is raw by
    design, so this is how the number reaches the runtime at all, and it decides
    what the ABI must carry.
-4. **`nros_subscription_options_t` grows an `rx_buffer_hint`.** ABI CHANGE: the
-   struct extends through `_reserved[2]`, and a `uint32_t` does not fit in two
-   bytes. `generated.rs` must be regenerated (`scripts/gen-abi-bindings.sh`);
-   `check-abi-bindings` gates it.
+4. **Carry it on BOTH C-facing subscription paths** (see below) — they are
+   independent, and the examples use the one the issue did not name.
 5. **`nros-c` forwards it** into the `TopicInfo` it already builds
-   (`subscription.rs:487`, one line), and **`nros-cpp`** through `options.hpp`.
+   (`subscription.rs:487`, one line), and the component path likewise.
 
 Out-of-band bounds (config / model) are a SEPARATE track that reuses layer 3's
 spelling. They are not needed for any type whose `.msg` already bounds it.
+
+## Correction: this is cbindgen, not bindgen
+
+Earlier text here said `nros_subscription_options_t` needs
+`scripts/gen-abi-bindings.sh` and is gated by `check-abi-bindings`. Wrong
+direction. That pair covers HAND-WRITTEN RMW/platform C headers consumed by
+bindgen into `nros-{rmw,platform}-cffi/src/generated.rs`.
+`nros_subscription_options_t` is a Rust `#[repr(C)]` struct
+(`nros-c/src/subscription.rs:145`) emitted OUT to the committed
+`packages/api/nros-c/include/nros/nros_generated.h` by cbindgen. Regenerate
+with `just regen-c-headers` — THE single writer (issue 0452) — and
+`check-cbindgen-headers` gates staleness.
+
+The layout note stands: `sched_context` + `message_info: u8` + `_reserved: [u8; 2]`,
+so a `uint32_t` does not fit in the reserved bytes and the struct grows.
+
+## There are TWO C-facing subscription paths, and the examples use the other one
+
+* **`nros-c`** — `nros_subscription_init_with_options` takes
+  `nros_subscription_options_t` and calls `session.create_subscription`
+  directly (`subscription.rs:501`). This is the path the issue described.
+* **`nros-cpp`** — `nros_cpp_subscription_register` (`nros-cpp/src/
+  subscription.rs:144`), which is what RFC-0043 typed components call, and what
+  every `examples/workspaces/c` node uses. **Ten flat arguments and no options
+  struct**, plus a `_register_with_info` twin that duplicates the whole list.
+
+The second is the one that must carry the hint for the examples to benefit, and
+its argument list cannot grow. That is precisely the problem issue 0808 solved
+for `create_session`, and its resolution is already written down in
+`rmw_entity.h`: take a NULLable trailing options struct, because
+`rmw_publisher_options_t` / `rmw_subscription_options_t` had already solved it
+for entities. Same answer here, with `rx_buffer_hint` as the first occupant and
+`sched_context` / `callback_group` / the `_with_info` split as the cleanup that
+comes free.
+
+## Layer 3 is smaller than feared: the call site already names the type
+
+The C subscription is type-erased at the ABI, but the CALL SITE is not:
+
+```c
+nros_cpp_subscription_register(node, "/chatter",
+                               std_msgs_msg_int32_get_type_name(), "", ...);
+```
+
+The token `std_msgs_msg_int32` is right there. So the hint needs no new macro
+vocabulary — a sibling accessor in the family the header already emits
+(`_get_type_name`, `_get_type_hash`, `_get_type_support`) reads identically and
+cannot drift from the type name, because both come from one token:
+
+```c
+static inline uint32_t std_msgs_msg_int32_get_rx_buffer_hint(void);
+```
+
+The `#define` from layer 2 is what it returns. A macro form that expands to BOTH
+arguments at once remains an option, but it is no longer load-bearing.
+
+## Still undecided
+
+1. **Unbounded types.** A type with no bound gets no constant. Does the
+   accessor then not exist (a compile error at the call site, forcing an
+   explicit decision) or return 0 (falls back to the global knob, matching the
+   Rust path's `RX_BUF` default)? Same question decides the publisher helper.
+2. **XCDR1 vs XCDR2.** Two different bounds for the same type. The Rust path
+   takes the max (`subscription_rx_hint`, `rmw_type_registry.rs:168`). Emit both
+   constants and take the max at the accessor, or emit one already-maxed
+   constant? The layer-2 parity test's shape depends on the answer.
+3. **Where an out-of-band bound is authored and keyed** (`system.toml`? a leaf
+   config?), and whether it may only lower a bound or also assert one for an
+   unbounded type.
+4. **How a truncation drop is reported** distinctly from a transport failure.
+   Today the generated C publish helper returns non-zero for both.
+5. **`RawSubscription::<{ config::MESSAGE_BUFFER_SIZE }>`** — a const generic
+   cannot take a runtime hint, so per-subscription sizing there needs a
+   different mechanism entirely (size-classed arena, or a per-type monomorphised
+   path). Unscoped, and possibly larger than everything above.
 
 ## Not to be confused with
 
