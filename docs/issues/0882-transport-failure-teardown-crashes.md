@@ -94,13 +94,67 @@ core ([issue 0881](0881-*)), a lost frame. So this is not an action defect; it i
 what happens to this image whenever the transport hiccups, and actions are
 simply the heaviest traffic that provokes it.
 
+## Cause CONFIRMED by disabling the reopen path
+
+`Z_FEATURE_AUTO_RECONNECT` defaults to 1 in zenoh-pico and no image could
+override it. Adding `CONFIG_NROS_ZENOH_AUTO_RECONNECT` and turning it off
+isolates the defect exactly:
+
+| build | through tap | direct |
+| --- | ---: | ---: |
+| reconnect **on** (default) | **0/8** | 7/10 |
+| reconnect **off** | **8/8** | 4/10 |
+
+Through the tap — the reliable trigger — the crash goes from certain to absent.
+That places the defect on the reopen path and nowhere else.
+
+**It is not a fix.** Off, the session never recovers from a transport failure,
+which is why the direct column gets *worse*: a hiccup that reconnect used to
+survive now ends the session for good. Neither setting is acceptable, and the
+image is therefore left at the default.
+
+## What is actually wrong
+
+`_zp_unicast_failed` runs **on the lease task** and does, in order:
+
+```c
+_z_task_join(read_task); _z_task_free(read_task);   // fine
+_z_unicast_transport_close(ztu, _Z_CLOSE_EXPIRED);
+_z_unicast_transport_clear(ztu, true);   // detaches+frees the LEASE task (itself)
+                                         // and _z_mutex_drop()s the transport mutexes
+ret = _z_reopen(&zs);                    // ...then reopens, on that torn-down state
+_z_task_exit();
+```
+
+Two distinct defects on that path:
+
+1. **The lease task frees the storage it is running on.** `_z_common_transport_clear`
+   frees `_lease_task` while that task is the caller. `_z_reopen` then starts a
+   new lease task, and `z_malloc` hands back the block just freed — two live
+   threads sharing one `pthread_t`. This matters especially here because
+   `nros_zephyr_task_slot_release` keys the stack-slot table on `pthread_t`
+   (issues 0822, 0839), so the wrong stack can be released.
+
+   **Fixed** in the Zephyr port: `_z_task_free` refuses a self-free and defers
+   the handle to the next free from another thread. Necessary, and on its own
+   **not sufficient** — the crash still reproduces with it in.
+
+2. **The mutexes are destroyed before the reopen that needs them.** The faulting
+   lock resolves inside `nros_platform::zephyr_heap::HEAP` (+676): a
+   heap-allocated mutex used after its allocation was released. That is the
+   remaining defect and it is where the real fix belongs.
+
 ## Fix direction
 
-Read `_zp_unicast_failed` and `_z_task_free` together and find which lock is
-taken after which free. The candidates are the session mutex, a per-task
-condvar, and the read-task's own storage, which nano-ros allocates from a slot
-table rather than from the heap — so `_z_task_free`'s `k_free` may be freeing
-something the slot table still considers live, or vice versa.
+`_z_common_transport_clear` must not tear down state that the reopen on the
+same session is about to use, and must not free the calling task. Either the
+clear should be split so the reopen path skips the mutex drop and the self
+free, or the reopen should build a fresh transport before the old one is
+released rather than after.
+
+This is shared code on a path every platform takes, so it belongs upstream in
+eclipse-zenoh rather than in the Zephyr port. The port-side half (defect 1) is
+already fixed here.
 
 Acceptance is the table above inverted: goals complete through the tap, which is
 currently 0 of 8.
