@@ -134,6 +134,22 @@ add_compile_definitions(
     MEMP_NUM_NETBUF=64
     PBUF_POOL_SIZE=128
     TCPIP_MBOX_SIZE=64
+    # MEMP_NUM_TCPIP_MSG_INPKT must track TCPIP_MBOX_SIZE. The mailbox holds
+    # POINTERS to `tcpip_msg` structs drawn from this pool, so the pool - not
+    # the mailbox - is the real queue depth: raising TCPIP_MBOX_SIZE to 64 and
+    # leaving this at the lwIP default of 8 caps the driver->stack queue at 8
+    # and silently discards the rest of a burst. `tcpip_input()` returns
+    # ERR_MEM and the frame is dropped before it ever reaches IP.
+    #
+    # Not hypothetical (issue 0836): during the discovery burst from a real
+    # ROS 2 peer this is the ONLY pool that ever fails an allocation
+    # (LWIP_STATS: TCPIP_MSG_INPKT used=0 max=8 avail=8 err=7, against
+    # PBUF_POOL max=9 of 128; with 64 the same burst peaks at 14 and err=0).
+    # The frames it drops carry SEDP announcements, and a reliable builtin
+    # reader that loses one waits for it in its reorder store forever - so a
+    # handful of dropped frames at boot costs the image every topic announced
+    # after the gap.
+    MEMP_NUM_TCPIP_MSG_INPKT=64
     DEFAULT_UDP_RECVMBOX_SIZE=64
     DEFAULT_TCP_RECVMBOX_SIZE=32
     DEFAULT_RAW_RECVMBOX_SIZE=32)

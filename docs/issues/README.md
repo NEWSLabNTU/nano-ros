@@ -60,6 +60,15 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 **The open-issue list is [`open.md`](open.md)** — generated from the issue files
 by `scripts/gen-issue-index.py`, checked by `check-issue-index`.
 
+Recently resolved (2026-08-29): **#0836** (platform) - `MEMP_NUM_TCPIP_MSG_INPKT` sat at the lwIP
+default of 8 while the an536 board raised everything around it, including `TCPIP_MBOX_SIZE=64` - and the
+mailbox holds pointers to structs from that pool, so the pool IS the driver->stack queue depth. A real
+ROS 2 peer's discovery burst needs 14; past 8, `tcpip_input()` returns ERR_MEM and frames are dropped
+before IP. They carry SEDP, and a reliable builtin reader that loses one waits for it forever - so every
+topic announced after the gap never matches. Filed as a payload-SIZE bug because the topic announced last
+happened to be the 13 KiB trajectory; with the pool at 64 a 17.6 KiB sample arrives as reliably as a
+116-byte one. Before: 7 of 12 runs; after: 34 of 34. See `archived/0836-*`.
+
 Recently resolved (2026-08-29): **#0888** (rmw) — FreeRTOS was the only platform arm of the embedded
 Cyclone config with no `AllowMulticast`, so it inherited the Cyclone default (multicast for data) while
 ThreadX states `spdp` and native_sim states `false`. Not a platform limit — `LWIP_IGMP` is on, the netif

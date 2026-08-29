@@ -127,6 +127,20 @@
 #ifndef TCPIP_MBOX_SIZE
 #define TCPIP_MBOX_SIZE                 16
 #endif
+/* The tcpip mailbox holds POINTERS to `tcpip_msg` structures drawn from
+ * MEMP_TCPIP_MSG_INPKT, so that pool — not the mailbox — is the real
+ * driver->stack queue depth. A board that raises TCPIP_MBOX_SIZE and leaves
+ * the pool at lwIP's default of 8 gets a queue of 8 that looks like its
+ * mailbox size: past 8, `tcpip_input()` returns ERR_MEM and the frame is
+ * dropped before it reaches IP. Tying them here makes raising one raise both.
+ *
+ * Issue 0836: the an536 board raised TCPIP_MBOX_SIZE to 64 and this stayed at
+ * 8, so a real ROS 2 peer's discovery burst (which peaks at 14-16 here) lost
+ * frames carrying SEDP — and a reliable builtin reader that loses a sample
+ * waits for it forever, so every topic announced after the gap never matched. */
+#ifndef MEMP_NUM_TCPIP_MSG_INPKT
+#define MEMP_NUM_TCPIP_MSG_INPKT        TCPIP_MBOX_SIZE
+#endif
 #define DEFAULT_THREAD_STACKSIZE        (2 * 1024)
 #ifndef DEFAULT_RAW_RECVMBOX_SIZE
 #define DEFAULT_RAW_RECVMBOX_SIZE       8
