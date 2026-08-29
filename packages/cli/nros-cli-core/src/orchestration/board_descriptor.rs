@@ -194,6 +194,22 @@ impl BoardCapabilities {
 pub struct BoardDescriptor {
     /// Board name + accepted aliases (the values a user passes as `board`).
     pub names: Vec<String>,
+    /// The board id to hand `west build -b`, when it differs from the name the
+    /// image authored.
+    ///
+    /// `[image.*] board` is BOTH the catalog lookup key and, for a Zephyr
+    /// image, the string west receives — so a descriptor answering to
+    /// `["my-board", "qemu_cortex_m3"]` and an image authored as
+    /// `board = "my-board"` reached `west build -b my-board`, which west has
+    /// never heard of. The in-tree descriptors hide it by convention: their
+    /// name lists carry the Zephyr spelling and the examples author THAT one.
+    ///
+    /// A workspace-local board makes the convention hard to keep — the natural
+    /// name for a package is the friendly one — so the descriptor can say
+    /// which of its names west uses. Absent, the authored string is passed
+    /// through, which is what every existing descriptor relies on.
+    #[serde(default)]
+    pub west_board: Option<String>,
     pub platform: PlatformKind,
     /// rustc target triple this board pins, if any (`None` → take from plan).
     #[serde(default)]
@@ -454,6 +470,56 @@ impl BoardCatalog {
             catalog.attach_bundle_aliases(root);
         }
         Ok(catalog)
+    }
+
+    /// [`Self::load`] plus board descriptors carried by the USER's own
+    /// workspace packages.
+    ///
+    /// A board is a package. `src/my_board/nros-board.toml` is discovered the
+    /// same way `src/talker_pkg` is, so declaring a board for a workspace
+    /// needs no environment variable, no path outside the tree, and nothing
+    /// copied into the nano-ros checkout — the colcon property that everything
+    /// a workspace needs lives in the workspace.
+    ///
+    /// `$NROS_EXTRA_BOARD_PATH` stays, and stays useful: a board shared by
+    /// SEVERAL workspaces has no single workspace to live in. What changes is
+    /// which one is the default answer.
+    pub fn load_with_packages(
+        workspace: &Path,
+        pkg_dirs: &[PathBuf],
+    ) -> Result<Self, BoardLoadError> {
+        let mut catalog = Self::load_with_extra(workspace, &extra_board_roots())?;
+        catalog.absorb_packages(pkg_dirs)?;
+        Ok(catalog)
+    }
+
+    /// Load `<pkg>/nros-board.toml` for each package that carries one.
+    ///
+    /// Package dirs are named INDIVIDUALLY rather than scanning their parent:
+    /// a workspace's layout is whatever its packages say it is, and a parent
+    /// scan would also read directories that discovery deliberately excluded.
+    fn absorb_packages(&mut self, pkg_dirs: &[PathBuf]) -> Result<(), BoardLoadError> {
+        for dir in pkg_dirs {
+            let descriptor_path = dir.join("nros-board.toml");
+            if !descriptor_path.is_file() {
+                continue;
+            }
+            let text = std::fs::read_to_string(&descriptor_path)
+                .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
+            let file: BoardFile = toml::from_str(&text)
+                .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
+            // Absolute, like an extra root and for the same reason: the
+            // workspace-relative form exists so IN-TREE paths in committed
+            // nano-ros artifacts do not drift per host, and a user's board is
+            // not in one.
+            let abs = descriptor_path.display().to_string();
+            self.descriptors
+                .extend(file.boards.into_iter().map(|mut b| {
+                    b.source = Some(abs.clone());
+                    b
+                }));
+        }
+        Ok(())
     }
 
     /// Append every `<root>/*/nros-board.toml` to `descriptors`.
@@ -1189,6 +1255,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     fn cargo_config_substitutes_workspace() {
         let descriptor = BoardDescriptor {
             names: vec!["x".into()],
+            west_board: None,
             platform: PlatformKind::ThreadxRiscv64,
             target: None,
             toolchain: Toolchain::Stable,
@@ -1338,6 +1405,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
         let mut boards = catalog().descriptors;
         boards.push(BoardDescriptor {
             names: vec!["native".into(), "posix".into()],
+            west_board: None,
             platform: PlatformKind::Posix,
             target: None,
             toolchain: Toolchain::Stable,
@@ -1424,5 +1492,82 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             "no crate-root `use` was checked — the descriptors moved and this \
              gate is now inert"
         );
+    }
+}
+
+#[cfg(test)]
+mod workspace_board_package_tests {
+    use super::*;
+
+    fn repo_root_for_tests() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf()
+    }
+
+    /// A board declared BY the workspace, as one of its packages.
+    ///
+    /// Before this, a user's board had to live outside their workspace and be
+    /// reached through `$NROS_EXTRA_BOARD_PATH` — ambient state, set per shell,
+    /// invisible in the command that ran. Everything else a workspace needs is
+    /// declared inside it; a board is not special.
+    #[test]
+    fn a_package_carrying_a_descriptor_joins_the_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = tmp.path().join("src").join("my_board");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            pkg.join("nros-board.toml"),
+            r#"
+[[board]]
+names = ["my-board"]
+west_board = "qemu_cortex_m3"
+platform = "zephyr"
+toolchain = "stable"
+platform_feature = "platform-zephyr"
+link_kind = "none"
+entry_kind = "zephyr-staticlib"
+"#,
+        )
+        .unwrap();
+
+        let cat =
+            BoardCatalog::load_with_packages(&repo_root_for_tests(), std::slice::from_ref(&pkg))
+                .expect("load");
+        let d = cat
+            .resolve("my-board", "")
+            .expect("the workspace's own board");
+        assert_eq!(d.platform, PlatformKind::Zephyr);
+        // The name west is given, which is NOT the name the workspace uses.
+        assert_eq!(d.west_board.as_deref(), Some("qemu_cortex_m3"));
+    }
+
+    /// A package with no descriptor is simply not a board — the common case,
+    /// and it must cost nothing and raise nothing.
+    #[test]
+    fn a_package_without_a_descriptor_is_ignored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg = tmp.path().join("src").join("talker_pkg");
+        std::fs::create_dir_all(&pkg).unwrap();
+
+        let with =
+            BoardCatalog::load_with_packages(&repo_root_for_tests(), std::slice::from_ref(&pkg))
+                .expect("load");
+        let without = BoardCatalog::load_with_extra(&repo_root_for_tests(), &[]).expect("load");
+        assert_eq!(with.descriptors.len(), without.descriptors.len());
+    }
+
+    /// `west_board` is optional, and its absence means "the authored name is
+    /// already the one west knows" — which is what every in-tree descriptor
+    /// relies on, so a missing field must not change them.
+    #[test]
+    fn west_board_is_absent_on_the_in_tree_descriptors() {
+        let cat = BoardCatalog::load_with_extra(&repo_root_for_tests(), &[]).expect("load");
+        let zephyr = cat
+            .resolve("native_sim/native/64", "")
+            .expect("the zephyr board");
+        assert_eq!(zephyr.west_board, None);
     }
 }

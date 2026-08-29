@@ -99,6 +99,9 @@ fn args(ws: &Path, images: &[&str]) -> Args {
         images: images.iter().map(|s| (*s).to_string()).collect(),
         workspace: Some(ws.to_path_buf()),
         nano_ros_path: Some(repo_root()),
+        // These are PLAN tests: they assert what would be run, never run it,
+        // so no Zephyr is resolved and none is named.
+        zephyr_workspace: None,
         all: false,
         dry_run: true,
         offline: false,

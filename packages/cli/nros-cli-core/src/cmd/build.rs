@@ -42,6 +42,19 @@ pub struct Args {
     #[arg(long)]
     pub nano_ros_path: Option<PathBuf>,
 
+    /// The west workspace holding Zephyr — the directory that contains
+    /// `zephyr/`. Zephyr images only.
+    ///
+    /// The explicit rung of the resolution ladder, above `$ZEPHYR_BASE` and
+    /// `$NROS_ZEPHYR_WORKSPACE`. An environment variable is ambient state that
+    /// a user has to remember to set and cannot see in the command they ran;
+    /// this makes the same fact reviewable in a script and in shell history.
+    ///
+    /// Pointing it at the `zephyr/` directory itself also works — that is the
+    /// commonest way to get this wrong, and both spellings name one place.
+    #[arg(long, value_name = "DIR")]
+    pub zephyr_workspace: Option<PathBuf>,
+
     /// Build every declared image.
     #[arg(long)]
     pub all: bool,
@@ -158,9 +171,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // touched (RFC-0065 D2's reasoning, applied to dependencies).
     check_declared_depends(&root, &found.packages, nano_ros_root.as_deref())?;
 
+    // The workspace's OWN packages can carry board descriptors, so a board is
+    // declared where everything else about this workspace is declared.
+    let pkg_dirs: Vec<PathBuf> = found.packages.iter().map(|p| p.dir.clone()).collect();
     let catalog = match &nano_ros_root {
-        Some(r) => crate::orchestration::board_descriptor::BoardCatalog::load(r)
-            .map_err(|e| eyre::eyre!("loading board descriptors from {}: {e}", r.display()))?,
+        Some(r) => {
+            crate::orchestration::board_descriptor::BoardCatalog::load_with_packages(r, &pkg_dirs)
+                .map_err(|e| eyre::eyre!("loading board descriptors from {}: {e}", r.display()))?
+        }
         None => eyre::bail!(
             "no nano-ros checkout found, so board ids cannot be resolved. \
              Pass --nano-ros-path, or set NROS_REPO_DIR."
@@ -597,7 +615,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     crate::builder::zephyr::split_native_args(&args.native_args)
                         .map_err(|e| eyre::eyre!("{e}"))?;
 
-                let mut a = vec!["build".to_string(), "-b".to_string(), board.clone()];
+                // The board id WEST knows, which is not always the name the
+                // image authored — see `BoardDescriptor::west_board`.
+                let west_board = descriptor
+                    .west_board
+                    .clone()
+                    .unwrap_or_else(|| board.clone());
+                let mut a = vec!["build".to_string(), "-b".to_string(), west_board];
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
                 }
@@ -628,7 +652,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // there withholds the very command the message tells the user
                 // to run. `plan_builds` is also how the pipeline tests assert
                 // driver selection, which needs no workspace either.
-                let zbase = zephyr_base(&root);
+                let zbase = zephyr_base(&root, args.zephyr_workspace.as_deref());
                 if zbase.is_none() && !args.dry_run {
                     let opts = crate::builder::zephyr::west_args(&overlays);
                     let line = format!(
@@ -646,10 +670,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                          which is how a FREESTANDING application (one outside the \
                          west workspace) builds.\n\n\
                          Point nros at your workspace:\n\n    \
-                         NROS_ZEPHYR_WORKSPACE=<dir>   # the dir containing zephyr/\n\n\
-                         or export ZEPHYR_BASE=<dir>/zephyr yourself, or run:\n\n    {line}\n\n\
-                         (searched: $ZEPHYR_BASE, $NROS_ZEPHYR_WORKSPACE, \
-                         <workspace>/zephyr-workspace, ../nano-ros-workspace[-4.4])"
+                         nros build {image_id} --zephyr-workspace <dir>\n\n\
+                         where <dir> contains `zephyr/`. Or set it once for the \
+                         shell:\n\n    \
+                         export NROS_ZEPHYR_WORKSPACE=<dir>\n\n\
+                         or run west yourself:\n\n    {line}\n\n\
+                         (searched: --zephyr-workspace, $ZEPHYR_BASE, \
+                         $NROS_ZEPHYR_WORKSPACE, <workspace>/zephyr-workspace, \
+                         ../nano-ros-workspace[-4.4])"
                     );
                 }
                 // Run from the nros workspace with ZEPHYR_BASE set, which is
@@ -1398,21 +1426,49 @@ fn cmake_deploy_token(text: &str) -> Option<String> {
 /// `NROS_ZEPHYR_WORKSPACE` is the established spelling — 60 references across
 /// the tree. An earlier version of this invented `NROS_WEST_WORKSPACE`, which
 /// would have been a 61st name for one thing.
-fn zephyr_base(root: &std::path::Path) -> Option<PathBuf> {
+fn zephyr_base(root: &std::path::Path, flag: Option<&std::path::Path>) -> Option<PathBuf> {
     zephyr_base_with(
+        flag,
         std::env::var_os("ZEPHYR_BASE"),
         std::env::var_os("NROS_ZEPHYR_WORKSPACE"),
         root,
     )
 }
 
-/// [`zephyr_base`] with the two env reads passed IN, so the resolution is
+/// Is this directory a Zephyr tree rather than the workspace above one?
+///
+/// `Kconfig.zephyr` is the file Zephyr's own `find_package` machinery keys on,
+/// so it is the marker rather than a name match — a workspace is free to check
+/// Zephyr out under any directory name.
+fn is_zephyr_tree(p: &std::path::Path) -> bool {
+    p.join("Kconfig.zephyr").is_file()
+}
+
+/// [`zephyr_base`] with the flag and the two env reads passed IN, so the resolution is
 /// testable without touching process-global state.
 fn zephyr_base_with(
+    flag: Option<&std::path::Path>,
     base: Option<std::ffi::OsString>,
     workspace: Option<std::ffi::OsString>,
     root: &std::path::Path,
 ) -> Option<PathBuf> {
+    // `--zephyr-workspace` first: it is the only rung the user states in the
+    // command itself, so an env left over from another project must not win
+    // over what this invocation says.
+    //
+    // It names a WORKSPACE, like `$NROS_ZEPHYR_WORKSPACE` — but a user who
+    // passes the `zephyr/` directory has named the same place by its other
+    // name, and refusing that would be pedantry over a distinction only this
+    // code cares about. So both resolve.
+    if let Some(f) = flag {
+        let nested = f.join("zephyr");
+        if nested.is_dir() {
+            return Some(nested);
+        }
+        if is_zephyr_tree(f) {
+            return Some(f.to_path_buf());
+        }
+    }
     if let Some(b) = base {
         let p = PathBuf::from(b);
         if p.is_dir() {
@@ -1807,12 +1863,12 @@ mod zephyr_base_tests {
         std::fs::create_dir_all(&root).expect("mkdir");
 
         // Nothing anywhere.
-        assert_eq!(zephyr_base_with(None, None, &root), None);
+        assert_eq!(zephyr_base_with(None, None, None, &root), None);
 
         // In-repo `zephyr-workspace/` — the common contributor layout.
         let inrepo = zdir(&root, "zephyr-workspace");
         assert_eq!(
-            zephyr_base_with(None, None, &root),
+            zephyr_base_with(None, None, None, &root),
             Some(inrepo.join("zephyr"))
         );
 
@@ -1820,7 +1876,7 @@ mod zephyr_base_tests {
         // the tree), not a new one — outranks the in-repo default.
         let explicit = zdir(&base, "elsewhere");
         assert_eq!(
-            zephyr_base_with(None, Some(explicit.clone().into_os_string()), &root),
+            zephyr_base_with(None, None, Some(explicit.clone().into_os_string()), &root),
             Some(explicit.join("zephyr")),
         );
 
@@ -1829,6 +1885,7 @@ mod zephyr_base_tests {
         std::fs::create_dir_all(&direct).expect("mkdir");
         assert_eq!(
             zephyr_base_with(
+                None,
                 Some(direct.clone().into_os_string()),
                 Some(explicit.into_os_string()),
                 &root
@@ -1850,12 +1907,12 @@ mod zephyr_base_tests {
         std::fs::create_dir_all(&empty).expect("mkdir");
 
         assert_eq!(
-            zephyr_base_with(None, Some(empty.clone().into_os_string()), &root),
+            zephyr_base_with(None, None, Some(empty.clone().into_os_string()), &root),
             None,
             "a workspace with no zephyr/ is not a workspace",
         );
         assert_eq!(
-            zephyr_base_with(Some(empty.join("nope").into_os_string()), None, &root),
+            zephyr_base_with(None, Some(empty.join("nope").into_os_string()), None, &root),
             None,
             "a ZEPHYR_BASE that does not exist is not a Zephyr",
         );
@@ -1927,5 +1984,69 @@ nano_ros_add_executable(entry
     fn a_quoted_deploy_token_is_unquoted() {
         let text = "nano_ros_entry(e\n    DEPLOY \"zephyr\")\n";
         assert_eq!(cmake_deploy_token(text).as_deref(), Some("zephyr"));
+    }
+}
+
+#[cfg(test)]
+mod zephyr_workspace_flag_tests {
+    use super::*;
+
+    /// `--zephyr-workspace` outranks both environment variables.
+    ///
+    /// An env is ambient: it survives a shell, it is not visible in the command
+    /// that ran, and one left over from another project would otherwise decide
+    /// this build. What the invocation says has to win over what the shell
+    /// remembers.
+    #[test]
+    fn the_flag_outranks_both_env_vars() {
+        let tmp = tempfile::tempdir().unwrap();
+        let flagged = tmp.path().join("flagged");
+        let env_ws = tmp.path().join("from-env");
+        std::fs::create_dir_all(flagged.join("zephyr")).unwrap();
+        std::fs::create_dir_all(env_ws.join("zephyr")).unwrap();
+        let stale_base = tmp.path().join("stale");
+        std::fs::create_dir_all(&stale_base).unwrap();
+
+        assert_eq!(
+            zephyr_base_with(
+                Some(&flagged),
+                Some(stale_base.into_os_string()),
+                Some(env_ws.into_os_string()),
+                tmp.path(),
+            ),
+            Some(flagged.join("zephyr")),
+        );
+    }
+
+    /// Passing the `zephyr/` directory itself resolves too.
+    ///
+    /// The flag names a WORKSPACE, but "the directory containing zephyr" and
+    /// "the Zephyr directory" are one place under two descriptions, and
+    /// confusing them is the commonest way to get this wrong. Refusing would
+    /// be pedantry about a distinction only the resolver cares about.
+    #[test]
+    fn the_flag_also_accepts_the_zephyr_tree_itself() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zephyr = tmp.path().join("ws").join("zephyr");
+        std::fs::create_dir_all(&zephyr).unwrap();
+        // `Kconfig.zephyr` is the marker, not the directory NAME — a workspace
+        // may check Zephyr out anywhere.
+        std::fs::write(zephyr.join("Kconfig.zephyr"), "").unwrap();
+
+        assert_eq!(
+            zephyr_base_with(Some(&zephyr), None, None, tmp.path()),
+            Some(zephyr),
+        );
+    }
+
+    /// A directory that is neither a workspace nor a Zephyr resolves to
+    /// nothing, so the caller reports the miss instead of running west against
+    /// a path that cannot work.
+    #[test]
+    fn a_flag_naming_neither_resolves_to_nothing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let empty = tmp.path().join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert_eq!(zephyr_base_with(Some(&empty), None, None, tmp.path()), None);
     }
 }

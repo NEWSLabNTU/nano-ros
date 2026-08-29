@@ -328,6 +328,86 @@ convenience rung, so a user who ran `just zephyr setup` does not have to export
 the first as well. That is the whole of the overlap, and it buys one less thing
 to remember rather than a second source of truth.
 
+## D9 — a board is a PACKAGE; the workspace is where it goes
+
+D7 left a user's board outside their workspace, reached through
+`$NROS_EXTRA_BOARD_PATH`. That is ambient state: set per shell, absent from the
+command that ran, and forgotten between machines. Everything else a workspace
+needs is declared inside it, and a board is not special.
+
+So a package carrying an `nros-board.toml` beside its `package.xml` joins the
+catalog:
+
+```text
+my_robot/src/my_board/{package.xml, nros-board.toml}
+```
+
+```toml
+[image.zephyr]
+board = "my-board"
+```
+
+The descriptors are absorbed from the DISCOVERED packages, individually, rather
+than by scanning `src/`: a workspace's layout is whatever its packages say it
+is, and a directory scan would also read what discovery deliberately excluded.
+A package with no descriptor costs one `is_file` and is not a board.
+
+`$NROS_EXTRA_BOARD_PATH` stays and stays useful — a board shared by SEVERAL
+workspaces has no single workspace to live in. What changed is which one is the
+default answer.
+
+### `west_board`, and the edge that made it necessary
+
+`[image.*] board` is both the catalog lookup key AND, for a Zephyr image, the
+string west receives. The in-tree descriptors hide the collision by convention:
+their name lists carry the Zephyr spelling (`names = ["zephyr",
+"native_sim/native/64"]`) and the examples author that one.
+
+A workspace-local board makes the convention hard to keep, because the natural
+name for a package is the friendly one. Measured, before the field existed:
+
+```text
+board = "my-board"   →   west build -b my-board     # west has never heard of it
+```
+
+So a descriptor may name the id west is given:
+
+```toml
+names = ["my-board"]
+west_board = "qemu_cortex_m3"
+```
+
+Absent, the authored string is passed through — which is what every existing
+descriptor relies on, so adding the field changed none of them (asserted).
+
+## D10 — `--zephyr-workspace`, because an env is not visible in what you ran
+
+The workspace path is machine state, so it cannot be committed; that is why it
+was an environment variable. But an env is also the least reviewable place to
+put it: it survives a shell, it does not appear in the command, and one left
+over from another project silently decides this build.
+
+`nros build --zephyr-workspace <dir>` is the explicit rung, above both env
+vars, so what the invocation says beats what the shell remembers. It also makes
+the fact reviewable in a script and recoverable from shell history.
+
+The ladder is therefore:
+
+```text
+--zephyr-workspace  →  $ZEPHYR_BASE  →  $NROS_ZEPHYR_WORKSPACE
+                    →  <workspace>/zephyr-workspace  →  ../nano-ros-workspace[-4.4]
+```
+
+**The flag accepts the `zephyr/` directory too.** It names a workspace, but
+"the directory containing zephyr" and "the Zephyr directory" are one place
+under two descriptions, and confusing them is the commonest way to get this
+wrong. `Kconfig.zephyr` is the marker rather than a name match, because a
+workspace may check Zephyr out under any directory name.
+
+This does not make D8 wrong: the two variables still belong to different
+phases, and setup still names a directory with no Zephyr in it yet. What the
+flag removes is the need to remember either one at build time.
+
 ## Verified end to end
 
 `examples/workspaces/rust`, 2026-08-29, on this tree:

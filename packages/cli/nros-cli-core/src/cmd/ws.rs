@@ -6373,6 +6373,7 @@ rustflags = [
     fn board(cargo_config: Option<&str>) -> BoardDescriptor {
         BoardDescriptor {
             names: vec!["nuttx".into()],
+            west_board: None,
             platform: PlatformKind::Nuttx,
             target: None,
             toolchain: Toolchain::Nightly,

@@ -50,6 +50,9 @@ pub fn run(args: Args) -> Result<()> {
         images: vec![args.image.clone()],
         workspace: Some(root.clone()),
         nano_ros_path: args.nano_ros_path.clone(),
+        // Materialize resolves an image; it never runs west, so no Zephyr is
+        // needed and none is looked for.
+        zephyr_workspace: None,
         all: false,
         dry_run: true,
         offline: true,
