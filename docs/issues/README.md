@@ -69,6 +69,17 @@ states `spdp`, matching ThreadX. NOT a fix for 0836: with the peer already spdp-
 regardless (97,976 sends to the island's unicast locator against 69 multicast, all discovery).
 See `archived/0888-*`.
 
+Recently resolved (2026-08-29): **#0890** (rmw) — the liveliness DISCOVERY wildcards still pinned `0/11` in
+the `<node_id>/<entity_id>` field, so `wait_for_service` and the LivelinessChanged emulation matched only a
+session's ELEVENTH entity. Issue 0292's residue: 0292 measured that literal on the DECLARATION side (an
+action server's five entities all collided at id 11 in rmw_zenoh's graph cache and deduped to one), fixed the
+four declaration builders and left the two wildcard builders on the constant — where the same literal stops
+being a collision and becomes a filter. The name hid it: `PROTO_VERSION_TOPIC` reads like a protocol version,
+so a wildcard carrying it looks right. Now `ENTITY_ANY = "*/*"`, both chunks wildcarded (not `0/*` — native
+`rmw_zenoh_cpp` peers' node id is not ours to assume). Regression tests assert the PROPERTY across several
+ids, 11 included deliberately since it is the one value the bug did match. See `archived/0890-*`.
+(2026-08-29)
+
 Recently resolved (2026-08-28): **#0855** (testing) — `c_port_posix_net.rs` named ports `56301`/`56302` as literals, and both sit INSIDE this host's ephemeral range (32768–60999), so the kernel hands them to anything asking for one. An unrelated ROS `component_node` from another session's Autoware stack held 56302 for 29 minutes and `udp_loopback_roundtrip` reported it as `nros_platform_udp_listen` returning `-1` — a product-shaped message for a host-shaped cause. Now binds port 0 and reads `local_addr()` back, so the kernel names a port nobody holds. See `archived/0855-*`.
 
 - Recently resolved (2026-08-28): **#0863** — `check-submodule-pinned-locks` was flaky in CI because a COLD cargo cache fails `--offline` resolution during selection (`no matching package named X`), a third wording 0600's classifier did not match — so a correct lock was reported as a mismatch, telling the operator to `lock-update` it. The reporter also printed `err[-4:]`, discarding the head line that names the crate. See `archived/0863-*`.
