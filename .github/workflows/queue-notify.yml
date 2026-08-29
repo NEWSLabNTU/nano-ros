@@ -55,6 +55,28 @@ jobs:
           fi
           echo "ejected pull request: #$pr"
 
+          # phase-396 W4 — is this red MINE, or is it red for EVERYONE?
+          #
+          # `queue-triage` already answers that: one check failing across several
+          # DIFFERENT pull requests is not a property of any one of them. Nothing
+          # ran it, so a human had to suspect the problem before the tool that
+          # detects it got used — and meanwhile six merge groups across three
+          # authors failed on one job while every notice told its author to
+          # rebase.
+          #
+          # In the infra case that advice is not merely unhelpful, it is WRONG.
+          # Rebasing cannot fix a check that is red before it sees the change,
+          # and re-queuing burns a batch slot against a check that cannot go
+          # green for anyone.
+          verdict=UNKNOWN
+          if triage="$(bash scripts/ci/queue-triage.sh 2>/dev/null)"; then
+            case "$triage" in
+              *"NOT YOUR PULL REQUEST"*)    verdict=INFRA ;;
+              *"LIKELY YOUR PULL REQUEST"*) verdict=MINE ;;
+            esac
+          fi
+          echo "triage verdict: $verdict"
+
           # Post once per run, not once per re-check: a comment per attempt
           # turns a bad afternoon into an unreadable thread.
           body="$(cat <<MSG
@@ -88,6 +110,46 @@ jobs:
 
           # Strip the heredoc's leading indentation.
           printf '%s\n' "$body" | sed 's/^          //' > /tmp/body.md
+
+          # An INFRA verdict REPLACES the advice above rather than adding to it.
+          # Leaving "rebase and re-run just ci-l1" on the page next to "this is
+          # not your pull request" is worse than either alone: the author acts on
+          # the first thing they can act on, which is the wrong one.
+          #
+          # Indented heredoc + the same `sed` strip as above — the body must sit
+          # inside this YAML block scalar, so a column-0 heredoc is a parse
+          # error, not a formatting nit.
+          if [ "$verdict" = "INFRA" ]; then
+            infra="$(cat <<MSG
+          **Ejected from the merge queue** — \`$WORKFLOW\` failed on the merge group.
+
+          [Run log]($RUN_URL)
+
+          > [!IMPORTANT]
+          > **This is almost certainly not your pull request.** The same check has
+          > failed in the merge group for two or more *different* pull requests, and
+          > a check that fails across unrelated changes is not a property of any one
+          > of them.
+
+          **Do not rebase, and do not re-queue.** Neither can fix a check that is red
+          before it sees your change — every entry is the culprit — and each re-queue
+          burns a batch slot against a check that cannot go green for anyone.
+
+          Say so where the other authors will see it, then either fix the check or
+          drop it from the required set until it is fixed. An always-red required
+          check freezes merging exactly as a pending one does.
+
+          \`\`\`
+          just queue-triage $pr     # the evidence: which check, across how many PRs
+          \`\`\`
+
+          <sub>Posted by \`queue-notify\`; verdict from \`scripts/ci/queue-triage.sh\`.
+          GitHub records an ejection only in the PR timeline, with no comment and no
+          notification.</sub>
+          MSG
+          )"
+            printf '%s\n' "$infra" | sed 's/^          //' > /tmp/body.md
+          fi
 
           if gh pr comment "$pr" --repo "${{ github.repository }}" --body-file /tmp/body.md; then
             echo "commented on #$pr"
