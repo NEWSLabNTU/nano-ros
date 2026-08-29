@@ -1,6 +1,6 @@
 # Phase 390 — `owned`/`borrowed` name the wrong things; rename to `inline`/`heap`/`view`
 
-**Status (2026-08-30). Complete — W1-W5 landed.** Opened from a
+**Status (2026-08-30). W1-W5 landed; W6 (emitter internals) recorded, not started.** Opened from a
 memory-allocation review that settled the message allocation strategy before
 touching layout. Renames the RFC-0033 storage modes and amends the RFC with a
 guarantee column. No behaviour change; the modes keep their current semantics and
@@ -150,6 +150,30 @@ because a C type name cannot carry a deprecation.
 
 `SlotBorrowing`, `nros_cdr_borrow_*` and `borrow_loaned_message` stay as they
 are — those spell a VERB, and RFC-0033 now records why.
+
+**W6 — the emitter's OWN vocabulary.** NOT started; found while rebasing W5.
+The renames above cover the types, traits and APIs a user names. The codegen's
+internal predicates and template-context keys still say `borrowed`:
+
+| identifier | sites |
+| --- | ---: |
+| `is_borrowed` | 59 |
+| `has_borrowed` | 19 |
+| `borrowed_c_type` | 8 |
+| `has_borrowed_{goal,feedback,request,response,result}` | 35 |
+| `borrowed_read_fn` | 7 |
+
+**Why this is not another sweep.** Most of these are minijinja CONTEXT KEYS,
+which exist twice — once as a field on a Rust context struct, once as a name
+inside a `.jinja` template. minijinja renders an unknown key as EMPTY rather
+than failing, so renaming one side and not the other produces a template that
+still emits, just without the branch. That is a silent wrong-output bug in a
+generator, and the golden corpus only catches it for shapes the corpus covers
+(which phase-390 W2 already found were fewer than advertised).
+
+Do it as one commit per key, with the golden corpus re-recorded and DIFFED each
+time, or not at all. The user-facing vocabulary is already consistent; this is
+internal tidiness with a real footgun attached.
 
 ## Explicitly not in this phase
 

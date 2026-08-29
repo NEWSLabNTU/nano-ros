@@ -1048,7 +1048,7 @@ pub(crate) struct SubBufferedViewEntry<B, F> {
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `SubBufferedViewEntry<B, F>`.
-pub(crate) unsafe fn sub_buffered_borrowed_try_process<B, F>(
+pub(crate) unsafe fn sub_buffered_view_try_process<B, F>(
     ptr: *mut u8,
     _delta_us: u64,
     _desc_idx: u8,
@@ -1099,7 +1099,7 @@ where
 ///
 /// # Safety
 /// `ptr` must point to a valid `SubBufferedViewEntry<B, F>`.
-pub(crate) unsafe fn sub_buffered_borrowed_has_data<B, F>(ptr: *const u8) -> bool {
+pub(crate) unsafe fn sub_buffered_view_has_data<B, F>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubBufferedViewEntry<B, F>) };
     entry.handle.has_data() || entry.buffer.has_data()
 }
@@ -2909,7 +2909,7 @@ mod borrowed_sub_tests {
 
     // Compile-time proof that the codegen marker + GAT + a borrowed closure
     // satisfy exactly the bounds the executor's borrowed dispatch
-    // (`sub_buffered_borrowed_try_process`) and registration require.
+    // (`sub_buffered_view_try_process`) and registration require.
     fn assert_borrowed_sub_bounds<B, F>(_callback: F)
     where
         B: ViewableMessage + 'static,
