@@ -36,24 +36,44 @@
     "`--self-test` rejects a row whose item belongs to a different stage."
   ],
   "c:count_publishers": {
-    "verdict": "gap",
-    "why": "how many publishers exist on a NAMED TOPIC anywhere on the graph. Distinct from pubsub.json's `c:publisher_get_subscription_count` gap, which is how many subscriptions matched OUR publisher -- an entity-local count the backends already track for liveliness events and expose through the vtable's `publisher_count_matched_subscriptions`. See `c:get_node_names`. OUR LANGUAGES DISAGREE: Rust answers the DECLARATION-side version of this question -- `Node::publisher_count` / `Node::subscriber_count` count the entities THIS node declared and are recorded an extension in pubsub.json -- while C and C++ have no counterpart at all (the whole C node surface is `init`/`init_ex`/`fini`/`get_name`/`get_namespace`/`get_logger`/`set_qos_overrides`/`get_default_options`/`get_zero_initialized`). Closing the graph question does not close that one: they are different questions and the cheap one is missing in two languages of three."
+    "verdict": "divergence",
+    "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_count_publishers`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it."
   },
   "c:count_subscribers": {
-    "verdict": "gap",
-    "why": "see `c:count_publishers`."
+    "verdict": "divergence",
+    "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_count_subscribers`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it."
+  },
+  "c:executor_count_publishers": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "c:executor_count_subscribers": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "c:executor_get_node_names": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`). Reports what has been DISCOVERED and never blocks, so an empty enumeration means \"nobody seen yet\" rather than \"nobody exists\"; `UNSUPPORTED` stays distinct from empty."
+  },
+  "c:executor_get_service_names_and_types": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "c:executor_get_topic_names_and_types": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
   },
   "c:get_client_names_and_types_by_node": {
     "verdict": "gap",
     "why": "what one named node calls. See `c:get_node_names`."
   },
   "c:get_node_names": {
-    "verdict": "gap",
-    "why": "every node on the graph, with its namespace. reads the ROS GRAPH: which nodes exist and what they publish, subscribe, serve and call. Not the flat \"we have no discovery\" answer -- that is true of the USER API and false one layer down. `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h` has carried this whole family as optional slots since phase-376 W4 (`get_node_names`, the four `*_by_node`, `get_{topic,service}_names_and_types`, `get_{publishers,subscriptions}_info_by_topic`, `count_{publishers,subscribers}`, `node_get_graph_guard_condition` -- 12 slots for upstream's 15 names), and W4 recorded the reason: \"a full graph cache costs RAM a 128 KiB target does not have, so the answer is an optional slot with UNSUPPORTED, not absence from the ABI\". Today every one of those slots is NULL in every backend (`packages/rmw/cffi/src/lib.rs`), nothing above them wraps a slot, and no C/C++/Rust entry point exists -- so the ABI seam is designed and both ends of it are missing. Both real backends already run the machinery that would answer: the zenoh shim DECLARES and QUERIES `@ros2_lv` liveliness tokens for node, publisher, subscriber, service server and service client (`Ros2Liveliness::*_keyexpr` in `nros-rmw-zenoh/src/shim/mod.rs`, wildcard GETs in `session.rs`), which is exactly how `rmw_zenoh_cpp` builds its graph cache, and the Cyclone backend PUBLISHES `ros_discovery_info` from `nros-rmw-cyclonedds/src/graph.cpp` so that stock `ros2 node list` can see our nodes -- we are visible in the graph and cannot read it. XRCE and a 128 KiB image legitimately answer UNSUPPORTED; that is what an optional slot encodes, not a reason for the family to be absent. Nobody has written the reading half. Phase 379 W3."
+    "verdict": "divergence",
+    "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_get_node_names`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it."
   },
   "c:get_node_names_with_enclaves": {
-    "verdict": "gap",
-    "why": "see `c:get_node_names` -- and the enclave half is separately empty: an enclave is an SROS2 security context and nano-ros has no security surface, which is why `rmw_vtable.h` answers both upstream names with ONE `get_node_names` slot whose visitor takes `enclave` as a fourth argument, NULL where untracked. A visitor has no fixed out-parameter list, so upstream's reason for splitting the two (appending to one would break its ABI) does not apply here."
+    "verdict": "divergence",
+    "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_get_node_names`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it. The `_with_enclaves` form is answered by the SAME call: the visitor takes an `enclave` argument that is NULL where the backend tracks none, which is what lets one slot answer both upstream names."
   },
   "c:get_publisher_names_and_types_by_node": {
     "verdict": "gap",
@@ -64,8 +84,8 @@
     "why": "which publishers are on a topic, with the GRANTED QoS of each -- the fact that answers \"why is nothing arriving\". See `c:get_node_names`; our `rmw_topic_endpoint_info_t` (`rmw_entity.h`) already models exactly this record, borrowed strings and all. LEDGER CONFLICT, flagged rather than propagated: pubsub.json files the C++ halves (`cpp:Node::get_publishers_info_by_topic` and three siblings) as `declined` for \"needs dynamic discovery, which we do not have\", and points here for the rest of the family. The graph-stage evidence does not support the flat form of that reason -- the ABI slot, the endpoint-info struct, the zenoh liveliness tokens and the Cyclone `ros_discovery_info` writer are all in the tree. One of the two shards should move; this one says gap."
   },
   "c:get_service_names_and_types": {
-    "verdict": "gap",
-    "why": "every service on the graph and its type. See `c:get_node_names`."
+    "verdict": "divergence",
+    "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_get_service_names_and_types`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it."
   },
   "c:get_service_names_and_types_by_node": {
     "verdict": "gap",
@@ -80,8 +100,8 @@
     "why": "see `c:get_publishers_info_by_topic`."
   },
   "c:get_topic_names_and_types": {
-    "verdict": "gap",
-    "why": "every topic on the graph and the types on it. See `c:get_node_names`."
+    "verdict": "divergence",
+    "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_get_topic_names_and_types`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it."
   },
   "c:names_and_types_fini": {
     "verdict": "divergence",
@@ -94,6 +114,10 @@
   "c:names_and_types_t": {
     "verdict": "divergence",
     "why": "the result CARRIER, and its shape is decided against upstream's already. Every rcl graph call takes an `rcl_allocator_t *` and fills a two-level allocating array; there is no allocator at this seam (one global `nros_platform_alloc`) and the graph has no bound a CALLER can know, so a 128 KiB image would have to reserve permanently for the worst graph it might ever meet. `rmw_vtable.h` enumerates through VISITORS instead -- `rmw_node_visit_fn`, `rmw_names_and_types_visit_fn`, `rmw_topic_endpoint_info_visit_fn`, every string BORROWED for the call, peak extra RAM one entry, and a bounded caller stops early by returning `false` (a normal outcome, not a truncation error). Constraint: no allocator. So there is no array type to `init`/`fini` and there will not be one; what is missing is the QUERIES that would drive the visitor -- see `c:get_node_names`."
+  },
+  "c:names_and_types_visit_fn": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. The ours-half of the `names_and_types_t` / `topic_endpoint_info_array_t` divergence already recorded in this file: upstream returns `rcutils_string_array_t` / `rmw_names_and_types_t`, which allocate two levels deep. There is no allocator at this seam, and a caller-provided buffer needs a bound the CALLER cannot know -- the graph has no such bound. So enumeration is a VISITOR: peak extra memory is one entry, the backend streams from state it already holds, every string is borrowed for the call, and a caller with its own limit stops early by returning false."
   },
   "c:service_server_is_available": {
     "verdict": "rename",
@@ -145,6 +169,26 @@
   "cpp:Event::set": {
     "verdict": "declined",
     "why": "see `cpp:Event::Event`."
+  },
+  "cpp:Executor::count_publishers": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "cpp:Executor::count_subscribers": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "cpp:Executor::get_node_names": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`). Reports what has been DISCOVERED and never blocks, so an empty enumeration means \"nobody seen yet\" rather than \"nobody exists\"; `UNSUPPORTED` stays distinct from empty."
+  },
+  "cpp:Executor::get_service_names_and_types": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "cpp:Executor::get_topic_names_and_types": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
   },
   "cpp:LifecycleNode::count_publishers": {
     "verdict": "gap",
@@ -226,6 +270,26 @@
   "cpp:operator<<": {
     "verdict": "declined",
     "why": "the `std::ostream` inserter for `NetworkFlowEndpoint` (rclcpp's `network_flow_endpoint.hpp`, which is why this row is in the graph stage). Declined twice over: see the pubsub stage's `cpp:Publisher::get_network_flow_endpoints`: the actual transport 5-tuple (protocol, address, port, DSCP, flow label) an endpoint is using, declined there with the endpoint-discovery reason. And iostreams are not available -- RFC-0018 builds the C++ API `-fno-exceptions` against a freestanding/minimal libcpp with no `<ostream>`, which is the same constraint that makes `<string>` conditional on `NROS_CPP_STD`."
+  },
+  "rust:Executor::count_publishers": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "rust:Executor::count_subscribers": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "rust:Executor::get_node_names": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`). Reports what has been DISCOVERED and never blocks, so an empty enumeration means \"nobody seen yet\" rather than \"nobody exists\"; `UNSUPPORTED` stays distinct from empty."
+  },
+  "rust:Executor::get_service_names_and_types": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "rust:Executor::get_topic_names_and_types": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
   },
   "rust:Node::count_publishers": {
     "verdict": "gap",
