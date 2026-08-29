@@ -64,6 +64,12 @@ pub struct SdkIndex {
     /// `--system --check` runs the probes (the doctor surface).
     #[serde(default)]
     pub system: BTreeMap<String, SystemDep>,
+    /// `[prereq.<key>]` — the prerequisite namespace (RFC-0062, amended
+    /// 2026-08-29). Supersedes `[system.*]`, which parses as an alias for
+    /// `provider = "system"`. Read the two through [`SdkIndex::prereqs`],
+    /// never directly, so a consumer cannot see only half the table.
+    #[serde(default)]
+    pub prereq: BTreeMap<String, PrereqDep>,
     /// phase-327 W1 — the Rust layer (pinned toolchains, targets, cargo
     /// tools), previously living in `just workspace` recipe bodies.
     #[serde(default)]
@@ -98,6 +104,109 @@ pub struct SystemDep {
     /// install command but reported `unknown` by `--check`.
     #[serde(default)]
     pub check: Option<CheckProbe>,
+}
+
+/// Which mechanism installs a prerequisite.
+///
+/// All four already existed as separate index classes before this table did —
+/// `[system.*]`, `[tool.*].dist`, `[tool.*].source` + `install`, `[source.*]`.
+/// What did not exist was one NAME a consumer could write without knowing which
+/// of the four answers it. `board.packages` had been doing exactly that
+/// informally: its entries resolve across `[tool.*]`, `[source.*]`, `[gated.*]`
+/// and `[system.*]` already.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Provider {
+    /// An OS package, via the detected package manager. The default, so every
+    /// `[system.*]` entry is a valid `[prereq.*]` entry unchanged.
+    #[default]
+    System,
+    /// A prebuilt dist from the store — the existing `[tool.<key>].dist`.
+    Sdk,
+    /// Built from source into the store — `[tool.<key>].source` + `install`.
+    Source,
+    /// A checkout in the tree — the existing `[source.<key>]`.
+    Submodule,
+}
+
+/// `[prereq.<key>]` — one prerequisite, one or more providers.
+///
+/// The OS-package fields are flattened in rather than nested under a
+/// `[prereq.x.system]` sub-table, so an existing `[system.*]` entry is
+/// byte-identical as a `[prereq.*]` entry. That is the whole migration for 25
+/// of 25 current entries.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrereqDep {
+    #[serde(default)]
+    pub why: Option<String>,
+    /// Ordered providers. Empty means "just `provider`", which defaults to
+    /// `system` — so the common single-provider entry writes neither field.
+    ///
+    /// ORDER is preference, and whether it may become a policy-driven chain
+    /// (never build from source in CI; prefer the dist offline) is deliberately
+    /// still open in RFC-0062 — it interacts with RFC-0065 D14.
+    #[serde(default)]
+    pub providers: Vec<Provider>,
+    #[serde(default)]
+    pub provider: Provider,
+    #[serde(default)]
+    pub apt: Vec<String>,
+    #[serde(default)]
+    pub dnf: Vec<String>,
+    #[serde(default)]
+    pub pacman: Vec<String>,
+    #[serde(default)]
+    pub brew: Vec<String>,
+    /// The key in `[tool.*]` / `[source.*]` this resolves through, when the
+    /// provider is not `system` and the names differ. Absent ⇒ the prereq key
+    /// IS the class key.
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub check: Option<CheckProbe>,
+}
+
+impl PrereqDep {
+    /// The providers to try, in order. Never empty: an entry that declares
+    /// neither field means `system`.
+    #[must_use]
+    pub fn provider_chain(&self) -> Vec<Provider> {
+        if self.providers.is_empty() {
+            vec![self.provider]
+        } else {
+            self.providers.clone()
+        }
+    }
+
+    #[must_use]
+    pub fn packages_for(&self, manager: &str) -> &[String] {
+        match manager {
+            "apt" => &self.apt,
+            "dnf" => &self.dnf,
+            "pacman" => &self.pacman,
+            "brew" => &self.brew,
+            _ => &[],
+        }
+    }
+}
+
+impl From<&SystemDep> for PrereqDep {
+    /// `[system.*]` lowered to `provider = "system"` — the alias that makes W1
+    /// additive. Every field maps; none is dropped.
+    fn from(d: &SystemDep) -> Self {
+        Self {
+            why: d.why.clone(),
+            providers: Vec::new(),
+            provider: Provider::System,
+            apt: d.apt.clone(),
+            dnf: d.dnf.clone(),
+            pacman: d.pacman.clone(),
+            brew: d.brew.clone(),
+            source: None,
+            check: d.check.clone(),
+        }
+    }
 }
 
 impl SystemDep {
@@ -476,6 +585,29 @@ pub struct GatedPackage {
 }
 
 impl SdkIndex {
+    /// Every prerequisite, `[prereq.*]` and `[system.*]` together.
+    ///
+    /// THE accessor: no consumer reads either table directly, because one that
+    /// reads only `[system.*]` sees a shrinking half of the SSoT while the
+    /// migration runs, and one that reads only `[prereq.*]` sees an empty table
+    /// today. Both spellings coexist by design until W4 retires the alias.
+    ///
+    /// `[prereq.*]` WINS on a duplicate key. A key in both is a migration in
+    /// progress — the new entry is the intended one — and W4 adds the gate that
+    /// makes the overlap illegal once it should no longer exist.
+    #[must_use]
+    pub fn prereqs(&self) -> BTreeMap<String, PrereqDep> {
+        let mut out: BTreeMap<String, PrereqDep> = self
+            .system
+            .iter()
+            .map(|(k, v)| (k.clone(), PrereqDep::from(v)))
+            .collect();
+        for (k, v) in &self.prereq {
+            out.insert(k.clone(), v.clone());
+        }
+        out
+    }
+
     /// Read, parse, + validate an `nros-sdk-index.toml`.
     pub fn load(path: &Path) -> Result<Self> {
         let raw = std::fs::read_to_string(path)
@@ -908,5 +1040,110 @@ check = { cmd = "west" }
         let k = host_key();
         assert!(k.contains('-'), "host key looks like <os>-<arch>: {k}");
         assert!(!k.contains("aarch64"), "arch normalized to arm64: {k}");
+    }
+}
+
+#[cfg(test)]
+mod prereq_tests {
+    use super::*;
+
+    fn idx(body: &str) -> SdkIndex {
+        toml::from_str(body).expect("parses")
+    }
+
+    /// W1 is additive: every existing `[system.*]` entry must reach consumers
+    /// through `prereqs()` unchanged, with no field dropped. This is the wave's
+    /// acceptance criterion, asserted rather than eyeballed.
+    #[test]
+    fn a_system_entry_survives_the_alias_intact() {
+        let i = idx(r#"
+            [system.libslirp]
+            why = "runtime dep of the qemu dist"
+            apt = ["libslirp0"]
+            dnf = ["libslirp"]
+            pacman = ["libslirp"]
+            brew = ["libslirp"]
+            check = { sharedlib = "libslirp.so.0" }
+        "#);
+        let p = i.prereqs();
+        let d = p.get("libslirp").expect("aliased into the prereq table");
+        assert_eq!(d.provider, Provider::System, "the default and the alias");
+        assert_eq!(d.provider_chain(), vec![Provider::System]);
+        assert_eq!(d.why.as_deref(), Some("runtime dep of the qemu dist"));
+        assert_eq!(d.packages_for("apt"), ["libslirp0"]);
+        assert_eq!(d.packages_for("dnf"), ["libslirp"]);
+        assert_eq!(d.packages_for("pacman"), ["libslirp"]);
+        assert_eq!(d.packages_for("brew"), ["libslirp"]);
+        assert_eq!(
+            d.check.as_ref().and_then(|c| c.sharedlib.as_deref()),
+            Some("libslirp.so.0"),
+            "the probe is the half that makes a miss diagnosable"
+        );
+        assert!(d.packages_for("zypper").is_empty(), "unmapped manager");
+    }
+
+    /// A key in both tables is a migration in progress, and the NEW entry is
+    /// the intended one. W4 adds the gate that makes the overlap illegal once
+    /// it should no longer exist.
+    #[test]
+    fn a_prereq_entry_wins_over_the_system_alias() {
+        let i = idx(r#"
+            [system.genromfs]
+            why = "old"
+            apt = ["genromfs"]
+
+            [prereq.genromfs]
+            why = "new"
+            providers = ["system", "source"]
+            apt = ["genromfs"]
+            source = "genromfs"
+        "#);
+        let p = i.prereqs();
+        assert_eq!(p.len(), 1, "one key, not two");
+        let d = &p["genromfs"];
+        assert_eq!(d.why.as_deref(), Some("new"));
+        assert_eq!(
+            d.provider_chain(),
+            vec![Provider::System, Provider::Source],
+            "ordered preference: prefer the OS package, build if absent"
+        );
+        assert_eq!(d.source.as_deref(), Some("genromfs"));
+    }
+
+    /// The common entry writes neither `provider` nor `providers`.
+    #[test]
+    fn the_default_provider_is_system_and_the_chain_is_never_empty() {
+        let i = idx("[prereq.parallel]\napt = [\"parallel\"]\n");
+        let d = &i.prereqs()["parallel"];
+        assert_eq!(d.provider, Provider::System);
+        assert_eq!(d.provider_chain(), vec![Provider::System]);
+    }
+
+    /// The non-system providers parse. They install nothing yet — W2 gives
+    /// them probes — but the schema must already carry them, or `[prereq.*]`
+    /// is just `[system.*]` renamed.
+    #[test]
+    fn every_provider_parses() {
+        let i = idx(r#"
+            [prereq.qemu]
+            provider = "sdk"
+            [prereq.freertos-kernel]
+            provider = "submodule"
+            [prereq.sccache]
+            provider = "source"
+        "#);
+        let p = i.prereqs();
+        assert_eq!(p["qemu"].provider, Provider::Sdk);
+        assert_eq!(p["freertos-kernel"].provider, Provider::Submodule);
+        assert_eq!(p["sccache"].provider, Provider::Source);
+    }
+
+    /// `deny_unknown_fields` is load-bearing: a mistyped key must be an error,
+    /// not a silently ignored declaration — the same reasoning `[image.*]`
+    /// gives, and the failure mode this whole RFC exists to delete.
+    #[test]
+    fn a_mistyped_field_is_an_error() {
+        let e = toml::from_str::<SdkIndex>("[prereq.x]\naptt = [\"y\"]\n");
+        assert!(e.is_err(), "a typo must not parse as an empty entry");
     }
 }
