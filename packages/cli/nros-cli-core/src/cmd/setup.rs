@@ -1419,6 +1419,20 @@ fn run_system(
     run_sudo: bool,
     repo_root: Option<&std::path::Path>,
 ) -> Result<()> {
+    // W4's retirement notice, WIRED — the step phase-383 W1.f skipped, which is
+    // why that deprecation reached nobody.
+    for w in index
+        .deprecated_system_table_warnings(crate::orchestration::image::deprecation_suppressed())
+    {
+        eprintln!("nros setup: {w}");
+    }
+    for k in index.duplicate_prereq_keys() {
+        eprintln!(
+            "nros setup: `{k}` is declared in BOTH [prereq.{k}] and [system.{k}]. \
+             The [prereq.*] entry wins; delete the [system.*] one."
+        );
+    }
+
     let prereqs = index.prereqs();
     if prereqs.is_empty() {
         println!("nros setup --system: index declares no [prereq.*] / [system.*] entries.");
@@ -1494,25 +1508,18 @@ fn run_system(
         println!("nros setup --system: every probed [system.*] entry is present.");
         return Ok(());
     }
+    // phase-397 W5 — the rosdep backend that used to fill an unmapped manager
+    // here is DELETED (RFC-0062, amended 2026-08-29). It answered for one
+    // provider of four, could not carry a `check`, and being consulted only
+    // where it happened to be installed made one tree resolve two ways. A key
+    // this index does not map for this host is now simply unmapped, and says so.
     let mut unmapped: Vec<&String> = Vec::new();
-    let mut via_rosdep: Vec<(String, Vec<String>)> = Vec::new();
     for (key, dep) in &to_install {
         if dep.packages_for(mgr).is_empty() {
-            // phase-327 W6 (RFC-0062) — OPTIONAL rosdep backend: for a
-            // manager the index does not map, consult rosdep when (and only
-            // when) it is installed. Keys and their primary mappings stay in
-            // the index; rosdep is never required and never consulted for a
-            // mapped entry.
-            match rosdep_resolve(key, mgr) {
-                Some(pkgs) if !pkgs.is_empty() => via_rosdep.push(((*key).clone(), pkgs)),
-                _ => unmapped.push(key),
-            }
+            unmapped.push(key);
         }
     }
     let mut pkgs = compose_packages(&to_install, mgr);
-    for (_, extra) in &via_rosdep {
-        pkgs.extend(extra.iter().cloned());
-    }
     pkgs.sort();
     pkgs.dedup();
 
@@ -1526,22 +1533,10 @@ fn run_system(
             dep.why.as_deref().unwrap_or("(no why recorded)")
         );
     }
-    if !via_rosdep.is_empty() {
-        println!(
-            "  ({} unmapped entr(ies) resolved via rosdep: {})",
-            via_rosdep.len(),
-            via_rosdep
-                .iter()
-                .map(|(k, p)| format!("{k} -> {}", p.join(" ")))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
     if !unmapped.is_empty() {
         println!(
             "  ({} entr(ies) have no {mgr} mapping and are omitted: {} — map them \
-             in nros-sdk-index.toml, or install rosdep for a database-backed \
-             fallback)",
+             in nros-sdk-index.toml)",
             unmapped.len(),
             unmapped
                 .iter()
@@ -1843,44 +1838,6 @@ fn run_check_all(index: &SdkIndex) -> Result<()> {
     }
     println!("nros setup --check: every probed declared dependency is present.");
     Ok(())
-}
-
-/// phase-327 W6 — resolve one abstract key through rosdep, for `manager`.
-/// `None` when rosdep is absent, errors, or has no rule — the caller falls
-/// back to the "unmapped" listing. rosdep's output shape:
-/// `#ROSDEP[<key>]` / `#<installer>` header lines, then one package per line.
-fn rosdep_resolve(key: &str, manager: &str) -> Option<Vec<String>> {
-    if !command_exists("rosdep") {
-        return None;
-    }
-    // rosdep names the brew installer "homebrew"; the rest match ours.
-    let installer = match manager {
-        "brew" => "homebrew",
-        m => m,
-    };
-    let out = std::process::Command::new("rosdep")
-        .args(["resolve", key])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let mut in_section = false;
-    let mut pkgs = Vec::new();
-    for line in stdout.lines() {
-        let line = line.trim();
-        if let Some(section) = line.strip_prefix('#') {
-            // `#ROSDEP[...]` lines separate keys; only the matching
-            // installer header opens a section.
-            in_section = !section.starts_with("ROSDEP") && section.trim() == installer;
-            continue;
-        }
-        if in_section && !line.is_empty() {
-            pkgs.extend(line.split_whitespace().map(str::to_string));
-        }
-    }
-    (!pkgs.is_empty()).then_some(pkgs)
 }
 
 /// Captured stdout of a probe command; empty string when it cannot run (the

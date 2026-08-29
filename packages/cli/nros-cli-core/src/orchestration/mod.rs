@@ -32,6 +32,7 @@ pub mod nros_config;
 pub mod params;
 pub mod plan;
 pub mod planner;
+pub mod prereq_resolve;
 pub use nros_orchestration_ir::rtos_realizer;
 pub mod schema;
 pub mod sdk_index;

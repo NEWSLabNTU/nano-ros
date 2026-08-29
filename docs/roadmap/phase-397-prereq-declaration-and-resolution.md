@@ -1,7 +1,8 @@
 # Phase 397 — `[prereq.*]`: one prerequisite namespace, four providers
 
-**Status (2026-08-29). W1 landed — the schema and resolver exist and
-`[system.*]` is an alias. W2–W5 not started.** Implements the 2026-08-29
+**Status (2026-08-29). COMPLETE — W1–W5 landed.** `[prereq.*]` is the
+declaration table, `[system.*]` is gone from the index, every `<depend>` must
+resolve, and the rosdep fallback is deleted. Implements the 2026-08-29
 amendment to [RFC-0062](../design/0062-unified-dependency-ssot.md), which
 settled the declaration and resolution strategy before any code was written.
 
@@ -90,14 +91,26 @@ ignored by construction — so a missing prereq has no way to be noticed early.
       `[source.*]` already declares. Without a base it ABSTAINS rather than
       guessing a root.
 
-- [ ] **W3** `package.xml` as a declaration site, and the fail-on-unknown
+- [x] **W3** `package.xml` as a declaration site, and the fail-on-unknown
       behaviour change. **This is the wave with blast radius**: it touches every
       `package.xml` in the tree, and it converts a silent skip into an error.
       Sequence deliberately: land the ladder's first three rungs and REPORT what
       rung 4 would reject, before making rung 4 fatal. `NROS_ALLOW_UNRESOLVED_DEPS=1`
       is the escape hatch.
 
-- [ ] **W4** Retire `[system.*]`. Alias → warn → gate → delete at the next
+      **Done.** The ladder gained a fifth rung the design had missed: a package
+      the ambient ROS install provides (the ament index). Measured — of 92
+      names resolving nowhere repo-wide, 42 are exactly those, and 41 of the
+      remaining 50 are in `external/`, a GITIGNORED vendored checkout of other
+      people's code. Scoping to the workspace and adding the ROS rung leaves
+      **10**, of which 3 were stale `<exec_depend>` entries naming packages that
+      DO NOT EXIST (`reliable_talker_pkg`, `qos_listener_pkg`,
+      `param_talker_pkg` — renamed long ago, silently ignored ever since) and 2
+      were genuinely undeclared prerequisites (`cargo`, `nros`). All five fixed
+      or declared; all twelve migrated workspaces now resolve clean, and the
+      check FAILS by default.
+
+- [x] **W4** Retire `[system.*]`. Alias → warn → gate → delete at the next
       minor. **The warning is wired at index load AND a test asserts it is
       reached** — phase-383's W1.f shipped a correct, well-tested deprecation
       lint that no production path called, so the warning reached nobody and a
@@ -106,9 +119,22 @@ ignored by construction — so a missing prereq has no way to be noticed early.
       (one prereq, two tables, tied together only by prose in `why`) cannot
       silently return.
 
-- [ ] **W5** Delete the `rosdep_resolve` fallback in `cmd/setup.rs`
+      **Done, and the migration ran.** The notice is wired at
+      `nros setup --system` and returns its warnings rather than printing them,
+      so reachability is testable — the property W1.f lacked. It fired on 25
+      entries; all 25 headers were then renamed `[system.x]` → `[prereq.x]`,
+      which is the entire migration, and the notice now stays silent because
+      the index declares none. The alias and the duplicate-key report remain for
+      a consumer's own index.
+
+- [x] **W5** Delete the `rosdep_resolve` fallback in `cmd/setup.rs`
       (phase-327 W6), dead once decision 3 lands — not left as an unreachable
       branch.
+
+      **Done.** `rosdep_resolve`, its call site and its reporting block are
+      deleted, and the "install rosdep for a database-backed fallback" hint is
+      gone from the unmapped-manager message — a recommendation for a resolver
+      the design just removed.
 
 ## Still open, deliberately
 

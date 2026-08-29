@@ -636,6 +636,57 @@ impl SdkIndex {
         Some(repo_root.join(dest))
     }
 
+    /// One warning per `[system.<key>]` still declared — W4's retirement notice.
+    ///
+    /// RETURNED, not printed, and the suppression flag is a PARAMETER. That is
+    /// deliberate and it is the lesson from phase-383 W1.f, which shipped a
+    /// correct, well-tested deprecation lint with NO production caller: its
+    /// warning reached nobody, and a removal on that basis would have landed on
+    /// users who were never told. A warning observable only on stderr under an
+    /// ambient env var cannot be tested for REACHABILITY, which is the property
+    /// that was missing.
+    #[must_use]
+    pub fn deprecated_system_table_warnings(&self, suppressed: bool) -> Vec<String> {
+        if suppressed || self.system.is_empty() {
+            return Vec::new();
+        }
+        let mut keys: Vec<&String> = self.system.keys().collect();
+        keys.sort();
+        vec![format!(
+            "[system.*] is deprecated and becomes [prereq.*] (RFC-0062, amended \
+             2026-08-29): {} entr(ies) still declared — {}. Each is already read \
+             as `provider = \"system\"`, so renaming the table header is the \
+             whole migration. Removal at the next minor version. Set \
+             NROS_SUPPRESS_DEPRECATION=1 to silence.",
+            keys.len(),
+            keys.iter()
+                .take(4)
+                .map(|k| k.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+                + if keys.len() > 4 { ", …" } else { "" },
+        )]
+    }
+
+    /// A key declared in BOTH tables — illegal once the merge is complete.
+    ///
+    /// `genromfs` was in `[tool.*]` and `[system.*]` at once, tied together only
+    /// by prose in `why` ("the [tool.genromfs] source recipe is the store
+    /// alternative"). `[prereq.*]` expresses that as one entry with an ordered
+    /// `providers` list, so the duplication has a replacement and can be
+    /// refused rather than tolerated.
+    #[must_use]
+    pub fn duplicate_prereq_keys(&self) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .prereq
+            .keys()
+            .filter(|k| self.system.contains_key(*k))
+            .cloned()
+            .collect();
+        out.sort();
+        out
+    }
+
     /// Every prerequisite, `[prereq.*]` and `[system.*]` together.
     ///
     /// THE accessor: no consumer reads either table directly, because one that
@@ -707,12 +758,16 @@ impl SdkIndex {
             }
         }
         // phase-327 W1 — the new classes' cross-references and probe shapes.
+        // Against the MERGED table: a `[tool.*] system = [..]` reference is
+        // satisfied by either spelling while both exist, or the W4 rename of
+        // `[system.*]` → `[prereq.*]` would break every such reference at once.
+        let prereq_keys = self.prereqs();
         for (name, tool) in &self.tool {
             for key in &tool.system {
-                if !self.system.contains_key(key) {
+                if !prereq_keys.contains_key(key) {
                     bail!(
                         "tool '{name}' declares runtime system dep '{key}' \
-                         with no [system.{key}] entry"
+                         with no [prereq.{key}] entry"
                     );
                 }
             }
@@ -1017,7 +1072,11 @@ check = { cmd = "west" }
         // A tool naming an undefined system key is a validation error.
         let dangling = SdkIndex::parse("[tool.qemu]\nversion=\"1\"\nsystem=[\"nope\"]\n").unwrap();
         let err = dangling.validate().unwrap_err().to_string();
-        assert!(err.contains("no [system.nope] entry"), "{err}");
+        // phase-397 W4 — the message names `[prereq.*]`, the table a reader
+        // should add the entry to now. The validator checks the MERGED set, so
+        // a `[system.*]` entry still satisfies the reference while the alias
+        // lives; only the wording moved.
+        assert!(err.contains("no [prereq.nope] entry"), "{err}");
 
         // A system entry mapping no manager at all is rejected.
         let unmapped = SdkIndex::parse("[system.x]\nwhy=\"w\"\n").unwrap();
