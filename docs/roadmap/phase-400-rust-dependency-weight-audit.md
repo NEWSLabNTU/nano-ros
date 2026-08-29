@@ -97,13 +97,65 @@ requirement it is decides the spelling. Launch orchestration is a capability the
 CONSUMER picks, so the feature is REQUIRED (a `compile_error!` naming `launch`
 when `main!(launch = …)` is expanded without it), not silently granted.
 
+## W2 measured on the real build — `cargo build --timings`, cold
+
+`--timings` injected into the Zephyr talker's `EXTRA_CARGO_ARGS`, the leaf's
+`rust/target` (1.7 GB) DELETED, then `just zephyr build-one rust/talker zenoh`.
+The HTML embeds `const UNIT_DATA`; per-unit durations parsed from it.
+
+**234 units, 220 actually compiled, 13.5 s wall, 118.3 CPU-s.**
+
+| chain | CPU | share |
+| --- | --- | --- |
+| `nros-macros` orchestration subtree | 37.7 s | **31.9 %** |
+| `bindgen` chain (`clang-sys`, `regex`, `prettyplease`, …) | 21.8 s | **18.4 %** |
+| `cbindgen` chain (`clap*`, `anstream`, `tempfile`, …) | 8.1 s | **6.8 %** |
+| everything else | 50.7 s | 42.9 % |
+
+**57 % of the cargo CPU on a Zephyr Rust image is host-side tooling that emits no
+target code.** Heaviest single units: `zerocopy` 6.9 s (removable), `heapless`
+5.1+4.4 s, `bindgen` 4.3 s, `winnow` 3.7 s (removable), `getrandom` 3.0 s, `syn`
+2.6+2.0 s, `memchr` 2.5 s (removable), `cbindgen` 1.8 s.
+
+**A discarded measurement, recorded so the number is not quoted from the log.**
+The FIRST run of this build reported 45.3 s wall / 255.3 CPU-s and put
+`nros-macros` second at 16.4 s. Two things were wrong with it: the leaf's
+`rust/target` was already populated, so most third-party units read `0.00s`
+(fresh, not compiled) and the orchestration share came out at a misleading 7.4 %;
+and the per-unit times were inflated by CPU contention from other cargo work
+running at the same time — cold and uncontended, `nros-macros` itself is 0.6 s.
+Take the 118.3 s table, not the 255.3 s one.
+
+## Directions, in measured order
+
+1. **Gate the orchestration half of `nros-macros`** (W2 above) — 31.9 % of cold
+   cargo CPU, and the largest single lever found. Design note stands: the feature
+   is REQUIRED, not granted.
+2. **`bindgen` at build time — 18.4 %.** The repo ALREADY has the alternative and
+   proved it: RFC-0054 commits bindgen output for the ABI crates
+   (`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
+   `check-abi-bindings`. Four `*-sys` driver crates still generate at build time
+   (`zephyr-posix-sys`, `nuttx-sys`, `freertos-lwip-sys`, `threadx-netx-sys`).
+   **Not a straight copy of that pattern:** these bind the USER's RTOS headers
+   via `ZEPHYR_BUILD_DIR` and friends, not in-tree ones, so committed output
+   would assert which SDK generated it. The allowlists are small (a handful of
+   socket types), which makes it tempting to hand-mirror the structs — do NOT:
+   that is issue 0160's hazard, where a mirror-only TU passes a shorter struct
+   and the tail field is garbage. If this is taken, it should be commit + a
+   regenerate-and-diff gate per supported SDK, mirroring `check-abi-bindings`.
+3. **`cbindgen` — 6.8 %**, same shape one size down (`nros-zpico-build`,
+   `nros-build-helpers`), and it drags the whole `clap` CLI stack into a build
+   dependency.
+
 ## Not yet examined
 
-* Everything below `nros` — `nros-platform`, `nros-rmw-zenoh`, `zpico-sys` (which
-  also compiles C), the generated message crates, and the `zephyr` crates. The
-  Zephyr profile that motivated this phase has not been broken down per crate;
-  `just profile` found no timing artifacts under the leaf, and a west build with
-  `cargo build --timings` has not been run.
+* Whether the same profile holds for the C/C++ Zephyr leaves, for NuttX/FreeRTOS,
+  or for a workspace (non-standalone) build where the phase-340 shared cargo
+  group amortises host deps across leaves. Everything above is ONE leaf,
+  `rust/talker`, zenoh, `native_sim`.
+* `heapless` appearing TWICE at 5.1 s and 4.4 s — two feature-distinct units of
+  the same version, 9.5 s combined, larger than `bindgen` itself. Not traced.
+* `getrandom` at 3.0 s on an image that should not need OS entropy.
 * `thiserror` appearing at BOTH 1.x and 2.x, and `hashbrown` at 0.14 and 0.17 —
   duplicate major versions compile twice. Not yet traced to their requirers.
 * `cargo-machete` across the repo flags 467 rows, but it is largely UNUSABLE
