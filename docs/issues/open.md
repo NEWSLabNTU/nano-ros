@@ -56,6 +56,7 @@ fails if this block drifts.
 - **#0877** (testing, boards) — FreeRTOS pubsub delivers by hand and delivers NOTHING under the test harness — and the talker trips a FreeRTOS queue assert See `0877-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
 - **#0881** (testing, embedded) — attaching pyocd RTT kills the zenoh session — the debugger perturbs the system under test, and issue 0879 makes the perturbation permanent See `0881-*`.
+- **#0890** (rmw) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to explain the difference See `0890-*`.
 - **#0891** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0891-*`.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
