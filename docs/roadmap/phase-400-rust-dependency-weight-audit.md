@@ -1,7 +1,8 @@
 # Phase 400 — Rust dependency weight audit
 
-**Status (2026-08-29). IN PROGRESS — W1 landed, W2 proposed and measured but not
-implemented.** Opened because a Zephyr build profile showed cargo dominating the
+**Status (2026-08-29). IN PROGRESS — W1 landed; W2 (the 42.6 % pair) and W3
+measured and specified, neither implemented. Waves are ordered by measured
+value, not by discovery order.** Opened because a Zephyr build profile showed cargo dominating the
 wall clock. This phase is about what the image COMPILES, not about how the build
 is scheduled — phase-371 (CLOSED) covered scheduling and is worth reading first
 for its record of six retracted hypotheses.
@@ -118,7 +119,8 @@ The "shared support" row is `serde`/`serde_core`/`serde_derive`, `toml` +
 `indexmap`/`hashbrown`, `quick-xml`, `yaml-rust2`, `walkdir`, `eyre`. Heaviest:
 `zerocopy` 6.9 s, `winnow` 3.7 s, `syn` 2.6+2.0 s, `memchr` 2.5 s.
 
-**Gating the orchestration half removes 3.1 s directly, not 37.7 s.** An earlier
+**Gating the orchestration half removes 14.9 s exclusively (3.1 s of it the nros
+crates themselves), not 37.7 s.** An earlier
 version of this document claimed 31.9 %, and it was WRONG in a way worth
 recording because the mistake is easy to repeat: the "removable" set was computed
 from the `nros` package graph and then matched by NAME against the leaf's build,
@@ -141,41 +143,99 @@ and the per-unit times were inflated by CPU contention from other cargo work
 running at the same time — cold and uncontended, `nros-macros` itself is 0.6 s.
 Take the 118.3 s table, not the 255.3 s one.
 
-## Work items
+## Work items, ordered by measured value
 
-**W1 — landed.** `nros-launch-parser` removed from `nros-macros` (one crate).
+Sizes are exclusive savings from the cold Zephyr `rust/talker` profile below
+(118.3 CPU-s total). "Exclusive" means: crates that leave the build when THIS
+lever lands and nothing else changes.
 
-**W2 — gate the orchestration half of `nros-macros`.** `main_macro.rs` is 3798 of
-the crate's 4692 lines and `lib.rs:41` is its only caller;
-`source_metadata_sidecars.rs` has exactly one caller, `main_macro.rs:884`. So the
-cut is clean: `#[cfg(feature = "launch")] mod main_macro;` plus the five deps
-optional, forwarded by `nros`. The feature is REQUIRED, not granted — a
-`compile_error!` naming `launch` when `main!(launch = …)` is expanded without it.
-*Acceptance:* a Zephyr Rust leaf builds with the feature off; `main!(launch = …)`
-without it fails with a message naming the feature; cold `--timings` on the same
-leaf shows the three nros orchestration crates absent. *Expected saving: ~3 s of
-118 s, plus whatever shared crates no other requirer wants — measure, do not
-assume.*
+| wave | lever | exclusive | share |
+| --- | --- | --- | --- |
+| W2 | gate orchestration **and** cbindgen, together | **50.4 s** | **42.6 %** |
+| W3 | `bindgen` -> committed output | 20.6 s | 17.4 % |
+| W4 | attribute the contested pool inside the leaf's graph | (enabling) | — |
+| W1 | *landed* — unused dep removed | 1 crate | — |
 
-**W3 — attribute the 43.8 s shared bucket.** For each crate in it, find every
-requirer in the LEAF's graph (`cargo tree -i`, run inside the west build where
-the leaf resolves). Until this exists, no one can say what W2 or a cbindgen
-change actually saves, because the answer depends on who else wants `serde`,
-`toml`, `zerocopy` and `syn`. This is the prerequisite for W4/W5, not optional
-groundwork. *Acceptance:* a table of shared crate -> requirers, from the leaf.
+**Numbering note.** W1 keeps its number because it has landed and is cited by
+commit subject. The rest were renumbered into value order; an earlier revision of
+this doc had the bindgen work as W4, the attribution as W3, and cbindgen as a
+separate W5.
 
-**W4 — build-time `bindgen`, 17.4 %.** See direction 2 below.
+### W2 — gate the orchestration half AND move cbindgen, as ONE change
 
-**W5 — build-time `cbindgen`, 6.8 %.** Same shape; note it is also a requirer of
-`serde`/`toml`, so W5 and W2 interact — doing only one may free nothing.
+**50.4 s, 42.6 % — and only if both halves land.** This is the phase's main
+finding and it is not visible from either half alone:
+
+    orchestration-exclusive                    14.9 s   12.6 %
+    cbindgen-exclusive                          8.1 s    6.8 %
+    contested (serde, syn, toml, memchr,
+      indexmap, thiserror, ...)                27.4 s   23.1 %
+
+`cbindgen` parses `cbindgen.toml`, so it wants `serde` + `toml` + `syn`; the
+orchestration path wants the same crates for launch files. **Do either one alone
+and the 27.4 s contested pool stays** — a plausible-looking change that measures
+as nearly nothing. Together they take 50.4 s of 118.3.
+
+The orchestration cut is verified clean: `main_macro.rs` is 3798 of the crate's
+4692 lines with `lib.rs:41` its only caller, and `source_metadata_sidecars.rs`
+has exactly one caller (`main_macro.rs:884`). So
+`#[cfg(feature = "launch")] mod main_macro;` plus five optional deps, forwarded
+by `nros`. The feature is REQUIRED, not granted — a `compile_error!` naming
+`launch` when `main!(launch = ...)` is expanded without it.
+
+Largest single unit freed is `zerocopy` at 7.3 s, reached ONLY through
+`ahash` -> `hashbrown` -> `hashlink` -> `yaml-rust2` -> `ros-launch-manifest-types`.
+It is orchestration's transitive tail, not something the macro crate names.
+
+*Acceptance:* a Zephyr Rust leaf builds with the feature off; `main!(launch = ...)`
+without it fails naming the feature; cold `--timings` on the same leaf shows
+`zerocopy`, `yaml-rust2`, `serde`, `toml` and the `clap` stack ABSENT. Measure
+the pair; do not ship half and quote this table.
+
+### W3 — build-time `bindgen` to committed output
+
+**20.6 s, 17.4 %** — the largest single-lever number, and the hardest. The repo
+already solved this once: RFC-0054 commits bindgen output for the ABI crates
+(`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
+`check-abi-bindings`. Four `*-sys` driver crates still generate at build time:
+`zephyr-posix-sys`, `nuttx-sys`, `freertos-lwip-sys`, `threadx-netx-sys`.
+
+**Not a straight copy of that pattern.** These bind the USER's RTOS headers
+(`ZEPHYR_BUILD_DIR` and friends), not in-tree ones, so committed output asserts
+which SDK produced it. Their allowlists are small — a handful of socket types —
+which makes hand-mirroring the structs tempting; that is issue 0160's hazard,
+where a mirror-only TU passes a shorter struct and the tail field is garbage. If
+taken, it should be commit + a regenerate-and-diff gate per supported SDK,
+mirroring `check-abi-bindings`.
+
+*Acceptance:* a cold leaf build compiles no `bindgen`/`clang-sys` unit; the gate
+fails when a header moves without regeneration.
+
+### W4 — attribute the contested pool inside the LEAF's graph
+
+Everything above uses reverse dependencies from the WORKSPACE
+(`cargo tree -i`), not from the leaf, because the leaf does not resolve
+standalone (`zephyr-build` comes from the west environment). The exclusive/
+contested split is therefore provisional.
+
+This wave is cheap insurance, not groundwork for its own sake: the orchestration
+number has already moved 31.9 % -> 2.6 % -> 12.6 % across three attribution
+methods, and only the last was computed from real dependency paths. Do this if a
+wrong estimate would be expensive; skip it if W2 is going to be measured
+end-to-end anyway, since the acceptance check there catches the same error.
+
+*Acceptance:* a crate -> requirers table taken inside the west build.
+
+### W1 — landed
+
+`nros-launch-parser` removed from `nros-macros` — declared, referenced nowhere.
+One crate (67 -> 66): everything it brought is also reached through
+`nros-pkg-index`, which the crate genuinely uses.
 
 ## Directions, in measured order
 
-1. **Gate the orchestration half of `nros-macros`** (W2) — 2.6 % directly. It is
-   still worth doing: the cut is clean, it stops a non-orchestrating image
-   compiling 3798 lines of launch expansion, and it is one of the requirers whose
-   removal W3 needs to account for. It is NOT the big lever this document first
-   claimed.
+1. **Gate the orchestration half of `nros-macros`** — see W2, and note it must
+   ship WITH the cbindgen move or the contested pool stays put.
 2. **`bindgen` at build time — 18.4 %.** The repo ALREADY has the alternative and
    proved it: RFC-0054 commits bindgen output for the ABI crates
    (`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
