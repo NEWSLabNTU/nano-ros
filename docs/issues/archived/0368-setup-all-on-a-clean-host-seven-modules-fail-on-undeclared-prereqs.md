@@ -42,10 +42,16 @@ per-item remedies in doctor. The failures cluster into a few classes.
 **Full finding status (audited 2026-08-03):**
 - **F1 DONE** — phase-327 W2 (verified).
 - **F2 DONE** — phase-327 W3 + class-straggler fixes this cycle.
-- **F3 DONE (in-repo part)** — `[tool.qemu].system = ["libslirp"]` + `[system.libslirp]`
-  (phase-327 W4); `nros setup --tool` names the system dep before the smoke
-  check. The dist RELINK (rpath `$ORIGIN/../lib`) is an out-of-repo sdk-repo
-  release, but the declaration + check that F3 asked for are in.
+- **F3 DONE, both halves** — the in-repo declaration landed first
+  (`[tool.qemu].system = ["libslirp"]` + `[system.libslirp]`, phase-327 W4), and
+  the dist RELINK shipped in `qemu-11.0.0-nros4` (2026-08-29): the Linux dists
+  carry their closure in `lib/` with rpath `$ORIGIN/../lib`, so both the
+  declaration and the `[system.libslirp]` entry are GONE — a clean host needs no
+  apt for qemu at all. Worth recording that the declaration was measured wrong:
+  it named `libslirp` alone, while a bare `ubuntu:22.04` is missing SEVEN of the
+  graph and dies on `libpixman-1.so.0` before slirp is ever reached. The finding
+  came from one host that happened to have the other six. macOS followed in
+  `-nros6` (issue 0879, resolved), by a launcher rather than an rpath.
 - **F5 DONE** — `[system.]{python3-dev, libz3, libclang-dev, clang}` (phase-327 W4).
 - **F6 DONE** — `scripts/setup-verus.sh` pins `release/0.2026.06.28.1847ab3` with
   a glibc guard (phase-327 W6).

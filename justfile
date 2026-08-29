@@ -4595,12 +4595,16 @@ check-no-std:
         | nros_pool_run check-no-std
     echo "check-no-std OK."
 
-# Verify nros-sdk-index.toml + the QEMU configure flags
-# (the `sdk-index` job in .github/workflows/pr-checks.yml). Buildless + fast.
+# Verify nros-sdk-index.toml (the `sdk-index` job in
+# .github/workflows/pr-checks.yml). Buildless + fast.
+#
+# The QEMU configure flags used to need a drift gate here, because they were
+# spelled both in `[tool.qemu.source].configure` and in the nano-ros-sdk build
+# script that nano-ros vendored a copy of. The copy is gone and the build script
+# now READS this index, so there is no second spelling left to diff.
 [group("ci")]
 check-sdk-index:
     python3 scripts/sdk/verify-index.py nros-sdk-index.toml
-    ./scripts/sdk/check-qemu-configure.sh
 
 # Scaffold-journey: a `nros new` project resolves end-to-end via the generated
 # `[patch.crates-io]` path block (the `scaffold-journey` job in pr-checks.yml).

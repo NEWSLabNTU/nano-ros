@@ -121,7 +121,6 @@ scripts/gen-sched-matrix.py
 scripts/gen-support-status.py
 scripts/lib/grep-q.sh
 scripts/reserve-claim.sh
-scripts/sdk/check-qemu-configure.sh
 scripts/sdk/verify-index.py
 scripts/stack-analysis-c.sh
 scripts/stack-analysis.sh
