@@ -354,6 +354,10 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         // than an empty one: "cannot tell you" and "nothing is there" are
         // different answers and W6 keeps them distinguishable.
         get_node_names: Some(get_node_names_trampoline::<R>),
+        count_publishers: Some(count_publishers_trampoline::<R>),
+        count_subscribers: Some(count_subscribers_trampoline::<R>),
+        get_topic_names_and_types: Some(get_topic_names_and_types_trampoline::<R>),
+        get_service_names_and_types: Some(get_service_names_and_types_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 
@@ -1317,6 +1321,144 @@ unsafe extern "C" fn get_node_names_trampoline<R: RustBackend>(
         Err(e) => ret_from_error(&e),
     }
 }
+
+/// phase-381 W3 — `count_publishers` / `count_subscribers` share one body.
+macro_rules! count_trampoline {
+    ($name:ident, $method:ident) => {
+        unsafe extern "C" fn $name<R: RustBackend>(
+            session: *const NrosRmwSession,
+            topic_name: *const c_char,
+            count: *mut usize,
+        ) -> NrosRmwRet {
+            if topic_name.is_null() || count.is_null() {
+                return NROS_RMW_RET_INVALID_ARGUMENT;
+            }
+            let Some(s) = (unsafe { session_mut::<R::Session>(session.cast_mut()) }) else {
+                return NROS_RMW_RET_INVALID_ARGUMENT;
+            };
+            let Ok(topic) = (unsafe { core::ffi::CStr::from_ptr(topic_name) }).to_str() else {
+                return NROS_RMW_RET_INVALID_ARGUMENT;
+            };
+            match Session::$method(s, topic) {
+                Ok(n) => {
+                    unsafe { *count = n };
+                    NROS_RMW_RET_OK
+                }
+                Err(e) => ret_from_error(&e),
+            }
+        }
+    };
+}
+
+count_trampoline!(count_publishers_trampoline, count_publishers);
+count_trampoline!(count_subscribers_trampoline, count_subscribers);
+
+/// phase-381 W3 — `get_topic_names_and_types` / `get_service_names_and_types`.
+///
+/// The C visitor takes `(name, types[], types_count)`. Rust hands over
+/// `&[&str]`, so each call builds a bounded array of NUL-terminated pointers on
+/// the stack — the strings are borrowed for the call only, which is the
+/// contract on both sides.
+///
+/// A name or type that does not fit is SKIPPED, never truncated: a truncated
+/// type name is a different, plausible type.
+macro_rules! names_and_types_trampoline {
+    // The topic form carries `no_demangle`; the service form does not — that
+    // asymmetry is upstream's, mirrored rather than smoothed over.
+    ($name:ident, $method:ident, demangle_flag) => {
+        unsafe extern "C" fn $name<R: RustBackend>(
+            session: *const NrosRmwSession,
+            no_demangle: bool,
+            visit: Option<
+                unsafe extern "C" fn(
+                    *mut c_void,
+                    *const c_char,
+                    *const *const c_char,
+                    usize,
+                ) -> bool,
+            >,
+            ctx: *mut c_void,
+        ) -> NrosRmwRet {
+            // `no_demangle` asks for the WIRE spelling. This backend reports ROS
+            // names, so honouring it would mean re-mangling what was just
+            // demangled; refused rather than silently ignored, because ignoring
+            // it answers a different question than the caller asked.
+            if no_demangle {
+                return NROS_RMW_RET_UNSUPPORTED;
+            }
+            $crate::names_and_types_body!(R, $method, session, visit, ctx)
+        }
+    };
+    ($name:ident, $method:ident) => {
+        unsafe extern "C" fn $name<R: RustBackend>(
+            session: *const NrosRmwSession,
+            visit: Option<
+                unsafe extern "C" fn(
+                    *mut c_void,
+                    *const c_char,
+                    *const *const c_char,
+                    usize,
+                ) -> bool,
+            >,
+            ctx: *mut c_void,
+        ) -> NrosRmwRet {
+            $crate::names_and_types_body!(R, $method, session, visit, ctx)
+        }
+    };
+}
+
+/// The shared body, so the two arms above differ only by the parameter list.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! names_and_types_body {
+    ($R:ident, $method:ident, $session:ident, $visit:ident, $ctx:ident) => {{
+        let Some(visit) = $visit else {
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+        };
+        let Some(s) = (unsafe { session_mut::<$R::Session>($session.cast_mut()) }) else {
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+        };
+
+        const NAME_MAX: usize = 256;
+        const TYPES_MAX: usize = 8;
+
+        let mut cb = |name: &str, types: &[&str]| -> bool {
+            let mut name_buf = [0u8; NAME_MAX];
+            if name.len() >= NAME_MAX {
+                return true; // skip, keep enumerating
+            }
+            name_buf[..name.len()].copy_from_slice(name.as_bytes());
+
+            let mut type_bufs = [[0u8; NAME_MAX]; TYPES_MAX];
+            let mut ptrs: [*const c_char; TYPES_MAX] = [core::ptr::null(); TYPES_MAX];
+            let mut n = 0usize;
+            for t in types.iter().take(TYPES_MAX) {
+                if t.len() >= NAME_MAX {
+                    continue;
+                }
+                type_bufs[n][..t.len()].copy_from_slice(t.as_bytes());
+                ptrs[n] = type_bufs[n].as_ptr() as *const c_char;
+                n += 1;
+            }
+            unsafe { visit($ctx, name_buf.as_ptr() as *const c_char, ptrs.as_ptr(), n) }
+        };
+
+        match Session::$method(s, &mut cb) {
+            Ok(()) => NROS_RMW_RET_OK,
+            Err(e) => ret_from_error(&e),
+        }
+    }};
+}
+
+names_and_types_trampoline!(
+    get_topic_names_and_types_trampoline,
+    get_topic_names_and_types,
+    demangle_flag
+);
+names_and_types_trampoline!(
+    get_service_names_and_types_trampoline,
+    get_service_names_and_types
+);
 
 unsafe extern "C" fn publish_streamed_trampoline<R: RustBackend>(
     publisher: *mut NrosRmwPublisher,

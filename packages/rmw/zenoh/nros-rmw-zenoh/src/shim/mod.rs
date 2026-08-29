@@ -734,6 +734,26 @@ impl Ros2Liveliness {
         key
     }
 
+    /// phase-381 W3 — wildcard ENTITY liveliness keyexpr, all four kinds.
+    ///
+    /// Format: `@ros2_lv/<domain_id>/*/*/*/*/%/*/*/*/*/*/*` — 13 chunks, every
+    /// one wildcarded but the prefix and the domain, including the KIND, so a
+    /// single standing query answers questions about publishers, subscribers,
+    /// servers and clients alike. Four separate queries would put four sweeps on
+    /// the wire to ask four things about one graph.
+    ///
+    /// Deliberately NOT merged with `node_keyexpr_wildcard`: a node token is 9
+    /// chunks and an entity token is 13, and a single-`*` wildcard matches
+    /// exactly one chunk, so no one pattern covers both shapes.
+    pub fn entity_keyexpr_wildcard<const N: usize>(domain_id: u32) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!("{}/{}/*/*/*/*/%/*/*/*/*/*/*", LIVELINESS_PREFIX, domain_id),
+        );
+        key
+    }
+
     /// Phase 108.C.zenoh.4 — wildcard publisher liveliness keyexpr.
     ///
     /// Format: `@ros2_lv/<domain_id>/*/*/*/MP/%/*/*/<topic>/<type>/*/*`
@@ -874,6 +894,16 @@ impl Ros2Liveliness {
             type_hash,
             qos,
         })
+    }
+
+    /// phase-381 W3 — the mangler, reachable from outside this module.
+    ///
+    /// A wrapper rather than making `mangle_topic_name` public, so the callers
+    /// inside this file keep using the short name and there is still exactly
+    /// ONE implementation. Graph queries need it to compare a caller's ROS topic
+    /// name against the mangled form on the wire.
+    pub fn mangle_topic_name_pub<const N: usize>(topic: &str) -> heapless::String<N> {
+        Self::mangle_topic_name::<N>(topic)
     }
 
     /// Mangle a topic name by replacing '/' with '%'
@@ -1077,6 +1107,107 @@ mod tests {
                 _ => return false,
             }
         }
+    }
+
+    /// phase-381 W3 — the grouping `names_and_types` performs, as a property.
+    ///
+    /// `ZenohSession::names_and_types` needs a live session to drain a query, so
+    /// what is tested here is the part that can be wrong WITHOUT one: given the
+    /// entities a graph yields, does grouping produce one entry per distinct
+    /// NAME carrying that name's DISTINCT types? That is the dedup, and it is
+    /// where a two-publisher topic becomes two entries or a two-type topic
+    /// loses one.
+    ///
+    /// This mirrors the session helper's algorithm rather than calling it, and
+    /// says so: the alternative is no coverage until an interop lane exists,
+    /// and the shapes it pins — duplicate topic, duplicate type, two types on
+    /// one topic — are exactly the ones reading does not catch.
+    #[test]
+    fn grouping_reports_each_name_once_with_its_distinct_types() {
+        // A graph with two publishers and one subscriber on /chatter, plus a
+        // second topic, as (topic, type) pairs.
+        let entities = [
+            ("%chatter", "std_msgs::msg::dds_::String_"),
+            ("%chatter", "std_msgs::msg::dds_::String_"), // second publisher, same type
+            ("%chatter", "std_msgs::msg::dds_::Int32_"),  // a second type on one topic
+            ("%tf", "tf2_msgs::msg::dds_::TFMessage_"),
+        ];
+
+        let mut seen: heapless::Vec<&str, 8> = heapless::Vec::new();
+        let mut reported: heapless::Vec<(&str, heapless::Vec<&str, 8>), 8> = heapless::Vec::new();
+        while let Some((name, _)) = entities.iter().find(|(n, _)| !seen.contains(n)) {
+            let _ = seen.push(name);
+            let mut types: heapless::Vec<&str, 8> = heapless::Vec::new();
+            for (n, t) in entities.iter() {
+                if n == name && !types.contains(t) {
+                    let _ = types.push(t);
+                }
+            }
+            let _ = reported.push((name, types));
+        }
+
+        assert_eq!(
+            reported.len(),
+            2,
+            "one entry per DISTINCT name, not per entity"
+        );
+        let chatter = reported
+            .iter()
+            .find(|(n, _)| *n == "%chatter")
+            .expect("/chatter");
+        assert_eq!(
+            chatter.1.len(),
+            2,
+            "two types on one topic report both, once each — the duplicate publisher must not add a third"
+        );
+        let tf = reported.iter().find(|(n, _)| *n == "%tf").expect("/tf");
+        assert_eq!(tf.1.len(), 1);
+
+        // And the name is demangled on the way out.
+        assert_eq!(
+            Ros2Liveliness::demangle_topic_name::<64>("%chatter").as_str(),
+            "/chatter"
+        );
+    }
+
+    /// phase-381 W3 — the entity wildcard must match every entity KIND and id.
+    ///
+    /// One standing query serves all four kinds. If the kind chunk were pinned,
+    /// three of the four slots would silently report nothing — the same failure
+    /// as issue 0890, one field over.
+    #[test]
+    fn entity_wildcard_matches_all_four_kinds() {
+        let zid = ZenohId::from_bytes([0u8; 16]);
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc");
+        let service = ServiceInfo::new(
+            "/add",
+            "example_interfaces::srv::dds_::AddTwoInts_",
+            "RIHS01_s",
+        );
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+        let wildcard = Ros2Liveliness::entity_keyexpr_wildcard::<256>(0);
+
+        let declared = [
+            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, 1, "/", "n", &topic, &qos),
+            Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, 2, "/", "n", &topic, &qos),
+            Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, 3, "/", "n", &service, &qos),
+            Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, 4, "/", "n", &service, &qos),
+        ];
+        for d in &declared {
+            assert!(
+                keyexpr_matches(wildcard.as_str(), d.as_str()),
+                "entity wildcard {} must match {}",
+                wildcard.as_str(),
+                d.as_str()
+            );
+        }
+
+        // And it must NOT match a node token — different shape, different query.
+        let node = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/", "n");
+        assert!(
+            !keyexpr_matches(wildcard.as_str(), node.as_str()),
+            "a 13-chunk wildcard must not match a 9-chunk node token"
+        );
     }
 
     /// phase-381 W2 — the parser is pinned to the BUILDERS by round trip.

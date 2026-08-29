@@ -5,8 +5,9 @@ use nros_rmw::{
 };
 
 use super::{
-    CONFIG_PROPERTY_SIZE, Context, EntityKind, LOCATOR_BUFFER_SIZE, LivelinessToken,
-    MAX_SESSION_PROPERTIES, Ros2Liveliness, ZenohId,
+    CONFIG_PROPERTY_SIZE, Context, EntityKind, LOCATOR_BUFFER_SIZE,
+    LivelinessEntity as Ros2LivelinessEntity, LivelinessToken, MAX_SESSION_PROPERTIES,
+    Ros2Liveliness, ZenohId,
     publisher::ZenohPublisher,
     service::{ZenohServiceClient, ZenohServiceServer},
     subscriber::ZenohSubscriber,
@@ -188,6 +189,23 @@ pub struct ZenohSession {
     ///
     /// `None` when no query has been started yet.
     graph_query: Option<i32>,
+    /// phase-381 W3 — the standing ENTITY-enumeration query.
+    ///
+    /// Separate from `graph_query` because node tokens and entity tokens are
+    /// different SHAPES (9 chunks vs 13), so one wildcard cannot match both.
+    /// One query serves all four entity kinds — the kind chunk is wildcarded —
+    /// rather than one query per slot, which would put four sweeps on the wire
+    /// to answer four questions about the same graph.
+    entity_query: Option<i32>,
+}
+
+/// Which standing query a drain is reading — phase-381 W3.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum GraphQuery {
+    /// `NN` tokens: the nodes themselves.
+    Nodes,
+    /// `MP` / `MS` / `SS` / `SC` tokens: everything a node declares.
+    Entities,
 }
 
 /// phase-381 W3 — how long a standing graph query waits for replies.
@@ -203,6 +221,18 @@ const GRAPH_QUERY_TIMEOUT_MS: u32 = 500;
 /// is SKIPPED, never truncated — a partial keyexpr parses as a different,
 /// plausible node.
 const GRAPH_KEYEXPR_MAX: usize = 512;
+
+/// Longest topic / service / type name a graph query reports.
+const GRAPH_NAME_MAX: usize = 256;
+
+/// Most distinct names one enumeration reports. A graph with more reports the
+/// first this many — bounded by construction, and stated rather than silent.
+const GRAPH_NAMES_MAX: usize = 64;
+
+/// Most types reported for ONE name. Overflow reports the types that fit
+/// rather than dropping the name: the contract allows a short `types_count` on
+/// a partial graph, and a topic with one of its two types is still true.
+const GRAPH_TYPES_MAX: usize = 8;
 
 impl ZenohSession {
     /// Create a new shim session with the given configuration
@@ -373,6 +403,7 @@ impl ZenohSession {
             entity_counter: portable_atomic::AtomicU32::new(1),
             domain_id: config.domain_id,
             graph_query: None,
+            entity_query: None,
         };
 
         if !config.node_name.is_empty() {
@@ -520,6 +551,226 @@ impl ZenohSession {
     // window serializing every tx), fixed at the root. Per-node tokens are
     // back on every platform, restoring per-component `ros2 node list`
     // fidelity on Zephyr.
+    /// phase-381 W3 — drain a standing liveliness query, parsed.
+    ///
+    /// The one place the graph is read. Ten vtable slots differ only in which
+    /// entities they keep and what they report, so the drain, the parse, the
+    /// skip-never-truncate rule and the warm-up policy live here rather than in
+    /// ten copies — the second spelling is what this codebase keeps paying for.
+    ///
+    /// `f` returns `false` to stop early, which is the visitor contract's way
+    /// for a caller with a bound to stop paying for the rest.
+    ///
+    /// **Never blocks.** The slot contract forbids it and takes no timeout, so
+    /// this reports what has ALREADY arrived: it drains the standing query and
+    /// starts the next once this one has finished. A first call therefore sees
+    /// a partial graph and later calls see more — the warm-up Design note 3
+    /// describes. Blocking here would stall the executor's only thread inside
+    /// an introspection call.
+    fn for_each_entity(
+        &mut self,
+        which: GraphQuery,
+        f: &mut dyn FnMut(&Ros2LivelinessEntity<'_>) -> bool,
+    ) -> Result<(), TransportError> {
+        let slot = match which {
+            GraphQuery::Nodes => self.graph_query,
+            GraphQuery::Entities => self.entity_query,
+        };
+        let handle = match slot {
+            Some(h) => h,
+            None => {
+                let key = match which {
+                    GraphQuery::Nodes => {
+                        Ros2Liveliness::node_keyexpr_wildcard::<256>(self.domain_id)
+                    }
+                    GraphQuery::Entities => {
+                        Ros2Liveliness::entity_keyexpr_wildcard::<256>(self.domain_id)
+                    }
+                };
+                let mut buf = [0u8; 257];
+                let bytes = key.as_bytes();
+                if bytes.len() >= buf.len() {
+                    return Err(TransportError::InvalidArgument);
+                }
+                buf[..bytes.len()].copy_from_slice(bytes);
+                buf[bytes.len()] = 0;
+                let h = unsafe {
+                    zpico_sys::zpico_liveliness_collect_start(
+                        self.context.handle(),
+                        buf.as_ptr() as *const core::ffi::c_char,
+                        GRAPH_QUERY_TIMEOUT_MS,
+                    )
+                };
+                if h < 0 {
+                    return Err(TransportError::Unsupported);
+                }
+                match which {
+                    GraphQuery::Nodes => self.graph_query = Some(h),
+                    GraphQuery::Entities => self.entity_query = Some(h),
+                }
+                // Nothing can have arrived on a query started this instant.
+                // An empty answer is the honest one; the next call sees what
+                // landed meanwhile.
+                return Ok(());
+            }
+        };
+
+        let stored =
+            unsafe { zpico_sys::zpico_liveliness_entry_count(self.context.handle(), handle) };
+        if stored < 0 {
+            // The slot was recycled underneath us; start again next call.
+            self.clear_query(which);
+            return Ok(());
+        }
+
+        for index in 0..stored as u32 {
+            let mut key = [0i8; GRAPH_KEYEXPR_MAX];
+            let n = unsafe {
+                zpico_sys::zpico_liveliness_entry(
+                    self.context.handle(),
+                    handle,
+                    index,
+                    key.as_mut_ptr() as *mut core::ffi::c_char,
+                    key.len(),
+                )
+            };
+            if n <= 0 {
+                // ZPICO_ERR_BUFFER for an entry longer than this stack buffer.
+                // Skipped rather than truncated: a partial keyexpr names a
+                // different, plausible entity.
+                continue;
+            }
+            // SAFETY: the C side wrote `n` bytes plus a NUL.
+            let bytes =
+                unsafe { core::slice::from_raw_parts(key.as_ptr() as *const u8, n as usize) };
+            let Ok(text) = core::str::from_utf8(bytes) else {
+                continue;
+            };
+            // `parse` refuses anything it does not recognise, so an unknown
+            // shape is dropped here rather than reported as a plausible entity.
+            let Some(entity) = Ros2Liveliness::parse(text) else {
+                continue;
+            };
+            if !f(&entity) {
+                break;
+            }
+        }
+
+        // Restart once the sweep has finished, so the next call reads a fresh
+        // view rather than an ageing one.
+        let done = unsafe { zpico_sys::zpico_liveliness_get_check(self.context.handle(), handle) };
+        if done != 0 {
+            self.clear_query(which);
+        }
+        Ok(())
+    }
+
+    fn clear_query(&mut self, which: GraphQuery) {
+        match which {
+            GraphQuery::Nodes => self.graph_query = None,
+            GraphQuery::Entities => self.entity_query = None,
+        }
+    }
+
+    /// Count the entities of one kind on a topic — phase-381 W3.
+    ///
+    /// `count_publishers` / `count_subscribers` differ only by kind.
+    fn count_entities_on_topic(
+        &mut self,
+        kind: EntityKind,
+        topic_name: &str,
+    ) -> Result<usize, TransportError> {
+        let mangled = Ros2Liveliness::mangle_topic_name_pub::<256>(topic_name);
+        let mut n = 0usize;
+        self.for_each_entity(GraphQuery::Entities, &mut |e| {
+            if e.kind == kind && e.topic == Some(mangled.as_str()) {
+                n += 1;
+            }
+            true
+        })?;
+        Ok(n)
+    }
+
+    /// phase-381 W3 — group entities by NAME and report each name once.
+    ///
+    /// The visitor contract is "a name and the types on it", but the wire is one
+    /// token per entity, so the same topic arrives once per publisher. Grouping
+    /// needs dedup, and there is no allocator here.
+    ///
+    /// So: one pass to find the next name not yet reported, a second to collect
+    /// that name's types. Quadratic in the number of distinct names, which is
+    /// the right trade at this size — the alternative is a heap map, and the
+    /// bound is the reply buffer, not the graph. Everything is BORROWED; the
+    /// only owned storage is a fixed array of type pointers.
+    ///
+    /// A name whose type list overflows `GRAPH_TYPES_MAX` is reported with the
+    /// types that fit rather than dropped: the contract says `types_count` may
+    /// be short on a partial graph, and a topic reported with one of its two
+    /// types is still true, where dropping the topic is not.
+    fn names_and_types(
+        &mut self,
+        kinds: &[EntityKind],
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), TransportError> {
+        // Names already reported, so the outer pass makes progress. Bounded by
+        // construction; a graph with more distinct names than this reports the
+        // first `GRAPH_NAMES_MAX` of them.
+        let mut seen: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_NAMES_MAX> =
+            heapless::Vec::new();
+
+        loop {
+            // Pass 1 — the next name we have not reported yet.
+            let mut next: Option<heapless::String<GRAPH_NAME_MAX>> = None;
+            self.for_each_entity(GraphQuery::Entities, &mut |e| {
+                if !kinds.contains(&e.kind) {
+                    return true;
+                }
+                let Some(topic) = e.topic else { return true };
+                let Ok(name) = heapless::String::try_from(topic) else {
+                    return true;
+                };
+                if seen.contains(&name) {
+                    return true;
+                }
+                next = Some(name);
+                false // stop: one new name per outer iteration
+            })?;
+
+            let Some(name) = next else { break };
+            if seen.push(name.clone()).is_err() {
+                // Name table full — stop rather than loop forever on a name we
+                // cannot record as seen.
+                break;
+            }
+
+            // Pass 2 — that name's types. Pointers into the parse buffers are
+            // not valid past `for_each_entity`, so the strings are COPIED here;
+            // this is the one place that costs storage, and it is bounded.
+            let mut types: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_TYPES_MAX> =
+                heapless::Vec::new();
+            self.for_each_entity(GraphQuery::Entities, &mut |e| {
+                if !kinds.contains(&e.kind) || e.topic != Some(name.as_str()) {
+                    return true;
+                }
+                if let Some(t) = e.type_name
+                    && let Ok(ty) = heapless::String::try_from(t)
+                    && !types.contains(&ty)
+                {
+                    let _ = types.push(ty);
+                }
+                true
+            })?;
+
+            let demangled = Ros2Liveliness::demangle_topic_name::<GRAPH_NAME_MAX>(name.as_str());
+            let refs: heapless::Vec<&str, GRAPH_TYPES_MAX> =
+                types.iter().map(|t| t.as_str()).collect();
+            if !visit(demangled.as_str(), refs.as_slice()) {
+                break;
+            }
+        }
+        Ok(())
+    }
+
     fn ensure_node_liveliness(&mut self, domain_id: u32, namespace: &str, node_name: &str) {
         if node_name.is_empty() {
             return;
@@ -818,108 +1069,47 @@ impl Session for ZenohSession {
 
     /// phase-381 W3 — enumerate nodes from the standing liveliness query.
     ///
-    /// Chains W1 and W2: `zpico_liveliness_collect_start` keeps the reply
-    /// keyexprs (they used to be counted and dropped), and
-    /// `Ros2Liveliness::parse` turns each into an entity, refusing anything it
-    /// does not recognise rather than reporting a plausible wrong node.
-    ///
-    /// **Does not block, and warms up.** The slot contract forbids blocking and
-    /// takes no timeout, so this reports what has ALREADY arrived: it drains the
-    /// standing query, and starts the next one once that has finished. The first
-    /// call after startup therefore returns a partial graph — which differs from
-    /// `rmw_zenoh_cpp`, whose cache is warm because a background thread has been
-    /// filling it, and is why phase-381's acceptance needs a settling window
-    /// rather than an immediate comparison.
-    ///
-    /// Truncation is not silent: `entry_count` (stored) is compared against
-    /// `zpico_liveliness_get_count` (arrived), and a short buffer is reported
-    /// rather than hidden.
+    /// Thin over [`Self::for_each_entity`]; the drain, the parse and the
+    /// warm-up policy live there because ten slots share them.
     fn get_node_names(
         &mut self,
         visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
     ) -> Result<(), Self::Error> {
-        let handle = match self.graph_query {
-            Some(h) => h,
-            None => {
-                let key = Ros2Liveliness::node_keyexpr_wildcard::<256>(self.domain_id);
-                let mut buf = [0u8; 257];
-                let bytes = key.as_bytes();
-                if bytes.len() >= buf.len() {
-                    return Err(TransportError::InvalidArgument);
-                }
-                buf[..bytes.len()].copy_from_slice(bytes);
-                buf[bytes.len()] = 0;
-                let h = unsafe {
-                    zpico_sys::zpico_liveliness_collect_start(
-                        self.context.handle(),
-                        buf.as_ptr() as *const core::ffi::c_char,
-                        GRAPH_QUERY_TIMEOUT_MS,
-                    )
-                };
-                if h < 0 {
-                    return Err(TransportError::Unsupported);
-                }
-                self.graph_query = Some(h);
-                // Nothing can have arrived yet on a query started this instant.
-                // Reporting an empty graph is the honest answer, and the next
-                // call sees whatever landed meanwhile.
-                return Ok(());
+        self.for_each_entity(GraphQuery::Nodes, &mut |e| {
+            if e.kind != EntityKind::Node {
+                return true;
             }
-        };
-
-        let stored =
-            unsafe { zpico_sys::zpico_liveliness_entry_count(self.context.handle(), handle) };
-        if stored < 0 {
-            // The slot was recycled underneath us; start again next call.
-            self.graph_query = None;
-            return Ok(());
-        }
-
-        for index in 0..stored as u32 {
-            let mut key = [0i8; GRAPH_KEYEXPR_MAX];
-            let n = unsafe {
-                zpico_sys::zpico_liveliness_entry(
-                    self.context.handle(),
-                    handle,
-                    index,
-                    key.as_mut_ptr() as *mut core::ffi::c_char,
-                    key.len(),
-                )
-            };
-            if n <= 0 {
-                // ZPICO_ERR_BUFFER for an entry longer than our stack buffer.
-                // Skipped rather than truncated — a partial keyexpr names a
-                // different, plausible node.
-                continue;
-            }
-            // SAFETY: the C side wrote `n` bytes and a NUL.
-            let bytes =
-                unsafe { core::slice::from_raw_parts(key.as_ptr() as *const u8, n as usize) };
-            let Ok(text) = core::str::from_utf8(bytes) else {
-                continue;
-            };
-            let Some(entity) = Ros2Liveliness::parse(text) else {
-                continue;
-            };
-            if entity.kind != EntityKind::Node {
-                continue;
-            }
-            let ns = Ros2Liveliness::demangle_topic_name::<128>(entity.namespace);
+            let ns = Ros2Liveliness::demangle_topic_name::<128>(e.namespace);
             // `enclave` is None: the token carries one, but ours is always the
-            // root and reporting a value we do not track would be worse than
+            // root, and reporting a value we do not track would be worse than
             // saying we do not.
-            if !visit(entity.node_name, ns.as_str(), None) {
-                break;
-            }
-        }
+            visit(e.node_name, ns.as_str(), None)
+        })
+    }
 
-        // Restart once the query has finished, so the next call sees a fresh
-        // sweep rather than an ageing one.
-        let done = unsafe { zpico_sys::zpico_liveliness_get_check(self.context.handle(), handle) };
-        if done != 0 {
-            self.graph_query = None;
-        }
-        Ok(())
+    fn count_publishers(&mut self, topic_name: &str) -> Result<usize, Self::Error> {
+        self.count_entities_on_topic(EntityKind::Publisher, topic_name)
+    }
+
+    fn count_subscribers(&mut self, topic_name: &str) -> Result<usize, Self::Error> {
+        self.count_entities_on_topic(EntityKind::Subscriber, topic_name)
+    }
+
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error> {
+        self.names_and_types(&[EntityKind::Publisher, EntityKind::Subscriber], visit)
+    }
+
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error> {
+        self.names_and_types(
+            &[EntityKind::ServiceServer, EntityKind::ServiceClient],
+            visit,
+        )
     }
 
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
