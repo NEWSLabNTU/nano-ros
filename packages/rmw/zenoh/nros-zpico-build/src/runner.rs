@@ -70,16 +70,130 @@ const UNDECLARED_HEADROOM: usize = 8;
 /// With no declaration at all this returns the historical embedded budget and
 /// says nothing; W5.e turns that case into a build-time failure, which needs
 /// the hand-written-`main` question settled first (phase-392 W5, Open).
-fn resolve_queryable_default() -> usize {
-    queryable_default_from(
-        std::env::var("NROS_DECLARED_SERVICE_SERVERS")
-            .ok()
-            .as_deref(),
-        std::env::var("NROS_DECLARED_INFRA_QUERYABLES")
-            .ok()
-            .as_deref(),
-        std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none"),
-    )
+fn resolve_queryable_default() -> QueryableSizing {
+    let declared = std::env::var("NROS_DECLARED_SERVICE_SERVERS").ok();
+    let infra = std::env::var("NROS_DECLARED_INFRA_QUERYABLES").ok();
+    QueryableSizing {
+        default: queryable_default_from(
+            declared.as_deref(),
+            infra.as_deref(),
+            std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none"),
+        ),
+        floor: queryable_floor_from(declared.as_deref(), infra.as_deref()),
+        declared: declared.is_some() || infra.is_some(),
+    }
+}
+
+/// What the queryable table was sized from, and what it may not go below.
+struct QueryableSizing {
+    /// The size to use when nothing overrides it.
+    default: usize,
+    /// The DERIVED lower bound: slots the image provably needs before the
+    /// application declares anything. See [`queryable_floor_from`].
+    floor: usize,
+    /// Whether any part of this came from a declaration.
+    declared: bool,
+}
+
+/// The slots this image PROVABLY needs, as opposed to the ones it is budgeted.
+///
+/// phase-392 W5.f — `ZPICO_MAX_QUERYABLES` stops being the primary input and
+/// becomes an override, and an override has to be checked rather than trusted.
+/// But the check must compare against something DERIVED: [`queryable_default_from`]
+/// adds [`UNDECLARED_HEADROOM`] whenever the application count is unavailable,
+/// and refusing a build for being under a guess would be the same defect one
+/// level up.
+///
+/// The infrastructure cost is not a guess. An image compiled with the ROS
+/// parameter services claims [`PARAM_SERVICE_QUERYABLES`] slots at boot, with
+/// the REP-2002 lifecycle services [`LIFECYCLE_SERVICE_QUERYABLES`], and a
+/// declared application service server claims one each. Below that sum the
+/// image cannot start, which is issue 0460 exactly: an 8-slot table against
+/// eleven infrastructure queryables, discovered at boot as a bare
+/// `ServiceServerCreationFailed`. That is now a BUILD failure, where the
+/// person who set the knob is standing.
+///
+/// Undeclared images have a floor of zero: nothing is known, so nothing is
+/// provable, and the historical budgets apply unchecked.
+fn queryable_floor_from(declared: Option<&str>, infra: Option<&str>) -> usize {
+    if declared.is_none() && infra.is_none() {
+        return 0;
+    }
+    let app = declared
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(0);
+    app + infra_queryables(infra)
+}
+
+/// phase-392 W5.f — `ZPICO_MAX_QUERYABLES` as a CHECKED override.
+///
+/// Two mechanisms deciding one number is how this phase's other defects were
+/// born, so the knob stops being an independent opinion: below the derived
+/// floor it is refused, and below the budgeted default it is reported.
+///
+/// The two levels are not the same claim and must not be conflated. The FLOOR
+/// is provable — an image carrying the parameter and lifecycle services claims
+/// eleven slots before the application declares anything, so a smaller table
+/// cannot boot. The DEFAULT adds [`UNDECLARED_HEADROOM`] for an application
+/// count nothing can supply yet; being under THAT is a plausible problem, not a
+/// certain one, and refusing a build over a guess is the defect this wave
+/// exists to remove.
+///
+/// This is issue 0460 caught one stage earlier. `CONFIG_NROS_MAX_QUERYABLES`
+/// defaults to 8 in `zephyr/Kconfig`, and an entry enabling both service
+/// families needs eleven: that image used to build cleanly and die at boot with
+/// a bare `ServiceServerCreationFailed`.
+fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
+    if !sizing.declared {
+        return;
+    }
+    if requested < sizing.floor {
+        panic!(
+            "ZPICO_MAX_QUERYABLES={requested} is below this image's DERIVED floor of \
+             {} (phase-392 W5.f).\n  \
+             A service server IS a zenoh queryable. This image declares the \
+             infrastructure services and application service servers that claim those \
+             slots at boot, so a smaller table cannot start — it fails with \
+             `ServiceServerCreationFailed` and no explanation (issue 0460).\n  \
+             On Zephyr this knob is CONFIG_NROS_MAX_QUERYABLES, whose Kconfig default \
+             is 8; raise it, or stop declaring the services the image does not have.",
+            sizing.floor
+        );
+    }
+    if requested < sizing.default {
+        println!(
+            "cargo:warning=ZPICO_MAX_QUERYABLES={requested} is under the budgeted {} \
+             ({} provably claimed at boot, plus {} of headroom for application service \
+             servers the model does not describe). It will boot; an application \
+             declaring more than {} service servers will not (phase-392 W5.f).",
+            sizing.default,
+            sizing.floor,
+            sizing.default - sizing.floor,
+            requested.saturating_sub(sizing.floor),
+        );
+    }
+}
+
+/// What `NROS_DECLARED_INFRA_QUERYABLES` costs, in slots.
+///
+/// ONE parser, shared by the default and the floor: two readings of the same
+/// spelling is how a sizing rule and its check come to disagree.
+fn infra_queryables(infra: Option<&str>) -> usize {
+    match infra {
+        Some("none") => 0,
+        Some("param") => PARAM_SERVICE_QUERYABLES,
+        Some("lifecycle") => LIFECYCLE_SERVICE_QUERYABLES,
+        Some("param+lifecycle") | Some("all") => {
+            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        }
+        Some(other) => panic!(
+            "NROS_DECLARED_INFRA_QUERYABLES={other:?} is not one of \
+             none|param|lifecycle|param+lifecycle (phase-392 W5)."
+        ),
+        // Undeclared infrastructure is assumed PRESENT: over-reserving costs
+        // RAM, under-reserving fails at boot with an exhausted table.
+        None => PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES,
+    }
 }
 
 /// The rule, with the environment lifted out so it can be tested.
@@ -120,21 +234,7 @@ fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: b
         None => return if hosted { 32 } else { UNDECLARED_HEADROOM },
     };
 
-    let infra = match infra {
-        Some("none") => 0,
-        Some("param") => PARAM_SERVICE_QUERYABLES,
-        Some("lifecycle") => LIFECYCLE_SERVICE_QUERYABLES,
-        Some("param+lifecycle") | Some("all") => {
-            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
-        }
-        Some(other) => panic!(
-            "NROS_DECLARED_INFRA_QUERYABLES={other:?} is not one of \
-             none|param|lifecycle|param+lifecycle (phase-392 W5)."
-        ),
-        // Undeclared infrastructure is assumed PRESENT: over-reserving costs
-        // RAM, under-reserving fails at boot with an exhausted table.
-        None => PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES,
-    };
+    let infra = infra_queryables(infra);
 
     // A table of zero would make every service-server registration fail, so an
     // entry declaring none still gets one slot rather than a pool nothing can
@@ -145,6 +245,65 @@ fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: b
 #[cfg(test)]
 mod queryable_default_tests {
     use super::*;
+
+    /// phase-392 W5.f — the floor is DERIVED, and it is not the default.
+    #[test]
+    fn the_floor_counts_only_what_is_provably_claimed() {
+        // Undeclared: nothing is known, so nothing is provable.
+        assert_eq!(queryable_floor_from(None, None), 0);
+        // Infrastructure declared absent: an image that declares nothing still
+        // needs nothing, even though its BUDGET is 8.
+        assert_eq!(queryable_floor_from(None, Some("none")), 0);
+        assert_eq!(queryable_default_from(None, Some("none"), true), 8);
+        // Both service families: eleven slots claimed at boot. This is the
+        // number issue 0460 discovered at runtime against a table of 8.
+        assert_eq!(
+            queryable_floor_from(None, Some("param+lifecycle")),
+            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+        // A declared application count is provable too — it is what the model
+        // says the image will create.
+        assert_eq!(queryable_floor_from(Some("2"), Some("lifecycle")), 7);
+    }
+
+    fn sizing(declared: Option<&str>, infra: Option<&str>) -> QueryableSizing {
+        QueryableSizing {
+            default: queryable_default_from(declared, infra, true),
+            floor: queryable_floor_from(declared, infra),
+            declared: declared.is_some() || infra.is_some(),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "below this image's DERIVED floor")]
+    fn an_override_under_the_derived_floor_is_refused() {
+        // zephyr/Kconfig's `default 8` for CONFIG_NROS_MAX_QUERYABLES against
+        // an entry carrying both service families: issue 0460's build, caught
+        // at build time instead of at boot.
+        check_queryable_override(8, &sizing(None, Some("param+lifecycle")));
+    }
+
+    #[test]
+    fn an_override_at_the_floor_is_accepted() {
+        // Exactly enough to boot. It is tight, not wrong.
+        check_queryable_override(11, &sizing(None, Some("param+lifecycle")));
+    }
+
+    #[test]
+    fn an_override_under_the_budget_is_only_reported() {
+        // The three `workspaces/features` zephyr entries: 16 against a budgeted
+        // 19, of which 11 is provable and 8 is headroom for an application
+        // count no model here supplies. Refusing this would be refusing a build
+        // for being under a guess.
+        check_queryable_override(16, &sizing(None, Some("param+lifecycle")));
+    }
+
+    #[test]
+    fn an_undeclared_image_is_not_checked_at_all() {
+        // Nothing was declared, so nothing is known — the historical budgets
+        // apply and any override is the caller's business, exactly as before.
+        check_queryable_override(1, &sizing(None, None));
+    }
 
     /// phase-392 W5.b1 — the half the model CAN answer, on its own.
     ///
@@ -268,11 +427,14 @@ fn shim_config_from_env() -> ShimConfig {
     // costs a hosted image 144,128 bytes of service buffers whether or not it
     // has a single service. Replacing the guess needs the declaration to reach
     // here from the resolved model; see issue 0827.
-    let queryable_default = resolve_queryable_default();
+    let sizing = resolve_queryable_default();
+    let max_queryables = env_usize("ZPICO_MAX_QUERYABLES", sizing.default);
+    check_queryable_override(max_queryables, &sizing);
     ShimConfig {
         max_publishers: env_usize("ZPICO_MAX_PUBLISHERS", 8),
         max_subscribers: env_usize("ZPICO_MAX_SUBSCRIBERS", 8),
-        max_queryables: env_usize("ZPICO_MAX_QUERYABLES", queryable_default),
+        max_queryables,
+        queryable_table_declared: sizing.declared,
         max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),

@@ -32,9 +32,9 @@ pub use zpico_sys::{
     ZPICO_ERR_CONFIG, ZPICO_ERR_FULL, ZPICO_ERR_GENERIC, ZPICO_ERR_INVALID, ZPICO_ERR_KEYEXPR,
     ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT, ZPICO_MAX_LIVELINESS,
     ZPICO_MAX_PENDING_GETS, ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS,
-    ZPICO_MAX_SUBSCRIBERS, ZPICO_OK, ZPICO_PEER_MODE_SUPPORTED, ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE,
-    ZpicoCallback, ZpicoCallbackWithAttachment, ZpicoNotifyCallback, ZpicoQueryCallback,
-    zpico_property_t, zpico_ring_desc_t,
+    ZPICO_MAX_SUBSCRIBERS, ZPICO_OK, ZPICO_PEER_MODE_SUPPORTED, ZPICO_QUERYABLE_TABLE_DECLARED,
+    ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE, ZpicoCallback, ZpicoCallbackWithAttachment,
+    ZpicoNotifyCallback, ZpicoQueryCallback, zpico_property_t, zpico_ring_desc_t,
 };
 
 // Import FFI functions from sys crate

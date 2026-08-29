@@ -13,7 +13,9 @@ use super::{
 };
 use crate::{
     keyexpr::ServiceKeyExpr,
-    zpico::{self, Queryable, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS},
+    zpico::{
+        self, Queryable, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SESSIONS, ZPICO_QUERYABLE_TABLE_DECLARED,
+    },
 };
 
 #[cfg(feature = "std")]
@@ -331,16 +333,42 @@ impl ZenohServiceServer {
             // that creates them, as `PARAM_SERVICE_QUERYABLES` and
             // `LIFECYCLE_SERVICE_QUERYABLES`; the message names the knob and
             // the cause, which is all this layer actually knows.
+            // phase-392 W5.e — the same exhaustion, TWO different faults, and
+            // the message has to say which. Sized from the backend's own
+            // budget, the table is simply too small and the fix is the knob.
+            // Sized from the entry's DECLARATION (`ZPICO_QUERYABLE_TABLE_DECLARED`),
+            // it holds exactly what the model said this image would create, so
+            // reaching this point means the image created a service server the
+            // model does not declare — and pointing that reader at the knob
+            // sends them to enlarge a table that was already right.
+            //
+            // Being authoritative costs precisely this: "the declaration is
+            // wrong" and "the table is too small" become the same event, so the
+            // message must name the first (phase-392 W5.b2).
             #[cfg(feature = "std")]
-            log::error!(
-                "service server rejected: ZPICO_MAX_QUERYABLES={} exhausted for \
-                 session {} (a service server is a queryable, and the ROS \
-                 parameter and REP-2002 lifecycle services claim theirs before \
-                 the application declares anything). Raise ZPICO_MAX_QUERYABLES \
-                 and rebuild.",
-                ZPICO_MAX_QUERYABLES,
-                session_index,
-            );
+            if ZPICO_QUERYABLE_TABLE_DECLARED {
+                log::error!(
+                    "service server rejected: this image created an UNDECLARED service \
+                     server. Its queryable table holds {} slot(s) for session {}, sized \
+                     from what the resolved SystemModel declares — so the table is not \
+                     too small, the declaration is incomplete. Declare the service \
+                     server in the launch file (a service server is a queryable, and an \
+                     action server is three). Raising ZPICO_MAX_QUERYABLES also works \
+                     and leaves the model disagreeing with the image.",
+                    ZPICO_MAX_QUERYABLES,
+                    session_index,
+                );
+            } else {
+                log::error!(
+                    "service server rejected: ZPICO_MAX_QUERYABLES={} exhausted for \
+                     session {} (a service server is a queryable, and the ROS \
+                     parameter and REP-2002 lifecycle services claim theirs before \
+                     the application declares anything). Raise ZPICO_MAX_QUERYABLES \
+                     and rebuild.",
+                    ZPICO_MAX_QUERYABLES,
+                    session_index,
+                );
+            }
             // issue 0460 — the `log::error!` above is the ONLY place that named
             // the knob, and it is `cfg(feature = "std")`: on every embedded
             // image the caller got a bare `ServiceServerCreationFailed` and no
@@ -356,12 +384,20 @@ impl ZenohServiceServer {
             // ever be copies. Seven copies existed; two had drifted to the
             // wrong value. Say what this layer knows — the table, the knob, and
             // that the runtime claims slots first.
-            return Err(TransportError::Backend(
+            // The `no_std` half of the same split. `Backend` carries a
+            // `&'static str`, so both spellings are compile-time constants and
+            // the branch costs nothing at runtime.
+            return Err(TransportError::Backend(if ZPICO_QUERYABLE_TABLE_DECLARED {
+                "undeclared service server — the zenoh queryable table was sized from \
+                 what this entry's SystemModel declares, and it is full. The table is \
+                 not too small; the declaration is incomplete. Declare the service \
+                 server in the launch file (an action server declares three)."
+            } else {
                 "zenoh queryable table exhausted — raise CONFIG_NROS_MAX_QUERYABLES \
                  (env ZPICO_MAX_QUERYABLES). A service server IS a queryable, and the \
                  ROS parameter and REP-2002 lifecycle services claim theirs before an \
-                 entry's own callbacks.",
-            ));
+                 entry's own callbacks."
+            }));
         }
         let buffer_index = session_index * ZPICO_MAX_QUERYABLES + local;
 
