@@ -30,7 +30,7 @@ when upstream releases.
 
 ## What the fork adds
 
-20 commits, 51 files, +2361/−138 against the 0.10.x boundary `5041f356`.
+21 commits, 52 files, +2493/−137 against the 0.10.x boundary `5041f356`.
 Seven groups.
 
 Re-measured 2026-08-29 and it had drifted BOTH ways: the headline said 15
@@ -120,12 +120,13 @@ its own netconn semaphore. ddsrt creates its own threads and never called
 `sem != NULL`. `thread_start_routine` is the point they have in common. Found by
 phase-370 W4, the first work to boot an embedded Cyclone image at all.
 
-### 6. The platform allocation funnel (2 commits)
+### 6. The platform allocation funnel (3 commits)
 
 | commit | subject |
 | --- | --- |
 | `6e2ad36f` | ddsrt/posix: route the heap through nano-ros's platform allocation funnel |
 | `8e6ff48a` | ddsi: allocate and free through ddsrt, not libc, in four mismatched places |
+| `d97a71e2` | ddsrt: one funnel heap for every port, instead of an arm inside one of them |
 
 Behind `-DNROS_DDSRT_PLATFORM_FUNNEL`, set by `ProvideCycloneDDS.cmake` on
 `ddsc` only (never on the tools-side `ddsrt-internal`: idlc and confgen link no
@@ -151,6 +152,30 @@ are genuinely different heaps.
 and `q_freelist.c`'s `free` is a function PARAMETER, not libc. After the sweep
 `libddsc.a` has exactly one object referencing a raw libc allocator, which is
 the `sysdeps.c` one.
+
+**The funnel is one file, not an arm per port.** `6e2ad36f` put the arms inside
+`heap/posix/heap.c`, which left FreeRTOS on `pvPortMalloc` and ThreadX on
+`tx_byte_allocate` — a second allocation route on exactly the ports whose heap
+genuinely is not libc's. `d97a71e2` replaces that with `heap/nros/heap.c`,
+which implements the whole `ddsrt_*` family on the platform ABI, and compiles
+each port's own heap.c out under the same switch. `heap/posix/heap.c` is stock
+again apart from that guard.
+
+The new file sits in the COMMON source list rather than being swapped in per
+port, and that is load-bearing: `ddsrt` is INTERFACE and `ddsrt-internal`
+compiles the same `INTERFACE_SOURCES`, so a swap would hand the funnel to the
+host tools (idlc, confgen) that link no platform layer. Because the switch is a
+PRIVATE compile definition on `ddsc`, both targets see one file set and only
+`ddsc` gets the funnel — measured: `libddsrt-internal.a` has zero
+`nros_platform_*` references and its stock posix heap still defines the family.
+
+Dropping the per-port heaps also drops their size-header prefix and alignment
+arithmetic, which existed only because the RTOS allocators have no realloc;
+`nros_platform_realloc` is specified with libc realloc semantics. The ThreadX
+weak `zpico_threadx_byte_pool` goes with it.
+
+`heap/vxworks/heap.c` is untouched: no CMakeLists references it, it does not
+include `dds/ddsrt/heap.h`, and nothing in this tree can compile it.
 
 ### 7. Nested-build path resolution (1 commit)
 
@@ -229,10 +254,10 @@ Then, two recipes that cross-check each other:
 
 ```sh
 # by boundary: 5041f356 is the newest upstream 0.10.x commit the stack sits on
-git log --oneline 5041f356..origin/nano-ros          # -> 20
+git log --oneline 5041f356..origin/nano-ros          # -> 21
 
 # by authorship, as an independent check
-git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 20
+git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 21
 ```
 
 Do not count `origin/master..origin/nano-ros` alone: it sweeps in upstream 0.10.x
