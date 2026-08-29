@@ -116,6 +116,11 @@ ALLOWLIST = {
     "justfile":
         "recipe-layer shell sourcing ROS before a build that needs .msg defs; "
         "not a test env",
+    "just/check.just":
+        "same recipe layer as `justfile` — phase-399 moved the 200 gate recipes "
+        "there with `import`, which is a namespace MERGE, so `check-dep-chain` "
+        "is the same recipe at a new path. This allowlist keys on PATH, so the "
+        "move dropped it out of an exemption it still earns; that is the entry",
     "just/ros-editions.just":
         "the docker ROS-edition axis (issue 0327): the distro IS the variable "
         "under test, supplied per-edition, not a hardcode",
