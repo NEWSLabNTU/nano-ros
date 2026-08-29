@@ -85,6 +85,9 @@ void graph_fini(GraphState* g) {
     // reset state here (session_destroy deletes the participant).
     g->writer = 0;
     g->topic = 0;
+    // phase-381 W5 — the graph reader cascades from the participant like the
+    // writer does; only the handle is reset here.
+    g->graph_reader = 0;
     g->active = false;
     g->n_readers = 0;
     g->n_writers = 0;
@@ -172,6 +175,105 @@ void graph_publish(GraphState* g) {
     sample.node_entities_info_seq._release = false;
 
     (void)dds_write(g->writer, &sample);
+}
+
+/// phase-381 W5 — the READER half. Contract in graph.hpp.
+bool graph_visit_nodes(GraphState* g, void* ctx,
+                       bool (*visit)(void* ctx, const char* node_name,
+                                     const char* node_namespace)) {
+    if (g == nullptr || visit == nullptr || !g->active || g->topic <= 0) {
+        return false;
+    }
+
+    // How many samples one query looks at, and the only storage this adds.
+    // A participant republishes its FULL snapshot on every mutation, so the
+    // newest samples are the current view; this bounds how much of it is read
+    // at once rather than how much is retained (nothing is).
+    constexpr uint32_t kMaxSamples = 16;
+
+    if (g->graph_reader <= 0) {
+        // Created on FIRST USE, not at init: a node that never asks pays no
+        // reader, no history and no discovery traffic, which is most embedded
+        // images.
+        //
+        // Matches the writer's QoS deliberately — RELIABLE + TRANSIENT_LOCAL is
+        // what makes a late reader receive the snapshots participants latched
+        // before it existed, which is the whole reason the writer latches.
+        // KEEP_LAST(kMaxSamples) rather than (1): the topic is KEYLESS, so one
+        // instance carries every participant's samples and a depth of 1 would
+        // hold whichever wrote last.
+        dds_qos_t* qos = dds_create_qos();
+        dds_qset_reliability(qos, DDS_RELIABILITY_RELIABLE, DDS_SECS(1));
+        dds_qset_durability(qos, DDS_DURABILITY_TRANSIENT_LOCAL);
+        dds_qset_history(qos, DDS_HISTORY_KEEP_LAST, static_cast<int32_t>(kMaxSamples));
+        dds_entity_t r = dds_create_reader(dds_get_participant(g->topic), g->topic, qos, nullptr);
+        dds_delete_qos(qos);
+        if (r < 0) {
+            return false;
+        }
+        g->graph_reader = r;
+        // Nothing has been delivered on a reader created this instant, so the
+        // first call legitimately reports an empty graph and the next sees the
+        // latched snapshots. Same warm-up the zenoh side documents.
+    }
+
+    void* raw[kMaxSamples] = {nullptr};
+    dds_sample_info_t info[kMaxSamples];
+    // READ, not TAKE: taking would drain the history, so a second query would
+    // see nothing and the graph would appear to vanish after one look.
+    int32_t n = dds_read(g->graph_reader, raw, info, kMaxSamples, kMaxSamples);
+    if (n <= 0) {
+        return true; // active, nothing discovered yet
+    }
+
+    // The topic is keyless, so several samples can describe the SAME
+    // participant — an older snapshot and a newer one both sit in history.
+    // Stock rmw keeps a user-space graph cache keyed by participant gid; we
+    // dedup within this batch instead and keep nothing between calls. Newest
+    // first, so the first sample seen for a gid is the current one.
+    uint8_t seen[kMaxSamples][24];
+    int n_seen = 0;
+
+    for (int32_t i = n - 1; i >= 0; --i) {
+        if (!info[i].valid_data) {
+            continue;
+        }
+        auto* sample = static_cast<rmw_dds_common_msg_dds__ParticipantEntitiesInfo_*>(raw[i]);
+        if (sample == nullptr) {
+            continue;
+        }
+        // Our OWN participant is in the graph too; reporting it is correct —
+        // `ros2 node list` lists the asking node as well.
+        bool dup = false;
+        for (int k = 0; k < n_seen; ++k) {
+            if (std::memcmp(seen[k], sample->gid.data, 24) == 0) {
+                dup = true;
+                break;
+            }
+        }
+        if (dup) {
+            continue;
+        }
+        if (n_seen < static_cast<int>(kMaxSamples)) {
+            std::memcpy(seen[n_seen++], sample->gid.data, 24);
+        }
+
+        const uint32_t count = sample->node_entities_info_seq._length;
+        auto* nodes = sample->node_entities_info_seq._buffer;
+        if (nodes == nullptr) {
+            continue;
+        }
+        for (uint32_t j = 0; j < count; ++j) {
+            if (!visit(ctx, nodes[j].node_name, nodes[j].node_namespace)) {
+                (void)dds_return_loan(g->graph_reader, raw, n);
+                return true;
+            }
+        }
+    }
+
+    // The samples are LOANED from the reader; returning them is not optional.
+    (void)dds_return_loan(g->graph_reader, raw, n);
+    return true;
 }
 
 } // namespace nros_rmw_cyclonedds

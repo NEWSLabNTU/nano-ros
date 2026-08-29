@@ -87,6 +87,45 @@ static rmw_ret_t cyclone_subscription_count_matched_publishers(
  * `RMW_GID_STORAGE_SIZE`). Zero-pad the tail rather than leaving it
  * uninitialised — a gid is COMPARED, and comparing 8 bytes of stack residue
  * makes two reads of the same publisher differ. */
+/* phase-381 W5 — read the graph Cyclone was already writing.
+ *
+ * `graph.cpp` has PUBLISHED this participant's `ros_discovery_info` since
+ * phase-177.36 so stock `ros2 node list` can see us, and never read the topic
+ * back — so a nano-ros node was visible in the graph and blind to it. That
+ * asymmetry is what issue 0791 is about, and this closes the Cyclone half of
+ * it.
+ *
+ * The reader is created on FIRST USE inside `graph_visit_nodes`, so a node that
+ * never asks pays nothing.
+ *
+ * `enclave` is NULL: `ParticipantEntitiesInfo` carries none, and reporting a
+ * value we do not have would be worse than saying we do not — the ABI's NULL is
+ * exactly "this backend does not track one". */
+static rmw_ret_t cyclone_get_node_names(const rmw_session_t *session, rmw_node_visit_fn visit,
+                                        void *ctx) {
+    if (session == nullptr || visit == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    nros_rmw_cyclonedds::GraphState *g =
+        nros_rmw_cyclonedds::session_graph(const_cast<rmw_session_t *>(session));
+    if (g == nullptr) {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    struct Ctx {
+        rmw_node_visit_fn visit;
+        void *ctx;
+    } wrapper{visit, ctx};
+    const bool ok = nros_rmw_cyclonedds::graph_visit_nodes(
+        g, &wrapper, [](void *c, const char *name, const char *ns) -> bool {
+            auto *w = static_cast<Ctx *>(c);
+            return w->visit(w->ctx, name, ns, nullptr);
+        });
+    /* `false` means the graph is INACTIVE — no descriptor, no reader. That is
+     * "cannot tell you", which the ABI spells UNSUPPORTED and which stays
+     * distinct from an empty graph. */
+    return ok ? NROS_RMW_RET_OK : NROS_RMW_RET_UNSUPPORTED;
+}
+
 static rmw_ret_t cyclone_get_gid_for_publisher(const rmw_publisher_t *publisher, rmw_gid_t *gid) {
     if (publisher == nullptr || gid == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -324,7 +363,7 @@ const nros_rmw_vtable_t kVtable = {
     /*service_set_on_new_request_callback*/ nullptr,
     /*client_set_on_new_response_callback*/ nullptr,
     /*subscription_set_on_new_message_callback*/ nullptr,
-    /*get_node_names*/ nullptr,
+    /*get_node_names*/ cyclone_get_node_names,
     /*get_topic_names_and_types*/ nullptr,
     /*get_service_names_and_types*/ nullptr,
     /*get_publisher_names_and_types_by_node*/ nullptr,

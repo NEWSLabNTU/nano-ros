@@ -1,8 +1,21 @@
 # Phase 381 — read the ROS graph, which we are already visible in
 
-**Status (2026-08-29). UNBLOCKED — the bounded-memory decision does not have to
-be made, because the buffer it was about ALREADY EXISTS and is already ABI. See
-Design note 2a. The rest of this doc stands.**
+**Status (2026-08-30). W1–W7 LANDED.** Twelve `rmw` graph slots produced,
+reachable from Rust, C and C++; zenoh answers all twelve, Cyclone answers
+`get_node_names`; XRCE degrades to `UNSUPPORTED` and that is TESTED rather than
+asserted. `check-rmw-slot-producers`: produced 42 -> 53, inert 25 -> 14.
+`check-api-parity`: every divergence carries a ledger entry.
+
+**NOT done, and it is the gap that matters: LIVE INTEROP.** Nothing here proves
+a native `rmw_zenoh_cpp` node is discovered, or that `ros2 node list` and our
+`get_node_names()` agree. Every verification so far is against our own builders,
+our own parser and our own vtable. The acceptance criteria below still need a
+router and a real ROS 2 node, and they need the settling window Design note 3
+describes — written as a single comparison they would be a flaky test.
+
+**Superseded status (2026-08-29): UNBLOCKED — the bounded-memory decision does
+not have to be made, because the buffer it was about ALREADY EXISTS and is
+already ABI. See Design note 2a.**
 
 **Superseded status (2026-08-27): NOT STARTED — BLOCKED on the deferred bounded-memory
 decision in Design note 2, which is ABI-shaped and cannot be walked back.

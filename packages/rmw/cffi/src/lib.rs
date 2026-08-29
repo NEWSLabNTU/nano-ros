@@ -1483,6 +1483,41 @@ pub struct CffiSession {
     domain_id: u32,
 }
 
+/// phase-381 W5/W6 — the C graph visitor, turned back into a Rust closure call.
+///
+/// `ctx` is a `*mut &mut dyn FnMut(...)`, which is how the borrowed closure
+/// crosses the C boundary. The strings are BORROWED for this call only, which
+/// is the contract on both sides.
+///
+/// A name that is not valid UTF-8 is SKIPPED rather than lossily converted: a
+/// mangled node name is a different, plausible node.
+///
+/// # Safety
+/// Called only by a backend slot this crate handed `ctx` to.
+unsafe extern "C" fn node_visit_trampoline(
+    ctx: *mut core::ffi::c_void,
+    node_name: *const core::ffi::c_char,
+    node_namespace: *const core::ffi::c_char,
+    enclave: *const core::ffi::c_char,
+) -> bool {
+    if ctx.is_null() || node_name.is_null() || node_namespace.is_null() {
+        return true; // skip this entry, keep enumerating
+    }
+    let cb = unsafe { &mut *(ctx as *mut &mut dyn FnMut(&str, &str, Option<&str>) -> bool) };
+    let (Ok(name), Ok(ns)) = (
+        unsafe { core::ffi::CStr::from_ptr(node_name) }.to_str(),
+        unsafe { core::ffi::CStr::from_ptr(node_namespace) }.to_str(),
+    ) else {
+        return true;
+    };
+    let enc = if enclave.is_null() {
+        None
+    } else {
+        unsafe { core::ffi::CStr::from_ptr(enclave) }.to_str().ok()
+    };
+    cb(name, ns, enc)
+}
+
 impl CffiSession {
     /// Domain this session was opened on. Authoritative: it is the value the
     /// backend actually got, not a re-derivation that can disagree with it.
@@ -2116,6 +2151,43 @@ impl Session for CffiSession {
         // Cyclone wrapper, current dust-DDS shim) leave the slot
         // NULL; only backends with an async wake source fill it.
         self.vtable.set_wake_callback.is_some()
+    }
+
+    /// phase-381 W5/W6 — forward to the backend's slot; NULL means UNSUPPORTED.
+    ///
+    /// Without this the graph slots were unreachable for every C backend: the
+    /// trait default returns `Unsupported`, so a wired slot — cyclone's, as of
+    /// W5 — would never be called and would look implemented while being dead
+    /// code. That is exactly the "a slot exists, therefore it works"
+    /// overstatement issue 0800 measured, one layer above where 0800 found it.
+    ///
+    /// NULL surfaces `Unsupported` rather than an empty enumeration, which is
+    /// W6's requirement: XRCE has no graph and must say "cannot tell you", not
+    /// "nothing is there".
+    fn get_node_names(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &str, Option<&str>) -> bool,
+    ) -> Result<(), TransportError> {
+        let Some(f) = self.vtable.get_node_names else {
+            return Err(TransportError::Unsupported);
+        };
+        // The C visitor gets a pointer to this closure as its `ctx`; the
+        // trampoline below turns the borrowed C strings back into `&str`.
+        // `&view`, not `&mut`: the slot takes a `const rmw_session_t *`.
+        let view = self.make_view();
+        let mut cb: &mut dyn FnMut(&str, &str, Option<&str>) -> bool = visit;
+        let rc = unsafe {
+            f(
+                &view as *const NrosRmwSession,
+                Some(node_visit_trampoline),
+                &mut cb as *mut _ as *mut core::ffi::c_void,
+            )
+        };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
     }
 
     fn ping_session(&mut self, timeout_ms: i32) -> Result<(), TransportError> {
@@ -4230,6 +4302,45 @@ mod tests {
     // This test is the pair to `register_rejects_incomplete_vtable` above: one
     // asserts the gate still bites, this asserts it does not over-bite. Keep
     // both — dropping either turns the gate into a one-way ratchet.
+    /// phase-381 W6 — a NULL graph slot must say UNSUPPORTED, not "empty".
+    ///
+    /// The distinction is the whole of W6. XRCE has no graph at all: its C
+    /// vtable is a designated initializer, so every graph slot is NULL by
+    /// omission. If a NULL slot produced `Ok(())` with no visits, a caller
+    /// could not tell "this backend cannot answer" from "the graph is empty",
+    /// and would conclude a peer is absent when it simply cannot be seen.
+    ///
+    /// This also guards the reverse defect, which nearly shipped: `CffiSession`
+    /// had NO `get_node_names` at all, so it fell through to the trait default
+    /// and returned `Unsupported` even for a backend whose slot WAS wired —
+    /// cyclone's, once W5 filled it. The slot would have looked implemented
+    /// while being dead code, which is issue 0800's overstatement one layer up.
+    #[test]
+    fn a_null_graph_slot_reports_unsupported_not_an_empty_graph() {
+        use nros_rmw::{Session, TransportError};
+
+        // A vtable with every required slot and NO graph slots — the shape a C
+        // backend gets from `.field = ...` designated init.
+        let mut session = CffiSession {
+            vtable: &STUB_VTABLE,
+            node_name_buf: [0u8; NAME_BUF_LEN],
+            namespace_buf: [0u8; NAME_BUF_LEN],
+            backend_data: core::ptr::dangling_mut::<c_void>(),
+            domain_id: 0,
+        };
+        let mut seen = 0usize;
+        let mut visit = |_n: &str, _ns: &str, _e: Option<&str>| {
+            seen += 1;
+            true
+        };
+        let r = Session::get_node_names(&mut session, &mut visit);
+        assert!(
+            matches!(r, Err(TransportError::Unsupported)),
+            "a NULL slot must report Unsupported, got {r:?}"
+        );
+        assert_eq!(seen, 0, "nothing may be visited when the slot is absent");
+    }
+
     #[test]
     fn register_accepts_vtable_without_optional_capability_slots() {
         let mut vt = STUB_VTABLE;
