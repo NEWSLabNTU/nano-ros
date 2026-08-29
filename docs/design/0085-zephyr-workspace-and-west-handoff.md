@@ -490,6 +490,139 @@ Registered through `scripts/west-commands.yml`, the same route `west fvp`
 already takes, so any workspace whose manifest lists nano-ros picks it up with
 no `west config` step.
 
+## D13 — `nros new entry`, and why it writes three files it does not own
+
+Card 1 of the remaining three. `nros new <name> --platform zephyr` refused,
+correctly: that form makes a STANDALONE project (own cargo root, copy-out-able,
+RFC-0026) and a Zephyr entry is none of those. So it is a different noun:
+
+```console
+$ nros new entry zephyr_entry --platform zephyr
+nros new entry: scaffolded …/src/zephyr_entry (7 file(s))
+  declared [image.zephyr_entry] in …/src/demo_bringup/system.toml
+```
+
+It writes the package — `Cargo.toml` (staticlib, `deploy = "zephyr"`),
+`CMakeLists.txt`, `build.rs`, `src/lib.rs`, `prj.conf`, `prj-<rmw>.conf`,
+`boards/<board>.conf` — and then **three things outside it**, each of which was
+a failure met while getting a Zephyr image to build by hand:
+
+1. **`[image.<name>]` in the bringup**, carrying `board`, `entry` and `conf`.
+   An entry and its image are two halves of one declaration; a scaffold that
+   wrote one half would reproduce the `FATAL_ERROR "… requires an RMW overlay"`
+   it exists to prevent.
+2. **`exclude` in EVERY enclosing cargo workspace.** Not just the nearest —
+   cargo resolves against the outermost manifest that claims the package, so
+   excluding one leaves the build failing on the other. Measured:
+
+   ```text
+   error: current package believes it's in a workspace when it's not:
+   current:   …/examples/workspaces/rust/src/demo_entry/Cargo.toml
+   workspace: …/nano-ros/Cargo.toml
+   ```
+
+   This is the "BOTH excludes" rule CLAUDE.md already records, applied by the
+   tool instead of remembered by the user.
+3. **A path dep per node package the bringup declares.** `nros::main!` emits a
+   `<pkg>::register(…)` per node, so a missing dep is a compile error in
+   GENERATED code — the worst place for one, since the line the user is sent to
+   exists in no file they wrote. Read from `[[component]]` rather than by
+   parsing the launch XML again: the components ARE the declaration.
+
+`boards/<board>.conf` goes through Zephyr's own per-board discovery rather than
+a fourth `conf` entry, because it is per-BOARD while `conf` is per-IMAGE. For
+native_sim it carries NSOS, without which the image takes the `zeth` TAP driver
+and needs a host interface made as root — a scaffold whose output cannot run
+unprivileged is not a starting point.
+
+**Verified by scaffolding and building one.** `nros new entry demo_entry` →
+`nros sync` → `nros build demo_bringup:demo_entry -- --pristine` → 1248/1248 →
+`zephyr.exe`, which boots. The scratch entry was reverted afterwards.
+
+## D14 — `nros image-facts`: the supplier is a QUERY
+
+Card 2, and the shape D2 was missing. D2 sketched a supplier verb west would
+invoke, and worried it must not be `nros build` or west would loop. **A query
+cannot loop.** `nros image-facts` runs stages 1–4 and stops before the handoff —
+which is exactly `plan_builds`, already exercised by `--dry-run` and already
+reused by `nros materialize`.
+
+```console
+$ nros image-facts demo_bringup:zephyr --cmake
+set(NROS_IMAGE_QUALIFIED "demo_bringup:zephyr")
+set(NROS_IMAGE_BOARD "native_sim/native/64")
+set(NROS_IMAGE_PLATFORM "zephyr")
+set(NROS_IMAGE_WORKSPACE "…/examples/workspaces/rust")
+set(NROS_IMAGE_DRIVER "west")
+set(NROS_IMAGE_RMW "zenoh")
+set(NROS_IMAGE_ENTRY_PACKAGE "zephyr_entry")
+```
+
+It is the fifth of an idiom this repository already has four of — `nros
+profile`, `nros model-path`, `nros sdk-path`, `nros codegen resolve-deps` —
+described in `NanoRosCargoProfile.cmake` as *"the bridge cmake/bash use so the
+derivations are not re-spelled per language"*.
+
+**The fact that matters is `RMW`.** `zephyr/cmake/nros_cargo_build.cmake:470`
+hand-assembles a cargo invocation whose feature selection comes from
+`CONFIG_NROS_RMW_*`, while `[image.*]` says `rmw` — two derivations of one
+thing, and nothing made them agree. `rmw`, `entry_package`, `target` and
+`profile` now live on `ResolvedBuild`, so both consumers read one struct.
+
+**It produces no artifacts, deliberately.** The generated message crates and
+the SystemModel already have a producer (`nros sync`); the entry staticlib and
+the sizes headers already have one (cargo, driven by cmake). What was missing
+was never a builder — it was the ANSWERS those builders were guessing at.
+
+**And it degrades rather than failing.** A plain Zephyr app using nano-ros as a
+module is not in a nano-ros workspace at all; `--if-present` exits 0 having
+printed nothing, so cmake keeps its Kconfig derivation. Anything else would
+break the promise that `west build -b <board> <app>` just works.
+
+The workspace is found by walking up for a package carrying `system.toml` —
+the same definition `nros build` uses, so the two cannot disagree. Not by
+walking to the nearest `Cargo.toml`: an entry package HAS one, and a C or C++
+workspace has none.
+
+## D15 — the two-tree case: what was actually untested
+
+Card 3, and the claim needed correcting before it could be closed. Every test
+in `build_verb_pipeline.rs` already builds its workspace in a temp dir, so
+"workspace outside the checkout" has been covered all along. Three links were
+not:
+
+* **a Zephyr in a THIRD tree** — `the_zephyr_workspace_can_live_in_a_third_tree`
+  asserts the handoff takes `ZEPHYR_BASE` from there, the application from the
+  workspace, and nothing from inside the nano-ros checkout;
+* **no Zephyr at all** — a plan is still answerable, because the message it
+  prints is the command the user is being told to run;
+* **no framework** — the error names `--nano-ros-path` and `NROS_REPO_DIR`. In
+  one checkout the autodetect walk finds `packages/boards` by accident of
+  layout; a separate tree has no such luck, so this is the first thing a
+  two-tree user hits.
+
+A real build in a moved tree is **not** a test — compiling at test time is
+banned — so that tier is `scripts/dev/two-tree-check.sh`, which copies a
+workspace to `$TMPDIR`, syncs, builds, and asserts the artifact landed in the
+copy rather than back in the source.
+
+**What it found on its first run** is the honest result: a leaf
+`.cargo/config.toml` carries a RELATIVE `include = ["../../../../../../nros-patch.toml"]`,
+six levels up into the nano-ros checkout, and a moved workspace cannot resolve
+it —
+
+```text
+error: could not load Cargo configuration
+failed to load config include `../../../../../../nros-patch.toml`
+```
+
+That relative spelling is deliberate for an IN-TREE example leaf (`#272`: a
+host-absolute path would break every other checkout), and `nros sync` writes
+absolute inlines for an out-of-tree consumer instead. What is not yet
+established is whether sync REWRITES an in-tree config that has been copied
+out — the first attempt to check was invalidated by a stale-CLI guard whose
+output had been suppressed, so this is recorded as open rather than diagnosed.
+
 ## Verified end to end
 
 `examples/workspaces/rust`, 2026-08-29, on this tree:

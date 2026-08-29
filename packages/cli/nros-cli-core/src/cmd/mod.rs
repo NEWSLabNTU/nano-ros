@@ -26,11 +26,13 @@ pub mod entity_facts;
 pub mod explain;
 pub mod generate;
 pub mod generate_px4;
+pub mod image_facts;
 pub mod init;
 pub mod materialize;
 pub mod metadata;
 pub mod model_path;
 pub mod new;
+pub mod new_entry;
 pub mod new_platform;
 pub mod new_system;
 pub mod plan;
@@ -114,6 +116,12 @@ pub enum Cmd {
     /// RTOS adapter.
     #[command(name = "codegen-system")]
     CodegenSystem(codegen_system::Args),
+
+    /// RFC-0085 D2 — print the RESOLVED image as data, so a west build derives
+    /// its cargo invocation from `[image.*]` instead of re-spelling it from
+    /// Kconfig. A query, not a build: it cannot recurse into `west build`.
+    #[command(name = "image-facts")]
+    ImageFacts(image_facts::Args),
 
     /// phase-330 W7 — print the resolved SystemModel path for
     /// (bringup, launch, args). The cmake bridge for `nano_ros_entry(LAUNCH …)`.

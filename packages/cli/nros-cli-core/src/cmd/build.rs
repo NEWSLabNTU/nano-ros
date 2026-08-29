@@ -91,6 +91,20 @@ pub struct ResolvedBuild {
     /// The native command. `None` when stage 4 must run first and is not
     /// implemented for this driver yet.
     pub handoff: Option<Handoff>,
+    /// The image's RMW, resolved the one way (RFC-0085 D2).
+    ///
+    /// The fact two derivations most easily disagree about: a west build reads
+    /// `CONFIG_NROS_RMW_*` out of Kconfig, while `[image.*]` says `rmw`, and
+    /// nothing made them agree. Exposed so `nros image-facts` can hand cmake
+    /// the image's answer instead of cmake inferring its own.
+    pub rmw: Option<String>,
+    /// The entry package this image builds, when one was resolved.
+    pub entry_package: Option<String>,
+    /// The rustc target triple the board pins, if any.
+    pub target: Option<String>,
+    /// The cargo profile the image declares, if any.
+    pub profile: Option<String>,
+
     /// A configure that must run BEFORE the handoff, for drivers that need one.
     ///
     /// cmake is the only such driver: `cmake --build` on an unconfigured tree
@@ -700,6 +714,13 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             platform,
             driver,
             handoff,
+            // `image` is already merged with `[image_defaults]` by the
+            // resolver, so this is the image's effective answer rather than
+            // only what its own block spelled.
+            rmw: image.rmw.clone(),
+            entry_package: Some(want_entry.clone()),
+            target: descriptor.target.clone(),
+            profile: image.profile.clone(),
         });
     }
     Ok(out)
