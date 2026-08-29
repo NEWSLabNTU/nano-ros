@@ -605,6 +605,8 @@ nros_riscv64_rustflags_env(${_crate_target}-static)
     # workspace member's own `.cargo/config.toml` never does (corrosion invokes
     # cargo from the workspace root).
     nros_board_facts_env(${_crate_target}-static)
+    # issue 0835 — the board's toolchain paths reach cargo the same way.
+    nros_board_toolchain_env(${_crate_target}-static)
 
     # Issue #214 — DOMAIN bake for the Rust `Config::default()` (drives the
     # Executor/Cyclone participant; mirrors the C fixtures' `-DNROS_DOMAIN_ID`).

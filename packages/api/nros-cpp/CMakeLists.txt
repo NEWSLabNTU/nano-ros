@@ -65,6 +65,10 @@ corrosion_import_crate(
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_cpp-static)
+# issue 0835 — the board's ThreadX/NetX config dirs. The board module
+# publishes them with `set(ENV{})`, which the build-time cargo step does
+# not inherit, so every riscv64 ThreadX C/C++ cell died on `nx_port.h`.
+nros_board_toolchain_env(nros_cpp-static)
 # issue 0657 — the riscv64 float ABI, per target (see the helper's comment).
 nros_riscv64_rustflags_env(nros_cpp-static)
 # phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.

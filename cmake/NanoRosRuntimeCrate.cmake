@@ -305,6 +305,8 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     # workspace member's own `.cargo/config.toml` never does (corrosion invokes
     # cargo from the workspace root).
     nros_board_facts_env(nros_ws_runtime-static)
+    # issue 0835 — the board's toolchain paths reach cargo the same way.
+    nros_board_toolchain_env(nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR
             "nros_synth_runtime_umbrella: Corrosion did not create "

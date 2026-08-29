@@ -222,3 +222,57 @@ function(nros_armv8r_cflags_env _target)
         "nano-ros: cortex-r52 FPU CFLAGS NOT attached — no target named "
         "${_env_target} (phase-372 W1)")
 endfunction()
+
+# nros_board_toolchain_env(<target>) — issue 0835
+#
+# The board's TOOLCHAIN paths, carried to cargo the same way the facts above
+# are. Separate from `nros_board_facts_env` because these do not come from
+# `nros ws board-facts`: a board module computes them at configure time, and a
+# standalone example leaf has no workspace for the facts path to resolve at all.
+#
+# WHY this exists. `cmake/board/nano-ros-board-riscv64-qemu.cmake` publishes
+# `THREADX_CONFIG_DIR` / `NETX_CONFIG_DIR` / `THREADX_PORT` /
+# `THREADX_EXTRA_INCLUDES` with `set(ENV{...})`, which only touches the
+# CONFIGURE-time process. Corrosion's cargo step is a build-time custom command
+# and inherits none of it, so `zpico-sys`'s build script read no
+# `NETX_CONFIG_DIR` (`nros-zpico-build/src/runner.rs`, which simply omits the
+# include when the var is unset) and every riscv64 ThreadX C/C++ cell failed:
+#
+#   third-party/threadx/netxduo/common/inc/nx_api.h:155:10:
+#       fatal error: nx_port.h: No such file or directory
+#
+# NetX Duo ships no riscv64 port; the header lives in the BOARD's config dir
+# (`packages/boards/nros-board-threadx-qemu-riscv64/config/nx_port.h`), which is
+# exactly what the unset variable was supposed to name. Measured on
+# `examples/qemu-riscv64-threadx/c/talker/build-zenoh`: `cmake --build` returns
+# 101 as-is and 0 with those two variables exported, same tree.
+#
+# This is issue 0460 one lane over — there a Kconfig knob reached the Zephyr C
+# lane and not the Rust one, for the same reason and with the same `set(ENV{})`
+# at the root of it.
+function(nros_board_toolchain_env _target)
+    # ENV is checked as well as the cache because the board module publishes
+    # some of these ONLY as process env (`THREADX_PORT`,
+    # `THREADX_EXTRA_INCLUDES`), which is the very bug this forwards past.
+    set(_names THREADX_CONFIG_DIR NETX_CONFIG_DIR THREADX_PORT
+               THREADX_EXTRA_INCLUDES THREADX_DIR NETX_DIR THREADX_BOARD_DIR)
+    set(_env "")
+    foreach(_name IN LISTS _names)
+        if(DEFINED ${_name})
+            list(APPEND _env "${_name}=${${_name}}")
+        elseif(DEFINED ENV{${_name}})
+            list(APPEND _env "${_name}=$ENV{${_name}}")
+        endif()
+    endforeach()
+    if(_env STREQUAL "")
+        return()
+    endif()
+    if(NOT COMMAND corrosion_set_env_vars)
+        message(FATAL_ERROR "nros_board_toolchain_env(${_target}): Corrosion not loaded")
+    endif()
+    # issue 0657 — the INTERFACE target is the one the cargo command reads.
+    nros_corrosion_env_target("${_target}" _target)
+    corrosion_set_env_vars(${_target} ${_env})
+    list(LENGTH _env _n)
+    message(STATUS "nano-ros: ${_n} board toolchain path(s) delivered to cargo")
+endfunction()
