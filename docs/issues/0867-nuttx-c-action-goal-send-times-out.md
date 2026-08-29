@@ -5,7 +5,7 @@ title: "`test_rtos_action_e2e` nuttx/C fails 3/3 SOLO — the client's goal send
 status: open
 type: bug
 area: testing, rmw
-related: [issue-0865, issue-0854, issue-0460]
+related: [issue-0891, issue-0854, issue-0460]
 ---
 
 ## Symptom
@@ -29,9 +29,9 @@ three attempts when run **entirely alone**, at ~72–92 s per attempt:
 The server side reaches `Waiting for action goals (Ctrl+C to exit)...` and
 then prints nothing — `Server post-boot:` is empty.
 
-## Why this is NOT issue 0865
+## Why this is NOT issue 0891
 
-0865 covers the six nuttx cells that fail in a sweep and pass solo; its fix
+0891 covers the six nuttx cells that fail in a sweep and pass solo; its fix
 (platform-scoped boot budgets + `qemu-nuttx` `max-threads` 9 → 1) recovered
 pubsub and service, C and C++. This one fails solo, deterministically, on an
 otherwise idle-enough host, and it fails LATE: everything up to and including

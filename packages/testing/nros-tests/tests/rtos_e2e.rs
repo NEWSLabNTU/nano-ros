@@ -594,7 +594,7 @@ fn start_server_then_client(
 ///
 /// Keyed on platform, because every term in that list — emulator, board, cold
 /// boot — is a property of the platform and not of the language the node was
-/// written in (issue 0865).
+/// written in (issue 0891).
 fn boot_budget(platform: Platform) -> Duration {
     match platform {
         // A native process: no emulator and no cold boot to absorb.
@@ -607,7 +607,7 @@ fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform) {
     if output.contains(readiness_pattern) {
         return;
     }
-    // issue 0865 — say WHICH of the two happened. `collect_until` renders a
+    // issue 0891 — say WHICH of the two happened. `collect_until` renders a
     // harness-level failure into the text it returns, and returns `Err` (hence
     // `<no output collected>`) only when the capture came back EMPTY. So an
     // empty capture means the wait expired with the image having printed
