@@ -51,13 +51,29 @@
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
   },
+  "c:executor_get_client_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "c:executor_get_node_names": {
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`). Reports what has been DISCOVERED and never blocks, so an empty enumeration means \"nobody seen yet\" rather than \"nobody exists\"; `UNSUPPORTED` stays distinct from empty."
   },
+  "c:executor_get_publisher_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "c:executor_get_service_names_and_types": {
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "c:executor_get_service_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
+  "c:executor_get_subscriber_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The SUBSCRIBER/SUBSCRIPTION word is chosen per language from that language's own upstream, which is why the three differ on purpose: rcl says `subscriber`, rclcpp and rclrs say `subscription`, and the vtable slot says `subscriber` because upstream rmw does (RFC-0054). rclcpp has no `*_by_node` form for subscriptions at all, so its WORD comes from its vocabulary (`create_subscription`, `Subscription<T>`) rather than from a method it lacks. Recorded so this does not read as the drift issue 0788 collects -- 0788 is about our languages disagreeing with NO rule; here the rule is 'follow your own upstream'."
   },
   "c:executor_get_topic_names_and_types": {
     "verdict": "divergence",
@@ -178,13 +194,29 @@
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
   },
+  "cpp:Executor::get_client_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "cpp:Executor::get_node_names": {
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`). Reports what has been DISCOVERED and never blocks, so an empty enumeration means \"nobody seen yet\" rather than \"nobody exists\"; `UNSUPPORTED` stays distinct from empty."
   },
+  "cpp:Executor::get_publisher_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "cpp:Executor::get_service_names_and_types": {
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "cpp:Executor::get_service_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
+  "cpp:Executor::get_subscription_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The SUBSCRIBER/SUBSCRIPTION word is chosen per language from that language's own upstream, which is why the three differ on purpose: rcl says `subscriber`, rclcpp and rclrs say `subscription`, and the vtable slot says `subscriber` because upstream rmw does (RFC-0054). rclcpp has no `*_by_node` form for subscriptions at all, so its WORD comes from its vocabulary (`create_subscription`, `Subscription<T>`) rather than from a method it lacks. Recorded so this does not read as the drift issue 0788 collects -- 0788 is about our languages disagreeing with NO rule; here the rule is 'follow your own upstream'."
   },
   "cpp:Executor::get_topic_names_and_types": {
     "verdict": "divergence",
@@ -279,13 +311,29 @@
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
   },
+  "rust:Executor::get_client_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "rust:Executor::get_node_names": {
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`). Reports what has been DISCOVERED and never blocks, so an empty enumeration means \"nobody seen yet\" rather than \"nobody exists\"; `UNSUPPORTED` stays distinct from empty."
   },
+  "rust:Executor::get_publisher_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
   "rust:Executor::get_service_names_and_types": {
     "verdict": "divergence",
     "why": "phase-381 W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node (`rcl_get_node_names(node, ...)`, `rclcpp::Node::get_node_names()`) because each Node/Context owns a participant. A nano-ros image opens ONE transport session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it, so the graph is asked of the Executor. Our `Node` is a declarative registration with no session to query. NOT a `rename`: renaming would say our spelling should change, and it should not -- the name follows the receiver, and the receiver is where the session is. The C spelling keeps the `nros_executor_*` infix every other session-scoped verb uses (`nros_executor_ping`, `nros_executor_spin`)."
+  },
+  "rust:Executor::get_service_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is."
+  },
+  "rust:Executor::get_subscription_names_and_types_by_node": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The SUBSCRIBER/SUBSCRIPTION word is chosen per language from that language's own upstream, which is why the three differ on purpose: rcl says `subscriber`, rclcpp and rclrs say `subscription`, and the vtable slot says `subscriber` because upstream rmw does (RFC-0054). rclcpp has no `*_by_node` form for subscriptions at all, so its WORD comes from its vocabulary (`create_subscription`, `Subscription<T>`) rather than from a method it lacks. Recorded so this does not read as the drift issue 0788 collects -- 0788 is about our languages disagreeing with NO rule; here the rule is 'follow your own upstream'."
   },
   "rust:Executor::get_topic_names_and_types": {
     "verdict": "divergence",

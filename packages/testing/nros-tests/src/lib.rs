@@ -1244,5 +1244,16 @@ mod w4_reachability {
         let _ = nros::Executor::get_service_names_and_types;
         let _ = nros::Executor::count_publishers;
         let _ = nros::Executor::count_subscribers;
+        // phase-381 W3/W4 — the six per-node and per-topic forms.
+        //
+        // `get_subscription_names_and_types_by_node`, NOT `subscriber`: the
+        // Rust surface takes rclrs's vocabulary. If someone "fixes" this to
+        // match the C spelling, this line stops compiling — which is the point.
+        let _ = nros::Executor::get_publisher_names_and_types_by_node;
+        let _ = nros::Executor::get_subscription_names_and_types_by_node;
+        let _ = nros::Executor::get_service_names_and_types_by_node;
+        let _ = nros::Executor::get_client_names_and_types_by_node;
+        let _ = nros::Executor::get_publishers_info_by_topic;
+        let _ = nros::Executor::get_subscriptions_info_by_topic;
     }
 }

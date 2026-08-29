@@ -3474,6 +3474,113 @@ impl<'s> Executor<'s> {
             .map_err(NodeError::Transport)
     }
 
+    /// phase-381 W4 — what one named node PUBLISHES, with the types.
+    ///
+    /// `visit(topic_name, types)` per distinct topic. A node the graph has not
+    /// discovered yields no visits, which is not an error — see
+    /// [`Self::get_node_names`] for why an empty answer means "not seen yet".
+    pub fn get_publisher_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::{GraphEntityKind, Session};
+        self.session
+            .get_names_and_types_by_node(
+                GraphEntityKind::Publisher,
+                node_name,
+                node_namespace,
+                visit,
+            )
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+    ///
+    /// **`subscription`, not `subscriber`** — this is rclrs's spelling
+    /// (`get_subscription_names_and_types_by_node`), and the Rust surface takes
+    /// its vocabulary from rclrs so a user porting Rust ROS 2 code types what
+    /// they already know. The C surface says `subscriber` because rcl does, and
+    /// the vtable slot says `subscriber` because upstream rmw does. Three
+    /// layers, three upstreams, one word each — not drift. Issue 0788 owns the
+    /// wider verb sweep.
+    pub fn get_subscription_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::{GraphEntityKind, Session};
+        self.session
+            .get_names_and_types_by_node(
+                GraphEntityKind::Subscriber,
+                node_name,
+                node_namespace,
+                visit,
+            )
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — what services one named node SERVES, with the types.
+    pub fn get_service_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::{GraphEntityKind, Session};
+        self.session
+            .get_names_and_types_by_node(GraphEntityKind::Service, node_name, node_namespace, visit)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — what services one named node CALLS, with the types.
+    pub fn get_client_names_and_types_by_node(
+        &mut self,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::{GraphEntityKind, Session};
+        self.session
+            .get_names_and_types_by_node(GraphEntityKind::Client, node_name, node_namespace, visit)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — the publishers on `topic_name`, one visit each.
+    ///
+    /// Each `GraphEndpointInfo` BORROWS its strings for the duration of the
+    /// visit; copy anything kept.
+    ///
+    /// It carries no QoS. The granted profile is what would answer "why is
+    /// nothing arriving", and no backend can read one back yet — reporting the
+    /// remote's DECLARED profile instead would be a confident wrong answer, so
+    /// the field is absent rather than misleading.
+    pub fn get_publishers_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .get_endpoint_info_by_topic(true, topic_name, visit)
+            .map_err(NodeError::Transport)
+    }
+
+    /// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+    /// See [`Self::get_publishers_info_by_topic`].
+    pub fn get_subscriptions_info_by_topic(
+        &mut self,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), NodeError> {
+        use nros_rmw::Session;
+        self.session
+            .get_endpoint_info_by_topic(false, topic_name, visit)
+            .map_err(NodeError::Transport)
+    }
+
     /// Get a mutable reference to an action client core in the arena by entry index.
     ///
     /// # Safety

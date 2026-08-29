@@ -755,6 +755,287 @@ unsafe fn nros_executor_count_impl(
     }
 }
 
+/// phase-381 W4 — visit one discovered endpoint on a topic.
+///
+/// Strings are BORROWED for the duration of the call. Return `false` to stop.
+///
+/// No QoS: the GRANTED profile is what would answer "why is nothing arriving",
+/// no backend can read one back yet, and reporting the remote's DECLARED
+/// profile instead would be a confident wrong answer.
+#[repr(C)]
+pub struct nros_endpoint_info_t {
+    /// Node that owns the endpoint.
+    pub node_name: *const core::ffi::c_char,
+    /// That node's namespace.
+    pub node_namespace: *const core::ffi::c_char,
+    /// Fully-qualified type on the wire, e.g. `"std_msgs/msg/Int32"`.
+    pub topic_type: *const core::ffi::c_char,
+    /// `true` for a publisher, `false` for a subscription.
+    pub is_publisher: bool,
+    /// 24-byte identity; all-zero when the backend has none.
+    pub endpoint_gid: [u8; 24],
+}
+
+/// phase-381 W4 — visit one endpoint. Return `false` to stop.
+pub type nros_endpoint_info_visit_fn = Option<
+    unsafe extern "C" fn(ctx: *mut core::ffi::c_void, info: *const nros_endpoint_info_t) -> bool,
+>;
+
+/// The shared body for the four `*_by_node` entry points.
+///
+/// # Safety
+/// Same contract as its callers.
+unsafe fn nros_executor_by_node_impl(
+    executor: *mut nros_executor_t,
+    node_name: *const core::ffi::c_char,
+    node_namespace: *const core::ffi::c_char,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+    #[allow(unused_variables)] kind: u8,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    if node_name.is_null() || node_namespace.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let Some(visit) = visit else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let (Ok(name), Ok(ns)) = (
+            core::ffi::CStr::from_ptr(node_name).to_str(),
+            core::ffi::CStr::from_ptr(node_namespace).to_str(),
+        ) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        const NAME_MAX: usize = 256;
+        const TYPES_MAX: usize = 8;
+        let exec = get_executor(&mut exec_t._opaque);
+        let mut cb = |n: &str, types: &[&str]| -> bool {
+            let mut name_buf = [0u8; NAME_MAX];
+            if n.len() >= NAME_MAX {
+                return true;
+            }
+            name_buf[..n.len()].copy_from_slice(n.as_bytes());
+            let mut type_bufs = [[0u8; NAME_MAX]; TYPES_MAX];
+            let mut ptrs: [*const core::ffi::c_char; TYPES_MAX] = [core::ptr::null(); TYPES_MAX];
+            let mut count = 0usize;
+            for t in types.iter().take(TYPES_MAX) {
+                if t.len() >= NAME_MAX {
+                    continue;
+                }
+                type_bufs[count][..t.len()].copy_from_slice(t.as_bytes());
+                ptrs[count] = type_bufs[count].as_ptr() as *const core::ffi::c_char;
+                count += 1;
+            }
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const core::ffi::c_char,
+                ptrs.as_ptr(),
+                count,
+            )
+        };
+        let r = match kind {
+            0 => exec.get_publisher_names_and_types_by_node(name, ns, &mut cb),
+            1 => exec.get_subscription_names_and_types_by_node(name, ns, &mut cb),
+            2 => exec.get_service_names_and_types_by_node(name, ns, &mut cb),
+            _ => exec.get_client_names_and_types_by_node(name, ns, &mut cb),
+        };
+        match r {
+            Ok(()) => NROS_RET_OK,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (node_name, node_namespace, visit, ctx);
+        NROS_RET_UNSUPPORTED
+    }
+}
+
+/// phase-381 W4 — what one named node PUBLISHES, with the types.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `node_name` / `node_namespace` must be valid NUL-terminated strings.
+/// * `visit` must be callable for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_publisher_names_and_types_by_node(
+    executor: *mut nros_executor_t,
+    node_name: *const core::ffi::c_char,
+    node_namespace: *const core::ffi::c_char,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 0)
+}
+
+/// phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+///
+/// **`subscriber`, not `subscription`** — rcl spells it
+/// `rcl_get_subscriber_names_and_types_by_node`, and the C surface takes its
+/// vocabulary from rcl so a user porting C ROS 2 code types what they already
+/// know. The C++ and Rust surfaces say `subscription` because rclcpp and rclrs
+/// do. Three layers, three upstreams, one word each — not drift. Issue 0788
+/// owns the wider verb sweep.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `node_name` / `node_namespace` must be valid NUL-terminated strings.
+/// * `visit` must be callable for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_subscriber_names_and_types_by_node(
+    executor: *mut nros_executor_t,
+    node_name: *const core::ffi::c_char,
+    node_namespace: *const core::ffi::c_char,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 1)
+}
+
+/// phase-381 W4 — what services one named node SERVES, with the types.
+///
+/// # Safety
+/// As `nros_executor_get_publisher_names_and_types_by_node`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_service_names_and_types_by_node(
+    executor: *mut nros_executor_t,
+    node_name: *const core::ffi::c_char,
+    node_namespace: *const core::ffi::c_char,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 2)
+}
+
+/// phase-381 W4 — what services one named node CALLS, with the types.
+///
+/// # Safety
+/// As `nros_executor_get_publisher_names_and_types_by_node`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_client_names_and_types_by_node(
+    executor: *mut nros_executor_t,
+    node_name: *const core::ffi::c_char,
+    node_namespace: *const core::ffi::c_char,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_by_node_impl(executor, node_name, node_namespace, visit, ctx, 3)
+}
+
+/// The shared body for the two `*_info_by_topic` entry points.
+///
+/// # Safety
+/// Same contract as its callers.
+unsafe fn nros_executor_endpoint_info_impl(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    visit: nros_endpoint_info_visit_fn,
+    ctx: *mut core::ffi::c_void,
+    #[allow(unused_variables)] publishers: bool,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    if topic_name.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let Some(visit) = visit else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        const NAME_MAX: usize = 256;
+        let exec = get_executor(&mut exec_t._opaque);
+        let mut cb = |info: &nros_rmw::GraphEndpointInfo<'_>| -> bool {
+            let mut name_buf = [0u8; NAME_MAX];
+            let mut ns_buf = [0u8; NAME_MAX];
+            let mut ty_buf = [0u8; NAME_MAX];
+            if info.node_name.len() >= NAME_MAX
+                || info.node_namespace.len() >= NAME_MAX
+                || info.topic_type.len() >= NAME_MAX
+            {
+                return true; // skip, never truncate
+            }
+            name_buf[..info.node_name.len()].copy_from_slice(info.node_name.as_bytes());
+            ns_buf[..info.node_namespace.len()].copy_from_slice(info.node_namespace.as_bytes());
+            ty_buf[..info.topic_type.len()].copy_from_slice(info.topic_type.as_bytes());
+            let c_info = nros_endpoint_info_t {
+                node_name: name_buf.as_ptr() as *const core::ffi::c_char,
+                node_namespace: ns_buf.as_ptr() as *const core::ffi::c_char,
+                topic_type: ty_buf.as_ptr() as *const core::ffi::c_char,
+                is_publisher: info.is_publisher,
+                endpoint_gid: info.endpoint_gid,
+            };
+            visit(ctx, &c_info as *const nros_endpoint_info_t)
+        };
+        let r = if publishers {
+            exec.get_publishers_info_by_topic(topic, &mut cb)
+        } else {
+            exec.get_subscriptions_info_by_topic(topic, &mut cb)
+        };
+        match r {
+            Ok(()) => NROS_RET_OK,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (topic_name, visit, ctx);
+        NROS_RET_UNSUPPORTED
+    }
+}
+
+/// phase-381 W4 — the publishers on `topic_name`, one visit each.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `topic_name` must be a valid NUL-terminated string.
+/// * `visit` must be callable for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_publishers_info_by_topic(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    visit: nros_endpoint_info_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_endpoint_info_impl(executor, topic_name, visit, ctx, true)
+}
+
+/// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+///
+/// # Safety
+/// As `nros_executor_get_publishers_info_by_topic`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_subscriptions_info_by_topic(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    visit: nros_endpoint_info_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_endpoint_info_impl(executor, topic_name, visit, ctx, false)
+}
+
 /// Set data communication semantics.
 ///
 /// # Safety

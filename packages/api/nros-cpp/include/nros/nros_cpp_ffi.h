@@ -348,6 +348,26 @@ typedef bool (*nros_cpp_names_and_types_visit_fn)(void *ctx,
                                                   size_t types_count);
 
 /**
+ * phase-381 W4 — one discovered endpoint on a topic. Strings BORROWED for the
+ * call. No QoS: the GRANTED profile is what would answer "why is nothing
+ * arriving", no backend can read one back yet, and reporting the remote's
+ * DECLARED profile would be a confident wrong answer.
+ */
+typedef struct nros_cpp_endpoint_info_t {
+  const char *node_name;
+  const char *node_namespace;
+  const char *topic_type;
+  bool is_publisher;
+  uint8_t endpoint_gid[24];
+} nros_cpp_endpoint_info_t;
+
+/**
+ * phase-381 W4 — visit one endpoint. Return `false` to stop.
+ */
+typedef bool (*nros_cpp_endpoint_info_visit_fn)(void *ctx,
+                                                const struct nros_cpp_endpoint_info_t *info);
+
+/**
  * `nros::SchedContext` mirror passed to
  * [`nros_cpp_create_sched_context`]. Time fields use `0` as
  * "absent" sentinel (mirrors the Rust `OptUs` newtype).
@@ -950,6 +970,82 @@ nros_cpp_ret_t nros_cpp_executor_count_publishers(void *handle,
 nros_cpp_ret_t nros_cpp_executor_count_subscribers(void *handle,
                                                    const char *topic_name,
                                                    size_t *out_count);
+
+/**
+ * phase-381 W4 — what one named node PUBLISHES.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_publisher_names_and_types_by_node(void *handle,
+                                                                       const char *node_name,
+                                                                       const char *node_namespace,
+                                                                       nros_cpp_names_and_types_visit_fn visit,
+                                                                       void *ctx);
+
+/**
+ * phase-381 W4 — what one named node SUBSCRIBES to.
+ *
+ * `subscription`, not `subscriber`: the C++ surface takes rclcpp's vocabulary
+ * (`create_subscription`, `Subscription<T>`, `get_subscriptions_info_by_topic`).
+ * rclcpp has no `*_by_node` form for subscriptions at all, so the WORD comes
+ * from its vocabulary rather than from a method it lacks. C says `subscriber`
+ * because rcl does.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_subscription_names_and_types_by_node(void *handle,
+                                                                          const char *node_name,
+                                                                          const char *node_namespace,
+                                                                          nros_cpp_names_and_types_visit_fn visit,
+                                                                          void *ctx);
+
+/**
+ * phase-381 W4 — what services one named node SERVES.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_service_names_and_types_by_node(void *handle,
+                                                                     const char *node_name,
+                                                                     const char *node_namespace,
+                                                                     nros_cpp_names_and_types_visit_fn visit,
+                                                                     void *ctx);
+
+/**
+ * phase-381 W4 — what services one named node CALLS.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_client_names_and_types_by_node(void *handle,
+                                                                    const char *node_name,
+                                                                    const char *node_namespace,
+                                                                    nros_cpp_names_and_types_visit_fn visit,
+                                                                    void *ctx);
+
+/**
+ * phase-381 W4 — the publishers on `topic_name`.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_publishers_info_by_topic(void *handle,
+                                                              const char *topic_name,
+                                                              nros_cpp_endpoint_info_visit_fn visit,
+                                                              void *ctx);
+
+/**
+ * phase-381 W4 — the subscriptions on `topic_name`.
+ *
+ * # Safety
+ * `handle` must be a valid `CppContext` from `nros_cpp_init()`.
+ */
+nros_cpp_ret_t nros_cpp_executor_get_subscriptions_info_by_topic(void *handle,
+                                                                 const char *topic_name,
+                                                                 nros_cpp_endpoint_info_visit_fn visit,
+                                                                 void *ctx);
 
 /**
  * Identifier of the auto-created default `Fifo` SC. Phase 110.B.
