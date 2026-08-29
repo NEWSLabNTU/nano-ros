@@ -92,6 +92,58 @@ list: an image whose resolved model contains zero subscriptions needs zero of
 it, and that derivation needs no infrastructure accounting — unlike the
 queryable one above, the runtime creates no large-payload subscriber of its own.
 
+## Measured 2026-08-29 — the "easiest win" is NOT available with the existing knob
+
+The section above calls `LARGE_PAYLOADS` "the single easiest win ... an image
+whose resolved model contains zero subscriptions needs zero of it". Zero is
+**not expressible**. `packages/rmw/zenoh/nros-rmw-zenoh/build.rs:45`:
+
+```rust
+let max_large: usize = env_usize("ZPICO_MAX_LARGE_SUBSCRIBERS", 2).max(1);
+```
+
+The `.max(1)` floor means the smallest reachable pool is
+`1 * ZPICO_SUBSCRIBER_RING_DEPTH(4) * ZPICO_SUBSCRIBER_LARGE_SIZE(16384)` =
+**65,536 bytes**, not 0. So wiring the resolved model to this knob — the fix
+this issue proposes — buys half of what the issue claims: 131,072 -> 65,536 on
+a talker, with the other half structurally out of reach until the floor goes.
+
+MEASURED, not read — three builds of `examples/native/rust/talker`, the knob
+varied, `llvm-nm -S` on each binary:
+
+| `ZPICO_MAX_LARGE_SUBSCRIBERS` | `LARGE_PAYLOADS` |
+| ---: | ---: |
+| 2 (default) | 131,072 |
+| 1 | 65,536 |
+| **0** | **65,536** |
+
+Note the third row: asking for zero does not fail, it silently yields one. A
+codegen deriving "no subscriptions -> 0" would emit a config that reads as
+satisfied while still reserving 64 KiB — the same shape as every other defect
+this campaign has found, a value that looks applied and is not. If the floor
+stays, the knob should REJECT 0 rather than round it up.
+
+Baseline confirming the arithmetic, `just mem-report` on
+`build/cargo-fixtures/linux-14372940/nros-relwithdebinfo/talker`:
+
+```
+       131,072   35.8%  nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS
+       131,072  LARGE_PAYLOADS  — agrees with `ZPICO_MAX_LARGE_SUBSCRIBERS *
+                                  ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_LARGE_SIZE`
+```
+
+Removing the floor is not free to reason about: `.max(1)` exists so a pool
+index is always valid, and the sibling `max_nodes` floor documents exactly that
+intent ("so a session always has room for its own primary node"). A zero-length
+pool needs the *lookup* path to refuse a large subscription rather than index an
+empty array — a code change, not a knob change. Whoever takes this should price
+both halves separately: the knob wiring (65,536, mechanical) and the floor
+removal (a further 65,536, needs the refusal path).
+
+The same floor applies to `ZPICO_MAX_QUERYABLES`-style derivations. Check for it
+before quoting a saving off the inventory: the inventory prints the formula, not
+the floor.
+
 ## Reproduce
 
 ```sh
