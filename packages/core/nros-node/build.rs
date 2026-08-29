@@ -86,6 +86,23 @@ fn main() {
     // `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` (or `CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS`
     // on Zephyr) when an image genuinely has more things to park.
     let max_shutdown_cbs = env_usize("NROS_EXECUTOR_MAX_SHUTDOWN_CBS", 2);
+    // issue 0900 — how many of the MAX_CBS slots may hold an ACTION CLIENT,
+    // the entity the arena derivation below budgets every slot at.
+    //
+    // Defaults to `max_cbs`, which reproduces the old `max_cbs * worst_case`
+    // arithmetic byte for byte, so no existing image moves. It is a COUNT and
+    // not a "which entity is heaviest" enum because Kconfig knobs are ints and
+    // `knob_usize` is the one spelling that reaches the Zephyr Rust lane
+    // (issue 0460); an enum would need a second reader shape for no gain.
+    //
+    // Setting it to 0 on a pub/sub-only image is the whole point: 74,240 bytes
+    // becomes 16,384 at the defaults, and that arena is INLINE ON THE TASK
+    // STACK, not in `.bss`.
+    //
+    // Too small fails at REGISTRATION (`NodeError::BufferTooSmall`), not at
+    // link — same caveat `NROS_EXECUTOR_ARENA_SIZE` carries, and the reason
+    // `Executor::arena_used()` plus the first-spin advisory landed first.
+    let action_clients = env_usize("NROS_EXECUTOR_ACTION_CLIENTS", max_cbs).min(max_cbs);
 
     // --- Derived arena size ---
     // Arena must hold MAX_CBS entries. Worst-case entry is an
@@ -112,10 +129,20 @@ fn main() {
     const ACTION_CLIENT_SUB_OVERHEAD: usize = 1536;
     const ARENA_BASE_OVERHEAD: usize = 2048;
     const ARENA_FLOOR: usize = 8192;
-    let per_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
+    // issue 0900 — the budget for the two entry SHAPES, summed over how many
+    // slots each may occupy, instead of charging every slot the larger one.
+    // With `action_clients == max_cbs` (the default) the second term is zero
+    // and this is byte-identical to the old formula.
+    const PUBSUB_SUB_BUFS: usize = 3;
+    const PUBSUB_ENTRY_OVERHEAD: usize = 512;
+    let action_client_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
         + ACTION_CLIENT_FEEDBACK_SUBS * rx_buf_size
         + ACTION_CLIENT_SUB_OVERHEAD;
-    let derived_arena = (max_cbs * per_entry + ARENA_BASE_OVERHEAD).max(ARENA_FLOOR);
+    let pubsub_entry = PUBSUB_SUB_BUFS * rx_buf_size + PUBSUB_ENTRY_OVERHEAD;
+    let derived_arena = (action_clients * action_client_entry
+        + max_cbs.saturating_sub(action_clients) * pubsub_entry
+        + ARENA_BASE_OVERHEAD)
+        .max(ARENA_FLOOR);
     // `0` is the Kconfig SENTINEL for "derive it" (zephyr/Kconfig:
     // NROS_EXECUTOR_ARENA_SIZE, "0 = derive"), and it has to be honoured HERE,
     // where the value is consumed.
@@ -145,8 +172,14 @@ fn main() {
          (set via NROS_EXECUTOR_MAX_SC, default 8). Phase 110.B.\n\
          pub const MAX_SC: usize = {max_sc};\n\
          \n\
-         /// Executor arena size in bytes (derived from MAX_CBS and RX_BUF_SIZE).\n\
+         /// Executor arena size in bytes (derived from MAX_CBS, RX_BUF_SIZE \
+         and ACTION_CLIENTS).\n\
          pub const ARENA_SIZE: usize = {arena_size};\n\
+         \n\
+         /// How many callback slots the arena derivation budgeted at \
+         ActionClient size (set via NROS_EXECUTOR_ACTION_CLIENTS, default \
+         MAX_CBS). Issue 0900.\n\
+         pub const ARENA_ACTION_CLIENTS: usize = {action_clients};\n\
          \n\
          /// Default subscription receive buffer size in bytes \
          (set via NROS_SUBSCRIPTION_BUFFER_SIZE, default 1024).\n\

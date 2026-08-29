@@ -432,6 +432,39 @@ pub(crate) fn maybe_report_arena_headroom(used: usize, capacity: usize) {
     }
 }
 
+/// Say WHY a registration ran out of arena, once.
+///
+/// `NodeError::BufferTooSmall` is the same code a dozen other paths return, so
+/// on a target where a return code is all you get, exhaustion here is
+/// indistinguishable from a message that did not fit a receive buffer. This
+/// names the two knobs that actually govern it and the numbers involved.
+///
+/// The counterpart to [`report_arena_headroom`], and the reason lowering
+/// `NROS_EXECUTOR_ACTION_CLIENTS` is safe to suggest: too small fails at
+/// REGISTRATION rather than at link, so the failure has to say so itself.
+///
+/// One-shot for the same reason the advisory is — the numbers do not change
+/// between registrations, and a per-registration line on an RTOS target is a
+/// flood (issue 0371's shape). `nros_log`, never stdio (issue 0589), and inside
+/// the 256-byte format budget that truncated the first advisory.
+#[cold]
+pub(crate) fn report_arena_exhausted(want: usize, used: usize, capacity: usize) {
+    if ARENA_EXHAUSTED_REPORTED.swap(true, portable_atomic::Ordering::Relaxed) {
+        return;
+    }
+    nros_log::nros_error!(
+        nros_log::get_logger("nros"),
+        "arena exhausted: {want} more bytes needed, {used}/{capacity} in use. \
+         Raise NROS_EXECUTOR_ARENA_SIZE, or NROS_EXECUTOR_ACTION_CLIENTS if \
+         this image registers action clients. issue 0900"
+    );
+}
+
+/// One-shot latch for [`report_arena_exhausted`]. A static for the reason
+/// [`DROPPED_TAKES`] is one.
+static ARENA_EXHAUSTED_REPORTED: portable_atomic::AtomicBool =
+    portable_atomic::AtomicBool::new(false);
+
 /// Is this arena grossly larger than what registered in it?
 ///
 /// Half is the threshold because the derivation's own error is a factor of
@@ -454,6 +487,55 @@ pub(crate) const fn arena_is_over_provisioned(used: usize, capacity: usize) -> b
 #[cfg(test)]
 mod arena_headroom_tests {
     use super::arena_is_over_provisioned;
+    use crate::config::{ARENA_ACTION_CLIENTS, ARENA_SIZE, DEFAULT_RX_BUF_SIZE, MAX_CBS};
+
+    /// issue 0900 — the per-kind derivation must reproduce the OLD
+    /// `max_cbs * action_client_entry + base` arithmetic byte for byte when
+    /// every slot is still budgeted at ActionClient size, which is the default.
+    ///
+    /// This is the compatibility gate: the knob exists so an image CAN shrink
+    /// its arena, not so every image silently does. A change here that moves
+    /// the default is a change to every image's stack frame.
+    #[test]
+    fn the_default_derivation_is_unchanged() {
+        if ARENA_ACTION_CLIENTS != MAX_CBS {
+            // The test build set the knob; the identity below is not the claim
+            // being made then. Fail rather than pass vacuously.
+            panic!(
+                "this test asserts the DEFAULT derivation, but \
+                 NROS_EXECUTOR_ACTION_CLIENTS was set to {ARENA_ACTION_CLIENTS} \
+                 against MAX_CBS {MAX_CBS}"
+            );
+        }
+        const ACTION_CLIENT_PER_SERVICE: usize = 4096 + 384;
+        const ACTION_CLIENT_SERVICES: usize = 3;
+        const ACTION_CLIENT_FEEDBACK_SUBS: usize = 3;
+        const ACTION_CLIENT_SUB_OVERHEAD: usize = 1536;
+        const ARENA_BASE_OVERHEAD: usize = 2048;
+        const ARENA_FLOOR: usize = 8192;
+
+        let per_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
+            + ACTION_CLIENT_FEEDBACK_SUBS * DEFAULT_RX_BUF_SIZE
+            + ACTION_CLIENT_SUB_OVERHEAD;
+        let want = (MAX_CBS * per_entry + ARENA_BASE_OVERHEAD).max(ARENA_FLOOR);
+        assert_eq!(
+            ARENA_SIZE, want,
+            "the per-kind derivation moved the default arena; every image's \
+             task-stack frame moves with it (issue 0900)"
+        );
+    }
+
+    /// The advisory must actually fire for the shipped defaults — otherwise W1
+    /// installed a diagnostic that is dead on the very configuration that
+    /// needs it. A timer-only executor claims 32 bytes against ARENA_SIZE.
+    #[test]
+    fn the_shipped_default_arena_trips_the_advisory() {
+        assert!(
+            arena_is_over_provisioned(32, ARENA_SIZE),
+            "a timer-only executor must trip the advisory at the shipped \
+             defaults; ARENA_SIZE is {ARENA_SIZE}"
+        );
+    }
 
     #[test]
     fn gross_over_provision_is_reported() {
