@@ -195,15 +195,39 @@ jobs:
             echo "::warning::sccache absent from the image — the compile tier runs UNCACHED."
             exit 0
           fi
-          {
-            echo "SCCACHE_GHA_ENABLED=true"
-            echo "ACTIONS_RESULTS_URL=${ACTIONS_RESULTS_URL:-}"
-            echo "ACTIONS_RUNTIME_TOKEN=${ACTIONS_RUNTIME_TOKEN:-}"
-            # Well under the 10 GB cap this store does NOT share; the justfile's
-            # 30G default is a developer-workstation figure.
-            echo "SCCACHE_CACHE_SIZE=2G"
-          } >> "$GITHUB_ENV"
           sccache --version
+
+          # issue 0874 — an ABSENT sccache degrades gracefully (above); a BROKEN
+          # one used to be fatal, and the asymmetry is the bug. `RUSTC_WRAPPER`
+          # makes sccache a prefix on every `rustc`, so a backend that cannot
+          # start does not lose a cache — it fails the compiler:
+          #
+          #   sccache: error: Server startup failed: create gha cache failed:
+          #     ConfigInvalid (permanent) => ACTIONS_CACHE_URL not found
+          #   error: process didn't exit successfully: `sccache rustc -vV`
+          #
+          # That took down `main` and every open PR at once. So PROVE the
+          # backend before handing it the compiler: export the config into this
+          # step only, start a server, and publish to `$GITHUB_ENV` only if that
+          # worked. On failure sccache stays on PATH with its LOCAL disk cache,
+          # which is the same uncached-but-working state as the absent case.
+          export SCCACHE_GHA_ENABLED=true
+          export ACTIONS_RESULTS_URL="${ACTIONS_RESULTS_URL:-}"
+          export ACTIONS_RUNTIME_TOKEN="${ACTIONS_RUNTIME_TOKEN:-}"
+          export SCCACHE_CACHE_SIZE=2G
+          if sccache --start-server >/tmp/sccache-start.log 2>&1; then
+            {
+              echo "SCCACHE_GHA_ENABLED=true"
+              echo "ACTIONS_RESULTS_URL=${ACTIONS_RESULTS_URL:-}"
+              echo "ACTIONS_RUNTIME_TOKEN=${ACTIONS_RUNTIME_TOKEN:-}"
+              # Well under the 10 GB cap this store does NOT share; the
+              # justfile's 30G default is a developer-workstation figure.
+              echo "SCCACHE_CACHE_SIZE=2G"
+            } >> "$GITHUB_ENV"
+          else
+            echo "::warning::sccache GHA backend unavailable — the compile tier runs UNCACHED (issue 0874)."
+            sed 's/^/  /' /tmp/sccache-start.log || true
+          fi
 
       # ----- CLI + sources: build tier (non-push) only -----
       # check-fast is BUILDLESS *and* SOURCE-FREE (no cargo build/clippy/test, no

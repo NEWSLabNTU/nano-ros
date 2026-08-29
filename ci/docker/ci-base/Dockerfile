@@ -135,15 +135,23 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
 #
 # BAKED, not installed per run: `nros setup --tool sccache` builds it from
 # source (vendored-openssl), which is minutes on a cold runner and would cost
-# more than it saves. The prebuilt release tarball is the same 0.8.2 the
+# more than it saves. The prebuilt release tarball is the same 0.17.0 the
 # `[tool.sccache]` index row pins — keep the two in lockstep.
+#
+# issue 0874 — 0.8.2 (2024-09-28) predates GitHub's Actions Cache v2, which
+# replaced the v1 service on 2025-02-01. Its GHA backend asks for the retired
+# `ACTIONS_CACHE_URL` and fails permanently; because sccache is the
+# `RUSTC_WRAPPER`, that failed every `rustc` rather than merely losing a cache,
+# and took down `main` plus every open PR. ghac v2 landed in sccache 0.10.0
+# ("Bump opendal to 0.52 to support ghac v2") and moved to v4 in 0.11.0, so the
+# floor is 0.10.0 and this takes the current release.
 #
 # Why sccache rather than caching `target/`: it is CONTENT-hashed, so a restored
 # cache cannot make a stale artifact read as fresh. Restoring a `target/` dir
 # into a fresh checkout gives artifacts mtimes newer than their sources, which
 # is exactly the museum-binary class CLAUDE.md's fixture-mtime treadmill
 # describes. Content addressing sidesteps it entirely.
-ARG SCCACHE_VERSION=0.8.2
+ARG SCCACHE_VERSION=0.17.0
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
