@@ -1,0 +1,41 @@
+# nano-ros is not a Python package. This file exists ONLY to configure
+# towncrier (issue 0885), which reads `[tool.towncrier]` from here by
+# convention. Nothing pip-installs this project.
+
+[tool.towncrier]
+name = "nano-ros"
+directory = "changelog.d"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier release notes start -->\n"
+underlines = ["", "", ""]
+title_format = "## {version} — {project_date}"
+issue_format = "[#{issue}](https://github.com/NEWSLabNTU/nano-ros/issues/{issue})"
+
+# One fragment per change, named `<issue-or-pr>.<type>.md`. The types mirror how
+# this repo already talks about work, not towncrier's defaults: the tree files
+# `fix`/`feat`/`perf`/`docs` commits and numbered ISSUES, so a fragment is named
+# after the issue it closes and typed the same way its commit is.
+[[tool.towncrier.type]]
+directory = "fix"
+name = "Fixed"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "feat"
+name = "Added"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "perf"
+name = "Performance"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "breaking"
+name = "Breaking"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "docs"
+name = "Documentation"
+showcontent = true
