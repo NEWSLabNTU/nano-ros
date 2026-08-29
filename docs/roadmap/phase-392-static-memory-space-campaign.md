@@ -464,76 +464,115 @@ Net C/C++ API change: none. No function, no parameter, no generic in a header.
   `bridges`, `bindings`). There is NO entity inventory: a node's publishers,
   subscriptions and service servers appear nowhere.
 
-  * **W5.b1 — the infrastructure flags, available today.** `execution.features`
-    carries `param_services` and `lifecycle` verbatim, which is exactly the half
-    a build script cannot otherwise see (cargo exposes no other crate's
-    features). A `nros ws` verb reporting it, delivered by W5.c, lets the
-    consumer resolve `infra` for real and keeps only an app-side headroom
-    constant. On a talker that is 32 -> 8 slots, ~108,096 B of the 143,456 B
-    W5.d measured — most of the win, with one guess left instead of six.
+  * **W5.b1 — the infrastructure flags.** LANDED. `execution.features` carries
+    `param_services` and `lifecycle` verbatim, which is exactly the half a build
+    script cannot otherwise see (cargo exposes no other crate's features).
+    `nros ws entity-facts` reports it; W5.c delivers it; the consumer adds what
+    those features COST rather than being told. Unknown names are ignored, not
+    refused — `safety` is a real feature here and is not a queryable question.
 
-  * **W5.b2 — the application's own service-server count.** AVAILABLE after all,
-    and needing no change to either resolver repo.
+    Measured over every resolved model in the tree: 92 `none`, 22
+    `param+lifecycle`, 1 `lifecycle`. On a model declaring neither, the table
+    goes 32 -> 8 slots; on one declaring both, 32 -> 19.
 
-    The first draft of this wave said the count was missing and proposed
-    extending the model. That was wrong twice. `ros-launch-manifest` ALREADY
-    models it — `manifest.services` maps a service name to `ServiceWiring {
-    srv_type, server: Vec<String>, .. }`, where `server` lists the nodes serving
-    it, and rlm's own `service-wiring` validation rule already reasons over
-    `!svc.server.is_empty()`. A node's service-server count is the number of
-    services whose `server` contains it.
+  * **W5.b2 — the application's own service-server count.** NOT AVAILABLE, and
+    this is the THIRD reading of the same question. The first draft said the
+    model could not answer it and proposed extending the spec. The second said
+    `ros-launch-manifest` already modelled it, so it was available. Both were
+    wrong, in opposite directions, and the truth is in between.
 
-    And extending the spec would have been the wrong move even if it had been
-    missing. **rlm is the platform-neutral SPEC; `play_launch` is its Linux
-    implementation; neither may carry nano-ros concerns.** Service wiring is a
-    general ROS graph concept, exactly like topic wiring. A static-RAM sizing
-    rule is not, and stays here: reading the model and turning it into a
-    queryable count is nano-ros's build layer, not the manifest's business.
+    The SPEC models it: `structure.services` maps a service FQN to
+    `ServiceWiring { srv_type, server: Vec<String>, client }`, `structure.actions`
+    is the same type, and rlm's own `service-wiring` rule already reasons over
+    `!svc.server.is_empty()`. Extending it would have been wrong as well as
+    unnecessary — **rlm is the platform-neutral SPEC, `play_launch` is its Linux
+    implementation, and neither may carry nano-ros concerns.** Service wiring is
+    a general ROS graph concept; a static-RAM sizing rule is not, and stays in
+    this tree's build layer.
 
-    This also closes W5.b1's open caveat structurally rather than empirically.
-    `ServiceWiring::server` carries `skip_serializing_if = "Vec::is_empty"`, the
-    same pattern as `execution.features` — so *absent means empty* by
-    construction, not merely in the 115 models that happen to be in the tree.
+    The RESOLVER never emits it. MEASURED: zero of the 115 resolved models in
+    this tree carry ANY layer-1 wiring — no `topics`, no `services`, no
+    `actions`. A plain `<node>` launch element names a node; it does not say
+    what that node serves, and nothing else in the resolver's inputs does
+    either. `nros metadata`'s component sidecar does not either: it carries
+    name, class, sources and callback groups, no endpoint inventory.
 
-    The reason no model here shows a `services:` section is that none of the
-    example workspaces declare any, not that the spec lacks it.
+    So an absent `services` map does NOT mean "this system has no service
+    servers". `examples/workspaces/c`'s `service_server_model.yaml` describes
+    exactly one node, called `add_server`, and carries no `services` key at all.
 
-  ### `services[].server` is AUTHORITATIVE
+    **`nros ws entity-facts` therefore ABSTAINS rather than reporting a zero it
+    cannot support.** Reporting 0 there would size the table to the
+    infrastructure alone and exhaust it the moment that node registers — a
+    confident wrong number, sized exactly, which is this campaign's own failure
+    shape rather than a new one. The discriminator is whether ANY wiring was
+    described: if it was, an empty `services` map is a real zero; if nothing
+    was, the question is unanswered and the verb says nothing. The app term
+    stays `UNDECLARED_HEADROOM` in the consumer, labelled there as the guess it
+    is.
 
-  DECIDED. The launch declaration is the contract: an image is sized for exactly
+    The counting machinery is landed and correct for the day the resolver does
+    emit wiring: endpoint refs are counted per SERVER, not per service name (two
+    nodes serving one name are two queryables), and an action server costs
+    `ACTION_SERVER_QUERYABLES` because an action is three services on the wire.
+
+  ### If `services[].server` arrives, it is AUTHORITATIVE
+
+  DECIDED, and unchanged by the above — it is the rule for when the input
+  exists. The launch declaration is the contract: an image is sized for exactly
   the service servers its model declares.
 
   The alternative was to treat it as a floor and add headroom, which is safe and
   wrong — it re-creates in miniature the guess this whole wave exists to delete,
   and a guess derived from something real is still a guess nobody can audit.
 
-  What being authoritative COSTS, and it must be paid in the same wave: a node
-  that creates a service server its model does not declare will exhaust the
-  table. Sized exactly, that is issue 0460's failure reached from a new
-  direction, so the runtime must report it as what it is — "this node created an
-  undeclared service server" — and not as the bare exhausted-table error 0460
-  spent a phase making legible. The declaration being wrong and the table being
-  too small are the same event now, and the message must say the first.
+  What being authoritative COSTS is paid in W5.e, in this wave: a node that
+  creates a service server its model does not declare exhausts the table, so
+  "the declaration is wrong" and "the table is too small" become the same event
+  and the runtime must name the first.
 
   ### Future work: counting in code
 
-  The declaration is a stepping stone, not the destination. The count a node's
-  CODE actually produces is the ground truth, and deriving it there would make
-  the launch declaration checkable rather than trusted — the same move W5.a made
-  for the infrastructure counts, where a constant beside the creation sites
-  replaced seven prose spellings and a gate holds it to the sites themselves.
+  The declaration is a stepping stone, not the destination — and after the
+  measurement above it is not even the near-term path, since nothing populates
+  it today. The count a node's CODE produces is the ground truth, and deriving
+  it there would make a launch declaration checkable rather than trusted — the
+  same move W5.a made for the infrastructure counts, where a constant beside the
+  creation sites replaced seven prose spellings and a gate holds it to the sites
+  themselves.
 
   Out of scope for W5 and deliberately not designed here: it needs the entity
   set to be visible at build time in BOTH languages, which is the asymmetry that
   ruled out const generics (`Node::ENTITY_BOUNDS` exists for Rust; C/C++
   entities are created at runtime in C with no declaration site). Solving that
-  is the real end state; W5 gets the saving without waiting for it.
+  is the real end state; W5 gets the infrastructure saving without waiting for
+  it.
 
-  Until W5.b1/W5.b2 land, the app term stays a constant in the consumer, and it
-  is labelled as one in the code rather than presented as a derivation.
+* **W5.c — delivery.** LANDED. `NanoRosEntityFacts.cmake` runs the verb per
+  entry and attaches the result with `corrosion_set_env_vars` — the phase-351 W5
+  carrier, for the reason issue 0460 records: a workspace member's own
+  `.cargo/config.toml` is never read (Corrosion runs cargo from the workspace
+  root) and `set(ENV{...})` reaches only the configure-time process.
 
-* **W5.c — delivery.** The figure rides the phase-351 W5 path to the backend's
-  build script. Both entry front-ends produce the same fact from the same model.
+  One thing is different from board facts and it decides the shape. Exactly one
+  BOARD is active per configure; several MODELS can be, one per entry. There is
+  one runtime staticlib per configure and every entry links it, so entries
+  ACCUMULATE: union of the infrastructure flags, max of the application counts,
+  and ONE abstaining entry makes the whole configure's count unknown — a shared
+  table has to satisfy the largest, and an unknown is not smaller than anything.
+  Applied once by `nros_synth_runtime_umbrella`, which already runs after the
+  SUBDIRS loop that processes the entries.
+
+  Failure is soft throughout, deliberately, exactly as `nros_resolve_board_facts`
+  is: a model that is not resolved yet, a CLI that is not built, an entry
+  addressed the `MODEL` way at a path that does not exist. None of those is a
+  configuration error; each means "this configure carries no entity facts",
+  which is the state every build was in before this wave.
+
+  Verified by a script-mode cmake probe over real models — the union, the
+  abstention, a wired model scoring 1 service + 1 action = 4, and the soft skip
+  when a model will not load. NOT yet verified end-to-end through a real
+  configure; see W5.g.
 
 * **W5.d — consumption.** LANDED. `nros-zpico-build` computes
   `app_declared + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES` and
@@ -567,28 +606,68 @@ Net C/C++ API change: none. No function, no parameter, no generic in a header.
   the seven prose spellings W5.a replaced. Verified by drifting the lifecycle
   mirror to its historical wrong value of 6 and watching the gate name the file.
 
-* **W5.e — an undeclared image fails loudly.** A bare `cargo build` of a leaf,
-  and the standalone `check-rmw-*` projects, have no model. They get a
-  build-time failure naming what to declare, not a generous default: this
-  issue's own `.max(1)` finding is the precedent — `ZPICO_MAX_LARGE_SUBSCRIBERS=0`
-  silently yields 1, so a config reads as satisfied while still reserving 64 KiB.
-  A fallback that quietly works is the shape this campaign keeps finding.
+* **W5.e — an exhausted table names the right fault.** LANDED, in the half that
+  authoritativeness makes urgent. The same exhaustion is now two different
+  faults and the message says which. Sized from the backend's own budget, the
+  table is too small and the fix is the knob — issue 0460's message, unchanged.
+  Sized from a DECLARATION (`ZPICO_QUERYABLE_TABLE_DECLARED`, emitted beside the
+  size it describes so the two cannot disagree), it holds what the model said
+  this image would create, so reaching the limit means the image created an
+  UNDECLARED service server, and pointing that reader at `ZPICO_MAX_QUERYABLES`
+  sends them to enlarge a table that was already right. Both arms are `&'static
+  str` constants, so the `no_std` half gets the same split — the half issue 0460
+  found had no explanation at all.
 
-* **W5.f — RETIREMENT, and this wave is not done without it.** Delete
-  `queryable_default`, its `if hosted { 32 } else { 8 }` literal and the
-  `CARGO_CFG_TARGET_OS` sniff behind it. `ZPICO_MAX_QUERYABLES` stops being the
-  primary input and becomes an OVERRIDE that must be `>=` the declared figure,
-  checked at build time rather than trusted. Two mechanisms for one number is
-  how this phase's other defects were born: leaving the guess in place "for
-  safety" would mean every image still pays it whenever the declaration fails to
-  arrive, which is exactly the silent-fallback shape W5.e refuses. Retirement is
-  a wave, not a cleanup, because the old path must be provably unreachable
-  before it is deleted — grep for readers, then delete, then re-measure.
+  NOT landed: the build-time failure for an image that declares nothing. That
+  still needs the hand-written-`main` question settled (see Open, below), and it
+  is what blocks W5.f's deletion.
 
-* **W5.g — measure and gate.** `just mem-report --json --baseline` delta on the
-  four native roles. The talker's expected figure is the whole 144,128 B minus
-  its own (zero) services and (zero) infrastructure. A role that declares
-  services keeps exactly what it declares, which is the property worth gating.
+* **W5.f — RETIREMENT.** HALF LANDED, and the half that is not is blocked rather
+  than skipped.
+
+  LANDED: `ZPICO_MAX_QUERYABLES` stops being an independent opinion and becomes
+  a CHECKED override. Two mechanisms deciding one number is how this phase's
+  other defects were born. The check compares against a DERIVED floor, not the
+  budgeted default, and that distinction is the point: an image carrying both
+  service families provably claims eleven slots at boot, so below that it cannot
+  start and the build is REFUSED; the default adds `UNDECLARED_HEADROOM` for an
+  application count nothing can supply, and being under THAT is reported with a
+  `cargo:warning` naming both numbers, because refusing a build for being under
+  a guess is the defect this wave exists to remove. The floor and the default
+  share one parser of the infrastructure spelling — two readings of one string
+  is how a rule and its check come to disagree.
+
+  This is issue 0460 caught a stage earlier: `zephyr/Kconfig` defaults
+  `CONFIG_NROS_MAX_QUERYABLES` to 8, and an entry enabling both families needs
+  eleven. That image used to build cleanly and die at boot.
+
+  NOT LANDED: deleting `if hosted { 32 } else { 8 }` and the
+  `CARGO_CFG_TARGET_OS` sniff behind it. The old path is still REACHABLE, which
+  is this wave's own precondition for deletion — a bare `cargo build` of a leaf,
+  the standalone `check-rmw-*` projects, `cargo test` from the repo root, and
+  every hand-written `main` declare nothing and must still build. Deleting the
+  literal before W5.e's build-time failure would not make those declare; it
+  would make them fail.
+
+* **W5.g — measure and gate.** NOT MEASURED, and recorded as such rather than
+  estimated, per this phase's rule that no wave claims a saving it did not
+  measure.
+
+  The reason is specific. W5.d's 143,456 B was measured on
+  `examples/native/rust/talker`, a standalone pure-cargo leaf with no bringup
+  and no model — so nothing declares for it and this wave changes it by zero
+  bytes. The images this wave DOES change are the cmake-configured workspaces,
+  and those have no committed root `CMakeLists.txt`: the fixture builder
+  synthesises it, so measuring means a fixture build rather than a reconfigure.
+  That is the next session's first job, not an estimate to write down here.
+
+  What to run: `just build-test-fixtures lane=native`, then `just mem-report
+  --json --baseline` on a `workspaces/features` entry (declares
+  `param+lifecycle`, so 32 -> 19 slots) and a `workspaces/rust` one (declares
+  neither, so 32 -> 8). The gating property is that a role which declares
+  services keeps exactly what it declares. Confirm the delivery reached cargo at
+  the same time: `NROS_DECLARED_INFRA_QUERYABLES` must appear in the configure's
+  `build.ninja`, where today it does not.
 
 ### Open, and deliberately not assumed away
 
@@ -597,6 +676,15 @@ entry, and cannot declare — so under W5.e they cannot build. W2 has the same
 problem for the arena and proposes a runtime high-water mark plus a CI lane;
 queryables should ride that answer rather than invent a second one. This couples
 W5.e to W2's timing.
+
+**Nothing populates the model's service wiring.** `ros-launch-manifest` models
+it and the resolver never emits it: zero of 115 models here carry any layer-1
+wiring. Until something does, W5.b2's application term is a labelled guess and
+the sizing is exact only for the infrastructure half. Two ways out, and they are
+not equivalent: teach the resolver to describe endpoints (a `play_launch`
+question, and it can only describe what the launch inputs say), or count in code
+(the ground truth, and the real end state — see Future work above). This is the
+one that decides whether "sized by declaration" ever becomes "sized exactly".
 
 **`ZPICO_MAX_SESSIONS`** multiplies the pool and has no declaration path at all.
 Either it joins the model or it stays a knob and this phase says so explicitly.
