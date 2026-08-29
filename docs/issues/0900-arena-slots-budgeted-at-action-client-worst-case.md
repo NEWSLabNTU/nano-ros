@@ -160,10 +160,34 @@ no way to say it.
 This does not shrink anything by itself. It converts the folklore into a number
 a user can read, which is the precondition for the rest.
 
-**Not yet verified:** that the advisory line actually reaches a console on a
-real image. It did not appear in the `component_dispatch` run, most likely
-because a bare `cargo test` installs no `nros_log` sink — unconfirmed, and worth
-one check before relying on it in the field.
+**Now verified, and it found a second defect.** The advisory does fire and does
+reach a sink — the earlier silence was `nros_log` holding records in its `early`
+ring because a bare `cargo test` installs no sink, then replaying them on
+`init`. Nothing was lost.
+
+But the first version of the line was ~450 bytes against `nros_log`'s 256-byte
+call-site format buffer (`buffer-size-256`, the default), which truncates with a
+`…`. The sink received:
+
+```
+executor arena is 74240 bytes and 32…
+```
+
+Every word of the explanation and NONE of the value to set — a diagnostic cut
+before its actionable half, which is worse than no diagnostic because it reads
+as though it helped. **An embedded log line has a hard budget, so a message that
+explains itself at length delivers exactly the folklore it was written to
+replace.** The line now leads with `NROS_EXECUTOR_ARENA_SIZE=<n>`, keeps the
+reasoning in a code comment and here, and the test asserts the message contains
+no `…` rather than only checking its wording.
+
+`tests/executor_arena_advisory.rs` is its own test binary: the flag is
+process-scoped, so any other spinning test in the same binary would consume it
+first, and tests run in parallel — sharing would make it pass or fail by
+scheduling. The one-shot contract is asserted by spinning twice in that same
+test for the same reason (a separate test would observe an already-consumed
+flag and assert nothing, the vacuous shape `check-no-vacuous-tests` exists to
+catch).
 
 ## Direction for the rest
 

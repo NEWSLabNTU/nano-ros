@@ -398,9 +398,17 @@ fn report_arena_headroom(used: usize, capacity: usize) {
     // keep it a multiple of 1024 because that is the unit the knob is written
     // in everywhere else in the tree.
     let suggest = used.next_multiple_of(1024).max(1024);
+    // BUDGET: `nros_log`'s call-site format buffer is 256 bytes by default
+    // (`buffer-size-256`), and overflow truncates with a `…` rather than
+    // dropping the record. The first draft of this line ran ~450 bytes and was
+    // cut mid-number, so the sink received "executor arena is 74240 bytes and
+    // 32…" — every word of the explanation and NONE of the value to set. A
+    // diagnostic that explains itself past the budget delivers exactly the
+    // folklore it was written to replace. So: the actionable value FIRST, the
+    // reasoning in this comment and issue 0900, and a test that fails on `…`.
     nros_log::nros_info!(
         nros_log::get_logger("nros"),
-        "executor arena is {capacity} bytes and {used} are claimed at first          spin. ARENA_SIZE budgets every slot at the ActionClient worst case, so          an image without one over-provisions; the arena is INLINE ON THE TASK          STACK, so this is stack headroom, not .bss. Set          NROS_EXECUTOR_ARENA_SIZE={suggest} (Zephyr:          CONFIG_NROS_EXECUTOR_ARENA_SIZE) if nothing registers after this point          — entities created later need their own room (issue 0900)"
+        "arena over-provisioned: set NROS_EXECUTOR_ARENA_SIZE={suggest}          (Zephyr: CONFIG_ prefix). {used}/{capacity} bytes claimed at first          spin, and the arena is INLINE ON THE TASK STACK. Later registrations          need more. issue 0900"
     );
 }
 
