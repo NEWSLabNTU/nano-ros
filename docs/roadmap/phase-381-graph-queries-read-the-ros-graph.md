@@ -1,6 +1,10 @@
 # Phase 381 — read the ROS graph, which we are already visible in
 
-**Status (2026-08-27). NOT STARTED — BLOCKED on the deferred bounded-memory
+**Status (2026-08-29). UNBLOCKED — the bounded-memory decision does not have to
+be made, because the buffer it was about ALREADY EXISTS and is already ABI. See
+Design note 2a. The rest of this doc stands.**
+
+**Superseded status (2026-08-27): NOT STARTED — BLOCKED on the deferred bounded-memory
 decision in Design note 2, which is ABI-shaped and cannot be walked back.
 Design notes added 2026-08-27 from reading the zpico shim — W1 is smaller than scoped (the primitive is already start/poll),
 but the acceptance criteria need a warm-up window. See "Design notes" below.**
@@ -152,6 +156,64 @@ config is ABI-coupled to the zenoh-pico library, and `get_reply_ctx_t` is a
 struct both TUs see. A field added under a config flag that the two halves do
 not agree on is a silent ABI break, which is exactly how the queryables went
 session-local-only.
+
+### 2a. The buffer already exists — measured 2026-08-29
+
+**Design note 2's decision does not need to be made.** It was scoped on the
+premise that keeping reply keyexprs needs a NEW sized field in `get_reply_ctx_t`,
+a struct both the shim and the zenoh-pico library see, making its width ABI
+(issue 0135) and therefore irreversible. That premise is false.
+
+The slot already carries the field:
+
+```c
+typedef struct {
+    uint8_t buf[ZPICO_GET_REPLY_BUF_SIZE];   /* default 4096 */
+    size_t  len;
+    _Atomic bool received;
+    _Atomic bool done;
+    uint32_t reply_count;
+    ...
+} /* pending get slot, zpico.c */
+```
+
+`ZPICO_GET_REPLY_BUF_SIZE` is already a knob (`CONFIG_NROS_GET_REPLY_BUF_SIZE`,
+`nros-zpico-build`), already sized per image, and already part of the ABI both
+TUs agree on. Nothing has to be added, so nothing becomes newly irreversible.
+
+And on a LIVELINESS query it is dead weight today. `get_reply_handler` copies the
+first reply's PAYLOAD into `buf` and **discards the keyexpr**, which is where all
+the graph information lives. The shim says so itself, at
+`zpico_liveliness_get_start`:
+
+> Reuses the same `s->pending_gets` slot pool as `zpico_get_start` — a slot is
+> just a (received_flag, dropper_done_flag, payload_buf) triple, agnostic to
+> whether the caller will read the payload. **The reply handler still copies the
+> (typically empty) liveliness token bytes into the slot's buffer; we never read
+> them.** Only `received` matters.
+
+So 4096 bytes are allocated, written with nothing, and never read, on precisely
+the query this phase needs. Accumulating NUL-separated keyexprs there instead
+changes no struct layout, no config flag, and no ABI.
+
+What survives from Design note 2's four questions:
+
+* **width, and count-vs-bytes** — answered. It is a BYTE budget, it is
+  `ZPICO_GET_REPLY_BUF_SIZE`, and it already exists.
+* **separate knob or derived from `ZPICO_MAX_PENDING_GETS`** — neither; the
+  existing per-slot buffer is the budget, and the two knobs already multiply
+  exactly as they do today.
+* **what a 128 KiB image sets, and zero-MUST-leave-the-slots-NULL** — still
+  open, but no longer ABI-shaped: it is a runtime predicate, additive, and
+  reversible. W6 keeps "absent" and "empty" distinguishable.
+* **is truncation reportable** — still open and still worth getting right; now
+  cheap, because `reply_count` already counts EVERY reply while the buffer holds
+  what fit, so "replies seen" vs "entries stored" is a subtraction, not a new
+  mechanism. That is the "plausible wrong answer" guard W2 asks for.
+
+Recorded rather than quietly restarting the phase: the blocker was real given
+what was known, and it dissolved on reading the struct rather than on a
+decision. The lesson is the campaign's own — the cost was assumed, not measured.
 
 ### 3. The slot is single-shot; the primitive is start/poll. That has a
 ### USER-VISIBLE consequence the acceptance criteria must state
