@@ -1,0 +1,140 @@
+# RFC-0085 — Where the nano-ros workspace lives, and who calls whom on Zephyr
+
+**Status:** Draft (2026-08-29)
+**Amends / refines:** RFC-0065 (`nros build`) — D5's framework-entry escape, and
+the west driver added for issue 0892.
+**Motivated by:** issue 0892 — `nros build`'s west driver could not build any
+Zephyr image, and fixing it surfaced two questions the tree had never answered
+because its examples hide them.
+
+## The distinction the examples hide
+
+Two different things are both called "nano-ros" in a Zephyr build, and in this
+repository they are the same directory, which is why the coupling has never had
+to be stated:
+
+| | what it is | where it must be |
+| --- | --- | --- |
+| **the framework** | this repo; `zephyr/` inside it is the Zephyr module | a west PROJECT in the west workspace |
+| **the user's workspace** | their `src/*` packages, `system.toml`, `[image.*]` | see D1 |
+
+`zephyr/CMakeLists.txt` sets `NROS_REPO_DIR = ${CMAKE_CURRENT_LIST_DIR}/..`, so
+the module locates the FRAMEWORK by walking up out of itself. Nothing locates
+the user's workspace, because in every in-tree example it is the same checkout.
+A real user has two trees, and the build has no way to say so.
+
+## D1 — The user's workspace lives OUTSIDE the west workspace, linked by path
+
+A nano-ros workspace is platform-agnostic by construction: one `system.toml`
+declares `[image.native]`, `[image.freertos]`, `[image.nuttx]` and
+`[image.zephyr]` side by side, and RFC-0065 D6 makes the image the buildable
+unit precisely so those coexist. A west workspace is Zephyr-specific: `west
+update` populates it with Zephyr, its modules and their revisions.
+
+Nesting the first inside the second gets the dependency backwards:
+
+* a workspace targeting only native and FreeRTOS would need a west workspace to
+  exist for nothing;
+* `west update` would have opinions about the user's application code, which is
+  not what a manifest is for;
+* the workspace's other platforms would be built from inside a tree whose
+  toolchain environment is Zephyr's.
+
+Zephyr already supports this: an application outside the workspace is a
+**freestanding application**, and needs only `ZEPHYR_BASE` (or a resolvable
+west workspace) to build.
+
+So: **the framework is a west project; the user's workspace is not.** The link
+is a path, resolved rather than assumed — which is what issue 0892's fix
+implemented from the workspace side:
+
+```
+$NROS_WEST_WORKSPACE  →  nearest `.west/` above the CWD, then the build root
+                      →  $ZEPHYR_BASE's parent
+```
+
+**The missing half is the other direction.** A west build knows where the
+FRAMEWORK is (`NROS_REPO_DIR`) and not where the user's WORKSPACE is. Anything
+the workspace owns — generated message crates, the resolved SystemModel, the
+per-build sizes headers, the entry's own crate — is therefore unreachable from a
+west build of a freestanding app. That is the concrete gap D2 has to close.
+
+## D2 — West calls the workspace build; `nros build` does not call itself
+
+**West stays the driver for the final image.** It links the Zephyr kernel, it
+owns the Kconfig, it produces the ELF. Nothing about nano-ros should displace
+that, and a user must be able to type `west build -b <board> <app>` and have it
+work — the book says so and it stays true.
+
+The workspace build is therefore a **supplier**, invoked BY west, delivering the
+artifacts west links. This is not new: `zephyr/cmake/nros_cargo_build.cmake`
+already does exactly this shape —
+
+```cmake
+add_custom_target(${_target_name}_build
+    COMMAND ${CMAKE_COMMAND} -E env <kconfig-derived env> cargo ${CARGO_ARGS}
+    BYPRODUCTS ${_cargo_byproducts})
+add_library(${_target_name} STATIC IMPORTED GLOBAL)   # west links this
+```
+
+— west's configure emits a target that runs a cargo build with Kconfig-derived
+environment, and imports the resulting staticlib. The pattern is right. What is
+wrong is that it assembles the cargo invocation by hand, so a Zephyr build and
+an `nros build` of the same image are two different derivations of the same
+thing, and only one of them knows about `[image.*]`.
+
+### The recursion this must avoid
+
+`nros build <zephyr image>` runs `west build` (issue 0892). If west's configure
+ran `nros build`, that is a loop. So the supplier entry point must NOT be the
+same verb:
+
+| caller | verb | does |
+| --- | --- | --- |
+| the user | `nros build <zephyr image>` | resolve app + workspace, hand off to `west build` |
+| west's configure | a supplier verb (name TBD) | sync, codegen, models, staticlibs — **never** invokes west |
+
+The supplier is roughly today's `nros sync` plus the cargo targets, addressed by
+IMAGE so it can apply that image's features and knobs. `nros sync` already
+covers the codegen half.
+
+### What the supplier must deliver
+
+Everything a west build cannot derive for itself, all of it owned by the
+workspace rather than the framework:
+
+* generated message crates (`nros sync`);
+* the resolved SystemModel the entry macro bakes;
+* the per-build sizes headers (`nros_{,cpp_}config_generated.h`) — the family of
+  issues 0088 → 0834, which exists precisely because this artifact crosses the
+  boundary between a cargo build and a CMake build;
+* the entry staticlib itself.
+
+## What this RFC does not decide
+
+* **The supplier verb's name and surface.** `nros stage <image>`, `nros build
+  --supply`, or a west extension command (`scripts/west-commands.yml` already
+  exists and registers `fvp.py`) are all plausible; the choice interacts with
+  whether a user ever runs it directly.
+* **How west learns the workspace path.** A `-DNROS_WORKSPACE=<dir>` on the
+  west command line is the obvious first answer, but the app's `CMakeLists.txt`
+  could equally derive it from its own location — the entry package IS in the
+  workspace. The second needs no user action and is probably right; it is not
+  yet checked against a freestanding app.
+* **The harness fields.** `west_build_name`, `west_id` and
+  `west_zenoh_locator` in `examples/fixtures.toml` are per-fixture concerns (a
+  private build dir and locator so parallel legs do not collide), not image
+  ones. Whether they become image keys, stay row keys, or move into the
+  handoff's native args is what currently blocks phase-383 W9.b's last 14 rows.
+
+## Evidence
+
+* `zephyr/CMakeLists.txt:68` — `NROS_REPO_DIR = ${CMAKE_CURRENT_LIST_DIR}/..`,
+  the framework locating itself; nothing equivalent for the workspace.
+* `zephyr/cmake/nros_cargo_build.cmake:600–634` — the existing
+  custom-target-plus-IMPORTED-library supplier shape.
+* `book/src/getting-started/integration-zephyr.md` — the documented layout
+  (`my_zephyr_ws/{.west,zephyr,modules/nano-ros,apps/my_app}`) and the
+  `nros build` handoff added for 0892.
+* issue 0892 — why the driver could not work, and the three-rung workspace
+  resolution.
