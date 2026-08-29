@@ -31,6 +31,10 @@ void fingerprint_corpus_msg_shapes_init(fingerprint_corpus_msg_shapes* msg) {
 // no heap fields.
 void fingerprint_corpus_msg_shapes_fini(fingerprint_corpus_msg_shapes* msg) {
     if (msg == NULL) return;
+    nros_platform_free(msg->seq_prim.data);
+    msg->seq_prim.data = NULL;
+    msg->seq_prim.size = 0;
+    msg->seq_prim.capacity = 0;
 }
 
 // =============================================================================
@@ -127,10 +131,25 @@ int32_t fingerprint_corpus_msg_shapes_deserialize_inline(fingerprint_corpus_msg_
     {
         uint32_t len;
         if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
+        // fingerprint_corpus_msg_shapes_fini. A re-deserialize leaks the prior buffer unless
+        // the caller _fini's first.
+        if (len > 0) {
+            msg->seq_prim.data = nros_platform_malloc((size_t)len * sizeof(*msg->seq_prim.data));
+            if (msg->seq_prim.data == NULL) return -1;
+        } else {
+            msg->seq_prim.data = NULL;
+        }
         msg->seq_prim.size = len;
-        if (len > 64) return -1;
+        msg->seq_prim.capacity = len;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_i64(&ptr, end, origin, &msg->seq_prim.data[i]) < 0) return -1;
+            if (nros_cdr_read_i64(&ptr, end, origin, &msg->seq_prim.data[i]) < 0) {
+                nros_platform_free(msg->seq_prim.data);
+                msg->seq_prim.data = NULL;
+                msg->seq_prim.size = 0;
+                msg->seq_prim.capacity = 0;
+                return -1;
+            }
         }
     }
     {
@@ -178,5 +197,85 @@ int32_t fingerprint_corpus_msg_shapes_deserialize(fingerprint_corpus_msg_shapes*
     fingerprint_corpus_msg_shapes_init(msg);
 
     if (fingerprint_corpus_msg_shapes_deserialize_inline(msg, &ptr, end, origin) < 0) return -1;
+    return 0;
+}
+
+// =============================================================================
+// Borrowed deserialize (RFC-0033 `borrowed`, Phase 235) — `mode = "borrowed"`
+// fields are pointed into `buffer` (zero-copy); other fields are copied exactly
+// as the owned deserializer does. `out` is zeroed first so unset pointers are
+// NULL. The borrowed views alias `buffer` and are valid only while it lives.
+// =============================================================================
+int32_t fingerprint_corpus_msg_shapes_deserialize_view(fingerprint_corpus_msg_shapes_View* out, const uint8_t* buffer, size_t buffer_size) {
+    if (out == NULL || buffer == NULL) return -1;
+
+    const uint8_t* ptr = buffer;
+    const uint8_t* end = buffer + buffer_size;
+
+    // Skip CDR header
+    if (ptr + 4 > end) return -1;
+    ptr += 4;
+    const uint8_t* origin = ptr; // CDR alignment origin (after header)
+    (void)origin;
+
+    memset(out, 0, sizeof(*out));
+    if (nros_cdr_read_bool(&ptr, end, origin, &out->flag) < 0) return -1;
+    if (nros_cdr_read_i8(&ptr, end, origin, &out->i8_v) < 0) return -1;
+    if (nros_cdr_read_u8(&ptr, end, origin, &out->u8_v) < 0) return -1;
+    if (nros_cdr_read_i16(&ptr, end, origin, &out->i16_v) < 0) return -1;
+    if (nros_cdr_read_u16(&ptr, end, origin, &out->u16_v) < 0) return -1;
+    if (nros_cdr_read_i32(&ptr, end, origin, &out->i32_v) < 0) return -1;
+    if (nros_cdr_read_u32(&ptr, end, origin, &out->u32_v) < 0) return -1;
+    if (nros_cdr_read_i64(&ptr, end, origin, &out->i64_v) < 0) return -1;
+    if (nros_cdr_read_u64(&ptr, end, origin, &out->u64_v) < 0) return -1;
+    if (nros_cdr_read_f32(&ptr, end, origin, &out->f32_v) < 0) return -1;
+    if (nros_cdr_read_f64(&ptr, end, origin, &out->f64_v) < 0) return -1;
+    if (nros_cdr_borrow_string(&ptr, end, origin, &out->text) < 0) return -1;
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
+        // fingerprint_corpus_msg_shapes_fini. A re-deserialize leaks the prior buffer unless
+        // the caller _fini's first.
+        if (len > 0) {
+            out->seq_prim.data = nros_platform_malloc((size_t)len * sizeof(*out->seq_prim.data));
+            if (out->seq_prim.data == NULL) return -1;
+        } else {
+            out->seq_prim.data = NULL;
+        }
+        out->seq_prim.size = len;
+        out->seq_prim.capacity = len;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_i64(&ptr, end, origin, &out->seq_prim.data[i]) < 0) {
+                nros_platform_free(out->seq_prim.data);
+                out->seq_prim.data = NULL;
+                out->seq_prim.size = 0;
+                out->seq_prim.capacity = 0;
+                return -1;
+            }
+        }
+    }
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        out->seq_string.size = len;
+        if (len > 64) return -1;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_string(&ptr, end, origin, out->seq_string.data[i], sizeof(out->seq_string.data[i])) < 0) return -1;
+        }
+    }
+    for (size_t i = 0; i < 3; ++i) {
+        if (nros_cdr_read_f64(&ptr, end, origin, &out->arr_fixed[i]) < 0) return -1;
+    }
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        out->seq_bounded.size = len;
+        if (len > 4) return -1;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_i32(&ptr, end, origin, &out->seq_bounded.data[i]) < 0) return -1;
+        }
+    }
+    if (nros_cdr_read_string(&ptr, end, origin, out->str_bounded, sizeof(out->str_bounded)) < 0) return -1;
     return 0;
 }

@@ -13,8 +13,8 @@
 
 #include <nros/types.h>
 {%- if has_borrowed_goal or has_borrowed_result or has_borrowed_feedback %}
-// Issue 0346 — borrowed views use nros_borrowed_str_t / the LE slice views.
-#include <nros/borrowed.h>
+// Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
+#include <nros/view.h>
 {%- endif %}
 
 #ifdef __cplusplus
@@ -160,7 +160,7 @@ typedef struct {{ goal_struct_name }}_View {
 } {{ goal_struct_name }}_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ goal_struct_name }}_deserialize_borrowed({{ goal_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+int32_t {{ goal_struct_name }}_deserialize_view({{ goal_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
 {%- if has_borrowed_result %}
@@ -175,7 +175,7 @@ typedef struct {{ result_struct_name }}_View {
 } {{ result_struct_name }}_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ result_struct_name }}_deserialize_borrowed({{ result_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+int32_t {{ result_struct_name }}_deserialize_view({{ result_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
 {%- if has_borrowed_feedback %}
@@ -190,7 +190,7 @@ typedef struct {{ feedback_struct_name }}_View {
 } {{ feedback_struct_name }}_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ feedback_struct_name }}_deserialize_borrowed({{ feedback_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+int32_t {{ feedback_struct_name }}_deserialize_view({{ feedback_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
 #endif // {{ guard_name }}

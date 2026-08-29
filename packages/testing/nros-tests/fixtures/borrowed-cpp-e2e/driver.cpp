@@ -34,7 +34,7 @@ int main() {
     assert(Borrowed::ffi_serialize(&msg, buf, sizeof buf, &n) == 0);
 
     BorrowedView view{};
-    assert(BorrowedView::deserialize_borrowed(buf, n, &view) == 0);
+    assert(BorrowedView::deserialize_view(buf, n, &view) == 0);
 
     assert(view.width == 0xDEADBEEFu);
 

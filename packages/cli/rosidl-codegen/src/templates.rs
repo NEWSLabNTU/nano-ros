@@ -195,7 +195,7 @@ pub struct NrosField {
     /// [`is_borrowed`](Self::is_borrowed).
     pub borrowed_rust_type: String,
     /// Full `CdrReader` borrowed-read expression for the view's
-    /// `deserialize_borrowed` (e.g. `reader.read_slice_u8()?`,
+    /// `deserialize_view` (e.g. `reader.read_slice_u8()?`,
     /// `reader.read_string()?`, `reader.read_le_slice::<f32>()?`). Empty for
     /// non-borrowed fields.
     pub borrowed_read_expr: String,
@@ -270,7 +270,7 @@ pub struct ServiceNrosTemplate<'a> {
     pub resp_schema_fields_block: String,
     pub resp_schema_type_name: String,
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
-    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_borrowed_request: bool,
     pub has_borrowed_response: bool,
@@ -382,7 +382,7 @@ pub struct ActionNrosTemplate<'a> {
     pub feedback_message_schema_fields_block: String,
     pub feedback_message_schema_type_name: String,
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
-    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_borrowed_goal: bool,
     pub has_borrowed_result: bool,
@@ -443,11 +443,11 @@ pub struct CField {
     /// [`borrowed_c_type`](Self::borrowed_c_type) /
     /// [`borrowed_read_fn`](Self::borrowed_read_fn).
     pub is_borrowed: bool,
-    /// Borrowed-view C type from `nros/borrowed.h` (e.g. `nros_borrowed_str_t`,
-    /// `nros_borrowed_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
+    /// Borrowed-view C type from `nros/view.h` (e.g. `nros_view_str_t`,
+    /// `nros_view_bytes_t`, `nros_le_slice_view_f32_t`). Empty unless
     /// [`is_borrowed`](Self::is_borrowed).
     pub borrowed_c_type: String,
-    /// `nros/borrowed.h` reader for the borrowed view (e.g.
+    /// `nros/view.h` reader for the borrowed view (e.g.
     /// `nros_cdr_borrow_string`); all share one signature. Empty unless
     /// [`is_borrowed`](Self::is_borrowed).
     pub borrowed_read_fn: String,
@@ -475,7 +475,7 @@ pub struct MessageCHeaderTemplate<'a> {
     pub type_includes: Vec<String>,
     pub has_fields: bool,
     /// RFC-0033 borrowed (Phase 235): any field is `mode = "view"`, so the
-    /// `{Msg}_View` + `{Msg}_deserialize_borrowed` + `<nros/borrowed.h>` include
+    /// `{Msg}_View` + `{Msg}_deserialize_view` + `<nros/view.h>` include
     /// are emitted.
     pub has_borrowed: bool,
 }
@@ -512,7 +512,7 @@ pub struct ServiceCHeaderTemplate<'a> {
     pub has_request_fields: bool,
     pub has_response_fields: bool,
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
-    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_borrowed_request: bool,
     pub has_borrowed_response: bool,
@@ -532,7 +532,7 @@ pub struct ServiceCSourceTemplate<'a> {
     pub has_request_fields: bool,
     pub has_response_fields: bool,
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
-    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_borrowed_request: bool,
     pub has_borrowed_response: bool,
@@ -561,7 +561,7 @@ pub struct ActionCHeaderTemplate<'a> {
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
-    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_borrowed_goal: bool,
     pub has_borrowed_result: bool,
@@ -585,7 +585,7 @@ pub struct ActionCSourceTemplate<'a> {
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
     /// Issue 0346 — RFC-0033 `borrowed`: this payload has at least one field
-    /// that slices into the receive buffer, so a `_View` + `deserialize_borrowed`
+    /// that slices into the receive buffer, so a `_View` + `deserialize_view`
     /// is emitted beside the owned struct.
     pub has_borrowed_goal: bool,
     pub has_borrowed_result: bool,
@@ -649,7 +649,7 @@ pub struct CppFfiField {
     /// deserialize codegen for `size_of::<T>()` and the `*mut T` cast.
     pub element_repr_type: String,
     /// RFC-0033 `mode = "view"` (Phase 235). The `{Msg}ViewRepr` FFI struct
-    /// stores this field as `nros_cpp_borrow_t`; `{Msg}_ffi_deserialize_borrowed`
+    /// stores this field as `nros_cpp_borrow_t`; `{Msg}_ffi_deserialize_view`
     /// fills it via [`borrowed_reader_call`](Self::borrowed_reader_call).
     pub is_borrowed: bool,
     /// `CdrReader` borrow call (no `?`), e.g. `read_string()`,
@@ -711,11 +711,11 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub intra_package_includes: Vec<String>,
     pub has_fields: bool,
     pub serialized_size_max: usize,
-    /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_borrowed`
+    /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_view`
     /// + `<nros/span.hpp>` when any field is `mode = "view"`.
     pub has_borrowed: bool,
-    /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_borrowed`).
-    pub ffi_deserialize_borrowed_fn: String,
+    /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_view`).
+    pub ffi_deserialize_view_fn: String,
 }
 
 /// TYPES half of the split C++ FFI glue (phase-306 W1, issue 0253): the
@@ -747,7 +747,7 @@ pub struct MessageCppTypesTemplate<'a> {
     /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
     pub view_repr_struct_name: String,
     /// Internal borrowed deserialize fn name.
-    pub deserialize_borrowed_fn: String,
+    pub deserialize_view_fn: String,
 }
 
 /// EXPORTS half of the split C++ FFI glue (phase-306 W1, issue 0253): ONLY the
@@ -770,15 +770,15 @@ pub struct MessageCppExportsTemplate<'a> {
     pub serialized_size_max: usize,
     /// RFC-0033: gates the heap publish-buffer path.
     pub has_heap: bool,
-    /// RFC-0033 borrowed (Phase 235): emit the `{Msg}_ffi_deserialize_borrowed`
+    /// RFC-0033 borrowed (Phase 235): emit the `{Msg}_ffi_deserialize_view`
     /// export.
     pub has_borrowed: bool,
     /// `{Msg}ViewRepr` — the repr(C) struct the borrowed FFI fills.
     pub view_repr_struct_name: String,
     /// Internal borrowed deserialize fn name.
-    pub deserialize_borrowed_fn: String,
-    /// Exported FFI symbol (`{Msg}_ffi_deserialize_borrowed`).
-    pub ffi_deserialize_borrowed_fn: String,
+    pub deserialize_view_fn: String,
+    /// Exported FFI symbol (`{Msg}_ffi_deserialize_view`).
+    pub ffi_deserialize_view_fn: String,
 }
 
 #[derive(serde::Serialize)]

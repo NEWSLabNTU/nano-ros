@@ -206,14 +206,14 @@ Rust API and never re-implements serdes**:
 - **C — native, pointer-setting deserialize.** C already has its own CDR readers
   (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}_View` (borrowed fields as
   `{const char* data; size_t size;}` / `{const uint8_t* data; size_t size;}` / the
-  numeric LE-view) and `int32_t {Msg}_deserialize_borrowed({Msg}_View*, const uint8_t*
+  numeric LE-view) and `int32_t {Msg}_deserialize_view({Msg}_View*, const uint8_t*
   buf, size_t len)` that walks CDR, bounds-checks against `end`, and **sets pointers
   into `buf`** for borrowed fields (owned fields copied as today). No `malloc`, no
   `_fini`.
 
 - **C++ — wraps a Rust FFI offset seam (no native C++ CDR reader).** The C++ owned
   path already deserializes through the Rust FFI (`ffi_deserialize`); borrowed extends
-  that seam. A `{Msg}_ffi_deserialize_borrowed` walks CDR with the Rust reader and
+  that seam. A `{Msg}_ffi_deserialize_view` walks CDR with the Rust reader and
   returns a per-borrowed-field `(offset, len)` struct (offsets relative to `buf`); the
   generated C++ `{Msg}View` then sets `nros::Span<T>` / `nros::StringView` /
   `nros::LeSpan<T>` (`nros-cpp/include/nros/span.hpp`) into the raw callback buffer.

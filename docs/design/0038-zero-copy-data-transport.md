@@ -337,7 +337,7 @@ generic "no new lock" claim must be qualified:
 Copy #2 (CDR field-by-field into the message struct) is **not** removed by this
 RFC for owned message types — deserialization inherently writes the struct. It
 **is** removed for **borrowed `&'a` message types** (e.g. `Image<'a>`), whose
-`deserialize_borrowed` slices directly out of the borrowed slot inside the same
+`deserialize_view` slices directly out of the borrowed slot inside the same
 D2 window. The `is_plain` gate (DDS) decides per type whether the borrowed path
 is available. The borrowed-deserialization codegen is **issue #7 / RFC-0033**
 (owned / heap / borrowed modes); this RFC provides the borrow window it needs.

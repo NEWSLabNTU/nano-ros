@@ -901,7 +901,7 @@ pub(crate) unsafe fn sub_inplace_has_data<M, F>(ptr: *const u8) -> bool {
 ///
 /// The callback receives `&[u8]` (CDR data) borrowing directly from the
 /// triple buffer's read slot or SPSC ring's pop slot. For borrowed message
-/// types (e.g., `Image<'a>`), the callback calls `deserialize_borrowed()`
+/// types (e.g., `Image<'a>`), the callback calls `deserialize_view()`
 /// on the data, giving the message a lifetime tied to the callback scope.
 #[repr(C)]
 pub(crate) struct SubBufferedRawEntry<F> {
@@ -1086,7 +1086,7 @@ where
         Some((data, len)) => {
             let mut reader = CdrReader::new_with_header(&data[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
-            let msg = <B::View<'_> as DeserializeBorrowed>::deserialize_borrowed(&mut reader)
+            let msg = <B::View<'_> as DeserializeBorrowed>::deserialize_view(&mut reader)
                 .map_err(|_| TransportError::DeserializationError)?;
             (entry.callback)(&msg);
             Ok(true)
@@ -2847,7 +2847,7 @@ mod borrowed_sub_tests {
     }
 
     impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
-        fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
             let width = reader.read_u32()?;
             let data = reader.read_slice_u8()?;
             Ok(ImageView { width, data })
@@ -2877,7 +2877,7 @@ mod borrowed_sub_tests {
         };
 
         let mut reader = CdrReader::new_with_header(&buf[..written]).unwrap();
-        let view = ImageView::deserialize_borrowed(&mut reader).unwrap();
+        let view = ImageView::deserialize_view(&mut reader).unwrap();
 
         assert_eq!(view.width, 7);
         assert_eq!(view.data, &payload[..]);

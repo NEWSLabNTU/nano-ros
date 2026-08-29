@@ -13,7 +13,7 @@
 
 #include <nros/types.h>
 {%- if has_borrowed %}
-#include <nros/borrowed.h>
+#include <nros/view.h>
 {%- endif %}
 
 #ifdef __cplusplus
@@ -42,7 +42,7 @@ typedef struct {{ struct_name }} {
 
 /// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `borrowed` mode.
 /// `mode = "borrowed"` fields point directly into the CDR receive buffer (set
-/// by {{ struct_name }}_deserialize_borrowed); all other fields are copied as in
+/// by {{ struct_name }}_deserialize_view); all other fields are copied as in
 /// the owned struct. The borrowed pointers are valid ONLY while the source
 /// buffer lives (e.g. the subscription callback) — copy out anything retained.
 typedef struct {{ struct_name }}_View {
@@ -88,7 +88,7 @@ int32_t {{ struct_name }}_deserialize({{ struct_name }}* msg, const uint8_t* buf
 /// allocation); other fields are copied. `out` is fully overwritten. The
 /// borrowed pointers alias `buffer` and are valid only while it lives.
 /// Returns 0 on success, -1 on error.
-int32_t {{ struct_name }}_deserialize_borrowed({{ struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+int32_t {{ struct_name }}_deserialize_view({{ struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
 /// Serialize a {{ message_name }} inline into an already-open CDR stream,

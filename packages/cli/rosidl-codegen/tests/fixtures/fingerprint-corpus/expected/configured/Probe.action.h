@@ -12,6 +12,8 @@
 #include <stddef.h>
 
 #include <nros/types.h>
+// Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
+#include <nros/view.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,7 +27,7 @@ extern "C" {
 
 /// Probe goal structure
 typedef struct fingerprint_corpus_action_probe_goal {
-    struct { uint32_t size; int64_t data[64]; } waypoints;
+    struct { uint32_t size; int64_t data[8]; } waypoints;
     char name[256];
 } fingerprint_corpus_action_probe_goal;
 
@@ -118,5 +120,16 @@ const struct nros_action_type_t* fingerprint_corpus_action_probe_get_type_suppor
 #ifdef __cplusplus
 }
 #endif
+
+/// Borrowed (zero-copy) view of fingerprint_corpus_action_probe_goal (RFC-0033 `borrowed`, issue 0346).
+/// Borrowed fields point into the source buffer — the raw service/action callback
+/// bytes — and are valid ONLY while it lives. Copy out anything retained.
+typedef struct fingerprint_corpus_action_probe_goal_View {
+    nros_le_slice_view_i64_t waypoints;
+    char name[256];
+} fingerprint_corpus_action_probe_goal_View;
+
+/// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
+int32_t fingerprint_corpus_action_probe_goal_deserialize_view(fingerprint_corpus_action_probe_goal_View* out, const uint8_t* buffer, size_t buffer_size);
 
 #endif // FINGERPRINT_CORPUS_ACTION_PROBE_H

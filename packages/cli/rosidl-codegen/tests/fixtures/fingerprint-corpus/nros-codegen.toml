@@ -1,8 +1,14 @@
 # RFC-0033 storage modes — the fingerprint must move when any mode's emitted
-# shape changes, so exercise all three (issues 0343-0346 added heap/borrowed on
+# shape changes, so exercise all three (issues 0343-0346 added heap/view on
 # srv/action payloads; a corpus without them would not notice a regression there).
+#
+# The package prefix MUST be the one `fingerprint::CORPUS` emits under. It said
+# `nros_fingerprint_probe/` until phase-390 and nothing matched, so every field
+# fell through to its default and `expected/configured/` was byte-identical to
+# `expected/inline/` — a corpus arm that named three modes and exercised one.
+# Nothing failed, because agreeing with the wrong baseline still agrees.
 [fields]
-"nros_fingerprint_probe/Shapes.seq_prim"   = { cap = 16, mode = "heap" }
-"nros_fingerprint_probe/Shapes.text"       = { cap = 32, mode = "borrowed" }
-"nros_fingerprint_probe/Probe_Request.items" = { cap = 8, mode = "heap" }
-"nros_fingerprint_probe/Probe_Goal.waypoints" = { cap = 8, mode = "borrowed" }
+"fingerprint-corpus/Shapes.seq_prim"   = { cap = 16, mode = "heap" }
+"fingerprint-corpus/Shapes.text"       = { cap = 32, mode = "view" }
+"fingerprint-corpus/Probe_Request.items" = { cap = 8, mode = "heap" }
+"fingerprint-corpus/Probe_Goal.waypoints" = { cap = 8, mode = "view" }

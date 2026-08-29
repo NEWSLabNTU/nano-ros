@@ -595,8 +595,8 @@ mod tests {
     #[test]
     fn test_c_borrowed_view_generation() {
         // RFC-0033 `borrowed` (Phase 235): a `mode = "view"` field emits a
-        // `{Msg}_View` (borrowed field as an `nros/borrowed.h` view, copied
-        // fields owned) + `{Msg}_deserialize_borrowed`, alongside the unchanged
+        // `{Msg}_View` (borrowed field as an `nros/view.h` view, copied
+        // fields owned) + `{Msg}_deserialize_view`, alongside the unchanged
         // owned struct.
         let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
@@ -616,7 +616,7 @@ mod tests {
             "owned struct missing:\n{h}"
         );
         assert!(
-            h.contains("#include <nros/borrowed.h>"),
+            h.contains("#include <nros/view.h>"),
             "borrowed include missing:\n{h}"
         );
         assert!(
@@ -624,7 +624,7 @@ mod tests {
             "view missing:\n{h}"
         );
         assert!(
-            h.contains("nros_borrowed_bytes_t data;"),
+            h.contains("nros_view_bytes_t data;"),
             "borrowed byte view missing:\n{h}"
         );
         // Copied field stays owned in the view. (C headers stay plain —
@@ -634,7 +634,7 @@ mod tests {
             "owned scalar missing from view:\n{h}"
         );
         assert!(
-            h.contains("int32_t test_msgs_msg_image_deserialize_borrowed("),
+            h.contains("int32_t test_msgs_msg_image_deserialize_view("),
             "borrowed deserialize decl missing:\n{h}"
         );
 
@@ -647,7 +647,7 @@ mod tests {
 
     #[test]
     fn test_c_borrowed_string_and_float_views() {
-        // string → nros_borrowed_str_t / borrow_string; float32[] → the
+        // string → nros_view_str_t / borrow_string; float32[] → the
         // alignment-agnostic LE view / borrow_le_slice_f32.
         let msg = parse_message("string label\nfloat32[] ranges\n").unwrap();
         let resolver = crate::config::CapacityResolver::from_toml_str(
@@ -662,7 +662,7 @@ mod tests {
         let h = &pkg.header;
         let c = &pkg.source;
         assert!(
-            h.contains("nros_borrowed_str_t label;"),
+            h.contains("nros_view_str_t label;"),
             "borrowed str view missing:\n{h}"
         );
         assert!(
@@ -700,7 +700,7 @@ mod tests {
     #[test]
     fn test_cpp_borrowed_view_generation() {
         // RFC-0033 borrowed (Phase 235, issue 0021): C++ borrowed emits {Msg}View
-        // (Span/StringView/LeSpan) + deserialize_borrowed wrapping a Rust FFI
+        // (Span/StringView/LeSpan) + deserialize_view wrapping a Rust FFI
         // offset seam; the owned {Msg} struct + repr are unchanged.
         let msg = parse_message("uint32 width\nstring encoding\nuint8[] data\nfloat32[] ranges\n")
             .unwrap();
@@ -741,7 +741,7 @@ mod tests {
         );
         assert!(
             h.contains(
-                "static int deserialize_borrowed(const uint8_t* data, size_t len, ImageView* out)"
+                "static int deserialize_view(const uint8_t* data, size_t len, ImageView* out)"
             ),
             "view wrapper missing:\n{h}"
         );
@@ -832,7 +832,7 @@ mod tests {
 
     #[test]
     fn test_c_no_borrowed_omits_view() {
-        // Without any borrowed field, no view / include / deserialize_borrowed.
+        // Without any borrowed field, no view / include / deserialize_view.
         let msg = parse_message("uint32 x\n").unwrap();
         let pkg = generate_c_message_package(
             "test_msgs",
@@ -847,12 +847,9 @@ mod tests {
             "unexpected view:\n{}",
             pkg.header
         );
+        assert!(!pkg.header.contains("nros/view.h"), "unexpected include");
         assert!(
-            !pkg.header.contains("nros/borrowed.h"),
-            "unexpected include"
-        );
-        assert!(
-            !pkg.source.contains("_deserialize_borrowed"),
+            !pkg.source.contains("_deserialize_view"),
             "unexpected borrowed deser"
         );
     }
@@ -938,7 +935,7 @@ mod tests {
         let pkg = generate_c_message_package("my_msgs", "Blob", &msg, "h", &resolver)
             .expect("C borrowed should be supported");
         assert!(
-            pkg.header.contains("nros_borrowed_bytes_t data;"),
+            pkg.header.contains("nros_view_bytes_t data;"),
             "{}",
             pkg.header
         );

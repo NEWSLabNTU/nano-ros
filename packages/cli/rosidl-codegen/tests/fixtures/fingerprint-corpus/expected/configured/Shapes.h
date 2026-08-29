@@ -12,6 +12,7 @@
 #include <stddef.h>
 
 #include <nros/types.h>
+#include <nros/view.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,13 +33,38 @@ typedef struct fingerprint_corpus_msg_shapes {
     uint64_t u64_v;
     float f32_v;
     double f64_v;
-    char text[256];
-    struct { uint32_t size; int64_t data[64]; } seq_prim;
+    char text[32];
+    struct { int64_t* data; size_t size; size_t capacity; } seq_prim;
     struct { uint32_t size; char data[256][64]; } seq_string;
     double arr_fixed[3];
     struct { uint32_t size; int32_t data[4]; } seq_bounded;
     char str_bounded[8];
 } fingerprint_corpus_msg_shapes;
+
+/// Borrowed (zero-copy) view of Shapes — RFC-0033 `borrowed` mode.
+/// `mode = "borrowed"` fields point directly into the CDR receive buffer (set
+/// by fingerprint_corpus_msg_shapes_deserialize_view); all other fields are copied as in
+/// the owned struct. The borrowed pointers are valid ONLY while the source
+/// buffer lives (e.g. the subscription callback) — copy out anything retained.
+typedef struct fingerprint_corpus_msg_shapes_View {
+    bool flag;
+    int8_t i8_v;
+    uint8_t u8_v;
+    int16_t i16_v;
+    uint16_t u16_v;
+    int32_t i32_v;
+    uint32_t u32_v;
+    int64_t i64_v;
+    uint64_t u64_v;
+    float f32_v;
+    double f64_v;
+    nros_view_str_t text;
+    struct { int64_t* data; size_t size; size_t capacity; } seq_prim;
+    struct { uint32_t size; char data[256][64]; } seq_string;
+    double arr_fixed[3];
+    struct { uint32_t size; int32_t data[4]; } seq_bounded;
+    char str_bounded[8];
+} fingerprint_corpus_msg_shapes_View;
 
 /// Get the ROS type name for Shapes
 static inline const char* fingerprint_corpus_msg_shapes_get_type_name(void) {
@@ -69,6 +95,13 @@ int32_t fingerprint_corpus_msg_shapes_serialize(const fingerprint_corpus_msg_sha
 /// 4-byte CDR encapsulation header followed by the fields).
 /// Returns 0 on success, -1 on error
 int32_t fingerprint_corpus_msg_shapes_deserialize(fingerprint_corpus_msg_shapes* msg, const uint8_t* buffer, size_t buffer_size);
+
+/// Deserialize a Shapes into a borrowed view (RFC-0033 `borrowed`):
+/// `mode = "borrowed"` fields are set to point into `buffer` (zero-copy, no
+/// allocation); other fields are copied. `out` is fully overwritten. The
+/// borrowed pointers alias `buffer` and are valid only while it lives.
+/// Returns 0 on success, -1 on error.
+int32_t fingerprint_corpus_msg_shapes_deserialize_view(fingerprint_corpus_msg_shapes_View* out, const uint8_t* buffer, size_t buffer_size);
 
 /// Serialize a Shapes inline into an already-open CDR stream,
 /// without emitting its own encapsulation header. Used by parent messages,

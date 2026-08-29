@@ -245,7 +245,7 @@ int32_t {{ feedback_struct_name }}_deserialize({{ feedback_struct_name }}* msg, 
 // callback buffer — valid only for the callback scope, so copy out anything you
 // retain. No malloc, so the view needs no `_fini`.
 // =============================================================================
-int32_t {{ goal_struct_name }}_deserialize_borrowed({{ goal_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
+int32_t {{ goal_struct_name }}_deserialize_view({{ goal_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
     if (out == NULL || buffer == NULL) return -1;
 
     const uint8_t* ptr = buffer;
@@ -275,7 +275,7 @@ int32_t {{ goal_struct_name }}_deserialize_borrowed({{ goal_struct_name }}_View*
 // callback buffer — valid only for the callback scope, so copy out anything you
 // retain. No malloc, so the view needs no `_fini`.
 // =============================================================================
-int32_t {{ result_struct_name }}_deserialize_borrowed({{ result_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
+int32_t {{ result_struct_name }}_deserialize_view({{ result_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
     if (out == NULL || buffer == NULL) return -1;
 
     const uint8_t* ptr = buffer;
@@ -305,7 +305,7 @@ int32_t {{ result_struct_name }}_deserialize_borrowed({{ result_struct_name }}_V
 // callback buffer — valid only for the callback scope, so copy out anything you
 // retain. No malloc, so the view needs no `_fini`.
 // =============================================================================
-int32_t {{ feedback_struct_name }}_deserialize_borrowed({{ feedback_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
+int32_t {{ feedback_struct_name }}_deserialize_view({{ feedback_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
     if (out == NULL || buffer == NULL) return -1;
 
     const uint8_t* ptr = buffer;

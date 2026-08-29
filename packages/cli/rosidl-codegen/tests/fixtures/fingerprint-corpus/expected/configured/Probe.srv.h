@@ -25,7 +25,7 @@ extern "C" {
 
 /// Probe request structure
 typedef struct fingerprint_corpus_srv_probe_request {
-    struct { uint32_t size; int64_t data[64]; } items;
+    struct { int64_t* data; size_t size; size_t capacity; } items;
     char note[256];
 } fingerprint_corpus_srv_probe_request;
 

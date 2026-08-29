@@ -143,7 +143,7 @@ pub struct {{ message_name }}View<'a> {
 }
 
 impl<'a> nros_core::DeserializeBorrowed<'a> for {{ message_name }}View<'a> {
-    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
 {%- for field in fields %}

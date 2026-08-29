@@ -30,7 +30,7 @@ int main(void) {
     assert(e2e_msgs_msg_borrowed_serialize(&msg, buf, sizeof buf, &n) == 0);
 
     e2e_msgs_msg_borrowed_View view;
-    assert(e2e_msgs_msg_borrowed_deserialize_borrowed(&view, buf, n) == 0);
+    assert(e2e_msgs_msg_borrowed_deserialize_view(&view, buf, n) == 0);
 
     // Copied scalar.
     assert(view.width == 0xDEADBEEFu);

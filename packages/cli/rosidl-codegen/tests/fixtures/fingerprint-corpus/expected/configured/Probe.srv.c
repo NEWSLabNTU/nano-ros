@@ -39,6 +39,10 @@ void fingerprint_corpus_srv_probe_request_init(fingerprint_corpus_srv_probe_requ
 // same contract messages have used since RFC-0033.
 void fingerprint_corpus_srv_probe_request_fini(fingerprint_corpus_srv_probe_request* msg) {
     if (msg == NULL) return;
+    nros_platform_free(msg->items.data);
+    msg->items.data = NULL;
+    msg->items.size = 0;
+    msg->items.capacity = 0;
 }
 
 int32_t fingerprint_corpus_srv_probe_request_serialize(const fingerprint_corpus_srv_probe_request* msg, uint8_t* buffer, size_t buffer_size, size_t* serialized_size) {
@@ -84,10 +88,25 @@ int32_t fingerprint_corpus_srv_probe_request_deserialize(fingerprint_corpus_srv_
     {
         uint32_t len;
         if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        // Heap sequence (RFC-0033): allocate exactly `len` elements; freed by
+        // fingerprint_corpus_srv_probe_request_fini. A re-deserialize leaks the prior buffer unless
+        // the caller _fini's first.
+        if (len > 0) {
+            msg->items.data = nros_platform_malloc((size_t)len * sizeof(*msg->items.data));
+            if (msg->items.data == NULL) return -1;
+        } else {
+            msg->items.data = NULL;
+        }
         msg->items.size = len;
-        if (len > 64) return -1;
+        msg->items.capacity = len;
         for (size_t i = 0; i < len; ++i) {
-            if (nros_cdr_read_i64(&ptr, end, origin, &msg->items.data[i]) < 0) return -1;
+            if (nros_cdr_read_i64(&ptr, end, origin, &msg->items.data[i]) < 0) {
+                nros_platform_free(msg->items.data);
+                msg->items.data = NULL;
+                msg->items.size = 0;
+                msg->items.capacity = 0;
+                return -1;
+            }
         }
     }
     if (nros_cdr_read_string(&ptr, end, origin, msg->note, sizeof(msg->note)) < 0) return -1;

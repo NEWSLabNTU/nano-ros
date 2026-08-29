@@ -28,10 +28,10 @@
 #include "nros/node_pkg.h"
 #include "nros/cdr.h"
 /* issue 0795 — the RFC-0033 zero-copy reader (`nros_cdr_borrow_*`,
- * `nros_borrowed_str_t`, the `nros_le_slice_view_*_t` family). Reached only
+ * `nros_view_str_t`, the `nros_le_slice_view_*_t` family). Reached only
  * from generated message headers until now, so a user who included the
  * umbrella had no zero-copy read path and the C surface read as lacking one. */
-#include "nros/borrowed.h"
+#include "nros/view.h"
 #include "nros/clock.h"
 /* issue 0795 — `nros.hpp` has always included its C++ twin; C had no logging
  * surface through the umbrella at all. A C author who finds no logger reaches
