@@ -69,6 +69,16 @@ states `spdp`, matching ThreadX. NOT a fix for 0836: with the peer already spdp-
 regardless (97,976 sends to the island's unicast locator against 69 multicast, all discovery).
 See `archived/0888-*`.
 
+Recently resolved (2026-08-29): **#0894** (examples, build) — `just format` failed REPO-WIDE: phase-383
+W10.a (`8b15506b2`) deleted `examples/workspaces/launch`'s workspace root, so its two leaves walked up to the
+REPO root, which neither lists nor excludes them ("current package believes it's in a workspace when it's
+not"). Checked rather than assumed: of the 25 leaves under `examples/workspaces/*/src/` with no `[workspace]`
+table and no repo-root exclude, 23 still have a surviving parent root — `launch` is the anomaly, not the
+pattern, and only `listener_pkg` and `talker_pkg` are affected. Fixed by excluding both at the repo root,
+where every sibling standalone leaf already records the same fact. Same class CLAUDE.md names for west leaves,
+reached from the other direction: a root going away rather than a leaf arriving. See `archived/0894-*`.
+(2026-08-29)
+
 Recently resolved (2026-08-29): **#0890** (rmw) — the liveliness DISCOVERY wildcards still pinned `0/11` in
 the `<node_id>/<entity_id>` field, so `wait_for_service` and the LivelinessChanged emulation matched only a
 session's ELEVENTH entity. Issue 0292's residue: 0292 measured that literal on the DECLARATION side (an
