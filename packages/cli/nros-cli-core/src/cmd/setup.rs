@@ -654,17 +654,19 @@ fn install_single_tool(
     // for qemu's meson). Probe BEFORE doing any work, so the failure surface
     // is "install these packages" rather than a bare loader error out of a
     // later smoke check — or a dead configure 40 minutes into a source build.
+    // Through `prereqs()`, never `index.system` — a consumer reading one table
+    // sees half the SSoT while `[prereq.*]` and `[system.*]` coexist.
+    let prereqs = index.prereqs();
     let mut missing_sys: Vec<&str> = Vec::new();
     for key in &tool.system {
-        if let Some(dep) = index.system.get(key)
+        if let Some(dep) = prereqs.get(key)
             && run_probe(dep.check.as_ref()) == ProbeResult::Missing
         {
             missing_sys.push(key);
         }
     }
     if !missing_sys.is_empty() {
-        let entries: Vec<(&String, &crate::orchestration::sdk_index::SystemDep)> = index
-            .system
+        let entries: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = prereqs
             .iter()
             .filter(|(k, _)| missing_sys.contains(&k.as_str()))
             .collect();
@@ -1357,16 +1359,17 @@ fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> Pro
 /// probe results and exits 1 on any missing (the doctor surface). `--sudo`
 /// executes the composed command.
 fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> {
-    if index.system.is_empty() {
-        println!("nros setup --system: index declares no [system.*] entries.");
+    let prereqs = index.prereqs();
+    if prereqs.is_empty() {
+        println!("nros setup --system: index declares no [prereq.*] / [system.*] entries.");
         return Ok(());
     }
     let manager = detect_package_manager();
 
-    let mut missing: Vec<(&String, &crate::orchestration::sdk_index::SystemDep)> = Vec::new();
+    let mut missing: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = Vec::new();
     let mut unknown: Vec<&String> = Vec::new();
     let mut present = 0usize;
-    for (key, dep) in &index.system {
+    for (key, dep) in &prereqs {
         match run_probe(dep.check.as_ref()) {
             ProbeResult::Present => present += 1,
             ProbeResult::Missing => missing.push((key, dep)),
@@ -1414,15 +1417,15 @@ fn run_system(index: &SdkIndex, check_only: bool, run_sudo: bool) -> Result<()> 
             "nros setup --system: no supported package manager detected \
              (apt/dnf/pacman/brew). The index declares {} [system.*] entries; \
              map your platform in nros-sdk-index.toml.",
-            index.system.len()
+            prereqs.len()
         );
         return Ok(());
     };
 
     // Compose over the entries not already present (probe-first, so re-runs
     // shrink the command instead of repeating it).
-    let to_install: Vec<(&String, &crate::orchestration::sdk_index::SystemDep)> = index
-        .system
+    let prereqs = index.prereqs();
+    let to_install: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = prereqs
         .iter()
         .filter(|(_, dep)| run_probe(dep.check.as_ref()) != ProbeResult::Present)
         .collect();
@@ -1607,14 +1610,18 @@ fn run_check_all(index: &SdkIndex) -> Result<()> {
         ProbeResult::Unknown => println!("  [UNPROBED] {class:<6} {name}"),
     };
 
-    // [system.*] — the composed native command is the remedy.
+    // Prerequisites — the composed native command is the remedy. Through
+    // `prereqs()` so the doctor surface covers `[prereq.*]` and `[system.*]`
+    // alike; a doctor that walked one table would report a shrinking half of
+    // the SSoT as the migration runs.
     let manager = detect_package_manager();
-    for (key, dep) in &index.system {
+    let prereqs = index.prereqs();
+    for (key, dep) in &prereqs {
         let remedy = match manager {
             Some(mgr) if !dep.packages_for(mgr).is_empty() => {
                 native_install_command(mgr, dep.packages_for(mgr))
             }
-            _ => format!("map [system.{key}] for this host in nros-sdk-index.toml"),
+            _ => format!("map [prereq.{key}] for this host in nros-sdk-index.toml"),
         };
         report("system", key, run_probe(dep.check.as_ref()), remedy);
     }
@@ -1827,7 +1834,7 @@ fn command_stdout(cmd: &str, args: &[&str]) -> String {
 }
 
 fn compose_packages(
-    entries: &[(&String, &crate::orchestration::sdk_index::SystemDep)],
+    entries: &[(&String, &crate::orchestration::sdk_index::PrereqDep)],
     manager: &str,
 ) -> Vec<String> {
     let mut pkgs: Vec<String> = entries
