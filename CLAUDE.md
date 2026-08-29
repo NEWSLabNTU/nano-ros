@@ -676,7 +676,8 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   times (0367→0372→0377 collided TWICE, the second time while renumbering the first). The tool
   claims `refs/issue-ids/NNNN` on origin, which git rejects if it already exists; the `pre-push`
   hook (`just setup-hooks`) refuses to push a duplicate even if the tool was skipped. Expect
-  `docs/issues/README.md` rebase conflicts; write full background logs to files (`| tail` hides
+  ledger conflicts NO LONGER (issue 0884 — the generated list is `docs/issues/open.md`,
+  `merge=union`, so concurrent filings merge); write full background logs to files (`| tail` hides
   the real error). **Same race, same fix, third series: `just phase-new <slug>`** for work needing
   its OWN phase number (two sessions opened `phase-350` for unrelated work on 2026-08-13; the later became 352). NOT for
   a doc joining an existing effort — a phase number is deliberately not unique per file (26 of 342

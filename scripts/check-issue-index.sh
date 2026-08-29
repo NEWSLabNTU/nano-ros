@@ -55,7 +55,13 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-readme="docs/issues/README.md"
+# issue 0884 — the generated list moved OUT of README.md into `open.md`, so the
+# authored prose and the machine-written rows are separate files. That is what
+# makes `merge=union` safe on the rows (see `.gitattributes`): union on a file
+# containing prose would duplicate paragraphs, union on a pure row list only
+# ever duplicates rows, which the generator then re-sorts away and this gate
+# catches. The variable keeps its name; only the file it names changed.
+readme="docs/issues/open.md"
 
 # phase-395 W1 — the open list is GENERATED (scripts/gen-issue-index.py) and its
 # rows are list items, `- **#NNNN** (area) — title`. Accept the optional bullet
