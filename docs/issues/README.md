@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-42 open. One line each — the detail lives in the issue file,
+44 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -99,6 +99,8 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0862** (testing, rmw) — `zpico_sys_has_no_cmake_dep` times out at 60 s instead of answering a static question See `0862-*`.
 - **#0872** (ci) — The PR/nightly check arm has never run to completion — each fix exposes the next environment gap See `0872-*`.
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
+- **#0880** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0880-*`.
+- **#0881** (ci) — Cyclone's platform-alloc funnel has no fast-line lane — the only build that compiles it has no platform to funnel into See `0881-*`.
 
 <!-- END GENERATED open-issue list -->
 
