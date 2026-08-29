@@ -485,8 +485,36 @@ found only because these trees are not uniform the way ours are.
       it from there, and the entry's backend CRATE names come from the board
       crate's own `rmw-<x> = ["dep:<crate>"]` features rather than a fourth
       copy of the macro's `rmw_crate_ident` table.
-- [ ] **W10.b** Delete `[deploy.*]` parsing at the version boundary W1.e
-      declared.
+- [ ] **W10.b** Delete `[deploy.*]` parsing at the version boundary W1.f
+      declared. **NOT DUE — and the reason is not the calendar.**
+
+      W1.f promised "warn on every invocation while still working … removal at
+      the next minor version". Two things were measured before touching this:
+
+      1. **The version boundary has not been crossed.** The deprecation landed
+         in `88d3758b8` at `0.5.0`; the workspace is still `0.5.0`. Removal is
+         a `0.6.0` action.
+      2. **The warning had never once been emitted.**
+         `deprecated_deploy_build_field_warnings` shipped with four passing unit
+         tests and NO production caller — all four call sites were its own
+         `#[test]` functions — and `nros doctor` never grew the check either. So
+         the deprecation period had not started, let alone elapsed.
+
+      Deleting on that state would be the worst of both: support removed with a
+      warning nobody ever saw. So W10.b's *preparation* landed instead — the
+      lint is now reached from `collect_images`, which every `nros build`
+      passes through, and a wiring test asserts it (mutation-checked by
+      re-unwiring it, which reds).
+
+      **The surface the eventual deletion touches, measured now** (excluding
+      `third-party/`, build output and other agents' `.claude/worktrees/`):
+      **37 deploy blocks across 14 files** — `board` ×29, `target` ×13,
+      `rmw` ×2. That confirms the W1.f survey's "only `board` and `target` fire
+      in practice", plus two `rmw`. Nothing reads these fields at build time
+      today; `cmd/build.rs` already resolves everything from `[image.*]`.
+
+      **Do at 0.6.0:** migrate those 37 blocks, then delete the lint, the
+      `DEPRECATED_DEPLOY_BUILD_FIELDS` list and the wiring added here.
 - [x] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
       return. Every gate in this repo exists because a class recurred; this one
       is cheap and the class is "someone re-adds a hand-written root".

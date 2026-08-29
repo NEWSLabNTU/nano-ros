@@ -1227,9 +1227,36 @@ fn native_handoff(
 /// root and so cannot see the canonical `<root>/src/<name>_bringup/` layout;
 /// and deliberately not a second walk of our own, which would be a third
 /// opinion about what a package is (issue 0809's class).
+/// `(bringup name, bringup dir, its images)` per bringup — the shape every
+/// stage after DISCOVER passes around.
+type Bringups = Vec<(String, PathBuf, plan::ImageSet)>;
+
 fn collect_images(
     packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
-) -> Result<Vec<(String, PathBuf, plan::ImageSet)>> {
+) -> Result<Bringups> {
+    let (out, warnings) = collect_images_with_warnings(
+        packages,
+        crate::orchestration::image::deprecation_suppressed(),
+    )?;
+    for w in warnings {
+        eprintln!("nros build: {w}");
+    }
+    Ok(out)
+}
+
+/// [`collect_images`], with the deprecation warnings RETURNED rather than
+/// printed and the suppression flag passed in.
+///
+/// Split for the reason the lint's own doc comment gives for taking
+/// `suppressed` as a parameter: a warning that can only be observed on stderr,
+/// under an ambient env var, cannot be tested deterministically — and the
+/// previous shape is exactly how W1.f shipped a correct, well-tested lint that
+/// no production path called. The test below asserts the WIRING, not the lint.
+fn collect_images_with_warnings(
+    packages: &[cargo_nano_ros::provider_scan::WorkspacePackage],
+    suppressed: bool,
+) -> Result<(Bringups, Vec<String>)> {
+    let mut warnings: Vec<String> = Vec::new();
     let mut out = Vec::new();
     for pkg in packages {
         let system_toml = pkg.dir.join("system.toml");
@@ -1240,6 +1267,41 @@ fn collect_images(
             .wrap_err_with(|| format!("reading {}", system_toml.display()))?;
         let sys: crate::orchestration::cargo_metadata_schema::SystemToml =
             toml::from_str(&text).wrap_err_with(|| format!("parsing {}", system_toml.display()))?;
+
+        // W1.f's deprecation lint, ACTUALLY REACHED.
+        //
+        // It shipped with four passing tests and no production caller, so no
+        // user has ever seen the warning it promised ("warn on every invocation
+        // while still working"). That is the shape `check-no-vacuous-tests`
+        // exists for, one level up: the function is correct and its tests are
+        // honest, and the feature is still absent because nothing calls it.
+        //
+        // Here rather than in `nros doctor` alone, because this is where a
+        // build reads the declaration it is warning about — the user is looking
+        // at the output already, and it costs one pass over a table that is
+        // typically empty.
+        //
+        // Field PRESENCE comes from the raw document, not from `sys.deploy`:
+        // `DeployTarget` is upstream's typed struct, so an absent key and a key
+        // set to its default are the same value once parsed, and a lint about
+        // "you wrote this key" must see what was written.
+        if let Ok(raw) = text.parse::<toml::Value>()
+            && let Some(deploys) = raw.get("deploy").and_then(|d| d.as_table())
+        {
+            let present: std::collections::BTreeMap<String, Vec<String>> = deploys
+                .iter()
+                .filter_map(|(id, block)| {
+                    let t = block.as_table()?;
+                    Some((id.clone(), t.keys().cloned().collect()))
+                })
+                .collect();
+            for w in crate::orchestration::image::deprecated_deploy_build_field_warnings(
+                &present, &sys.image, suppressed,
+            ) {
+                warnings.push(format!("{}: {w}", system_toml.display()));
+            }
+        }
+
         out.push((
             pkg.name.clone(),
             pkg.dir.clone(),
@@ -1250,5 +1312,78 @@ fn collect_images(
             },
         ));
     }
-    Ok(out)
+    Ok((out, warnings))
+}
+
+#[cfg(test)]
+mod deprecation_wiring_tests {
+    use super::*;
+
+    /// The lint W1.f promised must be REACHED by the build path.
+    ///
+    /// It shipped with four passing unit tests and no production caller, so the
+    /// warning it specified ("warn on every invocation while still working")
+    /// reached nobody: `nros build` was silent and `nros doctor` never grew the
+    /// check either. The unit tests could not catch that — they call the lint
+    /// directly, which is precisely what nothing else did.
+    ///
+    /// So this asserts the WIRING rather than the lint: parse a bringup through
+    /// the real `collect_images` path and require the warning to come back.
+    fn pkg(dir: &std::path::Path) -> Vec<cargo_nano_ros::provider_scan::WorkspacePackage> {
+        vec![cargo_nano_ros::provider_scan::WorkspacePackage {
+            name: "demo_bringup".to_string(),
+            dir: dir.to_path_buf(),
+            depends: Default::default(),
+        }]
+    }
+
+    fn write_system(dir: &std::path::Path, body: &str) {
+        std::fs::create_dir_all(dir).expect("mkdir");
+        std::fs::write(dir.join("system.toml"), body).expect("write");
+    }
+
+    #[test]
+    fn a_deploy_build_field_warns_through_the_build_path() {
+        let d = std::env::temp_dir().join(format!("nros-w10b-{}-{}", std::process::id(), line!()));
+        write_system(
+            &d,
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [deploy.legacy]\nkind = \"embedded\"\nboard = \"mps2-an385-freertos\"\n",
+        );
+
+        let (_, warnings) = collect_images_with_warnings(&pkg(&d), false).expect("collects");
+        assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+        assert!(
+            warnings[0].contains("[deploy.legacy]") && warnings[0].contains("board"),
+            "warning must name the block and the field: {}",
+            warnings[0]
+        );
+
+        // Suppression reaches the same path.
+        let (_, quiet) = collect_images_with_warnings(&pkg(&d), true).expect("collects");
+        assert!(quiet.is_empty(), "suppressed run must be silent: {quiet:?}");
+
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// A block that HAS its `[image.*]` is migrated, and a placement-only block
+    /// was never in scope — `[deploy.*]` keeps `kind`/`nodes`/`launch` and is
+    /// not being retired. Without this the test above would pass on a lint that
+    /// warned about everything.
+    #[test]
+    fn migrated_and_placement_only_blocks_stay_silent() {
+        let d = std::env::temp_dir().join(format!("nros-w10b-{}-{}", std::process::id(), line!()));
+        write_system(
+            &d,
+            "[system]\nname = \"s\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [deploy.migrated]\nkind = \"embedded\"\nboard = \"mps2-an385-freertos\"\n\n\
+             [deploy.placement]\nkind = \"self\"\nnodes = [\"a\"]\n\n\
+             [image.migrated]\nboard = \"mps2-an385-freertos\"\n",
+        );
+
+        let (_, warnings) = collect_images_with_warnings(&pkg(&d), false).expect("collects");
+        assert!(warnings.is_empty(), "expected silence, got {warnings:?}");
+
+        std::fs::remove_dir_all(&d).ok();
+    }
 }
