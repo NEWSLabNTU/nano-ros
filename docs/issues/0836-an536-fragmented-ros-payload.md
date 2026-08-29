@@ -159,6 +159,77 @@ while the first frames of it arrive fine. Distinguishing "FIFO empty" (stop)
 from "frame discarded" (continue within budget) is a two-line change, and the
 `pbuf_alloc` failure count is the counter to add alongside the `RXSTAT` ones.
 
+## Measured 2026-08-29 — pbuf_alloc is NOT it, and the driver is not dropping
+
+The suspect this issue named — `lan9118_lwip_poll` breaking out of its drain on
+any NULL from `rx_receive`, including a `pbuf_alloc` failure — is ruled out by
+counting the four NULL paths apart instead of treating them as one:
+
+```
+RXWHY polls=62000 ok=84524 allocfail=0 es=0 badlen=0 empty=0 abort_pending=0 pendmax=16
+```
+
+* `allocfail=0` over **84,524 received frames**. `pbuf_alloc` never failed
+  once; the board's `PBUF_POOL_SIZE=128` is holding.
+* `abort_pending=0` — the drain NEVER walked away with frames still queued.
+  The break-on-NULL path is real in the code and simply never taken here, so
+  it cannot be the origin.
+* `es=0`, `badlen=0` — no receive errors and no malformed lengths: the frames
+  the NIC hands up are intact.
+* `pendmax=16` — the deepest the RX status FIFO was ever seen at poll entry.
+  Well short of anything resembling overflow.
+
+Note this also corrects the earlier "~89% of each burst is lost" figure in the
+entry above. That came from a run recording 3,200 frames; a healthy run of the
+same length records 84,524. The earlier run was starved for an unrelated
+reason, and the deficit it appeared to show was an artifact of comparing
+against the wrong denominator. **Frames arrive in volume.**
+
+So the delivery failure is ABOVE the driver, with the fragments already in
+lwIP's hands: the reader still got 1 trajectory against ~1,000 published in the
+same run.
+
+### Everything below DDS is now excluded, with counters
+
+Turning lwIP's own statistics on (which first required guarding `LWIP_STATS` in
+`lwipopts.h` — an unguarded `#define` there silently beats any `-D`, so the
+diagnostic build was compiling the counters away) and correlating them with the
+driver's frame count in ONE run:
+
+```
+LWIPSTAT frames_in=79184 udp_recv=56825 udp_drop=0 udp_memerr=0 udp_lenerr=0
+         ip_drop=2 link_drop=0 pbuf_err=0 pbuf_max=16
+```
+
+**56,825 UDP datagrams delivered to the sockets, zero dropped at driver, link,
+IP, UDP or pbuf level — and not one trajectory reassembled.** The receive-mbox
+theory in the previous section is dead: nothing is queued away.
+
+Raising Cyclone's own reassembly capacity changed nothing either — receive
+buffer 64 KiB -> 1 MiB, chunk 16 KiB -> 64 KiB,
+`DefragReliableMaxSamples`/`DefragUnreliableMaxSamples` -> 32,
+`MaxSampleSize` -> 4 MiB: 62,585 datagrams, zero drops, zero trajectories.
+
+So the excluded list is now: NIC drain, pbuf pool, lwIP link/IP/UDP, UDP mbox
+depth, and Cyclone's rbuf and defrag sizing. The datagrams arrive; Cyclone does
+not deliver a sample.
+
+### Next measurement
+
+Two candidates, and the second is the stronger one:
+
+1. **Cyclone's own tracing.** `<Tracing><Verbosity>` in the embedded config
+   would state the reason directly rather than having it inferred. Heavy on
+   this target, but it beats another round of elimination.
+
+2. **The TRANSMIT path, which nothing here has examined.** Every measurement
+   in this issue is receive-side. A RELIABLE reader must send ACKNACKs before
+   the writer will retransmit the fragments it is missing; if the island's
+   ACKNACKs do not reach the writer, the writer stalls and no fragmented sample
+   ever completes — while every small topic keeps working, because a sample
+   that fits one datagram needs no repair. That asymmetry matches the evidence
+   better than anything excluded so far.
+
 ## Still unknown
 
 WHY ~89% of each burst is lost below the driver. The fragment count above
