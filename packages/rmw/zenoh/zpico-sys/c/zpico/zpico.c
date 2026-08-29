@@ -260,6 +260,28 @@ typedef struct {
      * count is incremented in `get_reply_handler` regardless of
      * payload buffer occupancy. */
     uint32_t reply_count;
+    /* phase-381 W1 — GRAPH ENUMERATION.
+     *
+     * A liveliness reply carries its information in the KEYEXPR, not the
+     * payload: `@ros2_lv/<domain>/<zid>/<nid>/<eid>/…/<namespace>/<node>`. The
+     * handler used to discard it and keep only `reply_count`, so the shim could
+     * answer "does anything match" and never "what matched".
+     *
+     * When `collect` is set, the handler appends each reply's keyexpr into
+     * `buf` as NUL-terminated strings instead of copying a payload there.
+     * That buffer is otherwise DEAD on a liveliness query — the payload of a
+     * liveliness token is empty, and the pre-W1 comment on
+     * `zpico_liveliness_get_start` says so: "the reply handler still copies the
+     * (typically empty) liveliness token bytes into the slot's buffer; we never
+     * read them". So enumeration costs no new storage, which is what phase-381's
+     * deferred bounded-memory decision turned out to be about.
+     *
+     * `entry_count` counts what was STORED; `reply_count` keeps counting what
+     * ARRIVED. The difference is the truncation the caller must be able to see —
+     * a graph query that silently drops entries is the plausible-wrong-answer
+     * failure this phase exists to avoid. */
+    bool collect;
+    uint32_t entry_count;
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_t mutex;
     _z_condvar_t cond;
@@ -2808,6 +2830,36 @@ static void get_reply_handler(z_loaned_reply_t* reply, void* ctx) {
      * ignore it. */
     rctx->reply_count++;
 
+    /* phase-381 W1 — collection mode: the KEYEXPR is the payload.
+     *
+     * Appended NUL-terminated into the same `buf` a single-response get uses
+     * for its payload; the two modes never share a slot, because `collect` is
+     * set once at start and a slot serves one query. A keyexpr that does not
+     * fit is DROPPED rather than truncated — half a keyexpr parses as a
+     * different, plausible entity, which is worse than a missing one — and the
+     * caller sees it as `reply_count > entry_count`. */
+    if (rctx->collect) {
+        const z_loaned_sample_t* ksample = z_reply_ok(reply);
+        const z_loaned_keyexpr_t* ke = z_sample_keyexpr(ksample);
+        z_view_string_t kstr;
+        z_keyexpr_as_view_string(ke, &kstr);
+        const char* kdata = z_string_data(z_view_string_loan(&kstr));
+        size_t klen = z_string_len(z_view_string_loan(&kstr));
+        /* +1 for the NUL that separates entries. */
+        if (klen > 0 && rctx->len + klen + 1 <= ZPICO_GET_REPLY_BUF_SIZE) {
+            memcpy(rctx->buf + rctx->len, kdata, klen);
+            rctx->len += klen;
+            rctx->buf[rctx->len++] = '\0';
+            rctx->entry_count++;
+        }
+        /* `received` marks "this slot has something to read", which for a
+         * collecting query is true from the first stored entry. */
+        if (rctx->entry_count > 0) {
+            __atomic_store_n(&rctx->received, true, __ATOMIC_SEQ_CST);
+        }
+        return;
+    }
+
     // Skip if we already have a reply (only take first)
     if (rctx->received) {
         g_diag_reply_already_received++;
@@ -3189,6 +3241,8 @@ int32_t zpico_liveliness_get_start(zpico_session_t* session, const char* keyexpr
     ps->ctx.received = false;
     ps->ctx.done = false;
     ps->ctx.reply_count = 0;
+    ps->ctx.collect = false;
+    ps->ctx.entry_count = 0;
     ps->in_use = true;
 
     z_view_keyexpr_t ke;
@@ -3211,6 +3265,110 @@ int32_t zpico_liveliness_get_start(zpico_session_t* session, const char* keyexpr
         return ZPICO_ERR_GENERIC;
     }
     return slot;
+}
+
+/* phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+ *
+ * `zpico_liveliness_get_start` answers "does anything match". Reading the ROS
+ * graph needs "WHAT matched": a liveliness reply's information is entirely in
+ * its keyexpr (`@ros2_lv/<domain>/<zid>/<nid>/<eid>/…/<namespace>/<node>`), and
+ * the handler used to discard it.
+ *
+ * Same slot pool, same start/poll shape, same dropper. The only difference is
+ * that the handler appends each reply's keyexpr into the slot's buffer instead
+ * of copying a payload into it — that buffer is dead weight on a liveliness
+ * query, whose token payload is empty, so enumeration adds no storage.
+ *
+ * Poll with `zpico_liveliness_get_check` exactly as for the counting form, then
+ * read entries with `zpico_liveliness_entry_count` / `zpico_liveliness_entry`.
+ *
+ * Returns the slot handle on success, ZPICO_ERR_* on failure.
+ */
+int32_t zpico_liveliness_collect_start(zpico_session_t* session, const char* keyexpr,
+                                       uint32_t timeout_ms) {
+    int32_t slot = zpico_liveliness_get_start(session, keyexpr, timeout_ms);
+    if (slot < 0) {
+        return slot;
+    }
+    /* Set AFTER the start so the slot is already claimed and reset. The query
+     * is in flight by now, so a reply could already be running the handler —
+     * on a single-threaded image it cannot (replies arrive under `zp_read`),
+     * and on a multi-threaded one the worst case is that the first reply is
+     * counted but not stored, which `reply_count > entry_count` reports. */
+    struct zpico_session* s = (struct zpico_session*)session;
+    s->pending_gets[slot].ctx.collect = true;
+    return slot;
+}
+
+/* How many keyexprs this slot STORED.
+ *
+ * Distinct from `zpico_liveliness_get_count`, which reports how many replies
+ * ARRIVED. The two differ exactly when the buffer could not hold an entry, so
+ * a caller that wants to know whether the enumeration is complete compares
+ * them — this is the truncation signal, and it is why entries are dropped whole
+ * rather than truncated.
+ *
+ * Returns ZPICO_ERR_INVALID for a bad handle or a slot not in use.
+ */
+int32_t zpico_liveliness_entry_count(zpico_session_t* session, int32_t handle) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (!s->pending_gets[handle].in_use) {
+        return ZPICO_ERR_INVALID;
+    }
+    return (int32_t)s->pending_gets[handle].ctx.entry_count;
+}
+
+/* Copy stored keyexpr `index` into `out`, NUL-terminated.
+ *
+ * Returns the number of bytes written excluding the NUL, ZPICO_ERR_INVALID for
+ * a bad handle/index, or ZPICO_ERR_BUFFER when `cap` cannot hold the entry plus
+ * its NUL. A short buffer is an ERROR rather than a truncation for the same
+ * reason the handler drops rather than truncates: half a keyexpr names a
+ * different, plausible entity.
+ */
+int32_t zpico_entry_at(const uint8_t* buf, size_t len, uint32_t count, uint32_t index, char* out,
+                       size_t cap) {
+    if (buf == NULL || out == NULL || index >= count) {
+        return ZPICO_ERR_INVALID;
+    }
+    /* Walk the NUL-separated run. `count` bounds the loop, so this cannot run
+     * off the end of what the handler wrote. */
+    const char* p = (const char*)buf;
+    const char* end = (const char*)buf + len;
+    for (uint32_t i = 0; i < index; i++) {
+        while (p < end && *p != '\0') {
+            p++;
+        }
+        if (p < end) {
+            p++;
+        }
+    }
+    size_t n = 0;
+    while (p + n < end && p[n] != '\0') {
+        n++;
+    }
+    if (n + 1 > cap) {
+        return ZPICO_ERR_BUFFER;
+    }
+    memcpy(out, p, n);
+    out[n] = '\0';
+    return (int32_t)n;
+}
+
+int32_t zpico_liveliness_entry(zpico_session_t* session, int32_t handle, uint32_t index, char* out,
+                               size_t cap) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+    pending_get_slot_t* ps = &s->pending_gets[handle];
+    if (!ps->in_use) {
+        return ZPICO_ERR_INVALID;
+    }
+    return zpico_entry_at(ps->ctx.buf, ps->ctx.len, ps->ctx.entry_count, index, out, cap);
 }
 
 /* Check status of a pending liveliness query.

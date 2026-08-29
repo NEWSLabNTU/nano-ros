@@ -391,6 +391,85 @@ unsafe extern "C" {
 mod tests {
     use super::*;
 
+    /// phase-381 W1 — the NUL-separated entry walk, against the REAL C
+    /// function rather than a Rust copy of it.
+    ///
+    /// `zpico_entry_at` is the pure half of `zpico_liveliness_entry`, split out
+    /// precisely so it can be reached without a live zenoh session. This is
+    /// where an off-by-one costs a WRONG keyexpr rather than a missing one, and
+    /// a wrong one names a real, different node — so the last entry (which has
+    /// no trailing separator to lean on) and the short-buffer refusal both get
+    /// their own case.
+    #[test]
+    fn entry_walk_indexes_a_nul_separated_run() {
+        unsafe extern "C" {
+            fn zpico_entry_at(
+                buf: *const u8,
+                len: usize,
+                count: u32,
+                index: u32,
+                out: *mut core::ffi::c_char,
+                cap: usize,
+            ) -> i32;
+        }
+
+        // Exactly what the reply handler writes: each keyexpr NUL-terminated.
+        let raw: &[u8] =
+            b"@ros2_lv/0/aa/1/2/talker\0@ros2_lv/0/bb/1/3/listener\0@ros2_lv/0/cc/1/4/x\0";
+        let mut out = [0i8; 128];
+
+        let read = |index: u32, cap: usize, out: &mut [i8; 128]| -> i32 {
+            unsafe {
+                zpico_entry_at(
+                    raw.as_ptr(),
+                    raw.len(),
+                    3,
+                    index,
+                    out.as_mut_ptr().cast::<core::ffi::c_char>(),
+                    cap,
+                )
+            }
+        };
+        // `no_std`: compare the written bytes directly rather than building a
+        // String.
+        fn written(out: &[i8; 128], n: i32) -> &[u8] {
+            // SAFETY: `out` is a plain byte array reinterpreted as unsigned;
+            // `n` is what the C function reported it wrote.
+            unsafe { core::slice::from_raw_parts(out.as_ptr().cast::<u8>(), n as usize) }
+        }
+
+        let n = read(0, out.len(), &mut out);
+        assert_eq!(written(&out, n), b"@ros2_lv/0/aa/1/2/talker", "first entry");
+
+        let n = read(1, out.len(), &mut out);
+        assert_eq!(
+            written(&out, n),
+            b"@ros2_lv/0/bb/1/3/listener",
+            "middle entry"
+        );
+
+        let n = read(2, out.len(), &mut out);
+        assert_eq!(
+            written(&out, n),
+            b"@ros2_lv/0/cc/1/4/x",
+            "LAST entry — no trailing separator to lean on"
+        );
+
+        assert_eq!(
+            read(3, out.len(), &mut out),
+            ZPICO_ERR_INVALID,
+            "an index past the stored count must be refused, not read off the end"
+        );
+
+        // The reason a short buffer must never truncate: the prefix of a
+        // keyexpr is itself a VALID keyexpr, naming a different entity.
+        assert_eq!(
+            read(0, 10, &mut out),
+            ZPICO_ERR_BUFFER,
+            "a short buffer must be refused rather than truncated"
+        );
+    }
+
     #[test]
     fn test_constants() {
         assert_eq!(ZPICO_OK, 0);

@@ -83,6 +83,14 @@
 #define ZPICO_ERR_TIMEOUT -9
 
 /**
+ * Caller's buffer cannot hold the value, which is REFUSED rather than
+ * truncated (phase-381 W1). Used by `zpico_liveliness_entry`: half a keyexpr
+ * names a different, plausible entity, so a short buffer is an error and never
+ * a partial answer.
+ */
+#define ZPICO_ERR_BUFFER -10
+
+/**
  * Opaque per-session handle (issue 0348 / phase-328). A `zpico_session_t*`
  * points into the C shim's compile-time session pool
  * (`ZPICO_MAX_SESSIONS`, default 1). Every `zpico_*` entry point that
@@ -752,6 +760,68 @@ int32_t zpico_liveliness_get_check(struct zpico_session_t *_session, int32_t _ha
  * `LivelinessChanged` bridge to surface `alive_count > 1`.
  */
 int32_t zpico_liveliness_get_count(struct zpico_session_t *_session, int32_t _handle);
+
+/**
+ * phase-381 W1 — a liveliness query that KEEPS its replies' keyexprs.
+ *
+ * `zpico_liveliness_get_start` answers "does anything match". Reading the ROS
+ * graph needs "WHAT matched": a liveliness reply carries its information in the
+ * keyexpr (`@ros2_lv/<domain>/<zid>/<nid>/<eid>/.../<namespace>/<node>`), and
+ * the reply handler used to discard it.
+ *
+ * Same slot pool, same start/poll shape, same dropper — poll with
+ * `zpico_liveliness_get_check`, then read with `zpico_liveliness_entry_count`
+ * and `zpico_liveliness_entry`. Costs no extra storage: the slot's reply buffer
+ * is dead weight on a liveliness query, whose token payload is empty.
+ *
+ * Returns the slot handle, or `ZPICO_ERR_*`.
+ */
+int32_t zpico_liveliness_collect_start(struct zpico_session_t *_session,
+                                       const char *_keyexpr,
+                                       uint32_t _timeout_ms);
+
+/**
+ * How many keyexprs the slot STORED.
+ *
+ * Distinct from `zpico_liveliness_get_count`, which reports how many replies
+ * ARRIVED. They differ exactly when the buffer could not hold an entry, so a
+ * caller learns the enumeration was truncated by comparing the two — entries
+ * are dropped whole rather than truncated, so a stored entry is always valid.
+ *
+ * Returns `ZPICO_ERR_INVALID` for a bad handle or an unused slot.
+ */
+int32_t zpico_liveliness_entry_count(struct zpico_session_t *_session, int32_t _handle);
+
+/**
+ * The PURE half of `zpico_liveliness_entry`: index into a NUL-separated run.
+ *
+ * Split out so it can be tested without a live session, because this is where
+ * an off-by-one costs a WRONG keyexpr rather than a missing one — and a wrong
+ * one names a real, different entity. The session-taking form below is a thin
+ * wrapper; testing a copy of this loop instead would test a copy.
+ *
+ * Returns bytes written excluding the NUL, `ZPICO_ERR_INVALID` for a NULL
+ * pointer or an index past `_count`, `ZPICO_ERR_BUFFER` when `_cap` is short.
+ */
+int32_t zpico_entry_at(const uint8_t *_buf,
+                       size_t _len,
+                       uint32_t _count,
+                       uint32_t _index,
+                       char *_out,
+                       size_t _cap);
+
+/**
+ * Copy stored keyexpr `_index` into `_out`, NUL-terminated.
+ *
+ * Returns the byte count excluding the NUL, `ZPICO_ERR_INVALID` for a bad
+ * handle or index, or `ZPICO_ERR_BUFFER` when `_cap` cannot hold the entry plus
+ * its NUL.
+ */
+int32_t zpico_liveliness_entry(struct zpico_session_t *_session,
+                               int32_t _handle,
+                               uint32_t _index,
+                               char *_out,
+                               size_t _cap);
 
 /**
  * Register a reply waker callback for async service client support.

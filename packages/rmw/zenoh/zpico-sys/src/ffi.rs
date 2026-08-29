@@ -48,6 +48,10 @@ pub const ZPICO_ERR_INVALID: i32 = -7;
 pub const ZPICO_ERR_PUBLISH: i32 = -8;
 /// Query timeout
 pub const ZPICO_ERR_TIMEOUT: i32 = -9;
+/// Caller's buffer cannot hold the value, which is REFUSED rather than
+/// truncated (phase-381 W1) — a partial keyexpr names a different, plausible
+/// entity, so `zpico_liveliness_entry` never returns one.
+pub const ZPICO_ERR_BUFFER: i32 = -10;
 
 // ============================================================================
 // Callback Types
