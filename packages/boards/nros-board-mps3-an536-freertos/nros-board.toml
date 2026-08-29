@@ -11,18 +11,19 @@
 # Semihosting is enabled because the family's console (`_write`,
 # `nros_board_freertos_console_write` in nros-board-freertos) goes through it.
 #
-# To talk to a ROS 2 stack on the HOST, put the guest on a tap device — and
-# note the third hub port, which is not optional:
+# To talk to a ROS 2 stack on the HOST, put the guest on a tap device:
 #
-#   -net nic -net tap,ifname=tap1,script=no,downscript=no \
-#   -netdev hubport,id=h0,hubid=0
+#   -net nic -net tap,ifname=tap1,script=no,downscript=no
 #
-# With only the NIC and the tap on the hub, QEMU never delivers host-to-guest
-# frames: the guest transmits fine and receives nothing, which reads like a
-# driver or a discovery bug and is neither. The unpeered hub port is a workaround
-# (issue 0830). The real fix exists on the qemu fork branch
-# (nano-ros-v11.0.0-patches, "flush queued packets when RX is enabled"); this
-# stays required until an SDK re-cut ships it.
+# This needs the qemu the index pins (>= 11.0.0-nros4). On an OLDER one the
+# guest transmits fine and receives nothing — which reads like a driver or a
+# discovery bug and is neither: our own lan9118 `can_receive` patch answered
+# "cannot receive" before the guest enabled RX, and nothing ever flushed the
+# queue (issue 0830). The SDK store accumulates, so a checkout that provisioned
+# qemu before 2026-08-29 still has the broken one — re-run `nros setup --tool
+# qemu` rather than adding the third unpeered `-netdev hubport,id=h0,hubid=0`
+# this comment used to prescribe. That workaround masked the deadlock by giving
+# the hub a port that always accepts, i.e. by disabling back-pressure.
 
 [[board]]
 names = ["mps3-an536-freertos", "an536", "AN536"]

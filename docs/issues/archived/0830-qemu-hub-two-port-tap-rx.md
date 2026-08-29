@@ -2,10 +2,11 @@
 id: 830
 title: "A QEMU net hub with only a NIC and a tap never delivers host->guest
   frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX"
-status: open
+status: resolved
 type: bug
 area: boards
 related: [phase-385, issue-0836]
+resolved_in: qemu-11.0.0-nros4
 ---
 
 ## Symptom
@@ -132,11 +133,33 @@ today only handles the on->off edge:
         s->mac_cr = val & ~MAC_CR_RESERVED;
 ```
 
-This belongs on the fork branch `nano-ros-v11.0.0-patches` and needs a re-cut
-SDK release to reach users, so the third hub port stays the documented
-workaround until then. Note the pending `-nros3` re-cut already queued in
-`nros-sdk-index.toml` (issue 0368 F3, the libslirp rpath bundle) — this fix
-should ride along with it rather than earn its own release.
+Landed on the fork branch `nano-ros-v11.0.0-patches` and shipped in
+`qemu-11.0.0-nros4` (2026-08-29); the index now pins `-nros6`, which also
+carries 0836's back-pressure fix and the 0368 F3 library bundle.
+
+## The workaround is retired, and here is the measurement that retired it
+
+A fix in the dist is not evidence the workaround is unnecessary, so this was
+re-measured against the shipped artifact rather than a local build, TWO PORTS
+on both sides — `-net nic -net socket,connect=127.0.0.1:PORT`, which is the
+same two-port hub as the tap wiring. The probe beacons broadcast ICMP echo from
+t=0, i.e. BEFORE the guest enables RXEN, which is the trigger; an echo REPLY is
+proof the guest received something. Same `mps3_an536_entry` image, 25 s each,
+twice each:
+
+| provisioned dist | frames from guest | RX-proof frames | verdict |
+| --- | --- | --- | --- |
+| `11.0.0-nros2` (pre-fix) | 7 | **0** | rx-dead |
+| `11.0.0-nros6` (fixed) | 239 | **231** | rx-works |
+
+So two ports is now correct, and the third unpeered port is gone from the AN536
+board descriptor and from phase-385.
+
+**Operational note: the SDK store ACCUMULATES.** A checkout that provisioned
+qemu before 2026-08-29 still has `11.0.0-nros2` in `~/.nros/sdk/qemu/` and still
+has this bug — the symptom returns and looks like a regression. Re-run
+`nros setup --tool qemu`. That the control run above used exactly such a stale
+store copy is the point: it was sitting there, ready to be picked up.
 
 ## What this cost, and the lesson
 

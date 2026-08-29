@@ -166,17 +166,27 @@ in the ASI repo.
   * the guest logs the host's published `12345` **20** times;
   * `ping 192.0.3.10` from the host: 0% loss, neighbour `REACHABLE`.
 
-  The cause was NOT nano-ros. QEMU's net hub, when it holds only the board NIC
-  and the tap, never delivers host-to-guest frames — see **issue 0830**. The
-  fix is one extra flag on the QEMU line:
+  The cause was NOT nano-ros — but it was not upstream QEMU either, which is
+  what this entry said next. It was **our** lan9118 `can_receive` patch, which
+  answered "cannot receive" before the guest enabled RX and left the queue with
+  nothing to flush it (**issue 0830**, resolved). At the time the workaround
+  here was a third, unpeered hub port, which worked by giving the hub a port
+  that always accepts — i.e. by disabling back-pressure:
 
   ```
   -net nic -net tap,ifname=tap1,script=no,downscript=no \
-  -netdev hubport,id=h0,hubid=0
+  -netdev hubport,id=h0,hubid=0        # NO LONGER NEEDED
   ```
 
-  Measured back to back, twice each: two ports gives 0 frames at the driver
-  and 100% ping loss; three ports gives 19-20 frames and 0% loss.
+  The real fix (flush the queue on the RXEN off->on edge) ships in the dist as
+  of `qemu-11.0.0-nros4`, so two ports is now correct:
+
+  ```
+  -net nic -net tap,ifname=tap1,script=no,downscript=no
+  ```
+
+  Measured back to back, twice each, two ports on both: the pre-fix dist gives
+  0 RX-proof frames, the fixed one gives 231.
 
   **Two hypotheses recorded here earlier were WRONG, and are corrected rather
   than quietly dropped:**
