@@ -1,91 +1,82 @@
 ---
 id: 865
-title: "no example registers parameter services, so `ros2 param list` returns
-  nothing against every nano-ros node — the capability exists and is never shown"
+title: "parameter services are implemented and tested but undiscoverable: no
+  example calls them, and the C header declares the entry point unconditionally
+  so a caller without the feature gets a bare `undefined reference`"
 status: open
 type: bug
 area: examples, docs
 related: [issue-0864]
 ---
 
-## Symptom
+## What is actually true
 
-Against the CANHUBK344 action-server image, with a `demo_nodes_cpp` talker on
-the same router as a control:
-
-```
-$ ros2 param list /fibonacci_action_server
-                                     <- nothing
-
-$ ros2 param list /talker
-  qos_overrides./parameter_events.publisher.depth
-  qos_overrides./parameter_events.publisher.durability
-  ...
-```
-
-`ros2 service list` tells the same story from the other side:
+An earlier revision of this issue claimed the parameter-service capability was
+"implemented and never demonstrated". That was filed on incomplete evidence and
+is **wrong**. The capability is exercised and tested:
 
 ```
-/talker/describe_parameters
-/talker/get_parameter_types
-/talker/get_parameters
-/talker/list_parameters
-/talker/set_parameters
-/talker/set_parameters_atomically
+packages/testing/nros-tests/bins/param-chatter-talker/src/main.rs:30
+    .register_parameter_services()
+packages/testing/nros-tests/tests/params.rs:177
+    fn test_ros2_param_list(zenohd_unique: ZenohRouter)
 ```
 
-Six for the host node, none for the board's.
+That test drives a real `ros2 param list` against a running node. The path works
+and is covered.
 
-## Cause
+Nor is "no example calls it" an oversight. Phase-277 W3.a moved the
+`param-services` build **out** of the talker example and into a dedicated
+fixture bin precisely so the example would stay cfg-free, and recorded that
+intent in `examples/fixtures.toml`. Adding the call back to an example would
+reverse a considered decision.
 
-`Executor::register_parameter_services()` (`executor/spin.rs:6388`, exposed to C
-as `nros_executor_register_parameter_services`) is **opt-in**, and:
+## The real defect: it fails unhelpfully, and late
 
-```
-$ grep -rl register_parameter_services examples/
-                                     <- no match
-```
+Two narrower things are wrong, and they share a shape.
 
-Not one example in the tree calls it. The capability is fully implemented —
-`parameter_services.rs` serves all six — and nothing demonstrates it.
+**1. The C header declares the entry point unconditionally.**
+`nros_generated.h:3213` declares:
 
-## Why opt-in is defensible and the current state is not
-
-Opt-in is the right default: the six servers cost RAM on a part where that is
-the binding constraint, and an image with no parameters should not pay for
-them. That is not the complaint.
-
-The complaint is that every nano-ros node therefore looks, to standard ROS 2
-tooling, like a node whose parameter interface is broken rather than one that
-declined to have it. `ros2 param list` returning empty is indistinguishable
-from a node that is failing to answer, which is exactly the kind of ambiguity
-that cost issue 0852 six wrong hypotheses.
-
-## What is NOT wrong here
-
-Worth recording, because it looks like a defect and is not.
-
-The board's action services do not appear in a bare `ros2 service list`:
-
-```
-$ ros2 service list --include-hidden-services
-/fibonacci/_action/cancel_goal
-/fibonacci/_action/get_result
-/fibonacci/_action/send_goal
+```c
+NROS_PUBLIC nros_ret_t nros_executor_register_parameter_services(struct nros_executor_t *executor);
 ```
 
-`ros2 service list` hides `_action/` services by default. All three are
-registered, correctly named, correctly type-mangled, and they work — goals
-complete with the right sequence. Same for `ros2 node info` showing an empty
-"Service Servers" block while "Action Servers" lists `/fibonacci`.
+with no `#if` guard and no note. The implementation is gated:
+
+```rust
+#[cfg(all(feature = "param-services", feature = "rmw-cffi"))]   // parameter.rs:769
+```
+
+`param-services` is not a default feature. So a C caller who reads the header,
+writes the obvious call, and builds gets:
+
+```
+main.c:(.text+0x302): undefined reference to `nros_executor_register_parameter_services'
+```
+
+A linker error naming a symbol is the least informative way to say "you need to
+enable a capability". The header should either be guarded by the same condition
+or carry the requirement in its doc comment — the declaration currently promises
+something the library may not contain.
+
+**2. The absence is indistinguishable from a fault.**
+A node built without the feature answers `ros2 param list` with silence, which
+looks exactly like a node whose parameter interface is broken. This is the same
+observer problem as hidden `_action/` services: the system is behaving correctly
+and nothing says so.
 
 ## Fix direction
 
-1. Call `register_parameter_services()` in at least one Zephyr example, and
-   declare a parameter in it, so the path is exercised on hardware rather than
-   only in host tests.
-2. Say so where a reader will hit it: the examples README and the parameter
-   docs should state that `ros2 param` needs this call, and that omitting it is
-   a footprint choice rather than a missing feature.
-3. Consider a boot-time log line when a node comes up without parameter
-   services — one line, once, so the empty `ros2 param list` explains itself.
+- Guard the declaration, or document the required capability at the declaration.
+  A caller should learn the requirement from the header, not from `ld`.
+- Say in the parameter docs which capability is needed and how a CMake consumer
+  asks for it (`nros_feature_set` capability `param_services`).
+- Consider one line at node startup when parameter services are absent, so an
+  empty `ros2 param list` explains itself.
+
+## Not to do
+
+Do not add the call to an example to "demonstrate" it. That is what phase-277
+W3.a deliberately undid, and it would make the example's build feature-dependent
+again.
