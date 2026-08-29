@@ -5931,7 +5931,7 @@ check-artifact-identity-budget:
 # Keeping the newest per (dir, crate, ext) is free: that copy is the one cargo
 # links and the older ones are unreferenced, so nothing rebuilds. `just prune-artifacts`
 # is a DRY RUN; add `apply=1` to delete.
-prune-artifacts dir="examples/workspaces/mixed/build-workspace-fixtures" apply="":
+prune-artifacts dir="examples/workspaces/features/build-workspace-fixtures" apply="":
     @python3 scripts/build/prune-superseded-artifacts.py {{dir}} {{ if apply == "" { "" } else { "--apply" } }}
 
 # phase-340 W3 — ONE `--target` spelling for every cargo command cmake emits.
