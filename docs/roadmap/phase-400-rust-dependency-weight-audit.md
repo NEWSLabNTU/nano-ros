@@ -105,17 +105,32 @@ The HTML embeds `const UNIT_DATA`; per-unit durations parsed from it.
 
 **234 units, 220 actually compiled, 13.5 s wall, 118.3 CPU-s.**
 
-| chain | CPU | share |
+| chain (DISJOINT sets) | CPU | share |
 | --- | --- | --- |
-| `nros-macros` orchestration subtree | 37.7 s | **31.9 %** |
-| `bindgen` chain (`clang-sys`, `regex`, `prettyplease`, …) | 21.8 s | **18.4 %** |
-| `cbindgen` chain (`clap*`, `anstream`, `tempfile`, …) | 8.1 s | **6.8 %** |
-| everything else | 50.7 s | 42.9 % |
+| `bindgen` chain, exclusive | 20.6 s | 17.4 % |
+| `cbindgen` chain, exclusive | 8.1 s | 6.8 % |
+| **nros orchestration crates** | **3.1 s** | **2.6 %** |
+| **shared support crates** | **43.8 s** | **37.0 %** |
+| target-side + everything else | 42.7 s | 36.1 % |
 
-**57 % of the cargo CPU on a Zephyr Rust image is host-side tooling that emits no
-target code.** Heaviest single units: `zerocopy` 6.9 s (removable), `heapless`
-5.1+4.4 s, `bindgen` 4.3 s, `winnow` 3.7 s (removable), `getrandom` 3.0 s, `syn`
-2.6+2.0 s, `memchr` 2.5 s (removable), `cbindgen` 1.8 s.
+The "shared support" row is `serde`/`serde_core`/`serde_derive`, `toml` +
+`toml_edit` + `winnow`, `serde_json`, `memchr`, `zerocopy`, `syn`, `thiserror`,
+`indexmap`/`hashbrown`, `quick-xml`, `yaml-rust2`, `walkdir`, `eyre`. Heaviest:
+`zerocopy` 6.9 s, `winnow` 3.7 s, `syn` 2.6+2.0 s, `memchr` 2.5 s.
+
+**Gating the orchestration half removes 3.1 s directly, not 37.7 s.** An earlier
+version of this document claimed 31.9 %, and it was WRONG in a way worth
+recording because the mistake is easy to repeat: the "removable" set was computed
+from the `nros` package graph and then matched by NAME against the leaf's build,
+so every shared crate got attributed to orchestration. The three groups
+overlapped and were summed independently, which also double-counted them.
+`cbindgen` parses `cbindgen.toml`, so it wants `serde` and `toml` whether or not
+`nros-macros` does; `bindgen` wants `regex`/`memchr`/`prettyplease`. Cold, the
+nros orchestration crates themselves are `nros-macros` 0.59 s, `nros-pkg-index`
+0.06 s, `nros-orchestration-ir` 0.07 s.
+
+The 43.8 s shared bucket is the real prize, and it is NOT claimable by any single
+change: those crates leave the build only when EVERY requirer of them does.
 
 **A discarded measurement, recorded so the number is not quoted from the log.**
 The FIRST run of this build reported 45.3 s wall / 255.3 CPU-s and put
@@ -126,11 +141,41 @@ and the per-unit times were inflated by CPU contention from other cargo work
 running at the same time — cold and uncontended, `nros-macros` itself is 0.6 s.
 Take the 118.3 s table, not the 255.3 s one.
 
+## Work items
+
+**W1 — landed.** `nros-launch-parser` removed from `nros-macros` (one crate).
+
+**W2 — gate the orchestration half of `nros-macros`.** `main_macro.rs` is 3798 of
+the crate's 4692 lines and `lib.rs:41` is its only caller;
+`source_metadata_sidecars.rs` has exactly one caller, `main_macro.rs:884`. So the
+cut is clean: `#[cfg(feature = "launch")] mod main_macro;` plus the five deps
+optional, forwarded by `nros`. The feature is REQUIRED, not granted — a
+`compile_error!` naming `launch` when `main!(launch = …)` is expanded without it.
+*Acceptance:* a Zephyr Rust leaf builds with the feature off; `main!(launch = …)`
+without it fails with a message naming the feature; cold `--timings` on the same
+leaf shows the three nros orchestration crates absent. *Expected saving: ~3 s of
+118 s, plus whatever shared crates no other requirer wants — measure, do not
+assume.*
+
+**W3 — attribute the 43.8 s shared bucket.** For each crate in it, find every
+requirer in the LEAF's graph (`cargo tree -i`, run inside the west build where
+the leaf resolves). Until this exists, no one can say what W2 or a cbindgen
+change actually saves, because the answer depends on who else wants `serde`,
+`toml`, `zerocopy` and `syn`. This is the prerequisite for W4/W5, not optional
+groundwork. *Acceptance:* a table of shared crate -> requirers, from the leaf.
+
+**W4 — build-time `bindgen`, 17.4 %.** See direction 2 below.
+
+**W5 — build-time `cbindgen`, 6.8 %.** Same shape; note it is also a requirer of
+`serde`/`toml`, so W5 and W2 interact — doing only one may free nothing.
+
 ## Directions, in measured order
 
-1. **Gate the orchestration half of `nros-macros`** (W2 above) — 31.9 % of cold
-   cargo CPU, and the largest single lever found. Design note stands: the feature
-   is REQUIRED, not granted.
+1. **Gate the orchestration half of `nros-macros`** (W2) — 2.6 % directly. It is
+   still worth doing: the cut is clean, it stops a non-orchestrating image
+   compiling 3798 lines of launch expansion, and it is one of the requirers whose
+   removal W3 needs to account for. It is NOT the big lever this document first
+   claimed.
 2. **`bindgen` at build time — 18.4 %.** The repo ALREADY has the alternative and
    proved it: RFC-0054 commits bindgen output for the ABI crates
    (`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
