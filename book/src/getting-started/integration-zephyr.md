@@ -319,6 +319,37 @@ may act.
 `nros build` is the convenience that applies an image's overlays for you; it
 never becomes a required layer between you and west.
 
+#### Starting from nothing: `nros new entry`
+
+You do not have to write the entry package by hand:
+
+```bash
+nros new entry zephyr_entry --platform zephyr
+```
+
+```text
+nros new entry: scaffolded ./src/zephyr_entry (7 file(s))
+  declared [image.zephyr_entry] in ./src/demo_bringup/system.toml
+
+Next:
+  nros sync
+  nros build demo_bringup:zephyr_entry --zephyr-workspace <dir>
+```
+
+It writes the package — `Cargo.toml`, `CMakeLists.txt`, `build.rs`,
+`src/lib.rs`, `prj.conf`, `prj-zenoh.conf`, `boards/<board>.conf` — and three
+things outside it that are easy to miss and invisible until they fail:
+
+* the **`[image.*]` block**, with `board`, `entry` and the `conf` overlay the
+  entry's own `CMakeLists.txt` requires;
+* an **`exclude` entry in every enclosing cargo workspace**, because a
+  west-built `staticlib` must not be an ordinary cargo member;
+* a **path dependency per node package** the bringup declares, since the entry
+  links them.
+
+`--board`, `--rmw` and `--bringup` override the defaults
+(`native_sim/native/64`, `zenoh`, and the workspace's single bringup).
+
 #### The whole flow, end to end
 
 Five commands, run from your workspace. This is the `examples/workspaces/rust`

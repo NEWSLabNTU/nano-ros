@@ -167,6 +167,92 @@ pub fn run(args: Args) -> Result<()> {
         };
     }
 
+    // `nros new entry <name> --platform zephyr` — a framework ENTRY package,
+    // which is not a standalone project (see `new_entry`'s module docs for why
+    // it is a separate noun rather than a `--platform` value on the form
+    // above).
+    if args
+        .name
+        .as_ref()
+        .and_then(|p| p.to_str())
+        .map(|s| s == "entry")
+        .unwrap_or(false)
+    {
+        let entry_name = args
+            .system_name
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .ok_or_else(|| eyre::eyre!("`nros new entry <name>` requires a package name"))?
+            .to_string();
+        crate::cmd::new_entry::validate_entry_name(&entry_name)?;
+
+        let platform = args
+            .platform
+            .clone()
+            .unwrap_or_else(|| "zephyr".to_string());
+        if platform != "zephyr" {
+            bail!(
+                "`nros new entry` currently scaffolds Zephyr entries only \
+                 (got --platform {platform}).\n  \
+                 Every other platform builds through cargo or cmake, where the \
+                 entry is GENERATED from the image and needs no package of its \
+                 own (RFC-0065 D3)."
+            );
+        }
+
+        let cwd = std::env::current_dir()?;
+        let ws_root = args.workspace_root.clone().unwrap_or_else(|| cwd.clone());
+        let into = args.into.clone().unwrap_or_else(|| ws_root.join("src"));
+        let bringup_dir = match args.bringup.as_deref() {
+            Some(b) => {
+                let p = PathBuf::from(b);
+                if p.is_absolute() {
+                    p
+                } else if ws_root.join(b).join("system.toml").is_file() {
+                    ws_root.join(b)
+                } else {
+                    // A bare package name is the natural spelling — `--bringup
+                    // demo_bringup` rather than `--bringup src/demo_bringup`.
+                    ws_root.join("src").join(b)
+                }
+            }
+            None => crate::cmd::new_entry::sole_bringup(&ws_root.join("src"))?,
+        };
+
+        let out = crate::cmd::new_entry::scaffold_entry(&crate::cmd::new_entry::EntryScaffold {
+            entry_dir: into.join(&entry_name),
+            bringup_dir: bringup_dir.clone(),
+            workspace_root: ws_root,
+            board: args
+                .board
+                .clone()
+                .unwrap_or_else(|| "native_sim/native/64".to_string()),
+            rmw: args.rmw.clone().unwrap_or_else(|| "zenoh".to_string()),
+        })?;
+
+        println!(
+            "nros new entry: scaffolded {} ({} file(s))",
+            out.entry_dir.display(),
+            out.files.len()
+        );
+        let bringup_name = bringup_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("<bringup>");
+        println!(
+            "  declared [image.{}] in {}/system.toml",
+            out.image_id,
+            bringup_dir.display()
+        );
+        println!("\nNext:");
+        println!("  nros sync");
+        println!(
+            "  nros build {bringup_name}:{} --zephyr-workspace <dir>",
+            out.image_id
+        );
+        return Ok(());
+    }
+
     // Phase 212.F — system / bringup mode: `nros new system <name>_bringup
     // --components <list>`. The literal `system` keyword as the first
     // positional dispatches here.

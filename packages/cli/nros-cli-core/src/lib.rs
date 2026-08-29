@@ -87,6 +87,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
     match cmd {
         cmd::Cmd::Build(args) => cmd::build::run(args),
         cmd::Cmd::Materialize(args) => cmd::materialize::run(args),
+        cmd::Cmd::ImageFacts(args) => cmd::image_facts::run(args),
         cmd::Cmd::New(args) => cmd::new::run(args),
         cmd::Cmd::Generate(args) => cmd::generate::run(args),
         cmd::Cmd::GenerateRust(args) => cmd::generate::run_rust(args),

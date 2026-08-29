@@ -652,3 +652,103 @@ fn two_boards_on_one_platform_get_separate_cmake_roots() {
         "two boards on one platform must not share a cmake build dir"
     );
 }
+
+// ─── the two-tree case ───────────────────────────────────────────────────────
+//
+// RFC-0085 D1 puts the user's workspace outside BOTH the nano-ros checkout and
+// the west workspace. Every test above already builds its workspace in a temp
+// dir, so the workspace-vs-checkout half has been covered all along — what was
+// never asserted is the other two links: that a Zephyr named from a THIRD tree
+// reaches the plan, and that a missing framework is a named error rather than a
+// silent wrong answer.
+//
+// A real build in a moved tree is NOT a test: compiling at test time is banned
+// (AGENTS.md Testing), and it would need a Zephyr and ~20 minutes. That tier is
+// `scripts/dev/two-tree-check.sh`, run by hand, with its transcript in
+// RFC-0085.
+
+/// A Zephyr in a third tree reaches the plan, and nothing about it is guessed.
+#[test]
+fn the_zephyr_workspace_can_live_in_a_third_tree() {
+    let ws = tempfile::tempdir().unwrap();
+    let zephyr_ws = tempfile::tempdir().unwrap();
+    fixture(ws.path());
+    // A workspace is "a directory containing zephyr/". Making it real rather
+    // than passing a bare path is the point: the resolver checks, so a test
+    // that skipped this would pass on a path that cannot build.
+    std::fs::create_dir_all(zephyr_ws.path().join("zephyr")).unwrap();
+
+    let mut a = args(ws.path(), &["zephyr"]);
+    a.zephyr_workspace = Some(zephyr_ws.path().to_path_buf());
+    let plans = plan_builds(&a).expect("resolves");
+
+    let hand = plans[0].handoff.as_ref().expect("a west handoff");
+    let line = hand.display();
+    // Three trees, three roles, none of them each other.
+    assert!(
+        line.contains(&format!(
+            "ZEPHYR_BASE={}",
+            zephyr_ws.path().join("zephyr").display()
+        )),
+        "the Zephyr comes from the third tree: {line}"
+    );
+    assert!(
+        line.contains(&ws.path().display().to_string()),
+        "the application comes from the user's workspace: {line}"
+    );
+    assert!(
+        !line.contains(&repo_root().join("examples").display().to_string()),
+        "nothing is reached from inside the nano-ros checkout: {line}"
+    );
+}
+
+/// With no Zephyr anywhere, the plan still resolves — and the failure is
+/// deferred to exec, where it names what to do.
+///
+/// `--dry-run` must be answerable on a machine with no Zephyr at all, because
+/// the message it prints is the command the user is being told to run. A plan
+/// that refused here would withhold exactly that.
+#[test]
+fn a_plan_is_answerable_with_no_zephyr_on_the_machine() {
+    let ws = tempfile::tempdir().unwrap();
+    fixture(ws.path());
+
+    let mut a = args(ws.path(), &["zephyr"]);
+    a.zephyr_workspace = Some(ws.path().join("nowhere"));
+    let plans = plan_builds(&a).expect("a plan is still an answer");
+    assert_eq!(plans[0].driver, Driver::West);
+    let line = plans[0].handoff.as_ref().expect("handoff").display();
+    assert!(line.contains("west build -b"), "{line}");
+}
+
+/// Without the framework the build stops and NAMES the two ways to supply it.
+///
+/// In one checkout the autodetect walk finds `packages/boards` by accident of
+/// layout. A genuinely separate tree has no such luck, so this is the first
+/// thing a two-tree user hits — and a message that merely said "no board
+/// matched" would send them to their own `system.toml` instead.
+#[test]
+fn a_missing_framework_names_how_to_supply_it() {
+    let ws = tempfile::tempdir().unwrap();
+    fixture(ws.path());
+
+    let mut a = args(ws.path(), &["zephyr"]);
+    a.nano_ros_path = None;
+    // `NROS_REPO_DIR` is process-global; this asserts the message rather than
+    // the env, so it holds however the harness was launched.
+    let err = match plan_builds(&a) {
+        Err(e) => e.to_string(),
+        Ok(_) => {
+            // A host that exports NROS_REPO_DIR resolves it legitimately. Not a
+            // failure of the code under test, and not something to assert
+            // around — say so and stop.
+            assert!(
+                std::env::var_os("NROS_REPO_DIR").is_some(),
+                "no framework and no NROS_REPO_DIR, yet the plan resolved"
+            );
+            return;
+        }
+    };
+    assert!(err.contains("--nano-ros-path"), "{err}");
+    assert!(err.contains("NROS_REPO_DIR"), "{err}");
+}
