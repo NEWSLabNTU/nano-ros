@@ -108,51 +108,6 @@ use self::register as talker_register;
 // Tests
 // =============================================================================
 
-/// issue 0900 — the arena an image is GIVEN is derived by budgeting every slot
-/// at the ActionClient worst case, so an image without one carries several
-/// times what it can use. Measured on a real opened executor rather than
-/// re-deriving the constant, because the point is what an image actually gets.
-///
-/// The arena is a BUMP allocator, so `arena_used` is the exact claimed total,
-/// not a per-slot reservation — the allocator has always known this number and
-/// until now had no way to say it.
-///
-/// This asserts the DEFECT, so it is expected to fail (and want rewriting) once
-/// 0900 lands a per-kind derivation. That is the point: it pins the number that
-/// a fix has to move.
-#[rstest]
-fn executor_arena_is_over_provisioned_for_a_timer_only_image(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() {
-        nros_tests::skip!("zenohd not found");
-    }
-
-    let locator = zenohd_unique.locator();
-    let cfg = ExecutorConfig::new(&locator)
-        .node_name("arena_headroom")
-        .domain_id(181);
-    let mut executor = Executor::open(&cfg).expect("Executor::open failed");
-
-    let capacity = executor.arena_capacity();
-    assert!(capacity > 0, "an executor with a zero arena is issue 0460");
-
-    executor
-        .register_timer(nros::TimerDuration::from_millis(100), || {})
-        .expect("register_timer");
-    let used = executor.arena_used();
-
-    assert!(
-        used > 0,
-        "registering a timer must claim arena bytes; a bump allocator that          charges nothing is not measuring anything"
-    );
-    // The defect, stated as a number. A timer-only image is the cheapest
-    // possible workload and must not come anywhere near an arena sized for
-    // MAX_CBS action clients.
-    assert!(
-        used * 2 <= capacity,
-        "issue 0900 regression check: a timer-only executor claimed {used} of          {capacity} arena bytes. If this now FAILS because usage rose, the          arena derivation may have been fixed — re-read the issue before          raising the threshold"
-    );
-}
-
 #[rstest]
 fn dispatch_fires_timer_callback(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {

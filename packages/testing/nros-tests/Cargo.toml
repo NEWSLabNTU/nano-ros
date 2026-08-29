@@ -374,6 +374,15 @@ path = "tests/integration_px4.rs"
 name = "logging"
 path = "tests/logging.rs"
 
+# issue 0900 — the first-spin arena-headroom advisory. Its OWN binary because
+# the advisory is one-shot on a process-scoped flag: any other spinning test in
+# the same binary would consume it first, and tests run in parallel, so sharing
+# would make it pass or fail by scheduling.
+[[test]]
+name = "executor_arena_advisory"
+path = "tests/executor_arena_advisory.rs"
+required-features = ["component-runtime-test"]
+
 # Phase 88.15 — RTOS smoke fixtures + QEMU output capture.
 [[test]]
 name = "logging_smoke"
