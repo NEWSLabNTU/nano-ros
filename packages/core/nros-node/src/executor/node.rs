@@ -1758,28 +1758,56 @@ impl<'e, 's> NodeCtx<'e, 's> {
             )
     }
 
-    /// Convenient borrowed (zero-copy) subscription (Phase 229.6, issue 0007 /
-    /// RFC-0033 `borrowed` mode).
+    /// Deprecated spelling of [`create_subscription_viewable`](Self::create_subscription_viewable).
     ///
-    /// `B` is the code-generated borrowed-message marker (e.g. `ImageBorrow`,
-    /// emitted alongside the owned `Image` for a `.msg` with a `borrowed`-mode
-    /// field). The callback receives `&B::View<'a>` — a lifetime-carrying
-    /// message whose unbounded sequence/string fields borrow directly from the
-    /// receive buffer (no `heapless::Vec` copy); the view is valid only for the
-    /// callback's duration.
-    ///
-    /// Uses `KEEP_LAST(1)` QoS → triple buffer, as borrowed subscriptions
-    /// require (a single well-defined slot for the callback's borrow). For an
-    /// explicit deeper queue use the owned
-    /// [`create_subscription`](Self::create_subscription); a borrowed
-    /// subscription registered with `KEEP_LAST(N>1)` is rejected.
+    /// phase-390 renamed RFC-0033's `borrowed` mode to `view`, because the fact
+    /// that mattered was never that the data is borrowed but that NOTHING WAS
+    /// DESERIALIZED. A forwarder rather than a hard break: this is a public
+    /// Rust API, the rename is cosmetic, and the C ABI break in W2 was accepted
+    /// only because a C type name cannot carry a deprecation.
+    #[deprecated(
+        since = "0.5.0",
+        note = "renamed to `create_subscription_viewable` (phase-390: RFC-0033 \
+                `borrowed` mode is now `view`)"
+    )]
     pub fn create_subscription_borrowed<B, F>(
         &mut self,
         topic: &str,
         callback: F,
     ) -> Result<super::types::HandleId, NodeError>
     where
-        B: nros_core::BorrowedMessage + 'static,
+        B: nros_core::ViewableMessage + 'static,
+        F: for<'a> FnMut(&B::View<'a>) + 'static,
+    {
+        self.create_subscription_viewable::<B, F>(topic, callback)
+    }
+
+    /// Convenient zero-copy subscription (Phase 229.6, issue 0007 / RFC-0033
+    /// `view` mode).
+    ///
+    /// `B` is the code-generated VIEWABLE marker (e.g. `ImageViewable`, emitted
+    /// alongside the `inline` `Image` for a `.msg` with a `view`-mode field).
+    /// The marker is zero-sized and carries NO lifetime, which is the whole
+    /// reason it exists: `B::View<'a>` does, and a generic parameter cannot be
+    /// the lifetime-carrying type itself. That is also why phase-390 could not
+    /// simply rename it to `{Msg}View` — the view struct already owns that
+    /// name, and the marker points AT it.
+    ///
+    /// The callback receives `&B::View<'a>` — a message whose unbounded
+    /// sequence/string fields point directly into the receive buffer (no
+    /// `heapless::Vec` copy); valid only for the callback's duration.
+    ///
+    /// Uses `KEEP_LAST(1)` QoS → triple buffer, as view subscriptions require
+    /// (a single well-defined slot for the callback). For an explicit deeper
+    /// queue use the `inline` [`create_subscription`](Self::create_subscription);
+    /// a view subscription registered with `KEEP_LAST(N>1)` is rejected.
+    pub fn create_subscription_viewable<B, F>(
+        &mut self,
+        topic: &str,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        B: nros_core::ViewableMessage + 'static,
         F: for<'a> FnMut(&B::View<'a>) + 'static,
     {
         self.executor

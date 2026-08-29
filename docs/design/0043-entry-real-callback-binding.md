@@ -113,7 +113,7 @@ The subscription receive flavours (none names a callback):
 |---|---|---|---|
 | untyped / zero-copy | `(const uint8_t* data, size_t len, void* ctx)` | none | exists; spiked on NuttX |
 | typed | `(const M&)` — trampoline deserializes (opt-in) | one | exists (`create_subscription(sub, topic, cb)`) |
-| borrowed-typed | `(const M<'a>&)` via `DeserializeBorrowed` over the slot | none | Rust-executor reality; **C++ surface TBD** (the spike used raw bytes, not `M<'a>`) |
+| borrowed-typed | `(const M<'a>&)` via `DeserializeView` over the slot | none | Rust-executor reality; **C++ surface TBD** (the spike used raw bytes, not `M<'a>`) |
 
 ### Spike (2026-06-12) — pub/sub executor-callback path on embedded
 
@@ -325,7 +325,7 @@ Rust always bound real callbacks):
    clients boot + exchange on NuttX before retiring the 238 synthesis for those
    transports (236.D.5).
 9. **C++ borrowed-typed surface.** The zero-copy *typed* flavor (`const M<'a>&`
-   via `DeserializeBorrowed`) is Rust-executor reality but may lack a C++
+   via `DeserializeView`) is Rust-executor reality but may lack a C++
    wrapper; the spike only exercised raw bytes. Confirm or scope it out of v1.
 10. **Rust Entry no-naming parity + framework dispatch.** **RESOLVED (phase-258
     design):** the Rust **owned-spin** Entry moves onto the `install_node_typed`

@@ -2,7 +2,7 @@
 
 use core::{marker::PhantomData, mem::MaybeUninit};
 
-use nros_core::{BorrowedMessage, RosMessage, RosService};
+use nros_core::{RosMessage, RosService, ViewableMessage};
 use nros_rmw::{QoSProfile, ServiceInfo, Session, TopicInfo, TransportError};
 
 use crate::{session, timer::TimerDuration};
@@ -19,7 +19,7 @@ use super::{
     arena::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
         ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
-        SubBufferedBorrowedEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
+        SubBufferedViewEntry, SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry,
         SubBufferedRawInfoCEntry, SubBufferedRawInfoEntry, SubInfoEntry, SubInplaceEntry,
         TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size,
         drop_entry, guard_has_data, guard_try_process, no_pre_sample,
@@ -3992,8 +3992,8 @@ impl<'s> Executor<'s> {
     /// Register a borrowed (zero-copy) buffered subscription (Phase 229.6,
     /// issue 0007 / RFC-0033 `borrowed` mode).
     ///
-    /// `B` is the code-generated borrowed-message marker (e.g. `ImageBorrow`)
-    /// implementing [`BorrowedMessage`](nros_core::BorrowedMessage); the
+    /// `B` is the code-generated borrowed-message marker (e.g. `ImageViewable`)
+    /// implementing [`ViewableMessage`](nros_core::ViewableMessage); the
     /// callback receives `&B::View<'a>` — a lifetime-carrying message whose
     /// unbounded sequence/string fields borrow directly from the receive buffer
     /// (no `heapless::Vec` copy). The view is valid only for the callback's
@@ -4012,10 +4012,10 @@ impl<'s> Executor<'s> {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        B: nros_core::BorrowedMessage + 'static,
+        B: nros_core::ViewableMessage + 'static,
         F: for<'a> FnMut(&B::View<'a>) + 'static,
     {
-        type Entry<B, F> = SubBufferedBorrowedEntry<B, F>;
+        type Entry<B, F> = SubBufferedViewEntry<B, F>;
 
         // Borrowed views require a single well-defined slot (triple buffer).
         if qos.depth > 1 {
@@ -4032,8 +4032,8 @@ impl<'s> Executor<'s> {
         };
         let mut topic = TopicInfo::new(
             topic_name,
-            <B as BorrowedMessage>::TYPE_NAME,
-            <B as BorrowedMessage>::TYPE_HASH,
+            <B as ViewableMessage>::TYPE_NAME,
+            <B as ViewableMessage>::TYPE_HASH,
         )
         .with_domain(self.domain_id)
         .with_namespace(&ns);

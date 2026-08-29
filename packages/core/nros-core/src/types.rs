@@ -38,19 +38,19 @@ pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize 
 /// A `borrowed`-mode message is a *family* of types parameterized by the
 /// receive-buffer lifetime — e.g. `struct Image<'a> { data: &'a [u8], … }`.
 /// Rust cannot name such a family with a single type parameter, so codegen
-/// emits a zero-sized marker (`struct ImageBorrow;`) implementing this trait
+/// emits a zero-sized marker (`struct ImageViewable;`) implementing this trait
 /// with the generic associated type [`View`](Self::View) bound to the
 /// lifetime-carrying message. The executor monomorphizes the borrowed
 /// subscription on the marker and reconstructs `View<'a>` per callback via
-/// [`DeserializeBorrowed`](nros_serdes::DeserializeBorrowed).
+/// [`DeserializeView`](nros_serdes::DeserializeView).
 ///
 /// The marker carries the same [`TYPE_NAME`](Self::TYPE_NAME) /
 /// [`TYPE_HASH`](Self::TYPE_HASH) identity as the owned [`RosMessage`] for the
 /// same `.msg`, so topic matching is identical.
-pub trait BorrowedMessage {
+pub trait ViewableMessage {
     /// The lifetime-carrying borrowed view of the message, valid for the
     /// duration of a single subscription callback.
-    type View<'a>: nros_serdes::DeserializeBorrowed<'a>;
+    type View<'a>: nros_serdes::DeserializeView<'a>;
 
     /// Full ROS type name in DDS format (matches the owned [`RosMessage`]).
     const TYPE_NAME: &'static str;

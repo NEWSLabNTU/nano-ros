@@ -30,7 +30,7 @@ pub trait Deserialize: Sized {
 ///
 /// The reader's zero-copy primitives (`read_slice_u8`, `read_string`,
 /// `read_le_slice::<f32>`, …) supply the borrowed slices.
-pub trait DeserializeBorrowed<'a>: Sized {
+pub trait DeserializeView<'a>: Sized {
     /// Deserialize a value, borrowing variable-length fields from the reader's
     /// source buffer (no copy).
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError>;

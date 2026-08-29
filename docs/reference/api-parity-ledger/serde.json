@@ -196,7 +196,7 @@
  },
  "rust:Deserialize": {
   "verdict": "extension",
-  "why": "`fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError>`, implemented by every generated message struct; anchors `Deserialize::deserialize`. This is the trait rosidl's generated typesupport function table replaces in ROS 2, so rclrs exposes nothing to correlate against -- see `rust:CdrReader`. NOT serde's `Deserialize`: no derive, no data model, no format abstraction, one wire encoding. The sibling `DeserializeBorrowed` (RFC-0033) is NOT re-exported by the `nros` facade, so generated code names `nros_core::DeserializeBorrowed` directly (packs/nros/message.rs.jinja:145)."
+  "why": "`fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError>`, implemented by every generated message struct; anchors `Deserialize::deserialize`. This is the trait rosidl's generated typesupport function table replaces in ROS 2, so rclrs exposes nothing to correlate against -- see `rust:CdrReader`. NOT serde's `Deserialize`: no derive, no data model, no format abstraction, one wire encoding. The sibling `DeserializeView` (RFC-0033) is NOT re-exported by the `nros` facade, so generated code names `nros_core::DeserializeView` directly (packs/nros/message.rs.jinja:145)."
  },
  "rust:Deserialize::deserialize": {
   "verdict": "extension",

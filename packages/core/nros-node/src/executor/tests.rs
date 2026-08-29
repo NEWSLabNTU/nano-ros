@@ -25,8 +25,8 @@ fn executor_with_clock(session: MockSession) -> Executor<'static> {
 }
 
 use nros_core::{
-    BorrowedMessage, CdrReader, CdrWriter, DeserError, Deserialize, DeserializeBorrowed,
-    LeSliceView, RosAction, RosMessage, SerError, Serialize,
+    CdrReader, CdrWriter, DeserError, Deserialize, DeserializeView, LeSliceView, RosAction,
+    RosMessage, SerError, Serialize, ViewableMessage,
 };
 use nros_rmw::{QoSProfile, TransportError};
 
@@ -249,7 +249,7 @@ struct ImageView<'a> {
     ranges: LeSliceView<'a, f32>,
 }
 
-impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
+impl<'a> DeserializeView<'a> for ImageView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         Ok(Self {
             width: reader.read_u32()?,
@@ -259,9 +259,9 @@ impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
     }
 }
 
-/// ZST marker — matches codegen `ImageBorrow`.
-struct ImageBorrow;
-impl BorrowedMessage for ImageBorrow {
+/// ZST marker — matches codegen `ImageViewable`.
+struct ImageViewable;
+impl ViewableMessage for ImageViewable {
     type View<'a> = ImageView<'a>;
     const TYPE_NAME: &'static str = "test/msg/Image";
     const TYPE_HASH: &'static str = "image_hash";
@@ -281,7 +281,7 @@ fn borrowed_subscription_e2e_zero_copy_through_spin_once() {
 
     executor
         .node_mut(nid)
-        .create_subscription_borrowed::<ImageBorrow, _>("/image", move |view: &ImageView<'_>| {
+        .create_subscription_viewable::<ImageViewable, _>("/image", move |view: &ImageView<'_>| {
             *received2.lock().unwrap() = Some((
                 view.width,
                 view.pixels.to_vec(),
@@ -304,7 +304,7 @@ fn borrowed_subscription_e2e_zero_copy_through_spin_once() {
         w.position()
     };
 
-    // The MockSubscriber is the first field of SubBufferedBorrowedEntry, so it
+    // The MockSubscriber is the first field of SubBufferedViewEntry, so it
     // sits at the entry offset (same layout trick as the typed test above).
     let meta = executor.entries[0].as_ref().unwrap();
     let arena_ptr = executor.arena.as_ptr() as *const u8;

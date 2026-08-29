@@ -1,6 +1,6 @@
 # Phase 390 — `owned`/`borrowed` name the wrong things; rename to `inline`/`heap`/`view`
 
-**Status (2026-08-30). W1-W4 landed; W5 opened by measurement.** Opened from a
+**Status (2026-08-30). Complete — W1-W5 landed.** Opened from a
 memory-allocation review that settled the message allocation strategy before
 touching layout. Renames the RFC-0033 storage modes and amends the RFC with a
 guarantee column. No behaviour change; the modes keep their current semantics and
@@ -116,8 +116,7 @@ token spellings, two `phase-303` references, and two api-parity ledger `why`
 paragraphs. `book/src/` needed NO changes — every one of its five `borrowed`
 mentions is the English word.
 
-**W5 — the Rust surface, which needs a naming decision first.** NOT started.
-Measured after W2:
+**W5 — the Rust surface.** LANDED. Measured after W2:
 
 | identifier | sites | note |
 | --- | ---: | --- |
@@ -128,14 +127,29 @@ Measured after W2:
 | `SubBufferedBorrowedEntry` | 8 | executor arena entry |
 | `create_subscription_borrowed` | 4 | public Rust API |
 
-**The blocker is a collision, not volume.** `{Msg}Borrow` is the marker type a
-user names to subscribe (`create_subscription_borrowed::<ImageBorrow, _>`), and
-its natural new name — `{Msg}View` — is ALREADY TAKEN by the view struct the
-marker produces. So this wave has to answer "what is the marker called when the
-view type owns the obvious name?" before a line is changed; a mechanical sweep
-would either collide or invent a name nobody chose. `SlotBorrowing` and the
-`nros_cdr_borrow_*` / `borrow_loaned_message` family stay as they are — those
-spell a VERB, and RFC-0033 now records why.
+**The blocker was a collision, not volume, and it is resolved: `{Msg}Viewable`.**
+`{Msg}Borrow` is the marker a user names to subscribe, and its obvious new name
+`{Msg}View` is ALREADY TAKEN by the view struct the marker points at. The marker
+is zero-sized and carries NO lifetime — that is why it exists at all, since
+`B::View<'a>` does and a generic parameter cannot be the lifetime-carrying type
+itself. `Viewable` names the CAPABILITY rather than the mechanism, which is
+exactly what a lifetime-free marker asserts, and cannot be mistaken for the view.
+
+| old | new |
+| --- | --- |
+| `{Msg}Borrow` | `{Msg}Viewable` |
+| `BorrowedMessage` | `ViewableMessage` |
+| `DeserializeBorrowed` | `DeserializeView` |
+| `CppBorrow` / `CppBorrowKind` | `CppView` / `CppViewKind` |
+| `SubBufferedBorrowedEntry` | `SubBufferedViewEntry` |
+| `create_subscription_borrowed` | `create_subscription_viewable` |
+
+`create_subscription_borrowed` keeps a `#[deprecated]` forwarder — it is a
+public Rust API and the rename is cosmetic, where W2's C break was accepted only
+because a C type name cannot carry a deprecation.
+
+`SlotBorrowing`, `nros_cdr_borrow_*` and `borrow_loaned_message` stay as they
+are — those spell a VERB, and RFC-0033 now records why.
 
 ## Explicitly not in this phase
 

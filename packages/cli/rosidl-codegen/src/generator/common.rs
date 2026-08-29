@@ -746,13 +746,13 @@ pub(super) enum CppStorage {
     /// RFC-0033 `borrowed` (Phase 235): a zero-copy view into the CDR buffer.
     /// Carries the resolved owned capacity too — the owned `{Msg}` struct keeps
     /// a fixed-capacity container for the publish path; only `{Msg}View` borrows.
-    Borrowed(CppBorrow, Option<usize>),
+    Borrowed(CppView, Option<usize>),
 }
 
 /// The borrowed C++ view kind for a `mode = "view"` field (Phase 235).
 /// Carries `'static` strings so `CppStorage` stays `Copy`.
 #[derive(Clone, Copy)]
-pub(super) enum CppBorrow {
+pub(super) enum CppView {
     /// `nros::StringView` via `CdrReader::read_string`.
     Str,
     /// `nros::Span<cpp>` via `reader` (`read_slice_u8`/`_i8`/`_bool`).
@@ -767,27 +767,27 @@ pub(super) enum CppBorrow {
     },
 }
 
-impl CppBorrow {
+impl CppView {
     /// The C++ view type for the header (`{Msg}View`) field.
     pub(super) fn cpp_view_type(self) -> String {
         match self {
-            CppBorrow::Str => "nros::StringView".to_string(),
-            CppBorrow::Bytes { cpp, .. } => format!("nros::Span<{cpp}>"),
-            CppBorrow::Le { cpp, .. } => format!("nros::LeSpan<{cpp}>"),
+            CppView::Str => "nros::StringView".to_string(),
+            CppView::Bytes { cpp, .. } => format!("nros::Span<{cpp}>"),
+            CppView::Le { cpp, .. } => format!("nros::LeSpan<{cpp}>"),
         }
     }
     /// The `CdrReader` call (no `?`) that borrows this field's bytes.
     pub(super) fn reader_call(self) -> String {
         match self {
-            CppBorrow::Str => "read_string()".to_string(),
-            CppBorrow::Bytes { reader, .. } => format!("{reader}()"),
-            CppBorrow::Le { suffix, .. } => format!("read_le_slice::<{suffix}>()"),
+            CppView::Str => "read_string()".to_string(),
+            CppView::Bytes { reader, .. } => format!("{reader}()"),
+            CppView::Le { suffix, .. } => format!("read_le_slice::<{suffix}>()"),
         }
     }
     /// `true` for the `LeSpan` case (the FFI extracts `.as_bytes().as_ptr()`
     /// instead of `.as_ptr()`).
     pub(super) fn is_le(self) -> bool {
-        matches!(self, CppBorrow::Le { .. })
+        matches!(self, CppView::Le { .. })
     }
 }
 
@@ -799,7 +799,7 @@ fn cpp_borrow_kind(
     package_name: &str,
     message_name: &str,
     field_name: &str,
-) -> Result<CppBorrow, GeneratorError> {
+) -> Result<CppView, GeneratorError> {
     let unsupported = |elem: &str| GeneratorError::UnsupportedViewElement {
         package: package_name.to_string(),
         message: message_name.to_string(),
@@ -807,51 +807,51 @@ fn cpp_borrow_kind(
         element: elem.to_string(),
     };
     match field_type {
-        FieldType::String | FieldType::WString => Ok(CppBorrow::Str),
+        FieldType::String | FieldType::WString => Ok(CppView::Str),
         FieldType::Sequence { element_type } => match element_type.as_ref() {
             FieldType::Primitive(PrimitiveType::UInt8 | PrimitiveType::Byte) => {
-                Ok(CppBorrow::Bytes {
+                Ok(CppView::Bytes {
                     cpp: "uint8_t",
                     reader: "read_slice_u8",
                 })
             }
-            FieldType::Primitive(PrimitiveType::Int8) => Ok(CppBorrow::Bytes {
+            FieldType::Primitive(PrimitiveType::Int8) => Ok(CppView::Bytes {
                 cpp: "int8_t",
                 reader: "read_slice_i8",
             }),
-            FieldType::Primitive(PrimitiveType::Bool) => Ok(CppBorrow::Bytes {
+            FieldType::Primitive(PrimitiveType::Bool) => Ok(CppView::Bytes {
                 cpp: "uint8_t",
                 reader: "read_slice_bool",
             }),
-            FieldType::Primitive(PrimitiveType::UInt16) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::UInt16) => Ok(CppView::Le {
                 cpp: "uint16_t",
                 suffix: "u16",
             }),
-            FieldType::Primitive(PrimitiveType::Int16) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::Int16) => Ok(CppView::Le {
                 cpp: "int16_t",
                 suffix: "i16",
             }),
-            FieldType::Primitive(PrimitiveType::UInt32) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::UInt32) => Ok(CppView::Le {
                 cpp: "uint32_t",
                 suffix: "u32",
             }),
-            FieldType::Primitive(PrimitiveType::Int32) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::Int32) => Ok(CppView::Le {
                 cpp: "int32_t",
                 suffix: "i32",
             }),
-            FieldType::Primitive(PrimitiveType::UInt64) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::UInt64) => Ok(CppView::Le {
                 cpp: "uint64_t",
                 suffix: "u64",
             }),
-            FieldType::Primitive(PrimitiveType::Int64) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::Int64) => Ok(CppView::Le {
                 cpp: "int64_t",
                 suffix: "i64",
             }),
-            FieldType::Primitive(PrimitiveType::Float32) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::Float32) => Ok(CppView::Le {
                 cpp: "float",
                 suffix: "f32",
             }),
-            FieldType::Primitive(PrimitiveType::Float64) => Ok(CppBorrow::Le {
+            FieldType::Primitive(PrimitiveType::Float64) => Ok(CppView::Le {
                 cpp: "double",
                 suffix: "f64",
             }),
@@ -920,7 +920,7 @@ pub(super) fn build_cpp_field(
     // phase-335 step 2 — CppField carries the NEUTRAL facts; the `cpp_type` /
     // `cpp_array_suffix` pack filters compose the C++ type string. The borrowed
     // VIEW type (`nros::StringView` / `Span<T>` / `LeSpan<T>`) stays computed here
-    // (it derives from the CppBorrowKind, not `field_type`).
+    // (it derives from the CppViewKind, not `field_type`).
     let cp = current_package.unwrap_or("").to_string();
     match storage {
         CppStorage::Borrowed(b, cap) => CppField {

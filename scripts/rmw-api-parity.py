@@ -168,14 +168,14 @@ MAP = {
     ),
     # `layer`, not `declined` — the reason's own first five words are "codegen,
     # not a backend concern", which is the DEFINITION of this bucket, and we do
-    # answer it: `nros_serdes::{Serialize, Deserialize, DeserializeBorrowed}`,
+    # answer it: `nros_serdes::{Serialize, Deserialize, DeserializeView}`,
     # the C pack's `<Type>_serialize`, the C++ pack's `ffi_serialize`. Same
     # precedent as `rmw_qos_profile_check_compatible`. Keeping an implemented
     # function in the "deliberately absent" bucket is what made
     # `get_serialized_message_size` — genuinely absent — unreadable next to it.
     "rmw_serialize": (
         "layer",
-        "nros-serdes (`Serialize`/`Deserialize`/`DeserializeBorrowed`) plus the "
+        "nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the "
         "per-language codegen packs; CDR for an IDL type is fixed by ROS interop, "
         "so a per-backend answer would be a DEFECT. Not a slot for the same "
         "reason it is not per-backend, and because upstream's parameters are two "

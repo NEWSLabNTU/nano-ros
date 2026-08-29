@@ -139,7 +139,7 @@ impl RosMessage for Shapes {
 // Zero-copy view: fields marked `mode = "borrowed"` slice directly into the
 // receive buffer (no `heapless::Vec`/`String` copy). Other fields are copied.
 // The view is valid only for the subscription-callback scope (lifetime `'a`).
-// Subscribe with `node.create_subscription_borrowed::<ShapesBorrow, _>()`.
+// Subscribe with `node.create_subscription_viewable::<ShapesViewable, _>()`.
 
 /// Borrowed (zero-copy) view of [`Shapes`].
 pub struct ShapesView<'a> {
@@ -162,7 +162,7 @@ pub struct ShapesView<'a> {
     pub str_bounded: heapless::String<8>,
 }
 
-impl<'a> nros_core::DeserializeBorrowed<'a> for ShapesView<'a> {
+impl<'a> nros_core::DeserializeView<'a> for ShapesView<'a> {
     fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -222,9 +222,9 @@ impl<'a> nros_core::DeserializeBorrowed<'a> for ShapesView<'a> {
 }
 
 /// Zero-sized borrowed-family marker for [`Shapes`] (Phase 229.6).
-pub struct ShapesBorrow;
+pub struct ShapesViewable;
 
-impl nros_core::BorrowedMessage for ShapesBorrow {
+impl nros_core::ViewableMessage for ShapesViewable {
     type View<'a> = ShapesView<'a>;
     const TYPE_NAME: &'static str = "fingerprint-corpus::msg::dds_::Shapes_";
     const TYPE_HASH: &'static str = "h";

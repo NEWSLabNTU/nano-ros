@@ -64,11 +64,11 @@ pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE, RawMessageInfo};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceServer};
 pub use time::{Duration, Time};
-pub use types::{BorrowedMessage, RosMessage, RosService};
+pub use types::{RosMessage, RosService, ViewableMessage};
 
 // Re-export serdes types for convenience
 pub use nros_serdes::{
-    CdrReader, CdrWriter, DHeaderMark, DHeaderScope, DeserError, Deserialize, DeserializeBorrowed,
+    CdrReader, CdrWriter, DHeaderMark, DHeaderScope, DeserError, Deserialize, DeserializeView,
     EncodingVersion, LeDecode, LeSliceView, SerError, Serialize,
 };
 

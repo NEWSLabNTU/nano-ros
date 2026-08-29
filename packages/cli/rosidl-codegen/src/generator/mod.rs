@@ -990,22 +990,22 @@ mod tests {
             "borrowed slice missing:\n{rs}"
         );
         assert!(
-            rs.contains("impl<'a> nros_core::DeserializeBorrowed<'a> for ImageView<'a>"),
-            "DeserializeBorrowed missing:\n{rs}"
+            rs.contains("impl<'a> nros_core::DeserializeView<'a> for ImageView<'a>"),
+            "DeserializeView missing:\n{rs}"
         );
         assert!(
             rs.contains("reader.read_slice_u8()?"),
             "zero-copy reader missing:\n{rs}"
         );
 
-        // Marker + BorrowedMessage impl wire into create_subscription_borrowed.
+        // Marker + ViewableMessage impl wire into create_subscription_viewable.
         assert!(
-            rs.contains("pub struct ImageBorrow;"),
+            rs.contains("pub struct ImageViewable;"),
             "marker missing:\n{rs}"
         );
         assert!(
-            rs.contains("impl nros_core::BorrowedMessage for ImageBorrow"),
-            "BorrowedMessage impl missing:\n{rs}"
+            rs.contains("impl nros_core::ViewableMessage for ImageViewable"),
+            "ViewableMessage impl missing:\n{rs}"
         );
         assert!(
             rs.contains("type View<'a> = ImageView<'a>;"),

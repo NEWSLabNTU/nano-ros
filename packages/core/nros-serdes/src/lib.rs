@@ -48,7 +48,7 @@ pub use cdr::{
 };
 pub use error::{DeserError, SerError};
 pub use schema::{Field, FieldType, Message, NestedType};
-pub use traits::{Deserialize, DeserializeBorrowed, Serialize};
+pub use traits::{Deserialize, DeserializeView, Serialize};
 
 /// Length of the CDR encapsulation header (representation identifier + options).
 pub const CDR_HEADER_LEN: usize = 4;

@@ -3,8 +3,8 @@
 use core::marker::PhantomData;
 
 use nros_core::{
-    BorrowedMessage, CdrReader, DeserializeBorrowed, MessageInfo, RawMessageInfo, RosAction,
-    RosMessage, RosService,
+    CdrReader, DeserializeView, MessageInfo, RawMessageInfo, RosAction, RosMessage, RosService,
+    ViewableMessage,
 };
 use nros_rmw::{ServiceTrait, Subscription, TransportError};
 
@@ -1013,7 +1013,7 @@ pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
 /// The callback receives `&B::View<'a>` — a lifetime-carrying message whose
 /// unbounded sequence/string fields borrow directly from the triple buffer's
 /// read slot (no arena copy, no `heapless::Vec` copy). The view is materialised
-/// per dispatch via [`DeserializeBorrowed`] and dropped before the slot is
+/// per dispatch via [`DeserializeView`] and dropped before the slot is
 /// released, so the borrow never outlives the buffer.
 ///
 /// **Triple-buffer only.** A borrowed view must reference exactly one
@@ -1022,7 +1022,7 @@ pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
 /// rejects `qos.depth > 1` for borrowed subscriptions, so `buffer` is always
 /// [`BufferStrategy::Triple`] here.
 #[repr(C)]
-pub(crate) struct SubBufferedBorrowedEntry<B, F> {
+pub(crate) struct SubBufferedViewEntry<B, F> {
     pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: BufferStrategy,
     pub(crate) callback: F,
@@ -1047,17 +1047,17 @@ pub(crate) struct SubBufferedBorrowedEntry<B, F> {
 /// dispatch can publish over the slot.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubBufferedBorrowedEntry<B, F>`.
+/// `ptr` must point to a valid, aligned `SubBufferedViewEntry<B, F>`.
 pub(crate) unsafe fn sub_buffered_borrowed_try_process<B, F>(
     ptr: *mut u8,
     _delta_us: u64,
     _desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
-    B: BorrowedMessage,
+    B: ViewableMessage,
     F: for<'a> FnMut(&B::View<'a>),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubBufferedBorrowedEntry<B, F>) };
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedViewEntry<B, F>) };
 
     // Borrowed subscriptions are triple-buffer only (enforced at registration).
     let tb = match &entry.buffer {
@@ -1086,7 +1086,7 @@ where
         Some((data, len)) => {
             let mut reader = CdrReader::new_with_header(&data[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
-            let msg = <B::View<'_> as DeserializeBorrowed>::deserialize_view(&mut reader)
+            let msg = <B::View<'_> as DeserializeView>::deserialize_view(&mut reader)
                 .map_err(|_| TransportError::DeserializationError)?;
             (entry.callback)(&msg);
             Ok(true)
@@ -1098,9 +1098,9 @@ where
 /// Readiness check for borrowed buffered subscriptions.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubBufferedBorrowedEntry<B, F>`.
+/// `ptr` must point to a valid `SubBufferedViewEntry<B, F>`.
 pub(crate) unsafe fn sub_buffered_borrowed_has_data<B, F>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SubBufferedBorrowedEntry<B, F>) };
+    let entry = unsafe { &*(ptr as *const SubBufferedViewEntry<B, F>) };
     entry.handle.has_data() || entry.buffer.has_data()
 }
 
@@ -2201,8 +2201,8 @@ where
             let mut reader = CdrReader::new_with_header(&entry.hdr.reply_buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
             // Fully-qualify the `Deserialize` trait (mirrors the
-            // `DeserializeBorrowed` call above): arena.rs imports
-            // `DeserializeBorrowed` but not `Deserialize`, so the bare
+            // `DeserializeView` call above): arena.rs imports
+            // `DeserializeView` but not `Deserialize`, so the bare
             // `Svc::Reply::deserialize` only resolved when a default/std feature
             // happened to glob it into scope — under `rmw-cffi` (embedded) it
             // failed E0599. The fully-qualified path resolves under every feature.
@@ -2846,7 +2846,7 @@ mod borrowed_sub_tests {
         data: &'a [u8],
     }
 
-    impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
+    impl<'a> DeserializeView<'a> for ImageView<'a> {
         fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
             let width = reader.read_u32()?;
             let data = reader.read_slice_u8()?;
@@ -2854,9 +2854,9 @@ mod borrowed_sub_tests {
         }
     }
 
-    // Zero-sized borrowed-family marker (codegen emits `struct ImageBorrow;`).
-    struct ImageBorrow;
-    impl BorrowedMessage for ImageBorrow {
+    // Zero-sized borrowed-family marker (codegen emits `struct ImageViewable;`).
+    struct ImageViewable;
+    impl ViewableMessage for ImageViewable {
         type View<'a> = ImageView<'a>;
         const TYPE_NAME: &'static str = "test_msgs::msg::dds_::Image_";
         const TYPE_HASH: &'static str = "borrowed-test-hash";
@@ -2912,14 +2912,14 @@ mod borrowed_sub_tests {
     // (`sub_buffered_borrowed_try_process`) and registration require.
     fn assert_borrowed_sub_bounds<B, F>(_callback: F)
     where
-        B: BorrowedMessage + 'static,
+        B: ViewableMessage + 'static,
         F: for<'a> FnMut(&B::View<'a>) + 'static,
     {
     }
 
     #[test]
     fn borrowed_marker_satisfies_dispatch_bounds() {
-        assert_borrowed_sub_bounds::<ImageBorrow, _>(|view: &ImageView<'_>| {
+        assert_borrowed_sub_bounds::<ImageViewable, _>(|view: &ImageView<'_>| {
             let _ = view.width;
             let _ = view.data.len();
         });
