@@ -155,6 +155,13 @@ rmw_ret_t session_create(const char *locator, uint8_t mode,
                             const rmw_session_options_t *options,
                             rmw_session_t *out);
 rmw_ret_t session_destroy(rmw_session_t *session);
+
+/* Phase 124.B.1 / issue 0889 — install the executor's wake callback. Cyclone
+ * fires it from its delivery thread via a participant-level data_available
+ * listener, which is what lets `spin_once` block on its wake primitive instead
+ * of polling on a timer. `cb == nullptr` clears. */
+rmw_ret_t session_set_wake_callback(rmw_session_t *session, void (*cb)(void *),
+                                    void *ctx);
 rmw_ret_t session_drive_io(rmw_session_t *session, int32_t timeout_ms);
 
 /* ---- publisher.cpp ---- */
