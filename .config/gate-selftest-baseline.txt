@@ -34,7 +34,6 @@ scripts/check-doc-refs.sh
 scripts/check-emitter-just-spelling.sh
 scripts/check-example-leaf-build-dirs.py
 scripts/check-example-matrix.sh
-scripts/check-export-f-closure.sh
 scripts/check-eyre-context-alias.sh
 scripts/check-feature-contract.py
 scripts/check-feature-set-ssot.sh

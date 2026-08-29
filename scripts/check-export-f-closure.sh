@@ -235,9 +235,17 @@ EOF
     return $ok
 }
 
+# The negative control runs on EVERY invocation, not only behind the flag.
+#
+# `check-gate-selftests` states the reason: *a negative control nobody runs
+# decays into a comment.* Behind `--self-test` this was run once, by its author,
+# on the day it was written. It costs 0.12 s.
+#
+# The flag is kept for running the control ALONE while working on it — it now
+# exits straight after, rather than being the only way to reach it.
+self_test || exit 1
 if [ "${1:-}" = "--self-test" ]; then
-    self_test
-    exit $?
+    exit 0
 fi
 
 SOURCES=("$ROOT"/scripts/build/*.sh)

@@ -52,6 +52,29 @@ BASELINE = os.path.join(ROOT, ".config", "gate-selftest-baseline.txt")
 # A call to a selftest routine. Definitions and flag-dispatch lines are excluded
 # by the caller, not here, so both halves are visible at the use site.
 CALL = re.compile(r"\b(self_?test|_selftest|selftest)\s*\(")
+# The same call as SHELL writes it: a bare command at statement position, no
+# parentheses.
+#
+# Without this the rule was UNSATISFIABLE for shell. `CALL` requires `name(`,
+# which bash call syntax never produces, so a `.sh` could only ever classify
+# `none` or `flag-only` however good its negative control was — and the two
+# spellings were indistinguishable. Demonstrated by running the classifier on
+# a script that does the right thing:
+#
+#     self_test() { return 0; }
+#     self_test || exit 1        →  classified `flag-only`
+#
+# identical to the verdict for the same call hidden behind `--self-test`.
+#
+# Measured when this was found: of 159 gate scripts, 75 are shell and 0 of them
+# were compliant; all 40 compliant scripts were `.py`. A ratchet one whole
+# language cannot pay into is not a ratchet on that language, it is a silent
+# exemption for it — and it was silent in the direction that matters, since
+# those 75 sat in the "still owe one" count looking like ordinary debt.
+#
+# `DEFN` still excludes the definition line (`self_test() {`), so this matches
+# the invocation only, and the flag-branch lookback below applies unchanged.
+BASH_CALL = re.compile(r"^\s*[A-Za-z0-9_]*self_?test[A-Za-z0-9_]*\s*(?:\|\||&&|;|$)")
 DEFN = re.compile(r"^\s*(def |function |\w+\s*\(\)\s*\{)")
 FLAG = re.compile(r"--self")
 HAS_SELFTEST = re.compile(r"self.?test", re.I)
@@ -94,7 +117,7 @@ def classify(rel):
         stripped = line.strip()
         if stripped.startswith("#") or DEFN.match(line) or FLAG.search(line):
             continue
-        if not CALL.search(line):
+        if not CALL.search(line) and not BASH_CALL.match(line):
             continue
         # A call INSIDE the flag branch is not an automatic run. Line matching
         # alone cannot see that — `self_test()` under `if "--selftest" in argv:`
@@ -222,6 +245,17 @@ def self_test(quiet=True):
         ("flag-only", 'def selftest():\n    pass\n\nif a == "--self-test": selftest()\n'),
         # A commented-out call must not count either.
         ("flag-only", "def self_test():\n    pass\n\n#    self_test()\n"),
+        # SHELL call syntax — no parentheses. Before `BASH_CALL` these read as
+        # `flag-only` however good the control was, so 0 of 75 shell gate
+        # scripts could ever comply.
+        ("auto", "self_test() {\n    return 0\n}\n\nself_test || exit 1\n"),
+        ("auto", "_cc_selftest() {\n    return 0\n}\n\n_cc_selftest\n"),
+        # …and a shell call behind a flag branch must STILL be flag-only,
+        # exactly as the Python one is. Without this case the fix above would
+        # be free to classify every shell selftest as automatic, which trades a
+        # silent exemption for a false pass.
+        ("flag-only", 'self_test() {\n    return 0\n}\n\nif [ "$1" = "--self-test" ]; then\n'
+                      "    self_test\nfi\n"),
     ]
     fails = []
     with tempfile.TemporaryDirectory() as d:
