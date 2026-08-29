@@ -100,6 +100,49 @@ because nothing on this path ever writes it.
 Reverted. Recorded because the mistake is re-derivable: the comment looks like
 an admission of a gap, and it is actually a statement of scope.
 
+## Investigated: a real zenoh-pico bug found, and it is NOT the cause
+
+`_z_wbuf_reset` removes while iterating:
+
+    for (size_t i = 0; i < _z_iosli_svec_len(&wbf->_ioss); i++) {
+        if (!ios->_is_alloc) { _z_iosli_svec_remove(&wbf->_ioss, i, false); }
+        else                 { _z_iosli_reset(ios); }
+    }
+
+`_z_svec_remove` shifts the tail down and decrements `_len`, so `i++` SKIPS the
+element that moved into the freed slot. Borrowed (non-alloc) slices therefore
+survive a reset while the buffer keeps counting their capacity.
+
+It is reachable, and precisely: `_z_wbuf_wrap_bytes` appends TWO ADJACENT
+non-alloc slices (the wrapped payload, then the previous slice's remaining
+space) and `_z_buf_encode` takes that path for any payload over `Z_ZID_LENGTH`
+on an expandable wbuf — every publish here. Two adjacent removals is exactly the
+case the skip mishandles. Present at our pin AND on the fork's `main`, so it is
+an unfixed upstream defect.
+
+**It does not fix this issue.** With the corrected loop compiled in and the
+example RELINKED, the assert still fires at 40 publishes, twice:
+
+    run 1: publishes=40 delivered=40 asserts=1
+    run 2: publishes=40 delivered=40 asserts=1
+
+One earlier run showed 61 publishes and no assert, which looked like success —
+but it had `delivered=0`, so the peer never attached and the failing path was
+never exercised. An outlier, not evidence. Recorded because it was momentarily
+convincing.
+
+## The measurement was nearly wrong for a second reason — issue 0902
+
+The first attempt at the above tested a binary that did not contain the fix:
+`zpico-sys` lists SEVEN zenoh-pico files in `rerun-if-changed` and `iobuf.c` is
+not among them, so editing it recompiles nothing. And even once `zpico-sys`
+rebuilds, the C example is not relinked (issue 0475's class). Getting a
+zenoh-pico edit into an image currently needs a touch of a watched file AND a
+touch of the leaf's `main.c`.
+
+Anyone continuing this issue must do that first, or they will measure the old
+binary — as I did.
+
 ## Acceptance
 
 * The talker survives a sustained run with a peer attached.
