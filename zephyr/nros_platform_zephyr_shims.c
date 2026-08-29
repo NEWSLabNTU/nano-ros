@@ -342,7 +342,29 @@ ssize_t nros_zephyr_sendto(int fd, const void* buf, size_t len, int flags,
 #define NROS_ZEPHYR_STACK_SIZE CONFIG_MAIN_STACK_SIZE
 #endif
 
+/* Transport/task stacks live in DTCM, not SRAM.
+ *
+ * The MR-CANHUBK344 has 128 KiB of DTCM and 64 KiB of ITCM that this image was
+ * not using at all -- both reported 0 %% while SRAM sat at 98.7 %% and the
+ * action image could no longer be instrumented for want of a few KiB. Stacks
+ * are the ideal tenant: CPU-private, never a DMA target, and TCM access does
+ * not contend with the system bus, so putting them here is a latency
+ * improvement as well as an SRAM saving.
+ *
+ * `NROS_ZEPHYR_STACKS_IN_DTCM` gates it because the region is a property of
+ * the SoC, not of Zephyr: a part without a DTCM (or one whose DTCM another
+ * component already claims) must keep the default placement. The section name
+ * comes from the devicetree `zephyr,memory-region = "DTCM"`, which is what
+ * generates the linker region.
+ *
+ * DTCM is NOLOAD, which is correct for stacks -- they are uninitialised. */
+#if defined(NROS_ZEPHYR_STACKS_IN_DTCM) && NROS_ZEPHYR_STACKS_IN_DTCM
+Z_KERNEL_STACK_ARRAY_DEFINE_IN(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS,
+                               NROS_ZEPHYR_STACK_SIZE,
+                               __attribute__((section("DTCM"))));
+#else
 K_THREAD_STACK_ARRAY_DEFINE(nros_thread_stacks, NROS_ZEPHYR_MAX_THREADS, NROS_ZEPHYR_STACK_SIZE);
+#endif
 
 /* Stack slots are CLAIMED and RELEASED. The counter this replaces
  * (`static int nros_thread_index`, used as `nros_thread_stacks[idx++]`) only

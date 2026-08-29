@@ -96,6 +96,9 @@ endif()
 if(CONFIG_NROS_ZEPHYR_TASK_SLOTS)
     zephyr_compile_definitions(NROS_ZEPHYR_MAX_THREADS=${CONFIG_NROS_ZEPHYR_TASK_SLOTS})
 endif()
+if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM)
+    zephyr_compile_definitions(NROS_ZEPHYR_STACKS_IN_DTCM=1)
+endif()
 zephyr_include_directories(${NROS_REPO_DIR}/packages/platform/nros-platform-api/include)
 zephyr_library_sources(
     ${NROS_REPO_DIR}/packages/platform/nros-platform-zephyr/src/platform.c
