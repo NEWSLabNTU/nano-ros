@@ -269,6 +269,29 @@ config NROS_ZEPHYR_TASK_STACK_SIZE
       0 keeps upstream behaviour. Set it to size the zenoh tasks for their own
       deepest call chain, which is the expiry teardown, independently of main.
 
+config NROS_ZEPHYR_STACKS_IN_DTCM
+    bool "Place nano-ros task stacks in DTCM"
+    default n
+    help
+      Put the nano-ros task stack array in the SoC's data tightly-coupled
+      memory instead of SRAM, using the linker region the devicetree's
+      `zephyr,memory-region = "DTCM"` generates.
+
+      Off by default because a DTCM is a property of the part, not of Zephyr:
+      a SoC without one, or one whose DTCM another component already claims,
+      must keep the default placement. Enabling it on a board with no DTCM
+      region is a link error, which is the right failure.
+
+      Stacks are the ideal tenant. They are CPU-private, never the target of a
+      DMA transfer, and TCM access does not contend with the system bus — so
+      this is a latency improvement as well as an SRAM saving. On the
+      MR-CANHUBK344 the array is 48 KiB against 128 KiB of DTCM that was
+      reporting 0 %% while SRAM sat at 98.7 %%.
+
+      Do NOT extend this to buffers a DMA engine touches without checking
+      whether this part's TCM is reachable from the relevant bus master. On
+      Cortex-M7 the TCMs hang off the CPU's private bus and typically are not.
+
 config NROS_ZEPHYR_TASK_SLOTS
     int "nano-ros Zephyr task stack slots"
     default 4
