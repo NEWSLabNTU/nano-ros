@@ -1,9 +1,10 @@
 # Phase 390 — `owned`/`borrowed` name the wrong things; rename to `inline`/`heap`/`view`
 
-**Status (2026-08-26). Plan, nothing landed.** Opened from a memory-allocation
-review that settled the message allocation strategy before touching layout.
-Renames the RFC-0033 storage modes and amends the RFC with a guarantee column.
-No behaviour change; the modes keep their current semantics and support matrix.
+**Status (2026-08-30). W1-W4 landed; W5 opened by measurement.** Opened from a
+memory-allocation review that settled the message allocation strategy before
+touching layout. Renames the RFC-0033 storage modes and amends the RFC with a
+guarantee column. No behaviour change; the modes keep their current semantics and
+support matrix.
 
 ## The two names that are wrong
 
@@ -64,12 +65,21 @@ a sentence rather than the names contorting to avoid saying it.
 
 ## Blast radius (measured)
 
-| surface | sites |
-| --- | --- |
-| config-token strings (`"owned"` / `"borrowed"`) in Rust | 37 |
-| generated C type names (`nros_borrowed_*`) | 26 |
-| doc/book mentions of `borrowed` | 314 |
-| public header | `packages/api/nros-c/include/nros/borrowed.h` |
+| surface | planned | actual |
+| --- | --- | --- |
+| config-token strings (`"owned"` / `"borrowed"`) in Rust | 37 | 37 |
+| generated C type names (`nros_borrowed_*`) | 26 | 2 types + 29 `_deserialize_borrowed` |
+| doc/book mentions of `borrowed` | 314 | **~10 that mean the MODE** |
+| public header | `borrowed.h` | renamed to `view.h` |
+| Rust type/trait names naming the mode | not counted | **~70, and they collide — see W5** |
+
+**Two of those estimates were wrong, in opposite directions.** The 314 doc
+mentions counted the ordinary English word: every "borrowed pointer", "borrowed
+string; caller owns the storage" and `SlotBorrowing` reference in the book is
+prose about borrowing, not about the mode. All five book hits were left alone
+deliberately. Meanwhile the Rust surface — `DeserializeBorrowed`,
+`BorrowedMessage`, `CppBorrow`, `{Msg}Borrow`, `create_subscription_borrowed` —
+was not counted at all and is larger than the C surface that was.
 
 `borrowed.h` is public ABI. Renaming its types (`nros_borrowed_str_t`,
 `nros_borrowed_bytes_t`) breaks C consumers **at compile time** — loud, not
@@ -101,7 +111,31 @@ typed per-field `view` mode and the raw whole-message `SlotBorrowing` path are
 separate mechanisms for the same idea at different granularity, and loan/borrow
 are raw-only because CDR length is not known before encoding.
 
-**W4 — docs.** 314 mentions, plus `book/src/reference/` pages.
+**W4 — docs.** Landed, and much smaller than planned: RFC-0033 and RFC-0038
+token spellings, two `phase-303` references, and two api-parity ledger `why`
+paragraphs. `book/src/` needed NO changes — every one of its five `borrowed`
+mentions is the English word.
+
+**W5 — the Rust surface, which needs a naming decision first.** NOT started.
+Measured after W2:
+
+| identifier | sites | note |
+| --- | ---: | --- |
+| `DeserializeBorrowed` | 28 | trait |
+| `CppBorrow` / `CppBorrowKind` | 24 | emitter enum |
+| `BorrowedMessage` | 21 | trait |
+| `{Msg}Borrow` (`ImageBorrow`, `ShapesBorrow`, `FrameBorrow`) | 17 | GENERATED marker types |
+| `SubBufferedBorrowedEntry` | 8 | executor arena entry |
+| `create_subscription_borrowed` | 4 | public Rust API |
+
+**The blocker is a collision, not volume.** `{Msg}Borrow` is the marker type a
+user names to subscribe (`create_subscription_borrowed::<ImageBorrow, _>`), and
+its natural new name — `{Msg}View` — is ALREADY TAKEN by the view struct the
+marker produces. So this wave has to answer "what is the marker called when the
+view type owns the obvious name?" before a line is changed; a mechanical sweep
+would either collide or invent a name nobody chose. `SlotBorrowing` and the
+`nros_cdr_borrow_*` / `borrow_loaned_message` family stay as they are — those
+spell a VERB, and RFC-0033 now records why.
 
 ## Explicitly not in this phase
 

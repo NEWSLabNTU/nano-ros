@@ -3,8 +3,8 @@ rfc: 0033
 title: "Per-field message capacity configuration"
 status: Stable
 since: 2026-06
-last-reviewed: 2026-06-11
-implements-tracked-by: [phase-229, phase-235]
+last-reviewed: 2026-08-30
+implements-tracked-by: [phase-229, phase-235, phase-390]
 supersedes: []
 superseded-by: null
 ---
@@ -21,7 +21,7 @@ capacity is application-dependent — one app needs a multi-megabyte
 This RFC defines a **language-agnostic, per-field** capacity configuration: a
 `nros-codegen.toml` resolved once per codegen invocation into a single resolver that
 feeds all three generators, with a precedence ladder that always defers to explicit
-`.msg` bounds. It also defines the storage-mode axis (`owned` / `heap` / `borrowed`)
+`.msg` bounds. It also defines the storage-mode axis (`inline` / `heap` / `view`)
 that the per-field value selects, so a large buffer is realized as a heap or
 zero-copy borrow rather than dead inline stack.
 
@@ -75,22 +75,22 @@ string   = 256
 sequence = 4096
 
 [types."sensor_msgs/Image"]       # precedence 3 (all unbounded fields in one message)
-sequence = { cap = 2_000_000, mode = "borrowed" }
+sequence = { cap = 2_000_000, mode = "view" }
 
 [fields]                          # precedence 2 (sharpest)
-"sensor_msgs/Image.data"       = { cap = 2_000_000, mode = "borrowed" }
+"sensor_msgs/Image.data"       = { cap = 2_000_000, mode = "view" }
 "sensor_msgs/LaserScan.ranges" = { cap = 1080, mode = "heap" }
-"std_msgs/String.data"         = 64        # int shorthand = { cap = 64, mode = "owned" }
+"std_msgs/String.data"         = 64        # int shorthand = { cap = 64, mode = "inline" }
 ```
 
 - Every level (`[defaults]`, `[packages.*]`, `[types.*]`) takes the same two keys
   `sequence` and `string`; `[fields]` maps `"pkg/Msg.field"` directly to one value.
 - `/` separates package from message (ROS convention); `.` separates the field. Keys
   are quoted so TOML does not split on the dots.
-- A value is either an **integer** (shorthand for `{ cap = <int>, mode = "owned" }`)
-  or an inline table `{ cap = <int>, mode = "owned" | "heap" | "borrowed" }` — the
+- A value is either an **integer** (shorthand for `{ cap = <int>, mode = "inline" }`)
+  or an inline table `{ cap = <int>, mode = "inline" | "heap" | "view" }` — the
   same int-or-table form at every level (resolves open question 2).
-- **`mode` defaults to `owned`** when omitted. Unknown table keys are rejected.
+- **`mode` defaults to `inline`** when omitted. Unknown table keys are rejected.
 
 ### Precedence (highest wins)
 
@@ -109,21 +109,55 @@ the level-6 fallback, so a missing/empty config reproduces today's output exactl
 
 ### Storage modes
 
-| mode       | Rust type                                     | C / C++ type                              | Cost                                   | Phase |
-|------------|-----------------------------------------------|-------------------------------------------|----------------------------------------|-------|
-| `owned`    | `heapless::Vec<T, N>` / `heapless::String<N>` | fixed `[N]` array / `FixedSequence<N>`    | `N` elems always inline                | 1     |
-| `heap`     | `alloc::Vec<T>` (cap = hint)                  | growable seq (alloc-backed)               | dynamic; needs `alloc`/`std`           | 2     |
-| `borrowed` | `&'a [T]` / `&'a str` into CDR buffer         | `{ const T* ptr; size_t len; }`           | pointer+len, zero-copy, callback-scoped| 3     |
+| mode     | Rust type                                     | C / C++ type                           | Cost                                    | Phase |
+|----------|-----------------------------------------------|----------------------------------------|-----------------------------------------|-------|
+| `inline` | `heapless::Vec<T, N>` / `heapless::String<N>` | fixed `[N]` array / `FixedSequence<N>` | `N` elems always inline                 | 1     |
+| `heap`   | `alloc::Vec<T>` (cap = hint)                  | growable seq (alloc-backed)            | dynamic; needs `alloc`/`std`            | 2     |
+| `view`   | `&'a [T]` / `&'a str` into CDR buffer         | `{ const T* ptr; size_t len; }`        | pointer+len, zero-copy, callback-scoped | 3     |
 
-`owned` is today's behavior, now driven by the resolved `cap`. `borrowed` is the
-zero-copy direction in issue 0007: the deserializer returns a slice into the CDR
-receive buffer (no copy, no fixed capacity), the message struct gains a lifetime, and
-the payload is bounded only by `NROS_SUBSCRIPTION_BUFFER_SIZE`.
+### What each mode GUARANTEES
 
-### Borrowed mode — when it is used and how it meets the user API
+The table above says what a mode costs. This one says what it promises, which is
+the question an image with a fixed RAM budget is actually asking:
 
-`borrowed` is fundamentally different from `owned`/`heap`: it is a **receive-side,
-callback-scoped, read-only view**, not a container. A borrowed field is a `&'a [u8]`
+| mode     | guarantee |
+|----------|-----------|
+| `inline` | **bounded, statically provable, analysable** — the size is in the type, so a tool can add it up. The default, and the only mode a hard-real-time image can rely on without further argument. |
+| `heap`   | **opt-in, unguaranteed** — the CONSUMER owns a fragmentation bound. Nothing in the type says how much memory the field will want, and nothing here promises the allocator can satisfy it. |
+| `view`   | **opt-in, unguaranteed** — the CONSUMER owns the decode AND the lifetime. Nothing was deserialized; the bytes live in the receive buffer and are gone when the callback returns. |
+
+The asymmetry is the point: `inline` is a promise the codegen keeps, and the
+other two are promises it hands to the caller. A field is `inline` unless someone
+decided otherwise for a reason they can state.
+
+`inline` is the historical behaviour, now driven by the resolved `cap`. `view` is
+the zero-copy direction in issue 0007: the deserializer returns a slice into the
+CDR receive buffer (no copy, no fixed capacity), the message struct gains a
+lifetime, and the payload is bounded only by `NROS_SUBSCRIPTION_BUFFER_SIZE`.
+
+### `view` and `SlotBorrowing` are the same idea at two granularities
+
+Stated here because RFC-0010 implies it without saying it, and because two
+vocabularies for one concept is what phase-390 renamed `view` to fix.
+
+* **`view` is per-FIELD and typed.** Codegen emits `{Msg}View<'a>` whose fields
+  point into the CDR buffer. It knows the schema, so it can hand back a typed
+  `&'a str` or `LeSliceView<'a, T>`.
+* **`SlotBorrowing::try_borrow` is per-MESSAGE and raw.** It returns a
+  `View<'a>` over the backend's receive slot with no schema involved.
+
+They are separate mechanisms, not layers: a `view`-mode field does not go
+through `SlotBorrowing`, and a raw borrow does not produce typed fields. Both
+have the same lifetime rule — valid only until the callback returns.
+
+Loan and borrow remain **raw-only** on the send side for a reason that is not
+about ergonomics: CDR length is not known before encoding, so a typed
+`borrow_loaned_message` cannot size the slot it is supposed to lend.
+
+### `view` mode — when it is used and how it meets the user API
+
+`view` is fundamentally different from `inline`/`heap`: it is a **receive-side,
+callback-scoped, read-only view**, not a container. A `view` field is a `&'a [u8]`
 / `&'a str` (C/C++: `{ const T* data; size_t size; }`) pointing into the live CDR
 receive buffer; the "deserialize" pass records each field's offset+len instead of
 copying.
@@ -132,17 +166,17 @@ copying.
 
 - **Large unbounded payloads on receive** — `sensor_msgs/Image.data` (≈900 KB),
   `PointCloud2.data`, `LaserScan.ranges`. The original issue-0007 case.
-- **Allocator-free MCUs** — `owned` can't fit the payload inline and `heap` needs a
-  `malloc` per message; `borrowed` needs neither (the bytes already sit in the RX
+- **Allocator-free MCUs** — `inline` can't fit the payload inline and `heap` needs a
+  `malloc` per message; `view` needs neither (the bytes already sit in the RX
   buffer). For a 64–256 KB MCU receiving frames it is the only viable mode for big
   payloads.
 - **Process-in-callback-then-discard** — vision/DSP over the slice, or a bridge that
   inspects headers while forwarding raw bytes. The view is never retained.
 
-**Hard constraints (what borrowed cannot do):**
+**Hard constraints (what `view` cannot do):**
 
 - **Callback-scoped only.** The slice is valid only for the duration of the
-  subscription callback; the buffer is released/reused immediately after. A borrowed
+  subscription callback; the buffer is released/reused immediately after. A `view`
   `Msg<'a>` therefore **cannot** be returned by `Subscription::try_recv() -> Option<M>`
   (no lifetime anchor outside a callback) and **cannot** be stored past the callback —
   copy the needed parts out instead.
@@ -152,29 +186,29 @@ copying.
 
 **How it cooperates with the existing API:**
 
-The infrastructure already exists — `borrowed` is a *typed* layer over it, not new
+The infrastructure already exists — `view` is a *typed* layer over it, not new
 plumbing:
 
 - The RMW exposes `sub_borrow`/`sub_release` (Phase 124, `nros-rmw-cffi`) returning the
   raw received buffer with a release token; `RecvView<'a>` (`nros-node executor/handles`)
   is the Rust wrapper. Today that borrow is exposed **only on the polling path**
   (`RawSubscription::try_borrow()`).
-- Today's callback path deserializes into an **owned** `M` and calls `FnMut(&M)`
+- Today's callback path deserializes into an **`inline`** `M` and calls `FnMut(&M)`
   (`executor/arena.rs::sub_buffered_try_process`). Borrowed mode changes the callback
   to `FnMut(&Msg<'a>)` and makes the dispatch **hold the `sub_borrow` view across the
   callback**, build the typed slice view over it, then release. The C/C++ callbacks
-  already receive raw `(data, len)` (`nros-c subscription`), so the C/C++ borrowed type
+  already receive raw `(data, len)` (`nros-c subscription`), so the C/C++ view type
   is a typed accessor over the same raw callback.
-- **Buffer-strategy limit:** a single borrowed view per invocation is well-defined only
+- **Buffer-strategy limit:** a single `view` field per invocation is well-defined only
   on the **triple-buffer** strategy (queue depth ≤ 1). The SPSC ring (depth > 1) holds
-  several messages in flight, so `borrowed` subscriptions are restricted to depth ≤ 1.
+  several messages in flight, so `view` subscriptions are restricted to depth ≤ 1.
 
 **Element alignment — solved by an unaligned decoder, not a fallback copy.** `&[u8]`
 / `&str` are always safe to borrow directly. Multi-byte numerics (`&[f32]` in
 `LaserScan.ranges`, `uint16[]`, …) are unsafe to alias as a typed slice: CDR aligns
 elements *within* the buffer, but `buffer_base + field_offset` need not satisfy the
 element alignment, so `slice[i]` would be UB on strict-alignment targets. Rather than
-degrade such fields to `owned`/`heap`, borrowed numeric sequences are exposed through
+degrade such fields to `inline`/`heap`, `view` numeric sequences are exposed through
 an **alignment-agnostic view** that decodes each element by value
 (`memcpy` of `size_of::<T>()` bytes + little-endian decode), never forming a
 `&[T]`/`T*` into the unaligned bytes:
@@ -194,27 +228,28 @@ across Rust, C, and C++.
 the smaller half of phase 3; the substantive change is the executor/subscription
 callback-borrow dispatch above. See phase-229 § 229.6.
 
-### Borrowed mode — C and C++ realization
+### `view` mode — C and C++ realization
 
-Rust borrowed shipped in Phase 229.6: `mode = "borrowed"` emits `{Msg}View<'a>`
-(borrowed fields `&'a [u8]` / `&'a str` / `LeSliceView<'a, T>`, copied fields owned) +
+Rust `view` shipped in Phase 229.6: `mode = "view"` emits `{Msg}View<'a>`
+(`view` fields `&'a [u8]` / `&'a str` / `LeSliceView<'a, T>`, copied fields inline) +
 a `{Msg}Borrow` ZST marker + `impl DeserializeBorrowed`, dispatched via
-`create_subscription_borrowed`. C and C++ borrowed (phase-235) mirror the *view shape*
+`create_subscription_borrowed` (a Rust API name the rename has NOT yet
+reached — see phase-390 W5). C and C++ `view` (phase-235) mirror the *view shape*
 but differ in **who walks the CDR**, following the project rule that **C++ wraps the
 Rust API and never re-implements serdes**:
 
 - **C — native, pointer-setting deserialize.** C already has its own CDR readers
-  (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}_View` (borrowed fields as
+  (`nros-c/include/nros/cdr.h`). Codegen emits `{Msg}_View` (`view` fields as
   `{const char* data; size_t size;}` / `{const uint8_t* data; size_t size;}` / the
   numeric LE-view) and `int32_t {Msg}_deserialize_view({Msg}_View*, const uint8_t*
   buf, size_t len)` that walks CDR, bounds-checks against `end`, and **sets pointers
-  into `buf`** for borrowed fields (owned fields copied as today). No `malloc`, no
+  into `buf`** for `view` fields (`inline` fields copied as today). No `malloc`, no
   `_fini`.
 
-- **C++ — wraps a Rust FFI offset seam (no native C++ CDR reader).** The C++ owned
-  path already deserializes through the Rust FFI (`ffi_deserialize`); borrowed extends
+- **C++ — wraps a Rust FFI offset seam (no native C++ CDR reader).** The C++ `inline`
+  path already deserializes through the Rust FFI (`ffi_deserialize`); `view` extends
   that seam. A `{Msg}_ffi_deserialize_view` walks CDR with the Rust reader and
-  returns a per-borrowed-field `(offset, len)` struct (offsets relative to `buf`); the
+  returns a per-`view`-field `(offset, len)` struct (offsets relative to `buf`); the
   generated C++ `{Msg}View` then sets `nros::Span<T>` / `nros::StringView` /
   `nros::LeSpan<T>` (`nros-cpp/include/nros/span.hpp`) into the raw callback buffer.
   CDR logic stays single-sourced in Rust. (A pure-C++ `cdr_reader.hpp` was considered
@@ -222,7 +257,7 @@ Rust API and never re-implements serdes**:
 
 Both ride the existing raw `(data, len)` subscription callbacks
 (`nros_subscription_callback_t` / `nros_cpp_subscription_message_callback_t`) — the
-borrowed view is a typed accessor, **no new subscription ABI**. Implementation +
+a `view` field is a typed accessor, **no new subscription ABI**. Implementation +
 work-item breakdown: [phase-235](../roadmap/archived/phase-235-c-cpp-borrowed-views.md).
 
 ### Codegen: one resolver, three emitters
@@ -272,9 +307,9 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
   is required. Per-type is retained as precedence level 3.
 - **Number-only entries** (no `mode`). Terse, but a multi-megabyte cap as inline
   `Vec<u8, 1048576>` is dead stack — useless for the motivating image case. Rejected
-  in favor of the explicit `{ cap, mode }` value (mode defaults to `owned`, so the
+  in favor of the explicit `{ cap, mode }` value (mode defaults to `inline`, so the
   terse integer form still works for the common small-field case).
-- **Auto-selected mode** (codegen picks inline/heap/borrowed from a size threshold).
+- **Auto-selected mode** (codegen picks inline/heap/view from a size threshold).
   Terser still, but a hidden threshold whose meaning depends on target features is
   surprising. Rejected in favor of explicit per-field `mode`.
 - **Non-TOML formats / Rust attributes / C macros / CMake vars.** Any per-language
@@ -288,10 +323,10 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
 2. ~~Whether `[packages.*]` / `[types.*]` accept the inline-table `{ cap, mode }`
    form.~~ **Resolved (229.1):** yes — every level uses the same int-or-table value
    under `sequence` / `string` keys.
-3. ~~`borrowed`-mode lifetime threading through `Subscriber` / callback signatures and
-   the C/C++ ptr+len ABI.~~ **Resolved (design):** borrowed is a receive-side,
+3. ~~`view`-mode lifetime threading through `Subscriber` / callback signatures and
+   the C/C++ ptr+len ABI.~~ **Resolved (design):** `view` is a receive-side,
    callback-scoped, read-only view over the existing `sub_borrow` zero-copy primitive
-   — `FnMut(&Msg<'a>)`, depth ≤ 1 only, no `take()`/store/publish. See "Borrowed mode"
+   — `FnMut(&Msg<'a>)`, depth ≤ 1 only, no `take()`/store/publish. See "`view` mode"
    above; implementation in phase-229 § 229.6.
 
 ## Changelog
@@ -301,3 +336,13 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
   work breakdown in [phase-229](../roadmap/phase-229-message-field-capacity-config.md).
 - 2026-06 — added the "Borrowed mode" section (use cases, callback-scoped constraint,
   `sub_borrow`/`RecvView` integration, alignment caveat); resolved open question 3.
+- 2026-08 — **phase-390**: renamed the modes. `owned` -> `inline` (it did not
+  distinguish anything: a `heap` field is also owned by the message, and what
+  separates them is where the bytes live) and `borrowed` -> `view` (it named the
+  lifetime and hid the cost; what matters is that NOTHING WAS DESERIALIZED).
+  Added the guarantee column, which this RFC did not have — the modes were
+  described by cost, never by what they promise. Recorded that per-field `view`
+  and whole-message `SlotBorrowing` are separate mechanisms for one idea, and
+  why loan/borrow are raw-only. The old config tokens still parse, with a
+  deprecation naming the replacement. No behaviour change; the support matrix is
+  unchanged.
