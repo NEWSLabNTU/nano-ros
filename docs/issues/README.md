@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-44 open. One line each — the detail lives in the issue file,
+41 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -78,15 +78,12 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0815** (tooling) — The static-pool inventory finds 46 sizing knobs and can price 3, so the largest pools in a real image carry no byte figure See `0815-*`.
 - **#0816** (tooling) — The book promises no-alloc integrations and nothing checks the linked image, so it is a claim rather than a property See `0816-*`.
 - **#0819** (rmw) — XRCE payloads at/above the transport MTU are DELIVERED CORRUPTED rather than refused See `0819-*`.
-- **#0820** (cmake, testing) — `c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no dependency edge on the Rust world, and hardcoded `--release` past a miscompile carve-out See `0820-*`.
 - **#0827** (rmw) — Static RAM is a property of the RMW, not of the node — a talker reserves 275 KB of service and large-payload pools it can never reach See `0827-*`.
 - **#0828** (testing) — Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is green only while an earlier `lane=all` build is still fresh See `0828-*`.
 - **#0829** (api, rmw) — Two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on depth — 1 in `nros-rmw`, 10 in the `nros::qos` façade, each with two callers See `0829-*`.
-- **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX See `0830-*`.
 - **#0831** (build) — `[image.<id>].rmw` configures nothing on the cargo driver — and a workspace fixture row's `rmw` does not either, so two tier-2 coordinates test zenoh while claiming cyclonedds and XRCE See `0831-*`.
 - **#0832** (platform, rmw) — `nros_platform_alloc` is DEFINED but UNREFERENCED in the cyclonedds and xrce native images — the vendor allocators bypass the funnel See `0832-*`.
 - **#0834** (cmake) — The per-build `nros_cpp_config_generated.h` mirror can reach a state no re-run repairs — only wiping the west build dir recovers it See `0834-*`.
-- **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
 - **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0843** (core, platform) — `nros::node_runtime` is gated on `rmw-cffi`, not on `alloc`, so every cffi image needs a global allocator and the `heap-free` tier is unreachable See `0843-*`.
@@ -103,6 +100,10 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
 
 <!-- END GENERATED open-issue list -->
+
+Recently resolved (2026-08-29): **#0830** (boards) — an `mps3-an536-freertos` guest on a two-port QEMU hub transmitted fine and received nothing. Not upstream QEMU: OUR lan9118 `can_receive` patch answered "cannot receive" before the guest enabled RXEN, and the only `qemu_flush_queued_packets` call sat in the pop path that no received frame could ever reach. The documented third unpeered hub port worked by making the hub's answer unconditionally true — a wedge under a stuck callback. Fixed by flushing on the RXEN off->on edge, shipped in `qemu-11.0.0-nros4`; re-measured against the shipped dist, two ports both sides: 0 RX-proof frames pre-fix, 231 after. Note the SDK store accumulates — a stale `11.0.0-nros2` still has the bug. See `archived/0830-*`.
+
+Recently resolved (2026-08-29): **#0879** (build) — the macOS qemu dist linked Homebrew paths while Linux was bundled, so `nros setup --tool qemu` on a Mac without those formulae died in dyld. Filed rather than fixed because "no macOS runner exists to verify against" — false on inspection: the job that CUTS the dist runs on `macos-14`. What was missing was a check, not a runner. Fixed in `qemu-11.0.0-nros6`; both platforms now PROVE the bundle wins (realpath-compared `ldd` on Linux, `DYLD_PRINT_LIBRARIES` on macOS) rather than passing because the build host has the libraries. See `archived/0879-*`.
 
 Recently resolved (2026-08-28): **#0855** (testing) — `c_port_posix_net.rs` named ports `56301`/`56302` as literals, and both sit INSIDE this host's ephemeral range (32768–60999), so the kernel hands them to anything asking for one. An unrelated ROS `component_node` from another session's Autoware stack held 56302 for 29 minutes and `udp_loopback_roundtrip` reported it as `nros_platform_udp_listen` returning `-1` — a product-shaped message for a host-shaped cause. Now binds port 0 and reads `local_addr()` back, so the kernel names a port nobody holds. See `archived/0855-*`.
 
@@ -181,15 +182,34 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
-**#0835** (testing, open 2026-08-27) — the cmake and rust fixture families RE-STALE EACH OTHER, so
-`check-fixtures-stale` never reaches a fixed point: three consecutive runs on a tree with a green `lane=all`
-build each reported the same 17 cmake + 23 rust as stale-and-rebuilt. The per-row probe converges (probe a row
-twice: stale, then fresh), but right after a full run a cmake cell that was just rebuilt is stale again — the
-rust rebuild writes something the cmake signature covers. THIS is what keeps `just ci-matrix` red: ~190 tests
-fail on staleness and every one passes solo afterwards. Two runs either side of an unrelated change gave the
-IDENTICAL 92-test failure set, which is how it gets blamed on whatever landed last. Fixed on the way: the rust
-probe selected by `--lang rust` while `is_cargo_row` is builder-keyed, so twelve threadx cmake rows got a bare
-`cargo build` that could never succeed. See `0835-*`.
+Recently resolved (2026-08-29): **#0835** — `check-fixtures-stale` reported the same rows on every run, and the
+RE-STALE-EACH-OTHER hypothesis in the title was wrong. Both self-healing families reach a fixed point: run the
+gate twice on a settled tree and the rust half goes 41 -> 0, while all 120 configured cmake cells rebuild to
+zero changed artifacts. The repeating counts were two unrelated things. (1) Eight `qemu-riscv64-threadx` cells
+COULD NOT BUILD, and a cell that fails is stale forever: `just/sdk-env.just` exports `NETX_CONFIG_DIR` /
+`THREADX_CONFIG_DIR` repo-wide defaulting to the threadx-linux board, cargo inherited that global, and the
+riscv64 board's own `set(ENV{...})` could not win because it only mutates the CONFIGURE process — a global
+default SHADOWING a per-board value, not an unset variable, so an "is it set?" guard would have said fine
+(issue 0460 one lane over). Fixed with `nros_board_toolchain_env()` in `cmake/NanoRosCargoProfile.cmake`,
+forwarding the seven ThreadX/NetX vars per corrosion target. (2) The rust probe keyed on cargo's
+`"fresh":false` — a re-run UNIT, not a stale ARTIFACT — already hardened to compare artifact bytes. Also fixed
+on the way: the rust probe selected by `--lang rust` while `is_cargo_row` is builder-keyed, so twelve threadx
+cmake rows got a bare `cargo build` that could never succeed. Residual at the time: `qemu-riscv-nuttx/c/talker` did not link
+(`__wrap_poll`) — since fixed under #0820. `just ci-matrix` itself was not re-run.
+See `archived/0835-*`.
+
+Recently resolved (2026-08-29): **#0820** — `c_riscv_nuttx_e2e` was blamed on a museum binary and a missing
+0475 rebuild edge; it was neither. The leaf DID NOT LINK: `f76d44430` (phase-359 W7, "NuttX off `std`") made
+`nros-nuttx-riscv-ffi` `#![no_std]` but touched no `.cargo/config.toml`, leaving issue 0167's
+`-Wl,--wrap=poll` behind after the `libc` crate that defines `__wrap_poll` — a STD dependency — stopped being
+linked. Every `poll` in NuttX's own `libapps.a` then resolved to nothing. The ARM sibling never had the flag,
+so only riscv broke. The 0475 hypothesis is REFUTED by measurement: `|| c_talker_build` is order-only, but the
+utility target behind it has a real edge on the cargo-built image and that command is UNCONDITIONAL, so cargo
+is the incremental engine — touching `nros-c` / `nros-rmw-zenoh` recompiles both through the seam. An
+order-only edge is evidence of nothing until you follow it to the command that does the work. Domain-1 is not
+reproducible: nothing passes `-DNROS_DOMAIN_ID` for this leaf, so it bakes `app_main.h`'s default 0 (the one
+way it could recur is that `NROS_DOMAIN_ID` is a CACHE var, sticky across configures). Test now passes in
+6.4 s. See `archived/0820-*`.
 
 
 **#0828** (testing, open 2026-08-27) — tier 2 RUNS rows its build lane never builds. The resolver skips an

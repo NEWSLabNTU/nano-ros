@@ -3,10 +3,11 @@ id: 820
 title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no
   dependency edge on the Rust world, and hardcoded `--release` past a
   miscompile carve-out"
-status: open
+status: resolved
 type: bug
 area: cmake, testing
-related: [issue-0475, issue-0445, issue-0196]
+related: [issue-0475, issue-0445, issue-0196, issue-0167, issue-0835, phase-359]
+resolved_in: phase-359 W7 fallout — orphaned `--wrap=poll` removed from nros-nuttx-riscv-ffi
 ---
 
 ## Resolution of the reported failure: stale artifact, not a code defect
@@ -443,3 +444,127 @@ cargo nextest run -p nros-tests --test c_riscv_nuttx_e2e --retries 0 \
 ```
 
 Needs `zenohd` and `qemu-system-riscv32`; the test skips cleanly without them.
+
+## The leaf did not link at all (found 2026-08-29, fixed)
+
+Before any of the questions above can be tested, the cell has to build, and it
+did not:
+
+```
+nuttx-apps/netutils/ping/icmp_ping.c:496:(.text.icmp_ping+0x322):
+    undefined reference to `__wrap_poll'
+error: could not compile `nros-nuttx-riscv-ffi` (bin "nros-nuttx-ffi")
+```
+
+**An orphaned linker flag.** Issue 0167 added `-C link-arg=-Wl,--wrap=poll` to
+this leaf's `.cargo/config.toml` to bridge Rust's 8-byte POSIX `pollfd` to
+NuttX's 24-byte kernel struct, because libstd's `sanitize_standard_fds`
+overflowed the caller's array. The interposer it names, `__wrap_poll`, lives in
+the patched libc fork (`third-party/nuttx/libc`, `src/unix/nuttx/mod.rs:645`,
+`#[no_mangle]` present).
+
+`f76d44430` (phase-359 W7, "NuttX off `std`") made this bin `#![no_std]`. It
+changed `src/main.rs` and `Cargo.toml` for BOTH ffi leaves and touched NEITHER
+`.cargo/config.toml`. The `libc` crate is a STD dependency, so with std gone it
+is no longer linked and `__wrap_poll` no longer exists — while the
+`--wrap=poll` flag stayed. Every `poll` call in NuttX's own `libapps.a` was then
+redirected to a symbol that was not there.
+
+The flag also had no remaining purpose: with no std there is no
+`sanitize_standard_fds` and no Rust caller of `poll` at all. The ARM sibling
+(`nros-nuttx-ffi`) never had the flag, which is why only the riscv leaf broke —
+a one-sided flag is invisible until the side that has it is exercised.
+
+Fixed by deleting it. `cmake --build examples/qemu-riscv-nuttx/c/talker/build-zenoh`
+returns 0.
+
+## The 0475 rebuild-edge hypothesis is REFUTED — measured
+
+The section above ("Where the 0475 gap actually is") reads `|| c_talker_build`
+as an order-only edge and concludes the image has no dependency on the Rust
+world. That reading is wrong, and the conclusion does not follow.
+
+`c_talker_build` is a cmake *utility* target. Following it one step further:
+
+```
+CMakeFiles/c_talker_build.util -> nros-nuttx-ffi-out/nros-nuttx-ffi   (real input)
+```
+
+and that custom command is UNCONDITIONAL — it has no output file ninja can
+consider up to date, so `ninja -n` reports work on a freshly built tree:
+
+```
+[1/2] Building NuttX example: c_talker
+[2/2] Running utility command for c_talker_build
+```
+
+Cargo, not ninja, is the incremental engine for this seam. Verified end to end:
+touch `packages/api/nros-c/src/lib.rs` and
+`packages/rmw/zenoh/nros-rmw-zenoh/src/lib.rs`, rebuild, and cargo recompiles
+both —
+
+```
+   Compiling nros-c v0.5.0 (…/packages/api/nros-c)
+   Compiling nros-rmw-zenoh v0.5.0 (…/packages/rmw/zenoh/nros-rmw-zenoh)
+```
+
+— with the image md5 unchanged, which is correct for an mtime-only touch. So a
+backend source edit DOES reach this image. The 0475 fix is not missing here;
+this seam never needed it, because it does not rely on file edges at all.
+
+That leaves the issue's other branch — "the tier-2 fixture build reached the
+binary another way" — as the live one.
+
+## Where the domain-1 binary could NOT have come from
+
+The reported museum binary published on domain 1 where a clean rebuild
+publishes on 0. In the current tree that difference cannot be reproduced:
+
+* `NROS_ENTRY_DOMAIN_ID` is baked by `cmake/NanoRosEntry.cmake:546` only
+  `if(DEFINED NROS_DOMAIN_ID)` — a CMake variable, so `-DNROS_DOMAIN_ID=<n>`
+  at configure. Nothing else feeds it; the fixture rows' `env = { NROS_DOMAIN_ID }`
+  is read by `option_env!` on the CARGO rows, not by this cmake leaf.
+* This leaf's `[[fixture]]` row sets only `NROS_ENTRY_LOCATOR`, no domain.
+* `CMakeCache.txt` for the built cell contains no `NROS_DOMAIN_ID`.
+* With it undefined the header default applies —
+  `packages/api/nros-c/include/nros/app_main.h:74`, `#define NROS_ENTRY_DOMAIN_ID 0`.
+* `c_riscv_nuttx_e2e.rs` never mentions a domain either.
+
+So every path in the tree today yields 0, and the domain-1 image came from a
+tree or an environment that no longer exists. Worth noting the shape anyway,
+because it is the one way it could recur: `NROS_DOMAIN_ID` is a CACHE variable,
+so a configure that once passed `-DNROS_DOMAIN_ID=1` into this build directory
+would leave it there for every later build that does not pass it — silently,
+and invisibly to the fixture row.
+
+## Verdict: the test passes
+
+After the link fix and a `just build-test-fixtures lane=native`:
+
+```
+Summary [6.442s] 1 test run: 1 passed, 0 skipped
+```
+
+One process note, because it cost a false alarm here: the first attempt reported
+`FAILED`, and the body was `[SKIPPED] native listener fixture not built … STALE`
+— the propagation experiment above had touched `nros-rmw-zenoh/src/lib.rs`,
+re-staling the native listener. Bare `cargo nextest` counts a `nros_tests::skip!`
+panic as a FAILURE; only `just test-all`'s junit rewrite turns it into a skip.
+Read the panic text before treating such a red as a regression.
+
+## What this issue turned out to be
+
+Three separate things wore one symptom:
+
+1. the leaf **could not link** — an orphaned `--wrap=poll` (fixed here);
+2. the **0475 rebuild-edge gap did not exist** on this seam — the cargo step is
+   an unconditional custom command, measured (refuted here);
+3. the **domain-1 museum binary** is not reproducible from the tree as it stands;
+   every path yields the header default 0.
+
+Only (1) was a live defect. (2) was a misreading of `ninja -t query` output that
+stopped one level too early — `|| c_talker_build` is order-only, but the utility
+target behind it carries a real edge, and the command it runs is unconditional
+anyway. Worth remembering when applying the 0475 recipe elsewhere: an order-only
+edge is evidence of nothing until you follow it to the command that does the
+work.

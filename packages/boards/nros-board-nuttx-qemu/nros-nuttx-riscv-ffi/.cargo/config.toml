@@ -19,10 +19,17 @@ linker = "riscv-none-elf-gcc"
 rustflags = [
     "-C", "link-arg=-march=rv32imac",
     "-C", "link-arg=-mabi=ilp32",
-    # #167 — interpose poll() to bridge Rust's 8-byte POSIX `pollfd` to NuttX's
-    # 24-byte kernel struct (std's sanitize_standard_fds overflows the caller's
-    # array otherwise). `__wrap_poll` lives in the patched libc fork.
-    "-C", "link-arg=-Wl,--wrap=poll",
+    # NO `-Wl,--wrap=poll` here. Issue 0167 added one to bridge Rust's 8-byte
+    # POSIX `pollfd` to NuttX's 24-byte kernel struct, because libstd's
+    # `sanitize_standard_fds` overflowed the caller's array. phase-359 W7 made
+    # this bin `#![no_std]`, so no Rust code calls `poll` any more — and the
+    # interposer it named, `__wrap_poll`, lives in the patched `libc` crate,
+    # which is a STD dependency and is therefore no longer linked. The flag
+    # outlived its symbol: every `poll` call in NuttX's own `libapps.a` was
+    # redirected to a symbol that no longer exists, and the leaf stopped
+    # linking (`undefined reference to __wrap_poll` from `icmp_ping.c`). The
+    # ARM sibling never had the flag, which is why only this leaf broke.
+    # Issue 0820.
 ]
 
 [env]
