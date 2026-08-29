@@ -325,8 +325,12 @@ Five commands, run from your workspace. This is the `examples/workspaces/rust`
 transcript, verbatim:
 
 ```bash
-# 0. once: a Zephyr. Either export ZEPHYR_BASE, or point nros at the workspace
-#    that contains `zephyr/`:
+# 0. tell nros where your west workspace is — the directory containing
+#    `zephyr/`. On the command line:
+#
+#      nros build demo_bringup:zephyr --zephyr-workspace /path/to/zephyr-workspace
+#
+#    or once for the shell, if you would rather not repeat it:
 export NROS_ZEPHYR_WORKSPACE=/path/to/zephyr-workspace
 
 # 1. generate the message bindings this workspace's packages depend on.
@@ -419,20 +423,48 @@ list of ones it does, because the descriptor supplies more than the `-b` string
 — the platform, the toolchain, the entry kind, the declared capabilities. There
 is no safe default for those.
 
-**Adding a board needs no edit to nano-ros.** `$NROS_EXTRA_BOARD_PATH` is
-PATH-style and names directories shaped like `packages/boards/` — each
-immediate subdirectory holding an `nros-board.toml`:
+**A board is a package — put it in your workspace.** Drop an `nros-board.toml`
+beside a package's `package.xml` and it joins the catalog like any other
+package in `src/`:
 
-```bash
-mkdir -p ~/myboards/my-board
-# names = ["my-board", "<the west board target>"] …
-export NROS_EXTRA_BOARD_PATH=~/myboards
-nros build demo_bringup:zephyr
+```text
+my_robot/src/
+├── talker_pkg/
+└── my_board/
+    ├── package.xml
+    └── nros-board.toml
 ```
 
-`nros new board <name> --for-platform zephyr` scaffolds one. Note this is the
-*nano-ros* descriptor; an out-of-tree Zephyr board **definition** (its
-devicetree and `board.yml`) is contributed the Zephyr way, through your
+```toml
+# src/my_board/nros-board.toml
+[[board]]
+names = ["my-board"]              # what your images say
+west_board = "qemu_cortex_m3"     # what west is given
+platform = "zephyr"
+toolchain = "stable"
+platform_feature = "platform-zephyr"
+link_kind = "none"
+entry_kind = "zephyr-staticlib"
+```
+
+```toml
+# src/demo_bringup/system.toml
+[image.zephyr]
+board = "my-board"
+```
+
+No environment variable, nothing outside the tree, nothing copied into the
+nano-ros checkout. `west_board` is what lets the friendly name be the one your
+workspace uses — leave it out when your board name already *is* the west board
+target, which is what the shipped descriptors do.
+
+For a board shared by **several** workspaces there is no single workspace to
+put it in, and `$NROS_EXTRA_BOARD_PATH` still covers that: PATH-style, naming
+directories shaped like `packages/boards/`.
+
+`nros new board <name> --for-platform zephyr` scaffolds the descriptor. Note
+this is the *nano-ros* descriptor; an out-of-tree Zephyr board **definition**
+(its devicetree and `board.yml`) is contributed the Zephyr way, through your
 module's `board_root`.
 
 #### Adding your own drivers, modules and boards
