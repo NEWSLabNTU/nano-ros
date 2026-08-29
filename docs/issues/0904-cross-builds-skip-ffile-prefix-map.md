@@ -43,11 +43,47 @@ without -ffile-prefix-map : real path present (1 hit)
 with    -ffile-prefix-map : real path absent (0 hits), `/nros-out` present
 ```
 
-So the flag would strip it. It is not reaching this compile. The likely
-suspect is `flag_if_supported`'s probe under a cross `CC`/target — it fails
-SILENTLY by design, which is exactly why a fix that depends on it can stop
-working without anything going red. Confirm before fixing: print the resolved
-argv, or switch to an unconditional `flag()` for compilers known to take it.
+## And it is NOT `flag_if_supported` — the first diagnosis here was wrong
+
+This issue originally named `flag_if_supported`'s probe as the likely suspect,
+on the reasoning that it fails silently. **Measured, and it does not fail.** A
+standalone crate calling `cc::Build::is_flag_supported` with the identical flag
+string reports `true` for both the host and an `armv7a-none-eabi` cross build,
+and the object it then produces carries `/nros-out` and no real path — the flag
+is applied and works, through cc-rs, on a cross target.
+
+Reproducing the real build's probe by hand agrees: `flag_check.c` compiled with
+the full nros-c flag set plus the candidate flag exits 0. And cc-rs's probe
+artifacts (`flag_check`, `flag_check.c`) are present and freshly timestamped in
+nros-c's `OUT_DIR`, so the probe ran.
+
+So: the probe runs, the probe passes, the flag works when applied — and the
+emitted `nros_variant_symbol.o` still has zero `/nros-out` hits and two hits of
+the real target-dir path. Reproduced on a forced rebuild (fingerprints removed,
+build script re-run, nros-c recompiled), not a stale artifact. Whatever the
+mechanism is, it is not the one this issue first named, and the next person
+should not re-run that experiment.
+
+Note for reproducing: `CC_ENABLE_DEBUG_OUTPUT=1` buys nothing here — build-script
+stdout is captured by cargo unless the script fails, so cc-rs's debug lines never
+surface. Getting the resolved argv needs the build script to emit it itself.
+
+## The fix that does not depend on the answer
+
+The path is only in the object because the TU is GENERATED into `OUT_DIR`, which
+differs per target dir. Compile a TRACKED source instead and the whole class
+goes away — no prefix-map, no probe, nothing silent:
+
+* keep `packages/api/nros-c/src/variant_symbol.c` in the tree, with the symbol
+  name as a macro:
+  `__attribute__((weak)) const unsigned char NROS_VARIANT_SYMBOL = 0;`
+* pass the suffix as `-DNROS_VARIANT_SYMBOL=nros_config_variant_sz_<hash>`.
+
+The source path is then identical in every target dir, so the object is
+deterministic by construction rather than by a flag that has to keep working.
+`-ffile-prefix-map` can stay as belt-and-braces, but nothing would depend on it.
+Verify the same way this was measured: build the leaf into two target dirs and
+diff `md5sum` of the target-side objects.
 
 ## Why it matters
 
