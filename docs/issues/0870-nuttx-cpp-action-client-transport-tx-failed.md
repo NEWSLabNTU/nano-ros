@@ -5,7 +5,7 @@ title: "NuttX C++ action client fails `create_action_client` — the session
 status: open
 type: bug
 area: rmw, examples
-related: [issue-0867, issue-0865, issue-0460]
+related: [issue-0867, issue-0891, issue-0460]
 ---
 
 ## Symptom
@@ -37,7 +37,7 @@ the same cell produced `-2` and `-100` on different runs.
 
 ## What is known
 
-* Reproduces solo on an idle host, so it is not the host-load class of 0865.
+* Reproduces solo on an idle host, so it is not the host-load class of 0891.
 * Roughly 2 failures in 3 attempts, and nextest's retries mask it — the cell is
   reported FLAKY rather than failing, so it has been passing CI on its third try.
 * The server side is healthy and prints its banner every time.

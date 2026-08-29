@@ -5,7 +5,7 @@ title: "FreeRTOS pubsub delivers by hand and delivers NOTHING under the test
 status: open
 type: bug
 area: testing, boards
-related: [issue-0865, issue-0830, issue-0387]
+related: [issue-0891, issue-0830, issue-0387]
 ---
 
 ## Symptom

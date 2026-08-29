@@ -1,5 +1,5 @@
 ---
-id: 865
+id: 891
 title: "Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap
   was never measured, and a slow boot is reported as a dead image"
 status: open
@@ -95,7 +95,7 @@ and service, C and C++, recovered.
 
 The fourth is real and is a DIFFERENT BUG: `test_rtos_action_e2e` /
 `Platform__Nuttx` / `Lang__C` fails 3/3 **run entirely alone**, so it is not
-concurrency and 0865 does not explain it. The image gets further than any
+concurrency and 0891 does not explain it. The image gets further than any
 timeout would suggest:
 
     Action client created: /fibonacci
