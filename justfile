@@ -5392,6 +5392,18 @@ check-cpp: check-cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/bind_service.cpp
+    echo "  - graph query entry points are DECLARED, not just defined (phase-381 W4)"
+    # Same trap as the C side: the C++ FFI header is cbindgen-generated, and
+    # cbindgen does not expand macros — a macro-generated `#[no_mangle]` gets no
+    # declaration and is uncallable while the Rust side stays green. Method
+    # POINTERS make that a build failure here.
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/graph_query_entry_points.cpp
     # issue 0338 — `spin` verb SHAPE probe: `spin()` blocks until shutdown
     # (rclcpp/C/Rust semantics) and the bounded verb is `spin_for(...)`. The
     # defect was the shape of the API, so a compile-time assertion on which
