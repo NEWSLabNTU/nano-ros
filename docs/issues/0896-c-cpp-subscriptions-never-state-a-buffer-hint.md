@@ -233,12 +233,18 @@ edge case.
 1. **Value-first field mapping in `rosidl-codegen`**, rendering the existing
    Rust schema string from the value. No behaviour change; the existing emitter
    tests are the check.
-2. **The bound, computed by `max_serialized_size` over those values**, nested
-   types resolved by the same closure the RIHS path already uses. Emitted as a
-   `#define` from `packs/c/message.h.jinja` (and the C++ sibling). A test must
-   assert it equals the Rust `MAX_SERIALIZED_SIZE_XCDR*` const for the same
-   type — same input, same function, so a disagreement means the value mapping
-   is wrong. Retarget `NROS_PUB_BUFFER_SIZE` onto it in the same change.
+2. **Both bounds, computed by `max_serialized_size` over those values**, nested
+   types resolved by the same closure the RIHS path already uses. Emitted as two
+   `#define`s (XCDR1 and XCDR2) from `packs/c/message.h.jinja` and the C++
+   sibling, plus the `_get_rx_buffer_hint` accessor returning their max. An
+   unbounded type emits NEITHER, so the accessor is absent and a call site
+   naming it fails to compile. A test must assert each equals the Rust
+   `MAX_SERIALIZED_SIZE_XCDR*` const for the same type — same input, same
+   function, so a disagreement means the value mapping is wrong. Retarget
+   `NROS_PUB_BUFFER_SIZE` onto the XCDR1 constant in the same change.
+2b. **Thread the RFC-0033 `cap` into the schema emit** so a field bounded only
+   in `nros-codegen.toml` stops reading as unbounded. Same test, extended with a
+   capped field.
 3. **Design the call-site spelling** — the C analogue of W3b's
    `nros::rx_buffer_for!`. Do this BEFORE 4-5: the C subscription is raw by
    design, so this is how the number reaches the runtime at all, and it decides
@@ -306,25 +312,89 @@ static inline uint32_t std_msgs_msg_int32_get_rx_buffer_hint(void);
 The `#define` from layer 2 is what it returns. A macro form that expands to BOTH
 arguments at once remains an option, but it is no longer load-bearing.
 
+## Decided 2026-08-29
+
+**1. An unbounded type is a COMPILE ERROR at the call site.** No bound, no
+constant, no accessor — the call site naming that type fails to build. The
+alternative (return 0, fall back to the global knob) reproduces today's silent
+defect exactly: a subscription that quietly takes the small class and drops
+samples at runtime on a target with no console. The escape hatch is to bound the
+field, in the `.msg` or via `cap` (below); both are one line and both are the
+thing we actually want the user to do.
+
+**2. Size the RX hint from `max(XCDR1, XCDR2)`; size the TX buffer from XCDR1
+alone.** The wire question has a live-verified answer already in this repo —
+RFC-0055's 2026-07-26 correction:
+
+> A default Jazzy peer serializes FINAL/XCDR1 on the wire (verified live for
+> both fastrtps and cyclonedds; guard
+> `nros_serdes::cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`).
+> "Modern ROS 2 defaults types to `@appendable`/XCDR2 so nano-ros must too" is
+> wrong — and DDS-XTypes REJECTS an appendable writer against a FINAL reader, so
+> emitting appendable-by-edition BREAKS default interop. Extensibility is a
+> per-type property, never an edition property.
+
+So XCDR1 is what the LTS editions put on the wire on the default path, and
+nano-ros writes XCDR1 exclusively (`CdrWriter`'s constructors hard-wire it;
+`EncodingVersion::default()` is `Xcdr1`). The TX buffer therefore needs XCDR1
+only.
+
+The RX side is not symmetric. `CdrReader` dispatches on the encapsulation id and
+accepts XCDR2, and RFC-0055's machinery is "built + tested but parked" pending
+per-type `@appendable` re-activation — so a peer's XCDR2 sample can arrive.
+Neither encoding dominates the other in size (XCDR2 adds a 4-byte DHEADER per
+struct, but aligns 8-byte primitives to 4 instead of 8), so the receive bound
+must be the max. This matches what the Rust path already computes
+(`subscription_rx_hint`, `rmw_type_registry.rs:168`).
+
+**Consequence: emit BOTH constants, not one pre-maxed value.** The two consumers
+want different numbers, and a single `MAX_SERIALIZED_SIZE` would be silently
+wrong for one of them — the same reason `pad_to` takes a version rather than a
+constant.
+
+**3. The out-of-band bound already exists: `nros-codegen.toml` `cap` (RFC-0033).**
+No new config file. Per-field `mode` + `cap`, deep-merged, `deny_unknown_fields`,
+and already resolved per-field for the struct rendering
+(`generator/common.rs:415-419`, `583-619`, `891-903`) — `cap = 64` on an
+unbounded `string` renders `heapless::String<64>`.
+
+The gap is one hop: the schema emit path
+(`build_nros_schema_for_struct_with_path`) walks the RAW rosidl AST and has no
+storage resolver in scope, so that same field still emits
+`::nros_serdes::FieldType::String` and the type's bound comes back `None`. The
+capacity is applied to the STORAGE and not to the SCHEMA. Threading the resolved
+`cap` into `render_field_type_expr` is the entire out-of-band mechanism.
+
+Semantics stay distinct, and this is why `cap` sizes a HINT rather than
+asserting a bound: an IDL `string<=64` constrains the publisher, whereas a `cap`
+is local to this image and a remote ROS node may still send 200 bytes. So a
+capped field bounds our buffer and creates a truncation contract — which is
+exactly what (4) handles.
+
+**4. Oversize is explicit and NEVER fatal.** An app that dies on an embedded
+target is worse for the user than one that drops a sample and says so — there is
+often no console, no debugger and no way to restart it.
+
+The receive path already has the right shape to copy, in
+`executor/arena.rs:386`: `#[cold]`, a `DROPPED_TAKES` counter, first-then-every-
+64th rate limiting (so one misconfigured subscription in a 40-participant graph
+cannot flood the log — issue 0371's shape), and `nros_log` rather than stdio,
+because a Rust `std` stdio call is FATAL inside Zephyr `native_sim` (issue 0589).
+No panic, no abort.
+
+The transmit path needs the same treatment plus a distinct status. There is no
+too-large code today — the closest is `NROS_RET_FULL` (-6), which means a full
+queue — so the generated publish helper returns a bare non-zero that callers
+cannot tell from a transport failure. Add one (cbindgen: `just regen-c-headers`),
+and report it once per site rather than per sample.
+
 ## Still undecided
 
-1. **Unbounded types.** A type with no bound gets no constant. Does the
-   accessor then not exist (a compile error at the call site, forcing an
-   explicit decision) or return 0 (falls back to the global knob, matching the
-   Rust path's `RX_BUF` default)? Same question decides the publisher helper.
-2. **XCDR1 vs XCDR2.** Two different bounds for the same type. The Rust path
-   takes the max (`subscription_rx_hint`, `rmw_type_registry.rs:168`). Emit both
-   constants and take the max at the accessor, or emit one already-maxed
-   constant? The layer-2 parity test's shape depends on the answer.
-3. **Where an out-of-band bound is authored and keyed** (`system.toml`? a leaf
-   config?), and whether it may only lower a bound or also assert one for an
-   unbounded type.
-4. **How a truncation drop is reported** distinctly from a transport failure.
-   Today the generated C publish helper returns non-zero for both.
-5. **`RawSubscription::<{ config::MESSAGE_BUFFER_SIZE }>`** — a const generic
-   cannot take a runtime hint, so per-subscription sizing there needs a
-   different mechanism entirely (size-classed arena, or a per-type monomorphised
-   path). Unscoped, and possibly larger than everything above.
+Only one remains: **`RawSubscription::<{ config::MESSAGE_BUFFER_SIZE }>`**
+(`nros-c/src/subscription.rs:503`). A const generic cannot take a runtime hint,
+so per-subscription sizing there needs a different mechanism entirely — a
+size-classed arena, or a per-type monomorphised path. Unscoped, and possibly
+larger than everything above.
 
 ## Not to be confused with
 
