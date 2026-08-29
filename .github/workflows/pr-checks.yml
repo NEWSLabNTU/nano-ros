@@ -423,6 +423,26 @@ jobs:
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: just build-compile-check-fixtures cxx-syntax
 
+      # issue 0898 — the OTHER artifact `check-build` asserts and this job never
+      # produced. phase-396 W1 named both halves when it took the build tier off
+      # the merge group: "PR #14 adds build-compile-check-fixtures; the bindings
+      # half is unowned". This is the bindings half.
+      #
+      #   native check: 40 example(s) are missing their generated message bindings
+      #
+      # Example msg crates (`generated/<msg>/`) are build-time AND
+      # ROS-version-dependent, so they are gitignored and never shipped. `just
+      # check` deliberately refuses to sync them — that would couple a static
+      # check to a live ROS environment and rewrite each example's
+      # `[patch.crates-io]` — so it GATES instead and names this remedy. The gate
+      # is right; the job simply never ran the remedy.
+      #
+      # Affordable because this image HAS ROS: measured 23 s on a humble host for
+      # the whole tree, against the ~587 s tier it unblocks.
+      - name: generate message bindings (native::check asserts them)
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: just generate-bindings
+
       - name: just check-build + no_std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
