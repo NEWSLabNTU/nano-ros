@@ -458,11 +458,39 @@ check: check-cli-fresh check-fast check-build check-api-parity
 # just-dependency ordering cannot do. That is the same trade `check-tier-
 # preconditions` makes: one failure per attempt is what makes a check something
 # people stop running.
+# Kept as an alias for anyone with it in muscle memory; `check-fast` IS this now.
+[private]
 check-fast-parallel:
     @bash scripts/build/run-gates-parallel.sh
 
+# The source-gate tier — FANNED OUT since phase-395 W11 (issue 0726 closed).
+#
+# 90 s serial -> ~8.3 s at -P24, and it runs on every pull request, every merge
+# group and every push, so this is the most-paid-for second in the tree. The 133
+# gates are 56 s of work spread over 90 s at 1-2 runnable cores; the floor is
+# now one gate (`check-rmw-ret-sign`, ~8.5 s).
+#
+# This was opt-in for two phases because one gate went red under fan-out and
+# green standalone. The cause was a `grep -q` that could not tell a forked
+# grep's EAGAIN from "no match" — 76 such sites are now converted to
+# `nros_grep_q` across every `check-fast`-reachable script, and
+# `check-grep-q-error-conflation` keeps new ones out. 17 fan-out runs green,
+# including three at `NROS_GATE_JOBS=64` for deliberate fork pressure.
+#
+# `just check-fast-serial` is the escape hatch: fail-fast ordering, one gate's
+# output at a time.
 [group("main")]
-check-fast: _check-skip-reset \
+check-fast:
+    @bash scripts/build/run-gates-parallel.sh
+
+# The GATE LIST, and the serial runner — phase-395 W11.
+#
+# `check-fast` (below) fans these out; this recipe both DECLARES them and runs
+# them one at a time. Keep it: `run-gates-parallel.sh` derives its list from
+# this dependency line, so the list has exactly one home, and a serial run is
+# the right thing when you want fail-fast ordering or unshredded output.
+[group("main")]
+check-fast-serial: _check-skip-reset \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \

@@ -54,11 +54,11 @@ export GIT_OPTIONAL_LOCKS=0
 list="${1:-}"
 if [ -z "$list" ]; then
     list="$(mktemp "${TMPDIR:-/tmp}/nros-gate-list.XXXXXX")"
-    awk '/^check-fast:/{f=1} f{print; if ($0 !~ /\\$/) exit}' justfile \
+    awk '/^check-fast-serial:/{f=1} f{print; if ($0 !~ /\\$/) exit}' justfile \
         | tr -s ' \\' '\n' \
         | sed 's/:$//' \
         | grep -E '^check-' \
-        | grep -v '^check-fast$' \
+        | grep -vE '^check-fast(-serial)?$' \
         | sort -u > "$list"
 fi
 [ -s "$list" ] || {
