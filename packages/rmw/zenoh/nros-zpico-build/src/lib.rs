@@ -17,6 +17,17 @@ pub struct ShimConfig {
     pub max_publishers: usize,
     pub max_subscribers: usize,
     pub max_queryables: usize,
+    /// phase-392 W5.e — whether [`ShimConfig::max_queryables`] was sized from a
+    /// DECLARATION (the resolved SystemModel, via `nros ws entity-facts`) or
+    /// from the backend's own budget.
+    ///
+    /// The runtime needs to know which, because the two produce the same
+    /// failure for different reasons. Sized from a budget, an exhausted table
+    /// means "raise the knob". Sized from a declaration, it means the image
+    /// created a service server its model does not declare — and saying "raise
+    /// the knob" there sends the reader to fix the symptom. Being authoritative
+    /// costs this, and phase-392 W5.b2 says it is paid in the same wave.
+    pub queryable_table_declared: bool,
     pub max_liveliness: usize,
     pub max_pending_gets: usize,
     /// phase-328 (issue 0348) — size of the C shim's session pool
@@ -123,6 +134,11 @@ impl ShimConfig {
              pub const ZPICO_MAX_PENDING_GETS: usize = {};\n\
              /// Size of the session pool (set via ZPICO_MAX_SESSIONS, default 1). phase-328 / issue 0348.\n\
              pub const ZPICO_MAX_SESSIONS: usize = {};\n\
+             /// phase-392 W5.e — whether the queryable table was sized from the entry's\n\
+             /// DECLARATION rather than from the backend's own budget. Decides which\n\
+             /// exhaustion message the shim gives: a budget is raised, a declaration is\n\
+             /// corrected.\n\
+             pub const ZPICO_QUERYABLE_TABLE_DECLARED: bool = {};\n\
              /// Whether this shim was compiled with the multicast transport + scouting\n\
              /// that zenoh PEER mode needs (issue 0682). Emitted from the SAME constant\n\
              /// that writes the C `#define`, so the two cannot drift.\n\
@@ -133,6 +149,7 @@ impl ShimConfig {
             self.max_liveliness,
             self.max_pending_gets,
             self.max_sessions,
+            self.queryable_table_declared,
             multicast_transport_enabled(),
         )
     }
@@ -894,6 +911,7 @@ int32_t zpico_init(void);\n";
             max_publishers: 1,
             max_subscribers: 2,
             max_queryables: 3,
+            queryable_table_declared: true,
             max_liveliness: 4,
             max_pending_gets: 5,
             max_sessions: 9,
@@ -909,6 +927,9 @@ int32_t zpico_init(void);\n";
         assert!(body.contains("ZPICO_MAX_PUBLISHERS: usize = 1;"));
         assert!(body.contains("ZPICO_MAX_PENDING_GETS: usize = 5;"));
         assert!(body.contains("ZPICO_MAX_SESSIONS: usize = 9;"));
+        // phase-392 W5.e — the shim's exhaustion message branches on this, so
+        // it has to arrive with the size it describes.
+        assert!(body.contains("ZPICO_QUERYABLE_TABLE_DECLARED: bool = true;"));
         assert!(!body.contains("get_reply_buf_size"));
     }
 
@@ -928,6 +949,7 @@ int32_t zpico_init(void);\n";
                 max_publishers: 1,
                 max_subscribers: 2,
                 max_queryables: 3,
+                queryable_table_declared: false,
                 max_liveliness: 4,
                 max_pending_gets: 5,
                 max_sessions: 1,
@@ -952,6 +974,11 @@ int32_t zpico_init(void);\n";
             // The knobs that were already correct stay correct in both states —
             // the point of the loop is that `tx_batch` gates only its own pair.
             assert_eq!(get("ZPICO_MAX_QUERYABLES"), "3");
+            // …and the other value of the W5.e flag really is emitted.
+            assert!(
+                cfg.rust_consts()
+                    .contains("ZPICO_QUERYABLE_TABLE_DECLARED: bool = false;")
+            );
             assert_eq!(
                 defines.iter().any(|(k, _)| *k == "ZPICO_TX_BATCH"),
                 tx_batch
