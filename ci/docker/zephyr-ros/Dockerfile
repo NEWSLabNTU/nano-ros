@@ -96,6 +96,44 @@ RUN curl -fsSL -o /tmp/sdk.tar.xz \
 # considers-and-rejects it then uses its west SDK.
 ENV ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
+# Zephyr's Python build prerequisites — issue 0878.
+#
+# `scripts/build/zephyr-python.sh` resolves an interpreter in the order
+# NROS_PYTHON -> scripts/zephyr/.venv -> `python3` on PATH, and says outright
+# that nano-ros never CREATES any of them: choosing between a distro package,
+# `pip --user` and a venv is a decision about the host's interpreter, and a PEP
+# 668 host refuses `pip --user` outright.
+#
+# That reasoning is about a DEVELOPER's host. This image is ours, so the
+# decision it defers has no user left to make it — and deferring it here is what
+# put every Zephyr nightly cell at `failure` in the `Set up Zephyr <line>
+# workspace` step, before a single build ran. 21 of 21 red, for weeks, which
+# also means the lane could not report the regression it did contain (issue
+# 0876).
+#
+# Installed into the image's SYSTEM python3, which is the third arm of that
+# resolution order — no venv, so the script still creates nothing and simply
+# finds a `python3` that can `import west`.
+#
+# PINNED, like `uv` and `just` below now are in ci-base: an unpinned
+# `pip install` at image-build time is the floating half of the drift axis
+# docs/development/ci-image-provisioning.md describes, and two builds of the
+# "same" tag would ship different tooling with no signal.
+#
+# The list is the union of `scripts/check-python-deps.py`'s `west` and
+# `zephyr-build` groups, which is the checker this image was failing. That
+# script is the single source; `scripts/check-ci-image-python-deps.py` gates the
+# two against each other, because a second hand-maintained copy of a dependency
+# list is how they drift.
+RUN pip3 install --no-cache-dir \
+        west==1.2.0 \
+        pyelftools==0.31 \
+        PyYAML==6.0.2 \
+        pykwalify==1.8.0 \
+        packaging==24.2 \
+    && python3 -c 'import west, elftools, yaml, pykwalify, packaging' \
+    && west --version
+
 # uv (Python 3.12 for the Zephyr 4.4 line) + just (recipe runner). Both via
 # their canonical installers (arch/version handled upstream).
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh

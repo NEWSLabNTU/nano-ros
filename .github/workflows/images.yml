@@ -114,8 +114,19 @@ jobs:
       # SDK/distro part when either changes, `-rN` when the Dockerfile changes
       # without an SDK/distro bump. Keep in lockstep with the Dockerfile ARG + the
       # nightly Zephyr `container:`. r2 (#59): added ros-humble-example-interfaces.
+      # r3 (#0878): baked Zephyr's pinned Python build prereqs (west, pyelftools,
+      # PyYAML, pykwalify, packaging) — without them every nightly cell failed at
+      # `just zephyr setup` before any build.
+      #
+      # ORDERING, because this tag is hand-bumped rather than content-derived:
+      # `nightly.yml` is moved to r3 in the SAME commit, and r3 does not exist in
+      # the registry until this workflow has run on `main`. That is safe here only
+      # because this workflow triggers on the merge push (its paths filter covers
+      # `ci/docker/zephyr-ros/**`) and nightly runs on a daily schedule — hours of
+      # slack. If the image build fails, fix it before the next nightly rather
+      # than reverting the consumers.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.17.4-r2
+      TAG: humble-sdk0.17.4-r3
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GHCR

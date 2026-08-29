@@ -1,0 +1,74 @@
+# Say whether the nightly REPORTED — issue 0878.
+#
+# A red nightly cell means one of two unrelated things, and GitHub paints them
+# the same colour:
+#
+#   the lane ran and the code is broken   -> a verdict, fix the code
+#   the lane never ran and could not      -> no verdict, fix the lane
+#
+# Only the first is information. A lane in the second state has no signal
+# capacity: a regression landing in it looks exactly like yesterday's failure.
+# That is how issue 0876 survived — the nightly HAD a `zephyr 3.7 / c/talker`
+# cell that would have caught an unbuildable conf, and that cell reported
+# `failure` both before and after the change, because all 21 Zephyr cells were
+# dying in `just zephyr setup` on a missing Python package.
+#
+# `workflow_run` rather than a job inside `nightly`: a run cannot reliably
+# report on itself. If the failure is the runner or the container — which is
+# exactly the no-verdict case this exists to name — an in-run reporter dies with
+# it. Separate workflow, separate runner, reads the completed run.
+#
+# Sibling of `queue-notify.yml`, which does the same job for merge-queue
+# ejections. Same reason both exist: the signal is already in GitHub's data and
+# nothing surfaces it.
+name: nightly-report
+
+on:
+  workflow_run:
+    workflows: ["nightly"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  triage:
+    # Runs on success too. "Everything passed" and "nothing ran" are both worth
+    # stating, and a reporter that only speaks on failure cannot tell you the
+    # difference between a quiet lane and a healthy one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Did the nightly report?
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NROS_QUEUE_REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # Never fail the build. A tool that can go red about the nightly being
+          # red adds a second thing to ignore.
+          python3 scripts/ci/nightly-triage.py --runs 3 | tee /tmp/triage.txt || true
+
+          {
+            echo '## Did the nightly report?'
+            echo
+            echo '```'
+            cat /tmp/triage.txt
+            echo '```'
+            echo
+            echo 'A **NO VERDICT** cell never reached the thing it tests — fix the lane, not the code.'
+            echo 'Locally: `just nightly-triage`.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Annotate when the lane produced no verdict
+        if: ${{ always() }}
+        run: |
+          set -uo pipefail
+          n="$(sed -n 's/^  NO VERDICT *\([0-9][0-9]*\).*/\1/p' /tmp/triage.txt | head -1)"
+          [ -n "${n:-}" ] || exit 0
+          if [ "$n" -gt 0 ]; then
+            echo "::warning title=Nightly produced no verdict for $n cell(s)::Those cells failed before running what they test, so they cannot report a regression. See the job summary."
+          fi
