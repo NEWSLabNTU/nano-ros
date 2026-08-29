@@ -5,8 +5,9 @@
 from two dependency classes to all of them; changes no existing `[tool.*]` /
 `[source.*]` semantics.
 **Amended:** 2026-08-29 — `[prereq.*]` (one key namespace over four providers),
-unknown keys are an error, and rosdep is no longer consulted. See the amendment
-below; it REVERSES §"System-aware resolution".
+unknown keys are an error, rosdep is no longer consulted, and `[system.*]`
+MERGES into `[prereq.*]` and retires. See the amendment below; it REVERSES
+§"System-aware resolution".
 **Motivated by:** issue 0368 — a simulated end-user `just setup all` on a clean
 Ubuntu 22.04 host failed 7 of 18 modules, nearly all on dependencies that were
 declared nowhere (or declared as a Debian-only sudo list ordered in front of
@@ -103,14 +104,129 @@ Consequence: the `rosdep_resolve` fallback in `cmd/setup.rs` (phase-327 W6)
 becomes dead and should be deleted with this work, not left as an unreachable
 branch.
 
-### What this amendment does not decide
+### `[system.*]` MERGES into `[prereq.*]`, and retires
 
-* **Whether `[system.*]` is renamed in place or `[prereq.*]` is added beside it.**
-  Both spellings can coexist during migration; the SSoT must end as one table.
-* **The `check` vocabulary for non-system providers.** `cmd`/`pkg_config`/
-  `sharedlib` were written for OS packages; what proves an SDK dist or a
-  submodule is present is `[tool.*]`/`[source.*]` machinery that already exists
-  and is not obviously the same shape.
+Settled by what the index already does, not by preference.
+
+**A flat cross-provider namespace already ships.** `board.packages` is one list
+per board, and its names resolve across FOUR classes today:
+
+| name | resolves in |
+| --- | --- |
+| `qemu`, `arm-none-eabi-gcc`, `espflash`, `riscv-none-elf-gcc` | `[tool.*]` |
+| `freertos-kernel`, `lwip`, `nuttx-{libc,kernel,apps}`, `threadx*` | `[source.*]` |
+| `genromfs` | `[tool.*]` **and** `[system.*]` |
+| `arm-fvp` | `[gated.*]` |
+
+So `[prereq.*]` does not invent a flat namespace. It names the one boards have
+been using, and gives it a declaration table.
+
+**One key already needs several providers, and says so in prose.** `genromfs`
+exists in two tables deliberately — `[system.genromfs].why` reads "the
+`[tool.genromfs]` source recipe is the store alternative". That is *one
+prerequisite, ordered providers* expressed as key duplication plus a comment
+tying the halves together. Nothing enforces that the two stay in agreement, and
+nothing tells a resolver which to prefer.
+
+**`[system.*]` carries no field `[prereq.*]` would lack** — `why`, the four
+manager maps, `check`. It is precisely the `provider = "system"` case.
+
+Therefore: **one table.** `[prereq.<key>]` with an ordered `providers` list
+replaces the duplication:
+
+```toml
+[prereq.genromfs]
+why = "NuttX riscv rv-virt etc/ ROMFS image"
+providers = ["system", "source"]   # ordered: prefer the OS package, build if absent
+apt = ["genromfs"]; pacman = ["genromfs"]
+source = "genromfs"                # the existing [tool.genromfs] source recipe
+check = { cmd = "genromfs" }
+```
+
+#### Retirement, with the mistake this phase already made
+
+`[system.*]` is parsed as an alias lowering to `provider = "system"`, warns, and
+is deleted at the next minor version. That is W1.f's pattern — and W1.f is
+exactly why the steps below are explicit, because it shipped a correct,
+well-tested deprecation lint that **no production path ever called**, so the
+warning reached nobody and the removal would have landed on users who were never
+told.
+
+1. `[prereq.*]` lands; `[system.*]` parses as an alias. No behaviour change.
+2. The deprecation warning is **wired at index load and a test asserts it is
+   reached** — not merely that the lint is correct in isolation. A lint proven
+   only by direct unit-test calls is proven against the one caller that is not
+   the problem.
+3. A gate rejects a key declared in two provider tables. That makes the
+   `genromfs` shape illegal once its merged entry exists, so the duplication
+   cannot silently return.
+4. `[system.*]` is deleted at the next minor — and only after the warning has
+   actually shipped in a release, not merely been written.
+
+### The `check` vocabulary
+
+**Today only `[system.*]` has probes: 22 of 25 entries. `[tool.*]` has none of
+14, `[source.*]` none of 15.** Presence for those two is implicit — the store
+path or the checkout directory exists — which is the state the motivating
+failure exploited: the QEMU dist was present by that test and unusable.
+
+The design follows from `genromfs` again. Its probe is `check = { cmd =
+"genromfs" }`, and that is correct **whichever provider installed it** — apt or
+the source recipe. So:
+
+> **`check` answers "is the capability usable?", never "did provider X install
+> it?"** It stays one provider-independent vocabulary. Providers contribute
+> INSTALLATION knowledge, not DETECTION knowledge.
+
+That splits cleanly into two questions that were being conflated:
+
+* **`check` — is it usable now?** Provider-independent, OR-ed, tri-state
+  (`Present` / `Missing` / `Unknown`). Extends to every provider unchanged.
+* **provider verification — is what we installed still what we declared?**
+  Store path + version, submodule rev, dist sha256. Already exists in
+  `[tool.*]`/`[source.*]`; stays there. It is a different question and it
+  belongs to whoever did the installing.
+
+`Unknown` is load-bearing and any new kind must be able to return it: a probe
+that cannot answer on this host must not vote (issue 0487 — libgcrypt ships
+`.pc` on Arch and `libgcrypt-config` on Ubuntu, so either probe alone is a false
+negative on one of them, and a false negative here prints a sudo command for a
+package that is already installed).
+
+Two kinds the current four cannot express:
+
+```toml
+# RUNS — the resolved binary executes. Not `cmd`: that is `command_exists`, a
+# PATH lookup, and a store dist is not on PATH. This is the probe the motivating
+# failure needed — QEMU's path existed, and the dynamic loader was the first
+# thing to disagree.
+#   Unknown when the tool targets a foreign platform (cross toolchains,
+#   emulator-less hosts): "cannot execute here" is not "absent".
+check = { runs = "qemu-system-arm --version" }
+
+# PATH — a file that must exist inside a checkout. For `source`/submodule
+# providers, which have no PATH entry and no soname to probe, so today their
+# presence test is "the directory exists" — true of an empty uninitialised
+# submodule.
+#   Relative to the provider's own `dest`, so the probe does not restate a
+#   location the provider already declares.
+check = { path = "include/FreeRTOS.h" }
+```
+
+Both compose with the existing OR: `{ cmd = "genromfs", runs = "genromfs -h" }`
+is present if either answers, which is the libgcrypt rule applied to a stronger
+probe.
+
+### What this amendment still does not decide
+
+* **Whether `providers` is ordered preference or a fallback chain with a
+  policy** (e.g. never build from source in CI). The `genromfs` case wants
+  "prefer apt", but `--offline` and air-gapped hosts want the opposite for
+  `[tool.*]` dists, and that interacts with RFC-0065 D14.
+* **Whether `check` becomes REQUIRED.** Three `[system.*]` entries have none
+  today (`ros-rmw-zenoh-cpp`, `python3-venv`, `picolibc-riscv64-unknown-elf`)
+  and report `UNPROBED`; requiring one would force an answer for each, which may
+  not exist.
 
 ## Problem
 
