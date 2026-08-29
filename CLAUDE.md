@@ -409,6 +409,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   converge: the sizes-header mirror reaching a state no re-run repairs (issue 0834), and a
   core-crate/`repr(C)` change mixing pre/post-append objects. Outside those, if you wiped
   and it worked, you have a lead — not a diagnosis; say so, and go find the edge.
+  **When a GENERATED build file is itself the problem, re-configure — do not wipe.**
+  `cmake <build-dir>` re-runs configure from the cached settings and regenerates
+  `build.ninja` in place. This is the escape hatch for the one state ninja cannot recover
+  from on its own: `multiple rules generate <x>` is raised at LOAD, before any rule runs,
+  so ninja can never re-run cmake to fix itself (issue 0882 hit exactly this after a
+  half-applied fix).
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
