@@ -34,6 +34,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | C/C++ integration shape | AGENTS.md “C/C++ Integration” + RFC-0018/0019 + [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) |
 | User-facing workflow | [book/src/](book/src/) (`just book`) |
 | Phase history / current work items | [docs/roadmap/](docs/roadmap/) (active) + `archived/` |
+| What do I type? | `just` with no args — the ~8 verbs, grouped by when you need them (phase-399). The 200 `check-*` gates live in `just/check.just`, `import`ed so every name stays flat: `just check-fast`, never `just check fast`. `just --list` is still everything |
 | Periodic tech-debt / antipattern / UX audit | [docs/development/codebase-audit-checklist.md](docs/development/codebase-audit-checklist.md) |
 | How our RMW C API compares to upstream `rmw` | `just check-rmw-api-parity` (is every contract symbol CLASSIFIED?) + `just check-rmw-abi-shape` (does the vtable MIRROR it — name, args, return?), both phase-376, both on the fast line. Contract is the 88 symbols EVERY `librmw_*_cpp.so` defines, not the 177 headers declare. The parity MAP is AUTHORED, so it drifts when slots move: it read `("gap", "no vtable slot")` for 28 slots W4 had landed and named 17 pre-W3.b spellings, while the shape tool found one real gap — two green tools disagreeing by 25 symbols. Cross-checked now (`check_against_vtable`, both directions). A gap that is real but open goes in `gap` with a TRACKED ISSUE ID in the reason; that is what `--check` tolerates, and nothing else |
 | Profile a build's time (passive, read-only) | `just profile <dir>` → `nros-build-profile` (phase-251); [book](book/src/user-guide/build-profiling.md) |
@@ -67,6 +68,16 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     not prebuilt")`. A gate in an affordability tier may resolve a COMPILE-stage
     stamp only if the lane BUILDS it (~13 s); a runtime fixture is banned
     outright.
+    **CI runs a SUBSET of it, deliberately** (phase-396/399): the required `CI`
+    context is `check-fast` + `test-unit`; `ci-l1` also runs `check-build` +
+    `check-api-parity`. Your local tier is STRONGER than the gate, so you catch
+    compile-tier breakage before the queue does and the queue stays cheap and
+    always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only —
+    it was on the merge group and could never pass there (it needs generated
+    bindings and prebuilt `.compile-ok` that no CI job builds), so the required
+    check was red for EVERY pull request for a day. **A gate in an affordability
+    tier may only resolve artifacts the JOB ITSELF builds** — `check-lane-contracts`
+    enforces this for every merge-gating lane, not just `ci-l1`.
     It caught two reds on main in its first two runs (three clippy `-D warnings`
     errors and an unregenerated pool inventory), both in the compile tier that
     the `pre-push` `check-fast` hook deliberately excludes.
@@ -466,6 +477,40 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   who owns a `/lib/...` file, query the RESOLVED path: `/lib` is a symlink to `usr/lib`
   on merged-`/usr`, so `dpkg -S /lib/<f>` says "no path found" for a perfectly
   well-owned file — which is how this entry first called that library a stray.
+- **Zephyr merges Kconfig fragments LAST-WINS, so a leaf value a later fragment
+  also sets is DEAD** (issue 0876). `CONFIG_HEAP_MEM_POOL_SIZE=0` in the c/talker
+  conf was measured on mps2/an385 — where `cmake/zephyr/mps2-an385.conf` merges
+  after it and sets `131072`, so it changed nothing there — and its only live
+  effect was making every native_sim talker image fail to COMPILE
+  (`nsos_sockets.c` asserts `> 0`; Zephyr's own offloaded-socket driver
+  `k_malloc`s per socket, so "nothing allocates from the kernel heap" is a claim
+  about the WHOLE image, not about nano-ros). Gate: `check-kconfig-overridden-values`
+  (a ratchet — shared board fragments are legitimately an override layer).
+  **And the per-leaf `examples/zephyr/**/boards/*.conf` are NEVER merged** — 18
+  dead files whose content is duplicated in `cmake/zephyr/native-sim-line-*.conf`,
+  which is what actually applies. Read the build's own `Merged configuration`
+  lines before editing a conf; a fix in the wrong file changes nothing and looks
+  like it should.
+- **A column-0 line inside a `just` recipe or a YAML `run:` block is parsed as
+  SYNTAX, not as text** — so a heredoc is unusable there (its terminator must be
+  at column 0), and `just`'s own body-dedent then fights any `sed` strip added to
+  compensate. Use `printf` with one argument per line, indentation inside the
+  quotes. Cost four separate failures in one day, each with an error naming
+  something else (`unknown start of token '—'`, `expected ':'`, YAML
+  `could not find expected ':'`).
+- **A generated file that is COMMITTED and touched by every PR serialises the
+  merge queue** (issues 0883/0884) — `docs/issues/README.md` was the only
+  conflicting path in three of five open branches, so one merge ejected the rest.
+  A custom merge driver cannot fix it: GitHub rebases queue entries SERVER-SIDE,
+  where `.gitattributes` drivers do not run.
+- **A red CI lane answers one of two questions and they look identical** — the
+  lane RAN and the code is broken (a verdict), or it never ran (no verdict). A
+  uniformly-red lane has NO signal capacity: a regression landing in it looks
+  exactly like yesterday's failure, which is how issue 0876 rode in while the
+  nightly's own `c/talker` cell reported `failure` before and after. `just
+  nightly-triage` classifies by which STEP failed and flags cells red across a
+  whole window; `just queue-triage` does the same for merge-queue ejections
+  (INFRA vs MINE).
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

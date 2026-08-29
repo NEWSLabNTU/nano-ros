@@ -24,7 +24,23 @@ Two rules:
 
 ## Build, Test, and Development Commands
 
-- `just --list`: show public recipes.
+**Start with bare `just`** — phase-399 made it print the ~8 verbs you actually
+type, grouped by when you need them, instead of the 215-line `--list` wall it
+used to be.
+
+The 200 `check-*` gates live in `just/check.just`, brought in with **`import`**
+(a namespace MERGE) rather than `mod` (which namespaces). So every name stays
+flat — `just check-fast`, never `just check fast` — and no call site changed.
+`check`, `check-fast`, `check-fast-serial` and `check-build` stay in the root
+justfile because their DEPENDENCY LISTS are the contract:
+`scripts/build/run-gates-parallel.sh` parses `check-fast-serial`'s out of the
+root file to build the fan-out set, so moving it silently empties the parallel
+runner rather than failing. Adding a gate means adding it to
+`check-fast-serial`'s list — **not** to `check-build`, which since phase-396 W1
+runs on `schedule`/`workflow_dispatch` only and therefore gates nothing a merge
+passes through.
+
+- `just --list`: show every recipe (215 of them; the answer is usually bare `just`).
 - `scripts/bootstrap.sh`: first-time entrypoint; installs/checks `just`, then prints setup choices.
 - `scripts/bootstrap.sh base`: first-time native/ROS/zenoh quick-start setup.
 - `scripts/bootstrap.sh all`: contributor/full-matrix setup; pulls and installs every supported SDK tier.
@@ -682,6 +698,28 @@ and verified.
   command (`rm -rf foo* && build` never builds — use `find`), and unquoted
   `$var` does NOT word-split (a loop over `$FILES` sees one giant argument —
   use `xargs` or explicit arrays).
+
+## Editing a justfile recipe or a workflow `run:` block
+
+**A line at column 0 inside either is parsed as SYNTAX, not as text.** So a
+heredoc cannot be used — its terminator must sit at column 0 — and `just`'s own
+body-dedent then fights any `sed` strip you add to compensate.
+
+Use `printf` with one argument per line and the indentation inside the quotes:
+
+```
+recipe:
+    #!/usr/bin/env bash
+    printf "%s\n" \
+        "  first line" \
+        "  second line"
+```
+
+This cost four separate failures in one day, and none of the errors named the
+cause: `unknown start of token '—' (U+2014)`, `expected '*', ':', '$',
+identifier, or '+', but found end of line`, `extraneous attribute`, and YAML's
+`could not find expected ':'`. If a heredoc in a recipe or a `run:` block
+produces a parse error about something unrelated, this is why.
 
 ## CLI Install & Submodule Operations
 
