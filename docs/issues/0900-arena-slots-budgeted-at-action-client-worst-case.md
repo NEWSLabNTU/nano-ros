@@ -77,23 +77,53 @@ uses, and the correct replacement (`3 × rx_buf + 512` per entry) appears only i
 a build-script comment. That is the shape of issues 0271 / 0739: "a knob nobody
 can enumerate is a knob nobody sets", which cost ~145 KB in one image.
 
-## Where the bytes actually land — NOT yet attributed
+## Where the bytes land: THE STACK, not `.bss` (measured)
 
-The arena is carved from `ExecutorStorage`'s backing
-(`executor/storage.rs:38`), and how that backing is provided differs by path:
+The first draft of this issue guessed `.bss` via the C API's
+`nros_executor_t._opaque`. `just mem-report` on
+`examples/workspaces/c/build/posix-zenoh-native/cmake/native_entry` refutes it —
+there is **no arena symbol in the image at all**. Its RAM is the zenoh pools
+(`SERVICE_BUFFERS` 144,128 / `LARGE_PAYLOADS` 131,072 / `SMALL_PAYLOADS` 32,768)
+and nothing resembling 74,240 appears.
 
-* the C API places it in the caller's `nros_executor_t._opaque`
-  (`EXECUTOR_OPAQUE_U64S`), so a file-scope executor lands it in `.bss`;
-* the ThreadX board takes it from the byte pool — `nm` on
-  `threadx-linux/rust/talker` shows no arena symbol at all, only
-  `byte_pool_storage` at 4 MiB, so the cost is pool consumption rather than a
-  named static.
+(That run also printed a STALE-IMAGE banner, so its byte counts describe an
+older tree and are quoted here only as shape. The ABSENCE of an arena symbol is
+structural, not a staleness artifact.)
 
-So the 74,240 figure is EXACT as a configured size and verified across four
-builds, but its RAM attribution is per-platform and unmeasured. **Run
-`just mem-report --json --baseline` before and after any fix rather than
-quoting the derivation** — phase-392's own rule, and the reason issues 0148 /
-0164 were filed from numbers that did not survive a clean rebuild.
+The reason is written down one lane over, in
+`docs/reference/platform-implementation-notes.md:143`:
+
+> Stack overflow -> "Invalid mbox": `Executor` has an inline
+> `arena: [MaybeUninit<u8>; ARENA_SIZE]` **on the task stack**. Action examples
+> use `NROS_EXECUTOR_ARENA_SIZE=8192`; `APP_TASK_STACK` must be 16384 words
+> (64 KB) for headroom.
+
+The board path — which is what every example uses — builds the executor through
+`Executor::open_sized` (`nros-board-linux/src/lib.rs:325`) with the arena inline
+in the value, so it lives wherever that value lives: a task stack. The C API's
+`_opaque` route is the L1 polling path, a different and less-travelled one.
+
+This makes the defect worse than a static-RAM overshoot in two ways:
+
+* **Stack is the scarcest resource on an RTOS target**, and a 74,240-byte frame
+  is not something a per-task stack absorbs quietly. It is charged to whichever
+  task calls spin, and it interacts with issue 0667's finding that a task's
+  `stack_bytes` is a floor the port raises rather than a number the caller
+  controls.
+* **The workaround is already load-bearing in the tree.** FreeRTOS action
+  examples pin `NROS_EXECUTOR_ARENA_SIZE=8192` — a 9x reduction from the
+  derived value — and STILL need a 64 KB app task stack. That override is
+  evidence the derivation does not describe real images: someone already had to
+  discover the right number by hitting "Invalid mbox" and working backwards.
+
+So the saving is not (only) ~56 KiB of static RAM; it is stack headroom on every
+image that spins, and the difference between an image that boots and one that
+dies in an allocator with an unrelated-looking error.
+
+**Still measure rather than derive.** `mem-report` reads `.bss`/`.data` and
+therefore cannot see this at all — sizing the change needs a stack-usage probe
+(worst-case frame at the spin call, or a high-water mark on a running RTOS
+image), not a symbol table.
 
 ## Direction
 
