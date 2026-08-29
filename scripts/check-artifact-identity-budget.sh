@@ -181,7 +181,37 @@ if [ "${1:-}" = "--self-test" ]; then
     exit 0
 fi
 
-TREE="${NROS_IDENTITY_BUDGET_TREE:-examples/workspaces/mixed/build-workspace-fixtures}"
+# issue 0901 — RESOLVE the tree, do not hardcode one path.
+#
+# This read `examples/workspaces/mixed/build-workspace-fixtures` literally. That
+# directory has no producer any more: the workspace build gained PER-PLATFORM
+# suffixes (`-freertos`, `-threadx`, …) and the unsuffixed name was left behind.
+# So on a fresh checkout the gate SKIPPED — the tree cannot exist — while on a
+# long-lived machine it read a directory nothing had written since the rename
+# and reported pure accumulation as a budget breach. Measured here: 8 identities
+# for `nros` against a ceiling of 5, entirely history, and a full
+# `build-test-fixtures lane=native` (2 616 s) did not recreate the path, which is
+# what the SKIP message told the user to run.
+#
+# Both failure modes come from naming a path instead of finding one. Take the
+# NEWEST tree that actually has cargo artifacts, so the gate reads what the last
+# build produced whatever the layout is called this month.
+if [ -n "${NROS_IDENTITY_BUDGET_TREE:-}" ]; then
+    TREE="$NROS_IDENTITY_BUDGET_TREE"
+else
+    TREE=""
+    for _cand in $(ls -1dt examples/workspaces/*/build-workspace-fixtures* 2>/dev/null); do
+        # A tree is usable when it holds cargo output; a bare cmake dir is not
+        # what this gate measures.
+        if [ -n "$(find "$_cand" -name '*.rlib' -print -quit 2>/dev/null)" ]; then
+            TREE="$_cand"
+            break
+        fi
+    done
+    # Nothing found: keep the historical name so the SKIP message still points
+    # somewhere recognisable rather than at an empty string.
+    TREE="${TREE:-examples/workspaces/mixed/build-workspace-fixtures}"
+fi
 
 # --- the budget -------------------------------------------------------------
 # Recorded 2026-08-07. See "THE NUMBERS" above before changing any of these.
@@ -250,7 +280,13 @@ CEILING_IDENTITIES=5
 CEILING_COPIES=5
 # ----------------------------------------------------------------------------
 
-BUILD_HINT="source ./activate.sh && just build-test-fixtures lane=native"
+# issue 0901 — `lane=native` was the advice and it does not build these trees.
+# Measured: a full `just build-test-fixtures lane=native` (2 616 s) left every
+# `examples/workspaces/*/build-workspace-fixtures*` untouched at its previous
+# mtime. The workspace fixtures come from the WORKSPACE build, so name that.
+# Advice that does not produce the artifact is worse than no advice: it costs
+# the reader 40 minutes and leaves the gate exactly as silent as before.
+BUILD_HINT="source ./activate.sh && just build-test-fixtures"
 
 if [ ! -d "$TREE" ]; then
     echo "[SKIP] artifact-identity budget: no build tree at $TREE"
