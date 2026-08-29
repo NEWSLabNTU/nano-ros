@@ -2,7 +2,7 @@
 id: 876
 title: "`CONFIG_HEAP_MEM_POOL_SIZE=0` from phase-391 W3 makes the Zephyr c/talker
   unbuildable on native_sim — latent because no native_sim build dir has reconfigured since"
-status: open
+status: resolved
 type: bug
 area: platform-zephyr
 related: [phase-391, issue-0875, issue-0805]
@@ -33,8 +33,13 @@ zephyr/drivers/net/nsos_sockets.c:38:1: note: in expansion of macro 'BUILD_ASSER
    38 | BUILD_ASSERT(CONFIG_HEAP_MEM_POOL_SIZE > 0);
 ```
 
-The assert is unconditional in that file, and the talker's board overlay is
-`boards/native_sim_native_64.conf`, so nothing narrows it away.
+The assert is unconditional in that file, and nothing narrows it away. Note the
+leaf's own `boards/native_sim_native_64.conf` is NOT the overlay that applies —
+it is never merged (see the merge list below); the NSOS settings that reach the
+build come from the shared `cmake/zephyr/native-sim-line-3.7.conf`, which
+duplicates its content. 18 such per-leaf board confs exist under
+`examples/zephyr/**/boards/` and are dead files. Not this issue's to fix, but
+they are the first place someone will try to put a fix.
 
 Only these two confs are affected. Across `examples/zephyr`, the values are 22 ×
 `65536`, 18 × `4194304`, 12 × `131072`, and these 2 × `0`.
@@ -82,23 +87,63 @@ Surfaced by accident, while measuring something unrelated (issue 0875): deleting
 `nros-rust/` in that build dir triggered the reconfigure that regenerated
 `autoconf.h`.
 
+## The 0 was never live on the board it was measured for
+
+Established while fixing this, and it changes the remedy.
+
+`cmake/zephyr/mps2-an385.conf` is appended LAST to every `mps2_an385` fixture
+row's `CONF_FILE`, after the leaf's own `prj-*.conf`, and line 104 of it reads:
+
+```
+CONFIG_HEAP_MEM_POOL_SIZE=131072
+```
+
+Zephyr merges Kconfig fragments last-wins, so on mps2 the leaf's `0` was
+overridden before it could take effect. The merge list a build actually
+reports — this is `build-c-talker-zenoh`, and the mps2 row's is the same shape
+with `mps2-an385.conf` in place of the native_sim fragment:
+
+```
+Merged configuration '…/examples/zephyr/c/talker/prj.conf'
+Merged configuration '…/examples/zephyr/c/talker/prj-zenoh.conf'
+Merged configuration '…/cmake/zephyr/native-sim-line-3.7.conf'
+Merged configuration '…/zephyr/misc/generated/extra_kconfig_options.conf'
+```
+
+So the `=0` had **exactly one live effect across the whole fixture set**, and
+that effect was this bug. On its intended board it changed nothing; on the board
+nobody checked it stopped the build.
+
+The W3 commit's measurement (`kheap__system_heap 65,536 -> 1,024`) is therefore
+of a configuration the fixture set does not build — a hand-run west build
+without `cmake/zephyr/mps2-an385.conf`. The A/B was real and internally
+consistent; it just measured a different image than the one CI produces. Worth
+separating from the bug: the arena work in W3 is unaffected, only the claim
+about the kernel heap shrinking is.
+
 ## Fix
 
-Not attempted here — the right value is a platform question, not a mechanical
-one, and phase-391 W3 owns it. The options, and what each concedes:
+Revert the `0` in both confs. Nothing more, because nothing more was ever
+happening: `prj-zenoh.conf` and `prj-xrce.conf` go back to `65536`, matching the
+sibling `examples/zephyr/c/listener` which runs the same driver on the same
+board.
 
-1. **Board-scope the `0`.** Move it to the mps2/an385 overlay and leave
-   `native_sim` at a working value. Smallest change; concedes that the rlsf
-   saving does not reach native_sim, which is the tier-1 lane.
-2. **Give native_sim the minimum `nsos_sockets.c` needs** rather than `0`. Keeps
-   the shrink on both boards but requires knowing what that minimum is, and the
-   assert does not say.
-3. **Ask why the assert exists** — if `nsos_sockets.c`'s `k_malloc` use is itself
-   reachable through the funnel, the answer might be upstream-shaped rather than
-   conf-shaped.
+A first attempt moved the `0` into a per-leaf `prj-no-kernel-heap.conf` appended
+by the mps2 fixture row, to keep the saving where it was valid. That was wrong
+for the same reason the original was: `mps2-an385.conf` still merges after it.
+Recorded because the mistake is the natural one — a fragment cannot express
+"unless a later fragment disagrees", and every fix here has to be checked
+against the *whole* merge list rather than the file being edited.
 
-Whatever is chosen, a native_sim talker build has to be part of the evidence,
-because that is exactly what the original A/B did not cover.
+**Left for phase-391 W3**, not done here:
+
+- If the kernel heap should shrink on mps2, the argument belongs in
+  `cmake/zephyr/mps2-an385.conf`, where it applies to *every* mps2 leaf —
+  including the rust talker, whose own conf asks for `131072` and which was
+  never part of W3's A/B. That is a broader claim than the one W3 made, so it
+  needs its own measurement.
+- The W3 numbers should be re-stated against a fixture-set build, or marked as
+  measured on a hand-configured image.
 
 ## Reproduce
 
