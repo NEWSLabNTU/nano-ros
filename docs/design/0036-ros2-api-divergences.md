@@ -4,7 +4,7 @@ title: "Divergences from the ROS 2 standard client APIs (rclrs / rclcpp / rclc)"
 status: Draft
 since: 2026-06
 last-reviewed: 2026-08
-implements-tracked-by: [phase-379]
+implements-tracked-by: [phase-379, phase-381]
 supersedes: []
 superseded-by: null
 ---
@@ -101,7 +101,38 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
   callbacks not `std::function`; value types not `shared_ptr`. (RFC-0018.)
 - **QoS subset** — history/reliability/durability/liveliness/deadline/lifespan
   supported; selected at compile time; no dynamic QoS negotiation.
-- **No dynamic discovery** — peers static via `nros.toml` / Kconfig locator.
+- **Static CONNECTION, dynamic GRAPH** (amended 2026-08-30, phase-381). This
+  line read "**No dynamic discovery** — peers static via `nros.toml` / Kconfig
+  locator", which conflated two things and was half wrong for two years.
+
+  What is still true: **the locator is configured, not discovered.** A nano-ros
+  node is told where its router / agent / peer is; it does not find one by
+  broadcasting. That is a real divergence and it is not going away — it is what
+  lets an image with no multicast and a fixed memory budget come up
+  deterministically.
+
+  What was never true, and is now demonstrably not: that the node cannot READ
+  the graph. Both real backends already ran the machinery — the zenoh shim
+  declares and queries `@ros2_lv` liveliness tokens, and `nros-rmw-cyclonedds`
+  PUBLISHED `ros_discovery_info` so stock `ros2 node list` could see us — so a
+  nano-ros node was visible in the ROS graph while unable to answer "is anyone
+  subscribed to this topic". That asymmetry, not the absence of a feature, is
+  what issue 0791 filed and phase-381 closed: twelve `rmw` graph slots, filled
+  on zenoh and (for node names) on Cyclone, reachable from all three languages.
+
+  Three properties a caller must know, because they are what makes this
+  honest rather than a claim of parity:
+
+  * **It reports what has been DISCOVERED, and never blocks.** The first call
+    after startup legitimately returns a partial graph. Poll; do not call once
+    and conclude.
+  * **An empty answer is "nobody seen yet", never "nobody exists."** It is not
+    proof of absence.
+  * **`UNSUPPORTED` is distinct from empty.** A backend with no graph at all —
+    XRCE — says it cannot tell you rather than reporting nothing there.
+
+  The remaining static piece is the locator. Saying "no dynamic discovery" for
+  the whole area described a system we stopped being.
 - **No parameter callbacks**; parameters are read/write only.
 - **No lifecycle-node graph** — a simplified state model for embedded executors.
 

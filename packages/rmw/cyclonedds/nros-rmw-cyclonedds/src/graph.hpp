@@ -24,6 +24,13 @@ struct GraphState {
 
     dds_entity_t topic{0};
     dds_entity_t writer{0}; // latched ros_discovery_info writer
+    /// phase-381 W5 — the READER half. Cyclone published `ros_discovery_info`
+    /// and never read it, so a nano-ros node was visible in the graph and
+    /// blind to it, which is the asymmetry issue 0791 is about.
+    ///
+    /// Created lazily on the first graph query: a node that never asks pays
+    /// nothing, which matters because most embedded images never ask.
+    dds_entity_t graph_reader{0};
     uint8_t participant_gid[24]{};
     char node_namespace[256]{};
     char node_name[256]{};
@@ -56,6 +63,26 @@ void graph_untrack_writer(GraphState* g, dds_entity_t writer);
 void graph_untrack_reader(GraphState* g, dds_entity_t reader);
 
 void graph_publish(GraphState* g);
+
+/// phase-381 W5 — visit every node this participant can SEE.
+///
+/// `visit(ctx, node_name, node_namespace)` per discovered node; return `false`
+/// to stop. Strings are BORROWED for the duration of the call.
+///
+/// Reads the `ros_discovery_info` samples other participants latched, WITHOUT
+/// consuming them (`dds_read`, not `dds_take`), so repeated calls see the
+/// current view rather than draining it once.
+///
+/// **No persistent cache.** The topic is keyless, so stock rmw dedups by
+/// participant gid in user space and keeps a graph cache; we dedup within the
+/// READ BATCH instead and keep nothing between calls. Bounded by the batch
+/// size, which is the only storage this adds.
+///
+/// Returns `false` if the graph is inactive (no descriptor / no reader), which
+/// the caller reports as `UNSUPPORTED` — distinct from an empty graph.
+bool graph_visit_nodes(GraphState* g, void* ctx,
+                       bool (*visit)(void* ctx, const char* node_name,
+                                     const char* node_namespace));
 
 } // namespace nros_rmw_cyclonedds
 
