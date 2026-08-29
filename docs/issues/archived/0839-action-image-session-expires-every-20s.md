@@ -2,7 +2,7 @@
 id: 839
 title: "The action-server image's zenoh session expires every 20 s under a router
   that keeps a talker session alive for minutes"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [issue-0821, issue-0824]
@@ -201,3 +201,40 @@ distinguishes "expired again" from "closed for another reason" immediately.
 Actions cannot be exercised end to end over serial. The type names and domains
 on every action entity are correct as of `a4abcccde`, so this is the only thing
 between the action example and a working `ros2 action send_goal`.
+
+
+## Resolved 2026-08-30 — does not reproduce; it was the crash being observed from outside
+
+Re-tested on the action image with the fixes for
+[0882](archived/0882-transport-failure-teardown-crashes.md) (task handle freed
+with the wrong allocator) and
+[0879](archived/0879-serial-link-has-no-resync-after-peer-reset.md) (INIT flood
+on reopen) in place.
+
+Over a single ~160 s session — 100 s idle, then five goals, then a further 60 s
+idle:
+
+| | this issue claimed | measured now |
+| --- | --- | --- |
+| `Closing session because it has expired` | every ~20 s | **0** |
+| board faults | 0 (already true) | **0** |
+| `ros2 node list` / `action list` | empty, never converged | **resolves, and still resolves after 160 s** |
+| router transports opened/closed | 4 opened, 3 closed | 1, plus one `Unexpected Init` at the initial board reset, which then recovered |
+
+**What this issue was actually watching.** The expiry was the *router's* view of
+a board that had stopped answering: 0882's use-after-free killed the board
+during the transport-failure path, so the router saw a peer go silent and timed
+it out on the lease. The "20 s cycle" was `2 x Z_TRANSPORT_LEASE` — the lease
+timeout, not a defect of its own. 0879 then prevented recovery, which is why it
+looked periodic rather than terminal.
+
+So this was a symptom with two causes, both now fixed, and there is nothing left
+here to repair.
+
+## What is NOT resolved, and does not belong to this issue
+
+Goal completion is still variable — 9/10, 8/10, 6/10 and 2/5 across runs on the
+same build. That is not a session expiry (there are none) and not a fault (there
+are none); the session stays up and discovery holds throughout. It is a separate
+open question and should be filed as one rather than left attached to a
+resolved issue.

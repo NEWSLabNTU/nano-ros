@@ -40,7 +40,6 @@ fails if this block drifts.
 - **#0830** (boards) — A QEMU net hub with only a NIC and a tap never delivers host->guest frames — OUR lan9118 can_receive patch deadlocks before the guest enables RX See `0830-*`.
 - **#0831** (build) — `[image.<id>].rmw` configures nothing on the cargo driver — and a workspace fixture row's `rmw` does not either, so two tier-2 coordinates test zenoh while claiming cyclonedds and XRCE See `0831-*`.
 - **#0835** (testing) — The cmake and rust fixture families re-stale each other, so `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails ~190 tests on every run See `0835-*`.
-- **#0839** (rmw) — The action-server image's zenoh session expires every 20 s under a router that keeps a talker session alive for minutes See `0839-*`.
 - **#0841** (rmw) — A subscription whose hint lands between the small block size and the size threshold gets a block that cannot hold it — and the build error's own remedy puts it there See `0841-*`.
 - **#0847** (rmw) — An XRCE publisher outliving `executor.close()` segfaults in its own Drop: the entity destructor dereferences the session state that close already freed See `0847-*`.
 - **#0849** (cli) — `nros sync` bakes the invocation's path SPELLING into every leaf patch table, so working through a symlink to the checkout makes cargo see two copies of every core crate and refuse the build on `links` See `0849-*`.
@@ -55,8 +54,8 @@ fails if this block drifts.
 - **#0872** (ci) — The PR/nightly check arm has never run to completion — each fix exposes the next environment gap See `0872-*`.
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
 - **#0877** (testing, boards) — FreeRTOS pubsub delivers by hand and delivers NOTHING under the test harness — and the talker trips a FreeRTOS queue assert See `0877-*`.
-- **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
+- **#0881** (testing, embedded) — attaching pyocd RTT kills the zenoh session — the debugger perturbs the system under test, and issue 0879 makes the perturbation permanent See `0881-*`.
 - **#0891** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0891-*`.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
