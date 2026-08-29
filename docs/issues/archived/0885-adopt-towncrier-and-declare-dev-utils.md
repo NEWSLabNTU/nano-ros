@@ -38,29 +38,51 @@ Types are `fix` `feat` `perf` `breaking` `docs` — the repo's own commit
 vocabulary, not towncrier's defaults, and fragments are named after the ISSUE
 they close, which is how work is already tracked here.
 
-## Dev utilities: REPORT, do not install
+## Dev utilities: check the environment, then install into it
 
-`scripts/check-python-deps.py` gains a `dev-tools` group (towncrier,
-clang-format). It stays report-only, and that is deliberate rather than lazy —
-the script's own header explains why nano-ros does not provision Python: PEP 668
-externally-managed interpreters, `--user` vs venv vs pipx, and up to three
-interpreters in play at once, where a wrong guess surfaces four frames inside
-cmake as `Error finding board: mps2`.
+The line is drawn around the INTERPRETER, not around writing:
 
-    just dev-tools
+* nano-ros does not provision an interpreter — no venv creation, no choosing
+  between system / `--user` / pipx on your behalf. That is a decision about your
+  machine, and a wrong guess surfaces four frames inside cmake as `Error finding
+  board: mps2`.
+* It does install the repo's OWN tools into the interpreter you already chose.
+  `towncrier`, or a pinned `clang-format`, is not an environment decision — it
+  is a tool the repo needs in order to work.
 
-names what is missing, for the interpreter it probed, with the exact
-`pip install`. `just changelog*` needs towncrier from that group.
+        just dev-tools              report what is missing
+        just dev-tools --install    install it into the probed interpreter
+
+DEV groups only: `--install zephyr-build` is refused. A build environment is the
+user's to assemble, and installing into it silently is how three interpreters
+end up in play with nobody knowing which one a lane will use.
+
+On a PEP 668 host the system interpreter refuses and pip says so — better than
+any pre-flight guess, so the script lets pip speak and translates the remedy
+(venv, or `--user`).
 
 ## Verified end to end, on a real install
 
 * `just dev-tools` reported towncrier missing and printed the install line.
+* `--install` exercised in a CLEAN VENV, the full cycle: both packages MISSING,
+  installed, RE-PROBED, `OK — dev-tools now satisfied`. The re-probe is not
+  ceremony — a pip that exits 0 has been seen to leave an import failing when a
+  second interpreter shadows the first, so success is asserted by importing,
+  not by pip's return code.
+* `--install zephyr-build` refused, with the installable set named.
 * `just changelog-add` wrote `0885.feat.md` and `0884.fix.md`.
 * `just changelog` previewed both under `Fixed` / `Added` with issue links.
 * `just changelog-release 9.9.9-test` consumed both fragments into
   `CHANGELOG.md` and left `changelog.d/README.md` untouched — confirming the
   README is not mistaken for a fragment. Reverted afterwards; no fake release
   is committed.
+
+## A second bug my own test caught
+
+The refusal for non-dev groups was written INSIDE the "something is missing"
+branch, so `--install zephyr-build` printed OK on a host that happened to have
+those packages and refused on one that did not. A permission question must not
+have two answers. Moved before any probing.
 
 ## One trap found by running it, and documented in the recipe
 

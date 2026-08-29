@@ -1090,13 +1090,26 @@ phase-new slug="":
 [group("main")]
 bump-manifest tag="" flag="":
     @bash scripts/bump-manifest.sh {{tag}} {{flag}}
-# Dev utilities — REPORT what is missing, never install it (issue 0885).
+# Dev utilities — check the environment, then install the repo's own tools
+# into it (issue 0885).
 #
-# nano-ros does not provision Python, and `scripts/check-python-deps.py` opens
-# with why: PEP 668 externally-managed interpreters, `--user` vs venv vs pipx,
-# and three interpreters that can be in play at once. A setup script that
-# guesses wrong fails far away, four frames inside cmake. So this prints the
-# exact `pip install` for the interpreter it probed and stops.
+#   just dev-tools              report what is missing
+#   just dev-tools --install    install it into the probed interpreter
+#
+# The line nano-ros draws: it does not provision an INTERPRETER — no venv
+# creation, no choosing between system / `--user` / pipx on your behalf, because
+# that is a decision about your machine and a wrong guess surfaces four frames
+# inside cmake as `Error finding board: mps2`. But `towncrier` or a pinned
+# `clang-format` inside a Python you already chose is just a tool the repo
+# needs, so `--install` puts it there.
+#
+# DEV groups only. `--install zephyr-build` is refused: a build environment is
+# yours to assemble, and installing into it silently is how three interpreters
+# end up in play with nobody knowing which one a lane will use.
+#
+# On a PEP 668 host the system interpreter refuses, and the error says exactly
+# what to do instead (venv, or `--user`). That refusal is pip's and it is
+# better than any pre-flight guess this script could make.
 [group("docs")]
 dev-tools *args:
     @python3 scripts/check-python-deps.py dev-tools {{args}}

@@ -17,8 +17,16 @@ must inherit system site-packages or shadow the tree's other tools, and
 environment to own. What the project CAN own is saying precisely what is
 missing, for which interpreter, and what a lane will do about it.
 
-So: this checks and reports. It never writes, never installs, never creates a
-venv.
+So: this never provisions an INTERPRETER — no venv creation, no choosing
+between system/`--user`/pipx on your behalf.
+
+It will, with `--install`, install DEV PACKAGES into the interpreter it just
+probed (issue 0885). The distinction is the whole point: picking the Python is
+a decision about your machine and stays yours, while `towncrier` or a pinned
+`clang-format` inside a Python you already chose is just a tool the repo needs
+in order to work. Only groups in `INSTALLABLE` may be installed this way —
+BUILD groups (zephyr, px4, …) stay report-only, because those belong to an
+environment the project does not own.
 
 Usage:
 
@@ -122,6 +130,13 @@ GROUPS = {
 # they were requested.
 DEFAULT_GROUPS = ["west", "zephyr-build"]
 
+# Groups `--install` may write. DEV tooling only: these are the repo's own
+# utilities inside whatever interpreter the user has already chosen. The build
+# groups are deliberately absent — a Zephyr or PX4 environment is the user's to
+# assemble, and installing into it silently is how three interpreters end up in
+# play with nobody knowing which one a lane will use.
+INSTALLABLE = {"dev-tools"}
+
 PROBE = r"""
 import importlib, json, sys
 out = {"version": list(sys.version_info[:3]), "exe": sys.executable, "have": {}}
@@ -207,6 +222,10 @@ def main():
     ap.add_argument("--python", default=None)
     ap.add_argument("--list", action="store_true", help="print the known groups and exit")
     ap.add_argument("--quiet", action="store_true", help="print only when something is missing")
+    ap.add_argument(
+        "--install", action="store_true",
+        help="install what is missing INTO the probed interpreter (dev groups only)",
+    )
     args = ap.parse_args()
 
     if args.list:
@@ -223,6 +242,22 @@ def main():
             f"  known: {', '.join(GROUPS)}\n"
         )
         return 2
+
+    # Refuse UP FRONT, before probing. Deciding this inside the "something is
+    # missing" branch made the answer depend on the host: `--install
+    # zephyr-build` printed OK on a machine that happened to have those
+    # packages, and refused on one that did not. A permission question must not
+    # have two answers.
+    if args.install:
+        refused = [g for g in groups if g not in INSTALLABLE]
+        if refused:
+            sys.stderr.write(
+                f"check-python-deps: --install refused for {', '.join(refused)}.\n"
+                f"  Installable groups: {', '.join(sorted(INSTALLABLE))}\n"
+                "  A build environment (zephyr, px4, …) is yours to assemble; this\n"
+                "  tool installs only the repo's OWN dev utilities.\n"
+            )
+            return 2
 
     wanted = {imp: pipname for g in groups for imp, pipname in GROUPS[g][1]}
     info, err = probe(python, wanted)
@@ -244,6 +279,51 @@ def main():
                 f"python-deps: OK — {info['exe']} (Python {ver}) has "
                 f"{', '.join(groups)}"
             )
+        return 0
+
+    if args.install:
+        pkgs = sorted(set(wanted[m] for m in missing))
+        print(
+            f"python-deps: installing {', '.join(pkgs)}\n"
+            f"  into: {info['exe']} (Python {ver})"
+        )
+        # `--only-binary :none:` is NOT passed and no index is pinned: this is a
+        # plain pip into the interpreter the caller already chose. If that
+        # interpreter is PEP 668 externally-managed, pip refuses and says so far
+        # better than a pre-flight guess could — so let it, and translate.
+        rc = subprocess.run(
+            [info["exe"], "-m", "pip", "install", *pkgs]
+        ).returncode
+        if rc != 0:
+            sys.stderr.write(
+                "\npython-deps: pip declined.\n"
+                "  On a PEP 668 host (Arch, Fedora, Debian 12+) the system interpreter\n"
+                "  is externally managed and will refuse. That is not a bug to work\n"
+                "  around silently — pick an interpreter you own and re-run:\n\n"
+                "      python3 -m venv --system-site-packages .venv\n"
+                "      . .venv/bin/activate && just dev-tools --install\n\n"
+                "  or install for your user only:\n\n"
+                f"      {info['exe']} -m pip install --user {' '.join(pkgs)}\n"
+            )
+            return 1
+        # Re-probe rather than assume: a pip that exits 0 has still been seen to
+        # leave an import failing (wrong interpreter, --user vs venv shadowing).
+        info2, err2 = probe(python, wanted)
+        if info2 is None:
+            sys.stderr.write(f"check-python-deps: re-probe failed: {err2}\n")
+            return 2
+        still = sorted(i for i, ok in info2["have"].items() if not ok)
+        if "tomllib" in still and tuple(info2["version"][:2]) >= (3, 11):
+            still.remove("tomllib")
+        if still:
+            sys.stderr.write(
+                "\npython-deps: pip reported success but these still do not import:\n"
+                f"      {', '.join(still)}\n"
+                f"  interpreter: {info2['exe']}\n"
+                "  Usually a second interpreter is shadowing this one on PATH.\n"
+            )
+            return 1
+        print(f"python-deps: OK — {', '.join(groups)} now satisfied")
         return 0
 
     sys.stderr.write(
