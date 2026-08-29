@@ -40,18 +40,37 @@ Nesting the first inside the second gets the dependency backwards:
 * the workspace's other platforms would be built from inside a tree whose
   toolchain environment is Zephyr's.
 
-Zephyr already supports this: an application outside the workspace is a
-**freestanding application**, and needs only `ZEPHYR_BASE` (or a resolvable
-west workspace) to build.
+Zephyr already supports this, and it is **measured, not assumed**:
+
+```
+$ (unset ZEPHYR_BASE; west build --help)
+west: unknown command "build"; do you need to run this inside a workspace?
+
+$ ZEPHYR_BASE=…/zephyr-workspace/zephyr west build --help
+usage: west build [-h] [-b BOARD[@REV]] …
+```
+
+`ZEPHYR_BASE` alone makes `west build` runnable from ANY directory. There is no
+`.west/` requirement — which is exactly what a **freestanding application**
+(one outside the west workspace) relies on, and it is how every Zephyr fixture
+in this tree already builds: `scripts/build/west-fixtures.sh` runs `west` from
+the repo root with `ZEPHYR_BASE` exported, against apps under `examples/` that
+sit outside `zephyr-workspace/`.
 
 So: **the framework is a west project; the user's workspace is not.** The link
 is a path, resolved rather than assumed — which is what issue 0892's fix
 implemented from the workspace side:
 
 ```
-$NROS_WEST_WORKSPACE  →  nearest `.west/` above the CWD, then the build root
-                      →  $ZEPHYR_BASE's parent
+$ZEPHYR_BASE  →  $NROS_ZEPHYR_WORKSPACE  →  <workspace>/zephyr-workspace
+              →  ../nano-ros-workspace[-4.4]
 ```
+
+That ladder is `west-fixtures.sh`'s, reused rather than reinvented, and
+`NROS_ZEPHYR_WORKSPACE` is the established spelling — 60 references across the
+tree. The first version of 0892's fix searched for a `.west/` directory under a
+new `NROS_WEST_WORKSPACE`, which was both a 61st name for one thing and the
+wrong CONDITION: it would have refused this repository's own layout.
 
 **The missing half is the other direction.** A west build knows where the
 FRAMEWORK is (`NROS_REPO_DIR`) and not where the user's WORKSPACE is. Anything
@@ -110,12 +129,37 @@ workspace rather than the framework:
   boundary between a cargo build and a CMake build;
 * the entry staticlib itself.
 
+## D3 — No Zephyr-specific verb; the platform difference lives in config
+
+`nros build` must not grow a Zephyr-shaped verb. Platform differences are
+already declarative everywhere else in this design — a bringup declares its
+system, an `[image.*]` declares its board and overlays, an entry declares its
+deploy — and a verb per framework is the shape that stops those declarations
+being the single answer.
+
+So the supplier D2 needs is NOT `nros stage-for-zephyr`. Two options remain,
+and both keep the platform knowledge in data:
+
+* **a west extension.** The mechanism already ships: `scripts/west-commands.yml`
+  registers `west fvp` via `zephyr/module.yml`'s `west-commands:` key, so any
+  workspace listing nano-ros as a project picks the command up with no `west
+  config` step. A `west nros-build`-style extension is a natural home for
+  "prepare this image's artifacts", and it lives on the WEST side of the
+  boundary where the Zephyr-specific knowledge belongs.
+* **an image declaration consumed by the module's CMake.** The module already
+  reads Kconfig and derives cargo invocations (`nros_cargo_build.cmake`); what
+  it lacks is the workspace path and the image identity. Both are data, and both
+  could arrive as cache variables the app's `CMakeLists.txt` sets from its own
+  location.
+
+The second needs no new command at all, which is why it is the one to try
+first.
+
 ## What this RFC does not decide
 
-* **The supplier verb's name and surface.** `nros stage <image>`, `nros build
-  --supply`, or a west extension command (`scripts/west-commands.yml` already
-  exists and registers `fvp.py`) are all plausible; the choice interacts with
-  whether a user ever runs it directly.
+* **Which of D3's two shapes the supplier takes.** The CMake-variable one adds
+  no command and is the one to try first; the west extension is the fallback if
+  the module genuinely needs to invoke a workspace-side tool.
 * **How west learns the workspace path.** A `-DNROS_WORKSPACE=<dir>` on the
   west command line is the obvious first answer, but the app's `CMakeLists.txt`
   could equally derive it from its own location — the entry package IS in the
