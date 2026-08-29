@@ -705,10 +705,31 @@ check = { cmd = "doxygen" }
 
 [system.gcc-arm-none-eabi]
 why = "ARM bare-metal cross gcc via the apt path (the [tool.arm-none-eabi-gcc] dist is the store alternative)"
-apt = ["gcc-arm-none-eabi"]
-dnf = ["arm-none-eabi-gcc-cs"]
-pacman = ["arm-none-eabi-gcc"]
+# The LIBC is a separate package on Debian and was missing here, so the apt path
+# produced a compiler that could build freestanding code and nothing that
+# includes a standard header. Two gates paid for it: `check-sched-dim-arms`
+# (freertos) failed a merge group on `string.h: No such file or directory`,
+# while `cross_libc_precedence_gate` SKIPPED with "no usable libstdc++" — one
+# absent package, one hard red and one silent coverage hole. The `[tool.*] dist`
+# alternative never had this problem: ARM's own release ships newlib with it.
+#
+# Note the asymmetry that hid it: the RISC-V row already carried
+# `picolibc-riscv64-unknown-elf`, so only the ARM side was half-declared.
+apt = ["gcc-arm-none-eabi", "libnewlib-arm-none-eabi", "libstdc++-arm-none-eabi-newlib"]
+dnf = ["arm-none-eabi-gcc-cs", "arm-none-eabi-newlib"]
+pacman = ["arm-none-eabi-gcc", "arm-none-eabi-newlib"]
 brew = ["arm-none-eabi-gcc"]
+# KNOWN LIMITATION, stated rather than papered over: this is a PRESENCE probe
+# and cannot see a half-installed toolchain. `cmd` returns Present the moment
+# the binary exists, which is exactly what it did while `string.h` was absent —
+# so the check said yes and the failure surfaced later, in an unrelated gate, as
+# a missing header.
+#
+# `CheckProbe` supports `cmd` and `sharedlib` only, and is
+# `#[serde(deny_unknown_fields)]`, so a `compiles = "..."` probe cannot simply
+# be written here — adding one means teaching the CLI first. Until then the apt
+# list above is what makes the toolchain complete, and this probe answers a
+# narrower question than its name suggests.
 check = { cmd = "arm-none-eabi-gcc" }
 
 [system.cmake]
