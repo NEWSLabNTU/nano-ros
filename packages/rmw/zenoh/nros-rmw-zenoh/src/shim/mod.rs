@@ -463,6 +463,53 @@ const ENTITY_SUBSCRIBER: &str = "MS";
 const ENTITY_SERVICE_SERVER: &str = "SS";
 const ENTITY_SERVICE_CLIENT: &str = "SC";
 
+/// What a liveliness token describes — phase-381 W2.
+///
+/// The two-letter tokens are `rmw_zenoh_cpp`'s, not ours to choose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityKind {
+    Node,
+    Publisher,
+    Subscriber,
+    ServiceServer,
+    ServiceClient,
+}
+
+impl EntityKind {
+    /// `None` for an unrecognised token. A kind we do not know is not a kind we
+    /// can report an entity as — guessing here would put a real node in the
+    /// wrong column of `ros2 node info`.
+    pub fn from_token(token: &str) -> Option<Self> {
+        match token {
+            ENTITY_NODE => Some(Self::Node),
+            ENTITY_PUBLISHER => Some(Self::Publisher),
+            ENTITY_SUBSCRIBER => Some(Self::Subscriber),
+            ENTITY_SERVICE_SERVER => Some(Self::ServiceServer),
+            ENTITY_SERVICE_CLIENT => Some(Self::ServiceClient),
+            _ => None,
+        }
+    }
+}
+
+/// One parsed `@ros2_lv` token. Every string BORROWS from the keyexpr it was
+/// parsed from, and names stay MANGLED — see `Ros2Liveliness::parse`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LivelinessEntity<'a> {
+    pub domain_id: u32,
+    pub zid: &'a str,
+    pub node_id: u32,
+    pub entity_id: u32,
+    pub kind: EntityKind,
+    /// Mangled (`%demo`), as it appears on the wire.
+    pub namespace: &'a str,
+    pub node_name: &'a str,
+    /// `None` for a node token; `Some` for every entity kind.
+    pub topic: Option<&'a str>,
+    pub type_name: Option<&'a str>,
+    pub type_hash: Option<&'a str>,
+    pub qos: Option<&'a str>,
+}
+
 impl Ros2Liveliness {
     /// Build a node liveliness key expression
     ///
@@ -719,6 +766,94 @@ impl Ros2Liveliness {
         key
     }
 
+    /// Demangle a `%`-separated name back to a ROS name (`%demo` -> `/demo`).
+    ///
+    /// The inverse of [`Self::mangle_topic_name`], and deliberately written
+    /// beside it: the two are one format, and the round-trip test below is what
+    /// keeps them one.
+    pub fn demangle_topic_name<const N: usize>(mangled: &str) -> heapless::String<N> {
+        let mut out = heapless::String::new();
+        for c in mangled.chars() {
+            let _ = out.push(if c == '%' { '/' } else { c });
+        }
+        out
+    }
+
+    /// Parse a `@ros2_lv` liveliness keyexpr — phase-381 W2.
+    ///
+    /// ```text
+    /// @ros2_lv/<domain>/<zid>/<node_id>/<entity_id>/<kind>/%/<ns>/<node>
+    /// @ros2_lv/<domain>/<zid>/<node_id>/<entity_id>/<kind>/%/<ns>/<node>/<topic>/<type>/<hash>/<qos>
+    /// ```
+    ///
+    /// **Refuses rather than guesses.** A graph query that returns a plausible
+    /// wrong answer is worse than one that returns none, so every deviation is
+    /// `None`: an unknown entity kind, a missing chunk, a non-numeric domain or
+    /// id, the wrong prefix, or an entity kind whose chunk count does not match
+    /// its shape. Nothing is defaulted and nothing is inferred.
+    ///
+    /// Strings are BORROWED from `key` — no allocation, and the mangled forms
+    /// are returned as they appear on the wire. Demangle with
+    /// [`Self::demangle_topic_name`] when a ROS name is wanted; doing it here
+    /// would need a buffer this seam has nowhere to put.
+    ///
+    /// The grammar is `rmw_zenoh_cpp`'s and is pinned by ROUND TRIP against the
+    /// builders above rather than by a copy of the spec: whatever we declare,
+    /// this parses, and the tests assert exactly that. A builder change that
+    /// this parser does not follow fails there.
+    pub fn parse(key: &str) -> Option<LivelinessEntity<'_>> {
+        let mut it = key.split('/');
+        if it.next()? != LIVELINESS_PREFIX {
+            return None;
+        }
+        let domain_id: u32 = it.next()?.parse().ok()?;
+        let zid = it.next()?;
+        let node_id: u32 = it.next()?.parse().ok()?;
+        let entity_id: u32 = it.next()?.parse().ok()?;
+        let kind = EntityKind::from_token(it.next()?)?;
+        // The enclave field. `rmw_zenoh_cpp` mangles it like a name and ours is
+        // always the root, but its PRESENCE is structural — without it every
+        // field after this point shifts by one and still parses, which is the
+        // silent-wrong-answer shape this parser exists to avoid.
+        let enclave = it.next()?;
+        if enclave.is_empty() {
+            return None;
+        }
+        let namespace = it.next()?;
+        let node_name = it.next()?;
+        if node_name.is_empty() {
+            return None;
+        }
+
+        let rest = (it.next(), it.next(), it.next(), it.next());
+        let (topic, type_name, type_hash, qos) = match (kind, rest) {
+            // A node token ends at the node name.
+            (EntityKind::Node, (None, None, None, None)) => (None, None, None, None),
+            // Every other kind carries its topic/service tail, all four fields.
+            (EntityKind::Node, _) => return None,
+            (_, (Some(t), Some(ty), Some(h), Some(q))) => (Some(t), Some(ty), Some(h), Some(q)),
+            _ => return None,
+        };
+        // Anything after the tail is a shape this parser does not know.
+        if it.next().is_some() {
+            return None;
+        }
+
+        Some(LivelinessEntity {
+            domain_id,
+            zid,
+            node_id,
+            entity_id,
+            kind,
+            namespace,
+            node_name,
+            topic,
+            type_name,
+            type_hash,
+            qos,
+        })
+    }
+
     /// Mangle a topic name by replacing '/' with '%'
     fn mangle_topic_name<const N: usize>(topic: &str) -> heapless::String<N> {
         let mut mangled = heapless::String::new();
@@ -919,6 +1054,130 @@ mod tests {
                 (Some(pc), Some(kc)) if pc == "*" || pc == kc => continue,
                 _ => return false,
             }
+        }
+    }
+
+    /// phase-381 W2 — the parser is pinned to the BUILDERS by round trip.
+    ///
+    /// The grammar is `rmw_zenoh_cpp`'s, and the risk W2 names is a parser that
+    /// returns a plausible WRONG answer. Testing it against hand-written
+    /// literals would pin it to my reading of the spec; testing it against the
+    /// builders pins it to what we actually put on the wire, so a builder change
+    /// this parser does not follow fails HERE rather than in interop.
+    #[test]
+    fn parse_round_trips_every_builder() {
+        let zid = ZenohId::from_bytes([0xABu8; 16]);
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts_",
+            "RIHS01_svc",
+        );
+        let qos = QoSProfile::QOS_PROFILE_SENSOR_DATA;
+
+        // Node: no topic tail.
+        let k = Ros2Liveliness::node_keyexpr::<256>(7, &zid, "/demo", "talker");
+        let e = Ros2Liveliness::parse(k.as_str()).expect("node token must parse");
+        assert_eq!(e.kind, EntityKind::Node);
+        assert_eq!(e.domain_id, 7);
+        assert_eq!((e.node_id, e.entity_id), (0, 0), "nodes are the fixed 0/0");
+        assert_eq!(e.namespace, "%demo");
+        assert_eq!(e.node_name, "talker");
+        assert!(e.topic.is_none(), "a node token has no topic tail");
+        assert_eq!(
+            Ros2Liveliness::demangle_topic_name::<64>(e.namespace).as_str(),
+            "/demo",
+            "the demangler is the mangler's inverse"
+        );
+
+        // Publisher / subscriber: full tail, and the entity id survives.
+        for (build, want) in [
+            (
+                Ros2Liveliness::publisher_keyexpr::<256>(3, &zid, 42, "/", "n", &topic, &qos),
+                EntityKind::Publisher,
+            ),
+            (
+                Ros2Liveliness::subscriber_keyexpr::<256>(3, &zid, 43, "/", "n", &topic, &qos),
+                EntityKind::Subscriber,
+            ),
+        ] {
+            let e = Ros2Liveliness::parse(build.as_str()).expect("entity token must parse");
+            assert_eq!(e.kind, want);
+            assert_eq!(e.domain_id, 3);
+            assert_eq!(e.node_name, "n");
+            assert_eq!(e.topic, Some("%chatter"));
+            assert_eq!(e.type_name, Some("std_msgs::msg::dds_::String_"));
+            assert_eq!(e.type_hash, Some("RIHS01_abc123"));
+            assert!(e.qos.is_some());
+        }
+        // Bound rather than inlined: `LivelinessEntity` BORROWS from the
+        // keyexpr, so the keyexpr has to outlive it — the borrow checker
+        // enforcing the no-allocation design.
+        let pub_key = Ros2Liveliness::publisher_keyexpr::<256>(3, &zid, 42, "/", "n", &topic, &qos);
+        let e = Ros2Liveliness::parse(pub_key.as_str()).unwrap();
+        assert_eq!(e.entity_id, 42, "the entity id must survive the round trip");
+
+        // Services.
+        for (build, want) in [
+            (
+                Ros2Liveliness::service_server_keyexpr::<256>(1, &zid, 5, "/", "s", &service, &qos),
+                EntityKind::ServiceServer,
+            ),
+            (
+                Ros2Liveliness::service_client_keyexpr::<256>(1, &zid, 6, "/", "s", &service, &qos),
+                EntityKind::ServiceClient,
+            ),
+        ] {
+            let e = Ros2Liveliness::parse(build.as_str()).expect("service token must parse");
+            assert_eq!(e.kind, want);
+            assert_eq!(e.topic, Some("%add_two_ints"));
+        }
+    }
+
+    /// Every way the parser must REFUSE.
+    ///
+    /// Each case is a keyexpr that a lenient parser would accept and report as
+    /// a real entity — which is the failure this phase is most concerned with,
+    /// because the answer looks like an answer.
+    #[test]
+    fn parse_refuses_rather_than_guessing() {
+        let zid = ZenohId::from_bytes([0u8; 16]);
+        let good = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/", "n");
+        assert!(Ros2Liveliness::parse(good.as_str()).is_some(), "control");
+
+        for (key, why) in [
+            ("@ros2_hb/0/aa/0/0/NN/%/%/n", "a different prefix"),
+            ("@ros2_lv/x/aa/0/0/NN/%/%/n", "a non-numeric domain"),
+            ("@ros2_lv/0/aa/0/x/NN/%/%/n", "a non-numeric entity id"),
+            (
+                "@ros2_lv/0/aa/0/0/ZZ/%/%/n",
+                "an entity kind we do not know",
+            ),
+            (
+                "@ros2_lv/0/aa/0/0/NN/%/%",
+                "a node token missing its node name",
+            ),
+            (
+                "@ros2_lv/0/aa/0/0/NN",
+                "a token that stops before the enclave",
+            ),
+            (
+                "@ros2_lv/0/aa/0/0/NN/%/%/n/%chatter/T/H/Q",
+                "a NODE token carrying a topic tail",
+            ),
+            (
+                "@ros2_lv/0/aa/0/1/MP/%/%/n/%chatter/T/H",
+                "an entity token missing one tail field",
+            ),
+            (
+                "@ros2_lv/0/aa/0/1/MP/%/%/n/%chatter/T/H/Q/extra",
+                "a trailing chunk in a shape we do not know",
+            ),
+        ] {
+            assert!(
+                Ros2Liveliness::parse(key).is_none(),
+                "must refuse {why}: {key}"
+            );
         }
     }
 
