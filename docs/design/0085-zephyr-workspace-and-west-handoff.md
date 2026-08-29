@@ -579,6 +579,60 @@ module is not in a nano-ros workspace at all; `--if-present` exits 0 having
 printed nothing, so cmake keeps its Kconfig derivation. Anything else would
 break the promise that `west build -b <board> <app>` just works.
 
+### The consumer: a CROSS-CHECK, not a replacement — D14 refined
+
+D14 above says "so a west build derives its cargo invocation from `[image.*]`
+instead of re-spelling it from Kconfig". **Wiring cmake up showed that reading
+is wrong**, and the correction matters more than the verb.
+
+Deriving from the image would take the standalone path away. A plain Zephyr app
+has no image, so if Kconfig stopped being the mechanism it would have nothing
+left to derive from — and keeping that app working is the promise D2 is built
+on. So Kconfig stays the mechanism and the image becomes the CHECK:
+
+| | |
+| --- | --- |
+| no workspace | nothing to check; the build proceeds unchanged |
+| workspace | the two answers must agree, or the build stops |
+
+That reaches D14's actual goal — the two derivations cannot silently disagree —
+without removing the path that has no second answer. `cmake/NanoRosImageAgreement.cmake`,
+called from the Zephyr module, which runs for every nano-ros Zephyr build:
+
+```console
+-- nano-ros: image demo_bringup:zephyr (rmw=zenoh) <- …/examples/workspaces/rust
+```
+
+and on a disagreement (measured, by setting `rmw = "cyclonedds"` against a
+`prj-zenoh.conf`):
+
+```text
+nano-ros: this build and its image disagree about the RMW.
+    image demo_bringup:zephyr declares: cyclonedds
+    Kconfig selected:                       zenoh
+Kconfig is what the build uses, so the image's `rmw` is not being honoured.
+```
+
+Worth having because that divergence has no other symptom: the image builds
+against the wrong backend and every consequence shows up at RUNTIME as "nothing
+is discovered", a layer below anything that names an RMW.
+
+**`--for-entry <pkg>` exists because cmake cannot name the image.** It knows the
+application directory it was pointed at and nothing else; asking by image id
+would put the image derivation back in cmake, which is what this removes.
+
+**Two implementation notes, both found by measurement rather than reading:**
+
+* the call sits at the END of `zephyr/CMakeLists.txt`, not beside the RMW block
+  it checks. The nros CLI is resolved by `nros_generate_interfaces.cmake`,
+  included further down, so a call up there found no CLI and returned having
+  checked nothing — silently, by design, since a missing CLI must not fail a
+  build that was not asking it anything. The Kconfig answer is captured where
+  the choice is made and read at the end.
+* neither tool cache var is reliably populated there, so the check falls back to
+  `nros_resolve_cli(… OPTIONAL)` — the primitive both of them go through, and
+  the only one that answers without failing.
+
 The workspace is found by walking up for a package carrying `system.toml` —
 the same definition `nros build` uses, so the two cannot disagree. Not by
 walking to the nearest `Cargo.toml`: an entry package HAS one, and a C or C++
