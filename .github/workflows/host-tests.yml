@@ -181,6 +181,20 @@ jobs:
           plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
           [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
 
+      # `nros sync` resolves SystemModels by shelling out to `nros-launch-resolve`,
+      # which it looks for NEXT TO the `nros` binary (issue 0285 — absolute path,
+      # never $PATH). Without it every fixture build dies at the sync step:
+      #
+      #   Error: sync: 9 SystemModel(s) need resolving but `nros-launch-resolve`
+      #          is not next to the `nros` binary
+      #
+      # Only `nightly.yml` provisioned it, so this lane had been red for at least
+      # ten consecutive runs — both fixture builds failing, both failures
+      # swallowed (see below), and 296 tests then skipping for fixtures that were
+      # never built.
+      - name: Build nros-launch-resolve (nros sync needs it beside the CLI)
+        run: just setup-launch-resolve
+
       # The native integration tests spawn PREBUILT example binaries via
       # `require_prebuilt_binary`. Stage them by building the fixtures the way a
       # user does. Issue #29 — split into per-stage steps with `df` checkpoints
@@ -200,8 +214,15 @@ jobs:
           source /opt/ros/humble/setup.bash
           mkdir -p build/ci-logs
           echo "before:"; df -h / | tail -1
+          # FAIL, do not swallow. This used to end `|| { tail; echo "partial —
+          # [SKIPPED]"; }`, so a build that died at line one reported the step as
+          # SUCCESS; the tests then skipped for absent fixtures and the run blamed
+          # a skip budget. Ten runs of a green step over a failed build.
+          # `check-skip-budget` (issue 0584) rejects exactly this laundering — a
+          # missing in-lane fixture is a hard failure — so the swallow could only
+          # ever produce a red whose stated reason was wrong.
           just native build-fixture-rust-core > build/ci-logs/rust-core.log 2>&1 \
-            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; echo "rust-core partial — [SKIPPED]"; }
+            || { echo "::group::rust-core FAILED tail"; tail -120 build/ci-logs/rust-core.log; echo "::endgroup::"; exit 1; }
           echo "after rust-core ($(wc -l < build/ci-logs/rust-core.log) lines suppressed):"; df -h / | tail -1
 
       - name: Build workspace fixtures
@@ -216,7 +237,7 @@ jobs:
         run: |
           source /opt/ros/humble/setup.bash
           just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
-            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; echo "workspace partial — [SKIPPED]"; }
+            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; exit 1; }
           echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
 
       - name: just test-integration
