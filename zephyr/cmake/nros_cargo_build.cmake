@@ -221,6 +221,19 @@ function(nros_resolve_knobs)
             "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}")
     endif()
 
+    # Application heap arena (phase-391 W3). `nros-platform`'s zephyr_heap
+    # reads NROS_ZEPHYR_HEAP_SIZE via `option_env!`, but nothing forwarded it
+    # into the cargo environment, so the knob was documented and unreachable
+    # from a Zephyr build: exporting it had no effect and the arena stayed at
+    # its 64 KiB default.
+    #
+    # That matters because 60b4e0c1e moved z_malloc AND __rust_alloc off the
+    # kernel heap onto this arena, so CONFIG_HEAP_MEM_POOL_SIZE no longer
+    # governs application allocation. A consumer needing more than 64 KiB has
+    # no working way to ask for it, and starvation presents as a silent hang
+    # rather than an error. See NEWSLabNTU/nano-ros#41.
+    _nros_resolve_knob(NROS_ZEPHYR_HEAP_SIZE "${CONFIG_NROS_ZEPHYR_HEAP_SIZE}")
+
     # XRCE transport tuning.
     #
     # `XRCE_TRANSPORT_MTU` is read unprefixed by xrce-sys/build.rs. The pool

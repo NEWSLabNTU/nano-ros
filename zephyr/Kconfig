@@ -836,6 +836,22 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       number of subscriptions the image creates. Pool size is this x 1024
       bytes. Read by nros-rmw-cffi build.rs.
 
+config NROS_ZEPHYR_HEAP_SIZE
+	int "Application heap arena size (bytes)"
+	default 65536
+	help
+	  Size of the rlsf arena in nros-platform's zephyr_heap, which backs
+	  BOTH z_malloc and __rust_alloc since the allocation funnel moved off
+	  Zephyr's kernel heap.
+
+	  CONFIG_HEAP_MEM_POOL_SIZE does NOT govern application allocation any
+	  more; this does. An application that outgrows the arena does not
+	  fault or log -- it stops, so size this to what the application
+	  actually needs rather than leaving the default in place and
+	  inferring from a hang.
+
+	  An NROS_ZEPHYR_HEAP_SIZE environment variable overrides this value.
+
 config NROS_EXECUTOR_ARENA_SIZE
     int "Executor arena size in bytes (0 = derive)"
     default 0
