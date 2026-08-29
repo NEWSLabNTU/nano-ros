@@ -1458,7 +1458,112 @@ pub trait Session {
         let _ = visit;
         Err(TransportError::Unsupported.into())
     }
+
+    /// phase-381 W3 — what ONE named node publishes / subscribes / serves /
+    /// calls.
+    ///
+    /// `node_name` and `node_namespace` are ROS names; a node the graph has not
+    /// discovered yields no visits, which is NOT an error — see
+    /// [`Self::get_node_names`] for why an empty answer is "not seen yet".
+    ///
+    /// `kind` selects which of the four upstream `*_by_node` questions this
+    /// answers. One method rather than four because the four differ ONLY by
+    /// which entity kind they keep, and four trait methods would be four copies
+    /// of one filter.
+    ///
+    /// The trait keeps the ABI's `subscriber` vocabulary because
+    /// `rmw_get_subscriber_names_and_types_by_node` is what upstream rmw calls
+    /// it and RFC-0054 makes the C headers the SSoT. The USER-facing spelling
+    /// is per language and settled at that layer: rcl says `subscriber`, rclcpp
+    /// and rclrs say `subscription`.
+    ///
+    /// Default body: `Err(Unsupported)`.
+    fn get_names_and_types_by_node(
+        &mut self,
+        kind: GraphEntityKind,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = (kind, node_name, node_namespace, visit);
+        Err(TransportError::Unsupported.into())
+    }
+
+    /// phase-381 W3 — the endpoints on one topic, with the QoS each GRANTED.
+    ///
+    /// `publishers` selects `rmw_get_publishers_info_by_topic` (`true`) or
+    /// `rmw_get_subscriptions_info_by_topic` (`false`).
+    ///
+    /// The granted profile is the whole reason a consumer asks: "why is nothing
+    /// arriving" is usually a QoS incompatibility, and the REQUESTED profile
+    /// cannot answer it. A backend that cannot read a remote's granted QoS says
+    /// so per field rather than echoing the request back — see
+    /// `rmw_topic_endpoint_info_t`.
+    ///
+    /// Default body: `Err(Unsupported)`.
+    fn get_endpoint_info_by_topic(
+        &mut self,
+        publishers: bool,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = (publishers, topic_name, visit);
+        Err(TransportError::Unsupported.into())
+    }
 }
+
+/// Which entity kind a `*_by_node` graph query keeps — phase-381 W3.
+///
+/// Named for upstream rmw's four `*_by_node` slots. `Subscriber` carries rmw's
+/// word, not rclcpp's `subscription`; the user-facing spelling is chosen per
+/// language one layer up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphEntityKind {
+    Publisher,
+    Subscriber,
+    Service,
+    Client,
+}
+
+/// One discovered endpoint on a topic — phase-381 W3, the Rust view of
+/// `rmw_topic_endpoint_info_t`.
+///
+/// Every string BORROWS from the backend's own state for the duration of the
+/// visit. A caller that needs one afterwards copies it; that is what lets the
+/// graph stream without an allocator.
+#[derive(Debug, Clone)]
+pub struct GraphEndpointInfo<'a> {
+    /// Node that owns the endpoint.
+    pub node_name: &'a str,
+    /// That node's namespace.
+    pub node_namespace: &'a str,
+    /// Fully-qualified type on the wire, e.g. `"std_msgs/msg/Int32"`.
+    pub topic_type: &'a str,
+    /// `true` for a publisher, `false` for a subscription.
+    pub is_publisher: bool,
+    /// The endpoint's 24-byte identity; all-zero when the backend has none.
+    pub endpoint_gid: [u8; 24],
+}
+
+// No `qos` field, deliberately. The C seam carries one and fills it with the
+// ABI's `*_UNKNOWN` sentinels, which is the contract for a policy a backend
+// cannot determine (see `publisher_get_actual_qos`: write UNKNOWN and return
+// OK; `UNSUPPORTED` means no read-back AT ALL).
+//
+// No backend can fill it today. zenoh's liveliness token carries the DECLARING
+// side's own profile, not a negotiated grant, and this seam promises the
+// granted one — reporting the declaration would be the plausible wrong answer
+// the slot exists to avoid, since "why is nothing arriving" is usually a QoS
+// mismatch and the requested profile cannot show it. Cyclone can read a real
+// grant and will need this; adding a field to a Rust struct then is additive
+// and not an ABI change, which is why carrying an always-`None` field now
+// buys nothing.
 
 /// Bitmask of QoS policies a backend can honour. See
 /// [`Session::supported_qos_policies`].

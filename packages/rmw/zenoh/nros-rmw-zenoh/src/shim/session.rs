@@ -208,6 +208,17 @@ enum GraphQuery {
     Entities,
 }
 
+/// Does this entity belong to the named node? `None` means "any node".
+///
+/// The namespace arrives MANGLED on both sides — the caller's was mangled once
+/// before the sweep — so this is a string compare and not a demangle per token.
+fn entity_on_node(e: &Ros2LivelinessEntity<'_>, node: Option<(&str, &str)>) -> bool {
+    match node {
+        None => true,
+        Some((name, ns_mangled)) => e.node_name == name && e.namespace == ns_mangled,
+    }
+}
+
 /// phase-381 W3 — how long a standing graph query waits for replies.
 ///
 /// Not a caller budget: `get_node_names` never blocks. This is the zenoh
@@ -712,6 +723,21 @@ impl ZenohSession {
         kinds: &[EntityKind],
         visit: &mut dyn FnMut(&str, &[&str]) -> bool,
     ) -> Result<(), TransportError> {
+        self.names_and_types_filtered(kinds, None, visit)
+    }
+
+    /// phase-381 W3 — the grouping, optionally narrowed to ONE node.
+    ///
+    /// `node` is `(name, MANGLED namespace)`. The whole-graph forms pass `None`
+    /// and the `*_by_node` forms pass `Some`, so the dedup exists once: four
+    /// per-node slots plus two whole-graph ones would otherwise be six copies
+    /// of one two-pass algorithm.
+    fn names_and_types_filtered(
+        &mut self,
+        kinds: &[EntityKind],
+        node: Option<(&str, &str)>,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), TransportError> {
         // Names already reported, so the outer pass makes progress. Bounded by
         // construction; a graph with more distinct names than this reports the
         // first `GRAPH_NAMES_MAX` of them.
@@ -722,7 +748,7 @@ impl ZenohSession {
             // Pass 1 — the next name we have not reported yet.
             let mut next: Option<heapless::String<GRAPH_NAME_MAX>> = None;
             self.for_each_entity(GraphQuery::Entities, &mut |e| {
-                if !kinds.contains(&e.kind) {
+                if !kinds.contains(&e.kind) || !entity_on_node(e, node) {
                     return true;
                 }
                 let Some(topic) = e.topic else { return true };
@@ -749,7 +775,10 @@ impl ZenohSession {
             let mut types: heapless::Vec<heapless::String<GRAPH_NAME_MAX>, GRAPH_TYPES_MAX> =
                 heapless::Vec::new();
             self.for_each_entity(GraphQuery::Entities, &mut |e| {
-                if !kinds.contains(&e.kind) || e.topic != Some(name.as_str()) {
+                if !kinds.contains(&e.kind)
+                    || e.topic != Some(name.as_str())
+                    || !entity_on_node(e, node)
+                {
                     return true;
                 }
                 if let Some(t) = e.type_name
@@ -1110,6 +1139,58 @@ impl Session for ZenohSession {
             &[EntityKind::ServiceServer, EntityKind::ServiceClient],
             visit,
         )
+    }
+
+    fn get_names_and_types_by_node(
+        &mut self,
+        kind: nros_rmw::GraphEntityKind,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error> {
+        let want = match kind {
+            nros_rmw::GraphEntityKind::Publisher => EntityKind::Publisher,
+            nros_rmw::GraphEntityKind::Subscriber => EntityKind::Subscriber,
+            nros_rmw::GraphEntityKind::Service => EntityKind::ServiceServer,
+            nros_rmw::GraphEntityKind::Client => EntityKind::ServiceClient,
+        };
+        // The wire carries the namespace MANGLED (`/demo` -> `%demo`), so the
+        // caller's ROS name is mangled once here rather than demangling every
+        // token — the comparison happens per entity and the mangle does not.
+        let ns_mangled = Ros2Liveliness::mangle_topic_name_pub::<GRAPH_NAME_MAX>(node_namespace);
+        self.names_and_types_filtered(&[want], Some((node_name, ns_mangled.as_str())), visit)
+    }
+
+    fn get_endpoint_info_by_topic(
+        &mut self,
+        publishers: bool,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&nros_rmw::GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), Self::Error> {
+        let want = if publishers {
+            EntityKind::Publisher
+        } else {
+            EntityKind::Subscriber
+        };
+        let mangled = Ros2Liveliness::mangle_topic_name_pub::<GRAPH_NAME_MAX>(topic_name);
+        self.for_each_entity(GraphQuery::Entities, &mut |e| {
+            if e.kind != want || e.topic != Some(mangled.as_str()) {
+                return true;
+            }
+            let ns = Ros2Liveliness::demangle_topic_name::<GRAPH_NAME_MAX>(e.namespace);
+            let info = nros_rmw::GraphEndpointInfo {
+                node_name: e.node_name,
+                node_namespace: ns.as_str(),
+                topic_type: e.type_name.unwrap_or(""),
+                is_publisher: publishers,
+                // The liveliness token carries no GID — it identifies the
+                // entity by keyexpr, not by a 24-byte id. All-zero is the
+                // ABI's "this backend has none", which is honest; synthesising
+                // one from the zid would invent an identity a peer cannot match.
+                endpoint_gid: [0u8; 24],
+            };
+            visit(&info)
+        })
     }
 
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
