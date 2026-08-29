@@ -31,6 +31,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPIN = "packages/core/nros-node/src/executor/spin.rs"
 PARAMS = "packages/core/nros-node/src/parameter_services.rs"
 LIFECYCLE = "packages/core/nros-node/src/lifecycle_services.rs"
+ACTION = "packages/core/nros-node/src/executor/action.rs"
 
 # (label, creation fn, constant, file that must define it)
 GROUPS = [
@@ -49,6 +50,17 @@ def sites(text, creator):
     return len(re.findall(rf"^\s+let [a-z0-9_]+ = {creator}::<", text, re.M))
 
 
+def action_channels(text):
+    """The DISTINCT service channels one action server opens.
+
+    Counted by the `ServiceInfo` each `create_service` is handed, not by call
+    sites: `action.rs` registers the same three channels twice (the typed and
+    the raw arms), so a bare call count says six. The set is what an action
+    costs on the wire.
+    """
+    return {m.group(1) for m in re.finditer(r"create_service\(&(\w+)_info", text)}
+
+
 def declared(text, name):
     m = re.search(rf"^pub const {name}: usize = (\d+);", text, re.M)
     return int(m.group(1)) if m else None
@@ -59,7 +71,17 @@ def read(root, rel):
         return fh.read()
 
 
-MIRROR = re.compile(r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES): usize = (\d+);", re.M)
+MIRROR = re.compile(
+    r"^const (PARAM_SERVICE_QUERYABLES|LIFECYCLE_SERVICE_QUERYABLES|ACTION_SERVER_QUERYABLES)"
+    r": usize = (\d+);",
+    re.M,
+)
+
+# Files OUTSIDE `packages/rmw` that also mirror a count. The CLI cannot depend
+# on `nros-node` either — it is a host binary and that crate is `no_std` and
+# built for the target — so `nros ws entity-facts` restates the action
+# multiplier and is held to the definition here (phase-392 W5.b2).
+EXTRA_MIRROR_FILES = ["packages/cli/nros-cli-core/src/cmd/entity_facts.rs"]
 
 
 def rmw_rust_files(root, rmw_dir):
@@ -119,6 +141,36 @@ def check(root, rmw_dir="packages/rmw"):
                 f"sized from it moves too."
             )
 
+    # phase-392 W5.b2 — an action server is THREE queryables, and the model
+    # declares actions separately from services. Same rule as the two above:
+    # the constant is held to the code that decides it, so a fourth action
+    # channel cannot silently under-size every image declaring an action.
+    try:
+        action_src = read(root, ACTION)
+    except OSError as e:
+        problems.append(f"ACTION_SERVER_QUERYABLES: cannot read {ACTION}: {e}")
+    else:
+        chans = action_channels(action_src)
+        want = declared(action_src, "ACTION_SERVER_QUERYABLES")
+        if want is None:
+            problems.append(
+                f"ACTION_SERVER_QUERYABLES not found in {ACTION} — the count must "
+                f"have exactly one definition, beside the services it counts."
+            )
+        elif not chans:
+            problems.append(
+                f"no `create_service(&<name>_info` sites found in {ACTION} — the "
+                f"creation shape changed and this gate is now blind. Fix the "
+                f"pattern; do not delete the check."
+            )
+        elif len(chans) != want:
+            problems.append(
+                f"action server: {len(chans)} distinct service channel(s) in "
+                f"{ACTION} ({', '.join(sorted(chans))}), but "
+                f"ACTION_SERVER_QUERYABLES = {want}. A model declaring an action "
+                f"server sizes the queryable table from this."
+            )
+
     # phase-392 W5.d — `nros-zpico-build` MIRRORS both counts, and cannot do
     # otherwise: it is a build-script helper, so it can neither depend on
     # `nros-node` to read the constants nor see that crate's features. A mirror
@@ -131,8 +183,16 @@ def check(root, rmw_dir="packages/rmw"):
             definitions[const] = declared(read(root, const_rel), const)
         except OSError:
             definitions[const] = None
+    try:
+        definitions["ACTION_SERVER_QUERYABLES"] = declared(
+            read(root, ACTION), "ACTION_SERVER_QUERYABLES"
+        )
+    except OSError:
+        definitions["ACTION_SERVER_QUERYABLES"] = None
 
-    for rel in rmw_rust_files(root, rmw_dir):
+    scanned = list(rmw_rust_files(root, rmw_dir))
+    scanned += [r for r in EXTRA_MIRROR_FILES if os.path.isfile(os.path.join(root, r))]
+    for rel in scanned:
         full = os.path.join(root, rel)
         try:
             with open(full, encoding="utf8", errors="replace") as fh:
@@ -156,14 +216,16 @@ def check(root, rmw_dir="packages/rmw"):
             elif value != want:
                 problems.append(
                     f"{rel} mirrors {const} = {value}, definition is {want}. "
-                    f"A build-script helper cannot read the constant, so the "
-                    f"mirror is held here instead (phase-392 W5.d)."
+                    f"Neither a build-script helper nor the host CLI can read "
+                    f"the constant, so the mirror is held here instead "
+                    f"(phase-392 W5.d / W5.b2)."
                 )
     return problems
 
 
-def _write(root, n_param, n_lc, c_param, c_lc, rmw_line):
-    for rel in (SPIN, PARAMS, LIFECYCLE, "packages/rmw/zenoh/x/src/service.rs"):
+def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
+           c_cli_action=3):
+    for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
     body += "".join(f"        let l{i} = create_lc_srv::<T>(\n" for i in range(n_lc))
@@ -172,7 +234,19 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line):
         f"pub const PARAM_SERVICE_QUERYABLES: usize = {c_param};\n")
     open(os.path.join(root, LIFECYCLE), "w").write(
         f"pub const LIFECYCLE_SERVICE_QUERYABLES: usize = {c_lc};\n")
+    # Written TWICE, as the real file does (typed + raw arms), so the probe
+    # for "distinct channels, not call sites" is a real one.
+    act = f"pub const ACTION_SERVER_QUERYABLES: usize = {c_action};\n"
+    for _ in range(2):
+        act += "".join(f"    .create_service(&chan{i}_info, qos)\n" for i in range(chans))
+    open(os.path.join(root, ACTION), "w").write(act)
     open(os.path.join(root, "packages/rmw/zenoh/x/src/service.rs"), "w").write(rmw_line + "\n")
+    # The CLI mirror lives outside `packages/rmw`, so it is reached by a
+    # different arm of the scan — exercise it rather than assume it.
+    cli = EXTRA_MIRROR_FILES[0]
+    os.makedirs(os.path.join(root, os.path.dirname(cli)), exist_ok=True)
+    open(os.path.join(root, cli), "w").write(
+        f"const ACTION_SERVER_QUERYABLES: usize = {c_cli_action};\n")
 
 
 def self_test():
@@ -188,6 +262,12 @@ def self_test():
          "a build-script mirror that agrees"),
         ((6, 5, 6, 5, "const PARAM_SERVICE_QUERYABLES: usize = 7;"), 1,
          "a build-script mirror that drifted"),
+        ((6, 5, 6, 5, "// nothing", 4, 3), 1, "a fourth action channel was added"),
+        ((6, 5, 6, 5, "// nothing", 0, 3), 1, "the action creation pattern stopped matching"),
+        ((6, 5, 6, 5, "// nothing", 3, 6), 1,
+         "the action constant counted CALL SITES (6) rather than channels (3)"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 4), 1,
+         "the CLI mirror drifted — a file OUTSIDE packages/rmw"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()
@@ -223,6 +303,10 @@ def main():
     for label, creator, const, _ in GROUPS:
         n = sites(read(ROOT, SPIN), creator)
         print(f"  ok    {label}: {n} creation site(s) == {const}")
+    print(
+        f"  ok    action server: {len(action_channels(read(ROOT, ACTION)))} service "
+        f"channel(s) == ACTION_SERVER_QUERYABLES"
+    )
     print("infra-queryables: counts agree with their creation sites.")
 
 

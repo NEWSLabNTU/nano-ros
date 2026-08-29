@@ -99,8 +99,24 @@ fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: b
                  SystemModel (phase-392 W5)."
             ),
         },
-        // The hosted guess survives only while undeclared images do. W5.f
-        // retires both once every image declares.
+        // phase-392 W5.b1 — the model answered the INFRASTRUCTURE half and not
+        // the application half, which is the normal case and not a broken
+        // channel: `ros-launch-manifest` models service wiring, but the
+        // resolver only emits it when the launch inputs describe endpoints,
+        // and a plain `<node>` element does not. All 115 resolved models in
+        // this tree are that shape. `nros ws entity-facts` therefore ABSTAINS
+        // rather than reporting a zero it cannot support — reporting 0 for a
+        // node called `add_server` would size the table to the infrastructure
+        // alone and exhaust it at registration.
+        //
+        // So: keep the app headroom, but stop paying for infrastructure the
+        // image demonstrably does not carry. On a native talker that is 32 -> 8
+        // slots, which is most of the pool.
+        None if infra.is_some() => UNDECLARED_HEADROOM,
+        // Nothing was delivered at all — no model, no cmake seam, a bare
+        // `cargo build`. The historical budgets, unchanged. W5.f retires both
+        // once every image declares; that needs the hand-written-`main`
+        // question settled first (phase-392 W5, Open).
         None => return if hosted { 32 } else { UNDECLARED_HEADROOM },
     };
 
@@ -129,6 +145,42 @@ fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: b
 #[cfg(test)]
 mod queryable_default_tests {
     use super::*;
+
+    /// phase-392 W5.b1 — the half the model CAN answer, on its own.
+    ///
+    /// This is the shape every resolved model in the tree produces: the
+    /// infrastructure flags are known (they are `execution.features`), the
+    /// application's own service-server count is not (no resolver here emits
+    /// layer-1 wiring). The app term stays a labelled headroom constant; the
+    /// infrastructure term becomes exact.
+    #[test]
+    fn infra_declared_without_an_app_count_still_drops_the_hosted_guess() {
+        // A native talker: no parameter services, no lifecycle. 32 -> 8.
+        assert_eq!(
+            queryable_default_from(None, Some("none"), true),
+            UNDECLARED_HEADROOM
+        );
+        // An image that carries both: the headroom PLUS what they cost.
+        assert_eq!(
+            queryable_default_from(None, Some("param+lifecycle"), true),
+            UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+        // And it is the same number on an embedded target: the hosted/embedded
+        // sniff decides nothing once the declaration arrives.
+        assert_eq!(
+            queryable_default_from(None, Some("none"), false),
+            queryable_default_from(None, Some("none"), true)
+        );
+    }
+
+    /// An unknown infrastructure spelling is a BROKEN CHANNEL, not an unknown
+    /// feature — `nros ws entity-facts` emits one of four strings and drops
+    /// names it does not recognise (`safety`) before it gets here.
+    #[test]
+    #[should_panic(expected = "NROS_DECLARED_INFRA_QUERYABLES")]
+    fn an_unknown_infra_spelling_panics_even_without_an_app_count() {
+        queryable_default_from(None, Some("safety"), true);
+    }
 
     #[test]
     fn undeclared_keeps_the_historical_budgets() {

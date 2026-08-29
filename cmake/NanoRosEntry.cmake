@@ -334,6 +334,13 @@ function(nano_ros_entry)
             endif()
         endif()
 
+        # phase-392 W5.c — the entity figures this entry DECLARES, folded into
+        # the configure's accumulated view. One runtime staticlib serves every
+        # entry here, so the union is applied once by
+        # `nros_synth_runtime_umbrella`, which runs after the SUBDIRS loop.
+        include("${_NROS_ENTRY_DIR}/NanoRosEntityFacts.cmake")
+        nros_record_entity_facts("${_NRA_MODEL}")
+
         _nros_entry_invoke_codegen(
             NAME      "${_NRA_NAME}"
             LANG      "${_NRA_LANG}"
