@@ -264,6 +264,22 @@ function(nros_board_link_app target)
         COMPILE_DEFS    ${_compile_defs}
         LINK_INTERFACES ${_link_ifaces})
 
-    set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    # issue 0882 — same carrier arrangement as the ARM port, and the same hazard:
+    # the carrier defaults to writing `<build>/<name>`, which is exactly where
+    # `<name>_build` copies the real kernel. Two producers, one path, and the
+    # carrier CANNOT link (it is a declarative property sink, built with the host
+    # toolchain). Before this, asking for the carrier by name ran that link, it
+    # failed as designed, and ninja DELETED the output — taking the working
+    # kernel with it.
+    #
+    # Kept in step with the ARM module deliberately: `nros_nuttx_build_example`
+    # is shared, so its `BYPRODUCTS` declares the real owner for BOTH ports, and
+    # a port that does not also move its carrier's `OUTPUT_NAME` fails the
+    # configure outright with `multiple rules generate <name>`. That is how this
+    # one was found — fixing only ARM turned the silent collision into a loud one
+    # here.
+    set_target_properties(${target} PROPERTIES
+        EXCLUDE_FROM_ALL TRUE
+        OUTPUT_NAME "${target}.carrier-do-not-run")
     add_dependencies(${target} ${target}_build)
 endfunction()

@@ -391,8 +391,23 @@ function(nros_board_link_app target)
     # not `int main`.
     #
     #   EXCLUDE_FROM_ALL — keep it out of the default build
-    #   add_dependencies(carrier <name>_build) — `cmake --build . --target <name>`
-    #     still produces the kernel ELF via the cargo path
-    set_target_properties(${target} PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    #   add_dependencies(carrier <name>_build) — asking for the carrier still
+    #     runs the cargo path that produces the real kernel ELF
+    #   OUTPUT_NAME — issue 0882, and the reason is not cosmetic. The carrier
+    #     defaults to writing `<build>/<name>`, which is EXACTLY where
+    #     `<name>_build` copies the kernel. Two producers, one path, and only one
+    #     of them can succeed: `cmake --build . --target <name>` ran the carrier's
+    #     link, it failed as designed, and ninja DELETED the output — taking the
+    #     working kernel with it. Measured before this fix: the command returned
+    #     1 and left `No such file or directory` where an 826 620-byte ELF had
+    #     been. Giving the carrier its own name makes the failing link harmless;
+    #     the `BYPRODUCTS` in `nros_nuttx_build_example` names the real owner.
+    #
+    #     The link still fails — the carrier is a property sink, not a program —
+    #     so `--target <name>` is not the way to build this. `--target
+    #     <name>_build` is, and a plain `ninja` already does the right thing.
+    set_target_properties(${target} PROPERTIES
+        EXCLUDE_FROM_ALL TRUE
+        OUTPUT_NAME "${target}.carrier-do-not-run")
     add_dependencies(${target} ${target}_build)
 endfunction()

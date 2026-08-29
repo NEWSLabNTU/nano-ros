@@ -440,10 +440,20 @@ function(nros_nuttx_build_example)
         endif()
     endforeach()
 
-    # Copy the binary to the build directory for convenience.
+    # Copy the kernel ELF to `<build>/<name>` — the path the tests resolve.
+    #
+    # issue 0882 — `BYPRODUCTS` is not cosmetic here. Without it this POST_BUILD
+    # writes `<build>/<name>` as an UNDECLARED output: ninja attributes that path
+    # to the only rule that claims it, which is the carrier `add_executable`, and
+    # the carrier CANNOT link (see the board module — it is a property sink built
+    # with the host toolchain). Asking for the carrier by name therefore ran a
+    # failing link whose output ninja then DELETED, destroying this kernel.
+    # Declaring the byproduct tells ninja who really produces the file, and pairs
+    # with the carrier's `OUTPUT_NAME` so the two no longer write one path.
     add_custom_command(
         TARGET ${_NNBE_NAME}_build POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
             "${_output_binary}" "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_NAME}"
+        BYPRODUCTS "${CMAKE_CURRENT_BINARY_DIR}/${_NNBE_NAME}"
         COMMENT "Copying ${_NNBE_NAME} to build directory")
 endfunction()
