@@ -1858,6 +1858,33 @@ typedef void (*nros_event_publisher_count_cb_t)(struct nros_publisher_t *pub_,
                                                 void *user_context);
 
 /**
+ * phase-381 W4 — visit one node on the graph.
+ *
+ * `node_namespace` is a ROS namespace (`"/"`, `"/demo"`). `enclave` is NULL
+ * where the backend does not track one, which is what lets one call answer
+ * both `rmw_get_node_names` and `rmw_get_node_names_with_enclaves`.
+ *
+ * Every string is BORROWED for the duration of the call — copy anything you
+ * keep. Return `false` to stop the enumeration early.
+ */
+typedef bool (*nros_node_visit_fn)(void *ctx,
+                                   const char *node_name,
+                                   const char *node_namespace,
+                                   const char *enclave);
+
+/**
+ * phase-381 W4 — visit one name and the types on it.
+ *
+ * `types_count` may legitimately be 0 on a partially discovered graph:
+ * reporting the name without a type beats dropping it. Strings are BORROWED.
+ * Return `false` to stop.
+ */
+typedef bool (*nros_names_and_types_visit_fn)(void *ctx,
+                                              const char *name,
+                                              const char *const *types,
+                                              size_t types_count);
+
+/**
  * Phase 104.C.8 — extended node-creation options.
  *
  * Mirrors the Rust `Executor::node_builder(name).rmw(rmw_name).
@@ -4118,6 +4145,106 @@ nros_ret_t nros_executor_set_timeout(struct nros_executor_t *executor,
  * * `executor` must be a valid pointer to an initialized executor.
  */
 NROS_PUBLIC nros_ret_t nros_executor_ping(struct nros_executor_t *executor, int32_t timeout_ms);
+
+/**
+ * phase-381 W4 — every node on the graph, with its namespace.
+ *
+ * A VISITOR rather than an out-array: upstream's `rcutils_string_array_t`
+ * allocates two levels deep, there is no allocator here, and a
+ * caller-provided buffer needs a bound the caller cannot know. Peak extra
+ * memory is one entry, and a caller with its own limit stops by returning
+ * `false`.
+ *
+ * **Reports what has been DISCOVERED; never blocks.** The first call after
+ * startup legitimately sees a partial graph — the backend keeps a standing
+ * query fed by the spin loop. Poll rather than calling once and concluding: an
+ * empty enumeration means "nobody seen yet", never "nobody exists".
+ *
+ * # Returns
+ * * `NROS_RET_OK` — enumeration ran (possibly visiting nothing).
+ * * `NROS_RET_UNSUPPORTED` — this backend has no graph. DISTINCT from an
+ *   empty graph, deliberately.
+ * * `NROS_RET_NOT_INIT` — executor not initialised.
+ * * `NROS_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `visit` must be callable for the duration of the call.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_node_names(struct nros_executor_t *executor,
+                                        nros_node_visit_fn visit,
+                                        void *ctx);
+
+/**
+ * phase-381 W4 — every topic on the graph, with the types on it.
+ *
+ * Called once per distinct TOPIC: a topic carrying two types is one call with
+ * two entries, not two calls. `types_count` may legitimately be 0 on a
+ * partially discovered graph — reporting the name without a type beats
+ * dropping it.
+ *
+ * Same discovery caveat as `nros_executor_get_node_names`: an empty
+ * enumeration means "nobody seen yet", not "nobody exists".
+ *
+ * # Returns
+ * * `NROS_RET_OK` — enumeration ran (possibly visiting nothing).
+ * * `NROS_RET_UNSUPPORTED` — this backend has no graph.
+ * * `NROS_RET_NOT_INIT` — executor not initialised.
+ * * `NROS_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `visit` must be callable for the duration of the call.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_topic_names_and_types(struct nros_executor_t *executor,
+                                                   nros_names_and_types_visit_fn visit,
+                                                   void *ctx);
+
+/**
+ * phase-381 W4 — every service on the graph, with its types. As
+ * `nros_executor_get_topic_names_and_types`, over servers and clients.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `visit` must be callable for the duration of the call.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_service_names_and_types(struct nros_executor_t *executor,
+                                                     nros_names_and_types_visit_fn visit,
+                                                     void *ctx);
+
+/**
+ * phase-381 W4 — how many publishers are visible on `topic_name`.
+ *
+ * `topic_name` is a ROS name (`"/chatter"`). The count reflects what has been
+ * DISCOVERED, so it can be low right after startup and is never a proof of
+ * absence.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `topic_name` must be a valid NUL-terminated string.
+ * * `out_count` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_count_publishers(struct nros_executor_t *executor,
+                                          const char *topic_name,
+                                          size_t *out_count);
+
+/**
+ * phase-381 W4 — how many subscribers are visible on `topic_name`. See
+ * `nros_executor_count_publishers` for the caveats.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `topic_name` must be a valid NUL-terminated string.
+ * * `out_count` must be writable.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_count_subscribers(struct nros_executor_t *executor,
+                                           const char *topic_name,
+                                           size_t *out_count);
 
 /**
  * Set data communication semantics.

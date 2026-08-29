@@ -5179,6 +5179,17 @@ check-c: check-c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/executor_verb_aliases.c
+    echo "  - graph query entry points are DECLARED, not just defined (phase-381 W4)"
+    # The first version of these five was macro-generated. It compiled, this
+    # lane passed, and cbindgen emitted nothing for them — cbindgen does not
+    # expand macros, so four of five had no header declaration and were
+    # uncallable from C while the Rust side stayed green. The probe takes
+    # function POINTERS, so a missing declaration is a build failure here.
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/graph_query_entry_points.c
     echo "  - parameter name spelling + deprecated forwarders (phase 379 W5)"
     # The parameter family is `nros_parameter_*`; the old `nros_param_*` names
     # survive one release as NROS_DEPRECATED_MSG `static inline` forwarders. The

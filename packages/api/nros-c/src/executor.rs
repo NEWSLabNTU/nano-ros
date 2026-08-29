@@ -421,6 +421,340 @@ pub unsafe extern "C" fn nros_executor_ping(
     }
 }
 
+/// phase-381 W4 — visit one node on the graph.
+///
+/// `node_namespace` is a ROS namespace (`"/"`, `"/demo"`). `enclave` is NULL
+/// where the backend does not track one, which is what lets one call answer
+/// both `rmw_get_node_names` and `rmw_get_node_names_with_enclaves`.
+///
+/// Every string is BORROWED for the duration of the call — copy anything you
+/// keep. Return `false` to stop the enumeration early.
+pub type nros_node_visit_fn = Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        node_name: *const core::ffi::c_char,
+        node_namespace: *const core::ffi::c_char,
+        enclave: *const core::ffi::c_char,
+    ) -> bool,
+>;
+
+/// phase-381 W4 — visit one name and the types on it.
+///
+/// `types_count` may legitimately be 0 on a partially discovered graph:
+/// reporting the name without a type beats dropping it. Strings are BORROWED.
+/// Return `false` to stop.
+pub type nros_names_and_types_visit_fn = Option<
+    unsafe extern "C" fn(
+        ctx: *mut core::ffi::c_void,
+        name: *const core::ffi::c_char,
+        types: *const *const core::ffi::c_char,
+        types_count: usize,
+    ) -> bool,
+>;
+
+/// phase-381 W4 — every node on the graph, with its namespace.
+///
+/// A VISITOR rather than an out-array: upstream's `rcutils_string_array_t`
+/// allocates two levels deep, there is no allocator here, and a
+/// caller-provided buffer needs a bound the caller cannot know. Peak extra
+/// memory is one entry, and a caller with its own limit stops by returning
+/// `false`.
+///
+/// **Reports what has been DISCOVERED; never blocks.** The first call after
+/// startup legitimately sees a partial graph — the backend keeps a standing
+/// query fed by the spin loop. Poll rather than calling once and concluding: an
+/// empty enumeration means "nobody seen yet", never "nobody exists".
+///
+/// # Returns
+/// * `NROS_RET_OK` — enumeration ran (possibly visiting nothing).
+/// * `NROS_RET_UNSUPPORTED` — this backend has no graph. DISTINCT from an
+///   empty graph, deliberately.
+/// * `NROS_RET_NOT_INIT` — executor not initialised.
+/// * `NROS_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `visit` must be callable for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_node_names(
+    executor: *mut nros_executor_t,
+    visit: nros_node_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let Some(visit) = visit else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        const NAME_MAX: usize = 256;
+        let exec = get_executor(&mut exec_t._opaque);
+        let mut cb = |name: &str, ns: &str, enclave: Option<&str>| -> bool {
+            // NUL-terminated on the stack: the C contract borrows for the call
+            // only, so nothing is allocated on either side of the seam. A name
+            // that does not fit is SKIPPED rather than truncated — a truncated
+            // node name is a different, plausible node.
+            let mut name_buf = [0u8; NAME_MAX];
+            let mut ns_buf = [0u8; NAME_MAX];
+            let mut enc_buf = [0u8; NAME_MAX];
+            if name.len() >= NAME_MAX || ns.len() >= NAME_MAX {
+                return true;
+            }
+            name_buf[..name.len()].copy_from_slice(name.as_bytes());
+            ns_buf[..ns.len()].copy_from_slice(ns.as_bytes());
+            let enc_ptr = match enclave {
+                Some(e) if e.len() < NAME_MAX => {
+                    enc_buf[..e.len()].copy_from_slice(e.as_bytes());
+                    enc_buf.as_ptr() as *const core::ffi::c_char
+                }
+                _ => core::ptr::null(),
+            };
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const core::ffi::c_char,
+                ns_buf.as_ptr() as *const core::ffi::c_char,
+                enc_ptr,
+            )
+        };
+        match exec.get_node_names(&mut cb) {
+            Ok(()) => NROS_RET_OK,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (visit, ctx);
+        NROS_RET_UNSUPPORTED
+    }
+}
+
+/// phase-381 W4 — every topic on the graph, with the types on it.
+///
+/// Called once per distinct TOPIC: a topic carrying two types is one call with
+/// two entries, not two calls. `types_count` may legitimately be 0 on a
+/// partially discovered graph — reporting the name without a type beats
+/// dropping it.
+///
+/// Same discovery caveat as `nros_executor_get_node_names`: an empty
+/// enumeration means "nobody seen yet", not "nobody exists".
+///
+/// # Returns
+/// * `NROS_RET_OK` — enumeration ran (possibly visiting nothing).
+/// * `NROS_RET_UNSUPPORTED` — this backend has no graph.
+/// * `NROS_RET_NOT_INIT` — executor not initialised.
+/// * `NROS_RET_INVALID_ARGUMENT` — `executor` or `visit` is NULL.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `visit` must be callable for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_topic_names_and_types(
+    executor: *mut nros_executor_t,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_names_and_types_impl(executor, visit, ctx, NamesAndTypesKind::Topics)
+}
+
+/// phase-381 W4 — every service on the graph, with its types. As
+/// `nros_executor_get_topic_names_and_types`, over servers and clients.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `visit` must be callable for the duration of the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_get_service_names_and_types(
+    executor: *mut nros_executor_t,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+) -> nros_ret_t {
+    nros_executor_names_and_types_impl(executor, visit, ctx, NamesAndTypesKind::Services)
+}
+
+/// phase-381 W4 — how many publishers are visible on `topic_name`.
+///
+/// `topic_name` is a ROS name (`"/chatter"`). The count reflects what has been
+/// DISCOVERED, so it can be low right after startup and is never a proof of
+/// absence.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `topic_name` must be a valid NUL-terminated string.
+/// * `out_count` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_count_publishers(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> nros_ret_t {
+    nros_executor_count_impl(executor, topic_name, out_count, CountKind::Publishers)
+}
+
+/// phase-381 W4 — how many subscribers are visible on `topic_name`. See
+/// `nros_executor_count_publishers` for the caveats.
+///
+/// # Safety
+/// * `executor` must point to an initialised executor.
+/// * `topic_name` must be a valid NUL-terminated string.
+/// * `out_count` must be writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_count_subscribers(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+) -> nros_ret_t {
+    nros_executor_count_impl(executor, topic_name, out_count, CountKind::Subscribers)
+}
+
+/// Which enumeration `nros_executor_names_and_types_impl` runs.
+///
+/// The four entry points above are written LONGHAND, not generated by a macro,
+/// and that is deliberate: cbindgen does not expand macros, so a
+/// macro-generated `#[no_mangle]` function gets no header declaration and is
+/// uncallable from C — which is the entire point of these. Measured, not
+/// assumed: the macro version compiled, passed `just check-c`, and produced
+/// zero lines in `nros_generated.h`. The shared body lives in a private helper
+/// instead, so there is still one implementation.
+#[cfg(feature = "rmw-cffi")]
+enum NamesAndTypesKind {
+    Topics,
+    Services,
+}
+
+#[cfg(feature = "rmw-cffi")]
+enum CountKind {
+    Publishers,
+    Subscribers,
+}
+
+/// The shared body for the two names-and-types entry points.
+///
+/// # Safety
+/// Same contract as its callers.
+unsafe fn nros_executor_names_and_types_impl(
+    executor: *mut nros_executor_t,
+    visit: nros_names_and_types_visit_fn,
+    ctx: *mut core::ffi::c_void,
+    #[allow(unused_variables)] kind: NamesAndTypesKind,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    let Some(visit) = visit else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        const NAME_MAX: usize = 256;
+        const TYPES_MAX: usize = 8;
+        let exec = get_executor(&mut exec_t._opaque);
+        let mut cb = |name: &str, types: &[&str]| -> bool {
+            // NUL-terminated on the stack; the C contract borrows for the call
+            // only. A name or type that does not fit is SKIPPED rather than
+            // truncated — a truncated type name is a different, plausible type.
+            let mut name_buf = [0u8; NAME_MAX];
+            if name.len() >= NAME_MAX {
+                return true;
+            }
+            name_buf[..name.len()].copy_from_slice(name.as_bytes());
+            let mut type_bufs = [[0u8; NAME_MAX]; TYPES_MAX];
+            let mut ptrs: [*const core::ffi::c_char; TYPES_MAX] = [core::ptr::null(); TYPES_MAX];
+            let mut n = 0usize;
+            for t in types.iter().take(TYPES_MAX) {
+                if t.len() >= NAME_MAX {
+                    continue;
+                }
+                type_bufs[n][..t.len()].copy_from_slice(t.as_bytes());
+                ptrs[n] = type_bufs[n].as_ptr() as *const core::ffi::c_char;
+                n += 1;
+            }
+            visit(
+                ctx,
+                name_buf.as_ptr() as *const core::ffi::c_char,
+                ptrs.as_ptr(),
+                n,
+            )
+        };
+        let r = match kind {
+            NamesAndTypesKind::Topics => exec.get_topic_names_and_types(&mut cb),
+            NamesAndTypesKind::Services => exec.get_service_names_and_types(&mut cb),
+        };
+        match r {
+            Ok(()) => NROS_RET_OK,
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (visit, ctx);
+        NROS_RET_UNSUPPORTED
+    }
+}
+
+/// The shared body for the two count entry points.
+///
+/// # Safety
+/// Same contract as its callers.
+unsafe fn nros_executor_count_impl(
+    executor: *mut nros_executor_t,
+    topic_name: *const core::ffi::c_char,
+    out_count: *mut usize,
+    #[allow(unused_variables)] kind: CountKind,
+) -> nros_ret_t {
+    validate_not_null!(executor);
+    if topic_name.is_null() || out_count.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    let exec_t = &mut *executor;
+    if exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || exec_t.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NROS_RET_NOT_INIT;
+    }
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let Ok(topic) = core::ffi::CStr::from_ptr(topic_name).to_str() else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut exec_t._opaque);
+        let r = match kind {
+            CountKind::Publishers => exec.count_publishers(topic),
+            CountKind::Subscribers => exec.count_subscribers(topic),
+        };
+        match r {
+            Ok(n) => {
+                *out_count = n;
+                NROS_RET_OK
+            }
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::Unsupported)) => {
+                NROS_RET_UNSUPPORTED
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = (topic_name, out_count);
+        NROS_RET_UNSUPPORTED
+    }
+}
+
 /// Set data communication semantics.
 ///
 /// # Safety
