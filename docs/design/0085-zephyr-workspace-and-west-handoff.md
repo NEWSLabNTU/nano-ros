@@ -275,8 +275,45 @@ would be a second place to say one thing. What genuinely varies per image is
 which fragments are merged — which is the `conf` list, and already existed.
 
 **No image key for arbitrary `-D` defines**, deliberately. `west_args` emits
-four variables, all Zephyr's own. A module needing a define sets it in the
-app's `CMakeLists.txt`, which keeps one place to look.
+four variables of its own, all Zephyr's. Something the application ALWAYS needs
+is a property of the application, so it belongs in its `CMakeLists.txt`.
+
+**What varies per INVOCATION goes after `--`, and is routed by zone.** `west
+build` has two argument zones:
+
+```text
+west build [WEST OPTIONS] <app> -- [CMAKE OPTIONS]
+```
+
+and `nros build`'s single `--` can only name one of them. It used to drop the
+whole passthrough into the second, so `nros build img -- --pristine` reached
+cmake and died as `CMake Error: Unknown argument --pristine` — a real failure
+naming the wrong tool, for a flag the user reasonably expected west to get.
+
+Each token is now routed by **west's own flag list**, which makes the split
+west's documented grammar rather than a guess about what a flag looks like.
+Two flags are REFUSED instead of routed, because the image already decides
+them: `-b`/`--board` (the image's `board`) and `--sysbuild`/`--no-sysbuild`
+(the presence of a `sysbuild.conf`). Accepting either would let one build
+disagree with the declaration it was resolved from.
+
+The user's west options are appended **after** the application path, which
+looks wrong and is not: `-p`/`--pristine` takes an OPTIONAL value
+(`nargs='?'`), so placed before the positional argparse reads the application
+path as the pristine mode —
+
+```text
+west build: error: argument -p/--pristine: invalid choice:
+'…/src/zephyr_entry' (choose from 'auto', 'always', 'never')
+```
+
+Appending them last is correct for every flag shape without this code
+modelling west's argparse arities, and west accepts options after the
+positional (verified).
+
+This is what makes the handoff transparent rather than lossy: `-t run` builds
+and runs, `--pristine` rebuilds from scratch, and `--dry-run` prints the exact
+west line so a user who wants full control can take it.
 
 Verified: an out-of-tree module (own Kconfig, driver source gated on it, DT
 overlay declaring `user_widget`, binding shipped from the module's `dts_root`)

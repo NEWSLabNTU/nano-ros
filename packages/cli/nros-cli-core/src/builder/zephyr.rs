@@ -210,6 +210,125 @@ pub fn west_args(o: &ZephyrOverlays) -> Vec<String> {
     a
 }
 
+/// How one `--`-passthrough token reaches west.
+///
+/// `west build` has TWO argument zones and our single `--` can only name one:
+///
+/// ```text
+/// west build [WEST OPTIONS] <app> -- [CMAKE OPTIONS]
+/// ```
+///
+/// Everything after our `--` used to go to the second zone unconditionally, so
+/// `nros build img -- --pristine` reached cmake and failed as
+/// `CMake Error: Unknown argument --pristine` — a message naming the wrong
+/// tool, for a flag the user reasonably expected west to get.
+///
+/// The split is NOT a heuristic: the west zone is exactly what `west build
+/// --help` lists, so this table is west's own grammar rather than a guess about
+/// what a flag looks like.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WestArgRoute {
+    /// A `west build` option. `values` is how many following tokens belong to
+    /// it, per west's own help.
+    West { values: usize },
+    /// `-p`/`--pristine`, whose value is OPTIONAL and drawn from a closed set —
+    /// so the next token is consumed only when it is one of them.
+    Pristine,
+    /// A west option whose value nano-ros DERIVES, so accepting it here would
+    /// let a flag silently disagree with the image. `.0` is what to set instead.
+    Derived(&'static str),
+    /// Anything else — a cmake option for the application.
+    Cmake,
+}
+
+/// Route one flag. `--flag=value` is decided by the flag half and passed whole.
+pub fn route_native_arg(tok: &str) -> WestArgRoute {
+    let flag = tok.split('=').next().unwrap_or(tok);
+    match flag {
+        // Ours to decide: the image says it, so a flag saying otherwise is a
+        // second source of truth for one fact.
+        "-b" | "--board" => WestArgRoute::Derived("`board` on the image"),
+        "--sysbuild" | "--no-sysbuild" => {
+            WestArgRoute::Derived("the presence of a `sysbuild.conf` beside the application")
+        }
+        // West options taking one value.
+        "-d" | "--build-dir" | "-t" | "--target" | "-T" | "--test-item" | "-o" | "--build-opt"
+        | "--domain" | "-S" | "--snippet" | "--shield" => {
+            // `--flag=value` already carries its value in the token.
+            if tok.contains('=') {
+                WestArgRoute::West { values: 0 }
+            } else {
+                WestArgRoute::West { values: 1 }
+            }
+        }
+        // West options taking none.
+        "-f" | "--force" | "-c" | "--cmake" | "--cmake-only" | "-n" | "--just-print"
+        | "--dry-run" | "--recon" | "-h" | "--help" => WestArgRoute::West { values: 0 },
+        "-p" | "--pristine" => {
+            if tok.contains('=') {
+                WestArgRoute::West { values: 0 }
+            } else {
+                WestArgRoute::Pristine
+            }
+        }
+        _ => WestArgRoute::Cmake,
+    }
+}
+
+/// The closed set `-p`/`--pristine` draws its optional value from.
+const PRISTINE_VALUES: &[&str] = &["auto", "always", "never"];
+
+/// Split `--` passthrough into (west-zone, cmake-zone).
+///
+/// Errors on a flag whose value the image already declares, naming the
+/// declaration rather than accepting a second spelling of one fact.
+pub fn split_native_args(args: &[String]) -> Result<(Vec<String>, Vec<String>), String> {
+    let mut west = Vec::new();
+    let mut cmake = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let tok = &args[i];
+        match route_native_arg(tok) {
+            WestArgRoute::Derived(what) => {
+                return Err(format!(
+                    "`{tok}` is decided by the image, not by the command line.\n\
+                     It comes from {what}.\n\n\
+                     Change it there, so one build cannot disagree with the \
+                     declaration it was resolved from."
+                ));
+            }
+            WestArgRoute::West { values } => {
+                west.push(tok.clone());
+                for v in 1..=values {
+                    if let Some(val) = args.get(i + v) {
+                        west.push(val.clone());
+                    }
+                }
+                i += 1 + values;
+            }
+            WestArgRoute::Pristine => {
+                west.push(tok.clone());
+                // Optional value: take the next token ONLY if it is one of the
+                // three west accepts. Otherwise it is a cmake option that
+                // happens to follow, and swallowing it would drop it silently.
+                if let Some(next) = args.get(i + 1)
+                    && PRISTINE_VALUES.contains(&next.as_str())
+                {
+                    west.push(next.clone());
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            WestArgRoute::Cmake => {
+                cmake.push(tok.clone());
+                i += 1;
+            }
+        }
+    }
+    Ok((west, cmake))
+}
+
 fn join_semi(paths: &[PathBuf]) -> String {
     paths
         .iter()
@@ -453,5 +572,84 @@ mod tests {
         let o = resolve(tmp.path(), "native_sim/native/64", &image(&[])).expect("resolves");
         assert!(o.application_config_dir.is_none());
         assert!(west_args(&o).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod native_arg_routing_tests {
+    use super::*;
+
+    fn v(xs: &[&str]) -> Vec<String> {
+        xs.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The case that motivated the split. `--pristine` reached cmake and died
+    /// as `CMake Error: Unknown argument --pristine` — a real failure, but one
+    /// that names cmake for a west flag, so the user learns nothing about the
+    /// two zones.
+    #[test]
+    fn a_west_flag_goes_to_the_west_zone() {
+        let (west, cmake) = split_native_args(&v(&["--pristine"])).expect("routes");
+        assert_eq!(west, v(&["--pristine"]));
+        assert!(cmake.is_empty());
+    }
+
+    /// …and a cmake option still goes where it always went.
+    #[test]
+    fn a_cmake_define_goes_to_the_cmake_zone() {
+        let (west, cmake) = split_native_args(&v(&["-DMY_OPT=1"])).expect("routes");
+        assert!(west.is_empty());
+        assert_eq!(cmake, v(&["-DMY_OPT=1"]));
+    }
+
+    /// A value-taking west flag carries its value across with it. Leaving the
+    /// value behind would send `run` to cmake as a stray positional.
+    #[test]
+    fn a_west_flag_takes_its_value_with_it() {
+        let (west, cmake) = split_native_args(&v(&["-t", "run", "-DX=1"])).expect("routes");
+        assert_eq!(west, v(&["-t", "run"]));
+        assert_eq!(cmake, v(&["-DX=1"]));
+    }
+
+    /// `--flag=value` carries its own value, so nothing extra is consumed —
+    /// otherwise the token after it would be swallowed.
+    #[test]
+    fn an_equals_form_consumes_nothing_extra() {
+        let (west, cmake) = split_native_args(&v(&["--target=run", "-DX=1"])).expect("routes");
+        assert_eq!(west, v(&["--target=run"]));
+        assert_eq!(cmake, v(&["-DX=1"]));
+    }
+
+    /// `-p` takes an OPTIONAL value from a closed set. `-p always` is one
+    /// flag-and-value; `-p -DX=1` is a flag and a cmake option, and swallowing
+    /// the define would drop it with no message at all.
+    #[test]
+    fn pristine_consumes_only_a_value_west_would_accept() {
+        let (west, cmake) = split_native_args(&v(&["-p", "always"])).expect("routes");
+        assert_eq!(west, v(&["-p", "always"]));
+        assert!(cmake.is_empty());
+
+        let (west, cmake) = split_native_args(&v(&["-p", "-DX=1"])).expect("routes");
+        assert_eq!(west, v(&["-p"]));
+        assert_eq!(cmake, v(&["-DX=1"]));
+    }
+
+    /// A flag whose value the IMAGE declares is refused, not routed. Accepting
+    /// `-b` would let one build disagree with the `board` it was resolved from,
+    /// which is a second source of truth for one fact.
+    #[test]
+    fn a_flag_the_image_owns_is_refused_and_names_the_declaration() {
+        let err = split_native_args(&v(&["-b", "qemu_cortex_m3"])).expect_err("refused");
+        assert!(err.contains("`board` on the image"), "{err}");
+
+        let err = split_native_args(&v(&["--sysbuild"])).expect_err("refused");
+        assert!(err.contains("sysbuild.conf"), "{err}");
+    }
+
+    /// Nothing passed still means nothing added.
+    #[test]
+    fn an_empty_passthrough_is_two_empty_zones() {
+        let (west, cmake) = split_native_args(&[]).expect("routes");
+        assert!(west.is_empty() && cmake.is_empty());
     }
 }

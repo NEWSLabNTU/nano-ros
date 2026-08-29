@@ -587,17 +587,40 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // command instead of emitting one that cannot work. That last
                 // part is `nros setup --system`'s sudo boundary applied here —
                 // compose the command, hand it over, do not pretend.
+                // `west build` has two argument zones and our single `--` can
+                // only name one, so the passthrough is SPLIT by west's own flag
+                // list rather than dropped whole into the second zone: that put
+                // `-- --pristine` in front of cmake, which failed as
+                // `CMake Error: Unknown argument --pristine`, naming the wrong
+                // tool for the user's mistake.
+                let (west_extra, cmake_extra) =
+                    crate::builder::zephyr::split_native_args(&args.native_args)
+                        .map_err(|e| eyre::eyre!("{e}"))?;
+
                 let mut a = vec!["build".to_string(), "-b".to_string(), board.clone()];
                 if overlays.sysbuild {
                     a.push("--sysbuild".to_string());
                 }
                 a.push(app.display().to_string());
+                // AFTER the application path, which looks unusual and is the
+                // point. `-p`/`--pristine` takes an OPTIONAL value
+                // (`nargs='?'`), so argparse greedily reads whatever follows —
+                // put it before the positional and west takes the application
+                // path as the pristine mode:
+                //
+                //   west build: error: argument -p/--pristine: invalid choice:
+                //   '…/src/zephyr_entry' (choose from 'auto', 'always', 'never')
+                //
+                // Placing the user's options last is correct for every flag
+                // shape without this code having to model west's argparse
+                // arities, and west accepts options after the positional.
+                a.extend(west_extra);
                 let west_opts = crate::builder::zephyr::west_args(&overlays);
-                if !west_opts.is_empty() || !args.native_args.is_empty() {
+                if !west_opts.is_empty() || !cmake_extra.is_empty() {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());
                     a.extend(west_opts);
-                    a.extend(args.native_args.iter().cloned());
+                    a.extend(cmake_extra);
                 }
                 // Resolved here, ENFORCED at exec. A plan is an answer to
                 // "what would you run", and `--dry-run` must be able to answer

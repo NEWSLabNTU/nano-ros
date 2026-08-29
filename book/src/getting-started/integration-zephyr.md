@@ -422,11 +422,47 @@ siblings — the module itself is a property of the application, not of one
 image, so it belongs in the app's `CMakeLists.txt` where you would have put it
 anyway.
 
-`nros build` passes exactly four things to west — `APPLICATION_CONFIG_DIR`,
-`EXTRA_CONF_FILE`, `EXTRA_DTC_OVERLAY_FILE`, `FILE_SUFFIX`, all Zephyr's own
-variables — and there is deliberately **no image key for arbitrary `-D`
-defines**. If your module needs one, set it in your `CMakeLists.txt`: that
-keeps one place to look for what configures your application.
+`nros build` passes exactly four things to west of its own —
+`APPLICATION_CONFIG_DIR`, `EXTRA_CONF_FILE`, `EXTRA_DTC_OVERLAY_FILE`,
+`FILE_SUFFIX`, all Zephyr's own variables — and there is deliberately **no
+image key for arbitrary `-D` defines**. Something your application always needs
+belongs in its `CMakeLists.txt`, which keeps one place to look.
+
+#### Customizing the west command itself
+
+Anything after `--` goes to west. `west build` has two argument zones, and
+`nros build` routes each token to the right one using west's own flag list:
+
+```bash
+nros build demo_bringup:zephyr -- --pristine        # a west option
+nros build demo_bringup:zephyr -- -t run            # build, then run it
+nros build demo_bringup:zephyr -- -DMY_OPT=1        # a cmake option
+nros build demo_bringup:zephyr -- -p always -DX=1   # both, in one go
+```
+
+which becomes, respectively, the west option zone and the cmake zone:
+
+```text
+west build -b <board> <app> -p always -- -DEXTRA_CONF_FILE=… -DX=1
+```
+
+`nros build --dry-run` prints that line without running it, so you can always
+see exactly what west is being asked to do — and copy it if you would rather
+drive west yourself.
+
+**Two flags are refused rather than routed**, because the image already decides
+them and a build must not be able to disagree with its own declaration:
+
+```console
+$ nros build demo_bringup:zephyr -- --sysbuild
+Error: `--sysbuild` is decided by the image, not by the command line.
+It comes from the presence of a `sysbuild.conf` beside the application.
+
+Change it there, so one build cannot disagree with the declaration it was
+resolved from.
+```
+
+The other is `-b`/`--board`, which comes from the image's `board`.
 
 Verified by building one. An out-of-tree module with its own Kconfig, a driver
 source gated on it, a devicetree overlay declaring a node and a binding shipped
