@@ -388,13 +388,40 @@ queue — so the generated publish helper returns a bare non-zero that callers
 cannot tell from a transport failure. Add one (cbindgen: `just regen-c-headers`),
 and report it once per site rather than per sample.
 
-## Still undecided
+## RawSubscription: decided 2026-08-29
 
-Only one remains: **`RawSubscription::<{ config::MESSAGE_BUFFER_SIZE }>`**
-(`nros-c/src/subscription.rs:503`). A const generic cannot take a runtime hint,
-so per-subscription sizing there needs a different mechanism entirely — a
-size-classed arena, or a per-type monomorphised path. Unscoped, and possibly
-larger than everything above.
+`RawSubscription<const RX_BUF: usize>` (`executor/handles.rs:1306`) holds its
+receive buffer INLINE, so `RX_BUF` is a monomorphisation, not a parameter — a
+runtime hint cannot select between `RawSubscription<1024>` and
+`RawSubscription<4096>`. Worse, the size is baked into the APPLICATION's own
+struct: `SUBSCRIPTION_OPAQUE_U64S` is
+`u64s_for::<RawSubscription<{ MESSAGE_BUFFER_SIZE }>>()`
+(`opaque_sizes.rs:29`), and a C caller declares
+`uint8_t sub[NROS_C_SUBSCRIPTION_STORAGE_SIZE]` at their own compile time.
+
+Three options were weighed:
+
+* **Size classes plus a compile-time storage macro** — a small ladder of
+  instantiations, dispatched at init against the caller's declared size.
+  REJECTED: pays code size for N monomorphisations of the whole subscription
+  path, gives a coarser answer than the exact bound, and leaves the arena
+  coupling untouched.
+* **Decouple the buffer (`&'a mut [u8]`)** — one type, no monomorphisation,
+  exact per-subscription bytes, `_opaque` shrinks. This is the real per-type
+  fix and matches the hint model directly. DEFERRED, not rejected: it adds a
+  lifetime contract across FFI, and C has TWO subscription paths (the L1
+  polling one here and the arena callback path at `nros-c/src/executor.rs:817`),
+  so both must move together or half the tree keeps the old sizing.
+* **Fix the arena instead** — TAKEN FIRST, and split out as **issue 0900**.
+  It turned out not to be part of this issue at all: every arena slot is
+  budgeted at the ActionClient worst case, so `ARENA_SIZE` is 74,240 bytes on
+  every image measured, a talker included, where a pub/sub-only image needs
+  ~16 KiB. It also explains why per-type receive sizing cannot help that
+  number: the slot is sized from the GLOBAL knob, amplified 3 x MAX_CBS = 12x,
+  regardless of what any individual subscription asks for.
+
+Order: **0900 first** (largest saving, no ABI change, independent of everything
+here), then the buffer decoupling as the per-type fix.
 
 ## Not to be confused with
 

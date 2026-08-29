@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-48 open. One line each — the detail lives in the issue file,
+49 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -105,6 +105,7 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
+- **#0900** (core, memory) — Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use See `0900-*`.
 
 <!-- END GENERATED open-issue list -->
 
