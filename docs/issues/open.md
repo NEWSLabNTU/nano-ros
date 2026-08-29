@@ -61,7 +61,6 @@ fails if this block drifts.
 - **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
 - **#0891** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0891-*`.
-- **#0892** (build) — `nros build`'s west driver points at a directory that is not a west application, from a directory that is not a west workspace See `0892-*`.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
 - **#0899** (rmw, boards) — The FreeRTOS C talker dies mid-run inside zenoh-pico's write buffer — two different asserts, both after tens of successful publishes See `0899-*`.

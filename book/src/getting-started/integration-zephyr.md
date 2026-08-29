@@ -268,6 +268,52 @@ west update                              # clones nano-ros + Zephyr into the wor
 (If you started from `west init -m <remote>`, both calls above are
 already done — go straight to `west build` below.)
 
+### `nros build` on Zephyr: it hands off, it does not take over
+
+The other platforms let `nros build` own the build: it generates a cargo or
+CMake root from your `[image.*]` declarations and runs the tool. **Zephyr is not
+like that, on purpose.**
+
+You own the west workspace and the application. `west init` / `west update`
+populate the workspace, your app carries its own `CMakeLists.txt` and
+`prj.conf`, and `west` only runs from inside that workspace. None of that is
+ours to generate — an app's Kconfig is authored, not derived (RFC-0065 D5).
+
+So for a Zephyr image `nros build`:
+
+1. resolves the **application** — the entry package for that image's board,
+   not the bringup;
+2. resolves **your west workspace** — `$NROS_WEST_WORKSPACE`, else the nearest
+   `.west/` above your current directory, else `$ZEPHYR_BASE`'s parent;
+3. runs `west build` from there with the image's overlays
+   (`EXTRA_CONF_FILE`, `APPLICATION_CONFIG_DIR`) already applied.
+
+If it cannot find a workspace it does **not** guess. It prints the command and
+where to run it:
+
+```text
+$ nros build demo_bringup:zephyr
+Error: no west workspace found, so `west build` cannot be run for `zephyr`.
+
+Zephyr differs from the other drivers: YOU own the west workspace and the
+application, and `west` only runs inside a workspace …
+
+Run this from your west workspace:
+
+    west build -b native_sim/native/64 …/src/zephyr_entry
+
+Or point nros at it:  NROS_WEST_WORKSPACE=<dir>
+```
+
+That is deliberate and it is the same boundary `nros setup --system` draws when
+it composes an install command and prints it rather than running `sudo` for you:
+where the tool is yours, nano-ros hands you the command instead of assuming it
+may act.
+
+**The plain `west build` below keeps working and is still the primary flow.**
+`nros build` is the convenience that applies an image's overlays for you; it
+never becomes a required layer between you and west.
+
 The transports + `px4-rs` come from the [prerequisites](#prerequisites) step
 (`west update` clones nano-ros but **not** its submodules). With the Zephyr SDK +
 `NROS_STD_MSGS_DIR` exported (also prerequisites), build your app — `nros` on
