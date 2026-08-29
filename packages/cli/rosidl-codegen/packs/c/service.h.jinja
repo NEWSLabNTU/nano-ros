@@ -13,8 +13,8 @@
 
 #include <nros/types.h>
 {%- if has_borrowed_request or has_borrowed_response %}
-// Issue 0346 — borrowed views use nros_borrowed_str_t / the LE slice views.
-#include <nros/borrowed.h>
+// Issue 0346 — borrowed views use nros_view_str_t / the LE slice views.
+#include <nros/view.h>
 {%- endif %}
 
 #ifdef __cplusplus
@@ -126,7 +126,7 @@ typedef struct {{ request_struct_name }}_View {
 } {{ request_struct_name }}_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ request_struct_name }}_deserialize_borrowed({{ request_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+int32_t {{ request_struct_name }}_deserialize_view({{ request_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
 {%- if has_borrowed_response %}
@@ -141,7 +141,7 @@ typedef struct {{ response_struct_name }}_View {
 } {{ response_struct_name }}_View;
 
 /// Deserialize into a borrowed view (no allocation, so no `_fini` is required).
-int32_t {{ response_struct_name }}_deserialize_borrowed({{ response_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
+int32_t {{ response_struct_name }}_deserialize_view({{ response_struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size);
 {%- endif %}
 
 #endif // {{ guard_name }}

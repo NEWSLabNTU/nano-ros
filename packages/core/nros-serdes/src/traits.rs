@@ -33,5 +33,5 @@ pub trait Deserialize: Sized {
 pub trait DeserializeBorrowed<'a>: Sized {
     /// Deserialize a value, borrowing variable-length fields from the reader's
     /// source buffer (no copy).
-    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError>;
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError>;
 }

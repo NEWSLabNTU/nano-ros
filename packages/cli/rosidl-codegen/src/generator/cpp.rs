@@ -256,7 +256,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
     let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
     let has_borrowed = spec.ffi_fields.iter().any(|f| f.is_borrowed);
     let view_repr_struct_name = format!("{}_view", spec.struct_name);
-    let deserialize_borrowed_fn = format!("{}_borrowed", spec.deserialize_fn);
+    let deserialize_view_fn = format!("{}_borrowed", spec.deserialize_fn);
 
     let types_template = MessageCppTypesTemplate {
         package_name: spec.package_name,
@@ -275,7 +275,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
         has_heap_string,
         has_borrowed,
         view_repr_struct_name: view_repr_struct_name.clone(),
-        deserialize_borrowed_fn: deserialize_borrowed_fn.clone(),
+        deserialize_view_fn: deserialize_view_fn.clone(),
     };
 
     let exports_template = MessageCppExportsTemplate {
@@ -293,8 +293,8 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
         has_heap,
         has_borrowed,
         view_repr_struct_name,
-        deserialize_borrowed_fn,
-        ffi_deserialize_borrowed_fn: format!("{}_borrowed", spec.ffi_deserialize_fn),
+        deserialize_view_fn,
+        ffi_deserialize_view_fn: format!("{}_borrowed", spec.ffi_deserialize_fn),
     };
 
     Ok(GeneratedFfiRs {
@@ -364,7 +364,7 @@ pub fn generate_cpp_message_package(
         has_fields,
         serialized_size_max,
         has_borrowed,
-        ffi_deserialize_borrowed_fn: format!("{}_borrowed", ffi_deserialize_fn),
+        ffi_deserialize_view_fn: format!("{}_borrowed", ffi_deserialize_fn),
     };
     let header = crate::render::render("message_cpp.hpp", &header_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;

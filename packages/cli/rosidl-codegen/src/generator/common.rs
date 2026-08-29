@@ -123,16 +123,16 @@ fn nros_borrowed_view_for_field(
     }
 }
 
-/// Resolve the borrowed-view **C** field type + the `nros/borrowed.h` reader
+/// Resolve the borrowed-view **C** field type + the `nros/view.h` reader
 /// function for a `borrowed`-mode field (RFC-0033, Phase 235, issue 0021).
 ///
-/// Returns `(borrowed_c_type, borrow_fn)` — both `nros/borrowed.h` symbols. All
+/// Returns `(borrowed_c_type, borrow_fn)` — both `nros/view.h` symbols. All
 /// three readers share the signature
 /// `int32_t fn(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin, T* out)`,
 /// so the C template calls them uniformly:
-/// - **strings** → `nros_borrowed_str_t` / `nros_cdr_borrow_string`,
+/// - **strings** → `nros_view_str_t` / `nros_cdr_borrow_string`,
 /// - **single-byte sequences** (`uint8[]`/`byte[]`/`int8[]`/`bool[]`) →
-///   `nros_borrowed_bytes_t` / `nros_cdr_borrow_bytes`,
+///   `nros_view_bytes_t` / `nros_cdr_borrow_bytes`,
 /// - **multi-byte numeric sequences** (`float32[]`, `uint16[]`, …) → the
 ///   alignment-agnostic `nros_le_slice_view_<t>_t` / `nros_cdr_borrow_le_slice_<t>`.
 ///
@@ -158,13 +158,13 @@ fn c_borrowed_view_for_field(
     };
     let bytes = || {
         (
-            "nros_borrowed_bytes_t".to_string(),
+            "nros_view_bytes_t".to_string(),
             "nros_cdr_borrow_bytes".to_string(),
         )
     };
     match field_type {
         FieldType::String | FieldType::WString => Ok((
-            "nros_borrowed_str_t".to_string(),
+            "nros_view_str_t".to_string(),
             "nros_cdr_borrow_string".to_string(),
         )),
         FieldType::Sequence { element_type } => match element_type.as_ref() {
@@ -323,7 +323,7 @@ pub(super) fn ensure_supported_storage_for_payload(
             // 0345 (`_c_field.jinja` + a generated `_fini` per payload struct).
             (StorageMode::Heap, _) => false,
             // Issue 0346 — srv/action payloads now emit `{Payload}View` /
-            // `{Payload}_View` + `deserialize_borrowed`, so borrowed is supported
+            // `{Payload}_View` + `deserialize_view`, so borrowed is supported
             // in both languages. Both directions read from a raw buffer (the
             // service callback's `request_data`, the client's `response`), so the
             // view's lifetime story matches a subscription's.

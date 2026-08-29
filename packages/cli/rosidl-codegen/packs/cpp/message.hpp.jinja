@@ -30,7 +30,7 @@ int {{ ffi_publish_fn }}(void* handle, const void* msg);
 int {{ ffi_serialize_fn }}(const void* msg, uint8_t* buf, size_t buf_len, size_t* out_len);
 int {{ ffi_deserialize_fn }}(const uint8_t* data, size_t len, void* out);
 {%- if has_borrowed %}
-int {{ ffi_deserialize_borrowed_fn }}(const uint8_t* data, size_t len, void* out);
+int {{ ffi_deserialize_view_fn }}(const uint8_t* data, size_t len, void* out);
 {%- endif %}
 } // extern "C"
 
@@ -77,7 +77,7 @@ struct {{ message_name }} {
 
 /// Borrowed (zero-copy) view of {{ message_name }} — RFC-0033 `borrowed` mode.
 /// `mode = "borrowed"` fields are `nros::Span`/`StringView`/`LeSpan` pointing
-/// into the CDR receive buffer (set by `deserialize_borrowed`); other fields
+/// into the CDR receive buffer (set by `deserialize_view`); other fields
 /// are copied. Layout-compatible with the Rust `{{ message_name }}View` repr.
 /// The borrowed views are valid ONLY while the source buffer lives (e.g. the
 /// subscription callback) — copy out anything retained.
@@ -92,8 +92,8 @@ struct {{ message_name }}View {
 
     /// Deserialize CDR `data` into a borrowed view. Returns 0 on success, -1 on
     /// error. The view's borrowed pointers alias `data`.
-    static int deserialize_borrowed(const uint8_t* data, size_t len, {{ message_name }}View* out) {
-        return {{ ffi_deserialize_borrowed_fn }}(data, len, out);
+    static int deserialize_view(const uint8_t* data, size_t len, {{ message_name }}View* out) {
+        return {{ ffi_deserialize_view_fn }}(data, len, out);
     }
 };
 {%- endif %}

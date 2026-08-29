@@ -130,7 +130,7 @@ int32_t {{ struct_name }}_deserialize({{ struct_name }}* msg, const uint8_t* buf
 // as the owned deserializer does. `out` is zeroed first so unset pointers are
 // NULL. The borrowed views alias `buffer` and are valid only while it lives.
 // =============================================================================
-int32_t {{ struct_name }}_deserialize_borrowed({{ struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
+int32_t {{ struct_name }}_deserialize_view({{ struct_name }}_View* out, const uint8_t* buffer, size_t buffer_size) {
     if (out == NULL || buffer == NULL) return -1;
 
     const uint8_t* ptr = buffer;

@@ -9,7 +9,7 @@ use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 /// Probe request message
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProbeRequest {
-    pub items: heapless::Vec<i64, 64>,
+    pub items: nros_core::heap::Vec<i64>,
     pub note: heapless::String<256>,
 }
 
@@ -33,9 +33,9 @@ impl Deserialize for ProbeRequest {
         let __value = Self {
             items: {
                 let len = reader.read_u32()? as usize;
-                let mut vec = heapless::Vec::new();
+                let mut vec = nros_core::heap::Vec::new();
                 for _ in 0..len {
-                    vec.push(reader.read_i64()?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(reader.read_i64()?);
                 }
                 vec
             },

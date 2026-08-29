@@ -250,7 +250,7 @@ struct ImageView<'a> {
 }
 
 impl<'a> DeserializeBorrowed<'a> for ImageView<'a> {
-    fn deserialize_borrowed(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
         Ok(Self {
             width: reader.read_u32()?,
             pixels: reader.read_slice_u8()?,

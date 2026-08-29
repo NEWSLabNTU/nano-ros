@@ -3,8 +3,8 @@
 //! The C and C++ proof binaries are LINKED at the fixture stage
 //! (`scripts/build/borrowed-e2e-fixture.sh` → `build/borrowed-e2e/borrowed_{c,cpp}_e2e`);
 //! this test only RUNS them (no compilation at test time — the E1 rule). Each
-//! driver owned-serializes a message, `deserialize_borrowed`s it, and asserts every
-//! borrowed view (C `nros/borrowed.h` helpers; C++ `nros::Span`/`StringView`/`LeSpan`)
+//! driver owned-serializes a message, `deserialize_view`s it, and asserts every
+//! borrowed view (C `nros/view.h` helpers; C++ `nros::Span`/`StringView`/`LeSpan`)
 //! ALIASES the CDR buffer with correct values — printing `all views alias the CDR
 //! buffer` on success and returning non-zero on any failed assertion.
 //!

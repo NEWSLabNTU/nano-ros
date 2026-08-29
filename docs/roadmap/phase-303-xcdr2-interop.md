@@ -255,7 +255,7 @@ the whole path is wire-verifiable at once (a real Jazzy peer), not as inert code
 Wired the W2/W3 machinery into generated code + the Rust RMW path:
 - **codegen wrap:** the `message`/`service`/`action` `serialize`/`deserialize`
   templates wrap each struct body in `begin_dheader`/`end_dheader`
-  (`writer`/`reader`) — including the empty-struct + `deserialize_borrowed`
+  (`writer`/`reader`) — including the empty-struct + `deserialize_view`
   variants. No-op under XCDR1 (byte-identical); under XCDR2 delimits every struct
   with a DHEADER. Generated msg + service compile-checked
   (`heap_compile_check.rs`).

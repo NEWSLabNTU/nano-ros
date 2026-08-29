@@ -13,7 +13,7 @@ use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 /// Probe goal message
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ProbeGoal {
-    pub waypoints: heapless::Vec<i64, 64>,
+    pub waypoints: heapless::Vec<i64, 8>,
     pub name: heapless::String<256>,
 }
 
@@ -577,5 +577,31 @@ impl RosAction for Probe {
         )
         .map_err(|_| ())?;
         ::core::result::Result::Ok(())
+    }
+}
+
+// ── RFC-0033 `borrowed` (issue 0346) ────────────────────────────────────────
+// Zero-copy view of the goal payload: fields marked `mode = "borrowed"`
+// slice directly into the raw buffer the service/action callback hands you
+// (`request_data`/`response`/feedback bytes), other fields are copied. Valid
+// only while that buffer lives — copy out anything you retain.
+/// Borrowed (zero-copy) view of [`ProbeGoal`].
+pub struct ProbeGoalView<'a> {
+    pub waypoints: nros_core::LeSliceView<'a, i64>,
+    pub name: heapless::String<256>,
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for ProbeGoalView<'a> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+            waypoints: reader.read_le_slice::<i64>()?,
+            name: {
+                let s = reader.read_string()?;
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+            },
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
     }
 }

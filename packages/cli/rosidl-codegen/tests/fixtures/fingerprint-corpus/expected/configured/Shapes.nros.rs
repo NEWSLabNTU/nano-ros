@@ -20,8 +20,8 @@ pub struct Shapes {
     pub u64_v: u64,
     pub f32_v: f32,
     pub f64_v: f64,
-    pub text: heapless::String<256>,
-    pub seq_prim: heapless::Vec<i64, 64>,
+    pub text: heapless::String<32>,
+    pub seq_prim: nros_core::heap::Vec<i64>,
     pub seq_string: heapless::Vec<heapless::String<256>, 64>,
     pub arr_fixed: [f64; 3],
     pub seq_bounded: heapless::Vec<i32, 4>,
@@ -89,9 +89,9 @@ impl Deserialize for Shapes {
             },
             seq_prim: {
                 let len = reader.read_u32()? as usize;
-                let mut vec = heapless::Vec::new();
+                let mut vec = nros_core::heap::Vec::new();
                 for _ in 0..len {
-                    vec.push(reader.read_i64()?).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(reader.read_i64()?);
                 }
                 vec
             },
@@ -131,6 +131,101 @@ impl Deserialize for Shapes {
 }
 
 impl RosMessage for Shapes {
+    const TYPE_NAME: &'static str = "fingerprint-corpus::msg::dds_::Shapes_";
+    const TYPE_HASH: &'static str = "h";
+}
+
+// ── RFC-0033 `borrowed` storage mode (Phase 229.6, issue 0007) ──────────────
+// Zero-copy view: fields marked `mode = "borrowed"` slice directly into the
+// receive buffer (no `heapless::Vec`/`String` copy). Other fields are copied.
+// The view is valid only for the subscription-callback scope (lifetime `'a`).
+// Subscribe with `node.create_subscription_borrowed::<ShapesBorrow, _>()`.
+
+/// Borrowed (zero-copy) view of [`Shapes`].
+pub struct ShapesView<'a> {
+    pub flag: bool,
+    pub i8_v: i8,
+    pub u8_v: u8,
+    pub i16_v: i16,
+    pub u16_v: u16,
+    pub i32_v: i32,
+    pub u32_v: u32,
+    pub i64_v: i64,
+    pub u64_v: u64,
+    pub f32_v: f32,
+    pub f64_v: f64,
+    pub text: &'a str,
+    pub seq_prim: nros_core::heap::Vec<i64>,
+    pub seq_string: heapless::Vec<heapless::String<256>, 64>,
+    pub arr_fixed: [f64; 3],
+    pub seq_bounded: heapless::Vec<i32, 4>,
+    pub str_bounded: heapless::String<8>,
+}
+
+impl<'a> nros_core::DeserializeBorrowed<'a> for ShapesView<'a> {
+    fn deserialize_view(reader: &mut CdrReader<'a>) -> Result<Self, DeserError> {
+        let __dh = reader.begin_dheader()?;
+        let __value = Self {
+            flag: reader.read_bool()?,
+            i8_v: reader.read_i8()?,
+            u8_v: reader.read_u8()?,
+            i16_v: reader.read_i16()?,
+            u16_v: reader.read_u16()?,
+            i32_v: reader.read_i32()?,
+            u32_v: reader.read_u32()?,
+            i64_v: reader.read_i64()?,
+            u64_v: reader.read_u64()?,
+            f32_v: reader.read_f32()?,
+            f64_v: reader.read_f64()?,
+            text: reader.read_string()?,
+            seq_prim: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = nros_core::heap::Vec::new();
+                for _ in 0..len {
+                    vec.push(reader.read_i64()?);
+                }
+                vec
+            },
+            seq_string: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = heapless::Vec::new();
+                for _ in 0..len {
+                    let s = reader.read_string()?;
+                    let elem = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
+                }
+                vec
+            },
+            arr_fixed: {
+                let mut arr: [f64; 3] = Default::default();
+                for i in 0..3 {
+                    arr[i] = reader.read_f64()?;
+                }
+                arr
+            },
+            seq_bounded: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = heapless::Vec::new();
+                for _ in 0..len {
+                    vec.push(reader.read_i32()?).map_err(|_| DeserError::CapacityExceeded)?;
+                }
+                vec
+            },
+            str_bounded: {
+                let s = reader.read_string()?;
+                heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?
+            },
+        };
+        reader.end_dheader(__dh)?;
+        Ok(__value)
+    }
+}
+
+/// Zero-sized borrowed-family marker for [`Shapes`] (Phase 229.6).
+pub struct ShapesBorrow;
+
+impl nros_core::BorrowedMessage for ShapesBorrow {
+    type View<'a> = ShapesView<'a>;
     const TYPE_NAME: &'static str = "fingerprint-corpus::msg::dds_::Shapes_";
     const TYPE_HASH: &'static str = "h";
 }

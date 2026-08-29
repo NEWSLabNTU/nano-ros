@@ -290,7 +290,7 @@ pub struct {{ view_repr_struct_name }} {
 
 /// Deserialize fields into a borrowed view: borrowed fields point into the CDR
 /// buffer (zero-copy); copied fields are read as in the owned path.
-pub fn {{ deserialize_borrowed_fn }}(reader: &mut CdrReader, out: &mut {{ view_repr_struct_name }}) -> Result<(), DeserError> {
+pub fn {{ deserialize_view_fn }}(reader: &mut CdrReader, out: &mut {{ view_repr_struct_name }}) -> Result<(), DeserError> {
 {%- for field in fields %}
 {%- if field.is_borrowed %}
     {

@@ -42,10 +42,10 @@ const BORROWED_H: &str = r#"
 #include <stdint.h>
 #include <stddef.h>
 #include <nros/cdr.h>
-typedef struct { const char* data; size_t size; } nros_borrowed_str_t;
-typedef struct { const uint8_t* data; size_t size; } nros_borrowed_bytes_t;
+typedef struct { const char* data; size_t size; } nros_view_str_t;
+typedef struct { const uint8_t* data; size_t size; } nros_view_bytes_t;
 static inline int32_t nros_cdr_borrow_string(const uint8_t** p, const uint8_t* e,
-                                             const uint8_t* o, nros_borrowed_str_t* out) {
+                                             const uint8_t* o, nros_view_str_t* out) {
     uint32_t n; if (nros_cdr_read_u32(p, e, o, &n) < 0) return -1;
     if ((size_t)(e - *p) < n) return -1;
     out->data = (const char*)*p; out->size = n > 0 ? (size_t)(n - 1) : 0; *p += n; return 0;
@@ -224,7 +224,7 @@ fn generated_borrowed_c_service_compiles() {
     );
     assert!(
         pkg.header
-            .contains("my_srvs_srv_peek_request_deserialize_borrowed"),
+            .contains("my_srvs_srv_peek_request_deserialize_view"),
         "the borrowed deserializer must be declared:\n{}",
         pkg.header
     );

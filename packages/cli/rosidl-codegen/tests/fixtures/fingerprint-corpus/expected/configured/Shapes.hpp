@@ -14,12 +14,14 @@
 #include "nros/fixed_sequence.hpp"
 #include "nros/heap_sequence.hpp"
 #include "nros/heap_string.hpp"
+#include "nros/span.hpp"
 
 // FFI declarations
 extern "C" {
 int nros_cpp_publish_fingerprint_corpus_msg_shapes(void* handle, const void* msg);
 int nros_cpp_serialize_fingerprint_corpus_msg_shapes(const void* msg, uint8_t* buf, size_t buf_len, size_t* out_len);
 int nros_cpp_deserialize_fingerprint_corpus_msg_shapes(const uint8_t* data, size_t len, void* out);
+int nros_cpp_deserialize_fingerprint_corpus_msg_shapes_borrowed(const uint8_t* data, size_t len, void* out);
 } // extern "C"
 
 namespace fingerprint_corpus { namespace msg {
@@ -37,8 +39,8 @@ struct Shapes {
     uint64_t u64_v = {};
     float f32_v = {};
     double f64_v = {};
-    nros::FixedString<256> text = {};
-    nros::FixedSequence<int64_t, 64> seq_prim = {};
+    nros::FixedString<32> text = {};
+    nros::HeapSequence<int64_t> seq_prim = {};
     nros::FixedSequence<nros::FixedString<256>, 64> seq_string = {};
     double arr_fixed[3] = {};
     nros::FixedSequence<int32_t, 4> seq_bounded = {};
@@ -47,7 +49,7 @@ struct Shapes {
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Shapes_";
     static constexpr const char* TYPE_HASH = "h";
-    static constexpr size_t SERIALIZED_SIZE_MAX = 18361;
+    static constexpr size_t SERIALIZED_SIZE_MAX = 18137;
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {
@@ -62,6 +64,38 @@ struct Shapes {
     /// Deserialize from CDR (called by Subscription<M>::try_recv)
     static int ffi_deserialize(const uint8_t* data, size_t len, void* out) {
         return nros_cpp_deserialize_fingerprint_corpus_msg_shapes(data, len, out);
+    }
+};
+
+/// Borrowed (zero-copy) view of Shapes — RFC-0033 `borrowed` mode.
+/// `mode = "borrowed"` fields are `nros::Span`/`StringView`/`LeSpan` pointing
+/// into the CDR receive buffer (set by `deserialize_view`); other fields
+/// are copied. Layout-compatible with the Rust `ShapesView` repr.
+/// The borrowed views are valid ONLY while the source buffer lives (e.g. the
+/// subscription callback) — copy out anything retained.
+struct ShapesView {
+    bool flag = {};
+    int8_t i8_v = {};
+    uint8_t u8_v = {};
+    int16_t i16_v = {};
+    uint16_t u16_v = {};
+    int32_t i32_v = {};
+    uint32_t u32_v = {};
+    int64_t i64_v = {};
+    uint64_t u64_v = {};
+    float f32_v = {};
+    double f64_v = {};
+    nros::StringView text;
+    nros::HeapSequence<int64_t> seq_prim = {};
+    nros::FixedSequence<nros::FixedString<256>, 64> seq_string = {};
+    double arr_fixed[3] = {};
+    nros::FixedSequence<int32_t, 4> seq_bounded = {};
+    nros::FixedString<8> str_bounded = {};
+
+    /// Deserialize CDR `data` into a borrowed view. Returns 0 on success, -1 on
+    /// error. The view's borrowed pointers alias `data`.
+    static int deserialize_view(const uint8_t* data, size_t len, ShapesView* out) {
+        return nros_cpp_deserialize_fingerprint_corpus_msg_shapes_borrowed(data, len, out);
     }
 };
 

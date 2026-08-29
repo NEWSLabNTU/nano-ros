@@ -6,23 +6,23 @@
  * A `mode = "borrowed"` field (Phase 235, issue 0021) is a read-only,
  * callback-scoped view that points directly into the live CDR receive buffer
  * instead of copying into a fixed array (`owned`) or malloc'd container
- * (`heap`). The generated `{Msg}_deserialize_borrowed` walks the CDR stream and
+ * (`heap`). The generated `{Msg}_deserialize_view` walks the CDR stream and
  * sets these views' pointers into the buffer — no allocation, no `_fini`.
  *
  * Hard constraints (RFC-0033): the views are valid **only** for the duration of
  * the subscription callback; the buffer is reused immediately after. Copy out
  * anything that must outlive the callback.
  *
- * - byte sequences (`uint8[]`/`int8[]`/`bool[]`) → ::nros_borrowed_bytes_t
- * - strings → ::nros_borrowed_str_t
+ * - byte sequences (`uint8[]`/`int8[]`/`bool[]`) → ::nros_view_bytes_t
+ * - strings → ::nros_view_str_t
  * - multi-byte numeric sequences (`float32[]`, `uint16[]`, …) → an
  *   alignment-agnostic `nros_le_slice_view_<t>_t`: the raw little-endian bytes
  *   are borrowed and decoded per element on access, so the buffer need not be
  *   `T`-aligned (mirrors Rust's `nros_core::LeSliceView`).
  */
 
-#ifndef NROS_BORROWED_H
-#define NROS_BORROWED_H
+#ifndef NROS_VIEW_H
+#define NROS_VIEW_H
 
 #include <string.h>
 
@@ -36,13 +36,13 @@ extern "C" {
 typedef struct {
     const char* data;
     size_t size;
-} nros_borrowed_str_t;
+} nros_view_str_t;
 
 /** Borrowed byte-sequence view (`uint8[]`/`int8[]`/`bool[]`). */
 typedef struct {
     const uint8_t* data;
     size_t size;
-} nros_borrowed_bytes_t;
+} nros_view_bytes_t;
 
 /**
  * @brief Borrow a CDR string: read the 4-byte length, point @c out into the
@@ -50,7 +50,7 @@ typedef struct {
  * @return 0 on success, negative if the buffer is too small.
  */
 static inline int32_t nros_cdr_borrow_string(const uint8_t** ptr, const uint8_t* end,
-                                             const uint8_t* origin, nros_borrowed_str_t* out) {
+                                             const uint8_t* origin, nros_view_str_t* out) {
     uint32_t slen;
     if (nros_cdr_read_u32(ptr, end, origin, &slen) < 0) return -1;
     if ((size_t)(end - *ptr) < slen) return -1;
@@ -66,7 +66,7 @@ static inline int32_t nros_cdr_borrow_string(const uint8_t** ptr, const uint8_t*
  * @return 0 on success, negative if the buffer is too small.
  */
 static inline int32_t nros_cdr_borrow_bytes(const uint8_t** ptr, const uint8_t* end,
-                                            const uint8_t* origin, nros_borrowed_bytes_t* out) {
+                                            const uint8_t* origin, nros_view_bytes_t* out) {
     uint32_t len;
     if (nros_cdr_read_u32(ptr, end, origin, &len) < 0) return -1;
     if ((size_t)(end - *ptr) < len) return -1;
@@ -144,4 +144,4 @@ NROS__LE_VIEW_FLT(f64, double, uint64_t)
 }
 #endif
 
-#endif /* NROS_BORROWED_H */
+#endif /* NROS_VIEW_H */

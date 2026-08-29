@@ -17,7 +17,7 @@
 /// a valid `{{ view_repr_struct_name }}`. The borrowed pointers written into it
 /// alias `data` and are valid only while `data` lives.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn {{ ffi_deserialize_borrowed_fn }}(
+pub unsafe extern "C" fn {{ ffi_deserialize_view_fn }}(
     data: *const u8,
     len: usize,
     out_ptr: *mut core::ffi::c_void,
@@ -28,7 +28,7 @@ pub unsafe extern "C" fn {{ ffi_deserialize_borrowed_fn }}(
         Err(_) => return -1,
     };
     let out = unsafe { &mut *(out_ptr as *mut {{ view_repr_struct_name }}) };
-    if {{ deserialize_borrowed_fn }}(&mut reader, out).is_err() {
+    if {{ deserialize_view_fn }}(&mut reader, out).is_err() {
         return -1;
     }
     0
