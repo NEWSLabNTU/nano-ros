@@ -85,6 +85,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 python3-pip python3-venv python3-tomli build-essential \
         lld \
         gcc-arm-none-eabi gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
+        libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
+        `# ^ the ARM cross compiler's LIBC and libstdc++. Debian ships these` \
+        `# separately from gcc-arm-none-eabi, and RISC-V got` \
+        `# picolibc-riscv64-unknown-elf while ARM got nothing — so the ARM` \
+        `# toolchain could compile only freestanding code. Two gates paid for` \
+        `# it: check-sched-dim-arms(freertos) died on "string.h: No such file` \
+        `# or directory" and FAILED the merge group, while` \
+        `# cross_libc_precedence_gate SKIPPED with "no usable libstdc++" —` \
+        `# one absent package, one hard red and one silent coverage hole.` \
         kconfig-frontends socat parallel unzip flex bison \
         libslirp0 libpixman-1-0 \
         libmbedtls-dev \
