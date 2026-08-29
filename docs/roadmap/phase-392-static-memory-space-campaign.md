@@ -472,20 +472,65 @@ Net C/C++ API change: none. No function, no parameter, no generic in a header.
     constant. On a talker that is 32 -> 8 slots, ~108,096 B of the 143,456 B
     W5.d measured — most of the win, with one guess left instead of six.
 
-  * **W5.b2 — the application's own service-server count, NOT available.** Two
-    candidate sources and both need work this phase cannot assume:
-    - Extend the model. The resolver is `ros-launch-resolve` in the `play_launch`
-      repo (layer 2, RFC-0060) — a different repository, and the entity set is
-      not a launch-file concept, so this is a schema question, not a patch.
-    - Use the Rust `Node::ENTITY_BOUNDS`, which already declares
-      `service_servers` exactly. That works for the macro path and NOT for
-      C/C++, whose entities are created at runtime in C with no declaration
-      site — which is the same asymmetry that ruled const generics out above.
-      Solving it for one language only would reintroduce it.
+  * **W5.b2 — the application's own service-server count.** AVAILABLE after all,
+    and needing no change to either resolver repo.
 
-  Until W5.b2, the app term stays a constant. That is a smaller and honest
-  version of the same defect this wave exists to remove, and it should be
-  labelled as such in the code rather than presented as a derivation.
+    The first draft of this wave said the count was missing and proposed
+    extending the model. That was wrong twice. `ros-launch-manifest` ALREADY
+    models it — `manifest.services` maps a service name to `ServiceWiring {
+    srv_type, server: Vec<String>, .. }`, where `server` lists the nodes serving
+    it, and rlm's own `service-wiring` validation rule already reasons over
+    `!svc.server.is_empty()`. A node's service-server count is the number of
+    services whose `server` contains it.
+
+    And extending the spec would have been the wrong move even if it had been
+    missing. **rlm is the platform-neutral SPEC; `play_launch` is its Linux
+    implementation; neither may carry nano-ros concerns.** Service wiring is a
+    general ROS graph concept, exactly like topic wiring. A static-RAM sizing
+    rule is not, and stays here: reading the model and turning it into a
+    queryable count is nano-ros's build layer, not the manifest's business.
+
+    This also closes W5.b1's open caveat structurally rather than empirically.
+    `ServiceWiring::server` carries `skip_serializing_if = "Vec::is_empty"`, the
+    same pattern as `execution.features` — so *absent means empty* by
+    construction, not merely in the 115 models that happen to be in the tree.
+
+    The reason no model here shows a `services:` section is that none of the
+    example workspaces declare any, not that the spec lacks it.
+
+  ### `services[].server` is AUTHORITATIVE
+
+  DECIDED. The launch declaration is the contract: an image is sized for exactly
+  the service servers its model declares.
+
+  The alternative was to treat it as a floor and add headroom, which is safe and
+  wrong — it re-creates in miniature the guess this whole wave exists to delete,
+  and a guess derived from something real is still a guess nobody can audit.
+
+  What being authoritative COSTS, and it must be paid in the same wave: a node
+  that creates a service server its model does not declare will exhaust the
+  table. Sized exactly, that is issue 0460's failure reached from a new
+  direction, so the runtime must report it as what it is — "this node created an
+  undeclared service server" — and not as the bare exhausted-table error 0460
+  spent a phase making legible. The declaration being wrong and the table being
+  too small are the same event now, and the message must say the first.
+
+  ### Future work: counting in code
+
+  The declaration is a stepping stone, not the destination. The count a node's
+  CODE actually produces is the ground truth, and deriving it there would make
+  the launch declaration checkable rather than trusted — the same move W5.a made
+  for the infrastructure counts, where a constant beside the creation sites
+  replaced seven prose spellings and a gate holds it to the sites themselves.
+
+  Out of scope for W5 and deliberately not designed here: it needs the entity
+  set to be visible at build time in BOTH languages, which is the asymmetry that
+  ruled out const generics (`Node::ENTITY_BOUNDS` exists for Rust; C/C++
+  entities are created at runtime in C with no declaration site). Solving that
+  is the real end state; W5 gets the saving without waiting for it.
+
+  Until W5.b1/W5.b2 land, the app term stays a constant in the consumer, and it
+  is labelled as one in the code rather than presented as a derivation.
 
 * **W5.c — delivery.** The figure rides the phase-351 W5 path to the backend's
   build script. Both entry front-ends produce the same fact from the same model.
