@@ -113,11 +113,10 @@ INERT_FAMILIES = {
     ),
     "graph-queries": (
         (
-            # phase-381 W3 — `get_node_names` LEFT this family: zenoh produces
-            # it now, from a standing liveliness query. The rest stay until
-            # their own W3 slots land.
-            "get_topic_names_and_types",
-            "get_service_names_and_types",
+            # phase-381 W3 — `get_node_names`, `get_topic_names_and_types` and
+            # `get_service_names_and_types` have LEFT this family: zenoh
+            # produces them from two standing liveliness queries. The
+            # per-node and per-topic forms stay until their own slots land.
             "get_publisher_names_and_types_by_node",
             "get_subscriber_names_and_types_by_node",
             "get_service_names_and_types_by_node",
@@ -136,10 +135,7 @@ INERT_FAMILIES = {
         "worth keeping straight — `graph.cpp` existing has been read as these "
         "being implemented",
     ),
-    "entity-counts": (
-        ("count_publishers", "count_subscribers"),
-        "as graph-queries: they need the same discovered view",
-    ),
+
     "graph-guard": (
         ("node_get_graph_guard_condition",),
         "a guard condition fired on graph change. Guard conditions here are a "

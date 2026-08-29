@@ -1396,6 +1396,68 @@ pub trait Session {
         let _ = visit;
         Err(TransportError::Unsupported.into())
     }
+
+    /// phase-381 W3 — how many publishers this session can see on `topic_name`.
+    ///
+    /// `topic_name` is a ROS name (`/chatter`); the backend mangles as needed.
+    /// Same warm-up caveat as [`Self::get_node_names`]: a count reflects what
+    /// has already been discovered, so it can be low right after startup and is
+    /// never a proof of absence.
+    ///
+    /// Default body: `Err(Unsupported)` — distinct from `Ok(0)`, which claims
+    /// there are none.
+    fn count_publishers(&mut self, topic_name: &str) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = topic_name;
+        Err(TransportError::Unsupported.into())
+    }
+
+    /// phase-381 W3 — how many subscribers this session can see on `topic_name`.
+    /// See [`Self::count_publishers`] for the caveats.
+    fn count_subscribers(&mut self, topic_name: &str) -> Result<usize, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = topic_name;
+        Err(TransportError::Unsupported.into())
+    }
+
+    /// phase-381 W3 — every topic, with the types published or subscribed on it.
+    ///
+    /// A visitor for the same reason as [`Self::get_node_names`], and one call
+    /// per distinct NAME: the contract hands over a name and the types on it,
+    /// so a topic carrying two types is one visit with two entries, not two
+    /// visits.
+    ///
+    /// `types_count` may legitimately be 0 on a partially discovered graph —
+    /// reporting the name without a type beats dropping it.
+    ///
+    /// Default body: `Err(Unsupported)`.
+    fn get_topic_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = visit;
+        Err(TransportError::Unsupported.into())
+    }
+
+    /// phase-381 W3 — every service, with its types. As
+    /// [`Self::get_topic_names_and_types`], over servers and clients.
+    fn get_service_names_and_types(
+        &mut self,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        let _ = visit;
+        Err(TransportError::Unsupported.into())
+    }
 }
 
 /// Bitmask of QoS policies a backend can honour. See
