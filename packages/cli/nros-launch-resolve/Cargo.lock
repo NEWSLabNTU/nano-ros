@@ -712,7 +712,6 @@ dependencies = [
  "log",
  "lru",
  "once_cell",
- "pyo3",
  "rand",
  "regex",
  "roxmltree",
@@ -721,6 +720,20 @@ dependencies = [
  "serde_yaml_ng",
  "shlex 1.3.0",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "play_launch_parser_pyexec"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "once_cell",
+ "play_launch_parser",
+ "pyo3",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
 ]
 
 [[package]]
@@ -893,7 +906,7 @@ checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 [[package]]
 name = "ros-launch-manifest-check"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.20#99bf03c9d3f6bf3dc7ce2cf890e4fab6ac03e14a"
 dependencies = [
  "codespan-reporting",
  "petgraph",
@@ -904,7 +917,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-model"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.20#99bf03c9d3f6bf3dc7ce2cf890e4fab6ac03e14a"
 dependencies = [
  "indexmap",
  "ros-launch-manifest-sched",
@@ -917,7 +930,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-sched"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.20#99bf03c9d3f6bf3dc7ce2cf890e4fab6ac03e14a"
 dependencies = [
  "ros-launch-manifest-types",
  "serde",
@@ -929,7 +942,7 @@ dependencies = [
 [[package]]
 name = "ros-launch-manifest-types"
 version = "0.1.4"
-source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.11#ce0b918104c6c4122c0e9e8a885565e7f6baf680"
+source = "git+https://github.com/NEWSLabNTU/ros-launch-manifest.git?tag=v0.1.20#99bf03c9d3f6bf3dc7ce2cf890e4fab6ac03e14a"
 dependencies = [
  "serde",
  "serde_json",
@@ -947,6 +960,7 @@ dependencies = [
  "indexmap",
  "num_cpus",
  "play_launch_parser",
+ "play_launch_parser_pyexec",
  "pyo3",
  "ros-launch-manifest-check",
  "ros-launch-manifest-model",
