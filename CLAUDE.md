@@ -395,6 +395,20 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   building the header target directly does not help; only `rm -rf` on the west build dir
   does. Survey with: for each `zephyr-workspace/build-*/nros-rust/nros-{cpp,c}-generated/nros`,
   a `.stamp` with no `.h` beside it. Two such leaves stopped a whole `lane=all` sweep.
+- **`rm -rf` + rebuild is an ANTIPATTERN — it destroys the evidence and fixes nothing.**
+  The build system supports incremental builds; if an incremental build produces a wrong
+  artifact, that is a MISSING DEPENDENCY EDGE and the edge is the bug. Wiping proves only
+  that a full build works, which was never in doubt, and it costs the one reproduction you
+  needed to find the edge. It also teaches the next person that the tree is untrustworthy,
+  so they wipe too, and the real defect never gets filed.
+  Before reaching for `rm -rf`, in this order: `ninja -C <dir> -t query <target>` (does the
+  artifact actually depend on what changed?), `touch` the input and confirm a relink, and
+  read the `.d`/`build.ninja` edge. Issue 0475 is the canonical case — a lib inside a raw
+  `-Wl,` flag gets NO edge, and the fix was `LINK_DEPENDS`, not a wipe.
+  The rule has exactly two exemptions, both documented and both about a build that CANNOT
+  converge: the sizes-header mirror reaching a state no re-run repairs (issue 0834), and a
+  core-crate/`repr(C)` change mixing pre/post-append objects. Outside those, if you wiped
+  and it worked, you have a lead — not a diagnosis; say so, and go find the edge.
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
