@@ -362,6 +362,171 @@ claims a saving it did not measure, the 27,760 B remains the originally reported
 figure and this wave contributes the triage plus the 22,580 B cross-check above,
 not a new saving.
 
+**W5 — queryable pools sized by declaration, not by guess.** Lever 1, and the
+largest single figure this phase has measured: 144,128 B on a native talker,
+39% of its static RAM, in service buffers for services it does not have.
+
+`ZPICO_MAX_QUERYABLES` decides that pool (it sizes `SERVICE_BUFFERS` as
+`ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`, and the C shim's queryable table
+alongside). Its default is `if hosted { 32 } else { 8 }` — a literal chosen for
+headroom in `nros-zpico-build`, because at that point nothing knows the answer.
+Six inputs decide the right number and none of them meet: the app's service
+count (known only to the resolved model), the parameter services (6) and
+lifecycle services (5) (known only to `nros-node`, behind cargo features),
+`ZPICO_MAX_SESSIONS`, the hosted/embedded split, and the literal.
+
+### The shape
+
+One declaration site, two front-ends, one consumer.
+
+```
+                    system.toml + launch files
+                              |
+                       nros sync resolves
+                              |
+                    +---------v---------+
+                    |   SystemModel     |  app service-server count
+                    | (build artifact)  |  features = [param_services, lifecycle]
+                    +----+---------+----+
+              Rust entry |         | C/C++ entry
+            nros::main!  |         | nano_ros_entry()
+                         v         v
+                  one declared figure, delivered as env to cargo
+                              |
+                              v
+             nros-zpico-build  -- sizes --> C shim queryable table
+                               `- sizes --> SERVICE_BUFFERS (Rust pool)
+                                    ^
+                                    | adds, from nros-node
+                     PARAM_SERVICE_QUERYABLES / LIFECYCLE_SERVICE_QUERYABLES
+```
+
+DECLARED, from the model: how many service servers the application has, and
+whether the infrastructure services exist. DERIVED, from Rust: how many
+queryables each of those features costs. That split is what keeps issue 0460
+closed — codegen sees the user's entities and never the runtime's, so it must
+never own the second number.
+
+### Why not const generics
+
+Checked, because the W5 endgame in [phase
+391](phase-391-allocation-unification-and-tier-model.md) sized component cells
+exactly that way and the parallel is tempting. `SERVICE_BUFFERS` is a private
+`static mut`: no header, no `#[no_mangle]`, no `repr(C)`. C round-trips one
+opaque `*mut c_void` token (`session_index * ZPICO_MAX_QUERYABLES + local`) that
+it never does arithmetic on, and bounds its own handles against its own table.
+So the two tables are NOT layout-coupled — this is not the issue-0135 class, and
+a const generic would reach no non-Rust consumer.
+
+It is still the wrong tool. A const generic needs a TYPE to carry the bound. A
+Rust entry has one (`Node::ENTITY_BOUNDS`); a C/C++ entry does not — it is
+cmake-driven through `nano_ros_entry()`. Manufacturing one leaves two exits,
+both bad: a non-generic C entry point that picks some N (a hand-picked number
+again, which is the thing being removed), or a sizing parameter on the C API,
+which stops it being a thin wrapper of Rust.
+
+### The channel already exists
+
+`*_OPAQUE_U64S` is the established thin-wrapper channel and it runs Rust -> C:
+Rust owns the type, a build step computes `size_of`, a generated header carries
+the number, C declares opaque storage. This need runs the other way — the
+application declares, the backend consumes — which is the same direction W2's
+`NROS_ARENA_REQUIRED` needs.
+
+The delivery mechanism is proven, not hypothetical: phase-351 W5's
+`nros_resolve_board_facts` resolves facts through a CLI verb and attaches them
+with `corrosion_set_env_vars`, which reaches the cargo invocation where
+`set(ENV{...})` does not (issue 0460). A declared entity figure is one more fact
+on that path, and `nros ws model-dims` is the existing seam for asking the model
+a question from one implementation rather than a second one in cmake.
+
+Net C/C++ API change: none. No function, no parameter, no generic in a header.
+
+### Waves
+
+* **W5.a — the counts get one definition.** LANDED. They had seven spellings and
+  none was a definition; two were wrong, both saying lifecycle was 6 (it is 5,
+  so the widely-quoted "twelve slots before the application declares anything"
+  is eleven), including the message a user sees when the table overflows.
+  `check-infra-queryable-counts` ties each constant to the number of creation
+  sites, because a constant alone is still a hand-typed literal that drifts the
+  same way the prose did.
+
+* **W5.b — the model answers the question.** NEXT. A `nros ws` verb reports, per
+  entry, the declared service-server count and whether the infrastructure
+  features are on. One implementation, shared with cmake and the Rust macro
+  path, per the `model-dims` precedent.
+
+* **W5.c — delivery.** The figure rides the phase-351 W5 path to the backend's
+  build script. Both entry front-ends produce the same fact from the same model.
+
+* **W5.d — consumption.** LANDED. `nros-zpico-build` computes
+  `app_declared + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES` and
+  sizes the C table and `SERVICE_BUFFERS` from ONE computation. Two sizings from
+  one number, not two numbers that must coincidentally agree.
+
+  MEASURED on `examples/native/rust/talker`, `nros-relwithdebinfo`, built twice
+  and diffed with `nros-mem-report --baseline`:
+
+  | | before | after | delta |
+  | --- | ---: | ---: | ---: |
+  | `SERVICE_BUFFERS` | 144,128 | 4,504 | **−139,624** |
+  | `g_sessions` | 24,480 | 20,640 | **−3,840** |
+  | RAM (.bss + .data) | 365,778 | 222,322 | **−143,456 (−39.2%)** |
+
+  The `g_sessions` line was NOT predicted and is the confirmation that matters:
+  the C shim's per-session `stored_queries[N][M]` and `last_reply_seq[N]` are
+  sized by the same knob, so one number really does size both sides. A design
+  that had left them independent would have moved only the Rust figure.
+
+  The rule is a pure function (`queryable_default_from`) with the environment
+  lifted out, because a build script reading env directly is untestable
+  in-process and a sizing rule verified by reading is how this phase's other
+  defects survived. Seven cases, including both refusals: a malformed count and
+  an unknown infrastructure spelling PANIC rather than falling back to
+  "undeclared", which is the `.max(1)` shape 0827 measured.
+
+  It introduces TWO deliberate mirrors — `nros-zpico-build` cannot depend on
+  `nros-node` to read the constants, nor see its features. `check-infra-queryable-counts`
+  holds them to the definitions, which is the entire difference between these and
+  the seven prose spellings W5.a replaced. Verified by drifting the lifecycle
+  mirror to its historical wrong value of 6 and watching the gate name the file.
+
+* **W5.e — an undeclared image fails loudly.** A bare `cargo build` of a leaf,
+  and the standalone `check-rmw-*` projects, have no model. They get a
+  build-time failure naming what to declare, not a generous default: this
+  issue's own `.max(1)` finding is the precedent — `ZPICO_MAX_LARGE_SUBSCRIBERS=0`
+  silently yields 1, so a config reads as satisfied while still reserving 64 KiB.
+  A fallback that quietly works is the shape this campaign keeps finding.
+
+* **W5.f — RETIREMENT, and this wave is not done without it.** Delete
+  `queryable_default`, its `if hosted { 32 } else { 8 }` literal and the
+  `CARGO_CFG_TARGET_OS` sniff behind it. `ZPICO_MAX_QUERYABLES` stops being the
+  primary input and becomes an OVERRIDE that must be `>=` the declared figure,
+  checked at build time rather than trusted. Two mechanisms for one number is
+  how this phase's other defects were born: leaving the guess in place "for
+  safety" would mean every image still pays it whenever the declaration fails to
+  arrive, which is exactly the silent-fallback shape W5.e refuses. Retirement is
+  a wave, not a cleanup, because the old path must be provably unreachable
+  before it is deleted — grep for readers, then delete, then re-measure.
+
+* **W5.g — measure and gate.** `just mem-report --json --baseline` delta on the
+  four native roles. The talker's expected figure is the whole 144,128 B minus
+  its own (zero) services and (zero) infrastructure. A role that declares
+  services keeps exactly what it declares, which is the property worth gating.
+
+### Open, and deliberately not assumed away
+
+**Hand-written `main`s.** They create entities at runtime, have no generated
+entry, and cannot declare — so under W5.e they cannot build. W2 has the same
+problem for the arena and proposes a runtime high-water mark plus a CI lane;
+queryables should ride that answer rather than invent a second one. This couples
+W5.e to W2's timing.
+
+**`ZPICO_MAX_SESSIONS`** multiplies the pool and has no declaration path at all.
+Either it joins the model or it stays a knob and this phase says so explicitly.
+It is currently 1 everywhere, which is why it has never been the visible term.
+
 ## Explicitly out of scope
 
 **Moving payload buffers to the heap.** It would convert `12 x 4 x 1024` of

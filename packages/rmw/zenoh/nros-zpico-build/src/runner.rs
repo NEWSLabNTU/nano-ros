@@ -25,6 +25,172 @@ use crate::{
 type ShimConfig = crate::ShimConfig;
 type ZenohBufferConfig = crate::ZenohBufferConfig;
 
+/// Queryables the ROS parameter services claim, mirroring
+/// `nros_node::parameter_services::PARAM_SERVICE_QUERYABLES`.
+///
+/// A MIRROR, and the only one left. This crate is a build-script helper: it
+/// cannot depend on `nros-node`, so it cannot read the constant, and cargo does
+/// not expose another crate's features to a build script either. Held to the
+/// definition by `check-infra-queryable-counts`, which is why the seven prose
+/// spellings this replaced could drift and this one cannot. See phase-392 W5.
+const PARAM_SERVICE_QUERYABLES: usize = 6;
+
+/// Queryables the REP-2002 lifecycle services claim, mirroring
+/// `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`. FIVE, not six.
+const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
+
+/// Headroom for a build that declares nothing.
+///
+/// This is the pre-phase-392-W5 embedded budget, kept EXACTLY so an undeclared
+/// embedded image sizes as it always did. W5.f retires it together with the
+/// hosted guess once every image declares; until then it is the fallback, not
+/// the answer.
+const UNDECLARED_HEADROOM: usize = 8;
+
+/// The queryable-table default, from the declaration when there is one.
+///
+/// phase-392 W5.d — `SERVICE_BUFFERS` is `ZPICO_MAX_SESSIONS *
+/// ZPICO_MAX_QUERYABLES` service buffers, so this number is 4,504 bytes of
+/// static RAM per slot. It used to be `if hosted { 32 } else { 8 }`: a literal
+/// picked for headroom because nothing here knew the answer, costing a native
+/// talker 144,128 bytes for services it does not have.
+///
+/// `NROS_DECLARED_SERVICE_SERVERS` is the application's own count, resolved
+/// from the SystemModel and delivered by the same path phase-351 W5 uses for
+/// board facts (`corrosion_set_env_vars`, which reaches cargo where
+/// `set(ENV{...})` does not — issue 0460). The infrastructure counts are added
+/// HERE rather than by whoever computes that figure, because codegen sees the
+/// user's entities and never the runtime's: deriving the total from the app's
+/// service count alone is issue 0460's defect exactly.
+///
+/// `NROS_DECLARED_INFRA_QUERYABLES` carries whether those runtime services are
+/// compiled in. Absent, both are assumed present — the safe direction, since
+/// over-reserving wastes RAM while under-reserving fails at boot.
+///
+/// With no declaration at all this returns the historical embedded budget and
+/// says nothing; W5.e turns that case into a build-time failure, which needs
+/// the hand-written-`main` question settled first (phase-392 W5, Open).
+fn resolve_queryable_default() -> usize {
+    queryable_default_from(
+        std::env::var("NROS_DECLARED_SERVICE_SERVERS")
+            .ok()
+            .as_deref(),
+        std::env::var("NROS_DECLARED_INFRA_QUERYABLES")
+            .ok()
+            .as_deref(),
+        std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none"),
+    )
+}
+
+/// The rule, with the environment lifted out so it can be tested.
+///
+/// A build script reading env directly is untestable in-process (env is
+/// global), which is how a sizing rule ends up verified by reading.
+fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: bool) -> usize {
+    let app = match declared {
+        Some(v) => match v.trim().parse::<usize>() {
+            Ok(n) => n,
+            // A malformed declaration must not silently become "undeclared":
+            // that is the `.max(1)` shape issue 0827 measured, where a value
+            // reads as applied and is not.
+            Err(_) => panic!(
+                "NROS_DECLARED_SERVICE_SERVERS={v:?} is not a count. It is the \
+                 number of service servers the entry declares, resolved from the \
+                 SystemModel (phase-392 W5)."
+            ),
+        },
+        // The hosted guess survives only while undeclared images do. W5.f
+        // retires both once every image declares.
+        None => return if hosted { 32 } else { UNDECLARED_HEADROOM },
+    };
+
+    let infra = match infra {
+        Some("none") => 0,
+        Some("param") => PARAM_SERVICE_QUERYABLES,
+        Some("lifecycle") => LIFECYCLE_SERVICE_QUERYABLES,
+        Some("param+lifecycle") | Some("all") => {
+            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        }
+        Some(other) => panic!(
+            "NROS_DECLARED_INFRA_QUERYABLES={other:?} is not one of \
+             none|param|lifecycle|param+lifecycle (phase-392 W5)."
+        ),
+        // Undeclared infrastructure is assumed PRESENT: over-reserving costs
+        // RAM, under-reserving fails at boot with an exhausted table.
+        None => PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES,
+    };
+
+    // A table of zero would make every service-server registration fail, so an
+    // entry declaring none still gets one slot rather than a pool nothing can
+    // index.
+    core::cmp::max(app + infra, 1)
+}
+
+#[cfg(test)]
+mod queryable_default_tests {
+    use super::*;
+
+    #[test]
+    fn undeclared_keeps_the_historical_budgets() {
+        assert_eq!(queryable_default_from(None, None, true), 32);
+        assert_eq!(
+            queryable_default_from(None, None, false),
+            UNDECLARED_HEADROOM
+        );
+    }
+
+    #[test]
+    fn a_declaration_beats_the_hosted_guess() {
+        // The talker case: no services, no infrastructure. Measured at 4,504
+        // bytes of SERVICE_BUFFERS against 144,128 for the guess.
+        assert_eq!(queryable_default_from(Some("0"), Some("none"), true), 1);
+    }
+
+    #[test]
+    fn infrastructure_is_added_here_not_by_the_declarer() {
+        // Issue 0460: codegen sees the user's entities and never the runtime's.
+        assert_eq!(
+            queryable_default_from(Some("0"), Some("param+lifecycle"), true),
+            11
+        );
+        assert_eq!(
+            queryable_default_from(Some("2"), Some("param+lifecycle"), true),
+            13
+        );
+        assert_eq!(queryable_default_from(Some("2"), Some("param"), true), 8);
+        assert_eq!(
+            queryable_default_from(Some("2"), Some("lifecycle"), true),
+            7
+        );
+    }
+
+    #[test]
+    fn unknown_infrastructure_is_assumed_present() {
+        // Over-reserving wastes RAM; under-reserving fails at boot.
+        assert_eq!(queryable_default_from(Some("0"), None, true), 11);
+    }
+
+    #[test]
+    fn the_hosted_split_stops_mattering_once_declared() {
+        assert_eq!(
+            queryable_default_from(Some("3"), Some("none"), true),
+            queryable_default_from(Some("3"), Some("none"), false)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "is not a count")]
+    fn a_malformed_count_is_not_silently_undeclared() {
+        queryable_default_from(Some("lots"), Some("none"), true);
+    }
+
+    #[test]
+    #[should_panic(expected = "is not one of")]
+    fn an_unknown_infrastructure_spelling_is_refused() {
+        queryable_default_from(Some("0"), Some("params"), true);
+    }
+}
+
 fn shim_config_from_env() -> ShimConfig {
     // issue 0406 — these tables are STATIC arrays in the C shim, so every slot
     // costs RAM whether or not it is used. 8 is an embedded budget, and it was
@@ -50,8 +216,7 @@ fn shim_config_from_env() -> ShimConfig {
     // costs a hosted image 144,128 bytes of service buffers whether or not it
     // has a single service. Replacing the guess needs the declaration to reach
     // here from the resolved model; see issue 0827.
-    let hosted = std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none");
-    let queryable_default = if hosted { 32 } else { 8 };
+    let queryable_default = resolve_queryable_default();
     ShimConfig {
         max_publishers: env_usize("ZPICO_MAX_PUBLISHERS", 8),
         max_subscribers: env_usize("ZPICO_MAX_SUBSCRIBERS", 8),
