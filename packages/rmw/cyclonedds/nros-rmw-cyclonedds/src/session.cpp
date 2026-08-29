@@ -84,7 +84,25 @@ constexpr const char* kEmbeddedCycloneConfig =
     "<CycloneDDS>"
     "<Domain Id=\"any\">"
     "<General>"
-#if defined(NROS_PLATFORM_THREADX)
+#if defined(NROS_PLATFORM_FREERTOS)
+    // Issue 0888 — say it, rather than inheriting Cyclone default.
+    //
+    // FreeRTOS was the one platform arm with no AllowMulticast at all, so
+    // it fell through to the default (multicast for data as well as
+    // discovery) while its two siblings each state a policy. That is a
+    // silent difference, not a considered one: an image built here
+    // advertises multicast data locators, and whether that is what anyone
+    // wanted depended on a default nobody wrote down.
+    //
+    // The platform is fully capable of multicast — LWIP_IGMP is on, the
+    // netif carries NETIF_FLAG_IGMP, the LAN9118 driver enables MCPAS, and
+    // SPDP discovery over 239.255.0.1 demonstrably works. So this is a
+    // choice, not a limitation: discovery multicast, data unicast, which
+    // is what the ThreadX arm below settled on for the same reasons and
+    // what a ROS 2 peer configured for an embedded island typically sets
+    // on its own side.
+    "<AllowMulticast>spdp</AllowMulticast>"
+#elif defined(NROS_PLATFORM_THREADX)
     // Phase 177.26 — SPDP multicast discovery over NetX Duo. NetX enables
     // IGMPv2 (`nx_igmp_enable`) and virtio-net accepts all multicast on RX;
     // peers discover via the default DDSI multicast group, data unicast.
