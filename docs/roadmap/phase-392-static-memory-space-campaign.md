@@ -80,6 +80,115 @@ derivation budgets every slot at `sizeof(ActionClient)`, giving 254,720 B for a
 board that registers no action clients; the image ships a hand-picked 52,224 B.
 Unchecked in both directions, and undersizing fails at runtime.
 
+## Amendment 2026-08-29 — four additions from a board measurement
+
+Added after a session that took the mr_canhubk3/s32k344 action image from
+98.73 % SRAM (non-functional: it could not be instrumented) to 85.60 % and
+working. Three of the four were absent from this campaign entirely.
+
+### A. Tightly-coupled memory was never a placement target
+
+This document counts `458,752 B of SRAM+DTCM` in its denominator and then never
+places anything in the DTCM half. Measured on the action image:
+
+```
+RAM   323 528 / 327 680   98.73 %
+ITCM        0 /  65 536    0.00 %
+DTCM        0 / 131 072    0.00 %
+```
+
+192 KiB idle on the same die while the image would not fit. Both regions were
+already declared — the devicetree gives them `zephyr,memory-region` and Zephyr's
+linker script emits matching `NOLOAD` sections — and nothing in the tree had
+ever placed a symbol in either.
+
+[Issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) and
+`CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` land the first tenant: the 48 KiB task stack
+array. SRAM 98.73 % → 85.60 %, DTCM 0 % → 37.5 %, board boots and reaches its
+ready state with zero faults.
+
+**80 KiB of DTCM is still free**, which changes the arithmetic of every lever
+below: a pool that cannot be shrunk may still be *moved*.
+
+The constraint that decides what may move: on Cortex-M7 the TCMs hang off the
+CPU's private bus and are typically **not reachable by other bus masters**. A
+buffer a DMA engine touches must not go there. Stacks are safe by construction;
+`LARGE_PAYLOADS` is only safe while the link stays polled/ISR, and
+[issue 0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md)'s fix
+direction includes eDMA. **Verify reachability before moving any buffer.**
+
+### B. Pools into the tiered arena — the sharing this campaign does not model
+
+Every wire and component pool is sized for its own simultaneous worst case, and
+the totals are then added. `SMALL_PAYLOADS` assumes twelve subscribers each four
+deep each full; `SERVICE_BUFFERS` assumes every queryable in flight at once.
+**They do not peak together, and nothing in this campaign captures that.**
+
+Levers 1 and 2 above shrink each pool against its own worst case. They do not
+address the worst cases being summed rather than overlapped. One arena behind
+`nros_platform_alloc` (phase 391) sized for the *aggregate* peak instead of the
+*sum of individual* peaks is a different and possibly larger win, and it is the
+question this campaign has not asked.
+
+What it costs, and why this is a wave rather than a decision:
+
+- **Fragmentation.** Static pools cannot fragment. rlsf's bound is
+  `1/SLLEN` internal, but external fragmentation across mixed lifetimes is a
+  property of the traffic, not of the allocator. Needs measurement, not
+  argument.
+- **An allocator call on the RX hot path.** Bounded with rlsf, not free. The
+  serial RX path already allocates twice per frame
+  (`_Z_SERIAL_MAX_COBS_BUF_SIZE` + `_Z_SERIAL_MFS_SIZE`), so on that path this
+  would not be a new class of cost — but on the subscriber path it would be.
+- **The bare-metal tier must stay heap-free** (RFC-0034). So this is
+  **tier-gated**, never universal: the `inline` tier keeps static pools, and
+  only tiers that already admit an allocator may share the arena.
+
+**Do lever 1 first regardless.** Per-type sizing shrinks the pools whether or
+not they later share an arena, and a smaller worst case makes the sharing
+question cheaper to answer.
+
+### C. Field storage mode does NOT shrink wire buffers — restated, because it keeps being proposed
+
+Lever 2 above already draws this distinction. Restating it as a decision record
+because the opposite has now been proposed twice:
+
+> Offloading a large field to `heap` will reduce the message size and therefore
+> the payload buffer.
+
+**It will not.** A `heap` field changes where the *deserialised* value lives; the
+*serialised* CDR on the wire is byte-identical. `SMALL_PAYLOADS`,
+`LARGE_PAYLOADS` and `SERVICE_BUFFERS` hold serialised bytes and are unmoved by
+any per-field mode. `__nros_comp_buf_N` holds the deserialised struct and shrinks
+1:1.
+
+The idea underneath it is still right, but it is lever 1, not lever 2: wire
+buffers should be sized **per subscriber from its own type's maximum serialised
+size**, instead of every subscriber paying a global constant. Today
+`LARGE_PAYLOADS` is not computed from any message size at all — it is
+`MAX_LARGE_SUBSCRIBERS x RING_DEPTH x SUBSCRIBER_LARGE_SIZE`, three constants a
+human picks.
+
+### D. Flash is 4 MiB at 8.3 %, and it is not fungible with RAM
+
+Worth stating so it stops being re-proposed as capacity relief. There is no MMU
+and no demand paging: **flash cannot back RAM on this part.** Code is already
+XIP, `.data` is 3,564 B, and read-only data already lives in flash — so there is
+no copy to eliminate.
+
+What the spare flash IS good for, in order of value to this campaign:
+
+1. **A post-mortem fault log.** Persist the fault dump — PC, LR, thread name,
+   stack sentinel state — across reset. This directly serves issue 0852, whose
+   whole difficulty has been that the board is at 96 %+ SRAM and cannot afford
+   the instrumentation needed to observe its own crash. A flash log costs no
+   SRAM at all.
+2. **Parameter and configuration storage**, removing any temptation to hold
+   defaults in RAM.
+3. **ITCM relocation** (`CONFIG_CODE_DATA_RELOCATION`) — flash to ITCM for hot
+   paths. A determinism lever, not a capacity one, and the 64 KiB of ITCM is
+   still entirely unused.
+
 ## Waves
 
 **W1 — pool inventory to full coverage.**

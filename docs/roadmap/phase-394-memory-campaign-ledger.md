@@ -5,6 +5,25 @@ coordinates work that already had three phase docs and eight issues but no singl
 place saying who is doing what. It owns no design of its own — every decision
 lives in the phase it belongs to.
 
+## Amendment 2026-08-29 — what a board measurement added
+
+A bring-up session on mr_canhubk3/s32k344 took the action image from 98.73 %
+SRAM (non-functional — it could not carry the instrumentation needed to debug
+it) to 85.60 % and working. Four items came out of it, three of which no phase
+in this campaign covered:
+
+| item | where it landed | status |
+| --- | --- | --- |
+| Tightly-coupled memory was never a placement target — 192 KiB idle at 0 % | phase-392 amendment A, [issue 0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | stacks moved; 80 KiB of DTCM still free |
+| Pools are sized for worst cases that are SUMMED, never overlapped | phase-392 amendment B | new wave, tier-gated |
+| The libc arena regresses because only the symbol is gated, not the config | phase-391 W1b | gate item added |
+| Flash is 4 MiB at 8.3 % and is NOT fungible with RAM | phase-392 amendment D | scoped: post-mortem log, config storage, ITCM |
+
+One correction is recorded rather than a gap: *field storage mode does not
+shrink wire buffers.* Phase-392 lever 2 already said so; it has since been
+proposed twice in the opposite direction, so the amendment restates it as a
+decision record.
+
 ## What the campaign is
 
 Four phase docs, opened 2026-08-26 from one allocation review, that are really

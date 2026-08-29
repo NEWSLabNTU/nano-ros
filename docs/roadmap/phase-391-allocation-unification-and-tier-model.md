@@ -130,6 +130,27 @@ vendored C, which is where 42 of the sites are. Closes issue 0816; would have
 caught all sixteen sites in issue 0817. **Do this first** — it is what verifies
 every later wave.
 
+**W1b — the gate must also assert the libc arena is ZERO.**
+Added 2026-08-29. W1 denies the `malloc` *symbol*, which is necessary and not
+sufficient: `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` reserves its pool in `.bss`
+**whether or not any caller survives the linker**. On mr_canhubk3/s32k344 the
+image contains no `malloc` and no `free` — every allocation goes through
+`nros_platform_alloc` — and the arena was reserved anyway.
+
+This has now been found on the same board **twice**: 24,576 B during the survey
+that opened this campaign, and 8,192 B again on 2026-08-29 after the setting was
+lost in a rebuild. A finding that regresses is not a finding, it is a gate that
+was never written.
+
+So the symbol gate gains a companion assertion on the *configuration*: with the
+unified arena behind the funnel there is no libc allocator to serve, and
+`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` must be `0` in every image at a tier that
+routes through `nros_platform_alloc`. Same argument, same wave, for
+`CONFIG_HEAP_MEM_POOL_SIZE`, which W5 already sets to 0.
+
+Dead code is collected. Dead **reservations** are not, and only a gate on the
+config catches them.
+
 **W2 — rlsf behind the funnel.** Replace `FreeListHeap`'s internals in
 `zpico-alloc` and the three `nros-platform-*/src/memory.rs` statics. The arena
 and the `z_malloc`/`z_free` shim structure do not change; only the algorithm
