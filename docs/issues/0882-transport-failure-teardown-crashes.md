@@ -189,16 +189,52 @@ block is next handed out. So delaying *reuse* cannot help — only not freeing,
 or not holding the reference, can. The quarantine was reverted rather than kept
 as an unexplained change.
 
+## The block is NAMED — it is the read task's own handle
+
+Instrumenting `nros_platform_alloc`/`dealloc` for just the 0x2040f4d0..0x2040f530
+window, with `__builtin_return_address(0)`, and driving a goal to the crash:
+
+```
+ALLOC 0x2040f508 +36  from _z_slice_init        slice.c:45
+FREE  0x2040f508      from _z_slice_clear       slice.h:90
+ALLOC 0x2040f508 +4   from _zp_start_read_task  session.c:464
+ALLOC 0x2040f518 +4   from _zp_start_lease_task session.c:506
+```
+
+A 36-byte slice buffer is released, and the freed block is handed straight to
+`_zp_start_read_task` for the read task's 4-byte `_z_task_t` — its `pthread_t`.
+The lease task's handle lands in the next block.
+
+**`0x2040f504`, the address the assert names, is the TLSF header of the read
+task's handle block.** So the object under the bad lock is not a mutex at all:
+it is allocator metadata immediately below the task handle that
+`_zp_unicast_failed` frees and `_z_reopen` re-allocates.
+
+That closes the loop with the first defect. `_zp_unicast_failed` does:
+
+```c
+_z_task_join(read_task);   _z_task_free(read_task);   // block returns to the arena
+...
+_z_reopen(&zs)  ->  _zp_start_read_task()             // and is handed straight back
+```
+
+The read-task free is legitimate — the join returned — so the self-free guard
+does not apply to it. What is not legitimate is anything still holding that
+pointer, or holding the `pthread_t` VALUE it contained, across the free. On this
+port that includes `nros_zephyr_task_slot_release`, which keys the stack-slot
+table on `pthread_t` (issues 0822, 0839): a recycled handle value makes the
+table ambiguous.
+
 ## What is still unknown
 
-Which object. It is freed early enough that its address is stable across boots,
-and it is not among the last eight mutexes dropped, so it is not simply one of
-the transport mutexes released by `_z_common_transport_clear`.
+Which reference survives the free. The block is named and the collision is
+reproducible, but the code that dereferences the stale pointer has not been
+caught in the act.
 
-The next step that would settle it is to record the allocation: log the pointer
-returned for each `k_mutex` / `k_condvar` / task allocation at startup and see
-which one is `0x2040f504`. That is cheap — the address is deterministic — and it
-names the object rather than reasoning about it.
+The step that would catch it: poison the handle block on free (write a pattern
+instead of leaving it to TLSF) and fault on first read, or set a watchpoint on
+`0x2040f504` and let the debugger name the writer. Both are cheap now that the
+address is deterministic and the allocation is attributed.
 
 ## Fix direction
 
