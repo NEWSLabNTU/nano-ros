@@ -283,8 +283,11 @@ So for a Zephyr image `nros build`:
 
 1. resolves the **application** — the entry package for that image's board,
    not the bringup;
-2. resolves **your west workspace** — `$NROS_WEST_WORKSPACE`, else the nearest
-   `.west/` above your current directory, else `$ZEPHYR_BASE`'s parent;
+2. resolves **your Zephyr** — `$ZEPHYR_BASE`, else `$NROS_ZEPHYR_WORKSPACE`,
+   else an in-tree `zephyr-workspace/`, else a sibling `../nano-ros-workspace`.
+   Note it is a *Zephyr* that is needed, not a `.west/` directory: with
+   `ZEPHYR_BASE` set, `west build` runs from anywhere, which is what makes a
+   **freestanding application** — one outside the west workspace — work;
 3. runs `west build` from there with the image's overlays
    (`EXTRA_CONF_FILE`, `APPLICATION_CONFIG_DIR`) already applied.
 
@@ -302,7 +305,9 @@ Run this from your west workspace:
 
     west build -b native_sim/native/64 …/src/zephyr_entry
 
-Or point nros at it:  NROS_WEST_WORKSPACE=<dir>
+Point nros at your workspace:
+
+    NROS_ZEPHYR_WORKSPACE=<dir>   # the dir containing zephyr/
 ```
 
 That is deliberate and it is the same boundary `nros setup --system` draws when

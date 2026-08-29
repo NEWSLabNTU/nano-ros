@@ -601,8 +601,8 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // there withholds the very command the message tells the user
                 // to run. `plan_builds` is also how the pipeline tests assert
                 // driver selection, which needs no workspace either.
-                let ws = west_workspace_root(&root);
-                if ws.is_none() && !args.dry_run {
+                let zbase = zephyr_base(&root);
+                if zbase.is_none() && !args.dry_run {
                     let opts = crate::builder::zephyr::west_args(&overlays);
                     let line = format!(
                         "west {}{}{}",
@@ -611,23 +611,27 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         opts.join(" ")
                     );
                     eyre::bail!(
-                        "no west workspace found, so `west build` cannot be run for \
+                        "no Zephyr found, so `west build` cannot be run for \
                          `{image_id}`.\n\n\
                          Zephyr differs from the other drivers: YOU own the west \
-                         workspace and the application, and `west` only runs inside \
-                         a workspace (one with a `.west/` directory beside `zephyr/` \
-                         and your modules).\n\n\
-                         Run this from your west workspace:\n\n    {line}\n\n\
-                         Or point nros at it:  NROS_WEST_WORKSPACE=<dir>\n\
-                         (searched: $NROS_WEST_WORKSPACE, upward from the cwd for a \
-                         `.west/`, and $ZEPHYR_BASE's parent)"
+                         workspace and the application. `west build` needs a \
+                         Zephyr — with `ZEPHYR_BASE` set it runs from anywhere, \
+                         which is how a FREESTANDING application (one outside the \
+                         west workspace) builds.\n\n\
+                         Point nros at your workspace:\n\n    \
+                         NROS_ZEPHYR_WORKSPACE=<dir>   # the dir containing zephyr/\n\n\
+                         or export ZEPHYR_BASE=<dir>/zephyr yourself, or run:\n\n    {line}\n\n\
+                         (searched: $ZEPHYR_BASE, $NROS_ZEPHYR_WORKSPACE, \
+                         <workspace>/zephyr-workspace, ../nano-ros-workspace[-4.4])"
                     );
                 }
-                let h = Handoff::new("west", a);
-                Some(match &ws {
-                    Some(w) => h.in_dir(w),
-                    // No workspace and `--dry-run`: the command is still the
-                    // right answer, and the user runs it from theirs.
+                // Run from the nros workspace with ZEPHYR_BASE set, which is
+                // exactly what `west-fixtures.sh` does and what makes a
+                // freestanding application work. No cwd gymnastics: the
+                // application path is absolute.
+                let h = Handoff::new("west", a).in_dir(&root);
+                Some(match &zbase {
+                    Some(z) => h.with_env("ZEPHYR_BASE", z.as_os_str()),
                     None => h,
                 })
             }
@@ -1251,67 +1255,55 @@ fn west_application_dir(
     None
 }
 
-/// The user's west workspace, or `None`.
+/// `ZEPHYR_BASE` for a west build — the thing that actually makes `west build`
+/// runnable.
 ///
-/// A west workspace is the directory holding `.west/`. It is the USER's, not
-/// ours: `west init` / `west update` populate it with Zephyr, the modules and
-/// their applications, and nano-ros is one module inside it. So this SEARCHES
-/// and never assumes — the nros workspace root is not a west workspace, which
-/// is what made the old handoff emit `west: unknown command "build"`.
+/// **Not a `.west/` search.** Measured: with `ZEPHYR_BASE` exported, `west
+/// build --help` works from any directory; without it, west says
+/// `unknown command "build"; do you need to run this inside a workspace?` even
+/// standing in the repo. So the requirement is a Zephyr, not a workspace —
+/// which is also why Zephyr's FREESTANDING application works, and why every
+/// zephyr fixture in this tree builds from the repo root rather than from
+/// `zephyr-workspace/`.
 ///
-/// Order: an explicit `NROS_WEST_WORKSPACE`; then upward from the CWD and then
-/// the build root, because the user stands in their west workspace to build;
-/// then `$ZEPHYR_BASE`'s parent, which is how someone who sourced a Zephyr env
-/// already points at theirs.
-fn west_workspace_root(start: &std::path::Path) -> Option<PathBuf> {
-    west_workspace_root_with(std::env::var_os("NROS_WEST_WORKSPACE"), start)
+/// The ladder is `scripts/build/west-fixtures.sh`'s, verbatim, and
+/// `NROS_ZEPHYR_WORKSPACE` is the established spelling — 60 references across
+/// the tree. An earlier version of this invented `NROS_WEST_WORKSPACE`, which
+/// would have been a 61st name for one thing.
+fn zephyr_base(root: &std::path::Path) -> Option<PathBuf> {
+    zephyr_base_with(
+        std::env::var_os("ZEPHYR_BASE"),
+        std::env::var_os("NROS_ZEPHYR_WORKSPACE"),
+        root,
+    )
 }
 
-/// [`west_workspace_root`] with the explicit pointer passed IN.
-///
-/// The env read is the wrapper's only job. Two tests that both consult an
-/// ambient `NROS_WEST_WORKSPACE` race in one process — one sets it while the
-/// other reads it — and that is not hypothetical: it failed once here before
-/// this split, then passed 8 runs in a row, which is the worst kind of test.
-/// Same reasoning `deprecated_deploy_build_field_warnings` gives for taking its
-/// suppression flag as a parameter.
-fn west_workspace_root_with(
-    explicit: Option<std::ffi::OsString>,
-    start: &std::path::Path,
+/// [`zephyr_base`] with the two env reads passed IN, so the resolution is
+/// testable without touching process-global state.
+fn zephyr_base_with(
+    base: Option<std::ffi::OsString>,
+    workspace: Option<std::ffi::OsString>,
+    root: &std::path::Path,
 ) -> Option<PathBuf> {
-    if let Some(explicit) = explicit {
-        let p = PathBuf::from(explicit);
-        if p.join(".west").is_dir() {
+    if let Some(b) = base {
+        let p = PathBuf::from(b);
+        if p.is_dir() {
             return Some(p);
         }
     }
-    // From the CWD first, then from the build root.
-    //
-    // CWD is the one that matches how Zephyr is actually used: the user stands
-    // in their west workspace and builds from there, which is exactly what this
-    // command tells them to do when it cannot find one. Searching only from the
-    // build root missed that — the nros workspace is not usually inside the
-    // west workspace — and the message already promised the cwd, so the code
-    // was the half that was wrong.
-    let cwd = std::env::current_dir().ok();
-    for from in [cwd.as_deref(), Some(start)].into_iter().flatten() {
-        let mut dir = Some(from);
-        while let Some(d) = dir {
-            if d.join(".west").is_dir() {
-                return Some(d.to_path_buf());
-            }
-            dir = d.parent();
-        }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(w) = workspace {
+        candidates.push(PathBuf::from(w));
     }
-    if let Some(base) = std::env::var_os("ZEPHYR_BASE") {
-        let p = PathBuf::from(base);
-        if let Some(parent) = p.parent()
-            && parent.join(".west").is_dir()
-        {
-            return Some(parent.to_path_buf());
-        }
+    candidates.push(root.join("zephyr-workspace"));
+    if let Some(parent) = root.parent() {
+        candidates.push(parent.join("nano-ros-workspace"));
+        candidates.push(parent.join("nano-ros-workspace-4.4"));
     }
-    None
+    candidates
+        .into_iter()
+        .map(|ws| ws.join("zephyr"))
+        .find(|z| z.is_dir())
 }
 
 /// Package directories a cargo root must NOT list as members.
@@ -1666,57 +1658,78 @@ mod deprecation_wiring_tests {
 }
 
 #[cfg(test)]
-mod west_workspace_tests {
+mod zephyr_base_tests {
     use super::*;
 
-    fn ws(dir: &std::path::Path) -> PathBuf {
-        std::fs::create_dir_all(dir.join(".west")).expect("mkdir");
-        dir.to_path_buf()
+    fn zdir(base: &std::path::Path, name: &str) -> PathBuf {
+        let ws = base.join(name);
+        std::fs::create_dir_all(ws.join("zephyr")).expect("mkdir");
+        ws
     }
 
-    /// A west workspace is the dir holding `.west/`, and it is the USER's —
-    /// found by searching, never by assuming the nros root. Assuming it is what
-    /// made the old handoff emit `west: unknown command "build"` (issue 0892).
+    /// The ladder is `west-fixtures.sh`'s, and what it produces is a
+    /// ZEPHYR_BASE — not a `.west/` directory. Measured: with `ZEPHYR_BASE`
+    /// exported, `west build` runs from anywhere; without it, west refuses even
+    /// inside the repo. That is also why a FREESTANDING application works
+    /// (issue 0892 / RFC-0085).
     #[test]
-    fn the_workspace_is_found_by_searching_upward() {
-        let base =
-            std::env::temp_dir().join(format!("nros-892-{}-{}", std::process::id(), line!()));
-        let root = ws(&base.join("my_ws"));
-        let deep = root.join("apps").join("my_app").join("src");
-        std::fs::create_dir_all(&deep).expect("mkdir");
+    fn the_ladder_resolves_a_zephyr_not_a_workspace_marker() {
+        let base = std::env::temp_dir().join(format!("nros-zb-{}-{}", std::process::id(), line!()));
+        let root = base.join("nano-ros");
+        std::fs::create_dir_all(&root).expect("mkdir");
 
+        // Nothing anywhere.
+        assert_eq!(zephyr_base_with(None, None, &root), None);
+
+        // In-repo `zephyr-workspace/` — the common contributor layout.
+        let inrepo = zdir(&root, "zephyr-workspace");
         assert_eq!(
-            west_workspace_root_with(None, &deep).as_deref(),
-            Some(root.as_path()),
-            "the workspace is above the application"
+            zephyr_base_with(None, None, &root),
+            Some(inrepo.join("zephyr"))
         );
+
+        // `NROS_ZEPHYR_WORKSPACE` — the ESTABLISHED spelling (60 references in
+        // the tree), not a new one — outranks the in-repo default.
+        let explicit = zdir(&base, "elsewhere");
         assert_eq!(
-            west_workspace_root_with(None, &root).as_deref(),
-            Some(root.as_path())
+            zephyr_base_with(None, Some(explicit.clone().into_os_string()), &root),
+            Some(explicit.join("zephyr")),
         );
+
+        // An already-exported ZEPHYR_BASE wins outright: the user has chosen.
+        let direct = base.join("chosen");
+        std::fs::create_dir_all(&direct).expect("mkdir");
+        assert_eq!(
+            zephyr_base_with(
+                Some(direct.clone().into_os_string()),
+                Some(explicit.into_os_string()),
+                &root
+            ),
+            Some(direct),
+        );
+
         std::fs::remove_dir_all(&base).ok();
     }
 
-    /// `NROS_WEST_WORKSPACE` wins — and only when it really is one. An explicit
-    /// pointer at a directory with no `.west/` is a typo, and honouring it would
-    /// move the failure to west with a worse message.
+    /// A pointer at something that is not a Zephyr must not be honoured — it is
+    /// a typo, and taking it moves the failure into west with a worse message.
     #[test]
-    fn an_explicit_pointer_must_still_be_a_workspace() {
-        let base =
-            std::env::temp_dir().join(format!("nros-892-{}-{}", std::process::id(), line!()));
-        let good = ws(&base.join("good"));
-        let bad = base.join("bad");
-        std::fs::create_dir_all(&bad).expect("mkdir");
+    fn a_pointer_without_a_zephyr_dir_is_not_honoured() {
+        let base = std::env::temp_dir().join(format!("nros-zb-{}-{}", std::process::id(), line!()));
+        let root = base.join("nano-ros");
+        let empty = base.join("not-a-workspace");
+        std::fs::create_dir_all(&root).expect("mkdir");
+        std::fs::create_dir_all(&empty).expect("mkdir");
 
         assert_eq!(
-            west_workspace_root_with(Some(good.clone().into_os_string()), &bad).as_deref(),
-            Some(good.as_path()),
-            "an explicit workspace wins over the search"
+            zephyr_base_with(None, Some(empty.clone().into_os_string()), &root),
+            None,
+            "a workspace with no zephyr/ is not a workspace",
         );
-        assert_ne!(
-            west_workspace_root_with(Some(bad.clone().into_os_string()), &bad).as_deref(),
-            Some(bad.as_path()),
-            "a pointer at a non-workspace must not be honoured"
+        assert_eq!(
+            zephyr_base_with(Some(empty.join("nope").into_os_string()), None, &root),
+            None,
+            "a ZEPHYR_BASE that does not exist is not a Zephyr",
         );
         std::fs::remove_dir_all(&base).ok();
     }
