@@ -34,7 +34,7 @@ fn main() {
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4
     // keeps the static-RAM bump small (4 × SUBSCRIBER_BUFFER_SIZE
     // per subscriber); raise for burst-heavy topics. Must be ≥ 1.
-    let ring_depth: usize = env_usize("ZPICO_SUBSCRIBER_RING_DEPTH", 4).max(1);
+    let ring_depth: usize = env_usize_min("ZPICO_SUBSCRIBER_RING_DEPTH", 4, 1);
     // Phase 231 (RFC-0038) — size-class receive buffers. `SUBSCRIBER_BUFFER_SIZE`
     // above is the `small` class slot size; the `large` class is for big
     // messages (images, point clouds). A subscription routes to `large` when its
@@ -42,13 +42,13 @@ fn main() {
     // so the big slots don't multiply across every subscriber.
     let large_size: usize = env_usize("ZPICO_SUBSCRIBER_LARGE_SIZE", 16384);
     let size_threshold: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);
-    let max_large: usize = env_usize("ZPICO_MAX_LARGE_SUBSCRIBERS", 2).max(1);
+    let max_large: usize = env_usize_min("ZPICO_MAX_LARGE_SUBSCRIBERS", 2, 1);
     // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
     // session hosts at most the executor's node cap of graph nodes, so this
     // tracks `nros-node`'s `NROS_EXECUTOR_MAX_NODES` (default 4); keep them in
     // sync — set the same env var for both. `.max(1)` so a session always has
     // room for its own primary node.
-    let max_nodes: usize = env_usize("NROS_EXECUTOR_MAX_NODES", 4).max(1);
+    let max_nodes: usize = env_usize_min("NROS_EXECUTOR_MAX_NODES", 4, 1);
     // Issue 0813 — per-publisher TX arena capacity for the zero-copy loan path
     // (`SlotLending`). This was a bare `const` in `shim/publisher.rs`, so its
     // 1 KiB ceiling was neither raisable by a consumer nor visible to
@@ -116,6 +116,39 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
         "CONFIG_NROS_SERVICE_BUFFER_SIZE",
     ),
 ];
+
+/// issue 0827 — a floored knob must REFUSE a value below its floor, never
+/// round it up.
+///
+/// These three pools cannot be zero-length: the lookup paths index them
+/// unconditionally, which is what the `.max(1)` this replaces was protecting.
+/// But `.max(1)` protected it by SILENTLY substituting 1, so
+/// `ZPICO_MAX_LARGE_SUBSCRIBERS=0` built a 65,536-byte pool and reported
+/// nothing — measured on `examples/native/rust/talker`, knob 0 and knob 1
+/// produce byte-identical `LARGE_PAYLOADS`.
+///
+/// That matters now because 0827's fix derives these knobs from the resolved
+/// model: an image with no subscriptions would ask for 0, get 1, and reserve
+/// 64 KiB while every config file and inventory line read as satisfied. A knob
+/// that cannot honour a value has to say so at BUILD time, where the person
+/// who set it is standing — the alternative is a saving that looks applied and
+/// is not, which is the defect class this campaign keeps finding.
+///
+/// Unset stays silent: the defaults are all above the floor.
+fn env_usize_min(name: &str, default: usize, min: usize) -> usize {
+    let v = env_usize(name, default);
+    if v < min {
+        panic!(
+            "{name}={v} is below this pool's floor of {min}.\n  \
+             The lookup path indexes the pool unconditionally, so a shorter one \
+             is not representable — raise the value, or change the lookup to \
+             refuse the entity kind first (issue 0827).\n  \
+             This used to be silently rounded up to {min}, which reserved the \
+             memory anyway while reading as though the knob had been honoured."
+        );
+    }
+    v
+}
 
 fn env_usize(name: &str, default: usize) -> usize {
     match KCONFIG_KNOBS.iter().find(|(env, _)| *env == name) {
