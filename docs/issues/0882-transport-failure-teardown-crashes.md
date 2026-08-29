@@ -225,6 +225,49 @@ port that includes `nros_zephyr_task_slot_release`, which keys the stack-slot
 table on `pthread_t` (issues 0822, 0839): a recycled handle value makes the
 table ambiguous.
 
+## Not a race with the application — four things ruled out by measurement
+
+**Not an application race.** With the board **idle** — no goals, no traffic of
+any kind — killing the router forces the lease to expire, and the board crashes
+anyway: same address `0x2040f504`, same thread, 21 ms after the expiry message.
+Only the lease and read tasks are involved; nothing the executor does matters.
+
+**Not accumulation.** It crashes on the **first** failure. One
+`Closing session because it has expired after 10000ms`, then the panic 21 ms
+later. No repeated reopens, no leak building up over reconnects.
+
+**Not slot exhaustion.** Zero `OUT OF THREAD SLOTS` messages in the run.
+
+**Not a failed join.** Instrumenting `_z_task_join` across the forced failure:
+
+```
+JOIN rc=0 after 20ms owner=0x80000000
+```
+
+`pthread_join` returns success, so the read task genuinely exited before its
+handle was freed. This mattered because `_zp_unicast_failed` **ignores** the
+join's return value and frees the handle regardless (`lease.c:62-63`) — that
+would be a real defect if the join ever failed, but it is not what is happening
+here.
+
+**It does require the reopen.** With `Z_FEATURE_AUTO_RECONNECT` off the same
+failure path runs and does not crash (8/8 through the tap). So the fault is in
+`_z_reopen` or after it, on a single pass.
+
+## The sequence, now fully bounded
+
+```
+20.678  lease expires                              (lease task)
+        _z_task_join(read_task)      rc=0, 20 ms   -> read task genuinely gone
+        _z_task_free(read_task)                    -> its 4-byte block returns to the arena
+        _z_unicast_transport_clear(detach=true)    -> drops the transport mutexes
+        _z_reopen -> _zp_start_read_task           -> allocates INTO that same block
+20.699  panic: "Invalid spinlock 0x2040f504"       -> the block's TLSF header
+```
+
+Everything in that window is accounted for except the one thing that matters:
+which surviving reference reaches into the freed block.
+
 ## What is still unknown
 
 Which reference survives the free. The block is named and the collision is
