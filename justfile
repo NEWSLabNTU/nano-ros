@@ -491,6 +491,7 @@ check-fast:
 # the right thing when you want fail-fast ordering or unshredded output.
 [group("main")]
 check-fast-serial: _check-skip-reset \
+    check-ci-image-python-deps check-kconfig-overridden-values \
     check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
     check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
     check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \
@@ -627,8 +628,6 @@ check-build: \
     check-claim-protocol \
     check-flake-quarantine \
     check-ci-doc-workflow-refs \
-    check-ci-image-python-deps \
-    check-kconfig-overridden-values \
     check-ps-zombie-blind \
     check-gate-selftests \
     check-lane-contracts \

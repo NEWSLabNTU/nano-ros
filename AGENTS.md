@@ -249,6 +249,26 @@ just claim-release issue-NNNN
 that is INFORMATIONAL and the PR is queued. A FORCE-PUSH cancels auto-merge, so
 re-run `gh pr merge --auto --rebase` after any amend.
 
+**Enable auto-merge when you OPEN the pull request, not when it looks ready**
+(phase-396 W2). This is the line that makes the queue a queue. While each author
+arms their own PR by hand, only one entry is ever in flight, `max_entries_to_build`
+never engages, and the expensive tier is paid per pull request instead of per
+batch — which is the whole reason the queue exists. Measured: every merge group
+this repository ran before 2026-08-29 contained exactly ONE pull request.
+
+**To take a PR back OUT of the queue, `--disable-auto` is not enough.** It
+reports *"already queued to merge"* and leaves the entry in place. Use the
+**Remove from queue** button on the PR, or:
+
+```
+nid=$(gh api graphql -f query='{repository(owner:"NEWSLabNTU",name:"nano-ros"){pullRequest(number:NN){id}}}' --jq '.data.repository.pullRequest.id')
+gh api graphql -f query="mutation { dequeuePullRequest(input:{pullRequestId:\"$nid\"}) { mergeQueueEntry { position } } }"
+```
+
+You need this more often than it sounds. A queue entry that cannot pass holds
+everything behind it (see below), and the entry is frequently one you already
+superseded by stacking.
+
 ### The one required check is `CI`
 
 One aggregator job (`ci-ok`, context **`CI`**) gates everything. It `needs:`
@@ -310,18 +330,53 @@ Agent branches are also untouched: the ruleset targets `refs/heads/main`, NOT
 which is the reason `~ALL` was rejected — it would have broken every agent and
 every outside contributor on day one.
 
+### Head-of-line blocking IS real, and it is not the same as a failing PR
+
+GitHub's queue ejects a pull request whose own merge group fails and re-tests
+the rest without it. That is the change-specific case, and it works. What it
+does NOT do is skip past an entry that is simply *taking forever*:
+
+```
+pos=1  AWAITING_CHECKS  #21     <- grinding through a check that cannot pass
+pos=2  MERGEABLE        #22     <- green, and waiting
+```
+
+A `MERGEABLE` entry behind an `AWAITING_CHECKS` one waits for it — up to
+`check_response_timeout_minutes` (60). Observed 2026-08-29: #22 was green for 30
+minutes and merged only once #21 was removed by hand.
+
+So when your PR is green and not merging, **read the queue before assuming your
+PR is the problem**:
+
+```
+gh api graphql -f query='{repository(owner:"NEWSLabNTU",name:"nano-ros"){mergeQueue(branch:"main"){entries(first:10){nodes{position state pullRequest{number}}}}}}'
+```
+
+If something ahead of you is stuck, dequeue it (above) rather than waiting out
+the timeout — especially when it is a PR your own stack already contains, which
+is the common case.
+
 ## Where each tier runs, and why your local run is load-bearing
 
-The merge queue exists so the expensive tier runs **once per batch of four**
-instead of once per pull request *and* again per batch. That only pays off if
-the PR gate is cheap, so the one required status context does DIFFERENT WORK
-depending on the event:
+The merge queue batches up to **five** pull requests so a tier is paid once per
+batch instead of once per pull request. The one required status context does
+DIFFERENT WORK depending on the event:
+
+**The expensive tier is NOT on the merge group** (phase-396 W1). It was, and it
+could never pass there: `check-build` ends with `native::check`, which requires
+generated message bindings, and includes `check-source-gates`, which requires
+prebuilt `.compile-ok` stamps — and that CI job builds neither. A required check
+red for every input looks exactly like fourteen broken pull requests, and froze
+merging for a day. The heavy tier runs post-merge in `post-submit.yml` instead,
+which is the standard split: required = cheap and deterministic, heavy =
+post-merge with a revert path. `check-lane-contracts` now enforces it — a CI job
+may resolve an artifact only if that JOB builds it.
 
 | stage | runs | measured | gates? |
 | --- | --- | --- | --- |
 | local, before push | `just ci-l1` | ~6 min warm | you |
 | pull request | `check-fast` only (133 source gates) | ~5 min | **required** |
-| merge group | + `check-build`, `check-no-std`, `test-unit` | ~15 min ÷ 4 PRs | **required** |
+| merge group | + `test-unit` (= `ci-l1`) | ~9 min ÷ 5 PRs | **required** |
 | push to `main` | `host-tests` (L2) | ~15 min | no |
 | schedule | `nightly` (L3/L4 matrix) | hours | no |
 
