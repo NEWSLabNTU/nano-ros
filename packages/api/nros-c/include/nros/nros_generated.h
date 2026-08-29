@@ -1885,6 +1885,43 @@ typedef bool (*nros_names_and_types_visit_fn)(void *ctx,
                                               size_t types_count);
 
 /**
+ * phase-381 W4 — visit one discovered endpoint on a topic.
+ *
+ * Strings are BORROWED for the duration of the call. Return `false` to stop.
+ *
+ * No QoS: the GRANTED profile is what would answer "why is nothing arriving",
+ * no backend can read one back yet, and reporting the remote's DECLARED
+ * profile instead would be a confident wrong answer.
+ */
+typedef struct nros_endpoint_info_t {
+  /**
+   * Node that owns the endpoint.
+   */
+  const char *node_name;
+  /**
+   * That node's namespace.
+   */
+  const char *node_namespace;
+  /**
+   * Fully-qualified type on the wire, e.g. `"std_msgs/msg/Int32"`.
+   */
+  const char *topic_type;
+  /**
+   * `true` for a publisher, `false` for a subscription.
+   */
+  bool is_publisher;
+  /**
+   * 24-byte identity; all-zero when the backend has none.
+   */
+  uint8_t endpoint_gid[24];
+} nros_endpoint_info_t;
+
+/**
+ * phase-381 W4 — visit one endpoint. Return `false` to stop.
+ */
+typedef bool (*nros_endpoint_info_visit_fn)(void *ctx, const struct nros_endpoint_info_t *info);
+
+/**
  * Phase 104.C.8 — extended node-creation options.
  *
  * Mirrors the Rust `Executor::node_builder(name).rmw(rmw_name).
@@ -4245,6 +4282,95 @@ NROS_PUBLIC
 nros_ret_t nros_executor_count_subscribers(struct nros_executor_t *executor,
                                            const char *topic_name,
                                            size_t *out_count);
+
+/**
+ * phase-381 W4 — what one named node PUBLISHES, with the types.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `node_name` / `node_namespace` must be valid NUL-terminated strings.
+ * * `visit` must be callable for the duration of the call.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_publisher_names_and_types_by_node(struct nros_executor_t *executor,
+                                                               const char *node_name,
+                                                               const char *node_namespace,
+                                                               nros_names_and_types_visit_fn visit,
+                                                               void *ctx);
+
+/**
+ * phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+ *
+ * **`subscriber`, not `subscription`** — rcl spells it
+ * `rcl_get_subscriber_names_and_types_by_node`, and the C surface takes its
+ * vocabulary from rcl so a user porting C ROS 2 code types what they already
+ * know. The C++ and Rust surfaces say `subscription` because rclcpp and rclrs
+ * do. Three layers, three upstreams, one word each — not drift. Issue 0788
+ * owns the wider verb sweep.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `node_name` / `node_namespace` must be valid NUL-terminated strings.
+ * * `visit` must be callable for the duration of the call.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_subscriber_names_and_types_by_node(struct nros_executor_t *executor,
+                                                                const char *node_name,
+                                                                const char *node_namespace,
+                                                                nros_names_and_types_visit_fn visit,
+                                                                void *ctx);
+
+/**
+ * phase-381 W4 — what services one named node SERVES, with the types.
+ *
+ * # Safety
+ * As `nros_executor_get_publisher_names_and_types_by_node`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_service_names_and_types_by_node(struct nros_executor_t *executor,
+                                                             const char *node_name,
+                                                             const char *node_namespace,
+                                                             nros_names_and_types_visit_fn visit,
+                                                             void *ctx);
+
+/**
+ * phase-381 W4 — what services one named node CALLS, with the types.
+ *
+ * # Safety
+ * As `nros_executor_get_publisher_names_and_types_by_node`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_client_names_and_types_by_node(struct nros_executor_t *executor,
+                                                            const char *node_name,
+                                                            const char *node_namespace,
+                                                            nros_names_and_types_visit_fn visit,
+                                                            void *ctx);
+
+/**
+ * phase-381 W4 — the publishers on `topic_name`, one visit each.
+ *
+ * # Safety
+ * * `executor` must point to an initialised executor.
+ * * `topic_name` must be a valid NUL-terminated string.
+ * * `visit` must be callable for the duration of the call.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_publishers_info_by_topic(struct nros_executor_t *executor,
+                                                      const char *topic_name,
+                                                      nros_endpoint_info_visit_fn visit,
+                                                      void *ctx);
+
+/**
+ * phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+ *
+ * # Safety
+ * As `nros_executor_get_publishers_info_by_topic`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_subscriptions_info_by_topic(struct nros_executor_t *executor,
+                                                         const char *topic_name,
+                                                         nros_endpoint_info_visit_fn visit,
+                                                         void *ctx);
 
 /**
  * Set data communication semantics.

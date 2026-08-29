@@ -242,6 +242,69 @@ class Executor {
         return Result(nros_cpp_executor_count_subscribers(storage_, topic_name, out_count));
     }
 
+    /// phase-381 W4 — what one named node PUBLISHES, with the types.
+    Result get_publisher_names_and_types_by_node(const char* node_name, const char* node_namespace,
+                                                 nros_cpp_names_and_types_visit_fn visit,
+                                                 void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_publisher_names_and_types_by_node(
+            storage_, node_name, node_namespace, visit, ctx));
+    }
+
+    /// phase-381 W4 — what one named node SUBSCRIBES to, with the types.
+    ///
+    /// `subscription`, not `subscriber`: the C++ surface takes rclcpp's
+    /// vocabulary (`create_subscription`, `Subscription<T>`,
+    /// `get_subscriptions_info_by_topic`). rclcpp has no `*_by_node` form for
+    /// subscriptions at all, so the WORD comes from its vocabulary rather than
+    /// from a method it lacks. The C surface says `subscriber` because rcl
+    /// does, and the vtable slot because upstream rmw does.
+    Result get_subscription_names_and_types_by_node(const char* node_name,
+                                                    const char* node_namespace,
+                                                    nros_cpp_names_and_types_visit_fn visit,
+                                                    void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_subscription_names_and_types_by_node(
+            storage_, node_name, node_namespace, visit, ctx));
+    }
+
+    /// phase-381 W4 — what services one named node SERVES, with the types.
+    Result get_service_names_and_types_by_node(const char* node_name, const char* node_namespace,
+                                               nros_cpp_names_and_types_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_service_names_and_types_by_node(
+            storage_, node_name, node_namespace, visit, ctx));
+    }
+
+    /// phase-381 W4 — what services one named node CALLS, with the types.
+    Result get_client_names_and_types_by_node(const char* node_name, const char* node_namespace,
+                                              nros_cpp_names_and_types_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_executor_get_client_names_and_types_by_node(
+            storage_, node_name, node_namespace, visit, ctx));
+    }
+
+    /// phase-381 W4 — the publishers on `topic_name`, one visit each.
+    ///
+    /// The endpoint carries no QoS: the GRANTED profile is what would answer
+    /// "why is nothing arriving", no backend can read one back yet, and
+    /// reporting the remote's DECLARED profile would be a confident wrong
+    /// answer.
+    Result get_publishers_info_by_topic(const char* topic_name,
+                                        nros_cpp_endpoint_info_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(
+            nros_cpp_executor_get_publishers_info_by_topic(storage_, topic_name, visit, ctx));
+    }
+
+    /// phase-381 W4 — the subscriptions on `topic_name`, one visit each.
+    Result get_subscriptions_info_by_topic(const char* topic_name,
+                                           nros_cpp_endpoint_info_visit_fn visit, void* ctx) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(
+            nros_cpp_executor_get_subscriptions_info_by_topic(storage_, topic_name, visit, ctx));
+    }
+
     /// Spin until this executor is shut down (blocking) — `rclcpp::Executor::spin`.
     ///
     /// Issue 0338 — this verb used to mean the OPPOSITE here: `spin` was the

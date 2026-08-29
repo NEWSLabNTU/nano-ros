@@ -1,1038 +1,1042 @@
 {
- "_doc": [
-  "Phase 379. One row per item where the nano-ros user API does NOT correspond",
-  "to the ROS 2 client library it mirrors. Written by hand; read by",
-  "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
-  "no entry here.",
-  "",
-  "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
-  "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
-  "",
-  "verdict is one of:",
-  "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
-  "              the constraint (no_std, no exceptions, no allocator, no runtime",
-  "              env, single-threaded transport) -- not a preference. This is the",
-  "              only sanctioned reason to differ (RFC-0036).",
-  "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
-  "  declined    ROS 2 has it, we deliberately do not, with the reason.",
-  "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
-  "              legitimate entry -- the point is that it is written down.",
-  "  rename      the names differ and OURS is the one that should change. A",
-  "              rename with no platform reason costs the drop-in claim for",
-  "              nothing, so these are the campaign's work list.",
-  "",
-  "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
-  "the rest. `--check` is deliberately not wired into `just check` until then --",
-  "a gate that fails on ~2000 rows from the day it lands is one somebody",
-  "switches off. Keys beginning with '_' are documentation and are skipped.",
-  "",
-  "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
-  "shard in this directory. One agent per lane can write without a rebase",
-  "conflict against the others.",
-  "",
-  "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
-  "languages, because the campaign closes a feature at a time across every",
-  "language. `scripts/api-parity.py` merges every shard here, and",
-  "`--self-test` rejects a row whose item belongs to a different stage."
- ],
- "c:clear_custom_transport": {
-  "verdict": "extension",
-  "why": "see `c:set_custom_transport`; this is `nros_set_custom_transport(NULL)` spelled as a verb."
- },
- "c:has_custom_transport": {
-  "verdict": "extension",
-  "why": "see `c:set_custom_transport`. Reports whether a vtable is currently installed -- ours and not micro-ROS's, because the slot is process-global and a second `set` silently replaces the first."
- },
- "c:heap_peak_bytes": {
-  "verdict": "extension",
-  "why": "peak outstanding bytes since boot -- the figure that actually sizes an arena. See `c:heap_used_bytes`."
- },
- "c:heap_platform_used_bytes": {
-  "verdict": "extension",
-  "why": "the port's UNIFIED heap, spanning the Rust global allocator AND the C side (zenoh-pico's `z_malloc`), which is one kernel arena on every port. `nros_heap_used_bytes` sees only the Rust half and says so in its own doc comment, which is why both exist. See `c:heap_used_bytes`."
- },
- "c:heap_total_bytes": {
-  "verdict": "extension",
-  "why": "total managed heap (used + free) as the platform reports it, `0` where the port does not instrument its heap -- the denominator the other three are read against. See `c:heap_used_bytes`."
- },
- "c:heap_used_bytes": {
-  "verdict": "extension",
-  "why": "bytes currently outstanding through the Rust global allocator. an RTOS image has one fixed heap arena, no swap and no OOM killer, so the size of that arena is a build-time decision someone has to make from a measurement rather than a guess. rcl has nothing equivalent because a hosted process has none of those limits. RFC-0034 D7; gated on the `alloc-stats` feature."
- },
- "c:le_slice_view_f32_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_f64_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_i16_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_i32_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_i64_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_u16_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_u32_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:le_slice_view_u64_get": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:platform_critical_section_acquire": {
-  "verdict": "extension",
-  "why": "the platform ABI's IRQ-mask primitive. `nros-c` imports it to register a `critical_section::Impl` for its Rust dependencies (embedded Cyclone, portable-atomic) and to mask interrupts in `nros::panic_halt!`. rcl has no equivalent because a hosted process has no interrupts to mask. Not user API -- see `c:platform_heap_used_bytes` for why it is visible in the generated header at all."
- },
- "c:platform_critical_section_release": {
-  "verdict": "extension",
-  "why": "see `c:platform_critical_section_acquire`; takes back the restore token `acquire` returned."
- },
- "c:platform_heap_total_bytes": {
-  "verdict": "extension",
-  "why": "see `c:platform_heap_used_bytes`."
- },
- "c:platform_heap_used_bytes": {
-  "verdict": "extension",
-  "why": "NOT user API: this is the PLATFORM ABI (`nros/platform.h`, RFC-0034) that `nros-c` IMPORTS, and it reaches `nros_generated.h` only because cbindgen echoes the `unsafe extern \"C\"` block that declares it. The header already distinguishes them -- unlike every entry point beside them, the four `nros_platform_*` declarations carry no `NROS_PUBLIC` and no doc comment. A user calls `nros_heap_platform_used_bytes`; a PORT implements this. Same layering complaint one language over as `rust:Session::create_publisher`."
- },
- "c:set_custom_transport": {
-  "verdict": "extension",
-  "why": "runtime-pluggable transport vtable (`nros_transport_ops_t`: abi_version + open/close/write/read + `user_data`). An RTOS image often reaches the network over a link ROS 2 never sees -- USB-CDC, BLE, RS-485, a semihosting bridge -- and which one is a board fact decided after the library is built, so the hook has to be a runtime call rather than a link-time backend choice. rcl has no transport concept at all (rmw is selected at link time); the nearest thing anywhere is micro-ROS's `rmw_uros_set_custom_transport`, which this deliberately mirrors. Fn pointers rather than a trait object because a `Box<dyn>` would force `alloc` on every no_std port (`nros-rmw/src/custom_transport.rs`)."
- },
- "c:wake_state_get_zero_initialized": {
-  "verdict": "extension",
-  "why": "rcl's zero-init idiom under our naming, applied to the caller-owned `nros_wake_state_t` slot a polling entity's wake callback is registered with. Naming: see `c:publisher_get_zero_initialized` in the pubsub stage (ours is method-style `nros_<thing>_get_zero_initialized` at all 15 sites, rcl's is `rcl_get_zero_initialized_<thing>`); the slot itself: see `c:service_set_wake_callback`."
- },
- "cpp:ContentFilterOptions": {
-  "verdict": "declined",
-  "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
- },
- "cpp:ImplicitTypeAdapter": {
-  "verdict": "declined",
-  "why": "see `cpp:TypeAdapter`."
- },
- "cpp:SignalHandlerOptions": {
-  "verdict": "declined",
-  "why": "rclcpp's selector for WHICH signal handlers `rclcpp::init` installs. We install none: see `cpp:install_signal_handlers` in the init stage -- there is no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal, and an image is stopped by its RTOS, a watchdog or a power rail."
- },
- "cpp:State": {
-  "verdict": "divergence",
-  "why": "`rclcpp_lifecycle::State` is a CLASS wrapping `rcl_lifecycle_state_t` -- an id, a heap-allocated `label` string, and the `rcl_allocator_t` that owns it. Ours is `cpp:LifecycleState`, a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel: with no allocator there is nothing to own the label, and the id is the whole of what the state machine actually compares. See `cpp:LifecycleState` in the lifecycle stage for the ours-only half."
- },
- "cpp:State::State": {
-  "verdict": "divergence",
-  "why": "no constructor, because ours is an enum rather than a class. See `cpp:State`."
- },
- "cpp:State::id": {
-  "verdict": "divergence",
-  "why": "the value IS the enum in ours (`cpp:LifecycleState`), so there is nothing for an accessor to unwrap. See `cpp:State`."
- },
- "cpp:State::label": {
-  "verdict": "gap",
-  "why": "the human-readable state name (`\"unconfigured\"`, `\"active\"`). Not a divergence: a `const char* to_string(LifecycleState)` over five static literals costs an image almost nothing and needs no allocator -- nobody has written one. A C++ caller that wants to print a lifecycle state today has to switch on the enum itself. Same shape as `cpp:Transition` in the lifecycle stage. Phase 379 W3."
- },
- "cpp:Stream": {
-  "verdict": "divergence",
-  "why": "multi-shot receiver for polling subscriptions and action feedback: `try_next` polls, `wait_next` drives the executor until a value arrives or a wall-clock budget expires. rclcpp has no stream type because it delivers multi-shot data through a subscription callback and single-shot through `std::shared_future`; `<future>` needs threads, an allocator and exceptions, and none of the three is here. Same constraint and same shape as `cpp:Future` in the types stage -- RFC-0021: no futures, no async runtime, every blocking helper takes the executor."
- },
- "cpp:Stream::Stream<T>": {
-  "verdict": "divergence",
-  "why": "see `cpp:Stream`."
- },
- "cpp:Stream::is_valid": {
-  "verdict": "divergence",
-  "why": "see `cpp:Stream`."
- },
- "cpp:Stream::try_next": {
-  "verdict": "divergence",
-  "why": "see `cpp:Stream`."
- },
- "cpp:Stream::wait_next": {
-  "verdict": "divergence",
-  "why": "see `cpp:Stream`."
- },
- "cpp:TickCtx::TickCtx": {
-  "verdict": "divergence",
-  "why": "see `cpp:TickCtx`."
- },
- "cpp:TickCtx::call": {
-  "verdict": "divergence",
-  "why": "see `cpp:TickCtx`."
- },
- "cpp:TickCtx::call_raw": {
-  "verdict": "divergence",
-  "why": "see `cpp:TickCtx`."
- },
- "cpp:TickCtx::handle": {
-  "verdict": "divergence",
-  "why": "see `cpp:TickCtx`."
- },
- "cpp:TickCtx::send_goal": {
-  "verdict": "divergence",
-  "why": "see `cpp:TickCtx`."
- },
- "cpp:TopicStatisticsState": {
-  "verdict": "declined",
-  "why": "the on/off knob for rclcpp's per-subscription topic statistics, which measure message age and inter-arrival period and PUBLISH them as `statistics_msgs/MetricsMessage`. A user loses built-in latency/period telemetry. The project's answer is RFC-0052's on-target contract monitor instead (`nros::monitor`: a bounded table of specs checked in the executor, violations drained by the app) -- an image cannot afford a second publisher per subscription nor a rolling sample window per topic."
- },
- "cpp:TypeAdapter": {
-  "verdict": "declined",
-  "why": "rclcpp's type adaptation: publish a user's own struct on a topic whose wire type is a generated message, with a `TypeAdapter` specialisation converting between them. A user loses that and converts into the generated type by hand before publishing. Two things stop it being merely undone: the conversion needs somewhere to put the converted message and there is no allocator, and the machinery is template metaprogramming over `std::string`/`std::vector` members that the freestanding, `-fno-exceptions` C++ profile (RFC-0018) does not compile. Neither our C nor our Rust has an equivalent either."
- },
- "cpp:WaitResultKind": {
-  "verdict": "declined",
-  "why": "the `{Ready, Timeout, Empty}` outcome of `WaitSet::wait()`. rclcpp's `Waitable` protocol; see the pubsub stage's `cpp:Waitable::take_data`. RFC-0002's executor drives entities through the RMW vtable, so there is no wait set and no wait result."
- },
- "cpp:adapt_type": {
-  "verdict": "declined",
-  "why": "see `cpp:TypeAdapter`."
- },
- "cpp:add_will_overflow": {
-  "verdict": "declined",
-  "why": "rclcpp's saturating-arithmetic predicates, whose reason to exist is guarding `Time`/`Duration` nanosecond arithmetic against overflow. Our C++ has no clock, time or duration type at all (the timer stage records that; C and Rust both do have one), so there is nothing here for them to guard -- a user loses the guards along with the arithmetic they guard. Not a platform constraint: the check compiles to `__builtin_add_overflow` anywhere."
- },
- "cpp:add_will_underflow": {
-  "verdict": "declined",
-  "why": "see `cpp:add_will_overflow`."
- },
- "cpp:get_c_string": {
-  "verdict": "divergence",
-  "why": "rclcpp's `std::string` -> `const char*` adapter, which exists because rclcpp's API takes `std::string` and rcl takes `const char*`. Our C++ has no such boundary: `nros-cpp` is freestanding with `-fno-exceptions` (RFC-0018) and gates every `<string>` include on `NROS_CPP_STD` (issue 0112), so the API takes `const char*` throughout and there is nothing to adapt."
- },
- "cpp:get_c_vector_string": {
-  "verdict": "divergence",
-  "why": "the same adapter for `std::vector<std::string>` -> `std::vector<const char *>`; neither header is available in the freestanding profile, and the return value allocates. See `cpp:get_c_string`."
- },
- "cpp:global_handle": {
-  "verdict": "extension",
-  "why": "the executor handle behind the free-function `nros::init()` / `nros::spin_once()` convenience path, so a caller using it can still hand an executor to `Future::wait` / `Stream::wait_next` -- which they must, because RFC-0021 makes every blocking helper take the executor. rclcpp needs no equivalent: `spin_until_future_complete` takes a node or executor the caller already holds. Returns `nullptr` before `init()`."
- },
- "cpp:is_type_adapter": {
-  "verdict": "declined",
-  "why": "see `cpp:TypeAdapter`."
- },
- "cpp:sub_will_overflow": {
-  "verdict": "declined",
-  "why": "see `cpp:add_will_overflow`."
- },
- "cpp:sub_will_underflow": {
-  "verdict": "declined",
-  "why": "see `cpp:add_will_overflow`."
- },
- "cpp:to_string": {
-  "verdict": "divergence",
-  "why": "four overloads across rclcpp (`FutureReturnCode`, `ParameterType`, `ParameterValue`) and rclcpp_action (`GoalUUID`), each returning `std::string`. A returned `std::string` allocates, and the freestanding C++ profile has neither the allocator nor `<string>` (RFC-0018, issue 0112). Where a name is genuinely needed our surfaces return a `const char *` or let the caller format into its own buffer."
- },
- "rust:ACTION_SERVER_INTERNAL_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:ACTION_SERVER_RAW_HANDLE_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:AgeMonitorSpec": {
-  "verdict": "extension",
-  "why": "the subscriber-side table: take-age contracts key different endpoints and need no publish counter. See `rust:MonitorSpec`."
- },
- "rust:ArrayValue": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:BaseType": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:BoardTransportConfig": {
-  "verdict": "extension",
-  "why": "the trait a BOARD crate implements so the orchestration generator can write `nros.toml` `[[transport]]` values -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
- },
- "rust:BoardTransportConfig::set_baudrate": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoardTransportConfig::set_gateway": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoardTransportConfig::set_interfaces": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoardTransportConfig::set_ipv4": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoardTransportConfig::set_mac": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoardTransportConfig::set_password": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoardTransportConfig::set_ssid": {
-  "verdict": "extension",
-  "why": "see `rust:BoardTransportConfig`."
- },
- "rust:BoundedSequenceValue": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:CPP_ACTION_CLIENT_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:CPP_ACTION_SERVER_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:CallbackEffectKind": {
-  "verdict": "extension",
-  "why": "that relation: Reads / Publishes / Writes. See `rust:CallbackEffectMetadata`."
- },
- "rust:CallbackId": {
-  "verdict": "extension",
-  "why": "the stable source-level identifier a component-mode callback declaration must carry, so the sidecar, the launch model and the image all name the same callback across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:CallbackId::as_str": {
-  "verdict": "extension",
-  "why": "see `rust:CallbackId`."
- },
- "rust:CallbackId::new": {
-  "verdict": "extension",
-  "why": "see `rust:CallbackId`."
- },
- "rust:DEFAULT": {
-  "verdict": "extension",
-  "why": "the `nros::qos` module's five profile constants, mirroring rmw's `rmw_qos_profile_*` C constants. Const form because a baked entity declaration needs a value usable in a `static` (RFC-0036/0045); rclrs offers only the function form (`QoSProfile::topics_default()`).\nWORTH ACTING ON: our Rust ships the same five profiles TWICE, as these constants and as `QoSProfile::*_default()`, and the two copies DISAGREE on two of them. `nros::qos::SYSTEM_DEFAULT` is `DEFAULT` (KEEP_LAST depth 10) while `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` is depth 1; `nros::qos::PARAMETERS` is VOLATILE depth 1000 while `QoSProfile::QOS_PROFILE_PARAMETERS` is TRANSIENT_LOCAL depth 1000. Both claim to match upstream and both cannot; upstream `rmw_qos_profile_parameters` is RELIABLE + VOLATILE + KEEP_LAST(1000), so the constant is right and the associated const is wrong. Phase 379 W5."
- },
- "rust:DEFAULT_MAX_METADATA_CALLBACKS": {
-  "verdict": "extension",
-  "why": "default capacity for callback/effect records in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
- },
- "rust:DEFAULT_MAX_METADATA_ENTITIES": {
-  "verdict": "extension",
-  "why": "default capacity for entities in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
- },
- "rust:DEFAULT_MAX_METADATA_NODES": {
-  "verdict": "extension",
-  "why": "default capacity for nodes in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
- },
- "rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI": {
-  "verdict": "extension",
-  "why": "255, the C/C++-ABI escape for an EXPLICIT domain 0 (issue 0227). The C init surface carries `domain_id` as a `u8` where `0` means UNSET (defer to env, then the baked macro, then the default), which makes a literal domain 0 unreachable once an image bakes a nonzero default. Since valid domains cap at `DOMAIN_ID_MAX`, 255 is free. rclrs needs no such sentinel: `ROS_DOMAIN_ID` is read from the environment at runtime, and there is no runtime env on an RTOS. See `rust:DOMAIN_ID_MAX`."
- },
- "rust:DOMAIN_ID_MAX": {
-  "verdict": "extension",
-  "why": "232 -- the RTPS port-arithmetic cap on a usable ROS 2 domain. A value above it is a configuration error in EVERY language front-end here, never a silent clamp and never a silent 0 (RFC-0045, issue 0206). rclrs passes the domain to rcl and lets rcl judge; an image bakes it at build time, so the judgement has to be reachable from the resolver. Mirrored into the generated C header -- keep the mirror in sync."
- },
- "rust:DispatchStrategy": {
-  "verdict": "extension",
-  "why": "where a component's callbacks RUN: Inline (the executor's spin loop, the default), Deferred (a framework-owned task -- an RTIC dispatcher or an Embassy task dequeues and drives them), FromIsr (a reserved discriminant, not implemented). A component whose callbacks take RTIC locks must not run them from the spin task, and that is a property of the component, so it is declared with it. rclrs's answer to the same question is a callback group on a multi-threaded executor, which needs threads and a scheduler we do not have (RFC-0002)."
- },
- "rust:DispatchStrategy::from_u8": {
-  "verdict": "extension",
-  "why": "its inverse, `None` for an unknown value so `nros check` can reject it with a diagnostic. See `rust:DispatchStrategy`."
- },
- "rust:DispatchStrategy::to_u8": {
-  "verdict": "extension",
-  "why": "the FFI discriminant the `nros::node!` trampoline `__nros_node_<pkg>_dispatch_strategy` returns. See `rust:DispatchStrategy`."
- },
- "rust:DynamicBoundedSequence": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequence::as_slice": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequence::upper_bound": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequenceMut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequenceMut::as_mut_slice": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequenceMut::as_slice": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequenceMut::clear": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequenceMut::try_reset": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedSequenceMut::upper_bound": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedString": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedString::upper_bound": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedStringMut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedStringMut::try_assign": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedStringMut::upper_bound": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedWString": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedWString::upper_bound": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedWStringMut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedWStringMut::try_assign": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicBoundedWStringMut::upper_bound": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::convert_from_rmw_message": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::convert_into_rmw_message": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::get": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::get_mut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::iter": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::iter_mut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::new": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::structure": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::view": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessage::view_mut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageLibraryCache": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageLibraryCache::get_or_load": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageLibraryCache::unload": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageView": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageView::get": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageView::iter": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageView::structure": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageViewMut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageViewMut::get": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageViewMut::get_mut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageViewMut::iter": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageViewMut::iter_mut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicMessageViewMut::structure": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequence": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequence::as_slice": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequenceMut": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequenceMut::as_mut_slice": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequenceMut::as_slice": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequenceMut::clear": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:DynamicSequenceMut::reset": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:EXECUTOR_SIZE": {
-  "verdict": "extension",
-  "why": "`nros::sizes` -- the SINGLE SOURCE OF TRUTH for FFI opaque-storage sizes. Each entry is `size_of::<T>()` for a Rust type a C or C++ caller declares inline storage for, and each also emits a `__NROS_SIZE_<NAME>` static whose symbol size the `nros-c` / `nros-cpp` build scripts read back to generate the header's storage macros. It exists because our C and C++ APIs put entities in CALLER-OWNED storage -- no allocator, no pimpl -- so the header has to state a byte count, and a hand-written one is the drift class issues 0088/0114/0122/0123/0245/0268 all belong to. rcl has no counterpart: every `rcl_*_t` hides an `impl` pointer it heap-allocates. Visible from Rust only because the module is `pub` for in-crate `const _: () = assert!(...)` checks."
- },
- "rust:EntityId": {
-  "verdict": "extension",
-  "why": "the stable source-level identifier a component-mode entity declaration must carry, so the sidecar, the launch model and the image all name the same entity across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:EntityId::as_str": {
-  "verdict": "extension",
-  "why": "see `rust:EntityId`."
- },
- "rust:EntityId::new": {
-  "verdict": "extension",
-  "why": "see `rust:EntityId`."
- },
- "rust:EntityKind": {
-  "verdict": "extension",
-  "why": "the entity role recorded for source metadata (Publisher, Subscription, Timer, ServiceServer, ServiceClient, ActionServer, ActionClient, Parameter). See `rust:EntityMetadata`."
- },
- "rust:GUARD_CONDITION_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:IntegrityStatus": {
-  "verdict": "extension",
-  "why": "the per-message verdict `validate` returns: sequence gap, duplicate flag, and CRC state as `Option<bool>` so \"no CRC present\" is distinguishable from \"CRC wrong\". See `rust:SafetyValidator`."
- },
- "rust:IntegrityStatus::is_valid": {
-  "verdict": "extension",
-  "why": "the one-call collapse of those three. See `rust:IntegrityStatus`."
- },
- "rust:IntoPrimitiveOptions": {
-  "verdict": "declined",
-  "why": "rclrs's fluent per-create-site options: `node.create_publisher(\"topic\".keep_last(10).reliable())` builds a `PrimitiveOptions` out of a `&str` and folds it into the entity's QoS. A user loses that spelling AT THE CREATE SITE. QoS and entity options are COMPILE-time here (RFC-0036/0045) -- an entity is declared with a `QoSProfile` const, not with an options value assembled per call -- so there is nothing for the builder to produce. The policy vocabulary itself is not lost: `QoSProfile` carries `keep_last`/`keep_all`/`reliable`/`best_effort`/`volatile`/`transient_local` under exactly these names, plus `deadline_ms`/`lifespan_ms`/`liveliness_kind`/`liveliness_lease_ms`/`avoid_ros_namespace_conventions` as fields. See `rust:QoSProfile`."
- },
- "rust:IntoPrimitiveOptions::avoid_ros_namespace_conventions": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::best_effort": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::into_primitive_options": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::keep_all": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::keep_last": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::reliable": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::transient_local": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:IntoPrimitiveOptions::volatile": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:LIFECYCLE_CTX_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:MAX_RESOLVED_NAME_LEN": {
-  "verdict": "extension",
-  "why": "that bound (128 bytes), matched to `METADATA_STRING_CAPACITY` so a name that entered the seam can always leave it. See `rust:ResolvedName`."
- },
- "rust:METADATA_STRING_CAPACITY": {
-  "verdict": "extension",
-  "why": "that capacity (128 bytes), and the bound `nros_node::names::MAX_RESOLVED_NAME_LEN` is matched to. See `rust:MetadataString`."
- },
- "rust:MessageFieldInfo": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:MessageStructure": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:MessageStructure::get_field_info": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:MessageTypeName": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:MonitorSpec": {
-  "verdict": "extension",
-  "why": "RFC-0052 / phase-296 W3b -- ON-TARGET contract monitors. Codegen emits a `&'static [MonitorSpec]` table plus one `static` counter cell per contracted endpoint from the SystemModel's contract layer; the entry installs it before entity creation, the publish path bumps an atomic (no clock, no lock on the hot path), and the executor checks rate / take-age / node-path latency / deadline-miss on spin ticks and pushes violations into a small ring. An uncontracted image bakes an empty table and every path dead-code-eliminates. ROS 2's answer to the same question is rclcpp's topic statistics plus an external monitor node subscribing to `/statistics` -- a second publisher per subscription and a process that has to be running, neither of which an image has. See `cpp:TopicStatisticsState`."
- },
- "rust:OptUs": {
-  "verdict": "extension",
-  "why": "an optional microsecond field with `0` as the absent sentinel, `#[repr(transparent)]` over `u32`. Not `Option<NonZeroU32>`: the niche optimisation is lost the moment a `#[repr(C)]` struct embeds it, and these fields cross the C ABI where cbindgen must emit a plain `uint32_t`. `0` is physically meaningful for every field it covers -- zero period is infinite frequency, zero budget is unbounded, zero deadline is no deadline. See `rust:SchedClass`."
- },
- "rust:OptUs::from_nz": {
-  "verdict": "extension",
-  "why": "see `rust:OptUs`."
- },
- "rust:OptUs::from_us": {
-  "verdict": "extension",
-  "why": "see `rust:OptUs`."
- },
- "rust:OptUs::get": {
-  "verdict": "extension",
-  "why": "see `rust:OptUs`."
- },
- "rust:OptUs::is_some": {
-  "verdict": "extension",
-  "why": "see `rust:OptUs`."
- },
- "rust:OptUs::raw": {
-  "verdict": "extension",
-  "why": "see `rust:OptUs`."
- },
- "rust:PARAMETERS": {
-  "verdict": "extension",
-  "why": "see `rust:DEFAULT`."
- },
- "rust:PUBLISHER_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:PrimitiveOptions": {
-  "verdict": "declined",
-  "why": "the value `IntoPrimitiveOptions` produces -- a name plus an optional `QoSProfile`. See `rust:IntoPrimitiveOptions`."
- },
- "rust:PrimitiveOptions::apply_to": {
-  "verdict": "declined",
-  "why": "folds the built options into a `QoSProfile`. The equivalent fold exists here and is BAKED rather than per-call: `QoSProfile::apply_overrides`. See `rust:IntoPrimitiveOptions`."
- },
- "rust:PrimitiveOptions::new": {
-  "verdict": "declined",
-  "why": "see `rust:IntoPrimitiveOptions`."
- },
- "rust:Priority": {
-  "verdict": "extension",
-  "why": "the three dispatch buckets -- Critical / Normal / BestEffort -- drained in order within one `spin_once`. Non-preemptive: a running BestEffort callback still blocks Critical work that becomes ready mid-cycle, which is what one task per executor costs. See `rust:SchedClass`."
- },
- "rust:Priority::index": {
-  "verdict": "extension",
-  "why": "see `rust:Priority`."
- },
- "rust:PubMonitorCell": {
-  "verdict": "extension",
-  "why": "one contracted publisher's counters, baked as a `static` so the hot path is an atomic bump. See `rust:MonitorSpec`."
- },
- "rust:PubMonitorCell::new": {
-  "verdict": "extension",
-  "why": "see `rust:PubMonitorCell`."
- },
- "rust:RAW_ACTION_CLIENT_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:RAW_ACTION_SERVER_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:RAW_SERVICE_CLIENT_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:RAW_SERVICE_SERVER_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:RAW_SUBSCRIPTION_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:RawCancelCallback": {
-  "verdict": "extension",
-  "why": "the C-ABI cancel handler an action server registered from C or C++ is driven through: `extern \"C\" fn(&GoalId, GoalStatus) -> CancelResponse`. A raw fn pointer plus a context pointer rather than a boxed closure, because there is no allocator and the executor's callback arena is statically sized. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead."
- },
- "rust:Rmw": {
-  "verdict": "extension",
-  "why": "the compile-time backend factory a backend crate implements: `open(&RmwConfig) -> Session`. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:Rmw::open": {
-  "verdict": "extension",
-  "why": "see `rust:Rmw`."
- },
- "rust:RmwConfig": {
-  "verdict": "extension",
-  "why": "the middleware-agnostic open parameters (locator, mode, domain, node name, namespace, properties) a backend maps onto its own. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:RmwSession": {
-  "verdict": "extension",
-  "why": "`nros::internals` -- backend-agnostic aliases resolving to the ACTIVE backend's concrete types, and the entry points the C API drives them through. Named `internals` and documented as \"implementation details of the transport backends\", which is the honest half of issue 0784's complaint: the module says what it is, unlike the machinery sitting at the top level of `nros::`. rclrs needs no equivalent because rcl is its only backend and it is resolved at runtime, not by a type alias."
- },
- "rust:RmwSubscriber": {
-  "verdict": "extension",
-  "why": "see `rust:RmwSession`. Note the alias says SUBSCRIBER while the trait it aliases is `Subscription` and the concrete type is `CffiSubscription` -- the same word the node stage flagged in `rust:Node::create_subscriber`. Its siblings `RmwPublisher` / `RmwServiceServer` / `RmwServiceClient` landed in the pubsub and service stages."
- },
- "rust:RosMessage": {
-  "verdict": "extension",
-  "why": "the trait a generated message type implements: `TYPE_NAME`, `TYPE_HASH`, and `STAMP_OFFSET` -- the codegen-const byte offset of `header.stamp.sec` in the serialised payload, so an on-target `max_age` monitor can peek the timestamp out of the raw receive buffer BEFORE deserialising (RFC-0052). rclrs's equivalent is `rosidl_runtime_rs::Message`, which lives in the message crates rather than the client library. Same reasoning and same wording as `rust:RosService` in the service stage."
- },
- "rust:SENSOR_DATA": {
-  "verdict": "extension",
-  "why": "see `rust:DEFAULT`."
- },
- "rust:SERVICES_DEFAULT": {
-  "verdict": "extension",
-  "why": "see `rust:DEFAULT`."
- },
- "rust:SERVICE_CLIENT_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:SERVICE_SERVER_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:SESSION_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:SUBSCRIBER_SIZE": {
-  "verdict": "extension",
-  "why": "see `rust:EXECUTOR_SIZE`."
- },
- "rust:SYSTEM_DEFAULT": {
-  "verdict": "extension",
-  "why": "see `rust:DEFAULT`."
- },
- "rust:SafetyValidator": {
-  "verdict": "extension",
-  "why": "end-to-end message-integrity checking on the SUBSCRIPTION side: a sequence number and a CRC-32/ISO-HDLC travel in the sample's attachment, and the validator reports gap, duplicate and CRC state per message. This is the AUTOSAR E2E / EN 50159 profile, which is what a safety-relevant embedded bus asks for and what a desktop ROS 2 stack does not: rcl trusts the transport, and DDS reliability answers a different question (did the sample arrive) than E2E does (is this the sample the publisher sent, once). Gated on the `safety-e2e` feature; interoperates with non-safety publishers by treating an absent CRC as not-invalid."
- },
- "rust:SafetyValidator::new": {
-  "verdict": "extension",
-  "why": "see `rust:SafetyValidator`."
- },
- "rust:SafetyValidator::reset": {
-  "verdict": "extension",
-  "why": "see `rust:SafetyValidator`."
- },
- "rust:SafetyValidator::validate": {
-  "verdict": "extension",
-  "why": "see `rust:SafetyValidator`."
- },
- "rust:SequenceValue": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:Session": {
-  "verdict": "extension",
-  "why": "the per-process anchor a backend hands the executor; every method takes `&mut self`, which is how the single-threaded-transport contract is expressed in the type system. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:Session::close": {
-  "verdict": "extension",
-  "why": "see `rust:Session`."
- },
- "rust:Session::drive_io": {
-  "verdict": "extension",
-  "why": "the poll the executor calls before dispatching -- required, with no default body, because a silent no-op was a trap for third-party backends. See `rust:Session`."
- },
- "rust:Session::ping_session": {
-  "verdict": "extension",
-  "why": "wire-level connectivity probe, `Unsupported` where the backend has none. Lesson taken from micro-ROS's `rmw_uros_ping_agent`: on a link that can simply go away there is no graph to ask, so an image needs a direct question. See `rust:Session`."
- },
- "rust:Session::set_wake_callback": {
-  "verdict": "extension",
-  "why": "the backend-side half of the wake primitive; see the pubsub stage's `c:subscription_set_wake_callback` for what it buys. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:Session::supports_wake_callback": {
-  "verdict": "extension",
-  "why": "whether the backend actually implements the above, so the executor chooses between a wake-primitive wait and a blocking `drive_io` instead of guessing. Poll-only backends (XRCE, bare-metal smoltcp) return `false`. See `rust:Session::set_wake_callback`."
- },
- "rust:SessionHandle": {
-  "verdict": "extension",
-  "why": "an opaque, `Send` handle to an `Executor`'s RMW session. In the per-tier model the boot executor opens the ONE session and hands each spawned RTOS task a handle -- not a borrow -- so the task can open its own `Executor` over that same session across the task boundary. That is RFC-0053's shape: one transport, several executors, one per task (RFC-0002). rclrs never needs it because its executor is the thing you move. Wrapping the pointer lets a board crate name and move the handle without naming the concrete session type."
- },
- "rust:SessionHandle::from_raw": {
-  "verdict": "extension",
-  "why": "the other end, on the spawned task. Raw because an RTOS task entry point takes a `*mut c_void` and nothing richer. See `rust:SessionHandle`."
- },
- "rust:SessionHandle::into_raw": {
-  "verdict": "extension",
-  "why": "see `rust:SessionHandle`."
- },
- "rust:SessionMode": {
-  "verdict": "extension",
-  "why": "Client (connect to a router) or Peer (direct). A zenoh concept with no rcl counterpart: ROS 2 nodes are always peers of a DDS domain, while an embedded image usually cannot afford peer-mode discovery and connects to `rmw_zenohd` instead (RFC-0075). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:SessionSpec": {
-  "verdict": "extension",
-  "why": "one backend's declaration for `Executor::open_multi`: which registered RMW to open, at which locator, on which domain. An image may link several backends -- a bridge speaks XRCE to a serial agent and zenoh to a router in the same process -- and each needs its own session. rclrs has one rmw per process, chosen by an environment variable."
- },
- "rust:SessionSpec::domain_id": {
-  "verdict": "extension",
-  "why": "see `rust:SessionSpec`."
- },
- "rust:SessionSpec::new": {
-  "verdict": "extension",
-  "why": "see `rust:SessionSpec`."
- },
- "rust:SimpleValue": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:StatusWatcher": {
-  "verdict": "divergence",
-  "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
- },
- "rust:SubMonitorCell": {
-  "verdict": "extension",
-  "why": "one contracted subscriber's take-age accumulator. The take path peeks `header.stamp` straight out of the raw CDR buffer at `RosMessage::STAMP_OFFSET` and `fetch_max`es the age, so the check costs no deserialization. See `rust:MonitorSpec` and `rust:RosMessage`."
- },
- "rust:SubMonitorCell::new": {
-  "verdict": "extension",
-  "why": "see `rust:SubMonitorCell`."
- },
- "rust:SubMonitorCell::observe": {
-  "verdict": "extension",
-  "why": "see `rust:SubMonitorCell`."
- },
- "rust:TopicInfo": {
-  "verdict": "extension",
-  "why": "the topic descriptor a backend creates an endpoint from: name, type name, type hash, domain, node name and namespace for the liveliness token, plus two embedded-only hints. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:TopicInfo::new": {
-  "verdict": "extension",
-  "why": "see `rust:TopicInfo`."
- },
- "rust:TopicInfo::with_domain": {
-  "verdict": "extension",
-  "why": "see `rust:TopicInfo`."
- },
- "rust:TopicInfo::with_namespace": {
-  "verdict": "extension",
-  "why": "see `rust:TopicInfo`."
- },
- "rust:TopicInfo::with_rx_buffer_hint": {
-  "verdict": "extension",
-  "why": "the subscription's `RX_BUF` passed down so a backend can route it to a size-class receive buffer (zenoh-pico: small vs large). Static receive storage is the constraint -- with no allocator the buffer is chosen at declaration, so the size has to travel with the declaration (RFC-0038). See `rust:TopicInfo`."
- },
- "rust:TopicInfo::with_tx_express": {
-  "verdict": "extension",
-  "why": "the per-endpoint form of `rust:QoSProfile::tx_express`. See `rust:TopicInfo`."
- },
- "rust:Transport": {
-  "verdict": "extension",
-  "why": "a SECOND factory trait beside `rust:Rmw`, differing only in taking `TransportConfig` rather than `RmwConfig`. Exactly one backend implements it (`ZenohTransport` in `nros-rmw-zenoh/src/shim/transport.rs`) while all five implement `Rmw`, and both are re-exported from `nros::`. Worth a decision in W5: two public spellings of \"open a session\" is a choice nobody makes on purpose. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
- },
- "rust:Transport::open": {
-  "verdict": "extension",
-  "why": "see `rust:Transport`."
- },
- "rust:TransportConfig": {
-  "verdict": "extension",
-  "why": "the config `Transport::open` takes -- locator, mode, and free-form key/value properties (`multicast_scouting`, `scouting_timeout_ms`, `listen`). Board crates author it; `RmwConfig` is what the executor opens with. See `rust:Transport`."
- },
- "rust:TransportError": {
-  "verdict": "extension",
-  "why": "the error every backend operation returns, and the payload of `NodeError::Transport` -- which is what a Rust user actually matches on. Its variants name transport preconditions rcl has no vocabulary for (`IncompatibleQos`, `IncompatibleAbi`, `Disconnected`). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage.\nCORRECTION to issue 0783: that issue says the facade \"exports no way to inspect\" `NodeError` because `TransportError` is not exported. It IS -- `packages/api/nros/src/lib.rs:682` re-exports it unconditionally from `nros_rmw`. What 0783 actually found is that it is missing from the \"Re-export core types\" BLOCK at line 206 and lives in the transport block instead. `RclReturnCode` is genuinely unreachable (types stage, `rust:RclReturnCode`)."
- },
- "rust:Value": {
-  "verdict": "divergence",
-  "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
- },
- "rust:ValueKind": {
-  "verdict": "declined",
-  "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
- },
- "rust:ValueMut": {
-  "verdict": "divergence",
-  "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
- },
- "rust:Violation": {
-  "verdict": "extension",
-  "why": "what the executor pushes into the ring the entry glue drains into the diagnostics reporter. See `rust:MonitorSpec`."
- },
- "rust:arena_size_for": {
-  "verdict": "extension",
-  "why": "per-entry executor arena sizing (phase-271, issue 0110): scales the build-time `ARENA_SIZE` linearly by a caller-chosen callback count, floored at the full default. It replaced a workspace-global `NROS_EXECUTOR_ARENA_SIZE` -- one number every entry in the workspace had to share, so a fat entry and a lean one were sized by whichever was declared louder. The arena exists at all because callback closures are stored INLINE with no allocator; over-provisioning is safe, under-provisioning fails entity creation."
- },
- "rust:baked_domain_from_c_abi": {
-  "verdict": "extension",
-  "why": "maps that `u8` onto the resolver's baked rung: `0` -> None, 255 -> Some(0), else Some(n), with 233..=254 passed through so the resolver rejects them loudly rather than this edge inventing its own validation. See `rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI`."
- },
- "rust:crc32": {
-  "verdict": "extension",
-  "why": "CRC-32/ISO-HDLC over a byte slice -- the same polynomial AUTOSAR E2E and EN 50159 name, with a `const`-built table so a `no_std` image pays no init. Public because a user who bakes their own attachment has to compute the same value. See `rust:SafetyValidator`."
- },
- "rust:drive_session_io": {
-  "verdict": "extension",
-  "why": "the C API executor's pre-poll hook, delegating to `Session::drive_io`. See `rust:RmwSession` and `rust:Session::drive_io`."
- },
- "rust:force_link_backend": {
-  "verdict": "extension",
-  "why": "a DCE anchor, not a registration (issue 0330). On a pure-Rust staticlib image the Zephyr module emits a WEAK `nros_rmw_<name>_register` and calls it only if it resolves; the strong definition is the backend crate's `#[no_mangle]` export, and rustc's staticlib DCE drops it unless something in the crate being compiled REFERENCES that crate. The symbol is then present in the rlib and absent from the `.a`, the weak call sees NULL, and the image boots with no backend (issues 0155/0163). The app crate invokes it because the app crate is what selects an RMW; nano-ros's own RMW-agnostic layers must not name a backend. rclrs has no equivalent because rcl loads its rmw as a shared object at runtime."
- },
- "rust:get_dynamic_message_package_cache": {
-  "verdict": "divergence",
-  "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
- },
- "rust:open_session": {
-  "verdict": "extension",
-  "why": "opens a backend session behind one signature, honouring the `$NROS_RMW` selector so a C bridge built with two linked backends pins its primary deterministically instead of taking whichever `.init_array` constructor fired first. Used by `nros-c`; Rust callers use `Executor::open`. See `rust:RmwSession`."
- },
- "rust:panic_halt": {
-  "verdict": "extension",
-  "why": "the `panic = \"halt\"` body: mask interrupts through the platform critical section, then spin forever. For an image that must not print -- no formatting, no allocation, no call out to the platform. Masking first is deliberate, so the parked core cannot be woken back into a half-dead system by a timer or a driver ISR still armed from before the panic. A body rather than a re-export of the `panic-halt` crate so choosing it costs the entry no new dependency. See `rust:panic_to_platform`."
- },
- "rust:panic_to_platform": {
-  "verdict": "extension",
-  "why": "emits the image's `#[panic_handler]`, formatting the panic into a 192-byte STACK buffer (never the heap -- the allocator may be exactly what failed) and handing it to `nros_platform_panic`. A `no_std` binary must supply that lang item or it does not link, and rclrs is `std`-only so libstd supplies it there. Normally reached as `nros::main!(panic = \"platform\")`; the macro is the escape hatch for images whose entry cannot carry the item -- a hand-rolled `no_std` binary, or the lib side of a `staticlib` crate. Deliberately NOT emitted invisibly: `#[panic_handler]` is a singleton of the final artifact and images that already declare their own (`esp_backtrace`, `panic-semihosting` with `features = [\"exit\"]` so QEMU exits instead of hanging a test) are right."
- },
- "rust:zephyr_component_main": {
-  "verdict": "extension",
-  "why": "emits Zephyr's `rust_main` for a self-bringup Rust component package: open a Zephyr executor, register the component, spin forever. A framework ENTRY macro, the same category as `nros::main!`, needed because a Zephyr `rust_cargo_application()` image has no `fn main` of its own and there are no POSIX-style constructor sections to register from (see the CLAUDE.md pitfall). Gated on `rmw-cffi` rather than on a platform feature, because it is codegen and its `::zephyr::*` paths resolve only in a zephyr build."
- },
- "rust:RuntimeSizing": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- `ExecutorSizing`'s sibling one layer up: the compile-time size of the node-runtime's slot storage (component slots, registries), as a value, for the same reason -- the backing store is caller-placed `[u64; N]` statics, so 'how big' is a build-time decision the type carries. Knob-driven (`NROS_MAX_COMPONENTS`, `NROS_COMPONENT_SLOT_BYTES`). Public and non-generic so the C ABI can consume it; const generics stay behind the macro (the `ExecutorSizing` rule)."
- },
- "rust:RuntimeSizing::u64_len": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- the `[u64]` word count a caller's static must have to back this sizing; the same contract as `arena_size_for` for the executor arena."
- },
- "rust:Slot": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- one aligned region carved out of a caller-supplied `[u64]` backing store; the unit `carve` hands back. `u64` element type gives 8-byte alignment without `repr(align)` generics."
- },
- "rust:Slot::as_mut_ptr": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- the region's base pointer, for placement writes."
- },
- "rust:Slot::capacity": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- the region's byte length."
- },
- "rust:Slot::fits": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- 'does this Layout fit here' as a checked question; the fail-loud arm is an assert in `carve`, this is the queryable form."
- },
- "rust:carve": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- split a caller's `[u64]` static into `Slot`s per a `RuntimeSizing`; asserts (fail-loud) rather than truncating when the store is too small. No upstream analogue: rcl allocates."
- },
- "rust:COMPONENT_SLOT_BYTES": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- knob-driven const (`NROS_COMPONENT_SLOT_BYTES`, default 512): byte size of one component slot; a class whose state is bigger fails the placement assert loudly at install, not by overflow."
- },
- "rust:ComponentSlotStorage": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- the static a component class places to back its instances: `MAX_CLASS_INSTANCES` slots of `COMPONENT_SLOT_BYTES` each. Macro-emitted per class (`__NROS_COMPONENT_<pkg>_SLOT_STORE`); public so hand-rolled callers can place one too. Non-generic across the C ABI -- C components get theirs from the same macro shape (RFC-0018 component entry)."
- },
- "rust:ComponentSlotStorage::new": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- const constructor so the storage can live in a `static`."
- },
- "rust:MAX_CELL_ENTITIES": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_CELL_ENTITIES`, default 8): capacity of the heapless per-cell entity registry that replaced the `Vec` one."
- },
- "rust:MAX_CLASS_INSTANCES": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_CLASS_INSTANCES`, default 2): per-class instance bound sizing each `ComponentSlotStorage`."
- },
- "rust:MAX_COMPONENTS": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_COMPONENTS`, default 4): the image-wide component count bound `RuntimeSizing` sizes registries from. Compile-time because embedded images have no allocator to grow past it."
- },
- "rust:DEFAULT_RX_BUF_SIZE": {
-  "verdict": "extension",
-  "why": "phase-392 W3 -- the fallback subscription receive-buffer size when no `rx_buffer_for!`-derived bound is in play; named so the guess is one auditable const instead of scattered literals."
- },
- "rust:rx_buffer_for": {
-  "verdict": "extension",
-  "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run."
- }
+  "_doc": [
+    "Phase 379. One row per item where the nano-ros user API does NOT correspond",
+    "to the ROS 2 client library it mirrors. Written by hand; read by",
+    "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
+    "no entry here.",
+    "",
+    "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
+    "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
+    "",
+    "verdict is one of:",
+    "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
+    "              the constraint (no_std, no exceptions, no allocator, no runtime",
+    "              env, single-threaded transport) -- not a preference. This is the",
+    "              only sanctioned reason to differ (RFC-0036).",
+    "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
+    "  declined    ROS 2 has it, we deliberately do not, with the reason.",
+    "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
+    "              legitimate entry -- the point is that it is written down.",
+    "  rename      the names differ and OURS is the one that should change. A",
+    "              rename with no platform reason costs the drop-in claim for",
+    "              nothing, so these are the campaign's work list.",
+    "",
+    "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
+    "the rest. `--check` is deliberately not wired into `just check` until then --",
+    "a gate that fails on ~2000 rows from the day it lands is one somebody",
+    "switches off. Keys beginning with '_' are documentation and are skipped.",
+    "",
+    "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
+    "shard in this directory. One agent per lane can write without a rebase",
+    "conflict against the others.",
+    "",
+    "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
+    "languages, because the campaign closes a feature at a time across every",
+    "language. `scripts/api-parity.py` merges every shard here, and",
+    "`--self-test` rejects a row whose item belongs to a different stage."
+  ],
+  "c:clear_custom_transport": {
+    "verdict": "extension",
+    "why": "see `c:set_custom_transport`; this is `nros_set_custom_transport(NULL)` spelled as a verb."
+  },
+  "c:endpoint_info_visit_fn": {
+    "verdict": "divergence",
+    "why": "phase-381 W3. The ours-half of the `topic_endpoint_info_array_t` divergence this file already records: upstream returns an allocating array, there is no allocator at this seam, and the endpoint count has no bound the CALLER can know. So it streams through a visitor, one entry of peak memory, every string borrowed for the call. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+  },
+  "c:has_custom_transport": {
+    "verdict": "extension",
+    "why": "see `c:set_custom_transport`. Reports whether a vtable is currently installed -- ours and not micro-ROS's, because the slot is process-global and a second `set` silently replaces the first."
+  },
+  "c:heap_peak_bytes": {
+    "verdict": "extension",
+    "why": "peak outstanding bytes since boot -- the figure that actually sizes an arena. See `c:heap_used_bytes`."
+  },
+  "c:heap_platform_used_bytes": {
+    "verdict": "extension",
+    "why": "the port's UNIFIED heap, spanning the Rust global allocator AND the C side (zenoh-pico's `z_malloc`), which is one kernel arena on every port. `nros_heap_used_bytes` sees only the Rust half and says so in its own doc comment, which is why both exist. See `c:heap_used_bytes`."
+  },
+  "c:heap_total_bytes": {
+    "verdict": "extension",
+    "why": "total managed heap (used + free) as the platform reports it, `0` where the port does not instrument its heap -- the denominator the other three are read against. See `c:heap_used_bytes`."
+  },
+  "c:heap_used_bytes": {
+    "verdict": "extension",
+    "why": "bytes currently outstanding through the Rust global allocator. an RTOS image has one fixed heap arena, no swap and no OOM killer, so the size of that arena is a build-time decision someone has to make from a measurement rather than a guess. rcl has nothing equivalent because a hosted process has none of those limits. RFC-0034 D7; gated on the `alloc-stats` feature."
+  },
+  "c:le_slice_view_f32_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_f64_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_i16_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_i32_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_i64_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_u16_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_u32_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:le_slice_view_u64_get": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:platform_critical_section_acquire": {
+    "verdict": "extension",
+    "why": "the platform ABI's IRQ-mask primitive. `nros-c` imports it to register a `critical_section::Impl` for its Rust dependencies (embedded Cyclone, portable-atomic) and to mask interrupts in `nros::panic_halt!`. rcl has no equivalent because a hosted process has no interrupts to mask. Not user API -- see `c:platform_heap_used_bytes` for why it is visible in the generated header at all."
+  },
+  "c:platform_critical_section_release": {
+    "verdict": "extension",
+    "why": "see `c:platform_critical_section_acquire`; takes back the restore token `acquire` returned."
+  },
+  "c:platform_heap_total_bytes": {
+    "verdict": "extension",
+    "why": "see `c:platform_heap_used_bytes`."
+  },
+  "c:platform_heap_used_bytes": {
+    "verdict": "extension",
+    "why": "NOT user API: this is the PLATFORM ABI (`nros/platform.h`, RFC-0034) that `nros-c` IMPORTS, and it reaches `nros_generated.h` only because cbindgen echoes the `unsafe extern \"C\"` block that declares it. The header already distinguishes them -- unlike every entry point beside them, the four `nros_platform_*` declarations carry no `NROS_PUBLIC` and no doc comment. A user calls `nros_heap_platform_used_bytes`; a PORT implements this. Same layering complaint one language over as `rust:Session::create_publisher`."
+  },
+  "c:set_custom_transport": {
+    "verdict": "extension",
+    "why": "runtime-pluggable transport vtable (`nros_transport_ops_t`: abi_version + open/close/write/read + `user_data`). An RTOS image often reaches the network over a link ROS 2 never sees -- USB-CDC, BLE, RS-485, a semihosting bridge -- and which one is a board fact decided after the library is built, so the hook has to be a runtime call rather than a link-time backend choice. rcl has no transport concept at all (rmw is selected at link time); the nearest thing anywhere is micro-ROS's `rmw_uros_set_custom_transport`, which this deliberately mirrors. Fn pointers rather than a trait object because a `Box<dyn>` would force `alloc` on every no_std port (`nros-rmw/src/custom_transport.rs`)."
+  },
+  "c:wake_state_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "rcl's zero-init idiom under our naming, applied to the caller-owned `nros_wake_state_t` slot a polling entity's wake callback is registered with. Naming: see `c:publisher_get_zero_initialized` in the pubsub stage (ours is method-style `nros_<thing>_get_zero_initialized` at all 15 sites, rcl's is `rcl_get_zero_initialized_<thing>`); the slot itself: see `c:service_set_wake_callback`."
+  },
+  "cpp:ContentFilterOptions": {
+    "verdict": "declined",
+    "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
+  },
+  "cpp:ImplicitTypeAdapter": {
+    "verdict": "declined",
+    "why": "see `cpp:TypeAdapter`."
+  },
+  "cpp:SignalHandlerOptions": {
+    "verdict": "declined",
+    "why": "rclcpp's selector for WHICH signal handlers `rclcpp::init` installs. We install none: see `cpp:install_signal_handlers` in the init stage -- there is no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal, and an image is stopped by its RTOS, a watchdog or a power rail."
+  },
+  "cpp:State": {
+    "verdict": "divergence",
+    "why": "`rclcpp_lifecycle::State` is a CLASS wrapping `rcl_lifecycle_state_t` -- an id, a heap-allocated `label` string, and the `rcl_allocator_t` that owns it. Ours is `cpp:LifecycleState`, a `uint8_t`-backed `enum class` over the five REP-2002 primary states plus an `Unknown = 0` sentinel: with no allocator there is nothing to own the label, and the id is the whole of what the state machine actually compares. See `cpp:LifecycleState` in the lifecycle stage for the ours-only half."
+  },
+  "cpp:State::State": {
+    "verdict": "divergence",
+    "why": "no constructor, because ours is an enum rather than a class. See `cpp:State`."
+  },
+  "cpp:State::id": {
+    "verdict": "divergence",
+    "why": "the value IS the enum in ours (`cpp:LifecycleState`), so there is nothing for an accessor to unwrap. See `cpp:State`."
+  },
+  "cpp:State::label": {
+    "verdict": "gap",
+    "why": "the human-readable state name (`\"unconfigured\"`, `\"active\"`). Not a divergence: a `const char* to_string(LifecycleState)` over five static literals costs an image almost nothing and needs no allocator -- nobody has written one. A C++ caller that wants to print a lifecycle state today has to switch on the enum itself. Same shape as `cpp:Transition` in the lifecycle stage. Phase 379 W3."
+  },
+  "cpp:Stream": {
+    "verdict": "divergence",
+    "why": "multi-shot receiver for polling subscriptions and action feedback: `try_next` polls, `wait_next` drives the executor until a value arrives or a wall-clock budget expires. rclcpp has no stream type because it delivers multi-shot data through a subscription callback and single-shot through `std::shared_future`; `<future>` needs threads, an allocator and exceptions, and none of the three is here. Same constraint and same shape as `cpp:Future` in the types stage -- RFC-0021: no futures, no async runtime, every blocking helper takes the executor."
+  },
+  "cpp:Stream::Stream<T>": {
+    "verdict": "divergence",
+    "why": "see `cpp:Stream`."
+  },
+  "cpp:Stream::is_valid": {
+    "verdict": "divergence",
+    "why": "see `cpp:Stream`."
+  },
+  "cpp:Stream::try_next": {
+    "verdict": "divergence",
+    "why": "see `cpp:Stream`."
+  },
+  "cpp:Stream::wait_next": {
+    "verdict": "divergence",
+    "why": "see `cpp:Stream`."
+  },
+  "cpp:TickCtx::TickCtx": {
+    "verdict": "divergence",
+    "why": "see `cpp:TickCtx`."
+  },
+  "cpp:TickCtx::call": {
+    "verdict": "divergence",
+    "why": "see `cpp:TickCtx`."
+  },
+  "cpp:TickCtx::call_raw": {
+    "verdict": "divergence",
+    "why": "see `cpp:TickCtx`."
+  },
+  "cpp:TickCtx::handle": {
+    "verdict": "divergence",
+    "why": "see `cpp:TickCtx`."
+  },
+  "cpp:TickCtx::send_goal": {
+    "verdict": "divergence",
+    "why": "see `cpp:TickCtx`."
+  },
+  "cpp:TopicStatisticsState": {
+    "verdict": "declined",
+    "why": "the on/off knob for rclcpp's per-subscription topic statistics, which measure message age and inter-arrival period and PUBLISH them as `statistics_msgs/MetricsMessage`. A user loses built-in latency/period telemetry. The project's answer is RFC-0052's on-target contract monitor instead (`nros::monitor`: a bounded table of specs checked in the executor, violations drained by the app) -- an image cannot afford a second publisher per subscription nor a rolling sample window per topic."
+  },
+  "cpp:TypeAdapter": {
+    "verdict": "declined",
+    "why": "rclcpp's type adaptation: publish a user's own struct on a topic whose wire type is a generated message, with a `TypeAdapter` specialisation converting between them. A user loses that and converts into the generated type by hand before publishing. Two things stop it being merely undone: the conversion needs somewhere to put the converted message and there is no allocator, and the machinery is template metaprogramming over `std::string`/`std::vector` members that the freestanding, `-fno-exceptions` C++ profile (RFC-0018) does not compile. Neither our C nor our Rust has an equivalent either."
+  },
+  "cpp:WaitResultKind": {
+    "verdict": "declined",
+    "why": "the `{Ready, Timeout, Empty}` outcome of `WaitSet::wait()`. rclcpp's `Waitable` protocol; see the pubsub stage's `cpp:Waitable::take_data`. RFC-0002's executor drives entities through the RMW vtable, so there is no wait set and no wait result."
+  },
+  "cpp:adapt_type": {
+    "verdict": "declined",
+    "why": "see `cpp:TypeAdapter`."
+  },
+  "cpp:add_will_overflow": {
+    "verdict": "declined",
+    "why": "rclcpp's saturating-arithmetic predicates, whose reason to exist is guarding `Time`/`Duration` nanosecond arithmetic against overflow. Our C++ has no clock, time or duration type at all (the timer stage records that; C and Rust both do have one), so there is nothing here for them to guard -- a user loses the guards along with the arithmetic they guard. Not a platform constraint: the check compiles to `__builtin_add_overflow` anywhere."
+  },
+  "cpp:add_will_underflow": {
+    "verdict": "declined",
+    "why": "see `cpp:add_will_overflow`."
+  },
+  "cpp:get_c_string": {
+    "verdict": "divergence",
+    "why": "rclcpp's `std::string` -> `const char*` adapter, which exists because rclcpp's API takes `std::string` and rcl takes `const char*`. Our C++ has no such boundary: `nros-cpp` is freestanding with `-fno-exceptions` (RFC-0018) and gates every `<string>` include on `NROS_CPP_STD` (issue 0112), so the API takes `const char*` throughout and there is nothing to adapt."
+  },
+  "cpp:get_c_vector_string": {
+    "verdict": "divergence",
+    "why": "the same adapter for `std::vector<std::string>` -> `std::vector<const char *>`; neither header is available in the freestanding profile, and the return value allocates. See `cpp:get_c_string`."
+  },
+  "cpp:global_handle": {
+    "verdict": "extension",
+    "why": "the executor handle behind the free-function `nros::init()` / `nros::spin_once()` convenience path, so a caller using it can still hand an executor to `Future::wait` / `Stream::wait_next` -- which they must, because RFC-0021 makes every blocking helper take the executor. rclcpp needs no equivalent: `spin_until_future_complete` takes a node or executor the caller already holds. Returns `nullptr` before `init()`."
+  },
+  "cpp:is_type_adapter": {
+    "verdict": "declined",
+    "why": "see `cpp:TypeAdapter`."
+  },
+  "cpp:sub_will_overflow": {
+    "verdict": "declined",
+    "why": "see `cpp:add_will_overflow`."
+  },
+  "cpp:sub_will_underflow": {
+    "verdict": "declined",
+    "why": "see `cpp:add_will_overflow`."
+  },
+  "cpp:to_string": {
+    "verdict": "divergence",
+    "why": "four overloads across rclcpp (`FutureReturnCode`, `ParameterType`, `ParameterValue`) and rclcpp_action (`GoalUUID`), each returning `std::string`. A returned `std::string` allocates, and the freestanding C++ profile has neither the allocator nor `<string>` (RFC-0018, issue 0112). Where a name is genuinely needed our surfaces return a `const char *` or let the caller format into its own buffer."
+  },
+  "rust:ACTION_SERVER_INTERNAL_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:ACTION_SERVER_RAW_HANDLE_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:AgeMonitorSpec": {
+    "verdict": "extension",
+    "why": "the subscriber-side table: take-age contracts key different endpoints and need no publish counter. See `rust:MonitorSpec`."
+  },
+  "rust:ArrayValue": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:BaseType": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:BoardTransportConfig": {
+    "verdict": "extension",
+    "why": "the trait a BOARD crate implements so the orchestration generator can write `nros.toml` `[[transport]]` values -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
+  },
+  "rust:BoardTransportConfig::set_baudrate": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_gateway": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_interfaces": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_ipv4": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_mac": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_password": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_ssid": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoundedSequenceValue": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:COMPONENT_SLOT_BYTES": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- knob-driven const (`NROS_COMPONENT_SLOT_BYTES`, default 512): byte size of one component slot; a class whose state is bigger fails the placement assert loudly at install, not by overflow."
+  },
+  "rust:CPP_ACTION_CLIENT_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:CPP_ACTION_SERVER_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:CallbackEffectKind": {
+    "verdict": "extension",
+    "why": "that relation: Reads / Publishes / Writes. See `rust:CallbackEffectMetadata`."
+  },
+  "rust:CallbackId": {
+    "verdict": "extension",
+    "why": "the stable source-level identifier a component-mode callback declaration must carry, so the sidecar, the launch model and the image all name the same callback across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:CallbackId::as_str": {
+    "verdict": "extension",
+    "why": "see `rust:CallbackId`."
+  },
+  "rust:CallbackId::new": {
+    "verdict": "extension",
+    "why": "see `rust:CallbackId`."
+  },
+  "rust:ComponentSlotStorage": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- the static a component class places to back its instances: `MAX_CLASS_INSTANCES` slots of `COMPONENT_SLOT_BYTES` each. Macro-emitted per class (`__NROS_COMPONENT_<pkg>_SLOT_STORE`); public so hand-rolled callers can place one too. Non-generic across the C ABI -- C components get theirs from the same macro shape (RFC-0018 component entry)."
+  },
+  "rust:ComponentSlotStorage::new": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- const constructor so the storage can live in a `static`."
+  },
+  "rust:DEFAULT": {
+    "verdict": "extension",
+    "why": "the `nros::qos` module's five profile constants, mirroring rmw's `rmw_qos_profile_*` C constants. Const form because a baked entity declaration needs a value usable in a `static` (RFC-0036/0045); rclrs offers only the function form (`QoSProfile::topics_default()`).\nWORTH ACTING ON: our Rust ships the same five profiles TWICE, as these constants and as `QoSProfile::*_default()`, and the two copies DISAGREE on two of them. `nros::qos::SYSTEM_DEFAULT` is `DEFAULT` (KEEP_LAST depth 10) while `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` is depth 1; `nros::qos::PARAMETERS` is VOLATILE depth 1000 while `QoSProfile::QOS_PROFILE_PARAMETERS` is TRANSIENT_LOCAL depth 1000. Both claim to match upstream and both cannot; upstream `rmw_qos_profile_parameters` is RELIABLE + VOLATILE + KEEP_LAST(1000), so the constant is right and the associated const is wrong. Phase 379 W5."
+  },
+  "rust:DEFAULT_MAX_METADATA_CALLBACKS": {
+    "verdict": "extension",
+    "why": "default capacity for callback/effect records in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
+  },
+  "rust:DEFAULT_MAX_METADATA_ENTITIES": {
+    "verdict": "extension",
+    "why": "default capacity for entities in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
+  },
+  "rust:DEFAULT_MAX_METADATA_NODES": {
+    "verdict": "extension",
+    "why": "default capacity for nodes in `MetadataRecorder`. Static because there is no allocator; public because a component with more than the default overrides it. See `rust:MetadataRecorder`."
+  },
+  "rust:DEFAULT_RX_BUF_SIZE": {
+    "verdict": "extension",
+    "why": "phase-392 W3 -- the fallback subscription receive-buffer size when no `rx_buffer_for!`-derived bound is in play; named so the guess is one auditable const instead of scattered literals."
+  },
+  "rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI": {
+    "verdict": "extension",
+    "why": "255, the C/C++-ABI escape for an EXPLICIT domain 0 (issue 0227). The C init surface carries `domain_id` as a `u8` where `0` means UNSET (defer to env, then the baked macro, then the default), which makes a literal domain 0 unreachable once an image bakes a nonzero default. Since valid domains cap at `DOMAIN_ID_MAX`, 255 is free. rclrs needs no such sentinel: `ROS_DOMAIN_ID` is read from the environment at runtime, and there is no runtime env on an RTOS. See `rust:DOMAIN_ID_MAX`."
+  },
+  "rust:DOMAIN_ID_MAX": {
+    "verdict": "extension",
+    "why": "232 -- the RTPS port-arithmetic cap on a usable ROS 2 domain. A value above it is a configuration error in EVERY language front-end here, never a silent clamp and never a silent 0 (RFC-0045, issue 0206). rclrs passes the domain to rcl and lets rcl judge; an image bakes it at build time, so the judgement has to be reachable from the resolver. Mirrored into the generated C header -- keep the mirror in sync."
+  },
+  "rust:DispatchStrategy": {
+    "verdict": "extension",
+    "why": "where a component's callbacks RUN: Inline (the executor's spin loop, the default), Deferred (a framework-owned task -- an RTIC dispatcher or an Embassy task dequeues and drives them), FromIsr (a reserved discriminant, not implemented). A component whose callbacks take RTIC locks must not run them from the spin task, and that is a property of the component, so it is declared with it. rclrs's answer to the same question is a callback group on a multi-threaded executor, which needs threads and a scheduler we do not have (RFC-0002)."
+  },
+  "rust:DispatchStrategy::from_u8": {
+    "verdict": "extension",
+    "why": "its inverse, `None` for an unknown value so `nros check` can reject it with a diagnostic. See `rust:DispatchStrategy`."
+  },
+  "rust:DispatchStrategy::to_u8": {
+    "verdict": "extension",
+    "why": "the FFI discriminant the `nros::node!` trampoline `__nros_node_<pkg>_dispatch_strategy` returns. See `rust:DispatchStrategy`."
+  },
+  "rust:DynamicBoundedSequence": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequence::as_slice": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequence::upper_bound": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequenceMut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequenceMut::as_mut_slice": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequenceMut::as_slice": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequenceMut::clear": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequenceMut::try_reset": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedSequenceMut::upper_bound": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedString": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedString::upper_bound": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedStringMut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedStringMut::try_assign": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedStringMut::upper_bound": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedWString": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedWString::upper_bound": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedWStringMut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedWStringMut::try_assign": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicBoundedWStringMut::upper_bound": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::convert_from_rmw_message": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::convert_into_rmw_message": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::get": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::get_mut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::iter": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::iter_mut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::new": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::structure": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::view": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessage::view_mut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageLibraryCache": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageLibraryCache::get_or_load": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageLibraryCache::unload": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageView": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageView::get": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageView::iter": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageView::structure": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageViewMut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageViewMut::get": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageViewMut::get_mut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageViewMut::iter": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageViewMut::iter_mut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicMessageViewMut::structure": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequence": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequence::as_slice": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequenceMut": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequenceMut::as_mut_slice": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequenceMut::as_slice": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequenceMut::clear": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:DynamicSequenceMut::reset": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:EXECUTOR_SIZE": {
+    "verdict": "extension",
+    "why": "`nros::sizes` -- the SINGLE SOURCE OF TRUTH for FFI opaque-storage sizes. Each entry is `size_of::<T>()` for a Rust type a C or C++ caller declares inline storage for, and each also emits a `__NROS_SIZE_<NAME>` static whose symbol size the `nros-c` / `nros-cpp` build scripts read back to generate the header's storage macros. It exists because our C and C++ APIs put entities in CALLER-OWNED storage -- no allocator, no pimpl -- so the header has to state a byte count, and a hand-written one is the drift class issues 0088/0114/0122/0123/0245/0268 all belong to. rcl has no counterpart: every `rcl_*_t` hides an `impl` pointer it heap-allocates. Visible from Rust only because the module is `pub` for in-crate `const _: () = assert!(...)` checks."
+  },
+  "rust:EntityId": {
+    "verdict": "extension",
+    "why": "the stable source-level identifier a component-mode entity declaration must carry, so the sidecar, the launch model and the image all name the same entity across rebuilds (RFC-0046). rclrs creates entities anonymously at runtime and has nothing to key. Note it is already `#[doc(hidden)]` in the facade, alongside `NodeId` -- which the node stage recorded as an extension for the same reason. machinery `nros::node!` and the generated runtime expand into, not something a user writes -- `node_metadata.rs`'s own first line says \"shared by metadata discovery and generated runtimes\". Issue 0784: it should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:EntityId::as_str": {
+    "verdict": "extension",
+    "why": "see `rust:EntityId`."
+  },
+  "rust:EntityId::new": {
+    "verdict": "extension",
+    "why": "see `rust:EntityId`."
+  },
+  "rust:EntityKind": {
+    "verdict": "extension",
+    "why": "the entity role recorded for source metadata (Publisher, Subscription, Timer, ServiceServer, ServiceClient, ActionServer, ActionClient, Parameter). See `rust:EntityMetadata`."
+  },
+  "rust:GUARD_CONDITION_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:IntegrityStatus": {
+    "verdict": "extension",
+    "why": "the per-message verdict `validate` returns: sequence gap, duplicate flag, and CRC state as `Option<bool>` so \"no CRC present\" is distinguishable from \"CRC wrong\". See `rust:SafetyValidator`."
+  },
+  "rust:IntegrityStatus::is_valid": {
+    "verdict": "extension",
+    "why": "the one-call collapse of those three. See `rust:IntegrityStatus`."
+  },
+  "rust:IntoPrimitiveOptions": {
+    "verdict": "declined",
+    "why": "rclrs's fluent per-create-site options: `node.create_publisher(\"topic\".keep_last(10).reliable())` builds a `PrimitiveOptions` out of a `&str` and folds it into the entity's QoS. A user loses that spelling AT THE CREATE SITE. QoS and entity options are COMPILE-time here (RFC-0036/0045) -- an entity is declared with a `QoSProfile` const, not with an options value assembled per call -- so there is nothing for the builder to produce. The policy vocabulary itself is not lost: `QoSProfile` carries `keep_last`/`keep_all`/`reliable`/`best_effort`/`volatile`/`transient_local` under exactly these names, plus `deadline_ms`/`lifespan_ms`/`liveliness_kind`/`liveliness_lease_ms`/`avoid_ros_namespace_conventions` as fields. See `rust:QoSProfile`."
+  },
+  "rust:IntoPrimitiveOptions::avoid_ros_namespace_conventions": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::best_effort": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::into_primitive_options": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::keep_all": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::keep_last": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::reliable": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::transient_local": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:IntoPrimitiveOptions::volatile": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:LIFECYCLE_CTX_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:MAX_CELL_ENTITIES": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_CELL_ENTITIES`, default 8): capacity of the heapless per-cell entity registry that replaced the `Vec` one."
+  },
+  "rust:MAX_CLASS_INSTANCES": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_CLASS_INSTANCES`, default 2): per-class instance bound sizing each `ComponentSlotStorage`."
+  },
+  "rust:MAX_COMPONENTS": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- knob-driven const (`NROS_MAX_COMPONENTS`, default 4): the image-wide component count bound `RuntimeSizing` sizes registries from. Compile-time because embedded images have no allocator to grow past it."
+  },
+  "rust:MAX_RESOLVED_NAME_LEN": {
+    "verdict": "extension",
+    "why": "that bound (128 bytes), matched to `METADATA_STRING_CAPACITY` so a name that entered the seam can always leave it. See `rust:ResolvedName`."
+  },
+  "rust:METADATA_STRING_CAPACITY": {
+    "verdict": "extension",
+    "why": "that capacity (128 bytes), and the bound `nros_node::names::MAX_RESOLVED_NAME_LEN` is matched to. See `rust:MetadataString`."
+  },
+  "rust:MessageFieldInfo": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:MessageStructure": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:MessageStructure::get_field_info": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:MessageTypeName": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:MonitorSpec": {
+    "verdict": "extension",
+    "why": "RFC-0052 / phase-296 W3b -- ON-TARGET contract monitors. Codegen emits a `&'static [MonitorSpec]` table plus one `static` counter cell per contracted endpoint from the SystemModel's contract layer; the entry installs it before entity creation, the publish path bumps an atomic (no clock, no lock on the hot path), and the executor checks rate / take-age / node-path latency / deadline-miss on spin ticks and pushes violations into a small ring. An uncontracted image bakes an empty table and every path dead-code-eliminates. ROS 2's answer to the same question is rclcpp's topic statistics plus an external monitor node subscribing to `/statistics` -- a second publisher per subscription and a process that has to be running, neither of which an image has. See `cpp:TopicStatisticsState`."
+  },
+  "rust:OptUs": {
+    "verdict": "extension",
+    "why": "an optional microsecond field with `0` as the absent sentinel, `#[repr(transparent)]` over `u32`. Not `Option<NonZeroU32>`: the niche optimisation is lost the moment a `#[repr(C)]` struct embeds it, and these fields cross the C ABI where cbindgen must emit a plain `uint32_t`. `0` is physically meaningful for every field it covers -- zero period is infinite frequency, zero budget is unbounded, zero deadline is no deadline. See `rust:SchedClass`."
+  },
+  "rust:OptUs::from_nz": {
+    "verdict": "extension",
+    "why": "see `rust:OptUs`."
+  },
+  "rust:OptUs::from_us": {
+    "verdict": "extension",
+    "why": "see `rust:OptUs`."
+  },
+  "rust:OptUs::get": {
+    "verdict": "extension",
+    "why": "see `rust:OptUs`."
+  },
+  "rust:OptUs::is_some": {
+    "verdict": "extension",
+    "why": "see `rust:OptUs`."
+  },
+  "rust:OptUs::raw": {
+    "verdict": "extension",
+    "why": "see `rust:OptUs`."
+  },
+  "rust:PARAMETERS": {
+    "verdict": "extension",
+    "why": "see `rust:DEFAULT`."
+  },
+  "rust:PUBLISHER_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:PrimitiveOptions": {
+    "verdict": "declined",
+    "why": "the value `IntoPrimitiveOptions` produces -- a name plus an optional `QoSProfile`. See `rust:IntoPrimitiveOptions`."
+  },
+  "rust:PrimitiveOptions::apply_to": {
+    "verdict": "declined",
+    "why": "folds the built options into a `QoSProfile`. The equivalent fold exists here and is BAKED rather than per-call: `QoSProfile::apply_overrides`. See `rust:IntoPrimitiveOptions`."
+  },
+  "rust:PrimitiveOptions::new": {
+    "verdict": "declined",
+    "why": "see `rust:IntoPrimitiveOptions`."
+  },
+  "rust:Priority": {
+    "verdict": "extension",
+    "why": "the three dispatch buckets -- Critical / Normal / BestEffort -- drained in order within one `spin_once`. Non-preemptive: a running BestEffort callback still blocks Critical work that becomes ready mid-cycle, which is what one task per executor costs. See `rust:SchedClass`."
+  },
+  "rust:Priority::index": {
+    "verdict": "extension",
+    "why": "see `rust:Priority`."
+  },
+  "rust:PubMonitorCell": {
+    "verdict": "extension",
+    "why": "one contracted publisher's counters, baked as a `static` so the hot path is an atomic bump. See `rust:MonitorSpec`."
+  },
+  "rust:PubMonitorCell::new": {
+    "verdict": "extension",
+    "why": "see `rust:PubMonitorCell`."
+  },
+  "rust:RAW_ACTION_CLIENT_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:RAW_ACTION_SERVER_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:RAW_SERVICE_CLIENT_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:RAW_SERVICE_SERVER_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:RAW_SUBSCRIPTION_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:RawCancelCallback": {
+    "verdict": "extension",
+    "why": "the C-ABI cancel handler an action server registered from C or C++ is driven through: `extern \"C\" fn(&GoalId, GoalStatus) -> CancelResponse`. A raw fn pointer plus a context pointer rather than a boxed closure, because there is no allocator and the executor's callback arena is statically sized. rclrs 0.5.1 has NO action API at all -- not a client, not a server, not a goal type -- so every action item here is unmatched against the Rust reference and is measured against rclcpp_action instead."
+  },
+  "rust:Rmw": {
+    "verdict": "extension",
+    "why": "the compile-time backend factory a backend crate implements: `open(&RmwConfig) -> Session`. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:Rmw::open": {
+    "verdict": "extension",
+    "why": "see `rust:Rmw`."
+  },
+  "rust:RmwConfig": {
+    "verdict": "extension",
+    "why": "the middleware-agnostic open parameters (locator, mode, domain, node name, namespace, properties) a backend maps onto its own. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:RmwSession": {
+    "verdict": "extension",
+    "why": "`nros::internals` -- backend-agnostic aliases resolving to the ACTIVE backend's concrete types, and the entry points the C API drives them through. Named `internals` and documented as \"implementation details of the transport backends\", which is the honest half of issue 0784's complaint: the module says what it is, unlike the machinery sitting at the top level of `nros::`. rclrs needs no equivalent because rcl is its only backend and it is resolved at runtime, not by a type alias."
+  },
+  "rust:RmwSubscriber": {
+    "verdict": "extension",
+    "why": "see `rust:RmwSession`. Note the alias says SUBSCRIBER while the trait it aliases is `Subscription` and the concrete type is `CffiSubscription` -- the same word the node stage flagged in `rust:Node::create_subscriber`. Its siblings `RmwPublisher` / `RmwServiceServer` / `RmwServiceClient` landed in the pubsub and service stages."
+  },
+  "rust:RosMessage": {
+    "verdict": "extension",
+    "why": "the trait a generated message type implements: `TYPE_NAME`, `TYPE_HASH`, and `STAMP_OFFSET` -- the codegen-const byte offset of `header.stamp.sec` in the serialised payload, so an on-target `max_age` monitor can peek the timestamp out of the raw receive buffer BEFORE deserialising (RFC-0052). rclrs's equivalent is `rosidl_runtime_rs::Message`, which lives in the message crates rather than the client library. Same reasoning and same wording as `rust:RosService` in the service stage."
+  },
+  "rust:RuntimeSizing": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- `ExecutorSizing`'s sibling one layer up: the compile-time size of the node-runtime's slot storage (component slots, registries), as a value, for the same reason -- the backing store is caller-placed `[u64; N]` statics, so 'how big' is a build-time decision the type carries. Knob-driven (`NROS_MAX_COMPONENTS`, `NROS_COMPONENT_SLOT_BYTES`). Public and non-generic so the C ABI can consume it; const generics stay behind the macro (the `ExecutorSizing` rule)."
+  },
+  "rust:RuntimeSizing::u64_len": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- the `[u64]` word count a caller's static must have to back this sizing; the same contract as `arena_size_for` for the executor arena."
+  },
+  "rust:SENSOR_DATA": {
+    "verdict": "extension",
+    "why": "see `rust:DEFAULT`."
+  },
+  "rust:SERVICES_DEFAULT": {
+    "verdict": "extension",
+    "why": "see `rust:DEFAULT`."
+  },
+  "rust:SERVICE_CLIENT_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:SERVICE_SERVER_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:SESSION_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:SUBSCRIBER_SIZE": {
+    "verdict": "extension",
+    "why": "see `rust:EXECUTOR_SIZE`."
+  },
+  "rust:SYSTEM_DEFAULT": {
+    "verdict": "extension",
+    "why": "see `rust:DEFAULT`."
+  },
+  "rust:SafetyValidator": {
+    "verdict": "extension",
+    "why": "end-to-end message-integrity checking on the SUBSCRIPTION side: a sequence number and a CRC-32/ISO-HDLC travel in the sample's attachment, and the validator reports gap, duplicate and CRC state per message. This is the AUTOSAR E2E / EN 50159 profile, which is what a safety-relevant embedded bus asks for and what a desktop ROS 2 stack does not: rcl trusts the transport, and DDS reliability answers a different question (did the sample arrive) than E2E does (is this the sample the publisher sent, once). Gated on the `safety-e2e` feature; interoperates with non-safety publishers by treating an absent CRC as not-invalid."
+  },
+  "rust:SafetyValidator::new": {
+    "verdict": "extension",
+    "why": "see `rust:SafetyValidator`."
+  },
+  "rust:SafetyValidator::reset": {
+    "verdict": "extension",
+    "why": "see `rust:SafetyValidator`."
+  },
+  "rust:SafetyValidator::validate": {
+    "verdict": "extension",
+    "why": "see `rust:SafetyValidator`."
+  },
+  "rust:SequenceValue": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:Session": {
+    "verdict": "extension",
+    "why": "the per-process anchor a backend hands the executor; every method takes `&mut self`, which is how the single-threaded-transport contract is expressed in the type system. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:Session::close": {
+    "verdict": "extension",
+    "why": "see `rust:Session`."
+  },
+  "rust:Session::drive_io": {
+    "verdict": "extension",
+    "why": "the poll the executor calls before dispatching -- required, with no default body, because a silent no-op was a trap for third-party backends. See `rust:Session`."
+  },
+  "rust:Session::ping_session": {
+    "verdict": "extension",
+    "why": "wire-level connectivity probe, `Unsupported` where the backend has none. Lesson taken from micro-ROS's `rmw_uros_ping_agent`: on a link that can simply go away there is no graph to ask, so an image needs a direct question. See `rust:Session`."
+  },
+  "rust:Session::set_wake_callback": {
+    "verdict": "extension",
+    "why": "the backend-side half of the wake primitive; see the pubsub stage's `c:subscription_set_wake_callback` for what it buys. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:Session::supports_wake_callback": {
+    "verdict": "extension",
+    "why": "whether the backend actually implements the above, so the executor chooses between a wake-primitive wait and a blocking `drive_io` instead of guessing. Poll-only backends (XRCE, bare-metal smoltcp) return `false`. See `rust:Session::set_wake_callback`."
+  },
+  "rust:SessionHandle": {
+    "verdict": "extension",
+    "why": "an opaque, `Send` handle to an `Executor`'s RMW session. In the per-tier model the boot executor opens the ONE session and hands each spawned RTOS task a handle -- not a borrow -- so the task can open its own `Executor` over that same session across the task boundary. That is RFC-0053's shape: one transport, several executors, one per task (RFC-0002). rclrs never needs it because its executor is the thing you move. Wrapping the pointer lets a board crate name and move the handle without naming the concrete session type."
+  },
+  "rust:SessionHandle::from_raw": {
+    "verdict": "extension",
+    "why": "the other end, on the spawned task. Raw because an RTOS task entry point takes a `*mut c_void` and nothing richer. See `rust:SessionHandle`."
+  },
+  "rust:SessionHandle::into_raw": {
+    "verdict": "extension",
+    "why": "see `rust:SessionHandle`."
+  },
+  "rust:SessionMode": {
+    "verdict": "extension",
+    "why": "Client (connect to a router) or Peer (direct). A zenoh concept with no rcl counterpart: ROS 2 nodes are always peers of a DDS domain, while an embedded image usually cannot afford peer-mode discovery and connects to `rmw_zenohd` instead (RFC-0075). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:SessionSpec": {
+    "verdict": "extension",
+    "why": "one backend's declaration for `Executor::open_multi`: which registered RMW to open, at which locator, on which domain. An image may link several backends -- a bridge speaks XRCE to a serial agent and zenoh to a router in the same process -- and each needs its own session. rclrs has one rmw per process, chosen by an environment variable."
+  },
+  "rust:SessionSpec::domain_id": {
+    "verdict": "extension",
+    "why": "see `rust:SessionSpec`."
+  },
+  "rust:SessionSpec::new": {
+    "verdict": "extension",
+    "why": "see `rust:SessionSpec`."
+  },
+  "rust:SimpleValue": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:Slot": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- one aligned region carved out of a caller-supplied `[u64]` backing store; the unit `carve` hands back. `u64` element type gives 8-byte alignment without `repr(align)` generics."
+  },
+  "rust:Slot::as_mut_ptr": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- the region's base pointer, for placement writes."
+  },
+  "rust:Slot::capacity": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- the region's byte length."
+  },
+  "rust:Slot::fits": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- 'does this Layout fit here' as a checked question; the fail-loud arm is an assert in `carve`, this is the queryable form."
+  },
+  "rust:StatusWatcher": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:SubMonitorCell": {
+    "verdict": "extension",
+    "why": "one contracted subscriber's take-age accumulator. The take path peeks `header.stamp` straight out of the raw CDR buffer at `RosMessage::STAMP_OFFSET` and `fetch_max`es the age, so the check costs no deserialization. See `rust:MonitorSpec` and `rust:RosMessage`."
+  },
+  "rust:SubMonitorCell::new": {
+    "verdict": "extension",
+    "why": "see `rust:SubMonitorCell`."
+  },
+  "rust:SubMonitorCell::observe": {
+    "verdict": "extension",
+    "why": "see `rust:SubMonitorCell`."
+  },
+  "rust:TopicInfo": {
+    "verdict": "extension",
+    "why": "the topic descriptor a backend creates an endpoint from: name, type name, type hash, domain, node name and namespace for the liveliness token, plus two embedded-only hints. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:TopicInfo::new": {
+    "verdict": "extension",
+    "why": "see `rust:TopicInfo`."
+  },
+  "rust:TopicInfo::with_domain": {
+    "verdict": "extension",
+    "why": "see `rust:TopicInfo`."
+  },
+  "rust:TopicInfo::with_namespace": {
+    "verdict": "extension",
+    "why": "see `rust:TopicInfo`."
+  },
+  "rust:TopicInfo::with_rx_buffer_hint": {
+    "verdict": "extension",
+    "why": "the subscription's `RX_BUF` passed down so a backend can route it to a size-class receive buffer (zenoh-pico: small vs large). Static receive storage is the constraint -- with no allocator the buffer is chosen at declaration, so the size has to travel with the declaration (RFC-0038). See `rust:TopicInfo`."
+  },
+  "rust:TopicInfo::with_tx_express": {
+    "verdict": "extension",
+    "why": "the per-endpoint form of `rust:QoSProfile::tx_express`. See `rust:TopicInfo`."
+  },
+  "rust:Transport": {
+    "verdict": "extension",
+    "why": "a SECOND factory trait beside `rust:Rmw`, differing only in taking `TransportConfig` rather than `RmwConfig`. Exactly one backend implements it (`ZenohTransport` in `nros-rmw-zenoh/src/shim/transport.rs`) while all five implement `Rmw`, and both are re-exported from `nros::`. Worth a decision in W5: two public spellings of \"open a session\" is a choice nobody makes on purpose. the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage."
+  },
+  "rust:Transport::open": {
+    "verdict": "extension",
+    "why": "see `rust:Transport`."
+  },
+  "rust:TransportConfig": {
+    "verdict": "extension",
+    "why": "the config `Transport::open` takes -- locator, mode, and free-form key/value properties (`multicast_scouting`, `scouting_timeout_ms`, `listen`). Board crates author it; `RmwConfig` is what the executor opens with. See `rust:Transport`."
+  },
+  "rust:TransportError": {
+    "verdict": "extension",
+    "why": "the error every backend operation returns, and the payload of `NodeError::Transport` -- which is what a Rust user actually matches on. Its variants name transport preconditions rcl has no vocabulary for (`IncompatibleQos`, `IncompatibleAbi`, `Disconnected`). the RMW SEAM, one layer below the user API -- what a BACKEND implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` beside the user API, which is issue 0784's complaint. See `rust:Session::create_publisher` in the pubsub stage.\nCORRECTION to issue 0783: that issue says the facade \"exports no way to inspect\" `NodeError` because `TransportError` is not exported. It IS -- `packages/api/nros/src/lib.rs:682` re-exports it unconditionally from `nros_rmw`. What 0783 actually found is that it is missing from the \"Re-export core types\" BLOCK at line 206 and lives in the transport block instead. `RclReturnCode` is genuinely unreachable (types stage, `rust:RclReturnCode`)."
+  },
+  "rust:Value": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:ValueKind": {
+    "verdict": "declined",
+    "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
+  },
+  "rust:ValueMut": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:Violation": {
+    "verdict": "extension",
+    "why": "what the executor pushes into the ring the entry glue drains into the diagnostics reporter. See `rust:MonitorSpec`."
+  },
+  "rust:arena_size_for": {
+    "verdict": "extension",
+    "why": "per-entry executor arena sizing (phase-271, issue 0110): scales the build-time `ARENA_SIZE` linearly by a caller-chosen callback count, floored at the full default. It replaced a workspace-global `NROS_EXECUTOR_ARENA_SIZE` -- one number every entry in the workspace had to share, so a fat entry and a lean one were sized by whichever was declared louder. The arena exists at all because callback closures are stored INLINE with no allocator; over-provisioning is safe, under-provisioning fails entity creation."
+  },
+  "rust:baked_domain_from_c_abi": {
+    "verdict": "extension",
+    "why": "maps that `u8` onto the resolver's baked rung: `0` -> None, 255 -> Some(0), else Some(n), with 233..=254 passed through so the resolver rejects them loudly rather than this edge inventing its own validation. See `rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI`."
+  },
+  "rust:carve": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- split a caller's `[u64]` static into `Slot`s per a `RuntimeSizing`; asserts (fail-loud) rather than truncating when the store is too small. No upstream analogue: rcl allocates."
+  },
+  "rust:crc32": {
+    "verdict": "extension",
+    "why": "CRC-32/ISO-HDLC over a byte slice -- the same polynomial AUTOSAR E2E and EN 50159 name, with a `const`-built table so a `no_std` image pays no init. Public because a user who bakes their own attachment has to compute the same value. See `rust:SafetyValidator`."
+  },
+  "rust:drive_session_io": {
+    "verdict": "extension",
+    "why": "the C API executor's pre-poll hook, delegating to `Session::drive_io`. See `rust:RmwSession` and `rust:Session::drive_io`."
+  },
+  "rust:force_link_backend": {
+    "verdict": "extension",
+    "why": "a DCE anchor, not a registration (issue 0330). On a pure-Rust staticlib image the Zephyr module emits a WEAK `nros_rmw_<name>_register` and calls it only if it resolves; the strong definition is the backend crate's `#[no_mangle]` export, and rustc's staticlib DCE drops it unless something in the crate being compiled REFERENCES that crate. The symbol is then present in the rlib and absent from the `.a`, the weak call sees NULL, and the image boots with no backend (issues 0155/0163). The app crate invokes it because the app crate is what selects an RMW; nano-ros's own RMW-agnostic layers must not name a backend. rclrs has no equivalent because rcl loads its rmw as a shared object at runtime."
+  },
+  "rust:get_dynamic_message_package_cache": {
+    "verdict": "divergence",
+    "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
+  },
+  "rust:open_session": {
+    "verdict": "extension",
+    "why": "opens a backend session behind one signature, honouring the `$NROS_RMW` selector so a C bridge built with two linked backends pins its primary deterministically instead of taking whichever `.init_array` constructor fired first. Used by `nros-c`; Rust callers use `Executor::open`. See `rust:RmwSession`."
+  },
+  "rust:panic_halt": {
+    "verdict": "extension",
+    "why": "the `panic = \"halt\"` body: mask interrupts through the platform critical section, then spin forever. For an image that must not print -- no formatting, no allocation, no call out to the platform. Masking first is deliberate, so the parked core cannot be woken back into a half-dead system by a timer or a driver ISR still armed from before the panic. A body rather than a re-export of the `panic-halt` crate so choosing it costs the entry no new dependency. See `rust:panic_to_platform`."
+  },
+  "rust:panic_to_platform": {
+    "verdict": "extension",
+    "why": "emits the image's `#[panic_handler]`, formatting the panic into a 192-byte STACK buffer (never the heap -- the allocator may be exactly what failed) and handing it to `nros_platform_panic`. A `no_std` binary must supply that lang item or it does not link, and rclrs is `std`-only so libstd supplies it there. Normally reached as `nros::main!(panic = \"platform\")`; the macro is the escape hatch for images whose entry cannot carry the item -- a hand-rolled `no_std` binary, or the lib side of a `staticlib` crate. Deliberately NOT emitted invisibly: `#[panic_handler]` is a singleton of the final artifact and images that already declare their own (`esp_backtrace`, `panic-semihosting` with `features = [\"exit\"]` so QEMU exits instead of hanging a test) are right."
+  },
+  "rust:rx_buffer_for": {
+    "verdict": "extension",
+    "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run."
+  },
+  "rust:zephyr_component_main": {
+    "verdict": "extension",
+    "why": "emits Zephyr's `rust_main` for a self-bringup Rust component package: open a Zephyr executor, register the component, spin forever. A framework ENTRY macro, the same category as `nros::main!`, needed because a Zephyr `rust_cargo_application()` image has no `fn main` of its own and there are no POSIX-style constructor sections to register from (see the CLAUDE.md pitfall). Gated on `rmw-cffi` rather than on a platform feature, because it is codegen and its `::zephyr::*` paths resolve only in a zephyr build."
+  }
 }

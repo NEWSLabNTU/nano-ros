@@ -59,6 +59,14 @@
     "verdict": "extension",
     "why": "the raw + message-info form; see `c:publish_raw` and `rust:RawMessageInfo`."
   },
+  "c:executor_get_publishers_info_by_topic": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+  },
+  "c:executor_get_subscriptions_info_by_topic": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+  },
   "c:get_zero_initialized_publisher": {
     "verdict": "declined",
     "why": "rcl's free-function spelling; ours is `nros_publisher_get_zero_initialized`, a method-style name on the type. See `c:get_zero_initialized_node`."
@@ -389,6 +397,14 @@
   "cpp:ComponentNode::create_subscription_in": {
     "verdict": "extension",
     "why": "the callback-group form: like `cpp:ComponentNode::create_subscription` but associates the subscription with a named group, so the executor binds it to that group's SchedContext (RFC-0047). rclcpp carries the group through `SubscriptionOptions` instead -- `cpp:Node::create_publisher_in` records the shape."
+  },
+  "cpp:Executor::get_publishers_info_by_topic": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+  },
+  "cpp:Executor::get_subscriptions_info_by_topic": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
   },
   "cpp:GenericPublisher": {
     "verdict": "declined",
@@ -1050,6 +1066,14 @@
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
+  "rust:Executor::get_publishers_info_by_topic": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+  },
+  "rust:Executor::get_subscriptions_info_by_topic": {
+    "verdict": "divergence",
+    "why": "phase-381 W3/W4. Same verb as ROS 2; the RECEIVER differs. ROS 2 hangs the graph off a node because each Node/Context owns a participant; a nano-ros image opens ONE session for the whole image -- a session per node is RAM a 128 KiB target does not have -- and the Executor owns it. NOT a `rename`: the name follows the receiver, and the receiver is where the session is. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
+  },
   "rust:Executor::register_subscription_buffered_raw_info_on": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
@@ -1169,6 +1193,14 @@
   "rust:Node::publisher_topic_info": {
     "verdict": "extension",
     "why": "see `rust:Node::publisher_count`."
+  },
+  "rust:Node::subscription_count": {
+    "verdict": "extension",
+    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. Renamed to `subscription_count` on 2026-08-26 with the rest of the cluster; see `rust:Node::create_subscriber`. counts what THIS NODE declared -- `active` entries of its own static table (nros-node/src/node.rs:360-367) -- which is a different question from what the graph holds. rclrs's `count_subscriptions` asks the graph about a topic. Recorded as an extension, matching `rust:Node::publisher_count` three lines away in the same impl; an earlier `rename` verdict here was wrong, because giving our declaration-side counter the graph query's name would leave the graph query nowhere to land. The rename applies to `create_subscriber`, the entity-creation verb, not to this."
+  },
+  "rust:Node::subscription_topic_info": {
+    "verdict": "extension",
+    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. see `rust:Node::subscriber_count`."
   },
   "rust:NodeHandle::create_publisher": {
     "verdict": "divergence",
@@ -1522,9 +1554,17 @@
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
+  "rust:SubscriptionHandle": {
+    "verdict": "rename",
+    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. NOTE: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`) — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked before renaming), but the two `SubscriptionHandle`s in this tree are unrelated. LANDED 2026-08-26 (phase-379 W5). Rust now spells this `subscription`, matching rclrs, rclcpp, rclc and our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). The whole cluster moved together — `create_subscriber`, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info`, `SubscriberHandle` — because renaming the verb and leaving its options/handle types behind is the half-fix this ledger keeps recording. NOTE for a future reader: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`), which is a different concept — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked), but the two `SubscriptionHandle`s in this tree are unrelated. OUR LANGUAGES DISAGREE, and it is the same word the node stage already flagged: rclrs, rclcpp and rclc all say SUBSCRIPTION, and so do our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). This is the standalone (non-component) node's handle type and it moves with `rust:Node::create_subscriber` / `SubscriberOptions` / `subscriber_count` -- see that row in the node stage. `SubscriptionHandle`. Nothing about an RTOS asks for the shorter word. Phase 379 W5. (Consumers outside `nros-node`: none -- it is re-exported from `nros::` and unused, so the rename is free today.)"
+  },
   "rust:SubscriptionOptions": {
     "verdict": "rename",
     "why": "SATISFIED 2026-08-26 — ours now carries this name. rclrs spells it `SubscriptionOptions`; ours is `SubscriberOptions`. Moves with `rust:Node::create_subscriber`."
+  },
+  "rust:SubscriptionOptions::qos": {
+    "verdict": "extension",
+    "why": "The builder-style QoS setter on the standalone node's `SubscriptionOptions`. rclrs carries QoS in `SubscriptionOptions` too but reaches it through `IntoPrimitiveOptions`/`.qos(..)` on the topic string rather than a method on the options struct, so the member does not correlate. Surfaced 2026-08-26 by the `subscriber`->`subscription` rename: the type's old name meant this member was filed under a key that no longer exists."
   },
   "rust:SubscriptionTag": {
     "verdict": "extension",
@@ -1545,21 +1585,5 @@
   "rust:WorkerSubscriptionCallback": {
     "verdict": "declined",
     "why": "see the node stage's `rust:Node::create_worker`."
-  },
-  "rust:SubscriptionOptions::qos": {
-    "verdict": "extension",
-    "why": "The builder-style QoS setter on the standalone node's `SubscriptionOptions`. rclrs carries QoS in `SubscriptionOptions` too but reaches it through `IntoPrimitiveOptions`/`.qos(..)` on the topic string rather than a method on the options struct, so the member does not correlate. Surfaced 2026-08-26 by the `subscriber`->`subscription` rename: the type's old name meant this member was filed under a key that no longer exists."
-  },
-  "rust:Node::subscription_count": {
-    "verdict": "extension",
-    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. Renamed to `subscription_count` on 2026-08-26 with the rest of the cluster; see `rust:Node::create_subscriber`. counts what THIS NODE declared -- `active` entries of its own static table (nros-node/src/node.rs:360-367) -- which is a different question from what the graph holds. rclrs's `count_subscriptions` asks the graph about a topic. Recorded as an extension, matching `rust:Node::publisher_count` three lines away in the same impl; an earlier `rename` verdict here was wrong, because giving our declaration-side counter the graph query's name would leave the graph query nowhere to land. The rename applies to `create_subscriber`, the entity-creation verb, not to this."
-  },
-  "rust:Node::subscription_topic_info": {
-    "verdict": "extension",
-    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. see `rust:Node::subscriber_count`."
-  },
-  "rust:SubscriptionHandle": {
-    "verdict": "rename",
-    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. NOTE: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`) — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked before renaming), but the two `SubscriptionHandle`s in this tree are unrelated. LANDED 2026-08-26 (phase-379 W5). Rust now spells this `subscription`, matching rclrs, rclcpp, rclc and our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). The whole cluster moved together — `create_subscriber`, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info`, `SubscriberHandle` — because renaming the verb and leaving its options/handle types behind is the half-fix this ledger keeps recording. NOTE for a future reader: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`), which is a different concept — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked), but the two `SubscriptionHandle`s in this tree are unrelated. OUR LANGUAGES DISAGREE, and it is the same word the node stage already flagged: rclrs, rclcpp and rclc all say SUBSCRIPTION, and so do our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). This is the standalone (non-component) node's handle type and it moves with `rust:Node::create_subscriber` / `SubscriberOptions` / `subscriber_count` -- see that row in the node stage. `SubscriptionHandle`. Nothing about an RTOS asks for the shorter word. Phase 379 W5. (Consumers outside `nros-node`: none -- it is re-exported from `nros::` and unused, so the rename is free today.)"
   }
 }

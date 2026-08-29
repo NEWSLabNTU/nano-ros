@@ -51,6 +51,39 @@ int main(void) {
     nros_ret_t (*p_count_sub)(struct nros_executor_t *, const char *, size_t *) =
         nros_executor_count_subscribers;
 
+    /* phase-381 W3/W4 — the six per-node and per-topic forms.
+     *
+     * `nros_executor_get_subscriber_names_and_types_by_node`, NOT
+     * `subscription`: the C surface takes rcl's vocabulary
+     * (`rcl_get_subscriber_names_and_types_by_node`), while C++ and Rust take
+     * rclcpp's and rclrs's `subscription`. If someone "aligns" the three, this
+     * line stops compiling — which is the point of naming it here. */
+    nros_ret_t (*p_pub_by_node)(struct nros_executor_t *, const char *, const char *,
+                                nros_names_and_types_visit_fn, void *) =
+        nros_executor_get_publisher_names_and_types_by_node;
+    nros_ret_t (*p_sub_by_node)(struct nros_executor_t *, const char *, const char *,
+                                nros_names_and_types_visit_fn, void *) =
+        nros_executor_get_subscriber_names_and_types_by_node;
+    nros_ret_t (*p_srv_by_node)(struct nros_executor_t *, const char *, const char *,
+                                nros_names_and_types_visit_fn, void *) =
+        nros_executor_get_service_names_and_types_by_node;
+    nros_ret_t (*p_cli_by_node)(struct nros_executor_t *, const char *, const char *,
+                                nros_names_and_types_visit_fn, void *) =
+        nros_executor_get_client_names_and_types_by_node;
+    nros_ret_t (*p_pubs_info)(struct nros_executor_t *, const char *,
+                              nros_endpoint_info_visit_fn, void *) =
+        nros_executor_get_publishers_info_by_topic;
+    nros_ret_t (*p_subs_info)(struct nros_executor_t *, const char *,
+                              nros_endpoint_info_visit_fn, void *) =
+        nros_executor_get_subscriptions_info_by_topic;
+
+    (void)p_pub_by_node;
+    (void)p_sub_by_node;
+    (void)p_srv_by_node;
+    (void)p_cli_by_node;
+    (void)p_pubs_info;
+    (void)p_subs_info;
+
     /* And the visitor typedefs must accept a conforming function. */
     nros_node_visit_fn nv = visit_node;
     nros_names_and_types_visit_fn ntv = visit_names_and_types;
