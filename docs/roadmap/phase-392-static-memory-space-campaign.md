@@ -148,6 +148,31 @@ What it costs, and why this is a wave rather than a decision:
 not they later share an arena, and a smaller worst case makes the sharing
 question cheaper to answer.
 
+**This REOPENS a question this document had closed, and the two texts must not
+be left disagreeing.** "Explicitly out of scope" below declines moving payload
+buffers to the heap, and it is the same move. Recorded 2026-08-29, on a rebase
+that brought the two into one file.
+
+The framing here is better — tier-gated rather than universal, aggregate peak
+rather than risk appetite, a wave rather than a decision — and it answers one of
+the two grounds the refusal rested on: an allocation that can fail mid-callback
+is confined to tiers that already admit an allocator.
+
+It does not answer the other, which is the stronger one. Sharing widens the
+arena's block-size range from infrastructure-only (~2^6) to payload-inclusive
+(~2^16), and that range is precisely what makes [phase
+391](phase-391-allocation-unification-and-tier-model.md)'s constant-time
+allocator sizeable. The refusal was not about whether pooling wastes RAM — it
+plainly does — but about the cost landing on the allocator that phase 391 is
+built around.
+
+So the question is live, not settled either way, and the deciding measurement is
+NAMED rather than argued: what the wider block-size range costs rlsf in control
+words and in its `1/SLLEN` bound, on a real image, against the aggregate-vs-sum
+saving it buys. Until that exists, neither section may be treated as the
+campaign's position, and lever 1 proceeds regardless — which both texts already
+agree on.
+
 ### C. Field storage mode does NOT shrink wire buffers — restated, because it keeps being proposed
 
 Lever 2 above already draws this distinction. Restating it as a decision record
@@ -692,7 +717,12 @@ It is currently 1 everywhere, which is why it has never been the visible term.
 
 ## Explicitly out of scope
 
-**Moving payload buffers to the heap.** It would convert `12 x 4 x 1024` of
+**Moving payload buffers to the heap.** REOPENED by amendment B above
+(2026-08-29) and no longer this campaign's settled position — read the two
+together, and see B for the measurement that decides it. The original reasoning
+stands as the case against, unchanged:
+
+It would convert `12 x 4 x 1024` of
 always-reserved RAM into peak-of-concurrent, which is a real saving, and it is
 declined deliberately. A statically provable buffer would become an allocation
 that can fail mid-callback, and it would widen the heap's block-size range from
