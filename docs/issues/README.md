@@ -53,7 +53,7 @@ Issues cross-link to the RFCs and phases that inform or resolve them via the
 
 <!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
 
-48 open. One line each — the detail lives in the issue file,
+47 open. One line each — the detail lives in the issue file,
 which already has it. Regenerate with `scripts/gen-issue-index.py`;
 `check-issue-index` fails if this block drifts.
 
@@ -104,7 +104,6 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
 - **#0879** (rmw) — the serial link cannot resynchronise after a peer reset — the router loops on `Unexpected Init flag in message` until it is restarted See `0879-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
-- **#0889** (rmw) — The Cyclone RMW installs no wake callback, so the executor polls on a timer and mostly misses See `0889-*`.
 
 <!-- END GENERATED open-issue list -->
 
@@ -259,15 +258,13 @@ callback PARAMETERS (`cb`, `chunk_cb`, `size_cb`) that share the `(*name)(` shap
 rejects those by paren depth, which matters because counting one shifts every later slot NUMBER.
 See `archived/0826-*`. (2026-08-27)
 
-**#0889** (rmw, open 2026-08-29) - the Cyclone RMW leaves `set_wake_callback` NULL, so
-`has_async_wake` is false, `spin_once` never uses its wake primitive, and the executor polls every reader on
-a timer. Measured on the an536 lane: 5,069 takes per reader for 42 deliveries - **0.8% of takes find data**.
-The executor's own comment already names the cost for poll-only backends ("a no-op sleep that starves
-reliable retransmission", phase-127.C.4). A participant-level `data_available` listener is implemented and
-builds, but is NOT landed: one run showed zero deliveries and so did a run with it reverted, because the
-lane's variance swamps the signal - and listener invocation consumes the communication status this backend
-polls, which `reset_on_invoke=false` is meant to prevent and nobody has confirmed. Needs a repeatable rig.
-See `0889-*`. (2026-08-29)
+Recently resolved (2026-08-29): **#0889** (rmw) — the Cyclone RMW left
+`set_wake_callback` NULL, so `Executor::has_async_wake` stayed false, `spin_once` never used its wake
+primitive, and the runtime polled every reader on a timer: 5,069 takes per reader for 42 deliveries on the
+an536 lane, a 0.8% hit rate. Fixed with a participant-level `data_available` listener — safe from
+Cyclone's thread because the runtime callback only writes a flag and signals a condvar. Verified as
+non-breaking (delivery unchanged across two an536 runs) rather than by a hit-rate number; the rig that
+would produce one is still missing. See `archived/0889-*`.
 
 **#0835** (testing, open 2026-08-27) — the cmake and rust fixture families RE-STALE EACH OTHER, so
 `check-fixtures-stale` never reaches a fixed point: three consecutive runs on a tree with a green `lane=all`
