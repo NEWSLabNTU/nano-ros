@@ -91,6 +91,23 @@ impl Handoff {
         self
     }
 
+    /// The same handoff with `--offline` dropped, or `None` when it
+    /// carried none.
+    ///
+    /// For escalating an offline step that failed for want of a warm
+    /// registry cache (issue 0873). `None` is the signal that offline
+    /// was not why it failed, so there is nothing to retry — never a
+    /// silent no-op retry of the identical command.
+    #[must_use]
+    pub fn without_offline(&self) -> Option<Self> {
+        if !self.args.iter().any(|a| a == "--offline") {
+            return None;
+        }
+        let mut next = self.clone();
+        next.args.retain(|a| a != "--offline");
+        Some(next)
+    }
+
     /// Render the command the way a user could retype it.
     ///
     /// For `--dry-run` and for error messages. NOT shell-quoted, and it must
@@ -266,5 +283,29 @@ mod tests {
             code.contains("cmd.exec()"),
             "the handoff must still be an exec"
         );
+    }
+
+    #[test]
+    fn escalating_offline_drops_exactly_that_flag() {
+        // Issue 0873: the retry must differ from the original in
+        // ONE way. Anything else and a cold-cache retry would run a
+        // command the caller never authorised.
+        let h = Handoff::new("cargo", vec!["generate-lockfile", "--offline"])
+            .in_dir("/w")
+            .with_env("NROS_CARGO_FLAGS", "");
+        let online = h.without_offline().expect("it carries --offline");
+        assert_eq!(online.args, vec![OsString::from("generate-lockfile")]);
+        assert_eq!(online.cwd, h.cwd, "the retry must run in the same dir");
+        assert_eq!(online.env, h.env, "and with the same environment");
+        assert_eq!(online.program, h.program);
+    }
+
+    #[test]
+    fn a_step_that_never_asked_for_offline_has_no_retry() {
+        // `None` is what stops `run_configure` from re-running an
+        // identical command and reporting the second failure as if
+        // it were new information.
+        let h = Handoff::new("cmake", vec!["--build", "."]);
+        assert!(h.without_offline().is_none());
     }
 }

@@ -2,7 +2,7 @@
 id: 873
 title: "All three nightly platform jobs fail on `generate-lockfile --offline` against
   a cold registry — an infrastructure fault reported as platform overclaim"
-status: open
+status: resolved
 type: bug
 area: ci
 related: [issue-0863, issue-0676, phase-395]
@@ -63,3 +63,38 @@ an esp32 dependency it never uses, purely because they share a workspace root.
 
 Do not demote the affected platforms in `board-support.toml`. The claim is not
 what is broken.
+
+## Fix — the offline step escalates instead of failing
+
+`cmd/build.rs::run_configure` runs the configure step, and on failure
+retries it ONCE with `--offline` dropped (`Handoff::without_offline`,
+`None` when the step never asked for offline — so nothing re-runs an
+identical command and reports the second failure as new information).
+
+The reasoning that picks this over the alternatives: **`--offline` is an
+OPTIMIZATION on this path, never a semantic choice.** The step resolves a
+lock for a root this process just generated, and issue 0676's frozen
+property belongs to the BUILD, which stays `--locked` either way. So
+offline buys "do not touch the network when the answer is already local",
+and nothing else — which is worth keeping as the fast path, and worth
+nothing at all when the answer is not local.
+
+The retry cannot change WHAT resolves: the offline cache is a subset of the
+registry, so a lock that resolves offline resolves identically online. It
+changes only whether resolution can happen. A genuinely missing package
+still fails, now with the registry's own error rather than cargo's
+`offline mode (via --offline) can sometimes cause surprising resolution
+failures` note — which is a strict improvement on the diagnostic that sent
+this issue to the platforms in the first place.
+
+Not chosen, and why:
+
+- **`cargo fetch` before the offline step** — puts network at a defined
+  point, but at EVERY build, including the warm-cache case that is the
+  common one and currently costs nothing.
+- **Vendoring** — a large permanent artifact for a transient cache
+  problem.
+- **Splitting `examples/workspaces/rust`** — addresses the real
+  amplifier (a freertos build resolving `esp-backtrace` because they share
+  a root) and is worth doing on its own merits, but it is a layout change
+  with its own fallout, and it would not fix the general cold-cache case.

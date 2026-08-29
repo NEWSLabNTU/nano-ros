@@ -621,17 +621,63 @@ pub fn run(args: Args) -> Result<()> {
         // code path. It is a subprocess, not an exec: the exec below has to
         // survive it.
         if let Some(cfg) = &p.configure {
-            let st = cfg
-                .command()
-                .status()
-                .wrap_err_with(|| format!("running `{}`", cfg.display()))?;
-            if !st.success() {
-                eyre::bail!("configure failed: `{}` exited {}", cfg.display(), st);
-            }
+            run_configure(cfg)?;
         }
         // Never returns on success: this process BECOMES the build.
         let err = crate::builder::handoff::exec(hand).unwrap_err();
         eyre::bail!("{err}");
+    }
+    Ok(())
+}
+
+/// Run a configure step, escalating an `--offline` failure to one
+/// online retry.
+///
+/// `--offline` is an OPTIMIZATION on this path, never a semantic
+/// choice. The step resolves a lock for a root this process just
+/// generated, and issue 0676's frozen property belongs to the BUILD,
+/// which stays `--locked` either way — so offline buys "do not touch
+/// the network when the answer is already local", and nothing else.
+///
+/// Offline resolution fails for exactly one reason a retry fixes: the
+/// registry cache does not hold some member's dependency yet. On CI
+/// that cache is cold every run, which is why all three nightly
+/// platform lanes died here — on `esp-backtrace` and
+/// `panic-semihosting`, dependencies of workspace MEMBERS the built
+/// platform never uses, reached only because `examples/workspaces/rust`
+/// is one cargo workspace and resolving it resolves every member
+/// (issue 0873). Reported as five OVERCLAIMED platforms, which is a
+/// claim about the platforms rather than about our registry cache.
+///
+/// The retry cannot change WHAT resolves: the offline cache is a subset
+/// of the registry, so a lock that resolves offline resolves identically
+/// online. It changes only whether resolution can happen at all. A
+/// genuinely missing package still fails, now with the registry's own
+/// error instead of cargo's "offline mode (via `--offline`) can
+/// sometimes cause surprising resolution failures" note.
+fn run_configure(cfg: &Handoff) -> Result<()> {
+    let st = cfg
+        .command()
+        .status()
+        .wrap_err_with(|| format!("running `{}`", cfg.display()))?;
+    if st.success() {
+        return Ok(());
+    }
+
+    let Some(online) = cfg.without_offline() else {
+        eyre::bail!("configure failed: `{}` exited {}", cfg.display(), st);
+    };
+    eprintln!(
+        "nros build: warning: `{}` failed against a cold registry cache; \
+         retrying online (issue 0873)",
+        cfg.display()
+    );
+    let st = online
+        .command()
+        .status()
+        .wrap_err_with(|| format!("running `{}`", online.display()))?;
+    if !st.success() {
+        eyre::bail!("configure failed: `{}` exited {}", online.display(), st);
     }
     Ok(())
 }
