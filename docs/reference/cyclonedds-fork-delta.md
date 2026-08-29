@@ -30,8 +30,14 @@ when upstream releases.
 
 ## What the fork adds
 
-15 commits, 39 files, +2251/−117 against the 0.10.x boundary `5041f356`.
-Five groups:
+19 commits, 45 files, +2353/−130 against the 0.10.x boundary `5041f356`.
+Seven groups.
+
+Re-measured 2026-08-29 and it had drifted BOTH ways: the headline said 15
+while the tables below listed 17, and `ae14b312` appeared in neither. A
+count that disagrees with its own table is worse than no count — it reads
+as the authoritative number. The two verification recipes at the bottom
+are the check; run them rather than trusting this line.
 
 ### 1. ThreadX / NetX Duo port (6 commits) — a platform upstream does not have
 
@@ -48,13 +54,14 @@ Almost entirely **additive** — new `ddsrt/{sync,threads,sockets,time,heap,
 ifaddrs,process}/threadx/` trees plus the `DDSRT_WITH_THREADX` selection arms.
 Retired only if upstream accepts a ThreadX port, which nobody has offered.
 
-### 2. Zephyr platform gaps (3 commits)
+### 2. Zephyr platform gaps (4 commits)
 
 | commit | subject |
 | --- | --- |
 | `290152c0` | fix(zephyr): tolerate NSOS socket gaps |
 | `1d794c0a` | ddsi_udp: Zephyr multicast join via `struct ip_mreqn` (issue 0231) |
 | `4aa337b0` | q_sockwaitset: AF_UNIX socketpair self-pipe on native-IP-stack Zephyr |
+| `ae14b312` | ddsrt: initialise the atomics mutexes at runtime on the Zephyr backend |
 
 Upstream *does* have a Zephyr port (`ports/zephyr`, `WITH_ZEPHYR`); these are
 places where it does not survive contact with Zephyr's native IP stack / NSOS.
@@ -107,6 +114,12 @@ seconds later, which is exactly how 0371 cost as much time as it did.
 | `22150fbf` | fix(freertos): avoid TLS-only DDS state |
 | `99cfac88` | ddsrt: give every FreeRTOS thread its lwIP per-thread netconn semaphore |
 
+With `LWIP_NETCONN_SEM_PER_THREAD=1` every thread touching the socket API needs
+its own netconn semaphore. ddsrt creates its own threads and never called
+`lwip_socket_thread_init()`, so the first socket call from one asserted
+`sem != NULL`. `thread_start_routine` is the point they have in common. Found by
+phase-370 W4, the first work to boot an embedded Cyclone image at all.
+
 ### 6. The platform allocation funnel (1 commit)
 
 | commit | subject |
@@ -122,11 +135,34 @@ UNREFERENCED in native cyclone images; it now has 4 inbound edges and the whole
 Compile-time rather than weak-linked on purpose: weak linkage leaves the libc
 branch in the binary, and its absence is what a tier gate has to read.
 
-With `LWIP_NETCONN_SEM_PER_THREAD=1` every thread touching the socket API needs
-its own netconn semaphore. ddsrt creates its own threads and never called
-`lwip_socket_thread_init()`, so the first socket call from one asserted
-`sem != NULL`. `thread_start_routine` is the point they have in common. Found by
-phase-370 W4, the first work to boot an embedded Cyclone image at all.
+### 7. Nested-build path resolution (1 commit)
+
+| commit | subject |
+| --- | --- |
+| `556f79d4` | build: resolve Cyclone's own paths by project, not by CMAKE_SOURCE_DIR |
+
+`CMAKE_SOURCE_DIR` is the TOP-LEVEL project's source dir, so a reference to a
+Cyclone file spelled that way is correct only when Cyclone is the top-level
+project. We reach it by `add_subdirectory()`, where it names nano-ros's root.
+
+Latent until section 6 made it reachable: `_confgen`'s hash check watches
+`ddsi_config.c`, so the first edit to that file arms the regeneration branch and
+its four `AppendHashScript.cmake` commands look for the script under nano-ros.
+The failure is not clean — `_confgen-exe` has already rewritten `defconfig.c`,
+`options.md`, `cyclonedds.rnc` and `cyclonedds.xsd` in the SOURCE tree, and the
+step that dies is the one appending the hashes, so a nested build leaves four
+generated files modified and hash-less and the next configure re-arms the same
+branch. This is what blocked routing `ddsi_config_init` through the funnel.
+
+`project(CycloneDDS ...)` defines `CycloneDDS_{SOURCE,BINARY}_DIR`, which mean
+"Cyclone's root" regardless of who included it. Identical to the old spelling in
+a standalone build, so upstream behaviour is unchanged and cyclone's own ctest
+suite is unaffected. Fixed at all nine sites that mean Cyclone's own tree
+(`_confgen`, `idlc/xtests`, `src/idl`'s `MAIN_PROJECT_DIR`, `fuzz`), not only
+the one that breaks a build today. `core/xtests/cdrtest` keeps its
+`CMAKE_SOURCE_DIR`: its scripts live in that test's own directory, so it is
+wrong standalone too — a different bug in a target this change cannot exercise.
+
 
 Pushed to `origin/nano-ros` as a fast-forward over `8601ca66`, and the
 superproject pin bumped to it afterwards — that order, not the reverse: a pin
@@ -176,10 +212,10 @@ Then, two recipes that cross-check each other:
 
 ```sh
 # by boundary: 5041f356 is the newest upstream 0.10.x commit the stack sits on
-git log --oneline 5041f356..origin/nano-ros          # -> 15
+git log --oneline 5041f356..origin/nano-ros          # -> 19
 
 # by authorship, as an independent check
-git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 15
+git log --oneline --author=jerry73204 origin/master..origin/nano-ros   # -> 19
 ```
 
 Do not count `origin/master..origin/nano-ros` alone: it sweeps in upstream 0.10.x
