@@ -1,0 +1,97 @@
+# Tell the author when the merge queue ejects their pull request — phase-395.
+#
+# GitHub records `removed_from_merge_queue` in the PR's TIMELINE and posts
+# NOTHING. There is no comment, no assignment, no push signal of any kind. So an
+# agent that opens a pull request, enables auto-merge and moves on never learns
+# it was ejected: the PR simply sits `OPEN`, looking queued, forever.
+#
+# That is the unattended-CI failure this campaign exists to remove, one level up
+# from where it started. The reds that went unread for six days were unread
+# because nothing told anyone; a merge-queue ejection is the same shape, and it
+# is worse, because the author has already stopped watching by the time it
+# happens.
+#
+# `workflow_run` rather than a step inside `pr-checks`: a failing run cannot
+# reliably report on itself — the failure may be the runner, the container, or a
+# cancellation — and a notifier that shares a fate with the thing it reports is
+# not a notifier. This is a separate workflow, on a separate runner, that reads
+# the completed run.
+name: queue-notify
+
+on:
+  workflow_run:
+    workflows: ["pr-checks", "queue"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  notify:
+    # Only a FAILED merge-group run. A failed pull_request run already shows on
+    # the PR's own checks list, where the author is looking; this exists for the
+    # case where they are not.
+    if: >-
+      ${{ github.event.workflow_run.event == 'merge_group'
+          && github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on the ejected pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+        run: |
+          set -uo pipefail
+
+          # `gh-readonly-queue/main/pr-19-<sha>` — the queue puts the PR number
+          # in the ref, which is the only place it appears.
+          pr="$(printf '%s' "$HEAD_BRANCH" | sed -n 's#.*/pr-\([0-9][0-9]*\)-.*#\1#p')"
+          if [ -z "$pr" ]; then
+            echo "::warning::could not parse a PR number from '$HEAD_BRANCH' — nothing to notify"
+            exit 0
+          fi
+          echo "ejected pull request: #$pr"
+
+          # Post once per run, not once per re-check: a comment per attempt
+          # turns a bad afternoon into an unreadable thread.
+          body="$(cat <<MSG
+          **Ejected from the merge queue** — \`$WORKFLOW\` failed on the merge group.
+
+          [Run log]($RUN_URL)
+
+          A merge group tests \`main\` + your PR, a commit that exists nowhere else, so
+          "green on my PR" and "red in the queue" are both true. Before re-queuing:
+
+          \`\`\`
+          just queue-triage $pr     # is this yours, or is the check red for everyone?
+          \`\`\`
+
+          If it is yours, reproduce the merged state rather than re-running your branch:
+
+          \`\`\`
+          git fetch origin && git rebase origin/main
+          just ci-l1                 # the SAME tier the merge group runs
+          \`\`\`
+
+          **Do not re-queue an unchanged commit.** The queue re-runs the same tree and
+          fails the same way. Re-queue with a new commit, or with evidence the failure
+          was a flake — and if it was, capture the log first so the next author does not
+          pay the same hour.
+
+          <sub>Posted by \`queue-notify\`; GitHub itself records an ejection only in the
+          PR timeline, with no comment and no notification.</sub>
+          MSG
+          )"
+
+          # Strip the heredoc's leading indentation.
+          printf '%s\n' "$body" | sed 's/^          //' > /tmp/body.md
+
+          if gh pr comment "$pr" --repo "${{ github.repository }}" --body-file /tmp/body.md; then
+            echo "commented on #$pr"
+          else
+            # A notifier that fails the workflow teaches people to ignore it.
+            echo "::warning::could not comment on #$pr — the ejection is still real"
+          fi
