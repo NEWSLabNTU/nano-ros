@@ -60,3 +60,52 @@ The instrumentation for this already exists and is proven on this board:
 
 Capture one *failing* goal on the tap and establish whether the reply is never
 sent or never arrives. That is one experiment and it splits the problem in half.
+
+
+## First experiment done — the reply is never SENT, and the failure is board-side
+
+Two adjacent goals on one run, captured through the socat tap (which does not
+halt the core), one failing and one succeeding, 3821 and 3826 bytes of wire
+traffic respectively — near-identical volume.
+
+| | succeeding | failing |
+| --- | --- | --- |
+| `send_goal` query in | `router->board len=92` | `router->board len=92` |
+| board's accept reply | `board->router len=187` … `_action/send_` | same |
+| next | `router->board len=82` | `router->board len=82` |
+| next | `board->router len=78` | `board->router len=78` |
+| **then** | **`board->router len=209`** | **`board->router len=51`, then keepalives only** |
+
+The payloads:
+
+```
+OK   len=209: 10/fibonacci/_action/get_result/example_interfaces::action::dds_::
+              Fibonacci_GetResult_/TypeHashNotSupported  <result payload>
+FAIL len=51:  %...!..C!.................I.%...i..h4XK.O..........   (no key at all)
+```
+
+**Two conclusions, both firm:**
+
+1. **The `get_result` query REACHES the board.** The `router->board len=82`
+   frame is present in both runs, and the board answers it in both — differently.
+   So nothing is lost on the way in.
+
+2. **The result reply is never sent.** In the success the board emits a keyed
+   209-byte frame carrying the `get_result` keyexpr and the payload. In the
+   failure that frame never appears; a 51-byte frame with no keyexpr goes out
+   instead, and the link then carries only keepalives.
+
+So this is **not a transport defect**. The link delivers the query, the board
+receives it, and the board's own action/`get_result` path fails to produce the
+reply. That halves the problem exactly as intended and moves it off the wire and
+into the RMW/executor side.
+
+## Next
+
+Identify the 51-byte frame. It shares its leading bytes with the `len=78` frame
+that precedes it in both runs, so it is likely a short protocol message — a
+zenoh `Err` reply or a final-marker with no payload — rather than a malformed
+result. Decoding it names what the board thinks it is answering with.
+
+That is a decoder change, not a hardware run: the bytes are already captured in
+the tap dumps.
