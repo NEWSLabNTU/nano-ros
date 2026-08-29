@@ -4,10 +4,113 @@
 **Amends:** RFC-0014 (`nros setup` toolchain management) — extends its index
 from two dependency classes to all of them; changes no existing `[tool.*]` /
 `[source.*]` semantics.
+**Amended:** 2026-08-29 — `[prereq.*]` (one key namespace over four providers),
+unknown keys are an error, and rosdep is no longer consulted. See the amendment
+below; it REVERSES §"System-aware resolution".
 **Motivated by:** issue 0368 — a simulated end-user `just setup all` on a clean
 Ubuntu 22.04 host failed 7 of 18 modules, nearly all on dependencies that were
 declared nowhere (or declared as a Debian-only sudo list ordered in front of
 the sudo-less installers it then aborted).
+
+## Amendment (2026-08-29) — `[prereq.*]`: one key namespace, four providers, no rosdep
+
+Motivated by a second instance of the class this RFC was written for. An agent
+hit `libslirp.so.0` missing on the store's QEMU — a dependency **this index
+already declares** (`[tool.qemu] system = ["libslirp"]`, probed by
+`[system.libslirp] check.sharedlib`), with a comment saying it was declared
+precisely so setup and doctor could say so "BEFORE the smoke check fails with a
+bare loader error". It could not: nothing consulted the declaration on the path
+where the tool is USED, so the loader spoke first. (Fixed separately — the store
+resolver now probes.)
+
+That is a consumer gap, not a schema gap. But it exposed the schema gap behind
+it: **a user cannot declare a prerequisite at all.** `package.xml` `<depend>`
+feeds build ORDER only, and a name that is not a workspace package is silently
+ignored by construction. Every prereq in this tree is declared by the index, for
+the index's own tools; nothing carries a user's.
+
+### What changes
+
+**1. `[prereq.<key>]` replaces `[system.<key>]` as the user-facing namespace,
+and spans all four providers.** The providers already exist as separate classes
+— `[system.*]` (OS package), `[tool.*].dist` (download), `[tool.*].source` +
+`install` (build from source), `[source.*]` (submodule). What did not exist is
+one name a consumer can write without knowing which of the four answers it.
+
+```toml
+[prereq.libslirp]                  # provider = "system" is the default
+why      = "qemu -netdev user"
+apt      = ["libslirp0"]
+dnf      = ["libslirp"]
+pacman   = ["libslirp"]
+brew     = ["libslirp"]
+check    = { sharedlib = "libslirp.so.0" }
+
+[prereq.qemu]
+provider = "sdk"                   # resolves through the existing [tool.qemu]
+[prereq.freertos-kernel]
+provider = "source"                # resolves through the existing [source.*]
+```
+
+`provider` defaults to `system`, so all 25 existing `[system.*]` entries are
+valid `[prereq.*]` entries unchanged — this is a rename plus a default, not a
+migration. `check` and `why` are kept and are the point: they are what makes a
+missing prereq *diagnosable* rather than a loader error.
+
+**2. Resolution is a ladder, and an unknown key is an ERROR.** For each
+`<depend>` in a consumer's `package.xml`:
+
+| rung | outcome |
+| --- | --- |
+| a workspace package | build ORDER, not a prereq — today's behaviour |
+| a generated message package | `nros sync` owns it |
+| a `[prereq.*]` key | its provider installs it; `check` decides present/absent |
+| anything else | **error, naming the key** |
+
+The message-package rung is not decoration. `std_msgs` is a legitimate key in
+other ecosystems and a *generated* crate here; without an explicit rung, sync
+and the prereq resolver both claim it and the winner is whichever ran last.
+
+The last rung is the behaviour change, and it is the whole point. Today an
+unrecognised `<depend>` is dropped in silence — the same silence that let a
+declared dependency reach the dynamic loader. `NROS_ALLOW_UNRESOLVED_DEPS=1`
+opts out for a tree mid-migration; it is an escape hatch, not a mode.
+
+**3. rosdep is NOT consulted. This REVERSES §"System-aware resolution" above.**
+
+That section makes rosdep an optional resolver for managers the index does not
+map, and reports 12 of 24 keys resolvable from the public database. The
+reversal is deliberate and the reasoning is not "rosdep is bad":
+
+* **It answers for one provider of four.** rosdep has no concept of an SDK dist,
+  a submodule, or a source build, so it can never be the resolver — only a
+  partial one, which means every consumer needs the fallback logic anyway.
+* **It cannot carry a `check`.** The probe is what turns "missing package" into
+  a named remedy, and it is the half that would have prevented this
+  amendment's motivating failure. A resolver that supplies packages but not
+  probes leaves the diagnosable part to us regardless.
+* **A resolver consulted only sometimes is a resolver whose behaviour depends on
+  the host.** "rosdep is installed here and not there" makes the same tree
+  resolve differently on two machines, which is the drift this RFC exists to
+  delete.
+
+**Keep the key NAMES rosdep uses** where one exists (`libslirp`, not `slirp`).
+That is free, makes porting an existing rosdep list mechanical, and costs no
+runtime dependency. Compatibility with the *database* was the only real prize,
+and it is not worth a host-dependent resolver to reach half of it.
+
+Consequence: the `rosdep_resolve` fallback in `cmd/setup.rs` (phase-327 W6)
+becomes dead and should be deleted with this work, not left as an unreachable
+branch.
+
+### What this amendment does not decide
+
+* **Whether `[system.*]` is renamed in place or `[prereq.*]` is added beside it.**
+  Both spellings can coexist during migration; the SSoT must end as one table.
+* **The `check` vocabulary for non-system providers.** `cmd`/`pkg_config`/
+  `sharedlib` were written for OS packages; what proves an SDK dist or a
+  submodule is present is `[tool.*]`/`[source.*]` machinery that already exists
+  and is not obviously the same shape.
 
 ## Problem
 
@@ -96,6 +199,11 @@ probes (the zephyr ninja/aria2c check, the rmw_zenoh apt hint, the esp_idf
 venv assumption all move into entries).
 
 ### System-aware resolution
+
+> **REVERSED 2026-08-29** — see the amendment at the top: rosdep is no longer
+> consulted at all. The paragraph below describing it as an optional resolver
+> is kept for the record of why it was tried and what it measured (12/24 keys),
+> not as current behaviour.
 
 `nros setup` detects the package manager (apt/dnf/pacman/brew; `os-release`
 plus `command -v` fallback) and resolves `[system.*]` keys through the
