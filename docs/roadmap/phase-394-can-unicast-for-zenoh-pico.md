@@ -391,6 +391,17 @@ MIT, vendored to `zenoh-pico/third_party/isotp-c/` with provenance and the
 licence verbatim in `VENDOR.md`. Only the six library files are taken; upstream's
 build system, tests and submodules are not.
 
+The copy now comes from `jerry73204/isotp-c`, one commit above that pin, adding
+an `ISO_TP_NO_FORMATTED_ERRORS` flag that drops the library's only use of
+`snprintf` -- two formatted diagnostics, each writing into a 128-byte stack
+buffer, which between them made a full `snprintf` a hard requirement of the
+whole library on the targets it exists for. Off by default. On Cortex-M4 at
+`-Os -DNDEBUG -ffreestanding` it takes `.text` from 2235 to 2091 bytes and the
+largest stack frame from 160 to 32, after which the object needs nothing from
+libc but `memcpy` and `memset`. The fork is staging, not a destination:
+[SimonCahill/isotp-c#75](https://github.com/SimonCahill/isotp-c/pull/75) is
+open to retire it.
+
 `scripts/can/isotp-c-mcu-check.sh` builds it for a bare-metal Cortex-M4 and
 fails if an allocator appears. It does not: the caller supplies both buffers to
 `isotp_init_link`. What it does need from outside is the three hooks plus
@@ -640,26 +651,68 @@ seconds, and the checksum in `nros-sdk-index.toml` verifies it either way.
   ROS topic traffic over ISO-TP on a shared `vcan0`
   (`scripts/test/isotp-zephyr-tier2.sh`).
 
+### Also proven, after a correction
+
+The earlier draft of this section said flatly that **nothing** about timing was
+testable without hardware. That was too broad, and measuring it showed why.
+
+`STmin` and `BS` live in the kernel's ISO-TP state machine, driven by hrtimers
+rather than by the CAN controller, so they behave identically on `vcan` and on
+a wire. A probe settled it: at `stmin=0` the ConsecutiveFrames came out 0.06 ms
+apart, at `stmin=5ms` they came out 5.07 ms apart, and `bs=4` turned one
+FlowControl into eleven.
+
+So the ISO-TP link now takes `stmin` and `bs` as endpoint parameters, and
+`transport_unicast_isotp_flow_control_reaches_the_wire` asserts they arrive:
+1024 bytes at `stmin=1ms` is about 147 ConsecutiveFrames and cannot complete
+sooner than roughly 147 ms, against 12 ms unpaced. Removing the parameters
+fails the test, so it is measuring the pacing and not merely the transfer.
+
+These are the only two knobs ISO 15765-2 gives a receiver, and they are what a
+small peer has to defend itself with against a Linux box that would otherwise
+send 4 KiB as fast as its controller will take it.
+
+**Several pairs on one bus** is proven too, for correctness:
+`transport_unicast_isotp_two_pairs_share_a_bus` runs two independent identifier
+pairs concurrently and asserts exact per-pair message counts, so a socket
+accepting the other pair's frames fails it. Pointing both pairs at the same
+identifiers does fail it, with `pair 0 received 35 messages, expected exactly
+20`.
+
 ### Not proven
 
-* **Anything about timing.** See §5. `vcan` has no bit rate; Zephyr's own suite
-  skips `stmin`. No latency, bandwidth or arbitration claim in this phase is
-  supported by evidence.
-* **More than one peer per bus.** ISO-TP addresses a peer by a directed
-  identifier pair; nothing here tests several pairs sharing one physical bus,
-  where arbitration and bus load start to matter.
-* **Anything upstream.** No issue filed, no PR opened, ECA and `Signed-off-by`
-  outstanding.
+* **The bus itself.** Bit rate, propagation delay, and above all
+  **arbitration**. `vcan` queues frames rather than contending for them, so
+  every ordering observed on it is a scheduling artefact. The priority-major
+  identifier layout is the CAN link's central design claim and it has never
+  been seen winning a collision. `scripts/can/arbitration-check.sh` is the
+  experiment, written and refusing to run on a virtual interface; it needs a
+  real bus.
+* **Contention between peers.** Two pairs transfer correctly side by side, but
+  nothing yet measures what happens when they compete for the wire under load.
 
 ### Next, in the order that retires the most risk
 
-1. **Tier 3 hardware.** MR-CANHUBK344 to a Linux host, on a real bit rate. This
-   is the only item that closes the one open risk, and everything else is
-   waiting behind an assumption it would test.
-2. **Several peers on one bus.** Two identifier pairs first, then contention.
-3. **Upstream.** An issue on `eclipse-zenoh/zenoh` describing the multicast
-   query limitation, and PRs for the two link crates. The branches are pushed;
-   the ECA and sign-off are the author's to give.
+1. **Tier 3 hardware.** MR-CANHUBK344 to a Linux host at a real bit rate. Now
+   the only open item, and the only one that can settle arbitration. Run
+   `scripts/can/arbitration-check.sh --dev can0`: it compares the tail latency
+   of an urgent stream against a saturating bulk stream with the identifiers
+   assigned both ways round. If the two cases look alike, the priority mapping
+   buys nothing on real hardware and the claim in the link's documentation
+   should be withdrawn rather than defended.
+2. **Contention under load.** Once a bus exists, extend the two-pair test to
+   measure rather than merely assert: throughput per pair, and what a
+   saturating transfer does to a concurrent one.
+Upstream is done and in review:
+
+| PR | what |
+| --- | --- |
+| [eclipse-zenoh/zenoh#2757](https://github.com/eclipse-zenoh/zenoh/pull/2757) | the two link crates |
+| [eclipse-zenoh/zenoh-pico#1298](https://github.com/eclipse-zenoh/zenoh-pico/pull/1298) | the same pair for zenoh-pico |
+| [eclipse-zenoh/zenoh-c#1322](https://github.com/eclipse-zenoh/zenoh-c/pull/1322) | feature passthroughs; waits on zenoh#2757 |
+| [SimonCahill/isotp-c#75](https://github.com/SimonCahill/isotp-c/pull/75) | `ISO_TP_NO_FORMATTED_ERRORS`, to retire the vendoring fork |
+
+rmw_zenoh is held until zenoh#2757 lands.
 ---
 
 ## 12. Branch inventory
@@ -671,12 +724,17 @@ is the set to build against today.
 
 | repo | `feat/can-links` (upstream main) | `feat/can-links-ros` (ROS stable) |
 | --- | --- | --- |
-| `jerry73204/zenoh` | `93cf1b3e5` — on main, 1.10.0 | `bf01b3ac1` — on 1.8.0 |
-| `jerry73204/zenoh-pico` | `75bbb28e` — on upstream main | `0fdd49ce` — on release/1.8.0 |
-| `jerry73204/zenoh-c` | `0c401df8` — on main | `911db8e8` — on `05bd370`, the commit rmw_zenoh pins |
-| `jerry73204/rmw_zenoh` | `a24b450` — on rolling | `5b4c693` — on humble |
+| `jerry73204/zenoh` | `80ff24441` -- on main, 1.10.0 | `a84e9c0c8` -- on 1.8.0 |
+| `jerry73204/zenoh-pico` | `cb486dbf` -- on upstream main | `9ab534b5` -- on release/1.8.0 |
+| `jerry73204/zenoh-c` | `67f9b1dc` -- on main | `1bc04fd6` -- on `05bd370`, the commit rmw_zenoh pins |
+| `jerry73204/rmw_zenoh` | `019f058` -- on rolling | `0346674` -- on humble |
 
-`jerry73204/zenoh-pico`'s **`nano-ros`** branch (`8e08e8b8`) is separate from
+Each `feat/can-links*` is **two commits**, one per link, so the CAN link can be
+reviewed and taken without the ISO-TP one. The first adds no ISO-TP files at
+all. Every commit is authored `jerry73204 <jerry73204@gmail.com>` and carries a
+`Signed-off-by`, which the Eclipse ECA check requires.
+
+`jerry73204/zenoh-pico`'s **`nano-ros`** branch (`dac320e3`) is separate from
 both and is what this repository's submodule tracks. The two `feat/can-links*`
 branches are PORTS of the same work onto clean upstream bases; nothing moved off
 `nano-ros`.
