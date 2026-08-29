@@ -599,6 +599,8 @@ check-build: \
     check-claim-protocol \
     check-flake-quarantine \
     check-ci-doc-workflow-refs \
+    check-ci-image-python-deps \
+    check-kconfig-overridden-values \
     check-ps-zombie-blind \
     check-gate-selftests \
     check-lane-contracts \
@@ -3510,6 +3512,27 @@ check-ps-zombie-blind:
 [private]
 check-ci-doc-workflow-refs:
     @python3 scripts/check-ci-doc-workflow-refs.py
+
+# The zephyr CI image must install every Python module its own checker demands
+# (issue 0878). It did not, so all 21 Zephyr nightly cells failed at
+# `just zephyr setup` before any build — and a uniformly red lane cannot report
+# a regression, which is how issue 0876 rode in.
+[group("checks")]
+check-ci-image-python-deps:
+    @python3 scripts/check-ci-image-python-deps.py
+
+# A Kconfig line that a later CONF_FILE fragment overrides is a line that does
+# nothing, and nothing said so (issue 0876). A RATCHET, not a prohibition —
+# shared board fragments are legitimately an override layer. Refresh with
+# `python3 scripts/check-kconfig-overridden-values.py --update`, and say why.
+[group("checks")]
+check-kconfig-overridden-values:
+    @python3 scripts/check-kconfig-overridden-values.py
+
+# Did the last nightly REPORT, or merely go red? (issue 0878) Never gates.
+[group("ci")]
+nightly-triage runs="3":
+    @python3 scripts/ci/nightly-triage.py --runs {{runs}}
 
 # Triage a merge-queue ejection — answers the one question GitHub cannot:
 # is this MY defect, or is the check red for everybody? Re-queuing an unchanged
