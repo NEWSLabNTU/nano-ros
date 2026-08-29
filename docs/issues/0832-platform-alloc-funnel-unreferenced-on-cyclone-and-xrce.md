@@ -65,6 +65,56 @@ nothing exercises it.
   there — so the fix is about the tier promise and the embedded case, not about
   native behaviour.
 
+## Resolution, cyclone half (2026-08-29)
+
+Two fork commits and one build fix, in that dependency order:
+
+| what | where |
+| --- | --- |
+| `ddsrt`'s heap routed through the funnel | fork `6e2ad36f` |
+| the nested-build path bug that blocked editing `ddsi_config.c` | fork `556f79d4` |
+| the four ddsi sites that called libc directly | fork `8e6ff48a` |
+
+The middle one was not foreseen. `_confgen`'s hash check watches
+`ddsi_config.c`, which is the file two of the bypass edges live in, and its
+regeneration commands resolved `AppendHashScript.cmake` through
+`CMAKE_SOURCE_DIR` — nano-ros's root under `add_subdirectory`. Worse, the
+failure is not clean: `_confgen-exe` has already rewritten four generated files
+in the SOURCE tree when the hash-appending step dies, so the tree does not
+settle until they are restored by hand.
+
+Three of the four ddsi sites were **already bugs**, independent of the funnel.
+They allocate from one heap and release to the other:
+
+* a listelem `malloc`'d in `network_interface_find_or_append`, freed by
+  `free_all_elements`' `ddsrt_free`;
+* `split_at_comma`'s `ddsrt_malloc`'d array released with libc `free`;
+* a `calloc`'d `->verbatim` released through `dds_stream_free_sample`, whose
+  allocator is `{ddsrt_malloc, ddsrt_realloc, ddsrt_free}`;
+* (the fourth) a `ddsrt_asprintf` string freed with `free`, under `DDS_HAS_SHM`.
+
+On POSIX both heaps are glibc, so none of them can fault natively — which is
+why they survived. They cross real heaps on ThreadX, FreeRTOS and Zephyr, and
+under the funnel.
+
+Two sites were checked and deliberately left: `sysdeps.c`'s `free` pairs with
+`backtrace_symbols`, which glibc allocated, and `q_freelist.c`'s `free` is the
+function's own parameter, not libc.
+
+Measured after: `libddsc.a` has exactly one object referencing a raw libc
+allocator — `sysdeps.c.o`'s `free`, the correct one. A binary linking the
+funnelled `ddsc` against `libnros_platform_posix.a` carries 7 funnel call sites
+and runs: `ddsrt_malloc`/`realloc`/`free` round-trip, then a domain and
+participant created and deleted with a `NetworkInterfaceAddress` config, which
+is what drives the two `ddsi_config.c` sites (its deprecation warning proves the
+path executed). Backend suite 22/22.
+
+**Still open: the XRCE half.** `get_ip_from_iface` was not touched, so the xrce
+row of the table above stands.
+
+**Also open: coverage.** The funnel-ON path is built by no fast-line lane — see
+issue 0881. The verification above is by hand.
+
 ## Method note
 
 Two false readings were produced and discarded while measuring this, both worth
