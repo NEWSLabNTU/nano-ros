@@ -133,6 +133,12 @@ add_compile_definitions(
     MEMP_NUM_PBUF=128
     MEMP_NUM_NETBUF=64
     PBUF_POOL_SIZE=128
+    # issue 0836 — the mbox holds 64, but every inbound frame first needs a
+    # `tcpip_msg` from MEMP_NUM_TCPIP_MSG_INPKT, whose lwIP default is 8. A
+    # mailbox sized past the pool that feeds it cannot fill: the 9th frame of a
+    # burst fails memp_malloc and tcpip_input returns ERR_MEM, so the driver
+    # drops it. Size the pool WITH the mbox or raising the mbox does nothing.
+    MEMP_NUM_TCPIP_MSG_INPKT=64
     TCPIP_MBOX_SIZE=64
     DEFAULT_UDP_RECVMBOX_SIZE=64
     DEFAULT_TCP_RECVMBOX_SIZE=32

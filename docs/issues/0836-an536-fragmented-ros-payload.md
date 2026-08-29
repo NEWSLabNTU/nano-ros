@@ -2,7 +2,7 @@
 id: 836
 title: "A FreeRTOS/lwIP image receives every small ROS topic and never a
   fragmented one — a 13 KiB Autoware trajectory never arrives"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-385, issue-0749, issue-0830]
@@ -312,6 +312,55 @@ That is the next thread, and it is a different bug from the one fixed here.
 * **The measurement above was nearly taken on a stale image.** The built an536
   artifact predated the commit that raised `PBUF_POOL_SIZE` 24 -> 128 by two
   hours. → the mtime rule now in CLAUDE.md.
+
+## RESOLVED — it was TWO bugs, and the second is ours
+
+Burst survival is now lossless (ICMP echo over a `-net socket` backend, replies
+per burst):
+
+| burst | as reported | + QEMU fix | + pool fix |
+| --- | --- | --- | --- |
+| 8 | 6 | 6 | **8** |
+| 16 | 8 | 14 | **16** |
+| 32 | 8 | 30 | **32** |
+| 64 | 14 | 58 | **64** |
+
+**Bug 2: `MEMP_NUM_TCPIP_MSG_INPKT` was left at its lwIP default of 8.**
+
+Every inbound frame needs one `tcpip_msg` before `tcpip_input` can hand it to
+the stack. The board raised `TCPIP_MBOX_SIZE` to 64 but not the pool that feeds
+it, so the mailbox could hold 64 messages that could never exist: the 9th frame
+of any burst fails `memp_malloc(MEMP_TCPIP_MSG_INPKT)`, `tcpip_inpkt` returns
+`ERR_MEM`, and the driver drops it (counted as `inerr`).
+
+That is the answer to the anomaly recorded at the top of this investigation and
+left unexplained: the cap landed on **exactly 8 regardless of frame size**, from
+242 B to 1414 B. Count-shaped, because it was a count — one message per frame
+from a pool of eight. It is also why the earlier attempt to fix this by raising
+the mailbox changed nothing: right instinct, wrong knob, and nothing in lwIP
+warns that a mailbox sized past its pool cannot fill.
+
+A 13 KiB trajectory is ~10 fragments. At a pool of 8 the sample was not
+"usually lost" — it was **structurally impossible to receive**.
+
+### Hypotheses this killed
+
+Recorded because each was written into this issue as plausible, and each died to
+a counter rather than an argument:
+
+* **pbuf-pool exhaustion** — `nopbuf=0`. The `pbuf_alloc`-failure `break` in
+  `lan9118_lwip_poll`, which I proposed fixing, never fired.
+* **RX-fifo byte capacity** — refuted by the cap being invariant across a 6x
+  frame-size range, and by pacing 16 frames 50 ms apart not helping.
+* **Poll cadence / drain budget** — `budget=0`; the 16-frame budget was never
+  exhausted.
+
+### What remains
+
+The QEMU half (`c6f4c95716`) is pushed to the fork but reaches users only in an
+SDK re-cut; it should ride the `-nros3` cut queued for issue 0368. Until then a
+user on the shipped SDK still loses frames past the fifo, though the pool fix
+alone removes the hard 8-frame cap.
 
 ## Still unknown
 
