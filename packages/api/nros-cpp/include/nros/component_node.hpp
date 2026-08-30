@@ -400,6 +400,11 @@ class ComponentNode {
         nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
         C* self = static_cast<C*>(this);
         size_t handle = static_cast<size_t>(-1);
+        // phase-402: the group name is a FIELD now, not a trailing argument.
+        // Start from the library's defaults so a future field cannot be left
+        // as whatever this frame happened to hold.
+        nros_cpp_subscription_options_t sub_options = nros_cpp_subscription_default_options();
+        sub_options.callback_group = group.get_name();
         nros_cpp_ret_t ret = nros_cpp_subscription_register(
             h, topic, M::TYPE_NAME, "", ffi_qos,
             [](const uint8_t* data, size_t len, void* ctx) {
@@ -407,7 +412,7 @@ class ComponentNode {
                 if (M::ffi_deserialize(data, len, &msg) != 0) return;
                 (static_cast<C*>(ctx)->*Method)(msg);
             },
-            self, /*sched_context=*/0, &handle, group.get_name());
+            self, &handle, &sub_options);
         if (ret != 0) {
             set_error("create_subscription_in", ret);
         }

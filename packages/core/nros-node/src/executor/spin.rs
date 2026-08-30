@@ -4820,6 +4820,12 @@ impl<'s> Executor<'s> {
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
         group: Option<&str>,
+        // phase-402 W2 / issue 0896 — bytes the caller expects to receive; 0 =
+        // no opinion. A size-classing backend (zenoh-pico) routes on this, and
+        // a subscription that states nothing takes the SMALL class whatever its
+        // message type. The C path had no way to say it until the options
+        // struct existed.
+        rx_buffer_hint: usize,
     ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -4837,6 +4843,12 @@ impl<'s> Executor<'s> {
             .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
+        }
+        // phase-402 W2 — only when the caller actually stated one:
+        // `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
+        // "no opinion".
+        if rx_buffer_hint != 0 {
+            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
         let handle = {
             let session = self

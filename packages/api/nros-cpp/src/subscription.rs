@@ -122,6 +122,78 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     }
 }
 
+/// Subscription creation options (phase-402).
+///
+/// The three register functions differ in exactly one thing — the callback
+/// type — and used to duplicate eight parameters to say it. The duplication had
+/// already drifted: `callback_group` existed on one of the three and not the
+/// other two, for no reason anyone chose. This struct is the axis that grows
+/// instead of the argument list.
+///
+/// `component.h` records what the flat list already cost: a C caller built
+/// against the 9-arg shape "left the 11th slot as stack garbage, which the Rust
+/// side dereferenced (SIGSEGV in `cstr_to_str` on Zephyr native_sim; silent
+/// luck elsewhere)". A NULL options pointer is all-defaults, which is exactly
+/// the previous behaviour and cannot be misread as garbage.
+///
+/// Precedent is issue 0808 on `create_session`, whose resolution `rmw_entity.h`
+/// records: take one options struct, because
+/// `rmw_{publisher,subscription}_options_t` already solved this for entities.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_cpp_subscription_options_t {
+    /// Receive-buffer size hint in bytes; `0` = use the image default.
+    ///
+    /// Issue 0896: a subscription that states none takes the small size class
+    /// whatever its message type. Codegen's `{Msg}_RX_MAX_SERIALIZED_SIZE` is
+    /// the number to pass.
+    pub rx_buffer_hint: u32,
+    /// Scheduling-context slot; `0` = inherit the executor default.
+    pub sched_context: u8,
+    /// Reserved; must be zero.
+    pub _reserved: [u8; 3],
+    /// Callback group name; NULL = default. Available on ALL THREE register
+    /// variants now, which it was not before.
+    pub callback_group: *const c_char,
+}
+
+impl Default for nros_cpp_subscription_options_t {
+    fn default() -> Self {
+        Self {
+            rx_buffer_hint: 0,
+            sched_context: 0,
+            _reserved: [0; 3],
+            callback_group: core::ptr::null(),
+        }
+    }
+}
+
+/// A zero-initialised [`nros_cpp_subscription_options_t`] — every field
+/// "inherit"/"off", identical to passing NULL.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_cpp_subscription_default_options() -> nros_cpp_subscription_options_t {
+    nros_cpp_subscription_options_t::default()
+}
+
+/// Read a NULLable options pointer into `(sched_context, callback_group,
+/// rx_buffer_hint)`.
+///
+/// ONE reader, shared by all three register variants, so a new field cannot be
+/// honoured by one and ignored by the others — which is the drift that left
+/// `callback_group` on one of three.
+///
+/// # Safety
+/// `options` is NULL or points at a valid `nros_cpp_subscription_options_t`.
+unsafe fn read_subscription_options(
+    options: *const nros_cpp_subscription_options_t,
+) -> (u8, *const c_char, u32) {
+    if options.is_null() {
+        return (0, core::ptr::null(), 0);
+    }
+    let o = unsafe { &*options };
+    (o.sched_context, o.callback_group, o.rx_buffer_hint)
+}
+
 /// Phase 189.M3.x — register a **callback-style** subscription in the executor
 /// arena (rclcpp dispatch model), as opposed to the poll-style
 /// `nros_cpp_subscription_create` above. The arena owns the subscriber; spin
@@ -138,7 +210,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 ///
 /// Phase 273 (RFC-0047): `callback_group` is an optional null-terminated group
 /// name (NULL or empty string ⇒ default group ⇒ node default SchedContext).
-/// Appended at the end for backward compatibility; existing callers pass NULL.
+/// Phase 402 moved it, `sched_context` and `rx_buffer_hint` onto
+/// [`nros_cpp_subscription_options_t`]; a NULL `options` is all-defaults and is
+/// exactly what callers used to get by passing `0` and NULL here.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub unsafe extern "C" fn nros_cpp_subscription_register(
@@ -149,10 +223,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
     qos: nros_cpp_qos_t,
     callback: nros_node::RawSubscriptionCallback,
     context: *mut c_void,
-    sched_context: u8,
     out_handle_id: *mut usize,
-    callback_group: *const c_char,
+    options: *const nros_cpp_subscription_options_t,
 ) -> nros_cpp_ret_t {
+    // phase-402 — ONE reader for all three variants; see
+    // `read_subscription_options`.
+    let (sched_context, callback_group, rx_buffer_hint) =
+        unsafe { read_subscription_options(options) };
     if node.is_null()
         || topic.is_null()
         || type_name.is_null()
@@ -218,6 +295,10 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
         callback,
         context,
         group_str,
+        // phase-402 W2 / issue 0896 — THE point of the options struct: the
+        // caller's per-type receive bound finally reaches the backend, which
+        // routes the payload size class on it. 0 = no opinion, same as before.
+        rx_buffer_hint as usize,
     );
 
     match result {
@@ -265,9 +346,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     qos: nros_cpp_qos_t,
     callback: nros_node::executor::RawSubscriptionInfoCallback,
     context: *mut c_void,
-    sched_context: u8,
     out_handle_id: *mut usize,
+    options: *const nros_cpp_subscription_options_t,
 ) -> nros_cpp_ret_t {
+    // phase-402 — these two could not take a callback group at all before.
+    let (sched_context, callback_group, _rx_buffer_hint) =
+        unsafe { read_subscription_options(options) };
+    let _ = callback_group;
     if node.is_null()
         || topic.is_null()
         || type_name.is_null()
@@ -378,9 +463,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
     qos: nros_cpp_qos_t,
     callback: nros_node::executor::RawSubscriptionSafetyCallback,
     context: *mut c_void,
-    sched_context: u8,
     out_handle_id: *mut usize,
+    options: *const nros_cpp_subscription_options_t,
 ) -> nros_cpp_ret_t {
+    // phase-402 — these two could not take a callback group at all before.
+    let (sched_context, callback_group, _rx_buffer_hint) =
+        unsafe { read_subscription_options(options) };
+    let _ = callback_group;
     if node.is_null()
         || topic.is_null()
         || type_name.is_null()

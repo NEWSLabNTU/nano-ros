@@ -161,6 +161,48 @@ static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publi
     return nros_publish_raw(publisher, buf, n);
 }
 
+/// Typed subscribe helper -- the sibling of fingerprint_corpus_msg_shapes_publish above.
+///
+/// A MACRO, not a function, deliberately. It expands at the CALL SITE, where
+/// <nros/component.h> is already included, so this header keeps its single
+/// include of <nros/types.h> and takes no dependency on the component ABI.
+/// nros_cpp_subscription_register, nros_cpp_node_t, nros_c_qos_default and
+/// nros_c_subscription_callback_t all come from component.h and none of them is
+/// named until the macro is actually used.
+///
+/// ONE token names the type. The ROS type name, the type hash and the
+/// receive-buffer size hint are all derived from it, so they cannot disagree.
+/// The hand-written raw register this replaces named the type TWICE -- once for
+/// _get_type_name() and once for the buffer hint -- with nothing checking the
+/// two agreed (issue 0896).
+///
+/// The `_subscribe_sized` form is the same call with the hint chosen by the
+/// caller: for a type with no receive bound, and for anyone deliberately
+/// overriding the type's own number. `rx_bytes` is a HINT (0 = image default),
+/// never a promise that larger samples are refused.
+///
+/// C ONLY. The options struct is passed as a compound literal, and C++ cannot
+/// take the address of one ("taking address of rvalue"), so the C++ arm below
+/// names a C++ answer instead of leaving that diagnostic to be decoded. C++
+/// callers have a typed subscription already -- nros::Subscription<M> over the
+/// generated .hpp -- and it carries no hint yet; that is the C++ sibling of
+/// this work, not something this macro can supply.
+#define fingerprint_corpus_msg_shapes_subscribe_sized(node, topic, cb, ctx, out_handle, rx_bytes) \
+    nros_cpp_subscription_register_hinted( \
+        (node), (topic), fingerprint_corpus_msg_shapes_get_type_name(), fingerprint_corpus_msg_shapes_get_type_hash(), \
+        nros_c_qos_default(), (cb), (ctx), (out_handle), (uint32_t)(rx_bytes))
+
+/* issue 0896 layer 5 -- this type has NO receive bound
+   (unbounded member: text (string)), so there is no number a plain `_subscribe` could
+   pass, and sizing the buffer is a decision only the caller can make. The macro
+   is emitted anyway, POISONED, so the diagnostic names the type and the member
+   that costs it the bound instead of reporting an undeclared function.
+   Either remove the cause -- see the reason block above, which says whether the
+   bound is ABSENT (bound the field) or merely UNCOMPUTED (fix the search path)
+   -- or call the `_subscribe_sized` form above with a byte count you chose. */
+#define fingerprint_corpus_msg_shapes_subscribe(node, topic, cb, ctx, out_handle) \
+    NROS_UNBOUNDED__fingerprint_corpus_msg_shapes__field_text
+
 #ifdef __cplusplus
 }
 #endif

@@ -22,8 +22,9 @@
  *
  * static nros_ret_t listener_configure(const nros_cpp_node_t* node, listener_t* self) {
  *     size_t h;
+ *     // trailing NULL = default options (phase-402)
  *     return nros_cpp_subscription_register(node, "/chatter", "std_msgs/msg/Int32", "",
- *                                           nros_c_qos_default(), on_raw, self, 0, &h, NULL);
+ *                                           nros_c_qos_default(), on_raw, self, &h, NULL);
  * }
  *
  * NROS_C_COMPONENT(listener_t, listener_configure)  // emits create/configure exports
@@ -176,11 +177,44 @@ static inline nros_cpp_qos_t nros_c_qos_default(void) {
  * shape left the 11th slot as stack garbage, which the Rust side dereferenced
  * (SIGSEGV in `cstr_to_str` on Zephyr native_sim; silent luck elsewhere).
  */
+/** Subscription creation options (phase-402). NULL = every field default,
+ *  which is exactly the pre-phase-402 behaviour.
+ *
+ *  The three register functions differ in ONE thing, the callback type, and
+ *  used to duplicate eight parameters to say it -- with `callback_group`
+ *  present on one of the three and absent from the other two. This struct is
+ *  the axis that grows, so the argument list stops.
+ *
+ *  Get a zeroed one from `nros_cpp_subscription_default_options()` rather than
+ *  declaring it uninitialised: the note above records what a stale slot in the
+ *  flat list already cost.
+ *
+ *  Guarded like the `nros_cpp_qos_t` / `nros_cpp_integrity_status_t` mirrors
+ *  above: cbindgen emits this same struct into `nros_cpp_ffi.h`, so a TU that
+ *  includes BOTH headers (the issue-0160 cross-include gate does exactly that)
+ *  would otherwise hit `redefinition of struct`. ffi.h's definition wins when
+ *  its header guard `NROS_CPP_FFI_H` is already set. */
+#ifndef NROS_CPP_FFI_H
+typedef struct nros_cpp_subscription_options_t {
+    /** Receive-buffer size hint, bytes; 0 = image default. Codegen's
+     *  `{Msg}_RX_MAX_SERIALIZED_SIZE` is the number to pass (issue 0896). */
+    uint32_t rx_buffer_hint;
+    /** Scheduling-context slot; 0 = inherit the executor default. */
+    uint8_t sched_context;
+    /** Reserved; must be zero. */
+    uint8_t _reserved[3];
+    /** Callback group name; NULL = default. Now on ALL THREE variants. */
+    const char* callback_group;
+} nros_cpp_subscription_options_t;
+#endif /* NROS_CPP_FFI_H */
+
+nros_cpp_subscription_options_t nros_cpp_subscription_default_options(void);
+
 int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
                                        const char* type_name, const char* type_hash,
                                        nros_cpp_qos_t qos, nros_c_subscription_callback_t callback,
-                                       void* context, uint8_t sched_context, size_t* out_handle_id,
-                                       const char* callback_group);
+                                       void* context, size_t* out_handle_id,
+                                       const nros_cpp_subscription_options_t* options);
 
 /**
  * Phase 269 W3 — Register a validated subscription: same as
@@ -194,12 +228,35 @@ int32_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* 
  * runtime validates the CRC the publisher attaches (automatic when built with
  * `safety-e2e`); `crc_valid` is `-1` if the publisher sent no CRC.
  */
+/** Register a subscription with a receive-buffer hint, in ONE call.
+ *
+ *  Exists so the generated `{Msg}_subscribe` macro works in C AND C++. The
+ *  obvious macro body takes the address of a compound literal
+ *  (`&(const nros_cpp_subscription_options_t){...}`), which C++ rejects --
+ *  "taking address of rvalue" -- and no initializer spelling fixes it. A
+ *  `static inline` taking the hint as a scalar sidesteps the compound literal
+ *  entirely, so one macro serves both languages instead of a C-only macro plus
+ *  a poisoned C++ arm.
+ *
+ *  Starts from `nros_cpp_subscription_default_options()` rather than a brace
+ *  initialiser, so a field APPENDED to the options struct keeps its intended
+ *  default here instead of whatever the caller's frame held. */
+static inline int32_t nros_cpp_subscription_register_hinted(
+    const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
+    nros_cpp_qos_t qos, nros_c_subscription_callback_t callback, void* context,
+    size_t* out_handle_id, uint32_t rx_buffer_hint) {
+    nros_cpp_subscription_options_t options = nros_cpp_subscription_default_options();
+    options.rx_buffer_hint = rx_buffer_hint;
+    return nros_cpp_subscription_register(node, topic, type_name, type_hash, qos, callback, context,
+                                          out_handle_id, &options);
+}
+
 int32_t nros_cpp_subscription_register_validated(const nros_cpp_node_t* node, const char* topic,
                                                  const char* type_name, const char* type_hash,
                                                  nros_cpp_qos_t qos,
                                                  nros_c_subscription_validated_callback_t callback,
-                                                 void* context, uint8_t sched_context,
-                                                 size_t* out_handle_id);
+                                                 void* context, size_t* out_handle_id,
+                                                 const nros_cpp_subscription_options_t* options);
 
 /* --- Publisher (raw) ---------------------------------------------------- */
 

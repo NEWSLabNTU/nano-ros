@@ -448,6 +448,49 @@ typedef void (*nros_cpp_publisher_count_cb_t)(void *storage,
                                               void *user_context);
 
 /**
+ * Subscription creation options (phase-402).
+ *
+ * The three register functions differ in exactly one thing — the callback
+ * type — and used to duplicate eight parameters to say it. The duplication had
+ * already drifted: `callback_group` existed on one of the three and not the
+ * other two, for no reason anyone chose. This struct is the axis that grows
+ * instead of the argument list.
+ *
+ * `component.h` records what the flat list already cost: a C caller built
+ * against the 9-arg shape "left the 11th slot as stack garbage, which the Rust
+ * side dereferenced (SIGSEGV in `cstr_to_str` on Zephyr native_sim; silent
+ * luck elsewhere)". A NULL options pointer is all-defaults, which is exactly
+ * the previous behaviour and cannot be misread as garbage.
+ *
+ * Precedent is issue 0808 on `create_session`, whose resolution `rmw_entity.h`
+ * records: take one options struct, because
+ * `rmw_{publisher,subscription}_options_t` already solved this for entities.
+ */
+typedef struct nros_cpp_subscription_options_t {
+  /**
+   * Receive-buffer size hint in bytes; `0` = use the image default.
+   *
+   * Issue 0896: a subscription that states none takes the small size class
+   * whatever its message type. Codegen's `{Msg}_RX_MAX_SERIALIZED_SIZE` is
+   * the number to pass.
+   */
+  uint32_t rx_buffer_hint;
+  /**
+   * Scheduling-context slot; `0` = inherit the executor default.
+   */
+  uint8_t sched_context;
+  /**
+   * Reserved; must be zero.
+   */
+  uint8_t _reserved[3];
+  /**
+   * Callback group name; NULL = default. Available on ALL THREE register
+   * variants now, which it was not before.
+   */
+  const char *callback_group;
+} nros_cpp_subscription_options_t;
+
+/**
  * Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
  * path ([`nros_cpp_subscription_try_recv_validated`]). The C++ analog of the
  * Rust `IntegrityStatus` / `nros_integrity_status_t`.
@@ -1656,6 +1699,12 @@ nros_cpp_ret_t nros_cpp_subscription_create(const struct nros_cpp_node_t *node,
                                             const char *type_hash,
                                             struct nros_cpp_qos_t qos,
                                             void *storage);
+
+/**
+ * A zero-initialised [`nros_cpp_subscription_options_t`] — every field
+ * "inherit"/"off", identical to passing NULL.
+ */
+struct nros_cpp_subscription_options_t nros_cpp_subscription_default_options(void);
 
 /**
  * Try to receive raw CDR data from a subscription (non-blocking).

@@ -85,8 +85,8 @@ static nros_ret_t listener_configure(const nros_cpp_node_t* node, void* executor
     size_t handle;
     return nros_cpp_subscription_register_validated(
         node, "/chatter", std_msgs_msg_int32_get_type_name(), std_msgs_msg_int32_get_type_hash(),
-        nros_c_qos_default(), on_chatter_validated, self,
-        /*sched_context=*/0, &handle);
+        nros_c_qos_default(), on_chatter_validated, self, &handle,
+        /*options=*/NULL); /* phase-402: NULL = defaults */
 }
 
 NROS_C_COMPONENT(safety_listener_t, listener_configure)
