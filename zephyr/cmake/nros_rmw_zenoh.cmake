@@ -221,6 +221,14 @@ zephyr_compile_definitions(
     ZPICO_MAX_QUERYABLES=${NROS_RESOLVED_ZPICO_MAX_QUERYABLES}
     ZPICO_MAX_LIVELINESS=${NROS_RESOLVED_ZPICO_MAX_LIVELINESS}
     ZPICO_MAX_PENDING_GETS=${NROS_RESOLVED_ZPICO_MAX_PENDING_GETS}
+)
+# Read straight from CONFIG_, unlike the block above, and deliberately: the
+# graph cache is allocated and consumed entirely inside zpico.c. The Rust side
+# copies it out through a caller-supplied buffer and never encodes its size, so
+# there is no second consumer to disagree with -- the issue-0135/0316 hazard the
+# NROS_RESOLVED_* indirection exists to prevent does not apply here.
+zephyr_compile_definitions(
+    ZPICO_GRAPH_CACHE_SIZE=${CONFIG_NROS_GRAPH_CACHE_SIZE}
     ZPICO_GET_REPLY_BUF_SIZE=${NROS_RESOLVED_ZPICO_GET_REPLY_BUF_SIZE}
     ZPICO_GET_POLL_INTERVAL_MS=${NROS_RESOLVED_ZPICO_GET_POLL_INTERVAL_MS}
     ZPICO_FRAG_MAX_SIZE=${NROS_RESOLVED_ZPICO_FRAG_MAX_SIZE}
