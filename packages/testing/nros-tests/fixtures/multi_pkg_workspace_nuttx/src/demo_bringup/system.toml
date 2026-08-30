@@ -18,7 +18,6 @@ name = "listener"
 kind = "nuttx"
 board = "qemu-armv7a-nsh"
 target = "armv7a-nuttx-eabihf"
-rmw = "zenoh"
 launch = "launch/system.launch.xml"
 
 # phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
