@@ -263,31 +263,48 @@ jobs:
       # the compile smoke landed there. Gating this on the tier alone would have
       # left the PR's `cargo check` uncached, which is the one event that runs
       # on every push an agent makes.
-      # issue 0874, second half — the runner injects `ACTIONS_RESULTS_URL` and
-      # `ACTIONS_RUNTIME_TOKEN` into JS ACTION contexts, NOT into `run:` shell
-      # steps. The step below used to "export" them with
-      # `export ACTIONS_RESULTS_URL="${ACTIONS_RESULTS_URL:-}"`, which is
-      # self-referential: absent from the shell environment, it exported the
-      # EMPTY STRING and sccache reported `cache url for ghac not found`. 0874
-      # bumped the binary to 0.17.0 and concluded "the configuration was right;
-      # the binary was too old to read it" — the first half was true and the
-      # second was not, so the backend stayed unavailable after the fix and the
-      # only symptom was a `::warning::` nobody reads.
+      # issue 0874 — sccache's GHA backend CANNOT work here, so the cache is a
+      # plain directory and `actions/cache` carries it between runs.
       #
-      # `actions/cache@v4` is proof of the mechanism rather than a guess: it is
-      # a JS action, it needs the same two variables, and it works in this very
-      # job. This exports them into `$GITHUB_ENV` so the shell step can see
-      # them too. First-party, same trust tier as the `actions/*` already here.
-      - name: Expose the Actions cache env to shell steps
+      # Measured, not assumed. With both v2 variables finally present the
+      # backend started and then failed 777 of 777 writes:
+      #
+      #   storage write check failed: NotFound (permanent) => 404 page not found
+      #   uri: https://results-receiver.actions.githubusercontent.com/
+      #        _apis/artifactcache/cache?keys=sccache/...
+      #
+      # `_apis/artifactcache/cache` is the **v1** path; `results-receiver` is the
+      # **v2** host, which serves a Twirp API at an entirely different path. The
+      # opendal build inside sccache 0.17.0 still composes v1 requests, so
+      # pointing it at the v2 host 404s every one. No amount of env plumbing
+      # fixes a client speaking the wrong protocol — which is why the
+      # `github-script` export added an hour earlier is gone again: it did its
+      # job (the variables arrived, proven by the log) and the job was not the
+      # blocker.
+      #
+      # `actions/cache` is the working alternative and needs no argument about
+      # trust: it already caches the CLI build in this same job and saved
+      # ~774 MB there, on the same runtime token the Rust binary could not use.
+      #
+      # The CORRECTNESS argument for sccache over caching `target/` is untouched
+      # and is the reason this is a cache of sccache's own dir rather than of
+      # build output: sccache entries are CONTENT-hashed, so a restored cache
+      # cannot make a stale artifact read as fresh. Restoring a `target/` dir
+      # gives artifacts mtimes newer than their sources — the museum-binary
+      # class CLAUDE.md's fixture-mtime treadmill describes.
+      #
+      # 1 GB, not the 2 GB the GHA backend was given: this now competes with the
+      # CLI cache (~774 MB) inside the repository's single 10 GB pool, and every
+      # run writes a new entry under a per-SHA key. `restore-keys` makes an
+      # older entry a partial hit, which is all a content-hashed cache needs.
+      - name: Cache sccache directory (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
-        uses: actions/github-script@v7
+        uses: actions/cache@v4
         with:
-          script: |
-            for (const k of ['ACTIONS_RESULTS_URL', 'ACTIONS_RUNTIME_TOKEN']) {
-              const v = process.env[k]
-              if (v) core.exportVariable(k, v)
-              else core.warning(`${k} absent even in a JS action context — sccache will run UNCACHED`)
-            }
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
 
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
@@ -318,12 +335,8 @@ jobs:
           # symptom (`cache url ... not found`) and not the cause.
           # `${V:-UNSET}` expands to the VALUE when V is set, so the obvious
           # one-liner prints "SET<the url>". Ask the question directly.
-          for v in ACTIONS_RESULTS_URL ACTIONS_RUNTIME_TOKEN; do
-            if [ -n "${!v:-}" ]; then echo "$v: SET"; else echo "$v: UNSET"; fi
-          done
-
-          export SCCACHE_GHA_ENABLED=true
-          export SCCACHE_CACHE_SIZE=2G
+          export SCCACHE_DIR=/tmp/sccache
+          export SCCACHE_CACHE_SIZE=1G
           # The stats counters give a write-error COUNT and no reason. 777 of
           # 777 writes failed on run 33294943815 with the backend started and
           # both variables present, so the next question is WHY, and only the
@@ -333,19 +346,15 @@ jobs:
           export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
             {
-              echo "SCCACHE_GHA_ENABLED=true"
+              echo "SCCACHE_DIR=/tmp/sccache"
               echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
               echo "SCCACHE_LOG=warn"
-              # The two ACTIONS_* variables are NOT re-published here: the
-              # github-script step above already put them in `$GITHUB_ENV`, and
-              # one of them is a credential — writing it a second time widens
-              # its exposure for nothing.
               # Well under the 10 GB cap this store does NOT share; the
               # justfile's 30G default is a developer-workstation figure.
-              echo "SCCACHE_CACHE_SIZE=2G"
+              echo "SCCACHE_CACHE_SIZE=1G"
             } >> "$GITHUB_ENV"
           else
-            echo "::warning::sccache GHA backend unavailable — the compile tier runs UNCACHED (issue 0874)."
+            echo "::warning::sccache unavailable — the compile tier runs UNCACHED (issue 0874)."
             sed 's/^/  /' /tmp/sccache-start.log || true
           fi
 
@@ -571,7 +580,7 @@ jobs:
           # one root cause repeats once per compilation unit.
           if [ -s /tmp/sccache-server.log ]; then
             echo "--- sccache server log (deduped) ---"
-            sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25
+            { sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25; } || true
           fi
 
       - name: just check decoupling (advisory until Phase 104.A)
