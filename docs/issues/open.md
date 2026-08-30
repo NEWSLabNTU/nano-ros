@@ -84,5 +84,6 @@ fails if this block drifts.
 - **#0920** (cli, codegen) — An interrupted codegen leaves a ZERO-BYTE generated file, and the compile error that follows names no leaf See `0920-*`.
 - **#0924** (boards, drivers, rmw-zenoh) — A FreeRTOS lease teardown parks forever in lwIP's netconn shutdown/close See `0924-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
+- **#0930** (testing, tooling) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so See `0930-*`.
 
 <!-- END GENERATED open-issue list -->

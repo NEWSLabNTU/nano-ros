@@ -235,6 +235,15 @@ timeout.)
 Native Linux, same router, 105 s: 105 publishes, **one** handshake. Before, it
 reconnected at ~20 s exactly like the embedded client.
 
+Re-run on the PATCHED emulator the test harness actually resolves
+(`build/qemu/bin/qemu-system-arm`, 11.0.0-nros) rather than the system
+`qemu-system-arm` 9.0.2 the numbers above were taken on: 77/77, 77/77, 78/78.
+The fix is protocol-level — a lease shorter than the peer's keep-alive cadence —
+so it was never emulator-dependent, and the native run had already shown that
+with no emulator at all. Checked anyway, because every other number in this
+issue came from the wrong binary. (That the two QEMUs differ at all is
+[[issue-0930]].)
+
 ## What this did NOT fix
 
 The teardown itself still parks in lwIP's netconn shutdown/close — filed as
