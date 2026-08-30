@@ -26,6 +26,7 @@
 use std::path::PathBuf;
 
 include!("src/source_stamp.rs");
+include!("../build-support/submodule_watch.rs");
 
 fn main() {
     // <root>/packages/cli/nros-cli-core -> <root>
@@ -82,24 +83,14 @@ fn main() {
     // `git submodule update --init` changes no input cargo watches, so build.rs
     // never re-runs and `setup-cli` reports success while rebuilding nothing —
     // the wrong pin is STICKY, and even `touch build.rs` does not clear it.
-    // The gitlink FILE alone is not enough: for a submodule `.git` holds
-    // `gitdir: …` and its content does not change when HEAD moves — the move
-    // is in `<gitdir>/HEAD`. Watching only the gitlink means this stamp never
-    // invalidates on a pin bump, so the 0409 guard compares a stale value
-    // against a fresh one. The resolver's build.rs had the same bug; both are
-    // fixed together (fix the class, not the reported site).
-    println!(
-        "cargo:rerun-if-changed={}",
-        play_launch.join(".git").display()
-    );
-    if let Ok(text) = std::fs::read_to_string(play_launch.join(".git"))
-        && let Some(rel) = text.strip_prefix("gitdir:").map(str::trim)
-    {
-        println!(
-            "cargo:rerun-if-changed={}",
-            play_launch.join(rel).join("HEAD").display()
-        );
-    }
+    // WHICH files must be watched is not obvious and got it wrong twice, so it
+    // lives in one shared helper (`build-support/submodule_watch.rs`,
+    // issue 0921) that this and the resolver's build.rs both `include!`. The
+    // short version: the gitlink is a FILE whose content never changes, and
+    // `<gitdir>/HEAD` only moves for a DETACHED submodule — on a branch the
+    // commit moves the ref file instead. Getting it wrong makes the 0409 guard
+    // compare a stale value against a fresh one.
+    watch_submodule_commit(&play_launch);
     // Issue 0561 — ONE expression computes this, shared with `source_stamp()`
     // via the `include!` above. It used to be spelled out again here, which is
     // how the stamp came to watch something different from what the build baked:
