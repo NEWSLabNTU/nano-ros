@@ -657,7 +657,14 @@ fn discover_cmake_node_metadata(root: &Path, package_name: &str) -> Result<Vec<C
             deploy_targets: args.multi("DEPLOY"),
             header: args.single("HEADER"),
             shape: args.single("SHAPE"),
-            library_target: args.single("TARGET").or_else(|| Some(name.clone())),
+            // The library `nano_ros_node_register` builds is
+            // `<PROJECT_NAME>_<NAME>_component` (NanoRosNodeRegister.cmake), NOT the
+            // bare node name — and it exists under that name even in EXISTING_TARGET
+            // mode, where the verb adds an INTERFACE library aliasing the caller's
+            // target. So it is the one spelling that is always linkable. Issue 0939.
+            library_target: args
+                .single("TARGET")
+                .or_else(|| Some(component_library_target(package_name, &name))),
             executable: name,
             manifest_path: cmakelists.clone(),
         });
@@ -794,6 +801,22 @@ fn parse_register_node_call(
 /// call body. The first non-keyword token is the node name; `CLASS` takes one
 /// value; `TYPED` is a bare flag; `DEPLOY` takes values; every other bare token is
 /// a source. Language is inferred from source extensions, else the CLASS.
+/// The CMake library a registered component builds into.
+///
+/// `NanoRosNodeRegister.cmake` names it `${PROJECT_NAME}_${NAME}_component`, and
+/// guarantees a target by that name in both modes: it either builds the library
+/// itself, or — under `EXISTING_TARGET` — adds an INTERFACE library of that name
+/// linking the caller's target. The bare node name is NOT a target, so a probe
+/// that links it fails at `-l<name>`.
+///
+/// Issue 0939: the probe did link the bare name, so `nros sync` reported "no
+/// producer for <pkg>::<node>" for every C/C++ component and then cached that as
+/// "probe failed at this source last sync; unchanged" — which is why the
+/// underlying linker error stayed invisible across runs.
+fn component_library_target(package: &str, name: &str) -> String {
+    format!("{package}_{name}_component")
+}
+
 fn parse_add_node_call(
     body: &str,
     package_name: &str,
@@ -873,7 +896,8 @@ fn parse_add_node_call(
         header,
         shape,
         // `nano_ros_add_node(<name> …)` builds a target of that name.
-        library_target: Some(name.clone()),
+        // Same naming as node_register: this verb forwards to it. Issue 0939.
+        library_target: Some(component_library_target(package_name, &name)),
         executable: name,
         manifest_path: cmakelists.to_path_buf(),
     })
@@ -2276,6 +2300,36 @@ type = "std_msgs/msg/Int32"
         assert_eq!(s.component, "listener");
         assert_eq!(s.language, ComponentLanguage::Cpp);
         assert_eq!(s.deploy_targets, vec!["native".to_string()]);
+    }
+
+    #[test]
+    fn add_node_library_target_is_the_component_lib_not_the_node_name() {
+        // Issue 0939. NanoRosNodeRegister.cmake builds
+        // `${PROJECT_NAME}_${NAME}_component`; the bare node name is not a
+        // target. Getting this wrong is not a build error here — it surfaces
+        // one directory away, as the metadata probe failing to link
+        // `-l<name>`, which `nros sync` then reports as "no producer for
+        // <pkg>::<node>" and caches as "probe failed last sync".
+        let body = "controller CLASS controller_pkg::Controller TYPED src/controller.cpp";
+        let s = parse_add_node_call(body, "controller_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(
+            s.library_target.as_deref(),
+            Some("controller_pkg_controller_component"),
+            "the probe links this name; the bare node name does not exist as a target"
+        );
+    }
+
+    #[test]
+    fn node_register_library_target_defaults_to_the_component_lib() {
+        // Same rule on the all-keyword verb. `TARGET` still wins when given,
+        // but nothing in-tree passes it, so the default is what always applies.
+        let body = "NAME listener CLASS ws::Listener LANGUAGE cpp SOURCES src/Listener.cpp";
+        let calls = parse_cmake_kwargs(body).unwrap();
+        let name = calls.single("NAME").unwrap();
+        assert_eq!(
+            component_library_target("cpp_pkg", &name),
+            "cpp_pkg_listener_component"
+        );
     }
 
     #[test]
