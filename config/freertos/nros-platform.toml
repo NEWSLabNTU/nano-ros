@@ -33,7 +33,11 @@ defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_FEATURE_LINK_U
 # system impls in the same TU set keeps caller / callee ABI
 # coherent without needing the alias TU's opaque socket
 # (alias TU is gated off for FreeRTOS in build.rs).
-include = ["system/common", "system/freertos/lwip"]
+# zenoh-pico 1.10 moved the per-platform link transports out of `system/`
+# into `link/transport/`, which this build compiles by default, and added
+# `system/socket` for the shared socket code. `system/freertos/lwip` is
+# gone; the FreeRTOS system port itself is not.
+include = ["system/common", "system/freertos"]
 extra_sources = [
   # Phase 154 — vendor `system/freertos/system.c` +
   # `system/freertos/lwip/network.c` provide the matching

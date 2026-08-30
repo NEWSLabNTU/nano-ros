@@ -1858,6 +1858,9 @@ int32_t zpico_send_keep_alive(zpico_session_t* session) {
     if (!s->session_open) {
         return ZPICO_ERR_SESSION;
     }
+#if Z_FEATURE_MULTI_THREAD == 0
+    /* No lease task, so nothing else sends keep-alives: fire one by hand and
+     * report whether the transport accepted it. */
     zp_send_keep_alive_options_t options;
     zp_send_keep_alive_options_default(&options);
     z_result_t ret = zp_send_keep_alive(z_session_loan(&s->session), &options);
@@ -1865,6 +1868,21 @@ int32_t zpico_send_keep_alive(zpico_session_t* session) {
         return ZPICO_ERR_TIMEOUT;
     }
     return ZPICO_OK;
+#else
+    /* zenoh-pico only declares `zp_send_keep_alive` when Z_FEATURE_MULTI_THREAD
+     * is 0. With the lease task running it owns the keep-alive schedule, and
+     * firing an extra frame from here would race its transmit path.
+     *
+     * NOTE the probe is weaker than the single-threaded branch: it reports link
+     * death the lease task has ALREADY noticed, rather than actively testing
+     * the link now. A link that died a moment ago still reads as open until the
+     * lease task's next cycle. That is the strongest check the threaded build
+     * offers -- and it is the same signal the session teardown path uses. */
+    if (z_session_is_closed(z_session_loan(&s->session))) {
+        return ZPICO_ERR_TIMEOUT;
+    }
+    return ZPICO_OK;
+#endif
 }
 
 void zpico_close(zpico_session_t* session) {

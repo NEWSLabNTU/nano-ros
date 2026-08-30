@@ -568,6 +568,7 @@ fn generate_config_header(
     buf: &ZenohBufferConfig,
     tx_batch: bool,
     tx_split_lock: bool,
+    zenoh_pico_dir: &Path,
 ) {
     let config_dir = out_dir.join("zenoh-config");
     std::fs::create_dir_all(&config_dir).unwrap();
@@ -579,6 +580,7 @@ fn generate_config_header(
         env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok(),
         tx_batch,
         tx_split_lock,
+        zenoh_pico_dir,
     );
     std::fs::write(config_dir.join("zenoh_generic_config.h"), header).unwrap();
 }
@@ -943,6 +945,7 @@ pub fn run() {
         &buf_config,
         tx_knobs.batch.value,
         tx_knobs.split_lock.value,
+        &manifest_dir.join("zenoh-pico"),
     );
 
     // Phase 136.4 — manifest-driven unified consumer. The TOML

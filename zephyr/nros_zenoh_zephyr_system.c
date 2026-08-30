@@ -76,6 +76,17 @@ z_result_t _z_task_join(_z_task_t *task) {
     return 0;
 }
 
+/* Task identity -- new in zenoh-pico 1.10. The background executor compares the
+ * calling thread against the executor's own so it can tell a re-entrant call
+ * (a callback asking the executor to do something) from an outside one, and
+ * refuse to self-join. `_z_task_id_t` is `pthread_t` on Zephyr, so this is the
+ * same identity the rest of this shim already keys task slots on. */
+_z_task_id_t _z_task_get_id(const _z_task_t *task) { return *task; }
+
+_z_task_id_t _z_task_current_id(void) { return pthread_self(); }
+
+bool _z_task_id_equal(const _z_task_id_t *l, const _z_task_id_t *r) { return pthread_equal(*l, *r) != 0; }
+
 z_result_t _z_task_detach(_z_task_t *task) {
     return pthread_detach(*task) == 0 ? 0 : -1;
 }
@@ -277,6 +288,24 @@ unsigned long z_clock_elapsed_ms(z_clock_t *instant) {
 unsigned long z_clock_elapsed_s(z_clock_t *instant) {
     z_clock_t now = z_clock_now();
     return elapsed_ns(instant, &now) / 1000000000UL;
+}
+
+/* zenoh-pico 1.10 added the `*_since` family: the same elapsed calculation, but
+ * between two captured instants rather than against "now". The background
+ * executor uses it to age deadlines it captured earlier, so it must not re-read
+ * the clock. Clamped at zero like the `elapsed_ns` helper above -- a negative
+ * interval means the caller passed the instants the wrong way round, and the
+ * callers treat the result as an unsigned duration. */
+unsigned long zp_clock_elapsed_us_since(z_clock_t *instant, z_clock_t *epoch) {
+    return elapsed_ns(epoch, instant) / 1000UL;
+}
+
+unsigned long zp_clock_elapsed_ms_since(z_clock_t *instant, z_clock_t *epoch) {
+    return elapsed_ns(epoch, instant) / 1000000UL;
+}
+
+unsigned long zp_clock_elapsed_s_since(z_clock_t *instant, z_clock_t *epoch) {
+    return elapsed_ns(epoch, instant) / 1000000000UL;
 }
 
 void z_clock_advance_us(z_clock_t *clock, unsigned long duration) {

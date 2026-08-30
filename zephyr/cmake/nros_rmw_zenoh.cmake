@@ -14,6 +14,9 @@ file(GLOB_RECURSE _zenoh_pico_sources
     "${ZENOH_PICO_DIR}/src/link/*.c"
     "${ZENOH_PICO_DIR}/src/net/*.c"
     "${ZENOH_PICO_DIR}/src/protocol/*.c"
+    # zenoh-pico 1.10 added src/runtime/ -- the background executor that
+    # z_open, the read/lease tasks and session close all call into.
+    "${ZENOH_PICO_DIR}/src/runtime/*.c"
     "${ZENOH_PICO_DIR}/src/session/*.c"
     "${ZENOH_PICO_DIR}/src/transport/*.c"
     "${ZENOH_PICO_DIR}/src/utils/*.c"
@@ -27,30 +30,41 @@ file(GLOB_RECURSE _zenoh_pico_sources
 # `nros-platform-zephyr`. Phase 129 retired `zpico-platform-shim`;
 # the alias TU is the single replacement provider.
 #
-# Phase 160.C — network.c (TCP/UDP/multicast) MUST come from
-# zenoh-pico's `src/system/zephyr/network.c`, NOT from the alias
-# TU. The alias TU's `_z_open_tcp` / `_z_send_tcp` / etc. see a
-# generic 32-byte `_z_sys_net_socket_t` opaque (from
-# `nros_zenoh_generic_platform.h`); the Zephyr-side `tx.c` /
-# `link.c` (compiled here under `ZENOH_ZEPHYR`) see the
-# 4-byte `{int _fd}` socket from `system/platform/zephyr.h`.
-# The endpoint layouts diverge too (alias 16 B opaque vs.
-# `{struct addrinfo*}` 8 B). The size mismatch propagates
-# through the by-value endpoint arg and the by-pointer socket
-# arg, corrupting the connect-time state → `Transport(
-# ConnectionFailed)` on every Zephyr Rust app at session open.
-# Same family as Phase 159 NuttX (`_z_send_tcp` ABI gate). The
-# paired build.rs change extends `NROS_ZENOH_PLATFORM_USES_UNIX`
-# to zephyr so the alias TU's network section is `#ifndef`-elided
-# at cargo compile time — without that, both providers land and
-# the alias version wins under `--allow-multiple-definition`.
-zephyr_library_sources(${_zenoh_pico_sources}
-    "${ZENOH_PICO_DIR}/src/system/zephyr/network.c")
+# Phase 160.C used to name `src/system/zephyr/network.c` here, because the
+# link implementations lived under `src/system/<platform>/` and nothing there
+# was globbed. That was the fix for an ABI split: the alias TU's `_z_open_tcp`
+# / `_z_send_tcp` saw a generic 32-byte `_z_sys_net_socket_t` opaque (from
+# `nros_zenoh_generic_platform.h`) while the Zephyr-side `tx.c` / `link.c` saw
+# the 4-byte `{int _fd}` socket from `system/platform/zephyr.h`, and the size
+# mismatch corrupted connect-time state into `Transport(ConnectionFailed)` at
+# every session open.
+#
+# zenoh-pico 1.10 ("Redesign platform integration", upstream #1188) moved that
+# code to `src/link/transport/{serial,tcp,udp}/*_zephyr.c`, which the
+# `src/link/*.c` GLOB_RECURSE above already picks up — so naming network.c by
+# hand is now both redundant and wrong. 1.10 left the old file in the tree, but
+# it is dead: it still reaches for the retired `_fd` member and does not
+# compile against the redesigned socket type. Each replacement guards itself
+# (`uart_zephyr.c` on `Z_FEATURE_LINK_SERIAL && ZENOH_ZEPHYR`, the socket ones
+# on `ZP_PLATFORM_SOCKET_ZEPHYR`), so a serial-only image compiles the UART
+# link and nothing else.
+#
+# The paired build.rs `NROS_ZENOH_PLATFORM_USES_UNIX` extension still matters:
+# it elides the alias TU's network section so the two providers do not both
+# land and resolve to the wrong one under `--allow-multiple-definition`.
+zephyr_library_sources(${_zenoh_pico_sources})
 
-# RFC-0083 — the ISO-TP platform binding. A separate TU from network.c, and
-# added by name for the same reason network.c is: the `src/link/*.c` glob above
-# picks up the link itself, but nothing under `src/system/zephyr/` is globbed.
+# RFC-0083 — the ISO-TP platform binding. This was a fork-only file under
+# `src/system/zephyr/isotp.c`; the 1.10 platform redesign does not carry it,
+# and it has not been ported to the new `src/link/transport/` shape. Fail loudly
+# rather than silently dropping the link that was asked for.
 if(CONFIG_NROS_ZENOH_LINK_ISOTP)
+    if(NOT EXISTS "${ZENOH_PICO_DIR}/src/system/zephyr/isotp.c")
+        message(FATAL_ERROR
+            "CONFIG_NROS_ZENOH_LINK_ISOTP is set, but the ISO-TP platform binding "
+            "(src/system/zephyr/isotp.c) is not present in this zenoh-pico. It has "
+            "not been ported to the 1.10 src/link/transport/ layout — see RFC-0083.")
+    endif()
     zephyr_library_sources("${ZENOH_PICO_DIR}/src/system/zephyr/isotp.c")
 endif()
 
@@ -76,6 +90,15 @@ endif()
 # callbacks disabled on Zephyr; they are not needed for routing and can
 # create high-rate executor wakeups.
 zephyr_compile_definitions(Z_FEATURE_INTEREST=1 Z_FEATURE_MATCHING=0)
+
+# zenoh-pico 1.10 — peer-to-peer unicast off. nano-ros speaks to a router as a
+# CLIENT (Z_WHATAMI_CLIENT); the peer path is the one that accepts inbound
+# transports, and it is also the path that reaches for socket primitives
+# (`_z_socket_wait_readable` for multi-peer readiness, `_z_socket_set_blocking`
+# / `_z_socket_close` when accepting). A serial-only image has no sockets to
+# give it, so leaving this on costs both flash and a set of undefined
+# references for a mode we never enter.
+zephyr_compile_definitions(Z_FEATURE_UNICAST_PEER=0)
 
 # zsock serializes send/recv on a per-fd mutex, so total tx throughput is
 # capped at ~one send per recv window — make the window Kconfig-tunable
