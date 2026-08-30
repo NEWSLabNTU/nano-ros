@@ -93,7 +93,7 @@ rather than riding a fix for the site it found.
 
 ## Resolved 2026-08-20 — option 1, and option 2 measured out
 
-`just check-capability-flavour-guards`
+`just check capability-flavour-guards`
 (`scripts/check-std-census.py --check-guards`), in the fast tier.
 
 **Option 2 was tried first and abandoned on measurement.** Building every

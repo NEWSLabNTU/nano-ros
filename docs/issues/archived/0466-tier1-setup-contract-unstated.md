@@ -113,7 +113,7 @@ Ordered by how much each buys, not by effort:
    was `check-cli-fresh`, so on a tree whose only sin was a `git pull`:
 
    ```
-   just check-fast   ->  failed in 0.77s, having checked NOTHING
+   just check fast   ->  failed in 0.77s, having checked NOTHING
    ```
 
    The early placement came from #0363 — front-run `check-dep-chain`, which
@@ -225,7 +225,7 @@ condition in seconds and is now named in the `check-fast` comment.
 ## Reproduced again 2026-08-11 — five blockers, and the batched gate caught ONE
 
 The precondition gate this issue asked for (fix 1) now exists and works:
-`just check-tier-preconditions` at the head of `ci` reported the stale CLI with
+`just check tier-preconditions` at the head of `ci` reported the stale CLI with
 its ordered remedy, in one shot. It is a real improvement and it is not enough.
 A tier-1 run on a long-lived provisioned tree still stopped **five** times, and
 four of the five were invisible until the previous cleared:

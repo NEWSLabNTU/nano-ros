@@ -11,7 +11,7 @@ related: [issue-0260, issue-0743, issue-0655, phase-356, phase-296]
 
 [issue 0260](archived/0260-native-dim-kernel-accept-never-exercised.md) closed
 2026-08-21 on both halves of its narrowed Direction: every core-pin arm now
-COMPILES (`just check-sched-dim-arms` type-checks the three RTOS call sites
+COMPILES (`just check sched-dim-arms` type-checks the three RTOS call sites
 against their own vendored headers), and one arm RUNS and is OBSERVED on a real
 multi-core image —
 

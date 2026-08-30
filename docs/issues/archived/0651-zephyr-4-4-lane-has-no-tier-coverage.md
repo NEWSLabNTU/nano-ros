@@ -92,7 +92,7 @@ product depends on rather than one the policy maintains.
 
 ## Partly addressed (2026-08-20) — the symbol-existence half is now gated
 
-`scripts/check-zephyr-kconfig-symbols.py` (`just check-zephyr-kconfig-symbols`)
+`scripts/check-zephyr-kconfig-symbols.py` (`just check zephyr-kconfig-symbols`)
 resolves every `select` / `imply` / `depends on` in `zephyr/Kconfig` against the
 symbols DEFINED by each supported line, and fails on one that is absent. This is
 the first direction listed below: it needs SOURCE, not a build, and runs in ~2 s.
@@ -165,7 +165,7 @@ accurate but narrower than the rule this issue states. Measured on a normal dev
 host, before any change:
 
 ```
-$ just check-zephyr-kconfig-symbols ; echo rc=$?
+$ just check zephyr-kconfig-symbols ; echo rc=$?
 zephyr-kconfig-symbols OK — 11 referenced symbol(s), lines checked: 3.7 (3.7)
   NOT checked: 4.4 — no tree present. …
 rc=0

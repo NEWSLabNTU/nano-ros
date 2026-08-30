@@ -118,7 +118,7 @@ rg -n 'expect\("rmw vtable' packages/rmw/cffi/src/lib.rs
 
 That 1:1 correspondence is the real invariant, and it had already broken in both
 directions across two issues, so it is now enforced:
-`scripts/check-rmw-required-slots.sh` (`just check-rmw-required-slots`, wired
+`scripts/check-rmw-required-slots.sh` (`just check rmw-required-slots`, wired
 into `check-fast`) extracts both sets and fails if they differ —
 
 - expect-ed but not required → registers cleanly, panics mid-spin (issue 0332);

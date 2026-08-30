@@ -129,7 +129,7 @@ All six surfaces fixed, plus the gate the issue asked for.
 
 ### The gate
 
-`scripts/check-retired-submodule-refs.sh`, wired into `just check-fast`. It fails
+`scripts/check-retired-submodule-refs.sh`, wired into `just check fast`. It fails
 on any live reference to a retired path (currently
 `packages/cli/third-party/{ros-launch-manifest,play_launch_parser}`), excluding
 the docs that legitimately *record* the drift and references that pass THROUGH
@@ -139,7 +139,7 @@ and the `.github` half of #337 are the same missed sweep.
 Extend `RETIRED[]` whenever a path is retired: a path is retired once, so a
 permanent entry costs microseconds and makes the next sweep un-partial.
 
-Verification: `just check-fast` green (gate included), `just doctor` green after
+Verification: `just check fast` green (gate included), `just doctor` green after
 setup, `bash -n` clean on both scripts.
 
 **Not fixed here** (belongs to #337, already resolved upstream): the eight

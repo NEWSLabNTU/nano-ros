@@ -50,11 +50,11 @@ wrong in the same direction.
 
 Two includes added to `nros/nros.h`, each with the reason inline. Verified by
 compiling `nros_log_default_logger()` through the umbrella header (it did not
-resolve before), and by `just check-c`.
+resolve before), and by `just check c`.
 
 The correlator immediately surfaced **33 C declarations that had been invisible
 to it** — the whole `nros_cdr_borrow_*` / `nros_le_slice_view_*` family and the
-five logging entry points — and `just check-api-parity` failed until they were
+five logging entry points — and `just check api-parity` failed until they were
 classified, which is the loop working as intended. They are now `extension` rows
 in `serde.json`, `types.json`, `log.json` and `other.json`.
 

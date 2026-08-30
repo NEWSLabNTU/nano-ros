@@ -76,10 +76,10 @@ jobs:
       # The same predicate that heads `check-build`: a stale CLI surfaces here as
       # nine failed cells whose printed cause is a cargo resolution error
       # (issue 0363), so ask the cheap question first.
-      - name: just check-cli-fresh
-        run: just check-cli-fresh
-      - name: just check-dep-chain
-        run: just check-dep-chain
+      - name: just check cli-fresh
+        run: just check cli-fresh
+      - name: just check dep-chain
+        run: just check dep-chain
 
   matrix:
     name: tier 2 (1-wise matrix)

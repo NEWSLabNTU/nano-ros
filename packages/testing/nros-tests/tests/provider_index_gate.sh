@@ -61,7 +61,7 @@ MODULE="$ROOT/cmake/NanoRosProviders.cmake"
 # shellcheck source=../../../../scripts/build/cli-usable.sh
 . "$ROOT/scripts/build/cli-usable.sh"
 nros_cli_usable "$NROS" || {
-    nros_check_skip "check-provider-index" "$nros_cli_unusable_reason"
+    nros_check_skip "provider-index" "$nros_cli_unusable_reason"
     exit 0
 }
 [ -f "$MODULE" ] || {

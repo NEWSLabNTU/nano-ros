@@ -64,4 +64,4 @@ The bridge e2e itself could not run here: it needs host ROS 2 with
 neither available on this host, so it reports `[SKIPPED]`. Verified instead:
 the cyclone sink builds through `fixtures-build.sh`, the test compiles against
 the new resolver, the asserted marker is identical on both binaries, and
-`just check-c` passes. The end-to-end run is owed on a host that has ROS.
+`just check c` passes. The end-to-end run is owed on a host that has ROS.

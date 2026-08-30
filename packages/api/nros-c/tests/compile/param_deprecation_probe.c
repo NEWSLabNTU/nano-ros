@@ -7,7 +7,7 @@
  * issue 0338's plain macros was to get the diagnostic — so "the attribute
  * reaches callers" is the thing worth pinning, not an implementation detail.
  *
- * `just check-c` compiles this with `-Werror=deprecated-declarations` and
+ * `just check c` compiles this with `-Werror=deprecated-declarations` and
  * requires it to FAIL. It is a normal, valid TU otherwise; only that flag turns
  * the warning into an error. Written as an expected failure because a clean
  * compile is exactly what a silently-dropped attribute looks like.

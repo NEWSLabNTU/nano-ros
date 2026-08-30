@@ -37,7 +37,7 @@ bootstrap-fedora:
         ./scripts/probe/run-bootstrap-probe.sh
 
 # The book claims bash/zsh support for activate.sh; this is what checks it end
-# to end (`just check-activate-shells` covers the file in isolation).
+# to end (`just check activate-shells` covers the file in isolation).
 [group("main")]
 bootstrap-zsh:
     PROBE_SHELL=zsh ./scripts/probe/run-bootstrap-probe.sh

@@ -95,7 +95,7 @@ unchanged.
 
 ## Receipts
 
-- `just check-example-fmt` → rc=0.
+- `just check example-fmt` → rc=0.
 - **With `nros-patch.toml` deleted** (a fresh-checkout simulation, i.e. exactly
   CI's state) → still rc=0. Before this change that was the failing case.
 - **Mutation-checked:** with a deliberate formatting violation appended to

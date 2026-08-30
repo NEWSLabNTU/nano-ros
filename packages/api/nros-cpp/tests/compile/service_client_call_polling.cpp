@@ -2,12 +2,12 @@
 // — a bounded service call that does NOT spin the executor, so it is safe from
 // inside a subscription/timer callback (on a multi-threaded backend).
 //
-// The header `-fsyntax-only` loop in `just check-cpp` only PARSES the templates;
+// The header `-fsyntax-only` loop in `just check cpp` only PARSES the templates;
 // this TU instantiates `Client<AddTwoInts>::call_polling` against a
 // generated-shape service type, so the method BODY (serialize req →
 // nros_cpp_service_client_call_raw(..., timeout_ms) → deserialize resp) is
 // type-checked, including the new `timeout_ms` FFI parameter.
-// `just check-cpp` compiles this with `-fsyntax-only -std=c++14`.
+// `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
 #include <nros/nros.hpp>
 
 #include <type_traits>

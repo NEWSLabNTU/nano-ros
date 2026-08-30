@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the `check-fast` gates concurrently instead of as serial just dependencies.
 #
-# Issue 0726. Measured on a 32-core host: `just check-fast` is 90 s warm and
+# Issue 0726. Measured on a 32-core host: `just check fast` is 90 s warm and
 # several hundred cold, the whole time at 1-2 runnable cores — roughly 5% of the
 # machine, sitting in front of every fixture build. The 112 gates sum to 56 s
 # individually with the slowest at 8.3 s and a mean of 501 ms, so no outlier
@@ -54,11 +54,16 @@ export GIT_OPTIONAL_LOCKS=0
 list="${1:-}"
 if [ -z "$list" ]; then
     list="$(mktemp "${TMPDIR:-/tmp}/nros-gate-list.XXXXXX")"
-    awk '/^check-fast-serial:/{f=1} f{print; if ($0 !~ /\\$/) exit}' justfile \
+    # The list moved with the recipes: `fast-serial` now lives in the `check`
+    # MODULE, and its gates are bare names there (`abi-bindings`, not
+    # `check-abi-bindings`). Parsing the root justfile would silently derive an
+    # EMPTY list, which is why the emptiness check below is a hard refusal
+    # rather than a warning.
+    awk '/^fast-serial:/{f=1} f{print; if ($0 !~ /\\$/) exit}' just/check.just \
         | tr -s ' \\' '\n' \
         | sed 's/:$//' \
-        | grep -E '^check-' \
-        | grep -vE '^check-fast(-serial)?$' \
+        | grep -E '^[a-z][a-z0-9-]*$' \
+        | grep -vE '^(fast|fast-serial)$' \
         | sort -u > "$list"
 fi
 [ -s "$list" ] || {
@@ -75,7 +80,7 @@ just _check-skip-reset >/dev/null 2>&1 || true
 run_one() {
     local gate="$1" dir="$2" start end rc
     start=$(date +%s%N)
-    just "$gate" >"$dir/$gate.out" 2>&1
+    just check "$gate" >"$dir/$gate.out" 2>&1
     rc=$?
     end=$(date +%s%N)
     printf '%s\t%s\t%s\n' "$gate" "$rc" "$(( (end - start) / 1000000 ))" \

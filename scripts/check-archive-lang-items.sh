@@ -217,7 +217,7 @@ fi
 # became narrower than the rule it enforces.
 #
 # Not fatal, because 0 is legitimate on a tree where no cmake image has been
-# built yet (a fresh clone running `just check-archive-lang-items` by hand). It
+# built yet (a fresh clone running `just check archive-lang-items` by hand). It
 # is never legitimate after a fixture build, and the line says which case the
 # reader is in.
 if [ "$links" -eq 0 ]; then

@@ -67,7 +67,7 @@ the issue-0196 rule generally — a gate covering less than the rule it enforces
 ## Fix
 
 * The test uses one timer and repeated stalls, so it is `MAX_CBS`-independent.
-* New `just check-node-std-tests` (`cargo test -p nros-node --lib --features
+* New `just check node-std-tests` (`cargo test -p nros-node --lib --features
   std`), wired into `check-build` beside `check-cli-tests`, which it mirrors:
   both exist because a `--workspace` run does not reach that code.
 

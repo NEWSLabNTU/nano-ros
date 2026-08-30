@@ -386,7 +386,7 @@ build-fixtures:
     ZEPHYR_BASE="$workspace/zephyr" bash scripts/build/west-fixtures.sh
     echo "Zephyr test fixtures built successfully."
     # RFC-0079 §4.1 / issue 0766 — now that `.config` files exist, finish the
-    # check `check-tier-priority-plan` DEFERS. Zephyr's reserved transport band
+    # check `check::tier-priority-plan` DEFERS. Zephyr's reserved transport band
     # is derived per image, so this is the only place it CAN be judged, and a
     # deferral nobody discharges is just an unchecked pin with better wording.
     python3 scripts/check-tier-priority-plan-image.py

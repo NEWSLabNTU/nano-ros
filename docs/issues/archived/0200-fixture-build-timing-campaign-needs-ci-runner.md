@@ -184,7 +184,7 @@ dirs phase-340 P2 introduced. The 120 GB is recovered.
 
 Checked, by creating one rather than by reading the script:
 `mkdir examples/native/rust/talker/target` makes
-`just check-example-leaf-target-dirs` FAIL, naming the class and prescribing
+`just check example-leaf-target-dirs` FAIL, naming the class and prescribing
 `rm -rf … then re-run a build. If one comes back, it is the second case and the
 writer needs finding.` The gate covers the class now. Whether it was fixed since
 2026-08-16 or those 65 dirs sat in leaves it exempts is not established here —

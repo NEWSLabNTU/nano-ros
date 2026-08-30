@@ -259,7 +259,7 @@ $ … | grep -c stress-zenoh
 
 ## Gates added
 
-* `just check-fixtures-manifest` now also runs `fixtures-manifest.py
+* `just check fixtures-manifest` now also runs `fixtures-manifest.py
   validate-fixtures` — plain `[[fixture]]` rows had **no** validator at all
   while the other two row kinds had one. A missing `platform`/`lang` (no
   coordinate) and an unknown `rmw` (a coordinate nothing holds) both fail there.

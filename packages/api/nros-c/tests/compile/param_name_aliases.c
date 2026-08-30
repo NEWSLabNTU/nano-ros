@@ -15,7 +15,7 @@
  *
  * The old half is `static inline` forwarders carrying NROS_DEPRECATED_MSG, so
  * naming them is supposed to warn. That warning is the point, and it is
- * asserted separately: `just check-c` compiles a one-line probe with
+ * asserted separately: `just check c` compiles a one-line probe with
  * `-Werror=deprecated-declarations` and requires it to FAIL. Here the warning
  * would just be noise on a passing gate, so it is suppressed for that section
  * only.

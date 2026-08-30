@@ -117,5 +117,5 @@ Both remain hard errors naming the field, mode and entity.
 ### Verification
 
 `rosidl-codegen` 189 tests green (8 in the new suite); golden-corpus diff as
-above; `cargo +nightly fmt --all` clean; `just setup-cli` + `just check-fast`
+above; `cargo +nightly fmt --all` clean; `just setup-cli` + `just check fast`
 green.

@@ -24,7 +24,7 @@ resolved_in: phase-249 / #62 single-runtime
 ## Root cause (diagnosed 2026-06-16) — test stale vs 241.D3-rev single-runtime
 
 Not a real link regression: both tests `skip!` (→ panic → `cargo test` counts it
-FAILED, so `check.yml`/`just check-staticlib-symbols` go red) because the staticlib
+FAILED, so `check.yml`/`just check staticlib-symbols` go red) because the staticlib
 **pair they expect no longer exists**.
 
 `scripts/build/link-determinism-fixture.sh` was updated for the **241.D3-rev
@@ -54,7 +54,7 @@ link model, the gate stays red on this skip; tracked here + cross-linked from #6
 ## Symptom
 
 `cargo test -p nros-tests --test staticlib_duplicate_symbols` (the `check.yml`
-link-determinism gate, now also `just check-staticlib-symbols`) fails both tests
+link-determinism gate, now also `just check staticlib-symbols`) fails both tests
 after `scripts/build/link-determinism-fixture.sh` builds the host staticlib pair:
 
 ```

@@ -89,7 +89,7 @@ is this issue's subject verbatim: "`PlatformSink`'s extern pair breaks the
 workspace no-default-features test-compile — the sink is link-time platform code
 riding a library edge."
 
-Verified rather than assumed: `just check-workspace-features` now ends
+Verified rather than assumed: `just check workspace-features` now ends
 `All feature checks passed!` on a clean host checkout, and the exact command
 this issue quoted —
 `cargo test --no-run --workspace --exclude nros-c --no-default-features` —

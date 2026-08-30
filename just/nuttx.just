@@ -48,9 +48,9 @@ build:
 # `packages/core` cargo path, a `+=` reading `NANO_ROS_ROOT` before it was
 # defined, and a missing object dir under `PREFIX`).
 #
-# NOT in `check-fast`: it needs the NuttX toolchain and it mutates the shared
+# NOT in `check::fast`: it needs the NuttX toolchain and it mutates the shared
 # tree's `.config`, which is issue 0525's last-configured-wins state. It
-# restores the config afterwards, including on failure. `check-nuttx-integration-makefile`
+# restores the config afterwards, including on failure. `check::nuttx-integration-makefile`
 # covers the two classes a static read can settle; this covers the compile.
 [group("main")]
 build-integration-app:
@@ -516,14 +516,14 @@ test-all verbose="":
 
 # CI: check prerequisites + test
 #
-# Issue 0570 — `check-nuttx-libc-struct-sizes` also sits in `check-fast`, but it
+# Issue 0570 — `check::nuttx-libc-struct-sizes` also sits in `check::fast`, but it
 # can only MEASURE where a kernel has been configured and a cross compiler is on
 # PATH; there it degrades to NOT CHECKED. This lane is where both hold, so it is
 # the one that actually enforces the rule.
 [group("full-matrix")]
 ci: doctor check-libc-struct-sizes test
 
-# Issue 0570 — see `check-nuttx-libc-struct-sizes` in the root justfile.
+# Issue 0570 — see `check::nuttx-libc-struct-sizes` in the root justfile.
 [group("full-matrix")]
 check-libc-struct-sizes:
     @python3 {{ justfile_directory() }}/scripts/check-nuttx-libc-struct-sizes.py

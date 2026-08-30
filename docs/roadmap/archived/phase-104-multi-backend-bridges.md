@@ -192,7 +192,7 @@ Cargo.tomls, `scripts/check-decoupling.sh`,
       `register_active_backend` cfg cascade deleted; `Executor::open`
       probes `nros_rmw_cffi::backend_registered()` instead.
 - [x] **104.A.3** — Inline POSIX net-size consts in `resolve.rs`.
-- [x] **104.A.4** — `just check-decoupling` CI guard.
+- [x] **104.A.4** — `just check decoupling` CI guard.
 - [x] **104.A consumer sweep** — 117 Cargo.tomls collapsed.
 
 #### Thread B — Backend registration model (LANDED)
@@ -942,7 +942,7 @@ cost.
 - [x] `nros-platform/src/resolve.rs` has no
       `cfg(feature = "platform-posix")` block referencing
       `nros_platform_posix::net`.
-- [x] `just check-decoupling` green.
+- [x] `just check decoupling` green.
 
 ### Registration (Thread B)
 

@@ -295,7 +295,7 @@ the host-tool builds, each with a comment saying why.
 - [ ] `docs/reference/platform-implementation-notes.md`: the NuttX opt-2
       miscompile and the mps2 timing floor become named profile constraints.
 
-**Acceptance:** `just check-fast` runs the gate; the gate fails on a planted
+**Acceptance:** `just check fast` runs the gate; the gate fails on a planted
 literal.
 
 ### W7 — Verification sweep

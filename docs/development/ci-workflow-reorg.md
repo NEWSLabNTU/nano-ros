@@ -8,9 +8,9 @@ landed `52de496b2`. Applied since:
   (`60bba9b12`, `3d4705681`). This surfaced **#69** (dep-chain feature drift) +
   **#70** (staticlib) — pre-existing reds on `check.yml`, now tracked.
 - **Workflows retiered IN PLACE** (lower-churn than file-merging into the names
-  below; same goals): `check.yml` thinned to `just check` + `just check-no-std`
-  (+ advisory `just check-decoupling`); `ci.yml` deleted (folded as
-  `just check-no-std`); the heavy/medium lanes (`host-integration-tests`,
+  below; same goals): `check.yml` thinned to `just check` + `just check no-std`
+  (+ advisory `just check decoupling`); `ci.yml` deleted (folded as
+  `just check no-std`); the heavy/medium lanes (`host-integration-tests`,
   `host-unit-tests`, `platform-ci`, `zephyr-dual-line`) moved OFF per-push →
   `pull_request` (path-scoped) + nightly `schedule` + `workflow_dispatch`, with
   `cancel-in-progress` only on PR so a started nightly always completes (the #57
@@ -45,14 +45,14 @@ Goals (from the request):
 | Workflow | Trigger | Load | Local recipe |
 | --- | --- | --- | --- |
 | check | push+PR (broad) | fast | `just check` (⚠ drifted — see below) |
-| ci (no_std) | push+PR (core) | med | `just check-no-std` (new) |
+| ci (no_std) | push+PR (core) | med | `just check no-std` (new) |
 | host-unit-tests | push+PR | med | `just test-unit` |
 | host-integration-tests | push+PR | **heavy 45–90m** | `just test-integration` (+ fixture builds) |
 | platform-ci | push+PR+nightly | **very heavy** 6-plat | `just <plat> setup/build/test` |
 | zephyr-dual-line | push+PR | **very heavy** 10×2 | `just zephyr build-one/ci-both/check-copy-out` |
 | colcon-parity | push+PR (template) | fast | `just colcon-parity` (new) |
 | scaffold-journey | push+PR (cli) | med | `just scaffold-journey` (new) |
-| sdk-index-gate | PR (sdk) | fast (network) | `just check-sdk-index` (new) |
+| sdk-index-gate | PR (sdk) | fast (network) | `just check sdk-index` (new) |
 | nros-acceptance | push main + tags | med | `just acceptance` (new, local variant) |
 | deploy-book | push main (broad) | heavy | `just doc` / `just book` (build part) |
 | build-ci-base-image | push (ci/docker) | image | — (CI-only; optional `just docker`) |
@@ -82,7 +82,7 @@ ways, so CI can be green while `just check` is red (and vice versa):
 
 | New workflow | Absorbs | Trigger | concurrency | Local |
 | --- | --- | --- | --- | --- |
-| **pr-checks.yml** | check + ci(no_std) + sdk-index + scaffold + colcon | push+PR (broad) | cancel ✓ | `just ci-fast` (+ `just check-sdk-index` etc. when prereqs present) |
+| **pr-checks.yml** | check + ci(no_std) + sdk-index + scaffold + colcon | push+PR (broad) | cancel ✓ | `just ci-fast` (+ `just check sdk-index` etc. when prereqs present) |
 | **host-tests.yml** | host-unit + host-integration | PR + nightly | cancel ✓ on PR | `just test` / `just test-integration` |
 | **nightly.yml** | host-integration(full) + platform-ci(6) + zephyr-dual-line | `schedule` + `workflow_dispatch` + path-scoped PR | **cancel ✗** | `just test-all`, `just <plat> ci`, `just zephyr ci-both` |
 | ~~release.yml~~ | release-nros-cli → nros-acceptance | tags `nros-v*` | — | DELETED 2026-07-11 (phase-288 D1/D2 — no prebuilt channel); `just acceptance` survives as the local source-route gate |
@@ -97,7 +97,7 @@ each run completes (no cadence cancellation). Per-push load = the fast gate only
 
 Make ONE source of truth for "what the fast gate runs". Option chosen:
 - `just check` = the full local lint set (authoritative).
-- `pr-checks.yml` runs **`just ci-fast`** + the per-job recipes (`just check-sdk-index`,
+- `pr-checks.yml` runs **`just ci-fast`** + the per-job recipes (`just check sdk-index`,
   `just scaffold-journey`, `just colcon-parity`) — i.e. CI calls the SAME recipes a
   developer runs. The bespoke per-gate `run:` steps + the 3 inline `cargo test`
   gates in `check.yml` move INTO `just check` (add `check-decoupling`,
@@ -139,6 +139,6 @@ about them, not because anyone should go looking.
 
 | Historical | Replaced by |
 |------------|-------------|
-| `check.yml` | `pr-checks.yml`, job `check` (a thin `just check-fast` / `just check` caller) |
+| `check.yml` | `pr-checks.yml`, job `check` (a thin `just check fast` / `just check` caller) |
 | `ci.yml` | `pr-checks.yml` + `nightly.yml` |
 | `release.yml` | `images.yml` |

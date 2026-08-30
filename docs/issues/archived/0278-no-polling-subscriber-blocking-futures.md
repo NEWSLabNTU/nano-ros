@@ -31,7 +31,7 @@ Both idioms now have a nano-ros equivalent:
 
 Both gated by `-fsyntax-only` instantiation compile tests
 (`tests/compile/{polling_subscription,service_client_call_polling}.cpp`) in
-`just check-cpp`. See the mrm_handler usage in the standalone-vs-workspace
+`just check cpp`. See the mrm_handler usage in the standalone-vs-workspace
 examples. Not done here (follow-ups): a native-Rust parallel of
 `PollingSubscription`, and porting the real Autoware `mrm_handler`.
 ---
@@ -66,7 +66,7 @@ collapses to its last element, matching `InterProcessPollingSubscriber::takeData
 then answers from the cache. Pure wrapper over the existing consuming `try_recv`
 — zero C/Rust/executor ABI change; directly replaces the hand-rolled
 `topic_state_monitor.cpp` cache pattern. Instantiation gated by a `-fsyntax-only`
-compile test (`tests/compile/polling_subscription.cpp`) in `just check-cpp`.
+compile test (`tests/compile/polling_subscription.cpp`) in `just check cpp`.
 
 **Half B (bounded service call inside a callback) — shared-session question
 DE-RISKED (2026-08-02).** #0290 fixed the safety hole (in-callback bounded wait

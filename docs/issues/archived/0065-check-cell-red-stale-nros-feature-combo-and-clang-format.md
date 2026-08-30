@@ -10,7 +10,7 @@ resolved_in: 2026-06-15
 
 > **RESOLVED (2026-06-15).** A: dropped `platform-posix` from the two `nros`
 > feature combos at `justfile:1240-1243` (`nros` umbrella lost it in 248-C5c;
-> nros-c/nros-cpp keep it) — `just check-workspace-features` green. B: reformatted
+> nros-c/nros-cpp keep it) — `just check workspace-features` green. B: reformatted
 > 5 `nros-cpp/include/nros/*.hpp` (action_client/action_server/polling_action_client/
 > polling_action_server/tick_ctx) with the CI-pinned **clang-format 17.0.5**
 > (`check.yml:117`); the local v22 had masked the drift — `clang-format --dry-run
@@ -71,7 +71,7 @@ before phase-244 merged (e.g. run on `feat(249 P3)`).
   umbrella — if a posix-platform clippy combo is still wanted, target
   `nros-platform --features platform-posix`, not `nros`.
 - **B:** run `just format` (or `clang-format -i`) on
-  `nros-cpp/include/nros/action_client.hpp`; re-gate with `just check-cpp`.
+  `nros-cpp/include/nros/action_client.hpp`; re-gate with `just check cpp`.
 
 ## Notes
 

@@ -78,7 +78,7 @@ honestly gets followed selectively. On this host tier 1 has no green to compare
 against, so every subsequent run has to be read by hand — which is how a real
 regression gets waved through as "the usual two".
 
-`just check-tier-preconditions` does WARN that "no Zephyr workspace, so the
+`just check tier-preconditions` does WARN that "no Zephyr workspace, so the
 zephyr fixture lane will SKIP", and then says **"Tier 1 does not need it"**. That
 sentence is wrong, and it is the sentence someone reads before deciding not to
 run `just zephyr setup`.

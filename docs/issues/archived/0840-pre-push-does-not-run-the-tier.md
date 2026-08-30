@@ -61,7 +61,7 @@ compile, and it is honest to say so rather than pretend the hook is complete.
 
 ## Fix
 
-Run `just check-fast` from `pre-push`, on branch pushes only, alongside the two
+Run `just check fast` from `pre-push`, on branch pushes only, alongside the two
 checks already there.
 
 Deliberate limits, stated so nobody reads the hook as more than it is:
@@ -78,7 +78,7 @@ Deliberate limits, stated so nobody reads the hook as more than it is:
 ## Measured
 
 **CORRECTED 2026-08-27, after the hook shipped.** The number first recorded
-here was 63-64 s, from two consecutive `just check-fast` runs on an idle host,
+here was 63-64 s, from two consecutive `just check fast` runs on an idle host,
 described as "stable". It is right, and it is the wrong measurement.
 
 `check-fast` costs 64 s on a SETTLED tree. The hook does not run on a settled

@@ -565,7 +565,7 @@ generated-header stub blocked including nano-ros headers at all until W1.4, and
 the template then only reached `<nros/init.h>`.
 
 It was **one** `inline constexpr` in the entire header set, and nano-ros already
-intends C++14 compatibility — `just check-cpp` runs a `-std=c++14 -fsyntax-only`
+intends C++14 compatibility — `just check cpp` runs a `-std=c++14 -fsyntax-only`
 freestanding gate. Dropping `inline` fixes it with no loss: `constexpr` at
 namespace scope is implicitly const and already has internal linkage per TU, so
 the keyword bought nothing.
@@ -591,7 +591,7 @@ class that breaks PX4, which builds every module `-std=gnu++14 -Werror`.
 `bind_service` instantiation probe. Measured before applying — zero violations
 across every header and the probe — so it pins what was already true rather than
 forcing a cleanup. Mutation-tested: reintroducing the `inline constexpr` now
-fails `just check-cpp` naming the line; removing it goes green.
+fails `just check cpp` naming the line; removing it goes green.
 
 Worth generalising: a syntax gate that names a standard should enforce it. `-std=`
 alone is a request, not a constraint.
@@ -808,7 +808,7 @@ listing and are not in the source.
 
 | Step | Receipt |
 | --- | --- |
-| W0 | `just check-cpp-fmt` green without touching a PX4 module; `nros_register_check help` prints a `PRINT_MODULE_DESCRIPTION` |
+| W0 | `just check cpp-fmt` green without touching a PX4 module; `nros_register_check help` prints a `PRINT_MODULE_DESCRIPTION` |
 | W1 | PX4 SITL module links `libnros_cpp.a`; `nm` shows resolved nano-ros symbols; module starts from pxh |
 | W2 | a stock PX4 consumer (`listener <topic>`) prints a message published by the nano-ros node, asserted by a test |
 | W3 | a real ROS 2 subscriber receives a stock PX4 module's uORB topic through the bridge; same source builds against a second backend |

@@ -121,7 +121,7 @@ ament version (e.g. `4.9.1`), and their leaf `Cargo.lock`s.
 
 ## Acceptance
 
-- `just check-msg-dep-is-path` green; `git grep '<msg> = { version'` finds zero
+- `just check msg-dep-is-path` green; `git grep '<msg> = { version'` finds zero
   message registry deps in leaf manifests.
 - From the repo root, `cargo metadata --manifest-path <any-leaf> --offline`
   shows every message package id as `path+file://…`, never `registry+…`

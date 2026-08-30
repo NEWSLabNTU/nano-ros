@@ -85,7 +85,7 @@ unstable). Keep it that way.
   Fast, no builds, platform-independent — catches the "new unaudited weak site
   slips in" failure mode at merge time.
 - **Image checker (scope 2, final-image) — DONE (phase-247 W1).**
-  `scripts/check-weak-symbols-image.sh` + `just check-weak-symbols-image`: `nm`
+  `scripts/check-weak-symbols-image.sh` + `just check weak-symbols-image`: `nm`
   each final image, assert every `[img:]`-declared override-default resolves
   strong (weak→FAIL, absent→WARN), robust to `--gc-sections` (archives skipped).
   Coverage map complete (freertos / cmake / serial / smoltcp / threadx; px4-uorb

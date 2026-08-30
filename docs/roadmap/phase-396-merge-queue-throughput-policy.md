@@ -101,7 +101,7 @@ not, and that gap is where the freeze lives.
 
 ### W1 — the merge group runs `ci-l1`, not the build tier
 
-Drop `just check-build` + `just check-no-std` from the `merge_group` arm of
+Drop `just check build` + `just check no-std` from the `merge_group` arm of
 `pr-checks.yml`. The required `CI` context becomes exactly `check-fast` +
 `test-unit` — `ci-l1`, the tier already gated by `check-lane-contracts` as
 fixture-free and therefore actually runnable in that job.

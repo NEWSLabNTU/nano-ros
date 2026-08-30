@@ -137,7 +137,7 @@ one, but "linkable-only" turned out to be two different things:
 The second is the more common shape and the more dangerous one, because the
 return value looks correct under test. W1's column should distinguish them.
 
-Verified: `just check-weak-symbols` OK (17 files), and
+Verified: `just check weak-symbols` OK (17 files), and
 `just threadx_riscv64 build-fixture-extras` completes with zero errors and no
 diagnostics from `platform.c`.
 

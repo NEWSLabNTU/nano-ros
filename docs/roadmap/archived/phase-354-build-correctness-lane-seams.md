@@ -106,7 +106,7 @@ a test failure. The issue has been added to repeatedly through 2026-08-12.
 Partially mitigated already, and that mitigation should be credited rather than
 redone:
 
-* `just check-tier-preconditions` batches the unmet preconditions and reports
+* `just check tier-preconditions` batches the unmet preconditions and reports
   them all at once, at the head of `just ci`.
 * `52e6bda8e` (2026-08-14) landed "one zephyr staleness spelling, so every entry
   is covered" — the issue's own zephyr `skip_probe = true` finding.

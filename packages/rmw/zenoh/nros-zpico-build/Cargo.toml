@@ -7,7 +7,7 @@ description = "Build-script helper logic for zpico-sys"
 license.workspace = true
 repository.workspace = true
 
-# issue 0287 — HOST-ONLY. `just check-workspace-embedded` builds the whole
+# issue 0287 — HOST-ONLY. `just check workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members
 # regardless of what firmware can reach. A host-only member therefore turns
 # `std` on for everything and the lane dies in an unrelated crate

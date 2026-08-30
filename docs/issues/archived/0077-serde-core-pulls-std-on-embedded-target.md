@@ -10,7 +10,7 @@ resolved_in: "phase-253 follow-up — nros-board-common no_std-by-default"
 
 ## Resolution
 
-`just check-no-std` failed: `serde_core` (no `#![no_std]`) reached the embedded
+`just check no-std` failed: `serde_core` (no `#![no_std]`) reached the embedded
 build → `error[E0463]: can't find crate for std` on `thumbv7em-none-eabihf`.
 
 Root cause: `nros-board-common` (`categories = ["no-std"]`) had
@@ -36,5 +36,5 @@ of the target build. Manifest-only, no source change.
 Now no_std is the default and the std/parser path is explicit, so a forgotten
 flag fails toward no_std instead of silently pulling std.
 
-Verified: `just check-no-std` green (thumbv7em / thumbv7m / riscv32imc);
+Verified: `just check no-std` green (thumbv7em / thumbv7m / riscv32imc);
 `cargo check -p nros-zpico-build` green.

@@ -105,7 +105,7 @@ container type is the only thing that changes there.
 
 `rosidl-codegen`: 189 tests green across 14 binaries (7 new). Whole
 `packages/cli` workspace builds and tests clean. `cargo +nightly fmt --all` clean,
-`just check-fast` green, `just setup-cli` rebuilt.
+`just check fast` green, `just setup-cli` rebuilt.
 
 ### Deferred
 

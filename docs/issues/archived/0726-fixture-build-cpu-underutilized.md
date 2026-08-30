@@ -199,7 +199,7 @@ again on a quiet machine:
 
 | | |
 | --- | --- |
-| `just check-fast` end to end | **90 s** |
+| `just check fast` end to end | **90 s** |
 | sum of the 112 gates timed individually | 56 s |
 | slowest single gate (`check-core-only-predicate`) | 8.3 s |
 | other pre-stage deps (`generate-bindings`, `setup-launch-resolve`, …) | 5 s total |
@@ -230,7 +230,7 @@ headers`, `check-abi-bindings`) rather than only reading.
 derived from `check-fast`'s own dependency line so the list cannot drift:
 
 ```
-serial `just check-fast`      90 s
+serial `just check fast`      90 s
 parallel at -P32               8 s     (slowest single gate 7.7 s = the floor)
 ```
 

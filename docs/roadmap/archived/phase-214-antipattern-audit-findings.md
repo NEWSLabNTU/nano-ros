@@ -407,14 +407,14 @@ recipe — orchestration only), `esp_idf`, `platformio`, `px4`, `docker`,
 **Workspace-level reproductions (gated separately from per-plat sweep):**
 | recipe | result | track |
 |---|---|---|
-| `just check-workspace-embedded` | FAIL — `nros-serdes/std` activated via dev-deps unification | **F** |
+| `just check workspace-embedded` | FAIL — `nros-serdes/std` activated via dev-deps unification | **F** |
 | `just test-unit` | FAIL — `nros-rmw-zenoh` lib test link: `nros_platform_*` symbols undefined (16+ symbols, from `platform_aliases.c`) | **G** |
 
 ---
 
 ## Track F — Workspace feature unification leaks `std` to embedded (RE-SCOPED 2026-06-04)
 
-**Scope**: CRITICAL. Blocks `just check-workspace-embedded`. Standalone
+**Scope**: CRITICAL. Blocks `just check workspace-embedded`. Standalone
 `cargo check -p nros-serdes --no-default-features --target
 thumbv7em-none-eabihf` passes; the failure is workspace-wide unification.
 
@@ -491,7 +491,7 @@ fold cleanly.
       **Acceptance**: `cargo tree -i nros-serdes --target
       thumbv7em-none-eabihf --no-default-features --workspace
       --edges=normal,build` shows NO `std` activation path from any
-      board crate. `just check-workspace-embedded` advances past the
+      board crate. `just check workspace-embedded` advances past the
       std/posix-c errors. (Pre-existing clippy lints in
       `nros-platform` may surface — file under sibling track.)
 
@@ -510,7 +510,7 @@ fold cleanly.
       originating from any board crate (residual `std` paths
       come from `[dev-dependencies]` on `nros-node` /
       `nros-rmw-cyclonedds` — Track 214.F.2 scope).
-      `just check-workspace-embedded` advances past the std /
+      `just check workspace-embedded` advances past the std /
       posix-c errors and now stops on the pre-existing
       `nros-platform/src/board/runtime.rs:{83,95}`
       `clippy::result_unit_err` lints (file under a sibling track —
@@ -562,7 +562,7 @@ fold cleanly.
          so the regression source surfaces in the failure log.
       2. **Gate 2 — embedded compile-check**: `cargo check --workspace
          --no-default-features --target thumbv7em-none-eabihf` on the
-         no_std-clean subset (mirrors `just check-workspace-embedded`'s
+         no_std-clean subset (mirrors `just check workspace-embedded`'s
          exclude list for `nros-rmw-zenoh-staticlib`,
          `nros-rmw-xrce-cffi-staticlib`, `nros-platform-bare-metal`).
       Triggers on PR/push touching `packages/**/Cargo.toml`,

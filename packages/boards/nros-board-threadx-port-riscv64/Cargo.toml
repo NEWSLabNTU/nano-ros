@@ -12,7 +12,7 @@ categories = ["embedded", "no-std"]
 
 # issue 0287 — HOST-ONLY. Everything this crate exposes is build-script side and
 # uses `std::fs` (the ASM_OVERRIDES/on-disk cross-check), so it cannot compile
-# for a `target_os = "none"` target — and `just check-workspace-embedded` builds
+# for a `target_os = "none"` target — and `just check workspace-embedded` builds
 # EVERY workspace member for a thumb target, where cargo's feature unification
 # then turns `std` on for crates that must not have it. Without this the lane
 # fails in an unrelated crate ("can't find crate for `std`" in nros-serdes), or

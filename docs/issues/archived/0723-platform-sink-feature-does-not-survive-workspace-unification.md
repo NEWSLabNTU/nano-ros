@@ -23,7 +23,7 @@ them all — so the feature is on for `nros-log` everywhere, while *linking*
 remains per-binary. A test binary that never links a platform port still gets
 `nros-log` compiled with `platform-sink`.
 
-Still failing, on `888aa0135`, in `just check-workspace-features`:
+Still failing, on `888aa0135`, in `just check workspace-features`:
 
 ```
 cargo test --no-run --workspace --exclude nros-c --no-default-features --quiet

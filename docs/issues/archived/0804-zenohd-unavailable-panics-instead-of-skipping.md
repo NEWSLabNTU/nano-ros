@@ -78,7 +78,7 @@ answered by the delete rather than by predicting the path.
   transform only moves `RouterUnavailable` from failure to skip; every other
   error still panics.
 - The doc example on `ZenohRouter` taught `.unwrap()`. It now teaches `or_skip`.
-- Gate `just check-zenohd-router-skips` (fast line): no `.expect(` / `.unwrap()`
+- Gate `just check zenohd-router-skips` (fast line): no `.expect(` / `.unwrap()`
   directly on a `ZenohRouter::start*` call, balanced-paren aware so a nested
   call or a `)` inside a string does not end the scan early. It deliberately
   does NOT flag `unwrap_or_else(|e| skip!(...))` — that is over-tolerant rather

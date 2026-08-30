@@ -40,7 +40,7 @@ default: tier1
 # L1 — compile, lint and unit tests. No fixtures, no platforms, no QEMU.
 [group("main")]
 l1:
-    @just check-cli-fresh check-fast check-build check-api-parity
+    @just check cli-fresh check::fast check::build check::api-parity
     @just test-unit
     @echo "CI L1 passed (compile + unit; no fixtures were built or needed)."
 
@@ -228,7 +228,7 @@ matrix-nightly:
 # laning it worth doing today when it was not last week.
 # Issue 0651 — tier 3 now covers the Zephyr 4.4 rolling line, which until here
 # existed only in the nightly. Two steps, cheapest first:
-#   check-zephyr-kconfig-symbols  source only, ~2 s, needs `just zephyr
+#   check::zephyr-kconfig-symbols  source only, ~2 s, needs `just zephyr
 #                                 kconfig-trees` (613 MB of shallow clones)
 #   zephyr tier3-cell             one real 4.4 build, needs the west workspace
 # Both FAIL rather than skip when unprovisioned. That is the point: a lane that
@@ -238,19 +238,19 @@ matrix-nightly:
 # runs tier 2, which never claimed to cover it.
 [group("ci")]
 full:
-    @just check rust-rtos-link-check check-zephyr-kconfig-symbols test-all test-ignored
+    @just check rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored
     @just zephyr tier3-cell
     @echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
 
 # Fast per-push CI gate: the dependency-free lint/check lane — no heavy builds,
 # fixtures, QEMU, network, or ROS install. Runs anywhere. The heavier per-job
 # mirrors are separate recipes you invoke when their prereqs are present:
-#   just check-sdk-index   (network — downloads + sha256-checks SDK release assets)
+#   just check sdk-index   (network — downloads + sha256-checks SDK release assets)
 #   just scaffold-journey  (builds the CLI + a scaffolded project)
 #   just colcon-parity     (needs ROS 2 + colcon on the host)
 #   just acceptance        (builds the CLI + a scaffolded project)
 # The full heavy lane stays `just ci` / `just test-all`.
 [group("ci")]
 fast:
-    @just check-fast check-no-std
+    @just check fast check::no-std
     @echo "ci-fast passed!"

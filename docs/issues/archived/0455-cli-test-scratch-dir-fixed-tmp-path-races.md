@@ -76,7 +76,7 @@ the surrounding lines before trusting a row.
 - `cargo test -p nros-cli-core --lib` — **512 passed, 0 failed**.
 - The issue's repro, three concurrent suites: 512/512 each, **no `Text file
   busy`**.
-- `just check-cli-tests` — **975 tests, 0 failures**.
+- `just check cli-tests` — **975 tests, 0 failures**.
 - `cargo clippy -p nros-cli-core --lib --all-targets -- -D warnings` — clean.
 
 Three unit tests in `test_support` pin the properties directly rather than

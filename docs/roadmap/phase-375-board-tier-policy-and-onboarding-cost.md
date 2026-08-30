@@ -100,7 +100,7 @@ ones pay it when someone answers.
       `<nano_ros_provides>` export mirroring its `names`, the
       `board-support.toml` row, a weak-symbol allowlist stub, and the leaf lock.
 - [ ] Those are exactly the five gates `s32z270` tripped. The scaffold's
-      acceptance is that a board created by it passes `just check-fast` on the
+      acceptance is that a board created by it passes `just check fast` on the
       first run.
 
 **Acceptance:** a scaffolded board is green on `check-fast` before its first

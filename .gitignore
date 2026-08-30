@@ -89,7 +89,7 @@ tools/*
 # Per-machine SDK resolution lock written by `nros setup`
 /nros-sdk.lock
 
-# Phase 193 — separate target-dir for concurrent embedded clippy (just check-workspace-all)
+# Phase 193 — separate target-dir for concurrent embedded clippy (just check workspace-all)
 /target-embedded/
 
 # Per-RMW example build dirs (target-xrce/ etc.) — build output, never committed

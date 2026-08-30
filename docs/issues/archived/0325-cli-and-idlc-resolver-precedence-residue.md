@@ -130,7 +130,7 @@ one and miss the other.
 
 - Bootstrap resolver: resolves, is idempotent across repeated calls, and
   recovers from a dead cached path (shown above).
-- `just check-rmw-cyclonedds` → 16/16 with the collapsed helper.
+- `just check rmw-cyclonedds` → 16/16 with the collapsed helper.
 - `just check` green.
 
 ### Unrelated breakage fixed to get there

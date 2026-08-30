@@ -441,8 +441,8 @@ The lanes are not new machinery so much as a re-cut of what exists.
 
 | today | becomes | change needed |
 | --- | --- | --- |
-| `just check-fast` (43 gates) | **L0** | none |
-| `just check-build` (20 gates) | **L1** | narrow to affected crates |
+| `just check fast` (43 gates) | **L0** | none |
+| `just check build` (20 gates) | **L1** | narrow to affected crates |
 | `just ci` (`NROS_TEST_SCOPE=native`) | **L2** | widen scope from `native` to the four host-executable platforms; stop requiring a full fixture build |
 | `just rust-rtos-link-check` | **L3** | join it with `mem-report --check` and `check-no-alloc-image` on the same cross ELFs |
 | `just ci-matrix` (1-wise) | **L4** | select by board tier + change footprint instead of 1-wise |
@@ -568,7 +568,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - run: just check-fast         # buildless; no submodules needed
+      - run: just check fast         # buildless; no submodules needed
 
   l1-unit:
     runs-on: ubuntu-22.04

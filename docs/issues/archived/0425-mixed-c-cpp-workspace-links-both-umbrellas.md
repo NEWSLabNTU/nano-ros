@@ -92,7 +92,7 @@ have hidden a real ODR problem (issue 0160's class).
 **Verified:** `c_mixed_workspace` links clean (was 96 duplicate symbols);
 `pure_c_workspace`, `cpp_robot_entry` and `shadowing` all still exit 0;
 `just build-test-fixtures lane=native` completes (was: stopped here);
-`just check-fast` + `just check-build` green.
+`just check fast` + `just check build` green.
 
 ## Reproduce
 

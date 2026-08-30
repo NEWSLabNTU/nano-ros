@@ -10,7 +10,7 @@ area: build
 ## Finding (phase-308, 2026-07-26)
 
 Adding `nros-rmw-metadata` — a host-only crate that deps `nros/metadata-mode`,
-which implies `std` — broke `just check-workspace-embedded` with:
+which implies `std` — broke `just check workspace-embedded` with:
 
 ```
 error[E0463]: can't find crate for `std`

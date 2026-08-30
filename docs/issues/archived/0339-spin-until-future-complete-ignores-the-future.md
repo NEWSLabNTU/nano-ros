@@ -92,4 +92,4 @@ a deprecated shim would just be a second shape to maintain.
   fail to compile (rc=1); restored, rc=0. The fixture genuinely gates the
   issue's central claim — that the standard idiom "cannot be written against
   this shim at all".
-- `just check-cpp` and `just check` green.
+- `just check cpp` and `just check` green.

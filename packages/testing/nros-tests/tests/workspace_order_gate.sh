@@ -60,7 +60,7 @@ NROS="$ROOT/packages/cli/target/release/nros"
 # shellcheck source=../../../../scripts/build/cli-usable.sh
 . "$ROOT/scripts/build/cli-usable.sh"
 nros_cli_usable "$NROS" || {
-    nros_check_skip "check-workspace-order" "$nros_cli_unusable_reason"
+    nros_check_skip "workspace-order" "$nros_cli_unusable_reason"
     exit 0
 }
 

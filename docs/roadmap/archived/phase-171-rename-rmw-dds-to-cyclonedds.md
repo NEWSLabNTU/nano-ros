@@ -864,7 +864,7 @@ C++14 today. Tighten the audit:
       Zephyr test resolvers honor `NROS_ZEPHYR_BUILD_ROOT` so sandboxed
       fixture builds can live under `build/zephyr-workspace-builds`
       instead of the sibling `nano-ros-workspace`.
-      Verified: `just check-c`; `just zephyr build-fixtures` with
+      Verified: `just check c`; `just zephyr build-fixtures` with
       `NROS_ZEPHYR_BUILD_ROOT=/home/aeon/repos/nano-ros/build/zephyr-workspace-builds`;
       `cargo check -p nros-tests --tests`; Zephyr CMake/Rust fixture
       existence checks; `cargo test -p nros-tests --test zephyr

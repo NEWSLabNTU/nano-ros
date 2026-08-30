@@ -370,7 +370,7 @@ veto into. Adding one brings three sub-problems the first plan did not see:
 ### W7' — the ledger
 
 32 `gap` and 22 `rename` rows in `param.json`, several asserting the split this
-phase removes. `just check-api-parity` stays green.
+phase removes. `just check api-parity` stays green.
 
 ### Deferred to its own phase — caller-chosen CAPACITY
 

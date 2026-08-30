@@ -7,7 +7,7 @@ description = "Build-script helper: the C diagnostics every nano-ros C compile m
 license     = "MIT OR Apache-2.0"
 
 # issue 0287 — HOST-ONLY, same reason as `nros-build-paths`: this is a
-# build-script library that pulls `cc`, and `just check-workspace-embedded`
+# build-script library that pulls `cc`, and `just check workspace-embedded`
 # builds every workspace member for a thumb target. Declaring it here keeps the
 # exclude list derived rather than hand-maintained
 # (scripts/build/host-only-members.sh).

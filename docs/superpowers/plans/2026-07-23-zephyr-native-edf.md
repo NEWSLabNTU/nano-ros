@@ -425,7 +425,7 @@ Claude-Session: https://claude.ai/code/session_01SwjKNujon1qUVmwC7yhRJQ"
 
 ## Final verification (after all tasks)
 
-- [ ] `source ./activate.sh && just check-cli-tests` — host realizer tests (Task 1) green.
+- [ ] `source ./activate.sh && just check cli-tests` — host realizer tests (Task 1) green.
 - [ ] `just build-test-fixtures zephyr-edf` — fixture builds with `CONFIG_SCHED_DEADLINE`.
 - [ ] `just zephyr test zephyr_edf_deadline_applied` — e2e green (retest solo if it flakes in a sweep).
 - [ ] `cargo +nightly fmt --check` clean across touched crates.

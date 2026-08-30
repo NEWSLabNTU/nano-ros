@@ -283,14 +283,14 @@ int32_t nros_cpp_action_server_set_callbacks(void* handle, nros_c_goal_callback_
  * shared slot `set_callbacks` writes. THIRD mirror of this declaration
  * (nros_cpp_ffi.h skips it — cbindgen renders `Option<fn>` as an opaque struct
  * — and action_server.hpp is the other); the cross-include TU in
- * `just check-c` is what catches a half-updated set. */
+ * `just check c` is what catches a half-updated set. */
 int32_t nros_cpp_action_server_set_accepted_callback(void* handle,
                                                      nros_c_accepted_callback_t accepted_cb,
                                                      void* ctx);
 /* issue 0796 — `status` was hardcoded `Succeeded` in the shim, so an aborted
  * goal reached the client as succeeded. THIRD mirror of this declaration
  * (nros_cpp_ffi.h and action_server.hpp are the others); the cross-include TU
- * in `just check-c` is what caught the two that were left behind. */
+ * in `just check c` is what caught the two that were left behind. */
 int32_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
                                              const uint8_t (*goal_id)[16], int32_t status,
                                              const uint8_t* result_buf, size_t result_len);

@@ -104,7 +104,7 @@ then making it uniform:
    `detect_workspace_root` uses.
 
 (2) is the one that matches what the workspace IS, and it wants a guard, not a
-skip: `just check-tier-preconditions` is where an unmet "this workspace has not
+skip: `just check tier-preconditions` is where an unmet "this workspace has not
 been built" belongs, so the message names `nros build` instead of surfacing four
 frames deep in `cargo metadata` (the shape issue 0463 fixed for `nros sync`).
 

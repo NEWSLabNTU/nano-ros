@@ -82,7 +82,7 @@ Transports coexist (locator selects). ESP32/ESP32-QEMU use zenoh-pico's serial (
 `nros-rmw-xrce-cffi` (C FFI shim) gates `UCLIENT_PROFILE_{UDP,TCP,SERIAL}` +
 `UCLIENT_PLATFORM_POSIX` + `transport_posix_{udp,serial}.c` on `target_os = linux|macos|*bsd`.
 Bare-metal (`target_os = "none"`) gets only `UCLIENT_PROFILE_{DISCOVERY,CUSTOM_TRANSPORT,
-STREAM_FRAMING}` and must inject its own custom transport. `just check-workspace-embedded`
+STREAM_FRAMING}` and must inject its own custom transport. `just check workspace-embedded`
 excludes `nros-rmw-xrce{,-cffi,-cffi-staticlib}` (header-only backend's `internal.h` references
 UDP types unconditionally; the staticlib sibling needs panic_handler resolution at compile time).
 The `-staticlib` sibling lets Corrosion import a real `staticlib` target without forcing the cffi

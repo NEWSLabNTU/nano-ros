@@ -240,7 +240,7 @@ generate_config_header(&out_dir, &link, &buf_config);
       impl parity for every transport in `{tcp, udp_unicast,
       udp_multicast, serial, ivc}`. SIGPIPE / `set -o pipefail` race
       avoided by tempfile-buffering `nm` output and grepping the
-      file. Recipe `just check-zenoh-archive` wires it in.
+      file. Recipe `just check zenoh-archive` wires it in.
 - [x] **134.6 — E2E tests landed.** See "Acceptance / E2E" below.
 
 ---

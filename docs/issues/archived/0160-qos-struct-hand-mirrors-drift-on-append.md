@@ -13,11 +13,11 @@ related: [issue-0131, issue-0155, issue-0157, issue-0159, phase-273, phase-282]
    extracts each mirrored struct body from `component.h` and cbindgen's
    `nros_cpp_ffi.h`, normalizes comments/whitespace and the `nros_c_qos_` →
    `nros_cpp_qos_` enum prefix, and fails on any field difference (with a
-   marked field-by-field diff). Buildless → hooked into `just check-fast`
+   marked field-by-field diff). Buildless → hooked into `just check fast`
    (the per-push CI gate). Verified: removing `tx_express` from the mirror
    fails the gate; in-sync passes.
 2. **Prototype/typedef compatibility** (instance 1, the phase-273
-   `callback_group` arity drift): `just check-c` now compiles a TU that
+   `callback_group` arity drift): `just check c` now compiles a TU that
    includes `nros_cpp_ffi.h` FIRST and then `component.h` (mirrors guarded
    out), so the compiler itself flags any re-declared prototype or typedef
    divergence as "conflicting types". Verified: dropping an argument from

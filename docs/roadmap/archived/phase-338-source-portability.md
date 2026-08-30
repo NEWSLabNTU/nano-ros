@@ -1023,8 +1023,8 @@ Two things the implementation turned up:
 
 Verified by running on native: the C action pair completed a full Fibonacci
 round trip, `cpp/service-client` printed `Result of add_two_ints: 5`, and
-`cpp/action-client` took three feedback publishes to a result. `just check-c`
-and `just check-cpp` pass.
+`cpp/action-client` took three feedback publishes to a result. `just check c`
+and `just check cpp` pass.
 
 **Not verified**: the freertos / riscv64-threadx / threadx-linux copies are
 source-converged and gate-checked but unbuilt here — their toolchains need the

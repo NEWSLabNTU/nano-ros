@@ -22,7 +22,7 @@
 //! about the wake path is loosened to get here — the `#![cfg]` is narrower than
 //! before, not wider.
 //!
-//! Run: `just check-required-features-tests` (or `cargo nextest run -p
+//! Run: `just check required-features-tests` (or `cargo nextest run -p
 //! nros-tests --features signal-fd-wake-test --test signal_fd_wake`).
 
 #![cfg(all(feature = "signal-fd-wake-test", target_os = "linux"))]

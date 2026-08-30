@@ -4,7 +4,7 @@
 languages; every one of the 2397 items where the nano-ros user API does not
 correspond to rclc/rclcpp/rclrs carries a written verdict, in 17 topic shards
 under `docs/reference/api-parity-ledger/`. The Rust reference is **rclrs
-v0.7.0** — the version question W5 was holding is settled, see below. `just check-api-parity` is green and
+v0.7.0** — the version question W5 was holding is settled, see below. `just check api-parity` is green and
 wired into `just check`. W3–W5 are the corrections and are not started; W5 has
 one decision recorded below that is not an implementer's to make.
 
@@ -377,7 +377,7 @@ Recorded so nobody reads a `same` verdict as a guarantee:
 One shard per topic, `docs/reference/api-parity-ledger/<topic>.json`, holding
 that topic's rows in all three languages. A row on a TYPE covers its members
 while they share a bucket; a glob row (`c:action_*`) covers a flat C family and
-must declare the bucket it covers. `just check-api-parity` fails on any
+must declare the bucket it covers. `just check api-parity` fails on any
 unexplained divergence and on any row filed in the wrong shard, naming both.
 
 ## W3 — close the C++ coverage gaps a ported node actually hits

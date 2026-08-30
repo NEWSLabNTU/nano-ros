@@ -18,7 +18,7 @@
 # the verdict is about a program that no longer exists in the tree.
 #
 # What it cost, repeatedly, in one session: switching branches restales the
-# stamp, and the next `just check-fast` reported THREE unrelated red gates whose
+# stamp, and the next `just check fast` reported THREE unrelated red gates whose
 # printed cause was `in-tree nros CLI is STALE`. Three failures naming one
 # remedy, in a lane whose contract says it does not need the thing. The
 # information a person needs — "run `just setup-cli`" — was already on screen

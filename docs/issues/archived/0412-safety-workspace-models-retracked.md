@@ -9,7 +9,7 @@ related: [rfc-0063, phase-330, phase-331, issue-0380]
 
 ## Symptom
 
-`just check-fast` fails on `main`:
+`just check fast` fails on `main`:
 
 ```
 check-no-tracked-models: tracked SystemModel files found:

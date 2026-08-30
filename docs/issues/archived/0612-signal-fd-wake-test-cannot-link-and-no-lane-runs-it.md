@@ -161,12 +161,12 @@ is deleted, not relaxed.
 
 `nros-node` keeps its `nros-platform-cffi` dev-dependency: `src/lib.rs` carries
 a `#[cfg(test)] extern crate nros_platform_cffi as _;` for the crate's own unit
-tests (254 of them, `just check-node-std-tests`). Its comment now says that is
+tests (254 of them, `just check node-std-tests`). Its comment now says that is
 what the entry is for.
 
 ### Cause 2 — the lane
 
-`just check-required-features-tests`, issue 0652's lane, which landed
+`just check required-features-tests`, issue 0652's lane, which landed
 independently and in parallel with this work. This target joins it: 18 tests
 became 20, green.
 

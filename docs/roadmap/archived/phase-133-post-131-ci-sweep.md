@@ -40,28 +40,28 @@ prevents the same root-causes recurring under a new label later.
 
 ### 133.1 — `cargo +nightly fmt` drift across phases 127–130
 **Status.** Landed (`808ab59`).
-**Trigger.** `just check` → `just check-workspace` → `cargo fmt --check`.
+**Trigger.** `just check` → `just check workspace` → `cargo fmt --check`.
 **Files.** 10 files in `packages/core/nros-{node,platform-api,platform-cffi}/`, `packages/dds/nros-rmw-dds/src/session.rs`, `packages/testing/nros-tests/src/{qemu,fixtures/binaries/mod}.rs`, `packages/xrce/nros-rmw-xrce-cffi/build.rs`.
 **Why.** `rustfmt.toml` enables nightly-only options (`imports_granularity`, `format_code_in_doc_comments`). Stable `cargo fmt` silently skips them; CI uses nightly and flags the diff. Several earlier-phase commits formatted with stable.
 **Fix.** `cargo +nightly fmt` sweep.
 
 ### 133.2 — Phase 128 left dead per-backend `rmw-*-cffi` feature refs
 **Status.** Landed (`97da37c`).
-**Trigger.** `just check-workspace` → `cargo clippy --workspace --no-default-features --exclude …` failed with: `nros-node does not have feature 'rmw-dds-cffi'` / `'rmw-zenoh-cffi'`.
+**Trigger.** `just check workspace` → `cargo clippy --workspace --no-default-features --exclude …` failed with: `nros-node does not have feature 'rmw-dds-cffi'` / `'rmw-zenoh-cffi'`.
 **Files.** `packages/testing/nros-tests/Cargo.toml` `trigger-test`, `multi-rmw-bridge` features.
 **Why.** Phase 128.C.3 removed per-backend feature flags from `nros-node/Cargo.toml` in favour of the umbrella `rmw-cffi` + walker (`nros_rmw_cffi_walk_init_section`). `nros-tests/Cargo.toml` still listed `nros-node/rmw-zenoh-cffi` and `nros-node/rmw-dds-cffi`. Surfaced only when something forced the workspace manifest to re-resolve, which Phase 131 did.
 **Fix.** Replace with `nros-node/rmw-cffi`; drop the dds-specific ref entirely (the `dep:nros-rmw-dds` line is enough).
 
 ### 133.3 — Phase 130 wake primitive: header declared, no export macro
 **Status.** Landed (`585616d`).
-**Trigger.** `just check-platform-abi-mirror` (Phase 121.4.b drift gate) reported 7 wake symbols missing from `nros_platform_export_*!` macro emission.
+**Trigger.** `just check platform-abi-mirror` (Phase 121.4.b drift gate) reported 7 wake symbols missing from `nros_platform_export_*!` macro emission.
 **Files.** `packages/core/nros-platform-cffi/src/lib.rs` — extends `nros_platform_export_threading!`.
 **Why.** Phase 130 added `nros_platform_wake_{init,drop,wait_ms,signal,signal_from_isr,storage_size,storage_align}` to `platform.h` and to the `unsafe extern "C"` block, but never plumbed them into a `nros_platform_export_*!` macro. Result: header declared the symbols, but no platform crate could supply a `pub extern "C" fn` definition. ABI drift gate caught it.
 **Fix.** Extend `nros_platform_export_threading!` with the 7 wake fns delegating to `PlatformThreading::wake_*`. Same macro since the wake methods live on the same trait.
 
 ### 133.4 — clang-format drift in nros-cpp action headers
 **Status.** Landed (`5a83158`).
-**Trigger.** `just check-cpp` reported 11 `-Wclang-format-violations` in `action_{client,server}.hpp`, `polling_action_{client,server}.hpp`.
+**Trigger.** `just check cpp` reported 11 `-Wclang-format-violations` in `action_{client,server}.hpp`, `polling_action_{client,server}.hpp`.
 **Files.** the 4 hpp files above.
 **Why.** `reinterpret_cast<uint8_t(*)[16]>` lacks a space before the parens per the project's `.clang-format`. Pre-existing drift; never caught locally between phases 127 → 131.
 **Fix.** `clang-format -i` sweep.

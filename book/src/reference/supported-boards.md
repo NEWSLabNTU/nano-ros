@@ -15,7 +15,7 @@ nano-ros on them. Per-crate tier truth is the generated
 
 > **For in-tree board packages, see the generated
 > [Board Support Tiers](board-support-tiers.md)** — it is checked against the test
-> matrix, the fixture rows and the nightly lanes by `just check-board-tiers`.
+> matrix, the fixture rows and the nightly lanes by `just check board-tiers`.
 > This page stays hand-maintained because it also covers parts that have never had
 > a crate in this tree (Nordic, NXP, TI…), which the registry cannot express.
 >

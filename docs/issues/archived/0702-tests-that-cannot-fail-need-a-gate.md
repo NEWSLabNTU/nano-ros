@@ -64,5 +64,5 @@ Two were the `require_*` shape, and the gate was corrected rather than the code.
 
 ## Verified
 
-`just check-tests-can-fail` — 258 test files, clean. `nano2nano` + `xrce` 15/16
+`just check tests-can-fail` — 258 test files, clean. `nano2nano` + `xrce` 15/16
 (the 16th is #0682's peer-mode capability skip). `edge_case_test` 15/15.

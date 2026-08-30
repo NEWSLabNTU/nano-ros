@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Emit `--exclude <crate>` for every workspace member declared HOST-ONLY.
 #
-# issue 0287. `just check-workspace-embedded` builds the whole workspace for a
+# issue 0287. `just check workspace-embedded` builds the whole workspace for a
 # thumb target, and cargo unifies features across ALL members regardless of what
 # firmware can actually reach. So one host-only member — even an orphan nothing
 # deps — turns `std` on for every crate and the lane dies somewhere unrelated:

@@ -14,7 +14,7 @@ deterministic linking). Related:
 > cyclonedds flag removed (force_load mirrors the flag-free Linux whole-archive;
 > reasoned, no macOS runner to run-validate); **W3** the #70 link-determinism test
 > rewritten for the single archive (one `libnros_c.a` links with `-u`, no flag, one
-> `REGISTRY`) — `just check-staticlib-symbols` green, #70 resolved. The cpp-workspace
+> `REGISTRY`) — `just check staticlib-symbols` green, #70 resolved. The cpp-workspace
 > multi-`std` case (**#71**, open) is a link *failure* being fixed without the flag,
 > not a flag use — independent.
 
@@ -50,7 +50,7 @@ pair) and that the flag persists in three places.
 ## Waves
 
 ### W0 — forbid-gate + allowlist (lock the invariant)
-- `scripts/check-no-allow-multiple-def.sh` + `just check-no-allow-multiple-def`
+- `scripts/check-no-allow-multiple-def.sh` + `just check no-allow-multiple-def`
   (wired into `just check`): grep the build system (`CMakeLists.txt`, `cmake/**`,
   `scripts/**`, `just/**`, board cmake, `*.cmake`) for `allow-multiple-definition`;
   fail on any occurrence NOT in `scripts/allow-multiple-def-allowlist.txt`. Each
@@ -80,7 +80,7 @@ pair) and that the flag persists in three places.
   binary via `-u nros_rmw_zenoh_register`, NO `--allow-multiple-definition`,
   exactly one `REGISTRY`. Drop the obsolete 2-archive dup-diff. The fixture
   (`scripts/build/link-determinism-fixture.sh`) already builds the single archive.
-  Greens `just check-staticlib-symbols` / closes #70's gate red.
+  Greens `just check staticlib-symbols` / closes #70's gate red.
 
 ### (parallel) cpp workspace — #71
 - One Rust staticlib for the workspace cpp Entry (owned by #71). When it lands,
@@ -90,8 +90,8 @@ pair) and that the flag persists in three places.
 
 - `scripts/allow-multiple-def-allowlist.txt` reduced to empty (or only entries
   with a documented reason + open follow-up issue, e.g. an untestable macOS path).
-- `just check-no-allow-multiple-def` green; gate in `just check`.
-- `just check-staticlib-symbols` green on the single-archive flag-free link-proof.
+- `just check no-allow-multiple-def` green; gate in `just check`.
+- `just check staticlib-symbols` green on the single-archive flag-free link-proof.
 - `just threadx_riscv64 build` green with the flag removed.
 - No `--allow-multiple-definition` reachable in any default (non-allowlisted)
   link path.

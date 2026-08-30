@@ -115,7 +115,7 @@ All three leak sites fixed, plus a latent API gap found while implementing:
 Tests: `test_cpp_ffi_teardown_fn` + extended `test_cpp_heap_seq_of_nested`
 (generation-level, rosidl-codegen) and a RUNTIME lifetime probe
 (`nros-cpp/tests/compile/heap_sequence_lifetime.cpp`, compiled AND executed by
-`just check-cpp` with a counting allocator) covering dtor / move-assign /
+`just check cpp` with a counting allocator) covering dtor / move-assign /
 clear / reserve-relocation of a two-level heap element shape — zero live
 allocations after each. The old container does not even compile the probe
 (no `emplace_back`), confirming the API gap.

@@ -20,7 +20,7 @@ Ports with no `[board.priority_plan]` are REPORTED, not failed: most cannot expr
 one yet (issue 0736 gave NuttX the ability days ago; Linux/macOS still discard
 priority entirely). Silence there would read as approval.
 
-Gate: just check-tier-priority-plan
+Gate: just check tier-priority-plan
 """
 
 import re

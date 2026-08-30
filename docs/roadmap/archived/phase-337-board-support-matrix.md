@@ -613,7 +613,7 @@ the test axis, which is what makes them safe once decided.
       deletion — which is what its own analysis pointed at: *"finishing as
       stm32f4 can never earn a CI runtime lane."*
 
-      *Verify:* `just check-fast` (`check-board-tiers` green), `just check-build`,
+      *Verify:* `just check fast` (`check-board-tiers` green), `just check build`,
       `matrix_fixture_coverage` both directions, `example_shape`,
       `example_portability`.
 - [x] **W7.b — LANDED 2026-08-04.** Delete the scaffolds — `embassy-stm32f4`
@@ -844,7 +844,7 @@ Measured 2026-08-05, after every wave.
       member of the STM32F4 family, and the wave says so.
 - [x] `check-board-tiers`, `matrix_fixture_coverage` (both directions) and the
       allocator injectivity gate green after every wave, not only at the end —
-      `just check-fast` + `just check-build` were run and green per wave, and
+      `just check fast` + `just check build` were run and green per wave, and
       the four pre-existing reds they surfaced were fixed first, each in its own
       commit.
 - [x] A second FreeRTOS board is demonstrably ~80 lines (W5.f). **Measured 2026-08-04:

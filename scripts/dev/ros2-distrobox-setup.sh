@@ -41,7 +41,7 @@ fi
 # host-built one is unusable here (it links the host's libpython) — so
 # `just build-test-fixtures` dies mid-sync with a dynamic-loader error.
 # `python3-tomli`: Ubuntu 22.04 ships Python 3.10, which predates `tomllib`
-# (3.11+). `just check-cargo-profile-mirror` reads Cargo.toml with tomllib and
+# (3.11+). `just check cargo-profile-mirror` reads Cargo.toml with tomllib and
 # falls back to tomli — on a bare box NEITHER exists and tier 1 dies there with
 # a bare `ModuleNotFoundError`, long after the ROS parts it came here for.
 #

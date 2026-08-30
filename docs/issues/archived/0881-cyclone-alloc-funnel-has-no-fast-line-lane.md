@@ -22,7 +22,7 @@ on the fast line:
 
 | build | Cyclone provenance | `NanoRos::Platform` | funnel |
 | --- | --- | --- | --- |
-| `just check-rmw-cyclonedds` (standalone backend project) | source | **absent** | OFF |
+| `just check rmw-cyclonedds` (standalone backend project) | source | **absent** | OFF |
 | native nano-ros on this host | **find_package** (SDK store `0.10.5-nros1`) | present | impossible |
 | embedded / cross | source (find_package skipped when `CMAKE_CROSSCOMPILING`) | present | **ON** |
 
@@ -109,7 +109,7 @@ defaulted to the sibling `nros-platform-posix`, the same convention
 `NanoRos::Platform`, which is what the funnel gate asks for. Both guarded on
 the targets not already existing, so a parent nano-ros build still wins.
 
-Measured on `just check-rmw-cyclonedds`:
+Measured on `just check rmw-cyclonedds`:
 
 ```
 -- nano-ros: CycloneDDS ddsrt heap -> nros_platform_alloc (issue 0832)

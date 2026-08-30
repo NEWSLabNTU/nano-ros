@@ -35,7 +35,7 @@ typedef int32_t (*nros_cpp_goal_callback_t)(const uint8_t goal_id[16], const uin
 typedef int32_t (*nros_cpp_cancel_callback_t)(const uint8_t goal_id[16], void* ctx);
 /* Issue 0796 — post-accept hook. Excluded from cbindgen for the same reason as
  * the two above (`Option<extern "C" fn>` renders as an opaque struct), so this
- * declaration is MIRRORED in `nros/component.h` as well; `just check-c`'s
+ * declaration is MIRRORED in `nros/component.h` as well; `just check c`'s
  * cross-include TU is the gate that catches a half-updated mirror. */
 typedef void (*nros_cpp_accepted_callback_t)(const uint8_t goal_id[16], void* ctx);
 

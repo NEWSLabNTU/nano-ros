@@ -27,7 +27,7 @@ fn proof_bin(name: &str) -> TestResult<PathBuf> {
     if !dir.join(".compile-ok").is_file() {
         nros_tests::skip!(
             "borrowed-e2e fixture not built (build/borrowed-e2e/.compile-ok) — run \
-             `scripts/build/borrowed-e2e-fixture.sh` (or `just check-borrowed-e2e`) first"
+             `scripts/build/borrowed-e2e-fixture.sh` (or `just check borrowed-e2e`) first"
         );
     }
     let bin = dir.join(name);

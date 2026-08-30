@@ -144,7 +144,7 @@ Landed:
   already drifted converges on the next `cmake` run instead of waiting for a crate
   rebuild (`file(COPY_FILE)` and NOT `configure_file`, which would add a
   CMAKE_CONFIGURE_DEPENDS edge on a header cargo rewrites mid-build).
-- `scripts/check-sizes-header-mirrors.sh` (+ `just check-fast`, `--fix` to re-mirror
+- `scripts/check-sizes-header-mirrors.sh` (+ `just check fast`, `--fix` to re-mirror
   in place) asserts mirror ≡ build-dir source. Glob-based, ~30 ms warm; prints the
   scanned-tree count so a vacuous pass is visible (issue-0196 rule).
 
@@ -160,5 +160,5 @@ executor size across an incremental build:
 stale on the dev machine (282 build trees), **240 of them undersized** — offsets up
 to 8.7 KB, i.e. far worse than the 336 bytes that produced this issue. Every C/C++
 fixture built in those trees was placement-constructing Rust objects past the end of
-its C buffer. All healed (`--fix`), gate green, `just check-fast` green, native
+its C buffer. All healed (`--fix`), gate green, `just check fast` green, native
 C/C++ suites 48/48.

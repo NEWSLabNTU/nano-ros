@@ -12,7 +12,7 @@
 #
 # This gate extracts each mirrored struct body from BOTH headers, normalizes
 # comments/whitespace and the C-side enum-name prefix, and fails on any field
-# difference. Hooked from `just check-fast` so an append that misses a mirror
+# difference. Hooked from `just check fast` so an append that misses a mirror
 # fails the push lane, not a NuttX rebuild three days later.
 
 set -euo pipefail
