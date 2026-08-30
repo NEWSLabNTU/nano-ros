@@ -263,6 +263,32 @@ jobs:
       # the compile smoke landed there. Gating this on the tier alone would have
       # left the PR's `cargo check` uncached, which is the one event that runs
       # on every push an agent makes.
+      # issue 0874, second half — the runner injects `ACTIONS_RESULTS_URL` and
+      # `ACTIONS_RUNTIME_TOKEN` into JS ACTION contexts, NOT into `run:` shell
+      # steps. The step below used to "export" them with
+      # `export ACTIONS_RESULTS_URL="${ACTIONS_RESULTS_URL:-}"`, which is
+      # self-referential: absent from the shell environment, it exported the
+      # EMPTY STRING and sccache reported `cache url for ghac not found`. 0874
+      # bumped the binary to 0.17.0 and concluded "the configuration was right;
+      # the binary was too old to read it" — the first half was true and the
+      # second was not, so the backend stayed unavailable after the fix and the
+      # only symptom was a `::warning::` nobody reads.
+      #
+      # `actions/cache@v4` is proof of the mechanism rather than a guess: it is
+      # a JS action, it needs the same two variables, and it works in this very
+      # job. This exports them into `$GITHUB_ENV` so the shell step can see
+      # them too. First-party, same trust tier as the `actions/*` already here.
+      - name: Expose the Actions cache env to shell steps
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            for (const k of ['ACTIONS_RESULTS_URL', 'ACTIONS_RUNTIME_TOKEN']) {
+              const v = process.env[k]
+              if (v) core.exportVariable(k, v)
+              else core.warning(`${k} absent even in a JS action context — sccache will run UNCACHED`)
+            }
+
       - name: Configure sccache (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         run: |
@@ -286,15 +312,22 @@ jobs:
           # step only, start a server, and publish to `$GITHUB_ENV` only if that
           # worked. On failure sccache stays on PATH with its LOCAL disk cache,
           # which is the same uncached-but-working state as the absent case.
+          # Report ARRIVAL, never the values: the token is a credential, and
+          # the URL is noise. Without this the only evidence that the backend
+          # was misconfigured was sccache's own error text, which names the
+          # symptom (`cache url ... not found`) and not the cause.
+          echo "ACTIONS_RESULTS_URL:   ${ACTIONS_RESULTS_URL:+SET}${ACTIONS_RESULTS_URL:-UNSET}"
+          echo "ACTIONS_RUNTIME_TOKEN: ${ACTIONS_RUNTIME_TOKEN:+SET}${ACTIONS_RUNTIME_TOKEN:-UNSET}"
+
           export SCCACHE_GHA_ENABLED=true
-          export ACTIONS_RESULTS_URL="${ACTIONS_RESULTS_URL:-}"
-          export ACTIONS_RUNTIME_TOKEN="${ACTIONS_RUNTIME_TOKEN:-}"
           export SCCACHE_CACHE_SIZE=2G
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
             {
               echo "SCCACHE_GHA_ENABLED=true"
-              echo "ACTIONS_RESULTS_URL=${ACTIONS_RESULTS_URL:-}"
-              echo "ACTIONS_RUNTIME_TOKEN=${ACTIONS_RUNTIME_TOKEN:-}"
+              # The two ACTIONS_* variables are NOT re-published here: the
+              # github-script step above already put them in `$GITHUB_ENV`, and
+              # one of them is a credential — writing it a second time widens
+              # its exposure for nothing.
               # Well under the 10 GB cap this store does NOT share; the
               # justfile's 30G default is a developer-workstation figure.
               echo "SCCACHE_CACHE_SIZE=2G"
@@ -507,11 +540,19 @@ jobs:
         run: just test-unit
 
       - name: sccache stats (compile tier)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
         run: |
           # MEASURED, not assumed. A cache that silently misses every request
           # looks exactly like one that is working; the only difference is in
           # this output. `|| true` — a stats failure must never fail a gate.
+          #
+          # `pull_request` was NOT in that list, which made the sentence above
+          # false exactly where it mattered: the PR is the event that compiles
+          # on every push an agent makes, and it was the one event with no
+          # stats. A backend that had been unavailable since the sccache bump
+          # therefore cost ~178 s per run — 45% of this job — behind a
+          # `::warning::` and no measurement at all. Same shape as the export
+          # bug above: the diagnostic excluded the case it existed for.
           command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
 
       - name: just check decoupling (advisory until Phase 104.A)
