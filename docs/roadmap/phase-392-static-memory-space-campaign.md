@@ -795,3 +795,48 @@ infrastructure-only (~2^6) to payload-inclusive (~2^16) — which is precisely
 what makes [phase 391](phase-391-allocation-unification-and-tier-model.md)'s
 constant-time allocator sizeable. The two decisions are coupled; this is the
 side of the coupling that keeps both defensible.
+
+## W5.g measured 2026-08-30 — the delivery does not reach any workspace checked
+
+W5.d's 143,456 B was measured on a pure-cargo leaf, which this wave changes by
+zero bytes. W5.g was to re-measure on a real cmake workspace image. It did not
+get as far as a byte count, because the ENV NEVER ARRIVES.
+
+Method: reconfigure each workspace and look for `nros_entity_facts_env`'s own
+status line, `"nano-ros: queryable table sized from the declaration"`. A
+configure that applies the env prints it; one that does not, does not.
+
+| workspace | umbrella created | entity-facts line |
+| --- | --- | --- |
+| `features` (Rust entries) | no | **no** |
+| `c` (pure C) | no | **no** |
+| `mixed` (C + a Rust node pkg) | YES | **no** |
+
+Two of the three are explained and one is not.
+
+**`c` / `cpp` are by construction.** `nros_synth_runtime_umbrella` returns early
+for a pure-C/C++ workspace (`NanoRosRuntimeCrate.cmake:202`, "keep
+nros_cpp-static as the umbrella"), and `nros_entity_facts_env` is called AFTER
+that return. So the C and C++ workspaces — the ones whose images this campaign
+is about — cannot receive the figure through this path at all. That is a design
+consequence nobody wrote down, not a bug in the wave.
+
+**`features` has no cmake runtime crate.** Its entries build through cargo
+directly, so there is no `nros_ws_runtime-static` to attach env to. The models
+that would benefit MOST are here: W5.b1 measured 22 of 115 models as
+`param+lifecycle` (32 slots -> 19) and they are `features` models.
+
+**`mixed` is UNEXPLAINED and needs one more step.** The umbrella IS created —
+its own message prints — so the early return was passed, and
+`nros_entity_facts_env(nros_ws_runtime-static)` sits a few lines further on in
+the same function. It still prints nothing. Either the call is not reached for
+a reason not yet found, or the status line is suppressed. **Not diagnosed;
+recorded as the next action rather than guessed at.**
+
+**So the honest state of W5:** the sizing logic, the exhaustion diagnostic and
+the checked override all landed and are unit-tested, and the figure they consume
+reaches no image that was checked. The 143,456 B in W5.d remains a measurement
+of what the mechanism WOULD save, on a leaf where the mechanism does not run.
+Nothing in this wave should be quoted as a shipped saving until the `mixed` case
+is explained and a before/after `mem-report` exists.
+
