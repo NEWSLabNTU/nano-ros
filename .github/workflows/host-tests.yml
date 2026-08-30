@@ -11,6 +11,21 @@
 # Medium/heavy lanes: PR (path-scoped) + nightly + on-demand — NOT every direct
 # push to main (a per-push run was cancelled by the next push within ~10 min and
 # never completed; #57 root). See docs/development/ci-workflow-reorg.md.
+#
+# EVERY step that invokes `just` or `nros` sources `./activate.sh` first. That is
+# the repo's activation SSoT and CLAUDE.md's sweep contract; three steps here
+# used to source `/opt/ros/humble/setup.bash` alone and six sourced nothing.
+# activate.sh is a strict superset of the ROS line — it sources ROS itself
+# (nounset-guarded, issue 0639) and additionally exports `nano_ros_ROOT`, which
+# is how `find_package(nano_ros)` resolves: the config lives at the checkout
+# root, not in a CMake prefix. Without it the workspace fixture build died at
+#
+#   CMake Error at CMakeLists.txt:23 (find_package):
+#     ... CMake did not find one.
+#
+# for every generated workspace root, because a generated root deliberately sets
+# no prefix. activate.sh only ever PREPENDS to PATH, so the `$GITHUB_PATH`
+# entries earlier steps add (the in-tree CLI, play_launch_parser) survive it.
 name: host-tests
 
 on:
@@ -85,6 +100,7 @@ jobs:
 
       - name: Provision workspace sources via nros
         run: |
+          source ./activate.sh
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
                      --source cyclonedds-src
@@ -105,10 +121,14 @@ jobs:
       # they can), which is a worse result than running them but a far better
       # one than a job that always fails.
       - name: just ci provision-zenohd
-        run: just ci provision-zenohd
+        run: |
+          source ./activate.sh
+          just ci provision-zenohd
 
       - name: just test-unit
-        run: just test-unit
+        run: |
+          source ./activate.sh
+          just test-unit
 
   # ----- nros-tests integration (heavy; always completes) -----
   integration:
@@ -148,19 +168,23 @@ jobs:
 
       - name: Provision workspace sources via nros
         run: |
+          source ./activate.sh
           nros setup --source px4-rs --source zenoh-pico --source mbedtls \
                      --source micro-cdr --source micro-xrce-dds-client \
                      --source cyclonedds-src --source nuttx-libc
 
       # `test-integration` spawns zenohd to back the Phase 211/212 host tests.
       - name: just ci provision-zenohd
-        run: just ci provision-zenohd
+        run: |
+          source ./activate.sh
+          just ci provision-zenohd
 
       # Test prerequisites the way a user gets them — via `nros setup` (#25): the
       # patched qemu-system-arm (build/qemu/), the prebuilt Micro-XRCE-DDS Agent
       # (nros store), and play_launch_parser (launch-graph tool; best-effort).
       - name: Provision QEMU + XRCE agent + play_launch_parser (nros setup --tool)
         run: |
+          source ./activate.sh
           nros setup --tool qemu --prefix "$GITHUB_WORKSPACE/build/qemu" --index nros-sdk-index.toml
           nros setup --tool xrce-agent --index nros-sdk-index.toml
           nros setup --tool play_launch_parser --index nros-sdk-index.toml \
@@ -180,7 +204,9 @@ jobs:
       # swallowed (see below), and 296 tests then skipping for fixtures that were
       # never built.
       - name: Build nros-launch-resolve (nros sync needs it beside the CLI)
-        run: just setup-launch-resolve
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
 
       # The native integration tests spawn PREBUILT example binaries via
       # `require_prebuilt_binary`. Stage them by building the fixtures the way a
@@ -198,7 +224,7 @@ jobs:
           NROS_BUILD_JOBS: "2"
           CARGO_BUILD_JOBS: "2"
         run: |
-          source /opt/ros/humble/setup.bash
+          source ./activate.sh
           mkdir -p build/ci-logs
           echo "before:"; df -h / | tail -1
           # FAIL, do not swallow. This used to end `|| { tail; echo "partial —
@@ -222,7 +248,7 @@ jobs:
           NROS_BUILD_JOBS: "2"
           CARGO_BUILD_JOBS: "2"
         run: |
-          source /opt/ros/humble/setup.bash
+          source ./activate.sh
           just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
             || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; \
                  echo "::group::issue 0919 — feature resolution for zpico-sys"; \
@@ -244,7 +270,7 @@ jobs:
           NROS_FIXTURES_OPTIONAL: "1"
           CARGO_BUILD_JOBS: "2"
         run: |
-          source /opt/ros/humble/setup.bash
+          source ./activate.sh
           mkdir -p build/ci-logs
           set +e
           just test-integration > build/ci-logs/test-integration.log 2>&1
