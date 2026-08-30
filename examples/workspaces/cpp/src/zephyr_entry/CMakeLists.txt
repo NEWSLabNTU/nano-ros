@@ -29,6 +29,5 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../listener_pkg" listener_pkg)
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
-    LAUNCH  default
     TYPED
     DEPLOY  zephyr)

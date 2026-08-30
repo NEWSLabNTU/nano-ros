@@ -109,15 +109,30 @@ function(nano_ros_entry)
     # into an UNPARSED_ARGUMENTS error rather than a line that silently does
     # nothing.
     #
-    # MODEL is deliberately still parsed: it is retired in W4 together with
-    # LAUNCH, because removing it changes how `_NRA_MODEL` is populated and that
-    # interacts with the DEPLOY/BOARD gate ordering. HOST is likewise kept, to
-    # fail loudly for an old caller (see below).
+    # phase-405 W4 — MODEL is GONE. Zero callers passed it, authored OR
+    # generated, and it named a resolved artifact directly while BRINGUP+LAUNCH
+    # name the INPUT that produces one (phase-330 W4.a). `_NRA_MODEL` is now
+    # written only by the launch resolution below, so there is one way in.
+    #
+    # LAUNCH stays PARSED but is no longer required: 18 generated CMakeLists
+    # pass a real launch file, and a generator should be explicit. What changes
+    # is that a HUMAN need not write it — every one of the nine authored entries
+    # said `LAUNCH default`, which is what BRINGUP alone now means.
+    #
+    # HOST is kept solely to fail loudly for a pre-phase-326 caller.
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;BRINGUP;PANIC"
+        "NAME;BOARD;LAUNCH;LANG;HOST;BRINGUP;PANIC"
         "SOURCES;DEPLOY"
         ${ARGN})
+
+    # BRINGUP with no LAUNCH means this bringup's default launch. Conditional on
+    # BRINGUP on purpose: defaulting unconditionally would turn an entry with
+    # nothing at all — a typo, a half-written CMakeLists — from the error below
+    # into a silently accepted launch-addressed entry.
+    if(_NRA_BRINGUP AND NOT _NRA_LAUNCH)
+        set(_NRA_LAUNCH "default")
+    endif()
     # phase-326 (issue 0364) — the bake-time host partition is gone with
     # `<node machine=>` (ROS 1 syntax). HOST stays PARSED so an old caller
     # fails here with guidance instead of the keyword silently joining
@@ -139,7 +154,7 @@ function(nano_ros_entry)
     # SOURCES becomes optional when LAUNCH present — the generated TU
     # carries `int main()`. Standalone single-Node entry still needs
     # SOURCES (the caller provides their own `main`).
-    if(NOT _NRA_LAUNCH AND NOT _NRA_MODEL AND NOT _NRA_SOURCES)
+    if(NOT _NRA_LAUNCH AND NOT _NRA_SOURCES)
         message(FATAL_ERROR
             "nano_ros_entry: SOURCES required when LAUNCH is absent "
             "(single-Node self-bringup mode).")
@@ -245,7 +260,7 @@ function(nano_ros_entry)
     # Phase 219.D — LAUNCH-aware fast path: shell `nros codegen entry`
     # at configure time, append the generated TU + auto-link sidecar.
     set(_sources_for_exe ${_NRA_SOURCES})
-    if(_NRA_LAUNCH OR _NRA_MODEL)
+    if(_NRA_LAUNCH)
         # phase-296 R-code.1 — the launch-XML bake is REMOVED; the canonical
         # input is a play_launch-resolved SystemModel.
         if(_NRA_LAUNCH)
@@ -261,12 +276,6 @@ function(nano_ros_entry)
                 message(FATAL_ERROR
                     "nano_ros_entry: LAUNCH requires BRINGUP <dir> (the bringup "
                     "package directory holding system.toml + launch/).")
-            endif()
-            if(_NRA_MODEL)
-                message(FATAL_ERROR
-                    "nano_ros_entry: LAUNCH and MODEL are mutually exclusive — "
-                    "LAUNCH names your input (canonical); MODEL names the "
-                    "resolved artifact directly (expert override, deprecated).")
             endif()
             set(_nra_mp_args --bringup-dir "${_NRA_BRINGUP}")
             if(NOT _NRA_LAUNCH STREQUAL "default")
@@ -427,7 +436,7 @@ function(nano_ros_entry)
         # Target may have been declared by a sibling call (e.g. the
         # user supplied an empty SOURCES + LAUNCH/MODEL). Ensure the
         # generated TU still ends up on the target.
-        if(_NRA_LAUNCH OR _NRA_MODEL)
+        if(_NRA_LAUNCH)
             target_sources(${_NRA_NAME} PRIVATE "${_gen_tu}")
         endif()
     endif()
