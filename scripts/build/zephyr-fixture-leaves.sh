@@ -154,8 +154,6 @@ nros_root="$(cd "$nros_root" && pwd)"
 source "$nros_root/scripts/build/fixture-matrix.sh"
 # shellcheck source=scripts/build/cargo.sh
 source "$nros_root/scripts/build/cargo.sh"
-# phase-400 W5 — `nros_build_dir` for the shared Corrosion cargo root below.
-source "$nros_root/scripts/build/build-root.sh"
 
 if [ -z "$build_root" ]; then
     if [ -n "${NROS_ZEPHYR_BUILD_ROOT:-}" ]; then
@@ -372,34 +370,6 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
     cyclone_domain=""
     extra_cmake_defs="-D_NANO_ROS_CODEGEN_TOOL=$codegen_tool -DZEPHYR_TOOLCHAIN_CAPABILITY_CACHE_DIR=$toolchain_cache_dir -DMAKE=$make_bin -DUSE_CCACHE=0"
 
-    # phase-400 W5 — share ONE Corrosion cargo dir across the C/C++ Zephyr
-    # builds, as freertos / native / nuttx / qemu-baremetal / threadx-{linux,
-    # riscv64} already do. Zephyr was the only platform passing no shared root,
-    # so every west build dir carried its own cargo target dir: 191 of them
-    # across 89 trees, and `just leaf-graph` measured 86 HOST crates recompiled
-    # from scratch in every one (host units outnumber target units ~3:1). That is
-    # what made the phase-400 profile a PER-IMAGE cost rather than a first-image
-    # one.
-    #
-    # C/C++ ONLY, and the exclusion is issue 0616, not caution: a `--target-dir`
-    # serves exactly one workspace root, because `-C metadata` includes the path
-    # SPELLING a crate was reached by. The C/C++ leaves reach nros-c / nros-cpp
-    # through the SAME spelling (verified: identical fingerprint `path` hash in
-    # build-c-action-client-zenoh and build-cpp-listener-zenoh), so they share
-    # legitimately. Each `build-rust-*` leaf is its OWN workspace root — sharing
-    # those would give two units of `nros-platform`, which holds the tree's one
-    # `#[global_allocator]`, and 0616 records that as an intermittent failure
-    # with a permanent cause.
-    #
-    # Correctness does not rest on this comment: `nros_share_corrosion_cargo_dir`
-    # keys the directory on the full feature-determining configuration
-    # (platform/rmw/board/caps/profile/target), so two configurations that differ
-    # get different directories by construction.
-    case "$lang" in
-        c|cpp)
-            extra_cmake_defs="$extra_cmake_defs -DNROS_SHARED_CARGO_ROOT=$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr)"
-            ;;
-    esac
 
     # Conf overlays: the row carries the RELATIVE list, this script appends the
     # absolute board/NSOS tail (a host path, not a fact about the fixture).
