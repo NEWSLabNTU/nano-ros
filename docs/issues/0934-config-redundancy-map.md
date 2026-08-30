@@ -62,13 +62,30 @@ stated precedence".
 
 ## Known, declared, not yet executed
 
-* **R12** — `[deploy.<t>]`'s BUILD fields (`rmw`, `profile`, `features`,
-  `board`) duplicate `[image.<id>]`. RFC-0065 D6 already rules this a split and
-  opens a deprecation window on the build fields, "never the table".
-  `examples/workspaces/mixed` still carries both.
-* **R11** — `[system].features` vs the typed `[safety]`/`[param_services]`/
-  `[lifecycle]` blocks. Deliberate deprecation window;
-  `examples/workspaces/features` uses BOTH forms in one file.
+* **R12** — `[deploy.<t>]`'s BUILD fields duplicate `[image.<id>]`. RFC-0065 D6
+  rules this a split and opens a window on the build fields, "never the table".
+  **Measured (phase-405 W5): the window cannot be executed as written.**
+  `profile` and `features` have zero uses; `rmw` has two, both in fixtures with
+  no `[image.*]` at all; and `board` is not merely a build field but the JOIN
+  KEY `board-facts` uses to reach `[deploy.*.nros]` site config, with no image
+  fallback. Four candidate blocks were probed and all four break softly.
+  D6's "become deletable once their `[image.*]` lands" should read "once the
+  RESOLVER READS the image" — this needs a code wave before a data wave.
+  This entry also named `examples/workspaces/mixed`'s `[deploy.freertos]` as
+  carrying a duplicate `board`; it does not — it carries `kind` and a `.nros`
+  block and NO board, which is [issue 0940](0940-deploy-site-config-unreachable-without-board.md).
+  The duplicated pair there is `[deploy.mps2-an385-freertos]` vs
+  `[image.freertos]`.
+* **R11** — `[system].features` vs the typed `[safety]`/`[param_services]`
+  blocks. **Already closed in the data** (phase-405 W5): zero of 33 in-tree
+  `system.toml` carry either. `[lifecycle]` is NOT part of this window —
+  `deprecated_typed_capability_blocks()` names only the other two — and it is
+  not convertible, because `features = ["lifecycle"]` can only say ON while
+  `autostart` is read from the typed block alone. This entry originally listed
+  `[lifecycle]` among the deprecated spellings; that was wrong. The real defect
+  in `examples/workspaces/features` was `"lifecycle"` appearing in the
+  `features` LIST *and* as a block, which `capability_enabled` ORs — fixed by
+  dropping the list entry.
 * **R4** — `[image.<id>].{board,conf}` vs `fixtures.toml`'s
   `board`/`conf_files`. Partly migrated: a row with `image =` derives, a row
   with `entry =` restates, and `validate_workspace_fixture` refuses both
