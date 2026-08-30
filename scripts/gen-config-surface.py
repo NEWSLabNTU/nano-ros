@@ -123,10 +123,20 @@ FACTS = [
 # rule to `suggest()` explaining the new reader shape, not to raise the number.
 RATCHET = 0
 
-DEAD = {
-    "CONFIG_NROS_TRANSPORT_SERIAL": "zero references anywhere in the tree",
-    "CONFIG_NROS_INIT_DELAY_MS": "zero source readers; two guides still document it as live",
+# Symbols whose only consumer is USER code, by design. They have no reader in
+# this tree and are not dead: the guides teach an application to use them in its
+# own `main()`, and Kconfig generating the macro is the whole service.
+#
+# Evidence is required, not asserted — each entry names where the contract is
+# documented, so "provided" cannot become a place to hide a symbol nobody uses.
+PROVIDED = {
+    "CONFIG_NROS_INIT_DELAY_MS":
+        "`docs/guides/cpp-api.md:451` shows an application calling "
+        "`zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` from its own "
+        "`main()`; `docs/guides/zephyr-setup.md:220` documents it as a knob.",
 }
+
+DEAD = {}
 
 
 def kconfig_symbols():
@@ -197,40 +207,93 @@ def readers(symbols):
     return kinds
 
 
-def suggest(sym, kinds, forwarded):
-    """The class the evidence points at. `None` where evidence is absent."""
+def kconfig_internal_refs(symbols):
+    """Symbols consumed BY KCONFIG ITSELF — `select`, `depends on`, `default X`.
+
+    The tree-wide grep deliberately skips Kconfig (else every declaration would
+    count as its own reader), and that hid a real consumer class.
+    `NROS_TRANSPORT_SERIAL` looked dead with zero readers; it carries
+    `select NROS_ZENOH_LINK_SERIAL`, so setting it turns the serial link on.
+    That IS its effect — Kconfig is the consumer, and a rule that cannot see
+    `select` will keep proposing live symbols for deletion.
+    """
+    refs, cur = set(), None
+    for line in open(KCONFIG, encoding="utf-8"):
+        m = re.match(r"^\s*(?:menu)?config\s+(NROS_\w+)", line)
+        if m:
+            cur = "CONFIG_" + m.group(1)
+            continue
+        # A symbol REFERENCED by another's select/depends/default is consumed.
+        ref = re.match(r"^\s*(?:select|imply|depends on|default)\s+(.+)$", line)
+        if ref:
+            for name in re.findall(r"\bNROS_\w+", ref.group(1)):
+                refs.add("CONFIG_" + name)
+            # …and a symbol that SELECTS or IMPLIES another has its effect that
+            # way, even though nothing reads it. `NROS_TRANSPORT_SERIAL` is the
+            # case: it selects `NROS_ZENOH_LINK_SERIAL`, which is exactly what
+            # turning it on is for. Reading only the referenced side would keep
+            # proposing it for deletion.
+            if cur and re.match(r"^\s*(?:select|imply)\s", line):
+                refs.add(cur)
+    return refs & set(symbols)
+
+
+def prompted(symbols):
+    """Which symbols carry a Kconfig PROMPT — its own mark of user-facing.
+
+    This replaced a rule that guessed from readers and got the LAYER wrong. It
+    called 24 symbols "carriers" because only cmake read them, but cmake reading
+    `${CONFIG_X}` to emit `ZPICO_X=<value>` is cmake CARRYING a user's choice,
+    not owning it. Kconfig already answers this: a symbol with a prompt is one
+    the user is asked about. All 79 have one, so there are no internal Kconfig
+    symbols and the carriers are at another layer entirely — see `CARRIERS`.
+    """
+    out = {s: False for s in symbols}
+    cur = None
+    for line in open(KCONFIG, encoding="utf-8"):
+        m = re.match(r"^\s*(?:menu)?config\s+(NROS_\w+)", line)
+        if m:
+            cur = "CONFIG_" + m.group(1)
+            continue
+        if cur in out and (re.match(r'^\s*(bool|int|string|hex)\s+"', line)
+                           or re.match(r'^\s*prompt\s+"', line)):
+            out[cur] = True
+    return out
+
+
+def suggest(sym, kinds, forwarded, has_prompt, kconfig_refs):
+    """public / dead. There is no third class AT THIS LAYER.
+
+    A prompted symbol nothing reads is DEAD — the prompt asks a question whose
+    answer is discarded, which is worse than not asking.
+    """
     k = kinds.get(sym) or set()
-    if not k and sym not in forwarded:
+    if sym in PROVIDED:
+        return "provided"
+    if not k and sym not in forwarded and sym not in kconfig_refs:
         return "dead"
-    if sym in forwarded:
-        # Reaches a build script through the 0460 bridge. On Zephyr this IS how
-        # a user states a build-time knob -- the env var is the carrier, not
-        # this. An earlier draft had it backwards and called these carriers,
-        # which contradicted the FACTS note two screens up saying the opposite.
+    if has_prompt.get(sym):
         return "public"
-    if "c-source" in k or "rust-source" in k:
-        # Consumed by compiled code: the value the user picked reaches a
-        # decision, so this is where it is stated.
-        return "public"
-    if k <= {"cmake", "c-define"}:
-        # Only ever turned into a compile definition or read by cmake to decide
-        # what to build: that is transport, not a decision.
-        return "carrier"
-    return None
+    # Unprompted AND read: Kconfig-internal, selected by another symbol.
+    return "derived"
 
 
-def classify(symbols, kinds, forwarded):
+def classify(symbols, kinds, forwarded, has_prompt, kconfig_refs):
     """Evidence-derived class per symbol, plus what could not be derived."""
-    out = {s: suggest(s, kinds, forwarded) for s in symbols}
+    out = {s: suggest(s, kinds, forwarded, has_prompt, kconfig_refs) for s in symbols}
     unclassified = sorted(s for s, c in out.items() if c is None)
     return out, unclassified
 
 
-def render(symbols, forwarded, classes, kinds, unclassified):
+def render(symbols, forwarded, classes, kinds, kconfig_refs, unclassified):
     def ev(sym):
         k = sorted(kinds.get(sym) or [])
         if sym in forwarded:
             k = ["forwarded-to-cargo"] + k
+        if sym in kconfig_refs:
+            k = k + ["kconfig select/depends"]
+        if sym in PROVIDED:
+            return PROVIDED[sym]
         return ", ".join(k) if k else "no reader found"
 
     L = []
@@ -240,16 +303,25 @@ def render(symbols, forwarded, classes, kinds, unclassified):
              "a decision; the rest carry that decision across a layer boundary. This page\n"
              "separates the two, because a list that does not is a list of nine ways to\n"
              "set a locator (issue 0934).\n")
-    L.append("**The class is derived from WHO READS the symbol**, not asserted: a symbol\n"
-             "forwarded to a build script or consumed by compiled code is where a value is\n"
-             "stated; one that only becomes a compile definition is transport; one nothing\n"
-             "reads is dead. The `evidence` column is that derivation, so a wrong class is\n"
-             "a visible disagreement rather than an opinion.\n")
+    L.append("**Every symbol on this page is one a user may set.** Kconfig says so\n"
+             "itself: each carries a PROMPT, which is what a prompt means. An earlier\n"
+             "draft split these into public and carrier by asking who read them, and got\n"
+             "the layer wrong — cmake reading `${CONFIG_X}` to emit `ZPICO_X=<value>` is\n"
+             "cmake CARRYING the choice, not owning it.\n")
+    L.append("The real carriers are one layer down and are NOT Kconfig symbols: the\n"
+             "`ZPICO_*` / `NROS_*` environment variables, the `-D` cache variables and\n"
+             "the compile definitions this page's symbols feed. Setting one of those by\n"
+             "hand bypasses the question Kconfig asked.\n")
+    L.append("The `evidence` column is where each value is consumed, so a symbol with no\n"
+             "reader stands out: a prompt asking a question whose answer is discarded is\n"
+             "worse than no prompt.\n")
     n = len(symbols)
     pub = sum(1 for c in classes.values() if c == "public")
-    car = sum(1 for c in classes.values() if c == "carrier")
+    drv = sum(1 for c in classes.values() if c == "derived")
     dead = sum(1 for c in classes.values() if c == "dead")
-    L.append(f"{n} Kconfig symbols — **{pub} public**, {car} carrier, {dead} dead.\n")
+    prov = sum(1 for c in classes.values() if c == "provided")
+    L.append(f"{n} Kconfig symbols — **{pub} settable**, {prov} provided for "
+             f"application code, {drv} derived, {dead} dead.\n")
 
     L.append("## Facts with more than one spelling\n")
     L.append("Where a decision has an authority OUTSIDE Kconfig, that authority is the\n"
@@ -271,9 +343,12 @@ def render(symbols, forwarded, classes, kinds, unclassified):
         ("public", "Public — set these",
          "Read by compiled code or forwarded to a build script. On Zephyr the\n"
          "`CONFIG_` spelling IS the way to state these; the env var is the carrier."),
-        ("carrier", "Carriers — do not set by hand",
-         "Only ever read by cmake or turned into a compile definition. Setting one\n"
-         "directly is at best redundant and at worst a second authority."),
+        ("provided", "Provided for application code",
+         "No reader in THIS tree, and not dead: the guides teach an application\n"
+         "to use these in its own `main()`. Kconfig generating the macro is the\n"
+         "service. Each names where that contract is written down."),
+        ("derived", "Derived — selected by another symbol",
+         "No Kconfig prompt, so not asked about directly."),
         ("dead", "Dead — delete or wire",
          "Declared and read by nothing. A knob that is documented and inert is\n"
          "worse than one that is absent."),
@@ -327,8 +402,10 @@ def main():
     syms = kconfig_symbols()
     fwd = forwarded_knobs()
     kinds = readers(syms)
-    classes, unclassified = classify(syms, kinds, fwd)
-    body = render(syms, fwd, classes, kinds, unclassified)
+    has_prompt = prompted(syms)
+    krefs = kconfig_internal_refs(syms)
+    classes, unclassified = classify(syms, kinds, fwd, has_prompt, krefs)
+    body = render(syms, fwd, classes, kinds, krefs, unclassified)
     if "--check" in sys.argv:
         # Ratchet BEFORE freshness: a new unclassified knob is the failure this
         # exists to catch, and it should be named as such rather than as
