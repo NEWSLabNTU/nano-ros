@@ -80,5 +80,6 @@ fails if this block drifts.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
 - **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
 - **#0906** (rmw-zenoh, interop) — Every zenoh-pico session drops and rebuilds every ~20 s — the ROS router sends it no KeepAlive See `0906-*`.
+- **#0920** (cli, codegen) — An interrupted codegen leaves a ZERO-BYTE generated file, and the compile error that follows names no leaf See `0920-*`.
 
 <!-- END GENERATED open-issue list -->
