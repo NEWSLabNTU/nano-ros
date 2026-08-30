@@ -148,6 +148,29 @@ int nros_freertos_init_network(
  * the poll task. Default weak impl is a no-op (boards with
  * IRQ-driven RX or no Ethernet leave it alone).
  */
+/* RX wake (issue 0917).
+ *
+ * The drain task used to sleep a fixed poll_interval_ms and look afterwards,
+ * which on a burst is exactly the wrong order: the NIC's RX FIFO holds about
+ * 10.5 KB on this board, an 8-fragment RTPS sample is ~11.4 KB of back-to-back
+ * frames, and nothing drained between them. Waiting on a notification instead
+ * makes the interval a CEILING rather than the normal cadence — boards with no
+ * RX interrupt keep the old behaviour, because the wait still times out. */
+static TaskHandle_t s_net_task;
+
+void nros_freertos_net_register_drain_task(void) {
+    s_net_task = xTaskGetCurrentTaskHandle();
+}
+
+void nros_freertos_net_wake_from_isr(void) {
+    if (s_net_task == NULL) {
+        return;
+    }
+    BaseType_t higher = pdFALSE;
+    vTaskNotifyGiveFromISR(s_net_task, &higher);
+    portYIELD_FROM_ISR(higher);
+}
+
 void nros_freertos_poll_network(void) {
     nros_board_poll_netif();
 }
