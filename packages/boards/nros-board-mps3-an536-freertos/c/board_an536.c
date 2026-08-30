@@ -60,6 +60,10 @@
 /* Generic timer PPI: EL1 physical timer is INTID 30 on every ARM core. */
 #define TIMER_PPI_INTID 30
 
+/* The LAN9118 sits on GIC input 18 (hw/arm/mps3r.c: lan9118_init(0xe0300000,
+ * qdev_get_gpio_in(gicdev, 18))). SPI n is INTID 32 + n, so 50. Issue 0917. */
+#define ETH_SPI_INTID   50
+
 /* CMSDK APB UART registers. */
 #define UART_DATA     0x00
 #define UART_STATE    0x04
@@ -70,6 +74,10 @@
 /* GICv3 distributor. */
 #define GICD_CTLR       0x0000
 #define GICD_IGROUPR    0x0080
+#define GICD_ISENABLER  0x0100
+#define GICD_IPRIORITYR 0x0400
+#define GICD_ICFGR      0x0c00
+#define GICD_IROUTER    0x6000
 /* GICv3 redistributor: RD_base then SGI_base one 64 KiB frame later. */
 #define GICR_WAKER      0x0014
 #define GICR_SGI_OFFSET 0x10000
@@ -246,6 +254,35 @@ static inline uint32_t icc_read_iar1(void) {
 }
 static inline void icc_write_eoir1(uint32_t v) { __asm volatile("mcr " ICC_EOIR1 :: "r"(v)); }
 
+/* Enable one SPI on the distributor.
+ *
+ * Deliberately NOT called from gicv3_init(). The LAN9118's interrupt output is
+ * active-LOW until the driver programs IRQ_CFG with IRQ_POL|IRQ_TYPE, so
+ * between reset and lan9118_lwip_init() the model holds the line ASSERTED.
+ * Enabling the SPI before then takes an interrupt immediately, against a netif
+ * that does not exist yet — the image hangs before its first print. Enable it
+ * once the driver has configured the source. Issue 0917.
+ */
+static void gic_enable_spi(uint32_t id, uint8_t prio) {
+    mmio_w32(AN536_GICD_BASE, GICD_IGROUPR + 4u * (id / 32u),
+             mmio_r32(AN536_GICD_BASE, GICD_IGROUPR + 4u * (id / 32u))
+                 | (1u << (id % 32u)));
+    *(volatile uint8_t *)(AN536_GICD_BASE + GICD_IPRIORITYR + id) = prio;
+    /* ICFGR: 2 bits per interrupt, 0 = level-sensitive. The MAC holds the line
+     * while its RX status FIFO is non-empty, which is what lets the handler
+     * mask-and-defer instead of racing the next frame. */
+    mmio_w32(AN536_GICD_BASE, GICD_ICFGR + 4u * (id / 16u),
+             mmio_r32(AN536_GICD_BASE, GICD_ICFGR + 4u * (id / 16u))
+                 & ~(3u << (2u * (id % 16u))));
+    /* With ARE_NS an SPI needs a route or it targets nobody. Affinity 0, and
+     * two 32-bit stores rather than one 64-bit: this is device memory on an
+     * AArch32 PE. */
+    mmio_w32(AN536_GICD_BASE, GICD_IROUTER + 8u * id, 0u);
+    mmio_w32(AN536_GICD_BASE, GICD_IROUTER + 8u * id + 4u, 0u);
+    mmio_w32(AN536_GICD_BASE, GICD_ISENABLER + 4u * (id / 32u),
+             1u << (id % 32u));
+}
+
 static void gicv3_init(void) {
     /* Distributor: affinity routing + non-secure group 1. */
     mmio_w32(AN536_GICD_BASE, GICD_CTLR, GICD_CTLR_ARE_NS | GICD_CTLR_ENABLE_G1NS);
@@ -320,12 +357,19 @@ void nros_board_clear_tick_interrupt(void) {
  */
 extern void FreeRTOS_Tick_Handler(void);
 
+/* Defined below, next to the netif it services: masks the MAC's RX interrupt
+ * and wakes the drain task. Declared here because the dispatch sits above
+ * the definition. */
+void nros_board_eth_isr(void);
+
 __attribute__((used)) void vApplicationIRQHandler(void) {
     uint32_t iar = icc_read_iar1();
     uint32_t intid = iar & 0xffffffu;
 
     if (intid == TIMER_PPI_INTID) {
         FreeRTOS_Tick_Handler();
+    } else if (intid == ETH_SPI_INTID) {
+        nros_board_eth_isr();
     }
 
     /* 1020-1023 are the spurious/special IDs: no EOI is owed for them. */
@@ -370,9 +414,29 @@ int nros_board_register_netif(
     netifapi_netif_set_default(&lan9118_netif);
     netifapi_netif_set_up(&lan9118_netif);
     netifapi_netif_set_link_up(&lan9118_netif);
+    /* Arm RX interrupts: source first (the MAC's own mask), then the GIC.
+     * Order matters — see gic_enable_spi. Issue 0917. */
+    lan9118_lwip_rx_irq_enable(&lan9118_netif);
+    gic_enable_spi(ETH_SPI_INTID, 0xa0);
+
     return 0;
 }
 
 void nros_board_poll_netif(void) {
     lan9118_lwip_poll(&lan9118_netif);
+    /* Re-arm once the FIFO is empty. Doing it here rather than in the ISR is
+     * what makes the mask safe: the line stays masked for exactly as long as
+     * there is work, so a burst cannot re-enter the handler per frame. */
+    if (!lan9118_lwip_rx_pending(&lan9118_netif)) {
+        lan9118_lwip_rx_irq_enable(&lan9118_netif);
+    }
+}
+
+/* Called from vApplicationIRQHandler with the SPI acknowledged but not yet
+ * EOI'd. Do the minimum: silence the source, wake the drain task, return.
+ * lwIP must not be touched from here — `netif->input` takes locks and
+ * allocates. Issue 0917. */
+void nros_board_eth_isr(void) {
+    lan9118_lwip_rx_irq_mask(&lan9118_netif);
+    nros_freertos_net_wake_from_isr();
 }

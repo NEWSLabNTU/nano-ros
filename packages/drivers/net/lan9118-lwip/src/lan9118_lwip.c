@@ -486,6 +486,42 @@ err_t lan9118_lwip_init(struct netif *netif) {
     return ERR_OK;
 }
 
+/* ---- RX interrupt support (issue 0917) ----
+ *
+ * The controller drives its IRQ pin from INT_STS & INT_EN. RSFL ("RX status
+ * FIFO level") asserts while the RX status FIFO is non-empty, so it is a LEVEL
+ * condition, not an edge: it stays asserted until the frames are drained.
+ * An ISR must therefore MASK it rather than try to clear it, or the line
+ * re-asserts the instant the handler returns and the core livelocks.
+ *
+ * The split is: ISR masks and hands off; the drain task unmasks when the FIFO
+ * is empty. IRQ_CFG is already programmed with IRQ_EN|IRQ_POL|IRQ_TYPE by
+ * lan9118_lwip_init (active-high, push-pull), which is what the QEMU model
+ * requires to assert the line at all — with either bit clear it treats the
+ * output as active-low and holds the line asserted while IDLE.
+ */
+#define INT_STS_RSFL (1u << 3)
+
+void lan9118_lwip_rx_irq_enable(struct netif *netif) {
+    struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
+    uint32_t base = cfg->base_addr;
+    reg_write(base, REG_INT_STS, INT_STS_RSFL);
+    reg_write(base, REG_INT_EN, reg_read(base, REG_INT_EN) | INT_STS_RSFL);
+}
+
+void lan9118_lwip_rx_irq_mask(struct netif *netif) {
+    struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
+    uint32_t base = cfg->base_addr;
+    reg_write(base, REG_INT_EN, reg_read(base, REG_INT_EN) & ~INT_STS_RSFL);
+    /* Write-1-to-clear the latched status so the next frame re-raises it. */
+    reg_write(base, REG_INT_STS, INT_STS_RSFL);
+}
+
+int lan9118_lwip_rx_pending(struct netif *netif) {
+    struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
+    return rx_packets_pending(cfg->base_addr) > 0;
+}
+
 void lan9118_lwip_poll(struct netif *netif) {
     struct lan9118_config *cfg = (struct lan9118_config *)netif->state;
     uint32_t base = cfg->base_addr;

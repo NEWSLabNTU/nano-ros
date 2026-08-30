@@ -186,9 +186,17 @@ static inline UBaseType_t clamp_prio(uint32_t p) {
 static void poll_task_entry(void *arg) {
     (void)arg;
     const uint32_t poll_ms = NROS_APP_CONFIG.scheduling.poll_interval_ms;
+    /* Register as the RX wake target, then treat poll_interval_ms as a CEILING
+     * rather than the cadence: an RX interrupt wakes this task immediately, and
+     * the timeout still covers boards whose netif has no interrupt wired.
+     * Drain FIRST and wait second - the old order slept before ever looking,
+     * so a burst that landed just after a wakeup sat in the NIC for a full
+     * interval, which on this board is longer than the FIFO can hold it.
+     * Issue 0917. */
+    nros_freertos_net_register_drain_task();
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(poll_ms));
         nros_freertos_poll_network();
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(poll_ms));
     }
 }
 
