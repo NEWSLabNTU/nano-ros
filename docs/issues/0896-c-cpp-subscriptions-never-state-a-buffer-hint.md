@@ -225,14 +225,65 @@ So the model route works, but only once someone AUTHORS the wiring. Warning on
 absent wiring is therefore the primary UX for as long as that stays true, not an
 edge case.
 
+## Correction: "value-first" is not possible; "one traversal, two outputs" is
+
+Layer 1 said: build the `nros_serdes::FieldType` VALUE, then render the existing
+string FROM it, so one mapping has two outputs. Reading the emitter shows the
+string is not derivable from the value, in two independent ways.
+
+**The nested arm defers instead of inlining.** It emits a helper const that
+points at the nested type's OWN `Message` impl:
+
+```rust
+pub const X_NESTED_HEADER: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
+    type_name: <std_msgs::msg::Header as ::nros_serdes::Message>::TYPE_NAME,
+    fields:    <std_msgs::msg::Header as ::nros_serdes::Message>::FIELDS,
+};
+```
+
+so the generated crate resolves the child at ITS compile time. The string
+therefore needs a RUST PATH (`nested_path_resolver(package, name, ...)`), which
+a `NestedType` value does not carry — it carries the ROS type name. Meanwhile a
+value that can be SIZED must have its nested fields resolved in-process, which
+the string deliberately does not do. Neither is a superset of the other.
+
+**Helper-const identifiers are keyed on the field, not the type.** The recursive
+arms hoist `{const_prefix}FT_{FIELD}_ELEM`, so rendering needs the field name
+and prefix as well as the type.
+
+**The fix that achieves the same safety property.** The hazard was never
+"value-first" as such — it was a SECOND, INDEPENDENT walk from
+`rosidl::FieldType` that can drift from the first. One traversal emitting BOTH
+outputs in the same `match` arm has exactly the same property and is
+implementable:
+
+```rust
+fn lower_field_type(
+    rosidl_ty, field_name, prefix, resolver, helper_consts: &mut String,
+) -> (String, &'static nros_serdes::FieldType)
+```
+
+Every arm produces its string and its value together, so adding a `FieldType`
+variant that one output handles and the other forgets is a compile error rather
+than a silent divergence. The `&'static` recursion is satisfied by leaking in a
+short-lived CLI process, as already noted.
+
+**Not started.** Landing a half-applied mapping refactor is precisely the defect
+this issue exists to prevent, so the shape is recorded rather than begun —
+layer 1 below is restated in these terms.
+
 ## Layers, in order
 
 0. **Name the field that cost the bound.** When `max_serialized_size` returns
    `None`, report which member is unbounded. No new surface; makes the existing
    `.msg` fix actionable.
-1. **Value-first field mapping in `rosidl-codegen`**, rendering the existing
-   Rust schema string from the value. No behaviour change; the existing emitter
-   tests are the check.
+1. **One traversal, two outputs** in `rosidl-codegen` (see the correction
+   above — rendering the string FROM the value is not possible). Every `match`
+   arm emits its expression string and builds its `nros_serdes::FieldType`
+   value together. No behaviour change; the existing emitter tests plus the
+   golden corpus are the check — and the corpus is worth trusting now, since
+   phase-390 W2 found and repaired the arm that was byte-identical to the
+   default and exercised nothing.
 2. **Both bounds, computed by `max_serialized_size` over those values**, nested
    types resolved by the same closure the RIHS path already uses. Emitted as two
    `#define`s (XCDR1 and XCDR2) from `packs/c/message.h.jinja` and the C++
