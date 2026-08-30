@@ -502,6 +502,51 @@ For Linux/desktop targets, using the full Zenoh Rust library instead of zenoh-pi
 
 **Estimated effort:** 1-2 weeks. The zenoh Rust API maps directly to our traits.
 
+## Receive-buffer sizing: what a backend is obliged to do
+
+Added for phase-403. A third party implementing this vtable needs to know who
+owns which buffer and what `rx_buffer_hint` requires of them, and until now the
+header said neither.
+
+**There are two buffers, and the caller owns one of them.** `rmw_vtable.h`'s
+`take` slot states it: "the payload is bytes and the caller owns the buffer, so
+it needs the length back". So:
+
+| buffer | owner | sized by |
+| --- | --- | --- |
+| the TAKE buffer (`buf` / `buf_len` passed to `take`) | the RUNTIME | the runtime |
+| any internal staging the backend keeps | the BACKEND | the backend |
+
+A backend never allocates the take buffer and must never assume a size for it —
+`buf_len` is authoritative on every call, including when it changes between
+calls for the same subscription.
+
+**`rx_buffer_hint` is advisory, and that is not a licence to lie.** The field
+(`rmw_subscription_options_t`, `0` = unset) tells a size-classing backend what
+the caller expects to receive. A backend MAY ignore it entirely — a backend with
+one buffer size is conformant. What a backend MUST NOT do is deliver a sample it
+cannot fit and report success: if a payload exceeds what the take buffer can
+hold, `take` reports the failure rather than truncating, and the runtime's
+`report_dropped_take` is what turns that into a diagnostic a user can act on.
+
+**What the hint is NOT.** It is a transport hint, not a DDS policy and not a
+bound on the wire. A remote publisher is bound by the `.msg`, never by our
+config — so a backend must not treat the hint as a promise about incoming sample
+size, and must not size a fixed structure from it in a way that makes a larger
+sample undeliverable without a diagnostic.
+
+**Reporting what you chose (phase-403 W1, not yet in the ABI).** The flow is
+currently one-directional: the runtime states a hint and cannot learn what the
+backend settled on, so it sizes the take buffer from a global constant rather
+than from what the type needs. The planned answer is an OPTIONAL, NULLable
+vtable slot — `required_rx_bytes(type_name, type_hash, hint)` — where NULL means
+"the hint is the answer", which is what every current backend would say.
+Optional because `check-rmw-abi-shape` treats a slot as a contract: a mandatory
+addition breaks every out-of-tree backend at once.
+
+Until that lands, a backend author should assume the runtime's take buffer is
+sized from `NROS_SUBSCRIPTION_BUFFER_SIZE` and not from their type.
+
 ## Reference Documents
 
 - **RMW trait design inspiration**: `docs/reference/rmw-h-analysis.md` — Analysis of ROS 2's `rmw.h` for embedded, 6 limitations identified, what to adopt vs avoid
