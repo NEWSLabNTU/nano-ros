@@ -44,13 +44,43 @@ import pathlib
 import sys
 
 
-def load_units(target_dir: pathlib.Path):
+# A `.fingerprint/` directory ACCUMULATES: units from configurations the tree no
+# longer builds are never removed. So "every unit in the tree" is a HISTORICAL
+# record, not a description of the current build, and reading it as the latter
+# is how this tool reported a dependency that no longer exists.
+#
+# Measured 2026-08-30 on a freshly built Zephyr Rust leaf: TWO `nros-zpico-build`
+# lib units side by side —
+#
+#   nros-zpico-build-aeea…  mtime 08-29 23:02  feats=[]          deps: cbindgen, cc, …
+#   nros-zpico-build-f75f…  mtime 08-30 22:21  feats=["default"] deps: cc, …
+#
+# — and the tool reported `cbindgen <- nros_zpico_build` from the day-old one,
+# for a dependency phase-400 W2a had already removed. The `--exclusive-to` answer
+# computed over that graph was wrong in the direction that matters: it understated
+# what would leave.
+#
+# The window has to exceed a single build's wall time, not a session's. There is
+# NO exact signal here — a unit that is live but FRESH is not rewritten, so on an
+# INCREMENTALLY built tree this drops units that are still real. That is why the
+# exclusion is REPORTED rather than silent, and why the honest procedure is to
+# build the leaf, then measure it. (`invoked.timestamp` does not help: it marks
+# build scripts that RE-RAN, measured at 9 of 64 in a fresh tree with zero
+# overlap against the units holding records.)
+RECENT_WINDOW_SECS = 6 * 60 * 60
+
+
+def load_units(target_dir: pathlib.Path, all_units: bool = False):
     """Every unit cargo built, as (side, crate, requires) triples.
 
-    `side` is "host" or "target": the fingerprint tree directly under the target
-    dir is the host side, anything under `<triple>/<profile>/` is the target.
+    `side` is "host" or "target", read from cargo's own `compile_kind`.
+
+    By default only units from the tree's most recent build are returned; pass
+    `all_units` to include stale ones, which is a historical view and must not be
+    quoted as a property of the current build.
     """
     units = []
+    stale = 0
     # Bounded globs, NOT `**`: a populated target dir holds hundreds of thousands
     # of files and `**` walks all of them. Cargo puts `.fingerprint` at exactly
     # these two depths — `<profile>/` and `<triple>/<profile>/` — so ask for those.
@@ -82,8 +112,28 @@ def load_units(target_dir: pathlib.Path):
                 requires = {d[1] for d in data.get("deps", []) if len(d) > 1}
                 # A crate's own build script is an internal edge, not a dependency.
                 requires.discard("build_script_build")
-                units.append((side, crate, requires))
-    return units
+                try:
+                    mtime = j.stat().st_mtime
+                except OSError:
+                    mtime = 0.0
+                units.append((side, crate, requires, mtime))
+    if not units:
+        return []
+    newest = max(u[3] for u in units)
+    if not all_units:
+        keep = [u for u in units if newest - u[3] <= RECENT_WINDOW_SECS]
+        stale = len(units) - len(keep)
+        if stale:
+            print(
+                f"note: ignored {stale} unit record(s) older than "
+                f"{RECENT_WINDOW_SECS // 3600} h — a .fingerprint dir accumulates, and a\n"
+                f"      stale unit reports dependencies this build does not have. "
+                f"Pass --all-units for\n      the historical view; build the leaf "
+                f"first if you are about to quote a number.",
+                file=sys.stderr,
+            )
+        units = keep
+    return [(s, c, r) for s, c, r, _ in units]
 
 
 def requirer_map(units):
@@ -190,6 +240,9 @@ def main() -> int:
     ap.add_argument("--exclusive-to", metavar="CRATE", action="append", default=[],
                     help="report what leaves the build if these crates go (repeatable)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--all-units", action="store_true",
+                    help="include stale fingerprint records (historical view; "
+                         "they report dependencies the current build does not have)")
     args = ap.parse_args()
 
     if args.self_test:
@@ -200,7 +253,7 @@ def main() -> int:
         print(f"[FAIL] no such target dir: {args.target_dir}", file=sys.stderr)
         return 2
 
-    units = load_units(args.target_dir)
+    units = load_units(args.target_dir, all_units=args.all_units)
     if not units:
         print(f"[FAIL] no .fingerprint units under {args.target_dir} — was anything built there?",
               file=sys.stderr)
