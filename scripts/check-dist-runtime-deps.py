@@ -133,8 +133,19 @@ def audit(index, store):
 
     problems = []
     for name, tool in sorted(index.get("tool", {}).items()):
-        root = os.path.join(store, name)
-        if not os.path.isdir(root):
+        # The PINNED version, not the whole tool directory. The store
+        # ACCUMULATES (issue 0500), so `<store>/<tool>/` holds every version
+        # ever installed — and measuring them together is a false negative in
+        # both directions: one version's bundled `lib/` counts as "shipped by
+        # the dist" for another version's binaries, so a re-cut masks the older
+        # release it replaced. Measured: with `arm-none-eabi-gcc` 13.2-nros1 and
+        # -nros2 both present, nros2's bundled ncurses hid nros1's missing one.
+        #
+        # The pin is also the only version that MATTERS here: it is what
+        # `nros setup` resolves and what a user runs.
+        version = tool.get("version")
+        root = os.path.join(store, name, version) if version else None
+        if not root or not os.path.isdir(root):
             continue
         declared = set(tool.get("system", []))
         for so in sorted(closure(root)):
