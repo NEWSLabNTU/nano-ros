@@ -82,6 +82,106 @@ after `_z_reopen`, or it is re-declared and no longer matches. That is a
 third question this issue has to answer, and it is the one that actually costs
 messages.
 
+## Where the messages actually go — measured, and it is NOT the write filter
+
+The reconnect is not what costs the messages. The teardown that precedes it
+never finishes.
+
+**The publisher stops being called at all.** A probe inside
+`z_publisher_put` counted 19 entries against 77 `Publishing:` lines, and the
+example's own return check tells the rest: from message 20 onward every call
+returns `-10` (`NROS_RET_PUBLISH_FAILED`), forever. So the samples are not
+filtered, not queued and not dropped on the wire — the shim refuses them.
+
+**Because the session reads as closed, permanently.**
+`_z_session_is_closed()` is literally
+
+    session->_tp._type == _Z_TRANSPORT_NONE
+
+and `_type` is set to NONE at the start of a teardown (and by `_z_open` on
+entry). It is restored only when the reopen lands. It never lands.
+
+**The teardown parks in lwIP.** A stage counter through
+`_zp_unicast_failed` → `_z_unicast_transport_clear` → `_z_common_transport_clear`,
+read with gdb attached AFTER the guest went quiet (a plain `-s` stub, so the
+guest ran at full speed until the sample), lands on the same step every time:
+
+    clr_stage=50    /* inside _z_close_tcp, in shutdown(fd, SHUT_RDWR) */
+
+sampled twice, 25 s apart, unchanged. Removing the `shutdown` call moves the
+stall into `close()` — 37-58 failed publishes per run either way — so it is the
+netconn teardown itself, not that one call.
+
+**When the teardown does complete, delivery fully recovers.** Under a build
+whose diagnostic prints happened to widen the window: 60 published, 60 heard.
+So a reopen DOES restore the subscription and the matching; nothing is lost in
+re-declaration. The entire message loss is the stalled teardown.
+
+## The lwIP threading configuration was not a valid one
+
+Two findings, both measured, both necessary and neither sufficient:
+
+**1. `LWIP_NETCONN_SEM_PER_THREAD` without `LWIP_NETCONN_FULLDUPLEX`.** lwIP's
+own header says what our usage requires:
+
+> `LWIP_NETCONN_FULLDUPLEX==1`: Enable code that allows reading from one thread,
+> writing from a 2nd thread and closing from a 3rd thread at the same time.
+> `LWIP_NETCONN_SEM_PER_THREAD==1` is required to use one socket/netconn from
+> multiple threads at once!
+
+That is exactly the shape here — zenoh-pico's read task calls `recv`, the app
+task publishes, the lease task sends keepalives and closes. The board set
+`SEM_PER_THREAD` alone and left `FULLDUPLEX` at its default of 0.
+
+**2. The per-thread semaphore was never allocated for two of the three tasks.**
+The FreeRTOS port's `sys_arch_netconn_sem_get()` only READS the thread-local
+slot; only `lwip_socket_thread_init()` allocates. Probed:
+
+    !!! NETCONN-SEM-NULL task=zpico_read
+    !!! NETCONN-SEM-NULL task=zpico_lease
+
+Both are now fixed — `FULLDUPLEX` is on, and `z_task_wrapper` in the zenoh-pico
+fork calls `lwip_socket_thread_init()`/`_cleanup()` — and the stall SURVIVES
+both. They were undefined behaviour that had to go before anything downstream
+could be reasoned about, not the answer.
+
+## What is landed, and what is held back
+
+Landed: this issue, and the `NROS_ZPICO_DEBUG` knob that made the zenoh-pico
+internals readable under gdb.
+
+HELD BACK, because the three parts only work together and two of them are not
+pushable by the agent (it does not push fork remotes):
+
+* zenoh-pico fork branch `nano-ros-0899`, local — `567c0c52` (the [[issue-0899]]
+  crash fix) and `ce206ec0` (the per-task netconn semaphore).
+* the board's `LWIP_NETCONN_FULLDUPLEX` flip, on local branch
+  `fix/0906-lwip-fullduplex`.
+
+Shipping the board flip alone would be the same half-a-requirement mistake this
+issue is about, in the other direction, so it waits for the fork branch to be
+pushed and the submodule pin to move. Note the pin is also in flight in PR #70;
+whoever pushes should rebase `nano-ros-0899` onto whatever pin lands.
+
+## Still open, and this is the next thread to pull
+
+Why lwIP's netconn teardown does not complete for a socket whose reader has
+already been joined. Worth checking, in this order: whether the joined read task
+was deleted while still owning netconn state (`_z_task_join` calls
+`vTaskDelete` on it); whether the tcpip thread is servicing the API mailbox at
+that moment; and whether `MEMP_NUM_TCPIP_MSG_API` / the netconn pools are
+exhausted by then (issue 0836 was the INPKT half of exactly that question on a
+sibling board). `LWIP_STATS` is 0 on this board — turn it on first.
+
+## Method notes for whoever continues
+
+* **A peer must be attached.** Without the listener none of this reproduces.
+* **Diagnostic `printf`s hide it.** Probe-laden builds run clean where the same
+  code without prints stalls. Use `volatile` stage counters and read them with
+  gdb attached AFTER the hang, never a print in the path under test.
+* Both halves of a talker/listener pair must be rebuilt; a stale peer produces
+  numbers that look like a fix.
+
 ## What to establish first
 
 Whose job the keepalive is, on this pairing:
