@@ -207,9 +207,33 @@ fn owner_is_gone(lock: &Path) -> bool {
 
 #[cfg(unix)]
 fn pid_is_live(pid: i32) -> bool {
-    // `/proc` rather than `kill(0)`: no unsafe, and no dependency on the
-    // signalling permissions between two test processes.
-    Path::new(&format!("/proc/{pid}")).exists()
+    // `kill(pid, 0)` rather than `/proc/<pid>`: procfs is a LINUX filesystem,
+    // not a unix one — FreeBSD does not mount it by default and the guard above
+    // is `cfg(unix)`, so a `/proc` probe answered "dead" for every LIVE owner on
+    // a non-Linux unix and handed its port to a second fixture. That is exactly
+    // the cross-talk this module exists to prevent, and the `#[cfg(not(unix))]`
+    // arm below could not catch it because BSD *is* unix. `kill` with signal 0
+    // performs the existence check only and is POSIX, so one arm covers the
+    // whole family.
+    //
+    // `EPERM` counts as LIVE: the process exists, we merely may not signal it.
+    // That is the case the previous comment worried about ("no dependency on the
+    // signalling permissions between two test processes") — it is answered by
+    // reading the errno rather than by avoiding the call.
+    //
+    // A non-positive pid is rejected up front, and not as defensive noise:
+    // `kill(0, …)` addresses the CALLER's process group and `kill(-n, …)` a
+    // whole group, so both would report "live" for a lease that names nobody.
+    // The reclaim test writes exactly `0`.
+    if pid <= 0 {
+        return false;
+    }
+    // SAFETY: signal 0 delivers nothing — it runs the permission and existence
+    // checks alone, so it cannot disturb the process it asks about.
+    if unsafe { libc::kill(pid, 0) } == 0 {
+        return true;
+    }
+    std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
 }
 
 #[cfg(not(unix))]
@@ -276,7 +300,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("lease dir");
         let lock = dir.join("udp-reclaim-probe.lock");
         let _ = std::fs::remove_file(&lock);
-        // pid 0 is never a live process in /proc.
+        // pid 0 never names a process — see `pid_is_live`.
         std::fs::write(&lock, "0").expect("write stale lease");
 
         assert!(

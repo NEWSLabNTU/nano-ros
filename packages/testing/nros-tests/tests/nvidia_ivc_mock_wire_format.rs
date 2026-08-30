@@ -36,7 +36,11 @@
 //! or via the platform recipe:
 //!   `just orin_spe test`
 
-#![cfg(unix)]
+// Linux, not unix: the `unix-mock` backend under test hardcodes glibc's
+// `__errno_location` and Linux's `MSG_DONTWAIT`/`EAGAIN` values (see the
+// header of `nvidia-ivc/src/unix_mock.rs`), so `cfg(unix)` named a family
+// broader than the code it gates.
+#![cfg(target_os = "linux")]
 
 use nvidia_ivc::{Channel, unix_mock};
 

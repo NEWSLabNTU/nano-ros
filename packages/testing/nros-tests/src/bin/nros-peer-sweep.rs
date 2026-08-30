@@ -8,7 +8,10 @@
 //! ledger format — the "two spellings that can disagree" defect issue 0363
 //! records for the CLI stamp.
 fn main() {
-    #[cfg(unix)]
+    // Linux, not unix: the ledger this drives reads `/proc` (see
+    // `nros_tests::process::group_ledger`), so there is nothing for it to sweep
+    // on a non-Linux unix.
+    #[cfg(target_os = "linux")]
     {
         let n = nros_tests::process::sweep_orphaned_process_groups();
         if n > 0 {

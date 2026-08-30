@@ -132,7 +132,19 @@ pub fn group_suicide_wrapper(cmd: &str) -> String {
 /// Measured 2026-08-17: 59 orphaned `add_two_ints_server` on one host, oldest
 /// 9.4 days, holding domain-5 discovery ports until an unrelated cyclone test
 /// failed with `failed to bind to ANY:8650: address in use`.
-#[cfg(unix)]
+///
+/// **Linux, not unix.** Every question this module asks is asked of `/proc`:
+/// `start_time` reads `/proc/<pid>/stat` field 22 and `members` enumerates
+/// `/proc` to match field 3 against a pgid. procfs is a Linux filesystem —
+/// FreeBSD does not mount one by default, and the one it can mount has no
+/// `stat` file — so under the old `cfg(unix)` guard this compiled on the BSDs
+/// and then recorded nothing and swept nothing, while its own test asserted on
+/// `/proc/<pid>/comm`. There is no portable substitute: enumerating a process
+/// group's members needs procfs or a kernel-specific interface (`kvm`/`sysctl`
+/// on the BSDs), so the honest gate is the one that names the interface used.
+/// A non-Linux unix therefore has no orphan sweep, which is what it effectively
+/// had before.
+#[cfg(target_os = "linux")]
 pub mod group_ledger {
     use std::{fs, path::PathBuf};
 
@@ -270,12 +282,16 @@ pub mod group_ledger {
 }
 
 /// Sweep process groups left behind by a previous, SIGKILLed run.
-#[cfg(unix)]
+///
+/// Linux-gated with [`group_ledger`], whose `/proc` dependency it inherits.
+#[cfg(target_os = "linux")]
 pub fn sweep_orphaned_process_groups() -> usize {
     group_ledger::sweep()
 }
 
-#[cfg(all(test, unix))]
+// `/proc/<pid>/comm` and `/proc/<pid>/stat` are read directly below, so this
+// follows `group_ledger`'s gate rather than widening it back to `unix`.
+#[cfg(all(test, target_os = "linux"))]
 mod group_ledger_tests {
     use super::*;
     use std::process::{Command, Stdio};
@@ -453,6 +469,8 @@ pub fn kill_process_group(handle: &mut Child) {
     // issue 0659 — the orderly path just did the cleanup, so drop the record.
     // A ledger that only grows makes every later sweep examine more groups, and
     // each stale entry is one more chance to act on a recycled pgid.
+    // (Linux-only, with the `/proc`-backed ledger itself.)
+    #[cfg(target_os = "linux")]
     group_ledger::forget(pid);
 }
 
@@ -491,6 +509,8 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
     // one. Fixing only `kill_process_group` would leave every gracefully-killed
     // group in the ledger forever, which is this tree's recurring shape: the fix
     // that lands where the symptom was seen.
+    // (Linux-only, with the `/proc`-backed ledger itself.)
+    #[cfg(target_os = "linux")]
     group_ledger::forget(pid);
 }
 
