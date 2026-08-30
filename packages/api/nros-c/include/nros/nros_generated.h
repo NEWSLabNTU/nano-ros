@@ -1158,6 +1158,140 @@ typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
                                        void *context);
 
 /**
+ * phase-379 W4 — a checkable reference to the node an entity was created on.
+ *
+ * Replaces the `*const nros_node_t` each entity used to store. That pointer
+ * was never dereferenced anywhere in the C API — it was assigned, nulled, and
+ * asserted on — so it bought provenance nobody could use while leaving a raw
+ * pointer that invites a dereference the platform cannot support:
+ *
+ * * bare metal is safe (no MMU, no relocation, handles in `.bss`), but
+ * * an RTOS node declared on a task stack dies with `vTaskDelete`, and
+ * * `nros_node_t a = b;` is legal and silent — C has no move semantics, and we
+ *   have no allocator to hide an indirection behind.
+ *
+ * rcl's alternative (`rcl_publisher_fini(&pub, &node)`) does not remove that
+ * assumption; it relocates it to a caller who cannot check it either.
+ *
+ * So the entity stores an IDENTITY instead: the executor slot the node is
+ * bound to, plus the generation that slot carried when the entity was created.
+ * `nros_node_fini` bumps the generation, which makes "finalise an entity after
+ * its node" a return code rather than a silent success.
+ *
+ * `generation == 0` is reserved and never issued, so a zeroed struct — the
+ * common C mistake — can never resolve.
+ */
+typedef struct nros_node_ref_t {
+  /**
+   * Executor node slot (`nros_node_t::node_id`). 0 = the primary node.
+   */
+  uint8_t node_id;
+  /**
+   * Slot generation when the entity was created. 0 = no node bound.
+   */
+  uint32_t generation;
+} nros_node_ref_t;
+
+/**
+ * Identifier of a registered scheduling context. `0` is the
+ * auto-created default `Fifo` SC. Mirrors
+ * `nros_node::executor::sched_context::SchedContextId`.
+ */
+typedef uint8_t nros_sched_context_id_t;
+
+/**
+ * Internal state for the action client.
+ *
+ * Lightweight — stores only the arena entry index and executor pointer.
+ * The `ActionClientCore` (transport handles) lives in the executor's arena,
+ * created by `nros_executor_add_action_client`.
+ */
+typedef struct ActionClientInternal {
+  /**
+   * Arena entry index (set by nros_executor_add_action_client).
+   * -1 means not registered with executor.
+   */
+  int32_t arena_entry_index;
+  /**
+   * Pointer to the executor (set by nros_executor_add_action_client).
+   */
+  void *executor_ptr;
+} ActionClientInternal;
+
+/**
+ * Action client structure.
+ */
+typedef struct nros_action_client_t {
+  /**
+   * Current state
+   */
+  enum nros_action_client_state_t state;
+  /**
+   * Action name storage
+   */
+  uint8_t action_name[NROS_MAX_ACTION_NAME_LEN];
+  /**
+   * Action name length
+   */
+  size_t action_name_len;
+  /**
+   * Type name storage
+   */
+  uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
+  /**
+   * Type name length
+   */
+  size_t type_name_len;
+  /**
+   * Type hash storage
+   */
+  uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
+  /**
+   * Type hash length
+   */
+  size_t type_hash_len;
+  /**
+   * Goal response callback (for async send_goal)
+   */
+  nros_goal_response_callback_t goal_response_callback;
+  /**
+   * Feedback callback
+   */
+  nros_feedback_callback_t feedback_callback;
+  /**
+   * Result callback
+   */
+  nros_result_callback_t result_callback;
+  /**
+   * User context pointer
+   */
+  void *context;
+  /**
+   * Pointer to parent node
+   */
+  struct nros_node_ref_t node;
+  /**
+   * Phase 189.M3.3.b — scheduling-context slot to bind the action client's
+   * executor handle to. `0` = inherit the executor / Node default; set via
+   * `nros_action_client_init_with_options`. When non-zero,
+   * `nros_executor_add_action_client` binds the handle after
+   * registration. No effect on the L1 polling path.
+   */
+  nros_sched_context_id_t sched_context_id;
+  /**
+   * Internal state (arena entry index + executor pointer). Phase 87.5:
+   * Typed C-ABI handle field.
+   */
+  struct ActionClientInternal _internal;
+  /**
+   * Phase 122.3.c.6.b — inline opaque storage for the L1
+   * polling-mode `ActionClientCore`. Zeroed in L2 mode; populated
+   * by `nros_action_client_init_polling`.
+   */
+  uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
+} nros_action_client_t;
+
+/**
  * Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
  * Rust's `nros_rmw::QoSOverride`. The deploy plan lowers a
  * `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
@@ -1280,105 +1414,6 @@ typedef struct nros_node_t {
    */
   size_t qos_overrides_len;
 } nros_node_t;
-
-/**
- * Identifier of a registered scheduling context. `0` is the
- * auto-created default `Fifo` SC. Mirrors
- * `nros_node::executor::sched_context::SchedContextId`.
- */
-typedef uint8_t nros_sched_context_id_t;
-
-/**
- * Internal state for the action client.
- *
- * Lightweight — stores only the arena entry index and executor pointer.
- * The `ActionClientCore` (transport handles) lives in the executor's arena,
- * created by `nros_executor_add_action_client`.
- */
-typedef struct ActionClientInternal {
-  /**
-   * Arena entry index (set by nros_executor_add_action_client).
-   * -1 means not registered with executor.
-   */
-  int32_t arena_entry_index;
-  /**
-   * Pointer to the executor (set by nros_executor_add_action_client).
-   */
-  void *executor_ptr;
-} ActionClientInternal;
-
-/**
- * Action client structure.
- */
-typedef struct nros_action_client_t {
-  /**
-   * Current state
-   */
-  enum nros_action_client_state_t state;
-  /**
-   * Action name storage
-   */
-  uint8_t action_name[NROS_MAX_ACTION_NAME_LEN];
-  /**
-   * Action name length
-   */
-  size_t action_name_len;
-  /**
-   * Type name storage
-   */
-  uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
-  /**
-   * Type name length
-   */
-  size_t type_name_len;
-  /**
-   * Type hash storage
-   */
-  uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
-  /**
-   * Type hash length
-   */
-  size_t type_hash_len;
-  /**
-   * Goal response callback (for async send_goal)
-   */
-  nros_goal_response_callback_t goal_response_callback;
-  /**
-   * Feedback callback
-   */
-  nros_feedback_callback_t feedback_callback;
-  /**
-   * Result callback
-   */
-  nros_result_callback_t result_callback;
-  /**
-   * User context pointer
-   */
-  void *context;
-  /**
-   * Pointer to parent node
-   */
-  const struct nros_node_t *node;
-  /**
-   * Phase 189.M3.3.b — scheduling-context slot to bind the action client's
-   * executor handle to. `0` = inherit the executor / Node default; set via
-   * `nros_action_client_init_with_options`. When non-zero,
-   * `nros_executor_add_action_client` binds the handle after
-   * registration. No effect on the L1 polling path.
-   */
-  nros_sched_context_id_t sched_context_id;
-  /**
-   * Internal state (arena entry index + executor pointer). Phase 87.5:
-   * Typed C-ABI handle field.
-   */
-  struct ActionClientInternal _internal;
-  /**
-   * Phase 122.3.c.6.b — inline opaque storage for the L1
-   * polling-mode `ActionClientCore`. Zeroed in L2 mode; populated
-   * by `nros_action_client_init_polling`.
-   */
-  uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
-} nros_action_client_t;
 
 /**
  * Action type information.
@@ -1643,7 +1678,7 @@ typedef struct nros_action_server_t {
   /**
    * Pointer to parent node
    */
-  const struct nros_node_t *node;
+  struct nros_node_ref_t node;
   /**
    * Phase 193.4b — action-server QoS, applied to the three underlying
    * service servers (send_goal / cancel_goal / get_result). The feedback +
@@ -1746,7 +1781,7 @@ typedef struct nros_subscription_t {
   /**
    * Pointer to parent node
    */
-  const struct nros_node_t *node;
+  struct nros_node_ref_t node;
   /**
    * QoS settings (stored during init, used by executor registration)
    */
@@ -1841,7 +1876,7 @@ typedef struct nros_publisher_t {
   /**
    * Pointer to parent node
    */
-  const struct nros_node_t *node;
+  struct nros_node_ref_t node;
   /**
    * Inline opaque storage for the RMW publisher handle.
    * Avoids heap allocation — managed by nros_publisher_init/fini.
@@ -2127,7 +2162,7 @@ typedef struct nros_service_t {
   /**
    * Pointer to parent node
    */
-  const struct nros_node_t *node;
+  struct nros_node_ref_t node;
   /**
    * Phase 193.4 — service QoS (applied to both request + reply endpoints).
    * Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
@@ -2232,7 +2267,7 @@ typedef struct nros_client_t {
   /**
    * Pointer to parent node
    */
-  const struct nros_node_t *node;
+  struct nros_node_ref_t node;
   /**
    * Phase 193.4b — service-client QoS (applied to both request + reply
    * endpoints). Defaults to the services profile
@@ -2621,6 +2656,19 @@ typedef struct nros_integrity_status_t {
  * Bad sequence (e.g., wrong order of operations)
  */
 #define NROS_RET_BAD_SEQUENCE -8
+
+/**
+ * phase-379 W4 — the entity's node reference no longer names a live binding.
+ *
+ * Returned when an entity is used or finalised after `nros_node_fini` retired
+ * the slot it was created on. Before W4 the entity held a raw
+ * `*const nros_node_t` that nothing dereferenced, so this case SUCCEEDED
+ * silently; the identity makes it detectable. Distinct from
+ * `NROS_RET_NOT_INIT` (never initialised) and `NROS_RET_BAD_SEQUENCE`
+ * (initialised, wrong order) because the remedy differs: the node outlived by
+ * this entity has to be finalised LAST.
+ */
+#define NROS_RET_STALE_NODE -17
 
 /**
  * Service call failed

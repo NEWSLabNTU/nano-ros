@@ -156,7 +156,7 @@ pub struct nros_service_t {
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
-    pub node: *const nros_node_t,
+    pub node: crate::node::nros_node_ref_t,
     /// Phase 193.4 — service QoS (applied to both request + reply endpoints).
     /// Defaults to the services profile (RELIABLE+VOLATILE+KEEP_LAST(10));
     /// set via `nros_service_init_with_qos`.
@@ -189,7 +189,7 @@ impl Default for nros_service_t {
             type_hash_len: 0,
             callback: None,
             context: ptr::null_mut(),
-            node: ptr::null(),
+            node: crate::node::nros_node_ref_t::none(),
             qos: crate::qos::nros_qos_t::default(),
             sched_context_id: 0,
             _internal: ServiceServerInternal::new(),
@@ -277,7 +277,7 @@ pub unsafe extern "C" fn nros_service_init(
     // Store callback and context
     service.callback = callback;
     service.context = context;
-    service.node = node;
+    service.node = unsafe { crate::node::node_ref_of(node) };
     // Phase 193.4 — default to the services profile; nros_service_init_with_qos
     // overrides. (`register_service` reads this at registration time.)
     service.qos = crate::qos::nros_qos_t::default();
@@ -421,7 +421,7 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
     service._internal = ServiceServerInternal::new();
     service.callback = None;
     service.context = ptr::null_mut();
-    service.node = ptr::null();
+    service.node = crate::node::nros_node_ref_t::none();
     service.state = nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN;
 
     NROS_RET_OK
@@ -491,7 +491,7 @@ pub unsafe extern "C" fn nros_service_init_polling(
     service_mut.type_hash_len =
         crate::util::copy_cstr_into(type_info_ref.type_hash, &mut service_mut.type_hash);
 
-    service_mut.node = node;
+    service_mut.node = unsafe { crate::node::node_ref_of(node) };
     service_mut.callback = None;
     service_mut.context = ptr::null_mut();
 
@@ -948,7 +948,7 @@ pub struct nros_client_t {
     /// User context pointer passed to `response_callback`.
     pub context: *mut c_void,
     /// Pointer to parent node
-    pub node: *const nros_node_t,
+    pub node: crate::node::nros_node_ref_t,
     /// Phase 193.4b — service-client QoS (applied to both request + reply
     /// endpoints). Defaults to the services profile
     /// (RELIABLE+VOLATILE+KEEP_LAST(10)); set via `nros_client_init_with_qos`.
@@ -981,7 +981,7 @@ impl Default for nros_client_t {
             type_hash_len: 0,
             response_callback: None,
             context: ptr::null_mut(),
-            node: ptr::null(),
+            node: crate::node::nros_node_ref_t::none(),
             qos: crate::qos::nros_qos_t::default(),
             sched_context_id: 0,
             _internal: ServiceClientInternal::new(),
@@ -1051,7 +1051,7 @@ pub unsafe extern "C" fn nros_client_init(
     client.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     // Store node pointer + zero callback fields
-    client.node = node;
+    client.node = unsafe { crate::node::node_ref_of(node) };
     client.response_callback = None;
     client.context = ptr::null_mut();
 
@@ -1180,7 +1180,7 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
     client._internal = ServiceClientInternal::new();
     client.response_callback = None;
     client.context = ptr::null_mut();
-    client.node = ptr::null();
+    client.node = crate::node::nros_node_ref_t::none();
     client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
@@ -1242,7 +1242,7 @@ pub unsafe extern "C" fn nros_client_init_polling(
     client_mut.type_hash_len =
         crate::util::copy_cstr_into(type_info_ref.type_hash, &mut client_mut.type_hash);
 
-    client_mut.node = node;
+    client_mut.node = unsafe { crate::node::node_ref_of(node) };
     client_mut.response_callback = None;
     client_mut.context = ptr::null_mut();
 
@@ -2256,7 +2256,7 @@ mod verification {
             svc.state,
             nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
         );
-        assert!(svc.node.is_null());
+        assert!(!svc.node.is_bound(), "fini must unbind the node reference");
     }
 
     #[kani::proof]
@@ -2428,7 +2428,10 @@ mod verification {
             client.state,
             nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
         );
-        assert!(client.node.is_null());
+        assert!(
+            !client.node.is_bound(),
+            "fini must unbind the node reference"
+        );
         assert!(client._internal.iter().all(|&v| v == 0));
     }
 

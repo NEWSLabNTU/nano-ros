@@ -86,7 +86,7 @@ pub struct nros_subscription_t {
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
-    pub node: *const nros_node_t,
+    pub node: crate::node::nros_node_ref_t,
     /// QoS settings (stored during init, used by executor registration)
     pub qos: crate::qos::nros_qos_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
@@ -117,7 +117,7 @@ impl Default for nros_subscription_t {
             type_hash_len: 0,
             callback: None,
             context: ptr::null_mut(),
-            node: ptr::null(),
+            node: crate::node::nros_node_ref_t::none(),
             qos: crate::qos::nros_qos_t::default(),
             handle_id: usize::MAX,
             sched_context_id: 0,
@@ -264,7 +264,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     // Store callback and context
     subscription.callback = callback;
     subscription.context = context;
-    subscription.node = node;
+    subscription.node = unsafe { crate::node::node_ref_of(node) };
 
     // Store QoS settings for later use by executor registration
     subscription.qos = if qos.is_null() {
@@ -447,7 +447,7 @@ pub unsafe extern "C" fn nros_subscription_init_polling_with_qos(
     subscription_mut.type_hash_len =
         crate::util::copy_cstr_into(type_info_ref.type_hash, &mut subscription_mut.type_hash);
 
-    subscription_mut.node = node;
+    subscription_mut.node = unsafe { crate::node::node_ref_of(node) };
     subscription_mut.qos = if qos.is_null() {
         crate::qos::NROS_QOS_DEFAULT
     } else {
@@ -866,6 +866,14 @@ pub unsafe extern "C" fn nros_subscription_fini(
         nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_POLLING => {
             // L1: drop the inline RawSubscription so its Drop runs
             // (closes the underlying RMW subscriber).
+            // phase-379 W4 — the node this entity was created on is gone, so its
+            // teardown ORDER was wrong. Reported rather than performed: before W4 the
+            // entity held a pointer nothing dereferenced and this case succeeded
+            // silently, which is what made the ordering obligation unenforceable.
+            if subscription.node.is_bound() && !crate::node::node_ref_is_live(subscription.node) {
+                return crate::error::NROS_RET_STALE_NODE;
+            }
+
             #[cfg(feature = "rmw-cffi")]
             {
                 core::ptr::drop_in_place(subscription._opaque.as_mut_ptr()
@@ -879,7 +887,7 @@ pub unsafe extern "C" fn nros_subscription_fini(
     subscription.handle_id = usize::MAX;
     subscription.callback = None;
     subscription.context = ptr::null_mut();
-    subscription.node = ptr::null();
+    subscription.node = crate::node::nros_node_ref_t::none();
     subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN;
 
     NROS_RET_OK

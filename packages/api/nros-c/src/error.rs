@@ -34,6 +34,17 @@ pub const NROS_RET_NOT_INIT: nros_ret_t = -7;
 /// Bad sequence (e.g., wrong order of operations)
 pub const NROS_RET_BAD_SEQUENCE: nros_ret_t = -8;
 
+/// phase-379 W4 — the entity's node reference no longer names a live binding.
+///
+/// Returned when an entity is used or finalised after `nros_node_fini` retired
+/// the slot it was created on. Before W4 the entity held a raw
+/// `*const nros_node_t` that nothing dereferenced, so this case SUCCEEDED
+/// silently; the identity makes it detectable. Distinct from
+/// `NROS_RET_NOT_INIT` (never initialised) and `NROS_RET_BAD_SEQUENCE`
+/// (initialised, wrong order) because the remedy differs: the node outlived by
+/// this entity has to be finalised LAST.
+pub const NROS_RET_STALE_NODE: nros_ret_t = -17;
+
 /// Service call failed
 pub const NROS_RET_SERVICE_FAILED: nros_ret_t = -9;
 
