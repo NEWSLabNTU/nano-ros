@@ -1,6 +1,26 @@
+---
+rfc: 0062
+title: "One dependency SSoT, system-aware"
+status: Stable
+since: 2026-08
+last-reviewed: 2026-08
+implements-tracked-by: [phase-327, phase-398]
+supersedes: []
+---
+
 # RFC-0062 — One dependency SSoT, system-aware
 
-**Status:** Draft (2026-08-01)
+**Status:** Stable (2026-08-30; Draft 2026-08-01, amended 2026-08-29)
+
+Settled: `[prereq.*]` is the one declaration namespace, phase-398 landed it
+end to end (`[system.*]` retired through alias -> warn -> gate -> delete, the
+rosdep fallback deleted), and issue 0926 closed the last consumer gap — a
+dist's runtime libraries are now measured rather than hand-listed, reported on
+the path where the tool is USED, and gated by `check-dist-runtime-deps`.
+
+One item is deliberately outside this RFC and tracked separately: re-cutting
+dists with `$ORIGIN` rpath so a declared dependency disappears instead
+(issue 0928). That is a nano-ros-sdk change, not a decision this RFC owes.
 **Amends:** RFC-0014 (`nros setup` toolchain management) — extends its index
 from two dependency classes to all of them; changes no existing `[tool.*]` /
 `[source.*]` semantics.
@@ -362,7 +382,7 @@ issue-0196 rule applied to dependencies: the gate must cover the class).
   the index later, but are out of scope here.
 - No change to `[gated.*]` (licensed SDKs stay instruction-only).
 
-## Migration (phase-327 — `docs/roadmap/phase-327-unified-dependency-ssot.md`)
+## Migration (phase-327 — `docs/roadmap/archived/phase-327-unified-dependency-ssot.md`)
 
 1. Add the three new classes to the index; move `apt-packages`' list, the
    module-local probes, and every 0368 discovery into entries. `apt-packages`

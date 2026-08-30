@@ -1,6 +1,14 @@
 # Phase 398 — `[prereq.*]`: one prerequisite namespace, four providers
 
-**Status (2026-08-29). COMPLETE — W1–W5 landed.** `[prereq.*]` is the
+**Status (2026-08-30). COMPLETE and ARCHIVED — W1–W5 landed.** RFC-0062 is
+`Stable` as of this archive. The one thing this phase did NOT close was the
+completeness of what a dist declares — `[prereq.*]` worked, but nothing derived
+a dist's declaration FROM the dist, so `system = [..]` stayed only as good as
+whoever hand-wrote it. Issue 0926 measured that (6 of 10 dists undeclared, two
+binaries dead on a stock host), declared it, and gated it. The remaining
+`$ORIGIN`-rpath re-cut is issue 0928, in the nano-ros-sdk repo.
+
+**Original status (2026-08-29). COMPLETE — W1–W5 landed.** `[prereq.*]` is the
 declaration table, `[system.*]` is gone from the index, every `<depend>` must
 resolve, and the rosdep fallback is deleted. Implements the 2026-08-29
 amendment to [RFC-0062](../design/0062-unified-dependency-ssot.md), which
