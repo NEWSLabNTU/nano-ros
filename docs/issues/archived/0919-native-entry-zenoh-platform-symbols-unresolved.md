@@ -3,7 +3,7 @@ id: 919
 title: "`bridge-cyclonedds`'s `native_entry` fails to link in CI on 16 zenoh-pico
   platform symbols — CI resolves a different `zpico-sys` unit than any local build
   produces"
-status: open
+status: resolved
 type: bug
 area: ci
 related: [issue-0616, issue-0270, issue-0897, phase-340]
@@ -168,3 +168,62 @@ apparently does not in CI is the thing to measure.
    with a reason instead of at link time with 16 symbols.
 3. Independently of this bug, `any_explicit` gating configuration and code
    generation differently is worth removing.
+
+## Reproduced, then fixed
+
+The eight routes above all missed because they all had a graph where
+`platform-posix` was enabled. Reproducing needs the opposite: **zpico present
+WITHOUT that feature**. The bridge entry is exactly that shape — it depends on
+`nros-rmw-zenoh` DIRECTLY (so `platform-aliases` is on by default, and zpico is
+compiled) while reaching it through a board that selects only another RMW.
+
+Forced locally by making the generated selection crate name one RMW:
+
+```diff
+-nros-board-linux = { …, features = ["rmw-cyclonedds", "rmw-zenoh"] }
++nros-board-linux = { …, features = ["rmw-cyclonedds"] }
+```
+
+and the build fails with the reported 16 symbols, deterministically:
+
+```
+rust-lld: error: undefined symbol: z_sleep_ms
+rust-lld: error: undefined symbol: z_malloc
+rust-lld: error: undefined symbol: _z_mutex_lock
+…
+```
+
+## The defect is four lines
+
+```rust
+let any_explicit = use_posix || use_zephyr || … ;
+if !any_explicit && auto_posix {
+    use_posix = true;          // a platform IS now resolved
+}
+```
+
+`any_explicit` is computed BEFORE the inference and never updated, so on a
+hosted target that resolved POSIX by inference it stays **false** while
+`use_posix` is **true**. The alias TU was gated on `any_explicit`, so
+zenoh-pico got configured FOR POSIX and then the platform forwarders that
+configuration requires were not emitted.
+
+The question that gate needs answered is "is a platform RESOLVED?", not "did
+the consumer name one?". It now asks `platform_resolved`, computed AFTER the
+inference. A build with no platform at all is a different case and still not
+the alias TU's business — `backend_count` rejects it.
+
+Verified on the same configuration: the graph that failed with 16 undefined
+symbols links, and the normal two-RMW graph still links.
+
+## What made it expensive
+
+The failure is reported at LINK time in a consumer, naming a binary that
+happens to link zpico, with nothing pointing at the crate that made the
+decision. Everything else followed from that: the wrong workspace read out of
+the package name, a museum binary mistaken for a passing build, and eight
+routes that could not reproduce because none of them had the graph shape.
+
+The CI diagnostic added alongside this (`cargo tree -e features -i zpico-sys`
+on the failure path) would have shown `platform-posix` absent in one line. It
+is kept: the next failure of this family should not need the same eight routes.
