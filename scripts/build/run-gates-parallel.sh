@@ -102,5 +102,36 @@ if [ "$failed" -gt 0 ]; then
     printf '\ncheck-fast (parallel): %d of %d gate(s) FAILED\n' "$failed" "$total"
     exit 1
 fi
+# QUALIFY the success line by the gates that did not run.
+#
+# The serial path closes with `nros_check_skip_report`, which refuses to say
+# "All checks passed!" over a skipped gate — that is issue 0650's whole point.
+# The parallel path RESET the shared ledger (above) and then never read it, so
+# `check-fast` printed "N gate(s) OK" while gates skipped, in the lane that runs
+# on EVERY PUSH.
+#
+# Measured when this was written: four skips reported as an unqualified OK —
+# three from one stale CLI, and `check-abi-bindings`, which had never run on
+# that host at all because `bindgen-cli` was not installed. A person reading
+# "138 gate(s) OK" had no way to know the ABI bindings were unchecked.
+#
+# Still exit 0: these are missing tools and build products, not failures, and
+# `check-fast` must stay green on a bare worktree. What changes is only that
+# the sentence stops overstating what happened.
+skips="$(pwd)/build/check-skips/checks.skipped"
+skipped=0
+if [ -s "$skips" ]; then
+    skipped=$(wc -l <"$skips")
+fi
+
+if [ "$skipped" -gt 0 ]; then
+    printf 'check-fast (parallel): %d gate(s) ran at -P%s, %d SKIPPED; slowest %s\n' \
+        "$((total - skipped))" "$jobs" "$skipped" \
+        "$(printf '%s' "$slowest" | awk '{print $1" "$3"ms"}')"
+    while IFS=$'\t' read -r gate reason; do
+        printf '  [SKIPPED] %s: %s\n' "$gate" "$reason"
+    done <"$skips"
+    exit 0
+fi
 printf 'check-fast (parallel): %d gate(s) OK at -P%s; slowest %s\n' \
     "$total" "$jobs" "$(printf '%s' "$slowest" | awk '{print $1" "$3"ms"}')"

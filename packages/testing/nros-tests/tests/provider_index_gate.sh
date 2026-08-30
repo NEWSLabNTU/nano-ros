@@ -51,8 +51,17 @@ MODULE="$ROOT/cmake/NanoRosProviders.cmake"
 # The in-tree CLI is a BUILD PRODUCT, absent on the pristine worktree this
 # tier documents itself green on (issue 0650's list names it). Skip loudly —
 # the lane's closing report refuses to say "passed" over a skipped gate.
-[ -x "$NROS" ] || {
-    nros_check_skip "check-provider-index" "no in-tree nros at packages/cli/target/release/nros (just setup-cli)"
+#
+# STALE counts as unusable, not as a failure. `check-fast` is contractually the
+# source-free, CLI-free tier, so this gate does not own the CLI and cannot
+# demand one; and asserting against a binary built from other sources is worse
+# than not asserting, because the verdict describes a program no longer in the
+# tree. Before this, a branch switch turned one restaled stamp into THREE red
+# gates whose printed cause was the same single remedy.
+# shellcheck source=../../../../scripts/build/cli-usable.sh
+. "$ROOT/scripts/build/cli-usable.sh"
+nros_cli_usable "$NROS" || {
+    nros_check_skip "check-provider-index" "$nros_cli_unusable_reason"
     exit 0
 }
 [ -f "$MODULE" ] || {
