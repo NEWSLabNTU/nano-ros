@@ -591,13 +591,20 @@ fn apply_tier_sched(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &
     );
 }
 
-/// phase-296 W5.13 — the placement dim's POSIX `Native` realization: pin the
-/// CALLING tier thread to its declared `core` via `sched_setaffinity` (no-op
-/// when the tier declares no core). Unlike the RTOS SMP arms (zephyr/nuttx/
-/// freertos/threadx), a Linux host is genuinely multi-core and the call needs
-/// no privilege, so this is the FIRST RUNTIME ACCEPT-arm proof of the core-pin
+/// phase-296 W5.13 — the placement dim's LINUX realization: pin the CALLING
+/// tier thread to its declared `core` via `sched_setaffinity` (no-op when the
+/// tier declares no core). Unlike the RTOS SMP arms (zephyr/nuttx/freertos/
+/// threadx), a Linux host is genuinely multi-core and the call needs no
+/// privilege, so this is the FIRST RUNTIME ACCEPT-arm proof of the core-pin
 /// consumer (issue #260). Never silently drops: a rejected pin (bad cpu id)
 /// falls back LOUDLY and the tier runs unpinned.
+///
+/// **Linux, not POSIX** — this doc said "POSIX" and the distinction is the
+/// whole reason the board is named `linux`. `sched_setaffinity`, `cpu_set_t`
+/// and `CPU_SET` are absent from libc's apple module, and nothing here is
+/// `cfg(target_os)`-gated, so this crate does not build on macOS. Gating it to
+/// a loud no-op off Linux is what would make the board's reach `posix`; until
+/// someone needs that, the accurate word is the one in the crate name.
 fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
     let Some(core) = tier.core else {
         return;
@@ -610,13 +617,13 @@ fn apply_tier_affinity<B: BoardPrint>(tier: &TierSpec<'_>) {
         libc::sched_setaffinity(0, core::mem::size_of::<libc::cpu_set_t>(), &set) == 0
     };
     if accepted {
-        // Literal mirrors `nros_tests::output::POSIX_CORE_PIN_MARKER`.
+        // Literal mirrors `nros_tests::output::LINUX_CORE_PIN_MARKER`.
         B::println(format_args!(
             "nros: core pin tier=`{}` cpu={}",
             tier.name, core
         ));
     } else {
-        // Literal mirrors `nros_tests::output::POSIX_CORE_PIN_FALLBACK_MARKER`.
+        // Literal mirrors `nros_tests::output::LINUX_CORE_PIN_FALLBACK_MARKER`.
         B::println(format_args!(
             "nros: core pin FAILED tier=`{}` cpu={} — sched_setaffinity failed, \
              tier runs unpinned",

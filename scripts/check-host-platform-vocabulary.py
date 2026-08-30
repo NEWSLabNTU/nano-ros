@@ -1,39 +1,46 @@
 #!/usr/bin/env python3
-"""`native`, `posix` and `linux` name three different claims — keep them apart.
+"""`posix` and `linux` are two REACHES — a board cannot claim both.
 
-WHAT THE WORDS MEAN (CLAUDE.md "Naming")
+WHAT THE WORDS MEAN (CLAUDE.md "Naming"), and note they answer TWO questions:
 
-    native   the build runs on the HOST, whatever that is: Linux, macOS, BSD
-    posix    the build works on any POSIX-compliant system
-    linux    the build works ONLY on Linux
+    native   ROLE  — this is the host build, not a cross build
+    posix    REACH — the build works on any POSIX-compliant system
+    linux    REACH — the build works only on Linux
+
+So `native` sits beside either reach word, and only the two REACH words
+conflict. An earlier version of this gate had `native` conflicting with `linux`
+too, which was wrong: a board can perfectly well be the host build AND only
+support Linux — which is exactly what the host board is.
 
 WHY A GATE
 
-They had collapsed into synonyms. The host board descriptor read
+The reach words had collapsed into the role word. The host board descriptor
+read
 
     names = ["linux", "native", "posix"]
 
-which asserts all three of one board, so every later reader was free to pick
-whichever word they had in mind. `linux` was the false member — nothing in
-`nros-platform-posix` is Linux-only; its single `__linux__` selects
-`MSG_NOSIGNAL` and carries a portable `#else`, and `eventfd`/`signalfd` occur
-only in TODO comments.
+asserting both reaches at once, so every later reader was free to pick whichever
+word they had in mind — and one of them was false.
 
-A convention alone does not survive this: the three words read as
-interchangeable to anyone who has not been told otherwise, and the tree already
-demonstrated that nobody had been. So the one structural place they can merge —
-a descriptor's `names` list — is checked.
+WHICH ONE WAS FALSE IS MEASURED, NOT ASSUMED, and the first answer was wrong.
+`nros-platform-posix` IS POSIX-clean, so `posix` looked right; but the board
+crate is not. `nros-board-linux`'s `apply_tier_affinity` calls
+`sched_setaffinity` with `cpu_set_t`/`CPU_SET`, ungated by `cfg(target_os)`,
+and libc 0.2.189 defines those for linux, android, freebsd, dragonfly, fuchsia
+and cygwin — NOT for apple. The crate cannot build on macOS, so `posix` was the
+false claim and `linux` is the closer one.
 
-WHAT IT CHECKS, AND WHAT IT DELIBERATELY DOES NOT
+A convention alone does not survive this: the words read as interchangeable to
+anyone who has not been told otherwise, and the tree demonstrated that nobody
+had been. So the one structural place they can merge — a descriptor's `names`
+list — is checked.
 
-Checked: no board descriptor may offer `linux` alongside `posix` or `native`.
-Those are a NARROWER and a WIDER claim about the same board, and a board cannot
-be both.
+WHAT IT DELIBERATELY DOES NOT CHECK
 
-Not checked: prose. A gate cannot tell a correct "on Linux" in a sentence from
-a careless one, and one that guessed would train people to phrase around it
-rather than to mean it. The `names` list is where the collapse is mechanical,
-so that is where the gate is.
+Prose. A gate cannot tell a correct "on Linux" in a sentence from a careless
+one, and one that guessed would train people to phrase around it rather than to
+mean it. The `names` list is where the collapse is mechanical, so that is where
+the gate is.
 
 Usage:  check-host-platform-vocabulary.py
 """
@@ -47,10 +54,11 @@ BOARDS = os.path.join(ROOT, "packages", "boards")
 
 NAMES_RE = re.compile(r"^\s*names\s*=\s*\[(.*?)\]", re.M | re.S)
 
-# `linux` is the narrow claim. Offering it beside either wider one means the
-# descriptor is asserting both, which is the collapse this exists to stop.
+# The two REACH words. A board answers "which systems" once, so offering both
+# is the collapse this exists to stop. `native` is not here: it answers a
+# different question (role), and sits beside either.
 NARROW = "linux"
-WIDE = {"posix", "native"}
+WIDE = {"posix"}
 
 
 def names_in(text):
@@ -62,11 +70,11 @@ def names_in(text):
 
 
 def offending(names):
-    """The wide claims a narrow-claiming list also makes, if any.
+    """The other REACH a `linux` board also claims, if any.
 
     A compound id like `threadx-linux` is NOT this: it names a port of another
     RTOS that runs on a Linux host, which is a different statement from a board
-    claiming to be the host. Only the bare word counts.
+    declaring its own reach. Only the bare word counts.
     """
     if NARROW not in names:
         return []
@@ -97,10 +105,11 @@ def self_test():
     nobody runs decays into a comment (`check-gate-selftests`)."""
     cases = [
         # (names, expected offenders)
-        (["linux", "native", "posix"], ["native", "posix"]),
+        (["linux", "native", "posix"], ["posix"]),  # the shape that prompted this
         (["linux", "posix"], ["posix"]),
-        (["native", "posix"], []),
-        (["linux"], []),  # a genuinely Linux-only board is allowed to say so
+        (["native", "posix"], []),  # role + a reach
+        (["native", "linux"], []),  # role + the OTHER reach — the host board
+        (["linux"], []),            # a Linux-only board may say so
         (["threadx", "threadx-linux"], []),  # compound id, not the bare word
     ]
     fails = []
@@ -118,8 +127,7 @@ def main():
     problems = check()
     if problems:
         print(
-            "check-host-platform-vocabulary: a board claims both `linux` and a "
-            "wider spelling:\n",
+            "check-host-platform-vocabulary: a board claims both reaches:\n",
             file=sys.stderr,
         )
         for rel, names, also in problems:
@@ -127,19 +135,19 @@ def main():
             print(f"      names = {names}", file=sys.stderr)
             print(
                 f"      `linux` means Linux-ONLY; {', '.join('`'+a+'`' for a in also)} "
-                f"means wider. A board cannot be both.",
+                f"means any POSIX system. A board has ONE reach.",
                 file=sys.stderr,
             )
         print(
-            "\n  native = runs on the HOST (Linux, macOS, BSD)\n"
-            "  posix  = any POSIX-compliant system\n"
-            "  linux  = Linux only — say it when something needs epoll/eventfd/\n"
-            "           signalfd//proc, and not otherwise.\n"
-            "  See CLAUDE.md “Naming”.",
+            "\n  native = ROLE: the host build, not a cross build\n"
+            "  posix  = REACH: any POSIX-compliant system\n"
+            "  linux  = REACH: Linux only\n"
+            "  `native` sits beside either reach; the two reaches exclude each\n"
+            "  other. See CLAUDE.md “Naming”.",
             file=sys.stderr,
         )
         return 1
-    print("check-host-platform-vocabulary OK — no board claims both `linux` and a wider spelling.")
+    print("check-host-platform-vocabulary OK — no board claims both reaches.")
     return 0
 
 

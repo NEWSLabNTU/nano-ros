@@ -23,7 +23,8 @@
 //!   (`sched-dim arm: …`), so a sweep answers "is the accept path exercised
 //!   anywhere?" without reading defconfigs.
 //! - **AcceptOnly** — the accept marker must be present (posix core-pin, the #260
-//!   runtime proof: `sched_setaffinity(cpu 0)` succeeds on any host).
+//!   runtime proof: `sched_setaffinity(cpu 0)` succeeds on any LINUX host —
+//!   the call does not exist on macOS, which is why the board is `linux`).
 //! - **StrictCountOne** — exactly one accept marker (zephyr EDF; threadx
 //!   preempt-threshold / time-slice — the fixture bakes exactly one such tier).
 //! - **EachTierOrFailNote** — accept marker OR loud failure note, per DECLARING
@@ -53,12 +54,12 @@ use nros_tests::{
     output::{
         FREERTOS_CORE_PIN_FALLBACK_MARKER, FREERTOS_CORE_PIN_MARKER,
         FREERTOS_TIER_PRIORITY_FAILED_MARKER, FREERTOS_TIER_PRIORITY_MARKER,
-        NUTTX_CORE_PIN_FALLBACK_MARKER, NUTTX_CORE_PIN_MARKER, NUTTX_SPORADIC_FALLBACK_MARKER,
-        NUTTX_SPORADIC_MARKER, NUTTX_TIER_PRIORITY_FAILED_MARKER, NUTTX_TIER_PRIORITY_MARKER,
-        POSIX_CORE_PIN_FALLBACK_MARKER, POSIX_CORE_PIN_MARKER, THREADX_CORE_PIN_FALLBACK_MARKER,
-        THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER, THREADX_TIME_SLICE_MARKER,
-        ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER, ZEPHYR_CORE_PIN_OBSERVED_CPU1,
-        ZEPHYR_EDF_DEADLINE_MARKER,
+        LINUX_CORE_PIN_FALLBACK_MARKER, LINUX_CORE_PIN_MARKER, NUTTX_CORE_PIN_FALLBACK_MARKER,
+        NUTTX_CORE_PIN_MARKER, NUTTX_SPORADIC_FALLBACK_MARKER, NUTTX_SPORADIC_MARKER,
+        NUTTX_TIER_PRIORITY_FAILED_MARKER, NUTTX_TIER_PRIORITY_MARKER,
+        THREADX_CORE_PIN_FALLBACK_MARKER, THREADX_CORE_PIN_MARKER, THREADX_PREEMPT_MARKER,
+        THREADX_TIME_SLICE_MARKER, ZEPHYR_CORE_PIN_FALLBACK_MARKER, ZEPHYR_CORE_PIN_MARKER,
+        ZEPHYR_CORE_PIN_OBSERVED_CPU1, ZEPHYR_EDF_DEADLINE_MARKER,
     },
 };
 use std::{path::PathBuf, process::Command, time::Duration};
@@ -279,10 +280,10 @@ fn exec_for(dim: SD, platform: MP, lang: ML) -> Exec {
             router: Router::Ephemeral,
             timeout_secs: 20,
             stem: "nros: core pin",
-            accept: POSIX_CORE_PIN_MARKER,
-            fallback: Some(POSIX_CORE_PIN_FALLBACK_MARKER),
+            accept: LINUX_CORE_PIN_MARKER,
+            fallback: Some(LINUX_CORE_PIN_FALLBACK_MARKER),
             shape: AcceptOnly,
-            note: "#260: sched_setaffinity(cpu 0) succeeds on any multi-core host",
+            note: "#260: sched_setaffinity(cpu 0) succeeds on any multi-core LINUX host",
         },
         (SD::EdfDeadline, MP::ZephyrNativeSim, ML::Rust) => {
             edf(build_zephyr_workspace_rust_realtime_entry)

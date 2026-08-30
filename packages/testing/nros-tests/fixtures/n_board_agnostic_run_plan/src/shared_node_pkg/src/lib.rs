@@ -1,7 +1,7 @@
 //! Phase 212.O.3 fixture — board-agnostic shared Component.
 //!
 //! The whole point: this source compiles UNMODIFIED under both
-//! POSIX (`posix_entry`, host target) and FreeRTOS (`freertos_entry`,
+//! the host (`posix_entry`, `deploy = "native"`) and FreeRTOS (`freertos_entry`,
 //! `thumbv7m-none-eabi`). Linking the same rlib against two distinct
 //! Board impls proves the Phase 212.N.4 codegen emit
 //! (`OUT_DIR/run_plan.rs`) is board-agnostic.

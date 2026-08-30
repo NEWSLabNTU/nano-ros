@@ -17,7 +17,11 @@ name = "posix_entry"
 path = "src/main.rs"
 
 [package.metadata.nros.entry]
-deploy = "posix"
+# `native`, not `posix`: this board's reach is Linux — `apply_tier_affinity`
+# calls `sched_setaffinity`, which libc does not define for apple. `native`
+# is the ROLE word (host build, not cross), which is what this fixture is
+# actually contrasting against its `freertos_entry` sibling.
+deploy = "native"
 
 [dependencies]
 # Board impl for the POSIX family.
