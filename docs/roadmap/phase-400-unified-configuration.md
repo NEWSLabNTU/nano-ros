@@ -1,6 +1,6 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
-**Status (2026-08-30): not started.** Design is
+**Status (2026-08-30): W2-W5 and W7 done; W1, W6, W8 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
 new mechanism — the ladder and `nros config explain` already exist and work.
@@ -32,12 +32,12 @@ them. When W3 lands that file is a transport stanza and nothing else.
 | | What | Gate | State |
 | --- | --- | --- | --- |
 | **W1** | Platform axis resolves like rmw: descriptor beside its crate, by name over a search path | a platform outside the tree builds without forking `config/` | |
-| **W2** | De-name the platform sections — `[build.<rmw>]`, `[knobs.<rmw>.tx]` | a second backend receives platform knobs with neither side naming the other | |
-| **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | |
-| **W4** | Provenance: `explain` reports implied and overridden | every knob prints rung, rule, and override | |
-| **W5** | Kconfig mirror — link symbols get `depends on`; drift test holds it | `NETWORKING=n` cannot leave `LINK_TCP=y` | |
+| **W2** | De-name the platform sections — `[build.<rmw>]`, `[knobs.<rmw>.tx]` | a second backend receives platform knobs with neither side naming the other | **done** |
+| **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | **done** |
+| **W4** | Provenance: `explain` reports implied and overridden | every knob prints rung, rule, and override | **done** |
+| **W5** | Kconfig mirror — link symbols get `depends on`; drift test holds it | `NETWORKING=n` cannot leave `LINK_TCP=y` | **done** |
 | **W6** | Migrate the sizing knobs, tenant by tenant | ladder knob count rises; env/Kconfig count falls | |
-| **W7** | Core: retire the exclusive `scheduler-*` features | `compile_error!` guards deleted, not replaced | |
+| **W7** | Core: audit for exclusive/negative features | no `compile_error!` stands in for exclusivity | **done — none found; premise was wrong** |
 | **W8** | Retire the old paths | the retired mechanism no longer resolves anything | |
 
 W1 and W2 are mechanical and unblock everything else; do them first and
@@ -166,26 +166,38 @@ same way as the table at the top. A tenant is migrated when
 
 ---
 
-## W7 — core's exclusive features
+## W7 — core's exclusive features — DONE, and the premise was wrong
 
-`nros-node` declares `scheduler-fifo`, `scheduler-edf`, `scheduler-bucketed`,
-`scheduler-sporadic`: a pick-one family in an additive mechanism. Cargo
-features are additive by contract — mutually exclusive features are officially
-unsupported, and unification builds the union of what every consumer asked for.
-Five `compile_error!` calls in `lib.rs` stand in for the constraint the
-mechanism cannot express.
+**Audited 2026-08-30. No work outstanding.** This wave was scoped from a claim
+that did not survive checking, and the correction is recorded here rather than
+quietly dropped.
 
-* Move the choice to a ladder knob with `exactly-one-of`.
-* Delete the `compile_error!` guards rather than porting them; the resolver
-  reports the conflict earlier and names both files.
-* Leave every additive feature alone. This wave is about *exclusive* and
-  *negative* configuration only.
+The claim: `nros-node`'s `scheduler-fifo` / `-edf` / `-bucketed` / `-sporadic`
+is a pick-one family expressed in an additive mechanism, guarded by five
+`compile_error!` calls standing in for the constraint Cargo cannot express.
 
-**The rule this wave establishes.** Core may name names — it is ours. Core may
-not own negative or exclusive configuration, because the mechanism it is
-configured by cannot express either.
+What the tree actually says, three lines above those declarations:
 
-**Gate.** No `compile_error!` in core standing in for a config constraint.
+> Each flag is independent; multiple may be on simultaneously when runtime
+> selection across classes is needed.
+
+The `cfg` sites agree — they gate scheduler classes in, additively. The five
+`compile_error!` guards are feature IMPLICATIONS (`param-services` needs
+`alloc`), not exclusivity. Every `cfg(not(feature = …))` in core is the correct
+no_std shape. And `packages/api/nros/src/lib.rs` records that a platform
+mutual-exclusion `compile_error!` was deliberately *removed* — the tree has
+already learned this lesson.
+
+The error was inferring exclusivity from a naming family without reading the
+comment above it.
+
+**What survives.** RFC-0086 D5's rule stands on its own footing: Cargo features
+are additive by contract, so they cannot express "off over an on-default",
+which RFC-0049 requires of a front-end. That is a constraint on new knobs,
+enforced at review. It simply has no backlog attached.
+
+**Gate.** Satisfied on audit: no `compile_error!` in core stands in for an
+exclusivity constraint, and no core feature encodes a negative.
 
 ---
 

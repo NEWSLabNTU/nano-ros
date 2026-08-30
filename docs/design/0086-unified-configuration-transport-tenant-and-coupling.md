@@ -89,11 +89,21 @@ Two consequences, both already in the tree:
   express *off over an on-default* — the reason the Zephyr forward must pass
   `-DZPICO_X=0|1` rather than only passing on `y`. A Cargo feature cannot do
   this.
-* **An exclusive family already exists.** `nros-node` declares
-  `scheduler-fifo`, `scheduler-edf`, `scheduler-bucketed`,
-  `scheduler-sporadic` — a pick-one set in an additive mechanism, guarded by
-  five `compile_error!` calls in `lib.rs`. That guard is the tree reporting
-  that the mechanism is being used against its grain.
+* **The tree does NOT currently violate this** — corrected 2026-08-30, after
+  an audit that phase-400 W7 ran. An earlier draft of this RFC claimed
+  `nros-node`'s `scheduler-fifo` / `-edf` / `-bucketed` / `-sporadic` was a
+  pick-one family in an additive mechanism. It is not: the comment above those
+  declarations states *"Each flag is independent; multiple may be on
+  simultaneously when runtime selection across classes is needed"*, and the
+  `cfg` sites agree. The five `compile_error!` guards in `lib.rs` are feature
+  IMPLICATIONS (`param-services` needs `alloc`), not exclusivity. Every
+  `cfg(not(feature = …))` in core is the correct no_std shape — start without,
+  add capability — and `packages/api/nros/src/lib.rs` records that a platform
+  mutual-exclusion guard was deliberately *removed*.
+
+  The rule below therefore constrains future work rather than describing a debt
+  to pay. It is stated because the pressure to encode an exclusive choice as a
+  feature is real and recurring, not because the tree has yielded to it.
 
 So the rule is not "core is exempt". It is: **core may name names; core may
 not own negative or exclusive configuration.**
@@ -220,9 +230,9 @@ side learning the other's name.
   not encode a pick-one family.
 * Any knob whose correct value is sometimes "off", and any exclusive choice,
   belongs in the ladder with a lane front-end that can carry `0` as well as `1`.
-* The `scheduler-*` family migrates to a ladder knob
-  (`exactly-one-of`); the `compile_error!` guards that stand in for a real
-  constraint today are deleted with it.
+* No migration is outstanding. The audit found no exclusive or negative
+  configuration expressed as a Cargo feature in core or api. The rule is a
+  standing constraint on new knobs, enforced at review, not a backlog item.
 
 ### D6 — provenance is the acceptance test
 
