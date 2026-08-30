@@ -125,9 +125,25 @@ pub type BuildSection = BTreeMap<String, PlatformEntry>;
 /// `[knobs]` — typed policy. `zenoh.tx` is the first tenant
 /// (phase-282); future tenants (`executor`, `log`, ring depths, …) are
 /// additive fields here.
+/// `[knobs]` — typed policy.
+///
+/// phase-400 W2 / RFC-0071 D8. `transport` is a RESERVED, cross-cutting key;
+/// every other key is a BACKEND NAME, so a platform can say "here are my
+/// settings for whichever backend is selected" without naming one in its
+/// schema. `[build.<rmw>]` was de-keyed the same way by phase-347 W6; this is
+/// the knobs half of the same rule.
+///
+/// `deny_unknown_fields` is dropped here and NOWHERE else, because serde does
+/// not support it alongside `flatten`. The validation it provided is not lost:
+/// [`Knobs::unknown_backend_keys`] reports a key that no backend descriptor
+/// claims, which is the diagnostic RFC-0049 asks for ("unknown keys fail loud
+/// with the valid-key list") and is strictly better here — a backend name is
+/// only knowable once the descriptors are loaded, which serde cannot do.
 #[derive(Debug, Default, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Knobs {
+    /// Backwards compatibility: `[knobs.zenoh.tx]` in the seven in-tree files
+    /// still parses through this field, so no platform file changes. New
+    /// backends use the flattened map below.
     #[serde(default)]
     pub zenoh: ZenohKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
@@ -139,6 +155,41 @@ pub struct Knobs {
     /// implies, instead of each image hand-writing them.
     #[serde(default)]
     pub transport: TransportKnobs,
+    /// Any other key is a backend name. Empty for every in-tree file today,
+    /// which is the point: a third-party RMW fills it without nano-ros
+    /// learning its name.
+    #[serde(flatten, default)]
+    pub backends: BTreeMap<String, BackendKnobs>,
+}
+
+/// Per-backend policy, keyed by the backend's own name in `[knobs.<rmw>]`.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BackendKnobs {
+    #[serde(default)]
+    pub tx: TxKnobs,
+}
+
+impl Knobs {
+    /// Keys under `[knobs]` that are neither the reserved `transport` tenant
+    /// nor a backend the caller knows about. Caller supplies the known set,
+    /// because only it has loaded the descriptors.
+    pub fn unknown_backend_keys(&self, known: &[&str]) -> Vec<String> {
+        self.backends
+            .keys()
+            .filter(|k| !known.contains(&k.as_str()))
+            .cloned()
+            .collect()
+    }
+
+    /// The `tx` knobs for `backend`, preferring the flattened per-backend
+    /// table and falling back to the legacy `[knobs.zenoh.tx]` field.
+    pub fn tx_for(&self, backend: &str) -> &TxKnobs {
+        match self.backends.get(backend) {
+            Some(b) => &b.tx,
+            None => &self.zenoh.tx,
+        }
+    }
 }
 
 /// `[knobs.transport]` — RFC-0086 D1.
@@ -761,6 +812,29 @@ impl PlatformsTree {
         })
     }
 
+    /// The merged `[knobs]` table for `platform`, following `inherits`.
+    /// Exposed so a caller that HAS loaded the rmw descriptors can run
+    /// [`Knobs::unknown_backend_keys`] against the real backend list.
+    pub fn knobs_for(&self, name: &str) -> Result<Knobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = Knobs::default();
+        for file in chain.iter().rev() {
+            if file.knobs.zenoh.tx.batch.is_some()
+                || file.knobs.zenoh.tx.split_lock.is_some()
+                || file.knobs.zenoh.tx.flush_ms.is_some()
+            {
+                out.zenoh = file.knobs.zenoh.clone();
+            }
+            if file.knobs.transport.kind.is_some() || file.knobs.transport.endpoint.is_some() {
+                out.transport = file.knobs.transport.clone();
+            }
+            for (k, v) in &file.knobs.backends {
+                out.backends.insert(k.clone(), v.clone());
+            }
+        }
+        Ok(out)
+    }
+
     /// phase-400 W3 — facts this transport choice relied on but the platform
     /// never declared. Not an error (see `resolve_transport`), but printed, so
     /// an undescribed platform is visible rather than silently assumed.
@@ -861,6 +935,131 @@ mod tests {
 
     fn no_env(_: &str) -> Option<String> {
         None
+    }
+
+    // ---- phase-400 W3 / RFC-0086 D2 — the transport tenant ----
+
+    const CAPS_BOTH: &str = r#"
+[capabilities]
+ip_stack = true
+serial = true
+"#;
+
+    #[test]
+    fn transport_serial_implies_the_whole_dependent_set() {
+        // The regression this tenant exists to prevent: fifteen hand-written
+        // Kconfig lines per image, turning off links and drivers that a
+        // transport choice already determines.
+        let tmp = write_tree(&[("p", CAPS_BOTH)]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let env = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "serial".to_string());
+        let t = tree.resolve_transport("p", None, &env).unwrap();
+        assert_eq!(t.kind.value, "serial");
+        let off = ["links.tcp", "links.udp", "drivers.ethernet", "drivers.phy",
+                   "drivers.mdio", "net.ip_stack"];
+        for knob in off {
+            let i = t.implied.iter().find(|i| i.knob == knob).expect(knob);
+            assert!(!i.value, "{knob} should be implied off by serial");
+            assert!(i.overridden_by.is_none());
+        }
+        let ser = t.implied.iter().find(|i| i.knob == "links.serial").unwrap();
+        assert!(ser.value);
+    }
+
+    #[test]
+    fn implies_is_imply_strength_not_select() {
+        // Kconfig's `select` forces and can build an invalid config. Ours must
+        // LOSE to a higher rung, and must record that it did.
+        let tmp = write_tree(&[("p", CAPS_BOTH)]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let env = |k: &str| match k {
+            "NROS_TRANSPORT_KIND" => Some("serial".to_string()),
+            "NROS_ZENOH_LINK_TCP" => Some("1".to_string()),
+            _ => None,
+        };
+        let t = tree.resolve_transport("p", None, &env).unwrap();
+        let tcp = t.implied.iter().find(|i| i.knob == "links.tcp").unwrap();
+        assert_eq!(tcp.overridden_by, Some(KnobSource::Env));
+    }
+
+    #[test]
+    fn requires_is_hard_only_against_an_explicit_false() {
+        // Absent is "nobody described this platform yet" and must not fail a
+        // build that works; an explicit false is a described impossibility.
+        let tmp = write_tree(&[
+            ("undeclared", "[capabilities]\nserial = true\n"),
+            ("denied", "[capabilities]\nip_stack = false\n"),
+        ]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let tcp = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "tcp".to_string());
+
+        let t = tree.resolve_transport("undeclared", None, &tcp).unwrap();
+        assert_eq!(t.kind.value, "tcp");
+        assert_eq!(tree.transport_warnings("undeclared", &t).unwrap().len(), 1);
+
+        assert!(matches!(
+            tree.resolve_transport("denied", None, &tcp),
+            Err(ConfigError::TransportCapabilityMissing { .. })
+        ));
+    }
+
+    #[test]
+    fn transport_kind_is_exactly_one_of() {
+        // A typo must not silently select nothing: every implication would go
+        // unapplied and the image would build with the wrong links on.
+        let tmp = write_tree(&[("p", CAPS_BOTH)]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let env = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "uart".to_string());
+        assert!(matches!(
+            tree.resolve_transport("p", None, &env),
+            Err(ConfigError::UnknownTransport { .. })
+        ));
+    }
+
+    // ---- phase-400 W2 / RFC-0071 D8 — knobs keyed by backend ----
+
+    #[test]
+    fn knobs_accept_a_backend_nano_ros_has_never_heard_of() {
+        let tmp = write_tree(&[(
+            "p",
+            "[knobs.acme-rmw.tx]\nbatch = true\nflush_ms = 7\n",
+        )]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        // Parsing a third-party backend's knobs must not require nano-ros to
+        // know its name — that is the whole point of de-keying the section.
+        assert!(tree.resolve_tx("p", None, &no_env).is_ok());
+    }
+
+    #[test]
+    fn a_mistyped_top_level_knob_key_is_reported_not_denied() {
+        // The COST of de-keying `[knobs]`: serde cannot combine `flatten` with
+        // `deny_unknown_fields`, so `[knobs.transprot]` no longer fails the
+        // parse — it reads as a backend named "transprot". That is not a
+        // regression we can close at parse time, because whether a key is a
+        // valid backend name is only knowable once the rmw descriptors are
+        // loaded, which serde cannot do. `unknown_backend_keys` is the
+        // replacement diagnostic; this test pins both halves of the trade.
+        let tmp = write_tree(&[("p", "[knobs.transprot]\ntx = {}\n")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let knobs = tree.knobs_for("p").unwrap();
+        assert!(knobs.backends.contains_key("transprot"));
+        assert_eq!(
+            knobs.unknown_backend_keys(&["zenoh", "cyclonedds"]),
+            vec!["transprot".to_string()]
+        );
+        // and a real backend name is NOT reported
+        assert!(knobs.unknown_backend_keys(&["transprot"]).is_empty());
+    }
+
+    #[test]
+    fn legacy_zenoh_knobs_still_parse() {
+        // The seven in-tree files must not change. Byte-identity of behaviour
+        // is the acceptance rule phase-290 W2.c set for this schema.
+        let tmp = write_tree(&[("p", "[knobs.zenoh.tx]\nbatch = true\n")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let tx = tree.resolve_tx("p", None, &no_env).unwrap();
+        assert!(tx.batch.value);
+        assert_eq!(tx.batch.source, KnobSource::Platform);
     }
 
     /// phase-347 W6 — a SECOND `[build.<component>]` key parses.
