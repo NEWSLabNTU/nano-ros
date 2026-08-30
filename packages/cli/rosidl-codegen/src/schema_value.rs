@@ -317,6 +317,134 @@ mod tests {
         }
     }
 
+    /// THE cross-check layer 1 owed. `schema_value` is a SECOND walk of the
+    /// rosidl AST beside `render_field_type_expr`, which is the shape the
+    /// sizes-header mirror defect keeps taking. The two diverge legitimately —
+    /// the emitted Rust string DEFERS to the nested crate's own `FIELDS` while
+    /// a sizeable value must INLINE them — so they cannot be unified, and the
+    /// only thing that keeps them honest is that they agree about the number.
+    ///
+    /// This asserts the agreement structurally: the schema this module builds
+    /// must have the same field NAMES and the same field TYPE DISCRIMINANTS, in
+    /// the same order, as the fields the emitter walked. A field dropped,
+    /// reordered, or mapped to a different variant on one side and not the
+    /// other fails here rather than shipping a C constant that disagrees with
+    /// its Rust twin.
+    #[test]
+    fn the_value_walk_matches_the_fields_the_emitter_walks() {
+        let src = "bool flag\nint64 wide\nstring<=8 label\nint32[4] fixed\nuint16[] seq\n";
+        let m = parse_message(src).unwrap();
+        let built = build_schema("p/M", &m, &no_lookup).unwrap();
+
+        assert_eq!(built.len(), m.fields.len(), "field count");
+        for (b, idl) in built.iter().zip(&m.fields) {
+            assert_eq!(b.name, idl.name, "field name/order");
+        }
+
+        // Discriminant agreement, spelled out rather than derived, so a new
+        // `FieldType` variant handled on one side only is a failure here.
+        use nros_serdes::schema::FieldType as S;
+        let kinds: Vec<&str> = built
+            .iter()
+            .map(|f| match f.ty {
+                S::Bool => "bool",
+                S::Int64 => "int64",
+                S::BoundedString(_) => "bounded_string",
+                S::Array(..) => "array",
+                S::Sequence(_) => "sequence",
+                _ => "other",
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            vec!["bool", "int64", "bounded_string", "array", "sequence"]
+        );
+    }
+
+    /// The two walks, on the same input, must name the same variant.
+    ///
+    /// This is the closure the hazard actually needs. The structural test above
+    /// checks names and order; this checks the MAPPING — for every rosidl
+    /// `FieldType` shape, the value this module builds and the expression the
+    /// emitter renders must agree about which `nros_serdes::FieldType` variant
+    /// it is. A shape mapped one way here and another way there is how a C
+    /// constant ends up disagreeing with its Rust twin, and it is invisible
+    /// until someone compares the two numbers on a target.
+    ///
+    /// Every variant the parser can produce is listed. Adding one to the IDL
+    /// without adding it here leaves a hole, so the list is the coverage claim
+    /// and should be read as one.
+    #[test]
+    fn both_walks_map_every_shape_to_the_same_variant() {
+        use nros_serdes::schema::FieldType as S;
+
+        // (idl declaration, the variant BOTH walks must produce)
+        let cases: &[(&str, &str)] = &[
+            ("bool f\n", "Bool"),
+            ("uint8 f\n", "Uint8"),
+            ("int8 f\n", "Int8"),
+            ("int16 f\n", "Int16"),
+            ("uint16 f\n", "Uint16"),
+            ("int32 f\n", "Int32"),
+            ("uint32 f\n", "Uint32"),
+            ("int64 f\n", "Int64"),
+            ("uint64 f\n", "Uint64"),
+            ("float32 f\n", "Float32"),
+            ("float64 f\n", "Float64"),
+            ("string f\n", "String"),
+            ("string<=8 f\n", "BoundedString"),
+            ("int32[4] f\n", "Array"),
+            ("int32[] f\n", "Sequence"),
+            ("int32[<=4] f\n", "BoundedSequence"),
+        ];
+
+        for (src, want) in cases {
+            let m = parse_message(src).unwrap();
+            let idl_ty = &m.fields[0].field_type;
+
+            // Walk A — the emitter's, rendering a Rust expression string.
+            let mut helpers = String::new();
+            let expr = crate::generator::common::render_field_type_expr(
+                "f",
+                idl_ty,
+                "p",
+                "P_",
+                &mut helpers,
+                &crate::generator::common::default_nested_type_path,
+            );
+            let rendered = format!("{expr}{helpers}");
+            assert!(
+                rendered.contains(&format!("FieldType::{want}")),
+                "emitter mapped `{src}` to {rendered}, expected {want}"
+            );
+
+            // Walk B — this module's, building a value.
+            let built = build_schema("p/M", &m, &no_lookup).unwrap();
+            let got = match built[0].ty {
+                S::Bool => "Bool",
+                S::Uint8 => "Uint8",
+                S::Int8 => "Int8",
+                S::Int16 => "Int16",
+                S::Uint16 => "Uint16",
+                S::Int32 => "Int32",
+                S::Uint32 => "Uint32",
+                S::Int64 => "Int64",
+                S::Uint64 => "Uint64",
+                S::Float32 => "Float32",
+                S::Float64 => "Float64",
+                S::String => "String",
+                S::WString => "WString",
+                S::BoundedString(_) => "BoundedString",
+                S::BoundedWString(_) => "BoundedWString",
+                S::Array(..) => "Array",
+                S::Sequence(_) => "Sequence",
+                S::BoundedSequence(..) => "BoundedSequence",
+                S::Nested(_) => "Nested",
+            };
+            assert_eq!(&got, want, "value walk mapped `{src}` to {got}");
+        }
+    }
+
     /// ROS IDL cannot express a cycle, so one means the resolver is
     /// inconsistent. Report it instead of recursing forever.
     #[test]

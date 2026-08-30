@@ -319,12 +319,41 @@ pub struct GeneratedCPackage {
 }
 
 /// Generate C code for a message type
+/// See [`generate_c_message_package_with_lookup`]; this variant resolves no
+/// nested types.
+///
+/// A message with a nested field therefore reports `Unresolved` and emits NO
+/// size constant, which is the honest answer for a caller that cannot supply a
+/// resolver — never a guessed bound. Callers that HAVE one (the bindgen path
+/// composes same-package + ament-index resolution into `self_resolve`) should
+/// use the `_with_lookup` form.
 pub fn generate_c_message_package(
     package_name: &str,
     message_name: &str,
     message: &Message,
     type_hash: &str,
     resolver: &CapacityResolver,
+) -> Result<GeneratedCPackage, GeneratorError> {
+    generate_c_message_package_with_lookup(
+        package_name,
+        message_name,
+        message,
+        type_hash,
+        resolver,
+        &|_| None,
+    )
+}
+
+/// Emit the C header + source for one message, resolving nested types through
+/// `lookup` so the header can carry the type's serialized-size bound
+/// (issue 0896 layer 2).
+pub fn generate_c_message_package_with_lookup(
+    package_name: &str,
+    message_name: &str,
+    message: &Message,
+    type_hash: &str,
+    resolver: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
 ) -> Result<GeneratedCPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let msg_snake = to_snake_case(message_name);
@@ -402,6 +431,36 @@ pub fn generate_c_message_package(
     let has_fields = !fields.is_empty();
     let has_borrowed = fields.iter().any(|f| f.is_borrowed);
 
+    // issue 0896 layer 2 — the type's own size bound, computed with THE size
+    // rule (`nros_serdes::size::max_serialized_size`) over a schema built by
+    // `schema_value`, never a second walk that adds up field widths here.
+    //
+    // The two encodings are computed separately because they genuinely differ;
+    // see `MessageCHeaderTemplate::max_serialized_size_xcdr1`.
+    let fqn = format!("{package_name}/{message_name}");
+    let (bound_x1, bound_x2, unbounded_reason) = {
+        use crate::schema_value::{TypeBound, bound_message};
+        use nros_serdes::cdr::EncodingVersion;
+        let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, lookup);
+        let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, lookup);
+        match (&x1, &x2) {
+            (TypeBound::Bounded(a), TypeBound::Bounded(b)) => (Some(*a), Some(*b), None),
+            // Unbounded and Unresolved BOTH mean "no constant", and the reason
+            // says which — "we looked and there is no bound" licenses bounding
+            // the field, "we could not look" licenses fixing the search path.
+            // Collapsing them into one message is the confusion issue 0896 is
+            // about.
+            (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => {
+                (None, None, Some(format!("unbounded member: {w}")))
+            }
+            (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => (
+                None,
+                None,
+                Some(format!("nested type `{t}` could not be resolved")),
+            ),
+        }
+    };
+
     // Generate header
     let header_template = MessageCHeaderTemplate {
         package_name,
@@ -416,6 +475,9 @@ pub fn generate_c_message_package(
         type_includes,
         has_fields,
         has_borrowed,
+        max_serialized_size_xcdr1: bound_x1,
+        max_serialized_size_xcdr2: bound_x2,
+        unbounded_reason,
     };
     // RFC-0068 Stage 3 (phase-335 W2): C message emission renders from the
     // minijinja data pack (packs/c/) instead of the compile-time askama path.

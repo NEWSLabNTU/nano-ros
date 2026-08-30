@@ -40,6 +40,7 @@ const CORPUS: &str = "fingerprint-corpus";
 
 const SHAPES_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Shapes.msg");
 const NESTED_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Nested.msg");
+const BOUNDED_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Bounded.msg");
 const PROBE_SRV: &str = include_str!("../tests/fixtures/fingerprint-corpus/srv/Probe.srv");
 const PROBE_ACTION: &str = include_str!("../tests/fixtures/fingerprint-corpus/action/Probe.action");
 const CODEGEN_TOML: &str = include_str!("../tests/fixtures/fingerprint-corpus/nros-codegen.toml");
@@ -87,7 +88,12 @@ fn hashes() -> ActionTypeHashes {
 pub fn emit_corpus() -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
     let deps: HashSet<String> = HashSet::new();
-    let msgs = [("Shapes", SHAPES_MSG), ("Nested", NESTED_MSG)];
+    let msgs = [
+        ("Shapes", SHAPES_MSG),
+        ("Nested", NESTED_MSG),
+        // issue 0896 — covers the arm that EMITS a size constant.
+        ("Bounded", BOUNDED_MSG),
+    ];
 
     for (mode, r) in resolvers() {
         let mut put = |name: &str, res: Result<String, String>| {
