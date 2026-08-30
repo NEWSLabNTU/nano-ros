@@ -260,13 +260,11 @@ just format               # Format code only
 just check                # Lint only
 just test                 # Test only
 
-# Workspace-specific
-just format-build-tools   # Format build-tools only
-just check-build-tools    # Lint build-tools only
-just format-user-libs     # Format user-libs only
-just check-user-libs      # Lint user-libs only
+# Per-half (this workspace is Rust packages + a Python package)
+just format-packages      # Format the Rust packages only
+just check-packages       # Lint the Rust packages only
 just format-python        # Format Python only
-just check python         # Lint Python only
+just check-python         # Lint Python only
 ```
 
 ### Code Style Guidelines

@@ -368,8 +368,8 @@ See `packages/testing/nros-bench/zpico-sizeof/README.md` for the matching
 `internal_probe.c` (per-entity heap allocation sizes) and the rerun procedure
 after zenoh-pico submodule bumps.
 
-For per-platform `.bss` / `.data` segment totals, use `just check-stack` (each
-example) or `just check-stack-elf <path>` to break down a compiled binary's
+For per-platform `.bss` / `.data` segment totals, use `just check stack` (each
+example) or `just check stack-elf <path>` to break down a compiled binary's
 static footprint by section + symbol.
 
 ## Comparison with CycloneDDS

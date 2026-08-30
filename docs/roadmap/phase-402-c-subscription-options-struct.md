@@ -134,7 +134,7 @@ compiling a TU under both `gcc -std=c11` and `g++ -std=c++17`, not by argument.
 
 ## Still owed
 
-No RUNTIME evidence. Everything above is compile-tier: `just check-c`,
+No RUNTIME evidence. Everything above is compile-tier: `just check c`,
 `check-cpp`, `check-ffi-struct-mirrors` and `just ci-l1` are green, and no
 fixture was rebuilt, so nothing here demonstrates that a hinted subscription
 actually lands in the large payload class. That measurement is issue 0896's
