@@ -39,7 +39,15 @@ nros-board-common = { path = "../nros-board-common" }
 # BoardEntry}`) so the per-board ZST can plug directly into
 # `nros_board_nuttx::run_entry::<Self, _, _>` from a codegen-emitted
 # Entry pkg `main.rs`.
-nros-platform = { path = "../../platform/nros-platform", default-features = false }
+# `global-allocator` UNCONDITIONALLY, as every sibling bare-metal board does
+# (mps2-an385, mps2-an385-freertos, mps3-an536-freertos, s32z270-freertos,
+# threadx-qemu-riscv64). NuttX was the one board that did not, and reached the
+# tree's single `#[global_allocator]` only through `nros-board-nuttx/image-runtime`
+# — a route that runs through the generated selection facade. When the facade is
+# absent the Entry is emitted without it SILENTLY, and the allocator vanishes with
+# it: `no global memory allocator found`, a link error a long way from its cause.
+# Naming it here makes the board self-sufficient. Issue 0937.
+nros-platform = { path = "../../platform/nros-platform", default-features = false, features = ["global-allocator"] }
 # Phase 212.N.3 — `BoardEntry::run` delegates to the NuttX family
 # driver's `run_entry`. We do NOT enable `reference-qemu` here:
 # that feature flag pulls `nros-board-nuttx-qemu` as an optional

@@ -928,7 +928,33 @@ fn generate_entry(
         let d = root
             .join("generated/nros-selection")
             .join(crate::builder::entry::package_name(image_id));
-        d.is_dir().then_some(d)
+        if d.is_dir() {
+            Some(d)
+        } else {
+            // SAY SO. The facade carries the RMW, the ROS edition and the
+            // capability features, and the Entry is emitted without any of them
+            // when it is missing — silently, until the build fails somewhere
+            // that names none of it. Issue 0937 was one of these: the NuttX
+            // Entry reached the tree's single `#[global_allocator]` only through
+            // the facade, so a missing facade surfaced as
+            //
+            //     error: no global memory allocator found but one is required
+            //
+            // several hundred lines into a cross build, and the nightly cell
+            // stayed red while the same Entry built fine in the workspace next
+            // door, which happened to have one.
+            //
+            // A warning, not an error: an unsynced workspace is a state the
+            // build is documented to tolerate. What it may not do is tolerate it
+            // WITHOUT SAYING SO.
+            eprintln!(
+                "nros build: warning: no selection facade at {} — building `{image_id}` \
+                 without its RMW, ROS edition and capability features. Run `nros sync` \
+                 first if this Entry needs them (issue 0937).",
+                d.display()
+            );
+            None
+        }
     };
 
     // Most specific first: the image id IS the deploy key when an image is
