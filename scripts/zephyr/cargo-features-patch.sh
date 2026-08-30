@@ -14,12 +14,26 @@
 #
 # ONE INJECTION SITE, and hunk 3 enforces it (issue 0544).
 #
-# The pass-through goes INSIDE `add_cargo_target_with_zephyr_env`, which every
-# caller routes through, so one injection covers `cargo build` and `cargo doc`
-# both. An earlier revision of this comment claimed the awk matched "two such
-# lines: cargo build (~199) and cargo doc (~243)" — that described an upstream
-# layout that has since been refactored into the shared function, so the awk
-# matches ONE line and always did the whole job.
+# KEYED ON THE COMMAND, NOT ON THE FUNCTION — because upstream's layout
+# oscillates and this patch has now been wrong in both directions.
+#
+# 3.7 (`404fcef`) routes every caller through `add_cargo_target_with_zephyr_env`,
+# so its ONE `${rust_build_type_arg}` line follows a variable command,
+# `cargo ${cargo_command}`, and a single injection covers build and doc both.
+# 4.4 (`a763400`) DELETED that function and inlined it: `rust_cargo_application`
+# now carries TWO `${rust_build_type_arg}` lines, after a literal `cargo build`
+# and a literal `cargo doc`.
+#
+# An earlier revision of this comment described exactly that two-site layout and
+# was dismissed as stale when 3.7 refactored it away. It was not stale; it was
+# early. Anchoring on the function name meant the awk injected at BOTH 4.4 sites
+# and hunk 4 rejected the file, taking every 4.4 cell down at `Set up Zephyr 4.4
+# workspace` — 12 cells producing no verdict at all.
+#
+# So the anchor is the cargo COMMAND: inject after the `${rust_build_type_arg}`
+# whose command is `cargo build` or `cargo ${cargo_command}`, never after
+# `cargo doc`. That is exactly one site under both layouts, and it stays one if
+# upstream moves the code between functions again.
 #
 # Someone reading that stale comment concluded the pass-through was only half
 # applied and hand-added `${EXTRA_CARGO_ARGS}` to BOTH call sites
@@ -42,6 +56,81 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NANO_ROS_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# --- self-test -------------------------------------------------------------
+#
+# Both upstream layouts, run end to end, asserting the invariant this script
+# exists to hold: EXACTLY ONE of each injection, on the BUILD command, never on
+# `cargo doc`, and unchanged by a second run.
+#
+# It exists because anchoring on `add_cargo_target_with_zephyr_env` was correct
+# for 3.7 and silently wrong for 4.4, and nothing in the tree could tell —
+# the workspace is fetched by west at setup time, so the only place the two
+# layouts meet is here.
+#
+#   bash scripts/zephyr/cargo-features-patch.sh --self-test
+if [ "${1:-}" = "--self-test" ]; then
+    _st_tmp="$(mktemp -d)"
+    trap 'rm -rf "$_st_tmp"' EXIT
+    _st_fail=0
+
+    # 3.7: one shared function, the command spelled as a variable.
+    # 4.4: the function inlined, two literal commands.
+    for _layout in shared inlined; do
+        _d="$_st_tmp/$_layout/modules/lang/rust"
+        mkdir -p "$_d"
+        {
+            printf 'function(rust_cargo_application)\n'
+            printf '  set(rust_build_type_arg --release)\n'
+            printf '  add_custom_command(\n'
+            printf '      DT_AUGMENTS="${DT_AUGMENTS}"\n'
+            if [ "$_layout" = shared ]; then
+                printf '      cargo ${cargo_command}\n'
+            else
+                printf '      cargo build\n'
+            fi
+            printf '      ${rust_build_type_arg}\n'
+            printf '      ${command_paths}\n'
+            if [ "$_layout" = inlined ]; then
+                printf '      DT_AUGMENTS="${DT_AUGMENTS}"\n'
+                printf '      cargo doc\n'
+                printf '      ${rust_build_type_arg}\n'
+            fi
+            printf 'endfunction()\n'
+        } > "$_d/CMakeLists.txt"
+
+        for _run in 1 2; do
+            if ! bash "${BASH_SOURCE[0]}" "$_st_tmp/$_layout" >/dev/null 2>&1; then
+                echo "self-test: $_layout layout: patch FAILED on run $_run" >&2
+                _st_fail=1
+                continue 2
+            fi
+        done
+
+        _code() { grep -v '"'"'^[[:space:]]*#'"'"' "$_d/CMakeLists.txt" | grep -c "$1" || true; }
+        _e="$(_code '\${EXTRA_CARGO_ARGS}')"
+        _f="$(_code '\${NROS_BOARD_FACTS_ENV}')"
+        if [ "$_e" != 1 ] || [ "$_f" != 1 ]; then
+            echo "self-test: $_layout layout: EXTRA_CARGO_ARGS=$_e NROS_BOARD_FACTS_ENV=$_f (want 1/1)" >&2
+            _st_fail=1
+        fi
+        # `cargo doc` must be left alone: a second copy of the flag is the
+        # failure this whole file is about.
+        if [ "$_layout" = inlined ] && \
+           awk '/cargo doc/{d=1} d && /\$\{EXTRA_CARGO_ARGS\}/{print; exit}' \
+               "$_d/CMakeLists.txt" | grep -q .; then
+            echo "self-test: inlined layout: EXTRA_CARGO_ARGS reached cargo doc" >&2
+            _st_fail=1
+        fi
+    done
+
+    if [ "$_st_fail" -eq 0 ]; then
+        echo "cargo-features-patch self-test: OK (shared + inlined layouts, 1 injection each, idempotent)"
+        exit 0
+    fi
+    exit 1
+fi
+
 IN_TREE_WORKSPACE="$NANO_ROS_ROOT/zephyr-workspace"
 LEGACY_WORKSPACE="$(cd "$NANO_ROS_ROOT/.." && pwd)/nano-ros-workspace"
 
@@ -108,9 +197,14 @@ if ! grep -q "nano-ros: EXTRA_CARGO_ARGS pass-through" "$CMAKE_FILE"; then
     # such copies).
     TMP="$(mktemp)"
     awk '
+    # Remember the last line that carried a command, so the injection can be
+    # keyed on WHICH cargo invocation this `${rust_build_type_arg}` belongs to.
+    # `cargo doc` gets nothing: doubling the flag is what cargo rejects.
+    /^[[:space:]]*cargo[[:space:]]/ { cargo_line = $0 }
     {
         print
-        if ($0 ~ /^[[:space:]]+\$\{rust_build_type_arg\}[[:space:]]*$/) {
+        if ($0 ~ /^[[:space:]]+\$\{rust_build_type_arg\}[[:space:]]*$/ &&
+            cargo_line ~ /^[[:space:]]*cargo[[:space:]]+(build|\$\{cargo_command\})[[:space:]]*$/) {
             print ""
             print "      # nano-ros: EXTRA_CARGO_ARGS pass-through (Phase 168.1)."
             print "      # Honors CMakeLists.txt `set(EXTRA_CARGO_ARGS ...)` set"
@@ -181,7 +275,10 @@ if ! grep -q "nano-ros: board facts" "$CMAKE_FILE"; then
     TMP="$(mktemp)"
     awk '
     {
-        if ($0 ~ /^[[:space:]]+cargo \$\{cargo_command\}[[:space:]]*$/) {
+        # Keyed on the cargo COMMAND for the same reason as hunk 2: 3.7 spells
+        # it `cargo ${cargo_command}` inside the shared function, 4.4 inlined it
+        # to a literal `cargo build` (and a `cargo doc` that must NOT get this).
+        if ($0 ~ /^[[:space:]]+cargo[[:space:]]+(build|\$\{cargo_command\})[[:space:]]*$/) {
             print "      # nano-ros: board facts + site config (phase-351 W5, issue 0605)."
             print "      # MUST precede `cargo` — `cmake -E env` ends the env at the"
             print "      # first non-KEY=VALUE argument."
@@ -191,11 +288,13 @@ if ! grep -q "nano-ros: board facts" "$CMAKE_FILE"; then
     }
     ' "$CMAKE_FILE" > "$TMP"
 
-    if ! grep -q "NROS_BOARD_FACTS_ENV" "$TMP"; then
+    facts_n="$(grep -v '^[[:space:]]*#' "$TMP" | grep -c '\${NROS_BOARD_FACTS_ENV}' || true)"
+    if [ "$facts_n" -ne 1 ]; then
         rm -f "$TMP"
-        echo "[cargo-features-patch] ERROR: no `cargo \${cargo_command}` line to inject before" >&2
+        echo '[cargo-features-patch] ERROR: no cargo build line to inject before' >&2
         echo "       in $CMAKE_FILE — upstream layout changed; fix this patch rather" >&2
         echo "       than leaving the Zephyr rust lane without its board rung (issue 0605)." >&2
+        echo "       (found $facts_n injection site(s); expected exactly 1)" >&2
         exit 1
     fi
     mv "$TMP" "$CMAKE_FILE"

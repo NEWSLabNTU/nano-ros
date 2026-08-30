@@ -254,6 +254,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          source ./activate.sh
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
@@ -277,7 +278,9 @@ jobs:
           just setup-launch-resolve
 
       - name: just ${{ matrix.plat }} setup
-        run: just ${{ matrix.plat }} setup
+        run: |
+          source ./activate.sh
+          just ${{ matrix.plat }} setup
 
       # issue-0037 — the e2e fixture build shells out to `play_launch_parser`, a
       # separate binary the in-tree `cargo build --bin nros` does NOT produce.
@@ -286,6 +289,7 @@ jobs:
       - name: Provision play_launch_parser (launch-manifest fixtures, #37)
         if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_e2e) }}
         run: |
+          source ./activate.sh
           just workspace install-play-launch-parser
           echo "NROS_PLAY_LAUNCH_PARSER=$HOME/.nros/sdk/play_launch_parser/bin/play_launch_parser" >> "$GITHUB_ENV"
 
@@ -310,7 +314,9 @@ jobs:
       # Installing from that same list is what keeps CI and a contributor's
       # laptop provisioned identically.
       - name: Install cross targets from config/rust-targets.txt
-        run: just workspace rust-targets
+        run: |
+          source ./activate.sh
+          just workspace rust-targets
 
       - name: Build (${{ matrix.plat }})
         run: |
@@ -457,6 +463,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          source ./activate.sh
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
@@ -480,7 +487,9 @@ jobs:
           just setup-launch-resolve
 
       - name: Provision Zephyr sources via nros
-        run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+        run: |
+          source ./activate.sh
+          nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       # The image registered the SDK CMake package as root; the container runs
       # with HOME=/github/home → re-register for this HOME (4.4's FindZephyr-sdk
@@ -518,7 +527,9 @@ jobs:
           done
 
       - name: Set up Zephyr ${{ matrix.line }} workspace
-        run: just zephyr setup --skip-sdk
+        run: |
+          source ./activate.sh
+          just zephyr setup --skip-sdk
 
       # zephyr-sys' build.rs runs bindgen over Zephyr headers — needs libclang.so
       # AND clang's resource-dir headers. Rust cells only (C/C++ cells skip).
@@ -529,7 +540,9 @@ jobs:
           apt-get install -y --no-install-recommends clang libclang-dev
 
       - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
-        run: source /opt/ros/humble/setup.bash && just zephyr build-one "${{ matrix.example }}" zenoh
+        run: |
+          source ./activate.sh
+          just zephyr build-one "${{ matrix.example }}" zenoh
 
   zephyr-dual-line-summary:
     needs: changes
@@ -561,6 +574,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          source ./activate.sh
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
@@ -584,7 +598,9 @@ jobs:
           just setup-launch-resolve
 
       - name: Provision Zephyr sources via nros
-        run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+        run: |
+          source ./activate.sh
+          nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
@@ -607,13 +623,19 @@ jobs:
         run: rustup set profile minimal
 
       - name: Set up Zephyr 3.7 workspace
-        run: NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
+        run: |
+          source ./activate.sh
+          NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
 
       - name: Set up Zephyr 4.4 workspace
-        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
+        run: |
+          source ./activate.sh
+          NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
 
       - name: Dual-line build (c/talker zenoh)
-        run: source /opt/ros/humble/setup.bash && just zephyr ci-both c/talker zenoh
+        run: |
+          source ./activate.sh
+          just zephyr ci-both c/talker zenoh
 
   zephyr-copy-out:
     needs: changes
@@ -645,6 +667,7 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         run: |
+          source ./activate.sh
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
@@ -668,7 +691,9 @@ jobs:
           just setup-launch-resolve
 
       - name: Provision Zephyr sources via nros
-        run: nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
+        run: |
+          source ./activate.sh
+          nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
@@ -691,10 +716,14 @@ jobs:
         run: rustup set profile minimal
 
       - name: Set up Zephyr 4.4 workspace
-        run: NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
+        run: |
+          source ./activate.sh
+          NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
 
       - name: Copy-out build check
-        run: source /opt/ros/humble/setup.bash && just zephyr check-copy-out c/talker zenoh
+        run: |
+          source ./activate.sh
+          just zephyr check-copy-out c/talker zenoh
 
   # Clean-system bootstrap probe (issue #204): execute the book's documented
   # setup steps VERBATIM in a pristine ubuntu:24.04 container (steps are
