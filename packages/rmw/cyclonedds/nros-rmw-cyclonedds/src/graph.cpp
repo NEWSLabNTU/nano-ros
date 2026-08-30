@@ -232,6 +232,17 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
         dds_instance_handle_t matched[kMaxSamples];
         int32_t m = dds_get_matched_publications(g->graph_reader, matched, kMaxSamples);
         std::fprintf(stderr, "GRAPH_CYCLONE matched_publications=%d\n", static_cast<int>(m));
+        // WHY a writer was refused, which `matched_publications` cannot say.
+        // A remote writer whose offered QoS is weaker than what this reader
+        // REQUESTS is never matched, and the reader looks identical to one on a
+        // topic nobody publishes. `last_policy_id` names the exact policy, so
+        // this distinguishes "incompatible" from "not there" in one number.
+        dds_requested_incompatible_qos_status_t iq = {};
+        if (dds_get_requested_incompatible_qos_status(g->graph_reader, &iq) == DDS_RETCODE_OK) {
+            std::fprintf(stderr,
+                         "GRAPH_CYCLONE incompatible_qos total=%u last_policy_id=%u\n",
+                         iq.total_count, iq.last_policy_id);
+        }
     }
 
     void* raw[kMaxSamples] = {nullptr};
