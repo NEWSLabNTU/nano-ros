@@ -238,7 +238,6 @@ function(nros_synth_runtime_umbrella)
         EDITION      "${_NRR_EDITION}"
         RMW          "${_NRR_BACKEND}"
         PLATFORM     "${_NRR_PLATFORM}"
-        BOARD        "${NANO_ROS_BOARD}"
         CAPABILITIES "${_caps}")
 
     # phase-366 — and the image's ending, which `nros_feature_set` cannot know.

@@ -28,7 +28,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 #     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble
 #     RMW          <zenoh|xrce|cyclonedds|uorb|none>
 #     PLATFORM     <posix|freertos|nuttx|threadx|esp_idf|…>
-#     BOARD        <board id>            accepted but UNUSED since phase-338 W5.a
 #                                        (the threadx tier now derives from
 #                                        CMAKE_CROSSCOMPILING, not board identity);
 #                                        kept so callers need not change
@@ -40,7 +39,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 #
 # Writes the cargo feature list into <out> in the caller's scope.
 function(nros_feature_set out_var)
-    cmake_parse_arguments(_FS "NO_STD_CROSS" "CRATE;EDITION;RMW;PLATFORM;BOARD" "CAPABILITIES" ${ARGN})
+    # phase-405 W1 — BOARD is GONE, not merely unused. It was "accepted but
+    # UNUSED since phase-338 W5.a" and referenced zero times in this body, so
+    # every caller passing it was writing a line that did nothing. Dropping it
+    # from the parse makes such a call an UNPARSED_ARGUMENTS error instead of a
+    # silent no-op.
+    cmake_parse_arguments(_FS "NO_STD_CROSS" "CRATE;EDITION;RMW;PLATFORM" "CAPABILITIES" ${ARGN})
 
     # ---- edition -----------------------------------------------------------
     # RFC-0056: the edition drives the runtime keyexpr format, which must match

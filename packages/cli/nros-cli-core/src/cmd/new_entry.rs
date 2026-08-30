@@ -601,9 +601,17 @@ CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
 CONFIG_MAX_PTHREAD_COND_COUNT=16
 "#
         .to_string(),
+        // phase-405 W1 — this emitted `CONFIG_NROS_XRCE_AGENT_LOCATOR`, which
+        // `zephyr/Kconfig` does not declare. Zephyr discards unknown symbols
+        // silently, so every XRCE scaffold shipped an inert line that LOOKED
+        // like it set the agent endpoint. The real pair is ADDR + PORT
+        // (`zephyr/Kconfig:878`, `:884`), whose defaults happen to be the same
+        // endpoint the dead line named — so nothing was broken, and nothing
+        // was configurable either.
         "xrce" => r#"# Micro-XRCE-DDS backend.
 CONFIG_NROS_RMW_XRCE=y
-CONFIG_NROS_XRCE_AGENT_LOCATOR="udp/127.0.0.1:2018"
+CONFIG_NROS_XRCE_AGENT_ADDR="127.0.0.1"
+CONFIG_NROS_XRCE_AGENT_PORT=2018
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
 "#
         .to_string(),
