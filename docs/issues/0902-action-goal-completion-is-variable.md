@@ -55,7 +55,7 @@ The instrumentation for this already exists and is proven on this board:
   `get_result` query and its reply reach the wire, and in which direction the
   exchange stops. It does not halt the core.
 - RTT shows whether the application layer saw the query — but attaching it
-  perturbs the link ([issue 0881](0881-the-debugger-is-not-a-passive-instrument.md)),
+  perturbs the link ([issue 0913](0913-the-debugger-is-not-a-passive-instrument.md)),
   so use it after the fact, not during.
 
 Capture one *failing* goal on the tap and establish whether the reply is never

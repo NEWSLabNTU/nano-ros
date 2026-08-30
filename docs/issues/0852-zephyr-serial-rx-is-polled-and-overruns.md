@@ -327,6 +327,6 @@ enabled, and it is inert while the knob is off. Its effect is visible in the
 table: 80 router reconnect errors before, 3 after on 1.10, 0 on 1.7.2.
 
 Diagnosed with counters in `.bss` read over SWD, because RTT kills the session
-(issue 0881). Those counters also refuted the ring-overflow theory outright:
+(issue 0913). Those counters also refuted the ring-overflow theory outright:
 high-water 19 bytes of 1024, zero drops, while 145 bytes arrived in total and the
 reader timed out 75 times.
