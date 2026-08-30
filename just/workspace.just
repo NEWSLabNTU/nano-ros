@@ -368,6 +368,20 @@ doctor:
             echo "$sys_out" | sed 's/^/  /'
             fail=1
         fi
+        # Issue 0929 — the third question, after "is the package here?" and
+        # "is the declaration complete?": does the installed tool actually RUN.
+        # Only the BROKEN lines are surfaced; doctor does not walk `[tool.*]`
+        # itself, and reprinting the whole class here would bury its own
+        # findings. 0.26 s, so it is not worth a flag.
+        if broken_out="$("$nros_bin" setup --check 2>&1 | grep -A2 '^  \[BROKEN\]' || true)"; then
+            if [ -n "$broken_out" ]; then
+                echo "$broken_out" | sed 's/^/  /'
+                fail=1
+            else
+                echo "  [OK] installed tools run"
+            fi
+        fi
+
         # Issue 0926 — the check above asks "is every DECLARED package here?".
         # This asks the other half: "is the declaration COMPLETE?", by
         # re-measuring the provisioned dists. Both are needed, and only the
