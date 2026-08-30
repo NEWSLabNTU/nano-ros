@@ -613,6 +613,7 @@ name = "nros-platform"
 version = "0.5.0"
 dependencies = [
  "nros-platform-api",
+ "nros-zephyr-build",
 ]
 
 [[package]]
