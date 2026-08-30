@@ -306,13 +306,43 @@ every boot, and issue 0864 fixed that.
 Jitter drops by roughly 8x and the spread narrows from 51 ms to 7 ms, which is
 what taking RX off the scheduler should look like.
 
-**Read that table with its limits.** The talker is the case this issue says
-polled ALREADY survives -- "one publisher, executor blocked almost always,
-reader keeps up". So this measures jitter on the easy case; it does not by
-itself demonstrate that the starvation failure is fixed, because the talker was
-never the failing case. The failing case is the action image, where three
-queryables, two publishers and their callbacks keep the executor runnable. That
-test belongs with issue 0902 and has not been run under the ISR.
+**Then the action image was measured, and it says the opposite.**
 
-The ~3% lower mean rate is within the noise of a 3-6 sample window and should
-not be read as a cost until it is measured over a longer run.
+Action server, 10 sequential `ros2 action send_goal /fibonacci` with order 5,
+fresh router and fresh board boot per run, identical harness for both arms:
+
+| build  | goals completed | router errors |
+| ------ | --------------- | ------------- |
+| polled | **8/10**        | 0             |
+| ISR    | **0/10**        | 80            |
+
+Every one of those 80 is `Unexpected Init flag in message` on the serial link,
+which is the router seeing an INIT on a link it already considers established --
+the board reconnecting, over and over.
+
+So the ISR path REGRESSES the exact case this issue exists to fix. The action
+image is the load where the executor stays runnable and the polled reader is
+supposed to starve; it is the one the ISR breaks, while the talker -- the case
+polled already survived -- is the one it improves.
+
+**Step 3 is therefore NOT the fix, as implemented.** `CONFIG_UART_INTERRUPT_DRIVEN`
+is back to `n`, the implementation is parked on the zenoh-pico fork branch
+`feat/zephyr-serial-irq-rx-110` and taken OUT of the pinned integration branch,
+and it is not part of the upstream PR.
+
+Not yet investigated -- the open question this leaves:
+
+* the ring is 1024 bytes; action traffic bursts harder than the talker's, so
+  reader-behind-ISR overflow is a candidate. The code sets a sticky
+  `_z_serial_rx_ring_full` flag and logs it, but that log was never read under
+  the failing load, because reading it needs RTT and RTT kills the session
+  (issue 0881).
+* the ISR is bound in `_z_zephyr_uart_open_impl`, which runs again on every
+  reconnect. The bind is idempotent for the same device, but `uart_irq_rx_enable`
+  is called each time, and no path ever calls `uart_irq_rx_disable`.
+* the polled arm's 8/10 with zero router errors is itself worth noting against
+  the 20-90 % variability recorded in issue 0902 -- on the current stack the
+  polled action path is far healthier than that issue describes.
+
+The talker's ~3% lower mean rate under the ISR is within the noise of a 3-6
+sample window and should not be read as a cost.
