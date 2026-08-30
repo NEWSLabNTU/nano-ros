@@ -445,6 +445,35 @@ mod tests {
         }
     }
 
+    /// A same-package nested type resolved off sibling `.msg` files is the
+    /// case the CLI wiring actually serves, so it is tested with a real
+    /// directory rather than a closure that always answers.
+    ///
+    /// The previous state of this path is what makes it worth asserting: with
+    /// no resolver EVERY nested type reported `Unresolved` and got no
+    /// constant, so the layer-2 win landed only on flat messages.
+    #[test]
+    fn a_sibling_msg_file_resolves_and_yields_a_bound() {
+        let dir = std::env::temp_dir().join(format!("nros0896-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Inner.msg"), "int32 sec\nuint32 nanosec\n").unwrap();
+
+        let outer = parse_message("Inner stamp\nint32 v\n").unwrap();
+        let d = dir.clone();
+        let lookup = move |fqn: &str| -> Option<Message> {
+            let name = fqn.rsplit('/').next()?;
+            let body = std::fs::read_to_string(d.join(format!("{name}.msg"))).ok()?;
+            parse_message(&body).ok()
+        };
+
+        let got = bound_message("p/Outer", &outer, EncodingVersion::Xcdr1, &lookup);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(got, TypeBound::Bounded(_)),
+            "a resolvable nested type must produce a bound, got {got:?}"
+        );
+    }
+
     /// ROS IDL cannot express a cycle, so one means the resolver is
     /// inconsistent. Report it instead of recursing forever.
     #[test]
