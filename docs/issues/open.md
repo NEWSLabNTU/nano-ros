@@ -78,5 +78,6 @@ fails if this block drifts.
 - **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
 - **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0940** (build) — `[deploy.freertos.nros]` in the mixed workspace is unreachable — the block names no `board`, so board-facts errors before reading it See `0940-*`.
 
 <!-- END GENERATED open-issue list -->
