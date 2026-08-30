@@ -78,8 +78,18 @@ use super::arena::{EntryKind, TraceName};
 
 /// `nros_callback_register(handle, kind, name)` — once, at registration.
 pub const MARKER_REGISTER: u32 = 16;
-/// One 4-byte chunk of the name belonging to the preceding register event.
-pub const MARKER_NAME: u32 = 17;
+/// Legacy untagged name chunk: 4 bytes, bound to the register event it
+/// FOLLOWED. Never emitted any more, and reserved rather than reused so a
+/// decoder can still read a capture taken before names carried their handle.
+#[allow(dead_code)]
+pub const MARKER_NAME_LEGACY: u32 = 17;
+/// Name chunk, `handle << 24 | 3 bytes`.
+///
+/// A NEW id rather than a new payload under the old one. Redefining what 17
+/// means would silently reinterpret every capture already taken with it —
+/// precisely the failure this instrumentation exists to prevent, and the same
+/// reason the application marker enum reserves its retired values.
+pub const MARKER_NAME: u32 = 20;
 /// `callback_start(handle)` — immediately before the callback is invoked.
 pub const MARKER_START: u32 = 18;
 /// `callback_end(handle)` — immediately after it returns.
@@ -164,23 +174,38 @@ fn wire_kind(kind: EntryKind) -> u32 {
     }
 }
 
-/// Stream a name as 4-byte little-endian chunks, NUL-padded, truncated at
-/// [`NAME_MAX`].
-fn stream_name(sink: TraceSink, name: &str) {
+/// Stream a name as 3-byte chunks TAGGED WITH THE HANDLE, NUL-padded,
+/// truncated at [`NAME_MAX`].
+///
+/// The tag is the point. Chunks used to be four bytes with no handle, and the
+/// decoder bound them to whichever register event they happened to FOLLOW —
+/// by adjacency. One dropped event inside a registration burst silently
+/// shifted every subsequent name onto the wrong callback, and a trace with
+/// confidently mislabelled rows is worse than one with no names at all,
+/// because nothing about it looks wrong.
+///
+/// Layout: `handle << 24 | b2 << 16 | b1 << 8 | b0`. Three bytes per event
+/// instead of four is a third more events, which costs nothing: registration
+/// happens once per callback at init, not on the hot path.
+///
+/// The handle is masked to 8 bits, which is what `start`/`end` already carry
+/// and comfortably covers `MAX_CALLBACK_SLOTS`.
+fn stream_name(sink: TraceSink, handle: usize, name: &str) {
+    let tag = ((handle as u32) & 0xff) << 24;
     let bytes = name.as_bytes();
     let n = bytes.len().min(NAME_MAX);
     let mut i = 0;
     while i < n {
-        let mut word: u32 = 0;
+        let mut word: u32 = tag;
         let mut j = 0usize;
-        while j < 4 {
+        while j < 3 {
             if i + j < n {
                 word |= (bytes[i + j] as u32) << (8 * j as u32);
             }
             j += 1;
         }
         emit(sink, MARKER_NAME, word);
-        i += 4;
+        i += 3;
     }
 }
 
@@ -228,7 +253,7 @@ pub(crate) fn register(handle: usize, kind: EntryKind, name: TraceName<'_>) {
             scratch.as_str()
         }
     };
-    stream_name(sink, text);
+    stream_name(sink, handle, text);
 }
 
 /// `callback_start(handle)` — immediately before a leaf callback is invoked.
