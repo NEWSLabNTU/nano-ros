@@ -727,6 +727,27 @@ pub fn run() {
         use_posix = true;
     }
 
+    // Issue 0919 — the question the alias TU needs answered is "is a platform
+    // RESOLVED?", not "did the consumer name one?". `any_explicit` answers the
+    // second, and is computed BEFORE the inference above, so it stays false on
+    // a hosted target that resolved POSIX by inference. Gating code generation
+    // on it therefore configured zenoh-pico FOR POSIX and then declined to emit
+    // the platform forwarders that configuration requires.
+    //
+    // The result is 16 undefined symbols at LINK time in a consumer —
+    // `z_sleep_ms`, `z_malloc`, `_z_mutex_*` — reported against whatever binary
+    // happened to link zpico, with nothing pointing back at the crate that made
+    // the decision. It took `host-tests` red on main and eight local routes that
+    // did not reproduce, because reproducing it needs a graph where zpico is
+    // present WITHOUT `platform-posix`: the entry depends on `nros-rmw-zenoh`
+    // directly (so `platform-aliases` is on by default) while the board it goes
+    // through selects only another RMW, so nothing enables the platform feature.
+    //
+    // A build that reaches here with no platform at all is a different case and
+    // still not the alias TU's business: `backend_count` below rejects it.
+    let platform_resolved =
+        use_posix || use_zephyr || use_bare_metal || use_freertos || use_nuttx || use_threadx;
+
     // Count enabled backends
     let backend_count = [
         use_posix,
@@ -1120,7 +1141,8 @@ pub fn run() {
     // zenoh-pico build), so exactly these land on the link. Clock/time + the
     // opaque services stay vendored. Same `CARGO_FEATURE_PLATFORM_ALIASES`
     // opt-in keeps the guard + alias coupled.
-    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && use_freertos && any_explicit {
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && use_freertos && platform_resolved
+    {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
         let mut alias_build = cc::Build::new();
@@ -1155,7 +1177,8 @@ pub fn run() {
         println!("cargo:rerun-if-changed=c/zpico/nros_zenoh_generic_platform.h");
     }
 
-    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos && any_explicit {
+    if env::var_os("CARGO_FEATURE_PLATFORM_ALIASES").is_some() && !use_freertos && platform_resolved
+    {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
         let nros_platform_cffi_include = nros_build_paths::nros_platform_cffi_include();
         let mut alias_build = cc::Build::new();
