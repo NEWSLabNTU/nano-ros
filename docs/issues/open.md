@@ -69,5 +69,6 @@ fails if this block drifts.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
 
 <!-- END GENERATED open-issue list -->
