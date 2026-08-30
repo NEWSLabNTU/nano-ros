@@ -432,7 +432,18 @@ impl LinuxBoard {
         // Best-effort like every other priority on this port — without
         // `CAP_SYS_NICE` the attribute is ignored at spawn and the tiers'
         // own refusal line has already said why.
-        #[cfg(unix)]
+        // `feature = "rmw-zenoh"` as well as `unix`: the symbol below lives in
+        // zpico-sys's C shim, which is only in the graph when the zenoh backend
+        // is selected. Guarded on `unix` alone, a board built for another RMW
+        // referenced a symbol nothing linked — `undefined symbol:
+        // zpico_set_task_config`, at LINK time in the consumer, naming neither
+        // this crate nor the missing backend.
+        //
+        // Same family as issue 0919 one layer up: a component assuming zenoh is
+        // present because it usually is. The priority plan below is about
+        // TRANSPORT tasks, and a build with no zenoh transport has none to
+        // place — so skipping it is the correct behaviour, not a degradation.
+        #[cfg(all(unix, feature = "rmw-zenoh"))]
         {
             // RFC-0079 — the RESERVED band's floor, not `max_tier + 1`.
             //
