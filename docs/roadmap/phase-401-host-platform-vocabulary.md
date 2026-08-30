@@ -1,8 +1,8 @@
 # phase-401 — `native` / `posix` / `linux`: three words, two questions
 
-**Status (2026-08-30). W1 landed (the rule, the host board, the gate); W2 is the
-tree-wide audit, in flight across six scopes; W3 and W4 are proposed and
-unstarted.** Implements the CLAUDE.md "Naming" rule; no RFC — this is a
+**Status (2026-08-30). W1, W2 and W3 are landed — the rule, the host board, the
+gate, a 71-fix tree-wide audit across six scopes, and the renames it identified.
+W4 is proposed and unstarted, and is a product change nobody has asked for.** Implements the CLAUDE.md "Naming" rule; no RFC — this is a
 vocabulary correction, not a design change.
 
 ## The rule
@@ -147,8 +147,32 @@ independent reason, one layer below the affinity call.
       and this repository has a documented history of a rename silently
       skipping a test. W3 carries what W2 identified.
 
-- [ ] **W3 — the renames W2 identifies**, one commit per coherent group, each
-      with its reference count and a green tier.
+- [x] **W3 — the renames W2 identified.** Three candidates; two renamed, one
+      checked and kept.
+
+      * **`book/src/platform-guides/native-posix.md` → `native-host.md`** — the
+        two collapsed words in one filename. Page and its 3 inbound links
+        (`SUMMARY.md`, `deployment.md`, `workflow-by-platform.md`) moved in one
+        commit; `check-book-links` green.
+      * **`plat_str` in `sched_dims_applied_e2e.rs`** — a local match that was a
+        second spelling of `PlatformId::fixture_tokens` and DISAGREED with it
+        (`MP::Linux` printed `posix`; the SSoT says `linux`). Now delegates.
+        Every other variant was already identical, so the only behavioural
+        change is the one wrong label — and a new `PlatformId` variant is now a
+        compile error here instead of a silent `"?"`.
+      * **`tests/fixtures/board-workspace/…/boards/posix/nros-board.toml`** —
+        `names = ["native", "posix"]`, which looks like the pre-rename spelling
+        and is not. That fixture board is CRATE-LESS: no board crate, so no
+        `sched_setaffinity`, so `posix` is a true reach claim for it, and it is
+        now the only place still exercising the `posix` board-name arm. Kept,
+        with the reason written into the file so the next reader does not
+        "fix" it.
+
+      Also fixed under W3, from #0916: the `native`/`posix` scaffold aliases
+      produced different trees because two sites asked `platform != "native"` —
+      a literal comparison against one of two spellings of one platform. Now
+      `needs_scaffolded_nros_toml()` asks the KIND, with a test that the two
+      spellings agree.
 
 - [ ] **W4 — make `posix` true, if anyone needs it.** `cfg(target_os)`-gate
       `apply_tier_affinity` to a loud no-op off Linux, the way it already

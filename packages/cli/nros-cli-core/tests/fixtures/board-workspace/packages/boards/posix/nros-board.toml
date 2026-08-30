@@ -1,6 +1,18 @@
 # Phase 195.C — board profile descriptor for the host (native / POSIX) target.
 # Crate-less: there is no `nros-board-*` crate; the generated package depends on
 # `nros-platform-cffi` (emitted by the CLI's per-platform extra-deps path).
+#
+# `names = ["native", "posix"]` here while production
+# (`packages/boards/linux/nros-board.toml`) says `["native", "linux"]`. That is
+# not drift, and it is not a rename anyone missed — phase-401 W3 checked it.
+#
+# Production is `linux` because `nros-board-linux::apply_tier_affinity` calls
+# `sched_setaffinity`, which libc does not define for apple. THIS board is
+# CRATE-LESS: there is no board crate, so there is no such call, and `posix` is
+# a true reach claim for it. `native` is the ROLE in both.
+#
+# Keeping it also keeps this fixture exercising the `posix` board-name arm,
+# which is otherwise unused now that production dropped it.
 
 [[board]]
 names = ["native", "posix"]
