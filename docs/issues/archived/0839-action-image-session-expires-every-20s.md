@@ -206,7 +206,7 @@ between the action example and a working `ros2 action send_goal`.
 ## Resolved 2026-08-30 — does not reproduce; it was the crash being observed from outside
 
 Re-tested on the action image with the fixes for
-[0882](archived/0882-transport-failure-teardown-crashes.md) (task handle freed
+[0882](archived/0912-transport-failure-teardown-crashes.md) (task handle freed
 with the wrong allocator) and
 [0879](archived/0879-serial-link-has-no-resync-after-peer-reset.md) (INIT flood
 on reopen) in place.

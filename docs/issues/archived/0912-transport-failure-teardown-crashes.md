@@ -1,5 +1,5 @@
 ---
-id: 882
+id: 912
 title: "`_zp_unicast_failed` -> `_z_task_free` panics on an invalid spinlock —
   zenoh-pico's transport-failure path crashes, and latency makes it reliable"
 status: resolved
