@@ -347,6 +347,33 @@ jobs:
           nros setup --source px4-rs --source nuttx-libc
           just ${{ matrix.plat }} test
 
+      # Keep the junit, because a red cell is otherwise unreadable after the
+      # fact. `check-skip-budget` names WHICH preconditions were unmet, but the
+      # per-test detail lives in the junit and nightly uploaded nothing at all —
+      # so triaging `threadx_linux` meant re-deriving from a job log that
+      # records the count and not the cause. host-tests has kept its junit since
+      # #29; this is the same step for the platform matrix.
+      - name: Upload nextest JUnit (${{ matrix.plat }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ matrix.plat }}-junit
+          # GLOB the profile, do not name it. `nros_nextest_junit_path` resolves
+          # `target/nextest/<profile>/junit.xml`, where the profile is
+          # `$NROS_NEXTEST_RUN_PROFILE` (default `default`), and honours
+          # `$CARGO_TARGET_DIR` ahead of `target/`. Neither is set in this
+          # workflow today, so a literal path is correct RIGHT NOW and becomes a
+          # silent no-op the moment one of them is — `if-no-files-found: ignore`
+          # is the right setting for a conditional step and the wrong one to
+          # discover a wrong path through.
+          path: |
+            target/nextest/*/junit.xml
+            target/nextest/*/junit-real.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit.xml
+            ${{ env.CARGO_TARGET_DIR }}/nextest/*/junit-real.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
   # Does the tier actually RUN the lane it claims to? Every module the tier-2
   # nightly cover needs must have a home somewhere in nightly CI. Without this,
   # "`ci-matrix-nightly` catches the platform x lang class" is a sentence in
