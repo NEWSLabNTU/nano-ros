@@ -21,16 +21,66 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// Idempotent write — skip the rewrite when content matches so the file's
-/// mtime doesn't bump on every codegen run (cmake's mtime-driven rebuilds
-/// otherwise force cargo to recompile every downstream FFI crate).
+/// Idempotent, ATOMIC write.
+///
+/// Idempotent: skip the rewrite when content matches, so the file's mtime
+/// doesn't bump on every codegen run (cmake's mtime-driven rebuilds otherwise
+/// force cargo to recompile every downstream FFI crate).
+///
+/// Atomic: issue 0920. This used to end in `std::fs::write`, which TRUNCATES
+/// the target and then writes it. Interrupt codegen — or the build driving it —
+/// between those two steps and the file is left at zero bytes. It is a
+/// perfectly valid file, so nothing notices until something tries to compile
+/// it, and then the error is a RELATIVE path from inside a jobserver fan-out
+/// with no leaf name anywhere near it:
+///
+/// ```text
+/// error[E0432]: unresolved import `goal_info::GoalInfo`
+///  --> generated/action_msgs/src/msg/mod.rs:4:9
+/// ```
+///
+/// It self-heals on the next codegen (empty != new, so it rewrites), which is
+/// why it went unfiled for so long — but it survives long enough to red-line a
+/// lane, and locating the one bad file among 200-odd generated trees is a
+/// scripted sweep. It cost two lanes in a single session before it was fixed.
+///
+/// Writing a sibling temporary and renaming fixes it: `rename(2)` is atomic
+/// within a filesystem, so an interrupted run leaves either the old file or the
+/// new one, never a truncated one. The temp file is a sibling, not a `/tmp`
+/// entry, so the rename cannot cross a filesystem boundary.
 fn write_if_changed<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> std::io::Result<()> {
     let path = path.as_ref();
     let new = contents.as_ref();
     if std::fs::read(path).is_ok_and(|existing| existing == new) {
         return Ok(());
     }
-    std::fs::write(path, new)
+
+    // Sibling temp: same directory, so the rename stays within one filesystem.
+    // The pid keeps concurrent generators (the jobserver fans these out) from
+    // clobbering each other's staging file.
+    let mut tmp = path.as_os_str().to_os_string();
+    tmp.push(format!(".nros-tmp.{}", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+
+    // Scope the handle so it is closed before the rename; on some platforms
+    // renaming an open file is legal but confusing, and we want the flush
+    // error HERE rather than swallowed by the drop.
+    {
+        use std::io::Write as _;
+        let mut f = std::fs::File::create(&tmp)?;
+        if let Err(e) = f.write_all(new).and_then(|()| f.flush()) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+    }
+
+    match std::fs::rename(&tmp, path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
 }
 
 /// Generated nros Rust package structure.
