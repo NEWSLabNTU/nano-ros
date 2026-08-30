@@ -77,13 +77,8 @@ fails if this block drifts.
 - **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
+- **#0930** (testing, tooling) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so See `0930-*`.
 - **#0932** (tooling) — The linux-arm64 arm-none-eabi-gcc dist gets neither the ncurses bundle nor the gdb Python, and its gdb fails EARLIER than x86_64's did See `0932-*`.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
-- **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
-- **#0906** (rmw-zenoh, interop) — Every zenoh-pico session drops and rebuilds every ~20 s — the ROS router sends it no KeepAlive See `0906-*`.
-- **#0920** (cli, codegen) — An interrupted codegen leaves a ZERO-BYTE generated file, and the compile error that follows names no leaf See `0920-*`.
-- **#0924** (boards, drivers, rmw-zenoh) — A FreeRTOS lease teardown parks forever in lwIP's netconn shutdown/close See `0924-*`.
-- **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
-- **#0930** (testing, tooling) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so See `0930-*`.
 
 <!-- END GENERATED open-issue list -->
