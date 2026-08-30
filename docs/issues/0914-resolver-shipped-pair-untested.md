@@ -8,6 +8,24 @@ area: testing
 related: [issue-0897, issue-0400, phase-332]
 ---
 
+> **CORRECTION (2026-08-30).** The headline claim below — "no test runs that
+> pair as installed" — is FALSE, and was already false when this was filed.
+> `packages/testing/nros-tests/tests/multihost_partition_bake.rs` invokes the
+> INSTALLED binary by path against `multihost.launch.xml` with `host:=`, which
+> needs `$(eval …)` and therefore the Python half. It predates this issue
+> (phase 211.F-2) and runs in `host-tests`' integration job. Verified by
+> removing `libplay_launch_parser_pyexec.so`: all three of its tests FAIL.
+>
+> So the interval this issue describes was not undetected — that red WAS this
+> test, which is why `host-tests` was red on the launch file it names.
+>
+> What survives, and is worse than what was filed: the coverage is XML-only.
+> **Every `.launch.py` aborts through the shipped resolver** — issue 0935, root
+> cause found, and it hides behind in-process tests exactly as this issue's
+> reasoning predicted. The one remaining gap here is that
+> `multihost_partition_bake` has no interpreter probe, so a Python-less host
+> gets a failure where this issue correctly asked for a skip.
+
 ## Problem
 
 `nros-launch-resolve` is TWO artifacts since issue 0897 W3: the binary, and
