@@ -10,6 +10,15 @@
 # not present. The PR sits BLOCKED forever. Auto-merge can be armed against it,
 # which makes it look handled.
 #
+# There are two ways to get here and they take OPPOSITE remedies, so the script
+# names which one it found: a CONFLICTING pull request has no merge ref, so
+# GitHub cannot build the commit a `pull_request` workflow would run against and
+# dispatches nothing (remedy: rebase); anything else means the event that would
+# have dispatched was filtered or lost (remedy: re-fire it). Prescribing the
+# re-fire for a conflict is advice that cannot work, which is worse than no
+# advice — the operator runs it, nothing changes, and the tool loses its claim
+# on their attention.
+#
 # It is invisible in every place you would normally look. The PR page shows no
 # red X. `gh pr list` shows it as open like any other. `gh pr checks` prints
 # "no checks reported on this branch", which reads as "too early" rather than
@@ -40,7 +49,7 @@ MIN_AGE_MIN=15
 while [ $# -gt 0 ]; do
     case "$1" in
         --min-age) MIN_AGE_MIN="${2:?--min-age needs minutes}"; shift 2 ;;
-        -h|--help) sed -n '2,32p' "$0" | sed 's/^# \?//'; exit 0 ;;
+        -h|--help) sed -n '2,/^set -euo/p' "$0" | grep '^#' | sed 's/^# \?//'; exit 0 ;;
         *) echo "pr-verdict-check: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -54,14 +63,14 @@ NOW="$(date -u +%s)"
 # number of open PRs, and the per-PR suite query below is already one round
 # trip each.
 prs="$(gh pr list --repo "$REPO" --state open --limit 100 \
-        --json number,title,headRefOid,isDraft,autoMergeRequest,baseRefName \
-        -q '.[]|[.number,.headRefOid,(.isDraft|tostring),(.autoMergeRequest!=null|tostring),.baseRefName,.title]|@tsv')"
+        --json number,title,headRefOid,isDraft,autoMergeRequest,baseRefName,mergeable \
+        -q '.[]|[.number,.headRefOid,(.isDraft|tostring),(.autoMergeRequest!=null|tostring),.baseRefName,.mergeable,.title]|@tsv')"
 
 stuck=0
 pending=0
 ok=0
 
-while IFS=$'\t' read -r num sha draft automerge base title; do
+while IFS=$'\t' read -r num sha draft automerge base mergeable title; do
     [ -n "${num:-}" ] || continue
 
     suites="$(gh api "repos/$REPO/commits/$sha/check-suites" -q .total_count 2>/dev/null || echo "?")"
@@ -90,16 +99,43 @@ while IFS=$'\t' read -r num sha draft automerge base title; do
         continue
     fi
 
+    if [ "$mergeable" = "UNKNOWN" ]; then
+        # GitHub computes mergeability lazily, so the merge ref a `pull_request`
+        # workflow needs may not exist yet. That is "ask again", not "stuck" —
+        # counting it as a failure would make the script red on a PR it has
+        # just admitted it cannot judge.
+        pending=$((pending + 1))
+        echo "#$num — no checks, and mergeability is still UNKNOWN; re-run before judging"
+        continue
+    fi
+
     stuck=$((stuck + 1))
     echo
     echo "#$num NO VERDICT — head $sha has ZERO check suites after ${age_min}m"
     echo "    $title"
-    echo "    base=$base draft=$draft auto-merge=$automerge"
+    echo "    base=$base draft=$draft auto-merge=$automerge mergeable=$mergeable"
     [ "$automerge" = "true" ] && \
         echo "    auto-merge is ARMED against a check that was never requested — it will never fire."
-    echo "    Remedy (either forces a fresh pull_request event):"
-    echo "      gh pr close $num && gh pr reopen $num      # fires 'reopened'; clears auto-merge, re-arm after"
-    echo "      git commit --allow-empty && git push        # fires 'synchronize'"
+
+    # TWO causes, and they look identical from here while taking OPPOSITE
+    # remedies. A `pull_request` workflow runs against the MERGE of base and
+    # head, so a CONFLICTING pull request has no merge ref for GitHub to build
+    # one from and cannot dispatch at all. Re-firing the event on that — which
+    # is the remedy for the other cause — changes nothing: the next event hits
+    # the same missing merge ref. Naming one remedy for both is how a tool that
+    # exists to separate two identical-looking states starts producing the
+    # confusion itself.
+    if [ "$mergeable" = "CONFLICTING" ]; then
+        echo "    CAUSE: the pull request CONFLICTS, so there is no merge ref and no"
+        echo "           workflow can be dispatched. Re-firing the event will NOT help."
+        echo "    Remedy: rebase onto the base branch and push."
+        echo "      git rebase origin/$base && git push --force-with-lease"
+    else
+        echo "    CAUSE: the event that would have dispatched was filtered or lost."
+        echo "    Remedy (either forces a fresh pull_request event):"
+        echo "      gh pr close $num && gh pr reopen $num      # fires 'reopened'; clears auto-merge, re-arm after"
+        echo "      git commit --allow-empty && git push        # fires 'synchronize'"
+    fi
 done <<EOF
 $prs
 EOF
