@@ -198,9 +198,12 @@ build-fixture-extras:
     config_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/config"
     board_dir="$root/packages/boards/nros-board-threadx-qemu-riscv64/c"
     virtio_dir="$root/packages/drivers/net/virtio-net-netx"
-    # Phase 88.15.d — nros-log severity-coverage smoke fixture. The RV64
-    # threadx-netx-sys build needs this board's NetX port headers rather than
-    # the threadx-linux defaults exported by the top-level justfile.
+    # Phase 88.15.d — nros-log severity-coverage smoke fixture. It needs THIS
+    # board's NetX port headers rather than the threadx-linux defaults the
+    # top-level justfile exports (the global-default-shadows-a-per-board-value
+    # class). The env vars stay: the C/C++ lane below consumes them too.
+    # (This comment named `threadx-netx-sys` until phase-400 deleted that crate —
+    # nothing here ever depended on it; the fixture is a plain Rust build.)
     THREADX_CONFIG_DIR="$config_dir" NETX_CONFIG_DIR="$config_dir" \
         bash scripts/build/fixtures-build.sh threadx-riscv64 rust --id threadx-riscv64-logging-smoke
     # Phase 160.J — ThreadX RV64 C/C++ examples now build via cmake.

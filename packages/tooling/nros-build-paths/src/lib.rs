@@ -258,10 +258,12 @@ pub fn tband_dir() -> PathBuf {
 /// rebuilds, because the stale `.config` lives in the submodule rather than in
 /// any target dir.
 ///
-/// Lives HERE rather than in `nros-board-common` so the board crates and the
-/// `nuttx-sys` bindgen build script share ONE spelling: `nuttx-sys` cannot
-/// depend on the board helpers, and a second copy of this resolution is exactly
-/// the drift that produced 0511 in the first place.
+/// Lives HERE rather than in `nros-board-common` so every consumer shares ONE
+/// spelling; a second copy of this resolution is exactly the drift that produced
+/// 0511 in the first place. The crate that forced the split was `nuttx-sys`,
+/// which could not depend on the board helpers — phase-400 deleted it as
+/// unreferenced, but the rule outlived it: any standalone build script with the
+/// same constraint resolves through here rather than respelling it.
 ///
 /// Prefers `nros-nuttx-export-<arch>/include` when it carries a
 /// `nuttx/config.h`, else the live tree's `include/` so a pre-phase-339 checkout
