@@ -1,7 +1,7 @@
 ---
 id: 917
-title: "A fragmented sample either syncs at once or never arrives — 8 RTPS
-  fragments reach the reader in 2 runs of 6, and a failed run never recovers"
+title: "The emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst,
+  and a 5 ms RX poll drains it far too late"
 status: open
 type: bug
 area: rmw, platform
@@ -63,6 +63,76 @@ Measured, not argued:
   logs 16-20 `rhc_store` — about what the small topics alone account for, where
   a delivered 10 Hz trajectory would add ~250. The sample never reaches the
   reader history cache, so it is lost in reassembly and not after it.
+
+## Root cause
+
+**The burst does not fit in the NIC, and the guest drains it too late.**
+
+QEMU's LAN9118 model sizes its receive FIFO in WORDS:
+
+```c
+s->rx_fifo_size = 2640;              /* uint32_t rx_fifo[3360] */
+...
+static bool lan9118_can_receive(NetClientState *nc) {
+    ...
+    /* Leave a frame's worth of headroom in the data FIFO. */
+    return s->rx_fifo_size - s->rx_fifo_used >= 384;
+}
+```
+
+2640 words is **10 560 bytes**, and a frame is refused unless 384 words
+(1536 B) are free. A 10 588-byte sample goes out as 8 RTPS fragments of
+1344 B payload, ~1420 B on the wire — **~11 360 bytes of back-to-back frames,
+which cannot fit**. Six fit comfortably; the seventh is marginal against the
+headroom rule; the eighth never has room.
+
+The guest's side of it is `poll_task_entry`: `vTaskDelay(poll_interval_ms)`
+then drain at most 16 packets. `poll_interval_ms` is **5** and the tick is
+1000 Hz, so the RX FIFO is emptied every 5 ms while the burst lands in a small
+fraction of that. Nothing drains between the frames of one sample.
+
+The island's own defrag trace says exactly this. Contiguous reassembly of the
+10 588-byte sample reaches:
+
+```
+    159 [0..2688)      2 fragments
+    159 [0..4032)      3
+    159 [0..5376)      4
+    159 [0..6720)      5
+    159 [0..8064)      6   <- 159 samples get this far
+      3 [0..9408)      7   <- three ever get this far
+      0 [0..10588)     8   <- none, ever
+```
+
+A hard cutoff at **6 fragments / 8064 bytes**, 159 times out of 159. That is
+not random loss, it is a capacity limit: 6 frames is what the FIFO holds once
+the 1536-byte headroom rule is applied.
+
+It also explains the whole earlier shape. One-datagram samples never touch the
+limit (6 of 6). Two-to-four fragment samples fit, and arrive. Eight-fragment
+samples lose their tail every time, so no sample ever completes, the defrag
+admin fills with partials and evicts them, and the reader never recovers.
+
+## Mitigation, measured
+
+Polling every tick (1 ms) instead of every 5 ms, same binary otherwise:
+
+| RX poll interval | valid runs | delivered |
+| --- | --- | --- |
+| 5 ms (`poll_interval_ms` default) | 6 | 2 |
+| 1 ms | 11 | **9** |
+
+Better, and not a fix: a burst can still outrun any fixed cadence, because the
+guest is not scheduled between the frames of one sample at all. The directions
+that actually close it are interrupt-driven RX (the model does raise RX
+interrupts) or a drain that keeps going while packets are pending instead of
+sleeping a fixed interval — the poll task currently sleeps FIRST and drains
+second, so the interval is a floor on how long a full FIFO waits.
+
+Worth noting for whoever picks this up: `LINK_STATS` reads all zero because the
+lan9118 driver never calls the lwIP link-stat macros, so loss at exactly this
+layer is invisible to `lwip_stats`. Every pool below it reads clean while the
+NIC is dropping the tail of every burst.
 
 ## What the island's own trace shows
 
