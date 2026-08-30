@@ -454,8 +454,58 @@ if(CONFIG_NROS_CPP_API)
     # separate arguments AND exempts the group from de-duplication, so the pair
     # stays together however many other `-include`s exist. Verified in the same
     # reproducer: `-include …/first.h -include …/second.h`, and it compiles.
-    zephyr_compile_options(
-        "$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-include ${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h>")
+    # issue 0918 — `SHELL:` must be the LITERAL PREFIX of the option, outside the
+    # generator expression. CMake looks for `SHELL:` before it evaluates genexes,
+    # so `$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:...>` presents an option starting with
+    # `$<` and the SHELL handling never engages — the group is not exempted from
+    # de-duplication, and on Zephyr's `modules/picolibc` target the `-include`
+    # token was dropped as a duplicate of an earlier one, stranding the path as a
+    # bare input file. 932 of the 1258 occurrences in one `build.ninja` were
+    # orphaned that way, all in that single target, and every C/C++ Zephyr fixture
+    # died on the first picolibc TU with
+    #     gcc: fatal error: cannot specify '-o' with '-c' … with multiple files
+    #
+    # Zephyr's own force-include has always had it in the right place
+    # (`arch/posix/CMakeLists.txt`: `"SHELL:-include …/undef_system_defines.h"`),
+    # which is why THAT one survived on the same command line while ours did not.
+    #
+    # The language guard stays, just inside: when the genex is empty (an .S file)
+    # the option degrades to a bare `SHELL:` and contributes nothing, which is the
+    # behaviour the ASM exclusion above needs.
+    # issue 0918 — SCOPED to the targets that need it, not global.
+    #
+    # `zephyr_compile_options()` reaches EVERY target, including Zephyr's own
+    # `modules/picolibc`. `SHELL:` splits the option into two arguments so gcc
+    # gets a flag and a path; it is also supposed to exempt the group from
+    # de-duplication, and it does for most targets. It does not survive whatever
+    # picolibc's module does to its option list: measured in one `build.ninja`,
+    # 932 of 1258 occurrences had the `-include` token dropped — ALL of them in
+    # `modules/picolibc`, the other 326 correct — which strands the path as a bare
+    # input file and kills the first picolibc TU with
+    #     gcc: fatal error: cannot specify '-o' with '-c' … with multiple files
+    # Moving `SHELL:` outside the genex (Zephyr's own spelling in
+    # arch/posix/CMakeLists.txt) was tried and changed nothing: still 932.
+    #
+    # The shim is for USER code — the examples call `setvbuf(stdout, NULL,
+    # _IONBF, 0)` and Zephyr's MINIMAL libc has neither `setvbuf` nor `_IO*BF`.
+    # Zephyr's libc implementation never needed it, so sending it there was the
+    # mistake; the de-duplication was only how that mistake surfaced.
+    #
+    # `app` is verified to exist at module time (probed on a real configure), and
+    # `nros` is this file's own `zephyr_library_named`. The `if(TARGET)` guard is
+    # a fail-loud, not a fallback: a silent skip would put us back to examples
+    # that do not build, so it warns.
+    set(_nros_libc_shim
+        "SHELL:$<$<COMPILE_LANGUAGE:C,CXX>:-include ${NROS_REPO_DIR}/zephyr/libc-compat/nros_libc_compat.h>")
+    if(TARGET app)
+        target_compile_options(app PRIVATE "${_nros_libc_shim}")
+    else()
+        message(WARNING
+            "nano-ros: no `app` target when the libc-compat shim was applied "
+            "(issue 0918). Example sources calling setvbuf() will fail to build "
+            "on a minimal-libc Zephyr.")
+    endif()
+    zephyr_library_compile_options("${_nros_libc_shim}")
     # Add nros-cpp include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-cpp/include)
     # Phase 112.C — nros-c also exposes `<nros/app_main.h>` (the

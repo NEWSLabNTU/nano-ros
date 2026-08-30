@@ -2,7 +2,7 @@
 id: 918
 title: "The Zephyr C/C++ fixture lane dies in picolibc — `-include nros_libc_compat.h`
   loses its flag and becomes a bare source file, despite the issue-0840 `SHELL:` fix"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0840, phase-400]
@@ -75,14 +75,44 @@ fixed, because no C/C++ Zephyr image builds at all. The two are independent: W5
 adds a `-D` to the cmake command line, and this failure happens inside Zephyr's
 picolibc module before any nros cargo work runs.
 
-## Directions
+## RESOLVED 2026-08-30 — scope the shim instead of chasing the pairing
 
-1. Find where `modules/picolibc`'s compile options are assembled and whether the
-   `SHELL:` group survives it. `ninja -C <build> -t commands <that .obj>` shows
-   the flattened line; compare with a target that keeps the pairing.
-2. If the flattening is Zephyr-side and unavoidable, the option cannot be a
-   global `zephyr_compile_options` — it has to be applied to the targets that
-   need it, or the header supplied a way that survives flattening
-   (`-D` + a wrapper, or an `-imacros` style single token).
-3. Whatever the fix, add the picolibc TU to whatever reproducer 0840 used, so a
-   fourth witness cannot appear the same way.
+Direction 2 was right. The option is no longer global:
+
+```cmake
+set(_nros_libc_shim "SHELL:$<$<COMPILE_LANGUAGE:C,CXX>:-include …/nros_libc_compat.h>")
+if(TARGET app)
+    target_compile_options(app PRIVATE "${_nros_libc_shim}")
+else()
+    message(WARNING …)          # fail-loud, not a silent fallback
+endif()
+zephyr_library_compile_options("${_nros_libc_shim}")
+```
+
+`app` is verified to exist at module time, probed on a real configure.
+
+**What was tried first and did NOT work, recorded so it is not retried.** Moving
+`SHELL:` outside the generator expression — matching Zephyr's own spelling in
+`arch/posix/CMakeLists.txt` — changed nothing: still 932 orphans of 1258. The
+placement was not the defect.
+
+**The measurement that located it**: attributing every occurrence in one
+`build.ninja` to its target showed all 932 orphans in `modules/picolibc` and all
+326 correct ones elsewhere. One target, not a global pairing bug. After scoping:
+**173 paired, 0 orphaned.**
+
+The shim was always for USER code — the examples call `setvbuf(stdout, NULL,
+_IONBF, 0)` and Zephyr's minimal libc has neither `setvbuf` nor `_IO*BF`. Zephyr's
+own libc implementation never needed it. Sending it there was the mistake; the
+de-duplication was only how the mistake surfaced.
+
+*Verified:* `build-c-listener-zenoh` builds green, and `build-cpp-listener-zenoh`
+builds green from PRISTINE (dir deleted first), producing `zephyr.exe`.
+
+## A trap worth recording: the driver prints a STALE log tail
+
+Two runs after the fix still reported the original gcc error. They had not run it.
+`zephyr-fixture-run-one` exited on `NROS_ZEPHYR_WORKSPACE is required`, and the
+driver then printed the PREVIOUS run's Zephyr log as its "log tail". The absorbing
+-verdict class CLAUDE.md records for stale fixtures, one layer up: read the
+scheduler log line, not just the tail, before believing a repeated failure.
