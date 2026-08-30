@@ -99,6 +99,11 @@ function(nros_detect_rust_target)
     endif()
 endfunction()
 
+# phase-400 W5.b — the ONE keyed shared-cargo-directory rule. Included at FILE
+# scope: inside a function `CMAKE_CURRENT_LIST_DIR` names the CALLER's file and
+# the frame pop drops what the include defined (the `_NROS_ENTRY_DIR` pattern).
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosSharedCargoDir.cmake")
+
 # =============================================================================
 # Knob resolution (issue 0316)
 #
@@ -382,25 +387,106 @@ function(nros_resolve_cargo_dirs)
     if(NROS_GENERATED_HEADER_DIR)
         return()
     endif()
-    # TWO directories, deliberately separate even though they are equal today.
-    #
-    # They answer different questions, and W5.c makes the answers diverge:
-    #
-    #   NROS_GENERATED_HEADER_DIR  — where the per-build config headers live.
-    #       PER-IMAGE, always. Their content is a function of this image's
-    #       Kconfig and of the feature set nros-c/nros-cpp were built with, so
-    #       two images must never write one copy. Sharing this is issue 0360's
-    #       variant collision (and, one layer down, 0528's probe dir).
-    #   NROS_ROOT_CARGO_TARGET_DIR — where cargo's dependency mass lives.
-    #       SHAREABLE, and the whole point of W5: ~86 host crates are currently
-    #       recompiled in each of 89 west build trees.
-    #
-    # Keeping them one variable would force the choice made in W5.a to decide
-    # W5.c, which is how a wiring change acquires a design it never argued for.
+    # PER-IMAGE, always. The generated config headers are a function of this
+    # image's Kconfig and of nros-{c,cpp}'s feature set, so two images must never
+    # write one copy — that is issue 0360's variant collision, and 0528's probe
+    # dir one layer down.
     set(NROS_GENERATED_HEADER_DIR "${CMAKE_BINARY_DIR}/nros-rust" CACHE INTERNAL
         "per-image root of the generated nros config headers (phase-400 W5.a)")
-    set(NROS_ROOT_CARGO_TARGET_DIR "${CMAKE_BINARY_DIR}/nros-rust" CACHE INTERNAL
-        "cargo --target-dir for the nros root workspace (phase-400 W5.a)")
+endfunction()
+
+# _nros_root_cargo_dir(<out_var> <features>)
+#
+# phase-400 W5.b — where cargo's DEPENDENCY MASS goes for the nros root
+# workspace. Shareable across images; `${CMAKE_BINARY_DIR}/nros-rust` unless a
+# caller asks with `-DNROS_SHARED_CARGO_ROOT=<dir>`. Nothing passes it yet, so
+# W5.b changes no build — the wiring and the measurement are W5.c.
+#
+# NOT cached, and NOT resolved alongside the header dir above, because its key
+# contains this PACKAGE's features and `nros_cargo_build()` is called once per
+# package. A single cached answer cannot be keyed on a per-package input; the
+# first draft of this tried and had to name a variable that does not exist.
+#
+# THE KEY, field by field. Cargo hashes what it owns — features, profile,
+# target, deps — into the filenames under `deps/`, so those cannot collide. What
+# it does NOT hash is the UPLIFTED artifact: `libnros_c.{a,rlib,so,d}`, the
+# nros-cpp trio and the zenoh staticlib pair — ELEVEN files, enumerated from a
+# real tree in the phase doc. Those are named for the crate, so two
+# configurations sharing a directory overwrite each other's.
+#
+#   triple, profile   the artifact's target and optimisation
+#   features          this package's resolved set, which is what keys nros-c and
+#                     nros-cpp apart — their archives genuinely differ
+#   knobs             every `NROS_RESOLVED_*`, because they reach compiled code
+#                     through the build-script environment. Issue 0528 measured
+#                     what omitting them costs: two leaves at the same (target,
+#                     features) disagreeing on `CONFIG_NROS_EXECUTOR_MAX_CBS`
+#                     shared a probe dir, and one compiled against a constant
+#                     sized for the other.
+#
+# Features are in the key rather than left to cargo's hashing precisely BECAUSE
+# of the uplift: with them in, the artifacts that collide are byte-identical by
+# construction, so the collision is harmless. That is how this lane avoids
+# needing cargo's `--artifact-dir`, which requires `-Z unstable-options` — this
+# lane forces nightly only for `armv7a|thumbv|riscv32`, so native_sim is on
+# stable and the NuttX eviction mechanism is unavailable here.
+function(_nros_root_cargo_dir out_var features)
+    set(_dir "")
+    if(NROS_SHARED_CARGO_ROOT AND NOT NROS_ZEPHYR_SHARED_CARGO_UNSAFE_OK)
+        # phase-400 W5.b — the key below is ready; the LANE is not. Refusing is
+        # deliberate, and it is not caution: enabling sharing here produces a
+        # BROKEN BUILD today, and this was demonstrated rather than predicted.
+        #
+        # `nros-{c,cpp}`'s build script writes the per-build config headers under
+        # `$CARGO_TARGET_DIR`. Share that dir and image B gets a cargo cache hit,
+        # so the script does not re-run and never writes B's copy — while the
+        # consumers (`_nros_generated_header_dir`, per-image since W5.a) look in
+        # B's own directory. Observed exactly that way, from a stale
+        # `-DNROS_SHARED_CARGO_ROOT` left in ONE build dir by an earlier reverted
+        # experiment:
+        #
+        #   ninja: error: 'nros-rust/nros-c-generated/nros/nros_generated.h',
+        #   needed by '.../Listener.cpp.obj', missing and no known rule to make it
+        #
+        # W5.c has to make the headers reach each image before this can open.
+        # None of the three candidate routes is free — fingerprinting the
+        # destination is a path env var (issue 0491) plus churn; a cmake copy from
+        # the shared dir is issue 0834's POST_BUILD shape; sharing them under a
+        # key that covers them collides across the two packages, which is the D1
+        # failure recorded in the phase doc.
+        #
+        # A FATAL_ERROR rather than a silent fallback to per-image: a caller who
+        # passed the flag asked for sharing, and quietly not doing it is how a
+        # measurement gets attributed to a build that never shared anything.
+        message(FATAL_ERROR
+            "nano-ros: -DNROS_SHARED_CARGO_ROOT is not supported on the Zephyr "
+            "lane yet (phase-400 W5.c). The per-build config headers are written "
+            "into the cargo target dir, so sharing it leaves every image after "
+            "the first without them:\n"
+            "  ninja: error: '<build>/nros-rust/nros-c-generated/nros/"
+            "nros_generated.h' ... missing and no known rule to make it\n"
+            "Unset it for this build. If you are DEVELOPING W5.c, pass "
+            "-DNROS_ZEPHYR_SHARED_CARGO_UNSAFE_OK=ON and expect that error until "
+            "the header path is solved.")
+    endif()
+    if(COMMAND nros_shared_cargo_dir AND NROS_SHARED_CARGO_ROOT)
+        if(NOT DEFINED NROS_RESOLVED_KNOBS)
+            message(FATAL_ERROR
+                "_nros_root_cargo_dir: nros_resolve_knobs() has not run, so a "
+                "shared cargo directory would be keyed WITHOUT the pool sizes it "
+                "has to separate on (issue 0528). Resolve the knobs first.")
+        endif()
+        set(_key "triple=${NROS_RUST_TARGET}" "profile=${NROS_CARGO_PROFILE}"
+                 "features=${features}")
+        foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
+            list(APPEND _key "${_knob}=${NROS_RESOLVED_${_knob}}")
+        endforeach()
+        nros_shared_cargo_dir(_dir KEY ${_key})
+    endif()
+    if(NOT _dir)
+        set(_dir "${CMAKE_BINARY_DIR}/nros-rust")
+    endif()
+    set(${out_var} "${_dir}" PARENT_SCOPE)
 endfunction()
 
 # =============================================================================
@@ -515,7 +601,9 @@ function(nros_cargo_build)
         # CONSUMERS can follow it instead of re-spelling it as a literal. Today it
         # still resolves to `<build>/nros-rust`, so nothing moves.
         nros_resolve_cargo_dirs()
-        set(CARGO_TARGET_DIR ${NROS_ROOT_CARGO_TARGET_DIR})
+        # Deferred until after nros_detect_rust_target() / the profile resolve
+        # below, which is where the key's triple and profile come from.
+        set(_nros_defer_root_cargo_dir TRUE)
     else()
         get_filename_component(_foreign_dir "${_cargo_ws_root}" DIRECTORY)
         get_filename_component(_foreign_name "${_foreign_dir}" NAME)
@@ -523,26 +611,6 @@ function(nros_cargo_build)
         set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/nros-rust-ws-${_foreign_name})
     endif()
 
-    # The invariant, enforced rather than described (issue 0616). A naming
-    # scheme keeps roots apart only until someone adds a caller; this catches
-    # it at configure, where the message can name both claimants. Two foreign
-    # roots whose directories share a basename would otherwise collide here
-    # silently, and the failure they'd produce is a duplicate lang item six
-    # build steps later.
-    string(MAKE_C_IDENTIFIER "${CARGO_TARGET_DIR}" _td_key)
-    get_property(_td_owner GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}")
-    if(_td_owner AND NOT _td_owner STREQUAL _cargo_ws_root)
-        message(FATAL_ERROR
-            "nros_cargo_build: two cargo workspace roots would share one --target-dir.\n"
-            "  target-dir: ${CARGO_TARGET_DIR}\n"
-            "  claimed by: ${_td_owner}\n"
-            "  now also:   ${_cargo_ws_root}\n"
-            "A target-dir serves exactly ONE workspace root: cargo keys a unit by the "
-            "path spelling its root implies, so the same crate gets two `-C metadata` "
-            "identities and `nros-platform`'s single `#[global_allocator]` is then "
-            "defined twice. Give the new root its own directory (issue 0616).")
-    endif()
-    set_property(GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}" "${_cargo_ws_root}")
 
     # Determine library filename from package name
     string(REPLACE "-" "_" LIB_STEM ${ARG_PACKAGE})
@@ -567,6 +635,34 @@ function(nros_cargo_build)
             "nros_detect_rust_target() first — a host build names its triple "
             "explicitly here (phase-340 W3).")
     endif()
+    # phase-400 W5.b — the root-workspace dir needs the triple, the profile AND
+    # this package's features, so it is resolved here rather than at the branch
+    # that chose it. A foreign workspace root keeps its own dir (issue 0616).
+    if(_nros_defer_root_cargo_dir)
+        _nros_root_cargo_dir(CARGO_TARGET_DIR "${ARG_FEATURES}")
+    endif()
+
+    # The invariant, enforced rather than described (issue 0616). A naming
+    # scheme keeps roots apart only until someone adds a caller; this catches
+    # it at configure, where the message can name both claimants. Two foreign
+    # roots whose directories share a basename would otherwise collide here
+    # silently, and the failure they'd produce is a duplicate lang item six
+    # build steps later.
+    string(MAKE_C_IDENTIFIER "${CARGO_TARGET_DIR}" _td_key)
+    get_property(_td_owner GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}")
+    if(_td_owner AND NOT _td_owner STREQUAL _cargo_ws_root)
+        message(FATAL_ERROR
+            "nros_cargo_build: two cargo workspace roots would share one --target-dir.\n"
+            "  target-dir: ${CARGO_TARGET_DIR}\n"
+            "  claimed by: ${_td_owner}\n"
+            "  now also:   ${_cargo_ws_root}\n"
+            "A target-dir serves exactly ONE workspace root: cargo keys a unit by the "
+            "path spelling its root implies, so the same crate gets two `-C metadata` "
+            "identities and `nros-platform`'s single `#[global_allocator]` is then "
+            "defined twice. Give the new root its own directory (issue 0616).")
+    endif()
+    set_property(GLOBAL PROPERTY "_NROS_TARGET_DIR_OWNER_${_td_key}" "${_cargo_ws_root}")
+
     set(LIB_PATH ${CARGO_TARGET_DIR}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/${LIB_NAME})
     set(TARGET_ARGS --target ${NROS_RUST_TARGET})
 
