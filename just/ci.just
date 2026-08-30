@@ -42,6 +42,7 @@ default: tier1
 l1:
     @just check cli-fresh check::fast check::build check::api-parity
     @just test-unit
+    @just test-lane-contracts
     @echo "CI L1 passed (compile + unit; no fixtures were built or needed)."
 
 [group("ci")]
