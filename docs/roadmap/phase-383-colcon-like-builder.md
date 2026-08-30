@@ -655,14 +655,29 @@ found only because these trees are not uniform the way ours are.
          then build. That is the behaviour change this work item already
          declined once, and the count says there is no mechanical subset hiding
          inside it.
-      4. **`[deploy.*].rmw` is still READ, which this item did not know.** The
-         claim above — "nothing reads these fields at build time" — is true of
-         `cmd/build.rs` and false of the cargo-native path: `[deploy.<t>].rmw`
-         sits in a documented precedence chain (`--rmw` > `[deploy.<t>].rmw` >
-         `[system].rmw` > `zenoh`) in `cargo_metadata_schema.rs`,
-         `nros_config.rs` and `planner.rs`. Only 2 of the 42 fields are `rmw`,
-         but they are not inert, so even the smallest slice of this migration
-         changes a resolution rather than deleting a duplicate.
+      4. ~~**`[deploy.*].rmw` is still READ.**~~ **RETRACTED on 2026-08-31, the
+         same day it was written. The fields ARE inert, as this item said all
+         along.** The claim came from grepping for the precedence chain and
+         stopping at the doc comment. Following it to its callers instead:
+         `SystemToml::resolved_rmw` consults `[deploy.<t>].rmw` only when its
+         `target` argument is `Some`, and its ONE production caller —
+         `bridged_rmws()` — passes `None`. Every other reference is that
+         function's own unit test. The other two sites (`nros_config.rs`,
+         `planner.rs`) read `DeployTargetMetadata`, which is
+         `[package.metadata.nros.deploy.*]` in a Cargo.toml — a different
+         surface that this migration does not touch.
+
+         So the RFC-0031 rung is dead, filed as issue 0938. It is invisible
+         because both `[deploy.*].rmw` in the tree set `"zenoh"`, which is
+         exactly what `[system].rmw` already yields there.
+
+         Worth naming the pattern: this is the SECOND function inside phase-383
+         found shipping with passing unit tests and no production caller — the
+         W10.b deprecation lint was the first. A unit test proves a function
+         computes; it says nothing about whether anything calls it.
+
+      **So the deletion is mechanically safe** — all 42 fields are unread — and
+      what remains is not a correctness risk but a shape decision.
 
       **What 0.6.0 must therefore decide, and it is a design question:** which
       of the 14 deploys deserve to be images. Several are placement-only
