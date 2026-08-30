@@ -447,6 +447,58 @@ build time — but a directory of crates nobody builds and nobody uses is a fals
 statement about what the project needs, which is the same reason W1 was worth
 doing.
 
+### W5 — the 118.3 s is PER-LEAF on Zephyr, because Zephyr is the one platform with no shared cargo group
+
+The W3 retraction said the second-leaf cost was NOT re-measured and should be
+checked before assuming the shared cargo group absorbs it. It was checked. It does
+not — on Zephyr, which is the platform every number in this phase came from.
+
+**Six platforms pass a shared cargo root. Zephyr passes none.**
+
+```
+NROS_SHARED_CARGO_ROOT / nros_fixture_target_dir_flag present in:
+    freertos  native  nuttx  qemu-baremetal  threadx-linux  threadx-riscv64
+zephyr.just, zephyr-ci.just:  0 occurrences
+```
+
+Instead, every west build dir carries its own cargo target dir: **191 of them
+across 89 `zephyr-workspace/build-*` trees.**
+
+**Measured with `just leaf-graph` over 12 of the 89:**
+
+```
+  build-c-action-client-cyclonedds     host= 86  target= 24
+  build-c-action-client-xrce           host= 95  target= 25
+  build-c-action-client-zenoh          host= 93  target= 32
+  ...
+  host crates: union=102, present in EVERY sampled build = 86
+```
+
+**86 host crates are recompiled from scratch in each build dir**, and the host
+side outnumbers the target side roughly 3:1. That is what the 118.3 CPU-s profile
+was measuring: not a first-leaf cost amortised across a sweep, but a cost paid
+again per image. Host tooling was ~75 of those 118.3 s.
+
+**Issue 0616 does NOT block the larger half — checked, not assumed.** A cargo
+`--target-dir` serves exactly one workspace root, because `-C metadata` includes
+the path SPELLING a crate was reached by. The 71 C/C++ Zephyr builds reach
+`nros-c`/`nros-cpp` through the SAME spelling — identical fingerprint `path` hash
+`7238329675919068069` in `build-c-action-client-zenoh` and
+`build-cpp-listener-zenoh` — so a shared root would legitimately reuse units,
+exactly as it does for nuttx and threadx today.
+
+The 18 `build-rust-*` leaves are the case 0616 is about: each is its own workspace
+root, so they need the per-leaf treatment rather than one shared dir. Do not
+collapse those without re-reading 0616 — `nros-platform` holds the tree's one
+`#[global_allocator]`, and two copies of it is the intermittent failure that issue
+describes.
+
+*Next step, and the sizing that must come first:* wire the C/C++ Zephyr lane to
+`nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr`, the same call the six other
+platforms already make, then re-measure a two-image build with `--timings` before
+quoting a saving. **This phase has retracted three estimates for skipping exactly
+that step.**
+
 ### Duplicate compiles (feature / version variants) — measured, and it is ~2 %
 
 Asked whether crates get built repeatedly because of feature or version variants.

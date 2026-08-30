@@ -58,13 +58,14 @@ def load_units(target_dir: pathlib.Path):
     if (target_dir / ".fingerprint").is_dir():   # pointed straight at a profile dir
         fp_dirs.append(target_dir / ".fingerprint")
     for fp_dir in fp_dirs:
-        rel = fp_dir.relative_to(target_dir).parts[:-1]  # drop ".fingerprint"
-        # `<profile>/` is the host side; `<triple>/<profile>/` is the target side.
-        # Keyed on "a component looks like a target triple" rather than on depth,
-        # so the tool works whether it is pointed at `target/` or `target/release`
-        # — being wrong about which side a unit is on is the exact confusion this
-        # script exists to prevent.
-        side = "target" if any("-" in c for c in rel) else "host"
+        # Side comes from cargo's own `compile_kind` (0 = host, else a target
+        # hash), read per unit below — NOT from the path.
+        #
+        # An earlier version guessed "a path component containing a hyphen is a
+        # target triple". Profile names contain hyphens too (`nros-relwithdebinfo`,
+        # `dev-release`), so every unit of a Zephyr build was labelled "target" and
+        # the host overlap it was asked to measure came back as zero. Caught by
+        # using the tool, which is the only reason it was caught at all.
         for unit_dir in fp_dir.iterdir():
             if not unit_dir.is_dir():
                 continue
@@ -77,6 +78,7 @@ def load_units(target_dir: pathlib.Path):
                     continue
                 if not isinstance(data, dict):
                     continue
+                side = "host" if data.get("compile_kind") in (0, None) else "target"
                 requires = {d[1] for d in data.get("deps", []) if len(d) > 1}
                 # A crate's own build script is an internal edge, not a dependency.
                 requires.discard("build_script_build")
