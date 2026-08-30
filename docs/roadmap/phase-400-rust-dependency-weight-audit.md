@@ -170,6 +170,69 @@ is a capability the CONSUMER picks, so the feature is REQUIRED (a
 it), not silently granted. That error path was written and worked; it is in the
 reverted diff if it is wanted again.
 
+
+### W2 re-measured 2026-08-30 on a CLEAN graph — the lever is 9 crates, and `zerocopy` is not in the build
+
+Taking the remaining waves meant starting with W2's redirected lever (split
+`nros-orchestration-ir`). The first measurement of it was WRONG, and finding out
+why fixed a defect in the tool this phase tells people to trust.
+
+**`just leaf-graph` had the stale-record defect.** A `.fingerprint/` directory
+accumulates, so "every unit in the tree" is a historical record, not the current
+build. On a freshly built Zephyr Rust talker leaf, two `nros-zpico-build` lib
+units sat side by side:
+
+```
+nros-zpico-build-aeea…  mtime 08-29 23:02  feats=[]          deps: cbindgen, cc, …
+nros-zpico-build-f75f…  mtime 08-30 22:21  feats=["default"] deps: cc, …
+```
+
+The tool reported `cbindgen <- nros_zpico_build` from the day-old one — for a
+dependency **W2a had already removed**. Filtering stale records (175 of them in
+that tree) drops the edge and confirms W2a is effective on this leaf, which the
+contaminated graph had made look like a regression.
+
+This is the same defect found in `shared-dir-churn` earlier the same day, in the
+tool the "Use it before quoting any future number in this phase" line points at.
+Fixed the same way, and with the same honesty about its limits: the exclusion is
+REPORTED, not silent, because a live-but-fresh unit is not rewritten and an
+incrementally built tree will legitimately have old ones. `--all-units` restores
+the historical view. **Build the leaf, then measure it.**
+
+**What the clean graph says.** Host side is **77 crates, not 129** — the extra 52
+were stale records' crates.
+
+```
+--exclusive-to nros-orchestration-ir --exclusive-to ros-launch-manifest-model
+  -> 9 crates drop: heapless, nros_core, nros_rmw, nros_serdes,
+                    ros_launch_manifest_sched, ros_launch_manifest_types,
+                    thiserror, thiserror_impl, yaml_rust2
+```
+
+**`zerocopy`, `ahash` and `hashlink` are ABSENT from the live build.** The W2
+section above names `zerocopy` at 7.3 CPU-s as "the largest single unit freed" by
+this wave and traces it through `ahash -> hashbrown -> hashlink -> yaml-rust2`.
+That chain is not in this leaf any more: `hashbrown` survives but is required by
+`indexmap`, and the other three are not built at all. `serde` and `toml` stay —
+`zephyr_build`, `nros_board_common` and `nros_pkg_index` require them
+independently of orchestration.
+
+So the wave's headline justification is gone, and what remains is 9 crates whose
+combined cost has not been measured. **The split is not being implemented on a
+crate COUNT.** Nine crates including `nros_core`/`nros_rmw`/`nros_serdes` could be
+seconds or tens of seconds; the phase's own rule is that a count bounds what
+could leave and says nothing about what it costs. The next step is
+`cargo build --timings` on this leaf attributing those 9, not a refactor.
+
+*Status: W2 NOT implemented.* The design is sound and unchanged — a default-off
+`model` feature on `nros-orchestration-ir` plus a `launch` gate on
+`nros-macros`, landed together, since every schema-typed use in the macro crate
+is confined to `main_macro.rs` (verified: `tier_from_model`,
+`validate_tier_platform_applicability`, `ResolvedTierTable`,
+`executor_sizing::count_*` all appear only there, and the four schema-free
+modules `qos_override` / `sidecar_slots` / `model_location` / `wcet` are exactly
+what the other arms use). What is missing is a reason, in seconds.
+
 ## W2 measured on the real build — `cargo build --timings`, cold
 
 `--timings` injected into the Zephyr talker's `EXTRA_CARGO_ARGS`, the leaf's
