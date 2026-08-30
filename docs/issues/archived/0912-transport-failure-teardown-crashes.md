@@ -5,7 +5,7 @@ title: "`_zp_unicast_failed` -> `_z_task_free` panics on an invalid spinlock —
 status: resolved
 type: bug
 area: rmw
-related: [issue-0852, issue-0822, issue-0839, issue-0881]
+related: [issue-0852, issue-0822, issue-0839, issue-0913]
 ---
 
 ## Symptom
@@ -25,7 +25,7 @@ rejected goal, never a timeout before acceptance.
 ## What the wire shows
 
 Captured with a `socat` tap, which unlike a debug probe does not halt the core
-([issue 0881](0881-the-debugger-is-not-a-passive-instrument.md)). After the
+([issue 0913](0913-the-debugger-is-not-a-passive-instrument.md)). After the
 80-byte `send_goal` query reaches the board, every board-to-router frame is a
 1-byte keepalive:
 
@@ -90,7 +90,7 @@ present when the link is slow enough to time out.
 
 `_zp_unicast_failed` is the generic transport-failure path. Anything that makes
 the link miss a deadline reaches it — load, latency, a debug probe halting the
-core ([issue 0881](0881-*)), a lost frame. So this is not an action defect; it is
+core ([issue 0913](0913-*)), a lost frame. So this is not an action defect; it is
 what happens to this image whenever the transport hiccups, and actions are
 simply the heaviest traffic that provokes it.
 

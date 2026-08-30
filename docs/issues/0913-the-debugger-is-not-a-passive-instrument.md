@@ -1,5 +1,5 @@
 ---
-id: 881
+id: 913
 title: "attaching pyocd RTT kills the zenoh session — the debugger perturbs the
   system under test, and issue 0879 makes the perturbation permanent"
 status: open
