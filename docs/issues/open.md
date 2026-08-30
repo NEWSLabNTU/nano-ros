@@ -83,5 +83,11 @@ fails if this block drifts.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
 - **#0981** (codegen, ci) — `codegen_golden` has been red on `main` since 5f3c08545 — the C++ pack's REAL bound moved `RX_MAX_SERIALIZED_SIZE` by 3 and the golden was not regenerated See `0981-*`.
+- **#0978** (cmake, build) — The corrosion config header is a BUILD-SCRIPT side effect, so a shared cargo group refreshes it in exactly one leaf — the other 19 fail to link against an archive whose sizes moved See `0978-*`.
+- **#0972** (api-c, rmw) — ROS domain 0 is both a legal domain and the `unset` marker, so asking for domain 0 explicitly is silently overridden See `0972-*`.
+- **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
+- **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
+- **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0931** (build, api) — `MODEL` has no users and should be retired; `LAUNCH default` is ceremony on 26 entries See `0931-*`.
 
 <!-- END GENERATED open-issue list -->
