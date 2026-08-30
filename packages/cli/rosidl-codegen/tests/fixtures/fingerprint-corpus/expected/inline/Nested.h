@@ -89,9 +89,9 @@ const nros_message_type_t* fingerprint_corpus_msg_nested_get_type_support(void);
    constant is simply absent and the user gets "undeclared identifier", which
    names neither the type nor the member that costs it the bound. */
 #define FINGERPRINT_CORPUS_MSG_NESTED_MAX_SERIALIZED_SIZE_XCDR1 \
-    NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header
+    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_Shapes
 #define FINGERPRINT_CORPUS_MSG_NESTED_MAX_SERIALIZED_SIZE_XCDR2 \
-    NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header
+    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_Shapes
 
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the

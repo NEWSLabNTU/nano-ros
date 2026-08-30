@@ -494,6 +494,11 @@ pub struct MessageCHeaderTemplate<'a> {
     /// reached. Emitted as a header comment so a reader can tell "we looked and
     /// there is no bound" from "we could not look".
     pub unbounded_reason: Option<String>,
+    /// issue 0896 Q2 — the same fact as a C IDENTIFIER, so a compiler error
+    /// that mentions it names the type and the member:
+    /// `NROS_UNBOUNDED__std_msgs_msg_string__field_data`. An identifier cannot
+    /// hold `.` or `(`, so the prose form above carries what this cannot.
+    pub unbounded_token: Option<String>,
 }
 
 #[derive(serde::Serialize)]

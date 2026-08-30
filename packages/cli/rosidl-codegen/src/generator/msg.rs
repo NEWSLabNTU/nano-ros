@@ -438,25 +438,50 @@ pub fn generate_c_message_package_with_lookup(
     // The two encodings are computed separately because they genuinely differ;
     // see `MessageCHeaderTemplate::max_serialized_size_xcdr1`.
     let fqn = format!("{package_name}/{message_name}");
-    let (bound_x1, bound_x2, unbounded_reason) = {
+    let (bound_x1, bound_x2, unbounded_reason, unbounded_token) = {
         use crate::schema_value::{TypeBound, bound_message};
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, lookup);
         let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, lookup);
+        // issue 0896 Q2 — the compiler error must name the TYPE and the FIELD,
+        // not just say "no bound". A C identifier cannot hold `.` or `(`, so
+        // the path is flattened; the prose reason sits above it in the header
+        // for the parts an identifier cannot carry.
+        let token = |what: &str| {
+            let ident: String = what
+                .split(" (")
+                .next()
+                .unwrap_or(what)
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            format!("NROS_UNBOUNDED__{struct_name}__field_{ident}")
+        };
+        let unresolved_token = |t: &str| {
+            let ident: String = t
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                .collect();
+            format!("NROS_UNRESOLVED__{struct_name}__nested_type_{ident}")
+        };
         match (&x1, &x2) {
-            (TypeBound::Bounded(a), TypeBound::Bounded(b)) => (Some(*a), Some(*b), None),
+            (TypeBound::Bounded(a), TypeBound::Bounded(b)) => (Some(*a), Some(*b), None, None),
             // Unbounded and Unresolved BOTH mean "no constant", and the reason
             // says which — "we looked and there is no bound" licenses bounding
             // the field, "we could not look" licenses fixing the search path.
             // Collapsing them into one message is the confusion issue 0896 is
             // about.
-            (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => {
-                (None, None, Some(format!("unbounded member: {w}")))
-            }
+            (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => (
+                None,
+                None,
+                Some(format!("unbounded member: {w}")),
+                Some(token(w)),
+            ),
             (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => (
                 None,
                 None,
                 Some(format!("nested type `{t}` could not be resolved")),
+                Some(unresolved_token(t)),
             ),
         }
     };
@@ -478,6 +503,7 @@ pub fn generate_c_message_package_with_lookup(
         max_serialized_size_xcdr1: bound_x1,
         max_serialized_size_xcdr2: bound_x2,
         unbounded_reason,
+        unbounded_token,
     };
     // RFC-0068 Stage 3 (phase-335 W2): C message emission renders from the
     // minijinja data pack (packs/c/) instead of the compile-time askama path.
