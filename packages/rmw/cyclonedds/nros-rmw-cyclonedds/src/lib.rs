@@ -28,9 +28,15 @@
 //!   in this crate touches it today.
 //! * Storage is fixed-capacity [`heapless`]; overflow returns
 //!   [`dynamic_type::BuildError::RegistryFull`] (no panic, no heap).
-//! * Synchronisation: [`spin::Mutex`] on hosted POSIX/macOS,
-//!   [`critical_section::Mutex`] on `target_os = "none"`. See
-//!   [`sync`].
+//! * Synchronisation: [`critical_section::Mutex`] on
+//!   `target_os = "none"`, [`spin::Mutex`] everywhere else. See
+//!   [`sync`], whose own docs enumerate it.
+//!
+//!   Stated as the predicate rather than as a host list, because that
+//!   is what `sync.rs` actually gates on — `cfg(not(target_os =
+//!   "none"))`. This said "hosted POSIX/macOS", which named a platform
+//!   nano-ros does not support and silently omitted the RTOS targets,
+//!   which take the same arm.
 //! * The C++ bridge allocates descriptors from Cyclone's `ddsrt`
 //!   heap (Phase 177.22's pre-budgeted pool on embedded targets), not
 //!   from libc malloc.

@@ -2,7 +2,7 @@
 id: 828
 title: "Tier 2 RUNS rows its build lane never builds, so `just ci-matrix` is
   green only while an earlier `lane=all` build is still fresh"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0482, issue-0517, phase-340, phase-383]
@@ -83,6 +83,37 @@ freshness the lane never promised.
 Until then `just ci-matrix` after a core-crate change needs
 `just build-test-fixtures lane=all`, and CLAUDE.md's tier-2 line overstates what
 `lane=tier2` buys.
+
+## Fixed — direction 1: the build asks the resolver's question
+
+`--coords-from` now omits a row only when the RUN could have skipped it. The
+ambiguity was already computed statically — `row_artifact_root`'s docstring
+states the contract ("an ambiguous match is 'not attributable' — fail closed,
+never skip") — so `row_is_lane_skippable()` reuses it rather than inventing a
+second notion of attributability.
+
+Measured on this tree:
+
+```text
+tier2 rows built — before: 114   after: 142   (lane=all: 258)
+rows outside tier2's cover: 195, of those UNSKIPPABLE: 28
+```
+
+The 28 are exactly the added ones, and they cluster on shared roots such as
+`examples/native/rust/talker/target` and
+`packages/testing/nros-tests/bins/int32-sink/target`.
+
+**Direction 2 (a unique `build_subdir` per row) is still the structural fix**
+and is not done: it makes the invariant hold by construction rather than by a
+predicate both sides must consult. This change makes the lane honest at the
+cost of ~25 % more tier-2 rows; direction 2 would make it honest and cheap.
+Left open as issue 0517's territory.
+
+**The test checks MEMBERSHIP, and its first version did not.** It asserted
+`built_rows >= unskippable` — 114 >= 28, which is true with the fix reverted,
+so it passed the mutation it existed to catch. Now it asks the manifest which
+unskippable rows are absent from the lane's build and requires the answer to be
+none; reverting the fix fails it with 12 named rows for tier 1.
 
 ## Sweep
 

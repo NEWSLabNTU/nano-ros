@@ -565,6 +565,45 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
     }
 }
 
+/// Drop a stamp whose header is gone — issue 0834.
+///
+/// Call this from every path that DECLINES to write a per-build header. The
+/// decline is legitimate (a `cargo check --no-default-features` probe yields no
+/// executor sizes, so there is nothing to ship), but it leaves whatever the
+/// directory already held, and the state that produces is absorbing:
+///
+///   * the mirror directory holds `<name>.h.stamp` and NOT `<name>.h`;
+///   * cargo considers the crate up to date, so the byproduct is not re-emitted;
+///   * the POST_BUILD copy has nothing to copy, and ninja records its custom
+///     command as successful;
+///   * consumers reach the committed source-tree STUB, whose `#error` fires —
+///     or, on the C side, whose absence surfaces as `SESSION_OPAQUE_U64S
+///     undeclared`, which issue 0088 records as latent for a whole phase.
+///
+/// Re-running does not repair it. Clearing the stamp does not. Building the
+/// header target directly does not. Only `rm -rf` on the build dir did, and
+/// that destroyed the evidence — which is why issue 0834 could gate the state
+/// but never root it.
+///
+/// This makes the state unreachable WITHOUT knowing what caused it. A stamp
+/// asserts "the header beside me is current"; with no header that assertion is
+/// simply false, and the honest representation of "nothing was generated" is
+/// neither file, not one of them. `write_header_if_absent_or_verify` already
+/// self-heals an absent header when it RUNS — this covers the paths where it
+/// does not.
+pub fn drop_stamp_without_header(relative: &[&str]) {
+    let Some(dest) = target_dir_path(relative) else {
+        return;
+    };
+    let stamp_path = dest.with_extension("h.stamp");
+    if !dest.exists() && stamp_path.exists() {
+        // Best-effort: a build script must not fail because a cleanup could
+        // not run. The gate (`check-orphan-generated-stamp`) still catches the
+        // state if this ever cannot.
+        let _ = std::fs::remove_file(&stamp_path);
+    }
+}
+
 /// Do the two stamps prove the value mismatch is mere STALENESS?
 ///
 /// Only one shape does: the same probe artifact PATH with a different

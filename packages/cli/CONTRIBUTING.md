@@ -364,76 +364,28 @@ The Python package registers three extension points:
 
 ### Building Distribution
 
-#### Local Build (single platform)
+**There is no wheel release process, and this section used to describe one in
+detail.** Every part of it was stale — checked, not assumed:
 
-```bash
-# Build Python wheel for your current platform
-just build-python
+| the doc said | reality |
+| --- | --- |
+| `.github/workflows/wheels.yml` builds + publishes to PyPI | no such workflow in the repo |
+| `.github/workflows/test-build.yml` | no such workflow |
+| `just build-python`, `just publish-check`, `just publish-test`, `just publish` | none of these recipes exist |
+| `packages/colcon-cargo-ros2/` | the path is `packages/cli/colcon-cargo-ros2/` |
+| `build-tools/colcon-cargo-ros2/Cargo.toml` | no `build-tools/` directory |
 
-# Wheel will be in packages/colcon-cargo-ros2/target/wheels/
-```
+It also described wheels for macOS and Windows, which is not what this project
+targets — phase-260 dropped macOS as a host.
 
-#### Multi-Platform Build (GitHub Actions)
+What IS true: `packages/cli/colcon-cargo-ros2/` declares
+`build-backend = "maturin"`, so a wheel can be built locally with maturin
+directly. Nothing automates it, nothing publishes it, and no CI lane exercises
+it.
 
-The repository has two GitHub Actions workflows:
-
-**1. Release Build** (`.github/workflows/wheels.yml`):
-- Builds wheels for Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x64)
-- Builds for Python 3.8, 3.9, 3.10, 3.11, 3.12
-- Automatically publishes to PyPI when you push a git tag
-- Triggered by: git tags `v*` or manual workflow dispatch
-
-**2. Test Build** (`.github/workflows/test-build.yml`):
-- Quick build test on Linux, macOS, Windows
-- Triggered by: pull requests and pushes to `main`
-- Does NOT publish to PyPI
-
-To trigger a release build:
-```bash
-git tag -a v0.2.0 -m "Release 0.2.0"
-git push origin v0.2.0
-```
-
-The workflow will:
-1. Build ~30 wheel files for all platforms
-2. Build source distribution
-3. Upload all wheels to PyPI automatically
-
-### Publishing to PyPI
-
-```bash
-# 1. Build the wheel
-just build-python
-
-# 2. Validate the wheel
-just publish-check
-
-# 3. Upload to Test PyPI
-just publish-test
-
-# 4. Test installation from Test PyPI
-pip install --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple/ \
-    colcon-cargo-ros2
-
-# 5. Upload to production PyPI (requires confirmation)
-just publish
-```
-
-**Note**: The `just publish` command includes a safety confirmation prompt. Alternatively, you can use `twine` directly:
-
-```bash
-cd packages/colcon-cargo-ros2
-
-# Install twine if not already installed
-pip install twine
-
-# Upload to Test PyPI
-twine upload --repository testpypi target/wheels/*.whl
-
-# Upload to production PyPI
-twine upload target/wheels/*.whl
-```
+If wheel publishing is wanted again, it needs a workflow and recipes first — and
+this section rewritten from what they actually do, rather than restored from
+what these ones claimed.
 
 ### Post-Release
 

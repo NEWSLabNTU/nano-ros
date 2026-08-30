@@ -114,13 +114,17 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     (phase-340 W3): the RUN narrows to the same coordinates at fixture
     RESOLUTION time, so an out-of-lane fixture SKIPS rather than failing. Between
     #482 and W3 this lane required `lane=all` — the ~26 % was the FRESHNESS gate,
-    not the build. **Caveat, issue 0828: skipping needs ATTRIBUTION, and a row
-    whose `build_subdir` is shared fails CLOSED — so it is in the run set at
-    every lane while no lane builds it.** 47 rows share `build-workspace-
-    fixtures`. After a CORE-CRATE edit stales everything, `lane=tier2` leaves
-    those stale, `_lane-gate` still PASSES, and `test-all` reports ~190
-    stale-fixture failures. Until 0828 lands a core-crate diff needs
-    `lane=all`; a tier-2 green otherwise rides residue the lane never names.
+    not the build. **Skipping needs ATTRIBUTION** — a row whose
+    artifact root is shared fails CLOSED, so it is in the RUN set at every lane
+    whatever its coordinate. Issue 0828 (FIXED): the build omitted exactly those
+    rows, so after a core-crate edit `lane=tier2` left them stale, `_lane-gate`
+    PASSED, and `test-all` reported ~190 stale-fixture failures — green only on
+    a machine carrying older `lane=all` residue. `--coords-from` now omits a row
+    only if the run could have skipped it too, which moved tier 2 from 114 to
+    142 of 258 rows. Bound by
+    `lane_build_covers_run::every_unskippable_row_is_in_its_lane_build`, which
+    checks MEMBERSHIP: its first version compared counts (114 >= 28) and passed
+    the mutation it existed to catch.
   - `just ci matrix-nightly` — the pairwise cover (~70 %). Where the
     platform×language and rmw×language classes actually surface (0268/0245 sizes
     headers, 0332 freestanding headers, 0331 vtable ABI). Tier 2 costs a day of
