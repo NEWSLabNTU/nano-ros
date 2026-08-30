@@ -973,11 +973,16 @@ check-board-cargo-config-applied:
     # drift this phase exists to remove.
     set -euo pipefail
     nros="packages/cli/target/release/nros"
-    if [ ! -x "$nros" ]; then
+    # ABSENT and STALE are one verdict: this lane is contractually source-free
+    # and CLI-free, so it cannot demand a CLI, and asserting against a binary
+    # built from other sources is worse than not asserting. One restaled stamp
+    # used to surface as three red gates naming one remedy.
+    # shellcheck source=scripts/build/cli-usable.sh
+    source scripts/build/cli-usable.sh
+    if ! nros_cli_usable "$nros"; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
-        nros_check_skip check-board-projections \
-            "no in-tree nros at $nros — build it: just setup-cli"
+        nros_check_skip check-board-projections "$nros_cli_unusable_reason"
         exit 0
     fi
     fail=0

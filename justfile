@@ -3277,6 +3277,72 @@ setup-cli:
     fi
     warn_stale_shadow
 
+# After a rebase / pull / stash — restore the derived state, in ORDER.
+#
+# The three steps below are each documented somewhere and the SEQUENCE is
+# documented nowhere, which is the whole cost. A rebase rewrites tracked files,
+# so it restales the CLI source stamp, and everything keyed on that stamp goes
+# with it. Getting the order wrong is not free: fixtures key on the CLI stamp,
+# so rebuilding fixtures BEFORE the CLI re-stales everything you just built.
+#
+# Paid four times in one session, each time as a different-looking failure:
+# three red `check-fast` gates (a stale CLI), a `nros sync` refusing on the 0409
+# pin guard (a stale resolver), and `check-issue-index` red (concurrent filings
+# on main). None of them says "you just rebased".
+#
+# What it deliberately does NOT do is touch submodules. AGENTS.md is explicit
+# that `git submodule update` is a HUMAN decision, because it discards work in a
+# submodule someone is mid-edit on — a worse failure than the one it prevents.
+# So divergence is REPORTED with the command, and you decide.
+#
+# Idempotent and safe to over-run: each step no-ops when its input is unchanged.
+[group("main")]
+post-rebase:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo "post-rebase: restoring derived state (CLI -> resolver -> index)."
+    echo ""
+    # 1. The CLI first. Fixtures key on its stamp, so anything built before it
+    #    would be stale the moment it relinks.
+    just setup-cli || exit 1
+    # 2. The resolver second. It and the CLI must agree on the play_launch pin
+    #    or `nros sync` refuses (issue 0409) — deep in a fixture build, not here.
+    just setup-launch-resolve || exit 1
+    # 3. The generated issue list. `merge=union` means concurrent filings on
+    #    main both land; the generator re-sorts and `check-issue-index` is the
+    #    backstop for whatever residue that leaves.
+    python3 scripts/gen-issue-index.py || exit 1
+    echo ""
+    # Submodules: REPORT, never update. See the note above.
+    # `+` and `-` are DIFFERENT states and only one of them is about a rebase.
+    #
+    #   +  the checkout is at a different commit than the pin — what a rebase
+    #      that moved a pointer leaves behind, and the actionable case.
+    #   -  uninitialised. Usually DELIBERATE here: RFC-0060 keeps play_launch's
+    #      layer-3 submodules uninitialised, and the qemu / agent / tracing
+    #      trees are provisioned on demand. Reporting those as a problem on
+    #      every run is how a message earns its way into being ignored.
+    moved="$(git submodule status --cached 2>/dev/null | grep -E '^\+' || true)"
+    uninit_n="$(git submodule status --cached 2>/dev/null | grep -cE '^-' || true)"
+    if [ -n "$moved" ]; then
+        echo "post-rebase: submodule checkout(s) at a different commit than the pin:"
+        printf '%s\n' "$moved" | sed 's/^/    /'
+        echo ""
+        echo "  NOT synced automatically — that would discard work in a submodule"
+        echo "  you may be mid-edit on (AGENTS.md). When you are sure the checkout"
+        echo "  holds nothing you need:"
+        echo "      git submodule update <path>"
+    else
+        echo "post-rebase: every initialised submodule matches its pin."
+    fi
+    if [ "${uninit_n:-0}" -gt 0 ]; then
+        echo "             ($uninit_n uninitialised — normal; init only what you build.)"
+    fi
+    echo ""
+    echo "post-rebase: done. Fixtures are NOT rebuilt — \`just check-tier-preconditions\`"
+    echo "             reports what the tier you are about to run still needs."
+
+
 # Build the launch-resolution helper (issue 0285).
 #
 # `nros sync` needs a resolver that can execute Python for `.launch.py`

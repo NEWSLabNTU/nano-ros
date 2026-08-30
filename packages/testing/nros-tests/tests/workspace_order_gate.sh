@@ -53,8 +53,14 @@ NROS="$ROOT/packages/cli/target/release/nros"
 # The in-tree CLI is a BUILD PRODUCT, absent on the pristine worktree this
 # tier documents itself green on (issue 0650's list names it). Skip loudly —
 # the lane's closing report refuses to say "passed" over a skipped gate.
-[ -x "$NROS" ] || {
-    nros_check_skip "check-workspace-order" "no in-tree nros at packages/cli/target/release/nros (just setup-cli)"
+#
+# STALE counts as unusable, not as a failure — see the note in
+# `provider_index_gate.sh`; this lane does not own the CLI, and asserting
+# against a binary built from other sources describes a program no longer here.
+# shellcheck source=../../../../scripts/build/cli-usable.sh
+. "$ROOT/scripts/build/cli-usable.sh"
+nros_cli_usable "$NROS" || {
+    nros_check_skip "check-workspace-order" "$nros_cli_unusable_reason"
     exit 0
 }
 
