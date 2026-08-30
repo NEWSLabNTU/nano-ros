@@ -621,6 +621,7 @@ dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
  "nros-platform-mps2-an385",
+ "nros-zephyr-build",
 ]
 
 [[package]]
