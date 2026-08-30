@@ -300,14 +300,26 @@ jobs:
           # the URL is noise. Without this the only evidence that the backend
           # was misconfigured was sccache's own error text, which names the
           # symptom (`cache url ... not found`) and not the cause.
-          echo "ACTIONS_RESULTS_URL:   ${ACTIONS_RESULTS_URL:+SET}${ACTIONS_RESULTS_URL:-UNSET}"
-          echo "ACTIONS_RUNTIME_TOKEN: ${ACTIONS_RUNTIME_TOKEN:+SET}${ACTIONS_RUNTIME_TOKEN:-UNSET}"
+          # `${V:-UNSET}` expands to the VALUE when V is set, so the obvious
+          # one-liner prints "SET<the url>". Ask the question directly.
+          for v in ACTIONS_RESULTS_URL ACTIONS_RUNTIME_TOKEN; do
+            if [ -n "${!v:-}" ]; then echo "$v: SET"; else echo "$v: UNSET"; fi
+          done
 
           export SCCACHE_GHA_ENABLED=true
           export SCCACHE_CACHE_SIZE=2G
+          # The stats counters give a write-error COUNT and no reason. 777 of
+          # 777 writes failed on run 33294943815 with the backend started and
+          # both variables present, so the next question is WHY, and only the
+          # server's own log answers it. `warn` rather than `debug`: one line
+          # per distinct failure, not one per compilation unit.
+          export SCCACHE_ERROR_LOG=/tmp/sccache-server.log
+          export SCCACHE_LOG=warn
           if sccache --start-server >/tmp/sccache-start.log 2>&1; then
             {
               echo "SCCACHE_GHA_ENABLED=true"
+              echo "SCCACHE_ERROR_LOG=/tmp/sccache-server.log"
+              echo "SCCACHE_LOG=warn"
               # The two ACTIONS_* variables are NOT re-published here: the
               # github-script step above already put them in `$GITHUB_ENV`, and
               # one of them is a credential — writing it a second time widens
@@ -538,6 +550,13 @@ jobs:
           # `::warning::` and no measurement at all. Same shape as the export
           # bug above: the diagnostic excluded the case it existed for.
           command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+          # A non-zero `Cache write errors` above is a count with no cause. The
+          # server log carries the actual transport/HTTP error; dedupe it, since
+          # one root cause repeats once per compilation unit.
+          if [ -s /tmp/sccache-server.log ]; then
+            echo "--- sccache server log (deduped) ---"
+            sort /tmp/sccache-server.log | uniq -c | sort -rn | head -25
+          fi
 
       - name: just check decoupling (advisory until Phase 104.A)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
