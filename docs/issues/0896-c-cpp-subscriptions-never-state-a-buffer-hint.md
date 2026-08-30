@@ -390,6 +390,49 @@ case it was always supposed to be, not the common one.
 6. **Thread the RFC-0033 `cap` into the schema emit** so a field bounded only in
    `nros-codegen.toml` stops reading as unbounded. Same test, extended.
 
+## Layer 6 is TWO bounds, not one — correction found while implementing
+
+Layer 6 said: thread the RFC-0033 `cap` into the schema emit so a field bounded
+only in `nros-codegen.toml` stops reading as unbounded. That is half right and
+the wrong half is dangerous.
+
+A `cap` bounds OUR STORAGE. `"…/Shapes.text" = { cap = 32 }` emits
+`char text[32]` in the generated C struct. So:
+
+* **Transmit** — we physically cannot serialize more than 32 bytes of that
+  field, so the cap IS a real bound on what this image emits. Legitimate input
+  to a publish-buffer size.
+* **Receive** — a remote ROS publisher is bound by the `.msg`, not by our
+  config, and may send 200 bytes. The cap says nothing about incoming wire size.
+  Sizing a receive buffer from it reintroduces exactly the drop this issue
+  exists to stop.
+
+**Consequence: `MAX_SERIALIZED_SIZE_XCDR*` cannot serve both consumers once
+caps are honoured.** They are currently one constant used by the publish helper,
+which is safe only because caps are NOT yet threaded. The moment they are, the
+transmit number and the receive number are genuinely different values and need
+different names — `..._TX_MAX_SERIALIZED_SIZE_XCDR1` (caps honoured) and
+`..._RX_MAX_SERIALIZED_SIZE_*` (IDL bounds only).
+
+This is the same mistake as emitting one maxed value across encodings, one
+level up: a single number serving two consumers with different questions. It is
+recorded before implementation rather than after, because the failure it
+produces is a silently undersized receive buffer, which is the original defect.
+
+## Layer 4 cannot pass the hint yet, and should ship anyway
+
+`nros_cpp_subscription_register` takes ten flat arguments and has **no slot for
+a buffer hint**. So a generated `_subscribe` helper can deliver the one-token
+ergonomics — type name and type hash bound to a single spelling, a shorter call,
+no drift — but not the buffer fix, until the register gains an options struct
+(issue 0808's precedent, and the ABI change the UX rewrite was pleased to avoid;
+it turns out to be needed after all, just not for the reason first given).
+
+It should still land: the drift hazard it removes is real and independent of the
+hint, and the helper is where the hint goes once the slot exists. But the issue
+title is about the buffer, and a `_subscribe` helper alone does not fix it —
+saying otherwise would overclaim.
+
 ## Not to be confused with
 
 Issue 0841, fixed: a hint landing between the small block size and the size

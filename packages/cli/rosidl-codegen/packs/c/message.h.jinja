@@ -131,6 +131,15 @@ const nros_message_type_t* {{ struct_name }}_get_type_support(void);
 /// `nros-codegen.toml`. "could not be resolved" means the bound was NOT
 /// computed, because a nested type was not reachable; that is a search-path
 /// problem, not a property of the message. Issue 0896.
+
+/* issue 0896 layer 5 -- naming the size constant of an unbounded type is a
+   deliberate error, and this makes the compiler SAY SO. Without it the
+   constant is simply absent and the user gets "undeclared identifier", which
+   names neither the type nor the member that costs it the bound. */
+#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR1 \
+    NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header
+#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR2 \
+    NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header
 {% endif %}
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the

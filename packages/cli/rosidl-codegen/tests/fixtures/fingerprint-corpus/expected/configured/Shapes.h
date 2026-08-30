@@ -131,6 +131,15 @@ const nros_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
 /// computed, because a nested type was not reachable; that is a search-path
 /// problem, not a property of the message. Issue 0896.
 
+/* issue 0896 layer 5 -- naming the size constant of an unbounded type is a
+   deliberate error, and this makes the compiler SAY SO. Without it the
+   constant is simply absent and the user gets "undeclared identifier", which
+   names neither the type nor the member that costs it the bound. */
+#define FINGERPRINT_CORPUS_MSG_SHAPES_MAX_SERIALIZED_SIZE_XCDR1 \
+    NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header
+#define FINGERPRINT_CORPUS_MSG_SHAPES_MAX_SERIALIZED_SIZE_XCDR2 \
+    NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header
+
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the
 /// type's own bound where one exists, and from `NROS_PUB_BUFFER_SIZE`
