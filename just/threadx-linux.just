@@ -9,8 +9,24 @@ default:
 # Does NOT build example binaries — use `just threadx_linux build-examples` for that.
 [group("setup")]
 setup:
-    nros setup threadx-linux
-    @"{{justfile_directory()}}/tools/host-env.sh" threadx
+    #!/usr/bin/env bash
+    # Every RMW this platform's lane BUILDS, not just zenoh.
+    #
+    # `nros setup <board>` takes `--rmw`'s zenoh default, so a lane that also
+    # builds a cyclonedds coordinate never got its host tools — the freertos
+    # nightly died at cmake configure with `idlc (Cyclone DDS IDL compiler, a
+    # host tool) not found`. `[rmw.cyclonedds]` declares exactly what that
+    # needs and calls itself "a complete provisioner"; nothing requested it.
+    #
+    # The backend list is DERIVED from `examples/fixtures.toml`, not written
+    # here, so it cannot drift from the coordinates the lane actually builds.
+    # A SHEBANG recipe: `just` runs each line of a line-based recipe in its
+    # own shell, so a sourced helper does not survive to the next line — and
+    # the default shell is `sh`, which has no `source` at all.
+    set -euo pipefail
+    source scripts/build/platform-rmws.sh
+    nros_setup_board_rmws threadx-linux threadx-linux
+    "{{justfile_directory()}}/tools/host-env.sh" threadx
 
 # Diagnose ThreadX Linux install status (read-only).
 [group("setup")]
