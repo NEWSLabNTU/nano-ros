@@ -89,5 +89,6 @@ fails if this block drifts.
 - **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
 - **#0931** (build, api) — `MODEL` has no users and should be retired; `LAUNCH default` is ceremony on 26 entries See `0931-*`.
+- **#0931** (build, api) — `nano_ros_entry` has eleven arguments; four have no users and three restate the bringup See `0931-*`.
 
 <!-- END GENERATED open-issue list -->
