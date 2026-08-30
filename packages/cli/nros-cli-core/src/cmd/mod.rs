@@ -33,6 +33,7 @@ pub mod metadata;
 pub mod model_path;
 pub mod new;
 pub mod new_entry;
+pub mod new_node;
 pub mod new_platform;
 pub mod new_system;
 pub mod plan;

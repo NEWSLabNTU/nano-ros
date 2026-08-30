@@ -105,7 +105,7 @@ fast-serial: \
     infra-queryable-counts \
     rmw-force-link-anchor rmw-required-slots rmw-slot-table board-tiers tier-priority-plan \
     subtree-guard \
-    leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots orphan-generated-stamp generated-schema-coverage \
+    leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots host-platform-vocabulary orphan-generated-stamp generated-schema-coverage \
     cbindgen-pin cbindgen-headers nuttx-shared-tree-headers nuttx-libc-struct-sizes source-manifest \
     nested-workspace-excludes nuttx-links-snapshot \
     board-cargo-config-applied staleness-probe-exemptions \
@@ -3235,6 +3235,12 @@ infra-queryable-counts:
 [private]
 no-tracked-workspace-roots:
     @python3 scripts/check-no-tracked-workspace-roots.py
+
+# `native` is a ROLE (host build); `posix` and `linux` are two REACHES and a
+# board has one. See CLAUDE.md "Naming".
+[private]
+host-platform-vocabulary:
+    @python3 scripts/check-host-platform-vocabulary.py
 
 # issue 0834 — a per-build sizes header must never lose its `.stamp` twin.
 #

@@ -94,75 +94,8 @@ cd "$WS"
 echo "==> nros new system demo_bringup"
 nros new system demo_bringup --component-name talker_pkg --into src >/dev/null
 
-# The node package, by hand and deliberately.
-#
-# `nros new <name> --platform native` makes a standalone RUNNABLE project — it
-# pins a board and a platform port, which is right for what it is and wrong for
-# a package an entry links onto a different platform. A node package is
-# board-agnostic: one `nros` dep, `alloc` + `rmw-cffi`, nothing else. That is
-# what `examples/workspaces/rust/src/talker_pkg` carries, and there is no verb
-# that emits it — so this writes the minimum rather than pretending otherwise.
-mkdir -p src/talker_pkg/src
-cat > src/talker_pkg/package.xml <<'XML'
-<?xml version="1.0"?>
-<package format="3">
-  <name>talker_pkg</name>
-  <version>0.1.0</version>
-  <description>Node package for the two-tree check.</description>
-  <maintainer email="dev@example.com">dev</maintainer>
-  <license>Apache-2.0</license>
-</package>
-XML
-cat > src/talker_pkg/Cargo.toml <<'TOML'
-[package]
-name = "talker_pkg"
-version = "0.1.0"
-edition = "2024"
-publish = false
-
-[lib]
-crate-type = ["rlib"]
-
-# Board- and RMW-agnostic, like every node package: `alloc` is the universal
-# baseline and `rmw-cffi` is the vtable seam. The entry chooses the platform.
-[dependencies]
-nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
-TOML
-cat > src/talker_pkg/src/lib.rs <<'RS'
-#![no_std]
-
-//! Minimal node package for the two-tree check.
-//!
-//! It declares a node that creates nothing. What is under test here is WHERE
-//! the three trees are, not what the nodes do — so this is the smallest thing
-//! that still exercises the real seam: `nros::node!` emits the free
-//! `register()` the entry's `nros::main!` calls, and a signature mismatch here
-//! is a compile error in generated code, which is exactly the failure a node
-//! package must not be able to cause.
-
-use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeResult};
-
-pub struct Talker;
-
-impl Node for Talker {
-    const NAME: &'static str = "talker";
-    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
-
-    fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {
-        Ok(())
-    }
-}
-
-impl ExecutableNode for Talker {
-    type State = ();
-
-    fn init() -> Self::State {}
-
-    fn on_callback(_state: &mut Self::State, _cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
-}
-
-nros::node!(Talker);
-RS
+echo "==> nros new node talker_pkg"
+nros new node talker_pkg >/dev/null
 
 echo "==> nros new entry zephyr_entry --platform zephyr"
 nros new entry zephyr_entry --platform zephyr >/dev/null

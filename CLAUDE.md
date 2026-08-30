@@ -42,6 +42,18 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | Verify the book's setup flow on a pristine host | `just probe bootstrap` — runs the `probe=NN`-tagged book blocks in a clean container (`scripts/probe/`, issue 0204) |
 
 ## Naming
+- **`native` / `posix` / `linux` are THREE DIFFERENT CLAIMS, never synonyms.**
+  - **native** — the build runs on the HOST, whatever that is (Linux, macOS, BSD).
+  - **posix** — the build works on any POSIX-compliant system.
+  - **linux** — the build works ONLY on Linux. Say this when something needs
+    `epoll`/`eventfd`/`signalfd`/`/proc`, and not otherwise.
+  They were used interchangeably: the host board descriptor read
+  `names = ["linux", "native", "posix"]`, asserting all three of one thing.
+  `linux` was the false member — nothing in `nros-platform-posix` is Linux-only
+  (its one `__linux__` picks `MSG_NOSIGNAL` and has a portable `#else`) — and
+  dropping it cost nothing: `board = "linux"` had ZERO uses against 77 for
+  `native`. Gate: `check-host-platform-vocabulary`. **Still misnamed and not yet
+  renamed: the crate `nros-board-linux` (98 files) has nothing Linux-specific.**
 - **nano-ros** — project name (prose, docs)
 - **nros** — code shorthand (crates, Rust/C idents, `CONFIG_NROS_*`)
 - **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nros_generate_interfaces()`)

@@ -27,7 +27,9 @@
       first — `check-provider-announcements.py` compares them, because two
       spellings of one fact drift.
     -->
-    <nano_ros_provides kind="board" name="linux"/>
+    <!-- `native` (runs on the HOST) and `posix` (any POSIX system) are two
+         true statements about this board. `linux` was a third, and false:
+         nothing here is Linux-only. See CLAUDE.md "Naming". -->
     <nano_ros_provides kind="board" name="native"/>
     <nano_ros_provides kind="board" name="posix"/>
   </export>
