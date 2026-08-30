@@ -1,17 +1,36 @@
 # Phase 381 — read the ROS graph, which we are already visible in
 
-**Status (2026-08-30). W1–W7 LANDED.** Twelve `rmw` graph slots produced,
-reachable from Rust, C and C++; zenoh answers all twelve, Cyclone answers
-`get_node_names`; XRCE degrades to `UNSUPPORTED` and that is TESTED rather than
-asserted. `check-rmw-slot-producers`: produced 42 -> 53, inert 25 -> 14.
+**Status (2026-08-30). W1–W7 LANDED, and LIVE INTEROP now PASSES — the phase
+meets its own acceptance.** Twelve `rmw` graph slots produced, reachable from
+Rust, C and C++; zenoh answers all twelve, Cyclone answers `get_node_names`;
+XRCE degrades to `UNSUPPORTED` and that is TESTED rather than asserted.
+`check-rmw-slot-producers`: produced 42 -> 53, inert 25 -> 14.
 `check-api-parity`: every divergence carries a ledger entry.
 
-**NOT done, and it is the gap that matters: LIVE INTEROP.** Nothing here proves
-a native `rmw_zenoh_cpp` node is discovered, or that `ros2 node list` and our
-`get_node_names()` agree. Every verification so far is against our own builders,
-our own parser and our own vtable. The acceptance criteria below still need a
-router and a real ROS 2 node, and they need the settling window Design note 3
-describes — written as a single comparison they would be a flaky test.
+Measured against a stock `demo_nodes_cpp talker` on `rmw_zenoh_cpp`, in the
+repo's `ros2` distrobox on its own tree: our `get_node_names()` reports
+`/talker`, our `get_topic_names_and_types()` reports `/chatter`,
+`/parameter_events` and `/rosout`, and `ros2 node list` reports ours — both
+directions, `probe_rc=0`. `graph_interop.rs` is the committed form of that
+comparison.
+
+Getting there took issue 0903, and the lesson is the one the phase doc's own
+"NOT done" paragraph predicted: every check up to that point tested our code
+against our own builders, our own parser and our own vtable, and the feature did
+not work. The mechanism was wrong underneath the defects — `z_liveliness_get` is
+an INTEREST, and a token reaches a get's callback only when the router tags its
+declaration with that interest id, so a sweep saw an arbitrary handful of the
+domain's tokens. A standing liveliness SUBSCRIBER with history replaced it.
+
+**Still open, beyond acceptance:**
+
+* **Cyclone's graph reader has never run live.** `native-graph-rust-cyclone-r2n`
+  exists in `interop::CELLS` and has never been executed; W5's reader is
+  verified against our own builders only, which is exactly the state zenoh was
+  in before 0903.
+* **Ten of the twelve slots are unproven live.** Only `get_node_names` and
+  `get_topic_names_and_types` have been measured against a real peer. The
+  service forms, the counts and the six by-node forms are still self-verified.
 
 **Superseded status (2026-08-29): UNBLOCKED — the bounded-memory decision does
 not have to be made, because the buffer it was about ALREADY EXISTS and is

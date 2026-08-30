@@ -6,12 +6,18 @@
 //! Phase-381 shipped twelve `rmw` graph slots: produced, reachable from Rust, C
 //! and C++, with mutation-tested unit coverage and a clean `check-api-parity`.
 //! Every one of those checks tested our code against our own builders, our own
-//! parser and our own vtable — and the feature did not work. Issue 0903 was
-//! THREE stacked defects (a drain restarting on the first reply rather than the
-//! finished sweep; a runtime that dispatched exactly one of eleven graph
-//! methods; a `collect` flag set AFTER the query went on the wire, so every
-//! reply took the single-response path), and no unit test could see any of
-//! them, because each one only manifests against a real peer.
+//! parser and our own vtable — and the feature did not work.
+//!
+//! Issue 0903 was several stacked defects (a drain restarting on the first
+//! reply rather than the finished sweep; a runtime that dispatched exactly one
+//! of eleven graph methods; a `collect` flag set AFTER the query went on the
+//! wire) sitting on top of a MECHANISM that could not work at all:
+//! `z_liveliness_get` is an INTEREST, and a token reaches a get's callback only
+//! when the router tags its declaration with that interest id, so a sweep saw
+//! an arbitrary handful of the domain's tokens. The fix was a standing
+//! liveliness SUBSCRIBER with history — a graph cache, not a question asked
+//! repeatedly. No unit test could see any of it, because none of it manifests
+//! except against a real peer.
 //!
 //! So the assertion here is deliberately the one thing a self-contained test
 //! cannot make: a nano-ros node enumerates a live `rmw_zenoh_cpp` peer, and
