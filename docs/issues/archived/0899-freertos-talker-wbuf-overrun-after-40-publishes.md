@@ -2,7 +2,7 @@
 id: 899
 title: "The FreeRTOS C talker dies mid-run inside zenoh-pico's write buffer —
   two different asserts, both after tens of successful publishes"
-status: open
+status: resolved
 type: bug
 area: rmw, boards
 related: [issue-0877, issue-0135]
@@ -407,6 +407,10 @@ first. The crash is fixed; the session churn is not.
 
 ## Acceptance
 
-* The talker survives a sustained run with a peer attached.
-* Whatever is corrupted is named, rather than surfacing as two unrelated
-  assertions.
+* ~~The talker survives a sustained run with a peer attached.~~ Met: 327
+  publishes over 330 s with a listener attached, no assert. (Sustained runs were
+  only possible once [[issue-0906]] stopped the session tearing down every 20 s.)
+* ~~Whatever is corrupted is named, rather than surfacing as two unrelated
+  assertions.~~ Met: one use-after-free, two victims — `_wbuf` freed under
+  `__unsafe_z_prepare_wbuf`, and `_mutex_tx` freed under
+  `xQueueTakeMutexRecursive`.
