@@ -283,3 +283,50 @@ Any zenoh-over-serial image whose executor is busy enough to hold a timeslice
 loses frames silently. Observed as session expiry at `2 x Z_TRANSPORT_LEASE`
 ([issue 0839](0839-action-image-session-expires-every-20s.md)), because the
 dropped frames are the router's keepalives.
+
+## Step 3 measured on the shipping pin: the ISR does not earn its place
+
+Interrupt-driven RX is implemented and now correct -- see the rebind fix below --
+but it does not improve the failure this issue is about, so
+`CONFIG_UART_INTERRUPT_DRIVEN` stays `n`.
+
+Same harness for every row: fresh router, fresh board boot, ten sequential
+`ros2 action send_goal /fibonacci` with order 5.
+
+| zenoh-pico pin | RX path              | goals    | router errors |
+| -------------- | -------------------- | -------- | ------------- |
+| 1.7.2 (ships)  | polled               | **8/10** | 0             |
+| 1.7.2 (ships)  | ISR + rebind fix     | **6/10** | 0             |
+| 1.10           | polled               | 8/10     | 0             |
+| 1.10           | ISR + rebind fix     | 0/7      | 3             |
+| 1.10           | ISR, no rebind fix   | 0/10     | 80            |
+
+Read carefully:
+
+* **The ISR is not better on the pin we ship.** 6/10 against 8/10 polled, and it
+  costs 1096 bytes of RAM in an image already at 94.4 %.
+* **6 vs 8 out of 10 is not a strong separation.** Two failures per arm. This
+  supports "the ISR is not better", NOT "the ISR is worse". Thirty or more goals
+  per arm would be needed to claim the latter.
+* **The catastrophic rows are 1.10, not the ISR design.** The same ISR code with
+  the same fix scores 6/10 on 1.7.2 and 0/7 on 1.10. That isolates the remaining
+  defect to the 1.10 port, so it belongs with the migration branch and is not
+  this issue's problem.
+
+### The rebind fix is worth landing regardless
+
+`_z_open_serial_from_dev` calls `uart_configure()` immediately before
+`_z_serial_rx_bind`, on every open, and a reconnect is an open. On the mcux
+LPUART that reinitialises the peripheral and clears the RX interrupt enable,
+while the bind returned early for an already-bound device and skipped
+`uart_irq_rx_enable`. RX was armed on the first open and never again, so a single
+dropped session left the receiver dead for the life of the image.
+
+That is a real bug on the shipping pin, independent of whether the ISR is ever
+enabled, and it is inert while the knob is off. Its effect is visible in the
+table: 80 router reconnect errors before, 3 after on 1.10, 0 on 1.7.2.
+
+Diagnosed with counters in `.bss` read over SWD, because RTT kills the session
+(issue 0881). Those counters also refuted the ring-overflow theory outright:
+high-water 19 bytes of 1024, zero drops, while 145 bytes arrived in total and the
+reader timed out 75 times.
