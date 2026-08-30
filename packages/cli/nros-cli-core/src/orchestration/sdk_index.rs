@@ -249,12 +249,137 @@ impl SystemDep {
 /// `libgcrypt-config` script on Ubuntu 22.04, never both), so declaring several
 /// is correct usage rather than ambiguity. `336eb1724` relaxed the check and
 /// left this sentence saying the opposite.
+/// A version requirement on a probed command (phase-404 W1).
+///
+/// BOTH `min` and `exact` exist, and the pair is the point. A floor is right
+/// where newer is fine — `openocd` 0.13 would serve a 0.12 pin. It is WRONG
+/// where the pin is an interop contract: our cyclonedds must be the cyclonedds
+/// ROS ships (issue 0507), and exceeding that breaks interop exactly as surely
+/// as falling short. A single `min` would have quietly licensed the upgrade
+/// that issue 0609 measured going wrong for the zenoh router.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VersionConstraint {
+    /// Args that make the command print its version. `--version` by default,
+    /// which is right for every tool in the index today.
+    #[serde(default)]
+    pub run: Option<String>,
+    /// Lowest acceptable version (inclusive).
+    #[serde(default)]
+    pub min: Option<String>,
+    /// The ONLY acceptable version, compared on the components `exact` names —
+    /// `exact = "0.10"` accepts 0.10.5. Use where the pin is a contract.
+    #[serde(default)]
+    pub exact: Option<String>,
+    /// Escape hatch: a literal that must appear immediately BEFORE the version
+    /// in the output, when the default "first version-shaped token" is wrong.
+    ///
+    /// Deliberately not a regex. phase-404 W1 chose a known-shape default over
+    /// per-entry patterns because a regex per entry is a second place for the
+    /// index to drift; this covers the exception without opening that door.
+    #[serde(default)]
+    pub after: Option<String>,
+}
+
+/// The first version-shaped token in `text`, or the first after `marker`.
+///
+/// "Version-shaped" is a digit run containing at least one dot, which is what
+/// every tool in this index prints: `Open On-Chip Debugger 0.12.0-g9ea7f3d`,
+/// `QEMU emulator version 11.0.0`, `arm-none-eabi-gcc (Arm GNU Toolchain
+/// 13.2.rel1 ...)`. Trailing non-numeric junk (`-g9ea7f3d`, `.rel1`) is left
+/// behind by construction, since the scan stops at the first byte that is
+/// neither digit nor dot.
+#[must_use]
+pub fn extract_version(text: &str, marker: Option<&str>) -> Option<String> {
+    let hay = match marker {
+        Some(m) => {
+            let at = text.find(m)?;
+            &text[at + m.len()..]
+        }
+        None => text,
+    };
+    let bytes = hay.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !bytes[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        // A version token must not start mid-number (`arm-13.7` -> `13.7`, but
+        // only once the `-` has ended the previous run).
+        let start = i;
+        let mut j = i;
+        while j < bytes.len() && (bytes[j].is_ascii_digit() || bytes[j] == b'.') {
+            j += 1;
+        }
+        let tok = &hay[start..j];
+        // Trailing dot is punctuation, not part of the version.
+        let tok = tok.trim_end_matches('.');
+        if tok.contains('.') {
+            return Some(tok.to_string());
+        }
+        i = j.max(i + 1);
+    }
+    None
+}
+
+/// Compare dotted numeric versions component-wise. Missing components are 0,
+/// so `0.12` and `0.12.0` compare equal.
+#[must_use]
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let parts = |v: &str| -> Vec<u64> {
+        v.split('.')
+            .map(|p| p.parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let (x, y) = (parts(a), parts(b));
+    for i in 0..x.len().max(y.len()) {
+        let ord = x
+            .get(i)
+            .copied()
+            .unwrap_or(0)
+            .cmp(&y.get(i).copied().unwrap_or(0));
+        if ord != std::cmp::Ordering::Equal {
+            return ord;
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+/// Does `found` satisfy the constraint? `exact` compares only the components it
+/// names, so `exact = "0.10"` accepts `0.10.5` and rejects `0.11.0`.
+#[must_use]
+pub fn version_satisfies(found: &str, c: &VersionConstraint) -> bool {
+    if let Some(want) = &c.exact {
+        let depth = want.split('.').count();
+        let trimmed: String = found.split('.').take(depth).collect::<Vec<_>>().join(".");
+        if version_cmp(&trimmed, want) != std::cmp::Ordering::Equal {
+            return false;
+        }
+    }
+    if let Some(floor) = &c.min
+        && version_cmp(found, floor) == std::cmp::Ordering::Less
+    {
+        return false;
+    }
+    true
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckProbe {
     /// `command -v <cmd>` succeeds.
     #[serde(default)]
     pub cmd: Option<String>,
+    /// phase-404 W1 — is the found copy NEW ENOUGH? Only meaningful beside
+    /// `cmd`, which is what it runs.
+    ///
+    /// Every other field here answers "is it present". That is the wrong
+    /// question the moment a prerequisite can come from more than one provider:
+    /// Ubuntu 22.04 has `openocd`, at 0.11.0 against a 0.12.0 pin, so presence
+    /// and satisfaction differ by a version nobody could express.
+    #[serde(default)]
+    pub version: Option<VersionConstraint>,
     /// A shared library the dynamic linker can find (`ldconfig -p` on Linux;
     /// skipped elsewhere — the entry reports `unknown` there).
     ///
@@ -1298,5 +1423,103 @@ mod prereq_tests {
     fn a_mistyped_field_is_an_error() {
         let e = toml::from_str::<SdkIndex>("[prereq.x]\naptt = [\"y\"]\n");
         assert!(e.is_err(), "a typo must not parse as an empty entry");
+    }
+
+    // ---- phase-404 W1: version constraints ----
+
+    /// Real `--version` output from the tools this index pins, captured on a
+    /// 22.04 host. A synthetic string would prove the parser handles the string
+    /// I imagined rather than the ones tools print.
+    #[test]
+    fn the_version_scan_reads_what_these_tools_actually_print() {
+        let cases = [
+            (
+                "Open On-Chip Debugger 0.12.0-g9ea7f3d (2026-08-30-10:21)",
+                "0.12.0",
+            ),
+            ("QEMU emulator version 11.0.0", "11.0.0"),
+            (
+                "GNU gdb (Arm GNU Toolchain 13.2.rel1 (Build arm-13.7)) 13.2.90.20231008-git",
+                "13.2",
+            ),
+            (
+                "arm-none-eabi-gcc (Arm GNU Toolchain 13.2.rel1 (Build arm-13.7)) 13.2.1 20231009",
+                "13.2",
+            ),
+            ("sccache 0.17.0", "0.17.0"),
+        ];
+        for (out, want) in cases {
+            assert_eq!(
+                extract_version(out, None).as_deref(),
+                Some(want),
+                "parsing {out:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_version_needs_a_dot_so_a_bare_year_is_not_one() {
+        // `genromfs 0.5.2` style is fine; a lone build number must not win.
+        assert_eq!(
+            extract_version("build 20231009 v1.2", None).as_deref(),
+            Some("1.2")
+        );
+        assert_eq!(extract_version("no version here", None), None);
+        // Trailing punctuation is not part of the token.
+        assert_eq!(
+            extract_version("version 1.2.", None).as_deref(),
+            Some("1.2")
+        );
+    }
+
+    #[test]
+    fn the_after_marker_picks_a_later_token() {
+        let out = "Foo 1.0 built against Bar 2.5";
+        assert_eq!(extract_version(out, None).as_deref(), Some("1.0"));
+        assert_eq!(extract_version(out, Some("Bar")).as_deref(), Some("2.5"));
+    }
+
+    #[test]
+    fn min_is_a_floor_and_missing_components_are_zero() {
+        let c = VersionConstraint {
+            min: Some("0.12".into()),
+            ..Default::default()
+        };
+        assert!(version_satisfies("0.12.0", &c), "0.12.0 meets a 0.12 floor");
+        assert!(version_satisfies("0.13.1", &c));
+        assert!(
+            !version_satisfies("0.11.0", &c),
+            "22.04's openocd must NOT satisfy"
+        );
+        // Numeric, not lexicographic: the bug a string compare would have.
+        let c10 = VersionConstraint {
+            min: Some("1.9".into()),
+            ..Default::default()
+        };
+        assert!(version_satisfies("1.10", &c10), "1.10 > 1.9 numerically");
+    }
+
+    /// `exact` compares only the components it names, so a pin that is a
+    /// CONTRACT (cyclonedds must be what ROS ships — issue 0507) accepts patch
+    /// releases of that line and rejects the next minor, which `min` would have
+    /// silently allowed.
+    #[test]
+    fn exact_pins_a_line_and_rejects_the_next_one() {
+        let c = VersionConstraint {
+            exact: Some("0.10".into()),
+            ..Default::default()
+        };
+        assert!(version_satisfies("0.10.5", &c));
+        assert!(version_satisfies("0.10.0", &c));
+        assert!(
+            !version_satisfies("0.11.0", &c),
+            "the next minor breaks the contract"
+        );
+        assert!(!version_satisfies("0.9.9", &c));
+    }
+
+    #[test]
+    fn no_constraint_is_satisfied_by_anything() {
+        assert!(version_satisfies("0.0.1", &VersionConstraint::default()));
     }
 }
