@@ -474,6 +474,28 @@ mod tests {
         );
     }
 
+    /// RX must never be smaller than TX. An undersized receive buffer drops
+    /// samples silently; an oversized transmit buffer only wastes stack. The
+    /// asymmetry in consequence is why the two constants exist and why this
+    /// direction is the one asserted.
+    #[test]
+    fn the_receive_bound_is_never_below_the_transmit_bound() {
+        for src in [
+            "int64 b\n",
+            "uint8 a\nint64 b\n",
+            "bool f\nfloat64 d\nstring<=8 s\n",
+            "int32[4] fixed\nuint16 u\n",
+        ] {
+            let m = parse_message(src).unwrap();
+            let x1 = bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup);
+            let x2 = bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_lookup);
+            if let (TypeBound::Bounded(tx), TypeBound::Bounded(other)) = (&x1, &x2) {
+                let rx = *tx.max(other);
+                assert!(rx >= *tx, "rx {rx} < tx {tx} for `{src}`");
+            }
+        }
+    }
+
     /// ROS IDL cannot express a cycle, so one means the resolver is
     /// inconsistent. Report it instead of recursing forever.
     #[test]
