@@ -134,6 +134,54 @@ lan9118 driver never calls the lwIP link-stat macros, so loss at exactly this
 layer is invisible to `lwip_stats`. Every pool below it reads clean while the
 NIC is dropping the tail of every burst.
 
+## The cliff, measured at the application
+
+Counting at the CONTROLLER's callbacks rather than anywhere below them (the ASI
+consumer builds these with `ASI_RX_COUNTERS`; `scripts/an536-rx-rate.sh`
+samples them twice to turn totals into a rate). Trajectory published at 10 Hz
+throughout, three small topics at 40 Hz each alongside, link paced, stock
+image:
+
+| trajectory | serialized | fragments | reaches the app | fresh? |
+| --- | --- | --- | --- | --- |
+| 10 points | 908 B | 1 | 2.6 Hz | yes |
+| 60 points | 5 308 B | 4 | 2.5 Hz | yes |
+| 72 points | 6 364 B | 5 | **2.1 Hz** | yes |
+| 88 points | 7 772 B | 6 | **0.8 Hz** | no |
+| 104 points | 9 180 B | 7 | 0.0 Hz | no |
+| 120 points | 10 588 B | 8 | 0.5 Hz | no |
+
+**The knee is between 5 and 6 fragments**, which is where the arithmetic said it
+would be: the usable FIFO is 9 024 B after the `can_receive` headroom, or six
+1440-byte frames. Five fragments fit and the topic is usable; six sit exactly on
+the boundary and it degrades; seven and it is gone.
+
+It is a cliff rather than a slope because the reader is RELIABLE and therefore
+delivers **in order**. A lost fragment does not cost one sample — it stalls the
+stream until repair, while newer complete samples queue behind it. So the
+transition from "a fragment occasionally goes missing" to "unusable" happens
+over a single fragment of payload.
+
+Two things follow that matter more than the specific numbers:
+
+* **The practical ceiling on this lane is ~5 fragments, about 7 KB.** An
+  Autoware trajectory is ~13 KB, roughly double. The topic was never going to
+  work here, and no amount of DDS tuning was going to change that.
+* **Freshness was never a separate problem above the network stack.** An
+  earlier section here concluded it was, on the grounds that a run measuring
+  0 % loss was still stale. That run's loss figure was an artifact (see the
+  caveat below); the rate curve shows freshness tracking fragment count
+  exactly, which is a network-stack story throughout.
+
+### A caveat on the 0 % loss readings
+
+The loss table below compares wire datagrams against the island's CUMULATIVE
+`ip.recv`, but the capture starts after boot, so boot traffic is counted by the
+island and not by the capture. That biases loss DOWNWARD and is how a
+"-0.3 %" appeared. Treat the near-zero entries as "not measurably lossy" rather
+than as zero, and prefer the rate curve above, which needs no such
+reconciliation.
+
 ## Measured with the link paced to 100 Mbps
 
 The lane can now be honest about the wire: `scripts/setup-tap.sh --rate 100mbit`
