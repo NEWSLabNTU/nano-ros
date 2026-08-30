@@ -25,7 +25,6 @@ nano_ros_entry(
     SOURCES src/main.c
     BOARD   native
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
-    LAUNCH  default
     LANG    c
     TYPED
     PANIC   platform

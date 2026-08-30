@@ -59,7 +59,6 @@ endif()
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../${NROS_ENTRY_BRINGUP}"
-    LAUNCH  default
     LANG    c
     TYPED
     PANIC   platform
