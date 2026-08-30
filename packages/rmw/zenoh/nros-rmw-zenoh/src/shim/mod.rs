@@ -757,6 +757,27 @@ impl Ros2Liveliness {
         key
     }
 
+    /// phase-381 / issue 0903 — the GRAPH CACHE keyexpr: every liveliness token
+    /// on a domain, both shapes.
+    ///
+    /// `**` matches any number of chunks, so this covers the 9-chunk node token
+    /// and the 13-chunk entity token alike — which no single-`*` pattern can.
+    ///
+    /// This width was tried once for the liveliness GET form and made things
+    /// worse there (two tokens arrived, none of them a node token), because a
+    /// get is an interest whose replies the router tags per interest id. A
+    /// SUBSCRIBER has no such indirection: it simply matches, and the measured
+    /// result is the whole graph rather than an arbitrary handful. Use this for
+    /// the cache and the chunk-exact patterns for anything still querying.
+    pub fn graph_keyexpr_wildcard<const N: usize>(domain_id: u32) -> heapless::String<N> {
+        let mut out = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut out,
+            format_args!("{}/{}/**", LIVELINESS_PREFIX, domain_id),
+        );
+        out
+    }
+
     /// phase-381 W3 — wildcard ENTITY liveliness keyexpr, all four kinds.
     ///
     /// NOTE (issue 0903): a `**` pattern was tried here to collapse this and

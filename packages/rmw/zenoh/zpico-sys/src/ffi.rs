@@ -821,6 +821,43 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// phase-381 / issue 0903 — start the standing graph cache (a liveliness
+    /// SUBSCRIBER with history), replacing the per-question sweep. Idempotent.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_graph_cache_start(
+        _session: *mut zpico_session_t,
+        _keyexpr: *const c_char,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// Stop the graph cache and release its subscriber. Idempotent.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_graph_cache_stop(_session: *mut zpico_session_t) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// How many tokens the graph cache holds; `out_dropped` receives how many
+    /// did not fit.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_graph_entry_count(
+        _session: *mut zpico_session_t,
+        _out_dropped: *mut u32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// Copy cached keyexpr `index` into `out`, NUL-terminated.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_graph_entry_at(
+        _session: *mut zpico_session_t,
+        _index: u32,
+        _out: *mut c_char,
+        _cap: usize,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
     /// The PURE half of `zpico_liveliness_entry`: index into a NUL-separated
     /// run. Split out so the walk is testable WITHOUT a live session, because
     /// this is where an off-by-one costs a WRONG keyexpr rather than a missing

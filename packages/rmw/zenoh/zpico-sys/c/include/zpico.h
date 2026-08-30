@@ -293,6 +293,38 @@ typedef void (*ZpicoQueryCallback)(const char *keyexpr,
  * the NUL, or a negative `ZPICO_ERR_*`.
  */
 /**
+ * The PURE half of `zpico_liveliness_entry`: index into a NUL-separated
+ * run. Reachable without a live session, which is why the graph cache
+ * reuses it to walk its snapshot instead of growing a second walk.
+ */
+/**
+ * phase-381 / issue 0903 — the GRAPH CACHE, which replaces the per-question
+ * liveliness sweep.
+ *
+ * A liveliness get is an INTEREST under the hood, and a token only reaches
+ * a get's callback when the router tags its declaration with that interest
+ * id. Measured against a live `rmw_zenoh_cpp` talker, two sweeps in flight
+ * did not both receive replies, and a single sweep saw 2-4 of the dozen
+ * tokens the talker declares — a different subset each run. A SUBSCRIBER
+ * with `history` is what `rmw_zenoh_cpp` uses for its own graph cache and
+ * removes the class: one standing declaration, current tokens delivered
+ * once, later changes pushed.
+ *
+ * Idempotent, so every graph entry point may call it without coordinating.
+ */
+/**
+ * Stop the cache and release the subscriber. Idempotent.
+ */
+/**
+ * How many tokens the cache holds, and how many did not fit.
+ */
+/**
+ * Copy cached keyexpr `index` into `out`, NUL-terminated. ONE entry per
+ * call, under the C side's lock — the cache is sized for a real ROS graph
+ * (tens of KB), which cannot live on an embedded caller's stack, and this
+ * keeps that capacity a fact about the C side alone.
+ */
+/**
  * The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
  * not a valid pool slot. Used to scope the Rust shim's process-global
  * service-buffer / reply-waker tables per session (issue 0376).
@@ -806,6 +838,31 @@ int32_t zpico_liveliness_entry(struct zpico_session_t *_session,
                                uint32_t _index,
                                char *_out,
                                size_t _cap);
+
+/**
+ * phase-381 / issue 0903 — start the standing graph cache (a liveliness
+ * SUBSCRIBER with history), replacing the per-question sweep. Idempotent.
+ */
+int32_t zpico_graph_cache_start(struct zpico_session_t *_session, const char *_keyexpr);
+
+/**
+ * Stop the graph cache and release its subscriber. Idempotent.
+ */
+int32_t zpico_graph_cache_stop(struct zpico_session_t *_session);
+
+/**
+ * How many tokens the graph cache holds; `out_dropped` receives how many
+ * did not fit.
+ */
+int32_t zpico_graph_entry_count(struct zpico_session_t *_session, uint32_t *_out_dropped);
+
+/**
+ * Copy cached keyexpr `index` into `out`, NUL-terminated.
+ */
+int32_t zpico_graph_entry_at(struct zpico_session_t *_session,
+                             uint32_t _index,
+                             char *_out,
+                             size_t _cap);
 
 /**
  * The PURE half of `zpico_liveliness_entry`: index into a NUL-separated

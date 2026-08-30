@@ -381,6 +381,53 @@ unsafe extern "C" {
         cap: usize,
     ) -> i32;
 
+    /// The PURE half of `zpico_liveliness_entry`: index into a NUL-separated
+    /// run. Reachable without a live session, which is why the graph cache
+    /// reuses it to walk its snapshot instead of growing a second walk.
+    pub fn zpico_entry_at(
+        buf: *const u8,
+        len: usize,
+        count: u32,
+        index: u32,
+        out: *mut core::ffi::c_char,
+        cap: usize,
+    ) -> i32;
+
+    /// phase-381 / issue 0903 — the GRAPH CACHE, which replaces the per-question
+    /// liveliness sweep.
+    ///
+    /// A liveliness get is an INTEREST under the hood, and a token only reaches
+    /// a get's callback when the router tags its declaration with that interest
+    /// id. Measured against a live `rmw_zenoh_cpp` talker, two sweeps in flight
+    /// did not both receive replies, and a single sweep saw 2-4 of the dozen
+    /// tokens the talker declares — a different subset each run. A SUBSCRIBER
+    /// with `history` is what `rmw_zenoh_cpp` uses for its own graph cache and
+    /// removes the class: one standing declaration, current tokens delivered
+    /// once, later changes pushed.
+    ///
+    /// Idempotent, so every graph entry point may call it without coordinating.
+    pub fn zpico_graph_cache_start(
+        session: *mut zpico_session_t,
+        keyexpr: *const core::ffi::c_char,
+    ) -> i32;
+
+    /// Stop the cache and release the subscriber. Idempotent.
+    pub fn zpico_graph_cache_stop(session: *mut zpico_session_t) -> i32;
+
+    /// How many tokens the cache holds, and how many did not fit.
+    pub fn zpico_graph_entry_count(session: *mut zpico_session_t, out_dropped: *mut u32) -> i32;
+
+    /// Copy cached keyexpr `index` into `out`, NUL-terminated. ONE entry per
+    /// call, under the C side's lock — the cache is sized for a real ROS graph
+    /// (tens of KB), which cannot live on an embedded caller's stack, and this
+    /// keeps that capacity a fact about the C side alone.
+    pub fn zpico_graph_entry_at(
+        session: *mut zpico_session_t,
+        index: u32,
+        out: *mut core::ffi::c_char,
+        cap: usize,
+    ) -> i32;
+
     /// The session's pool index (0..ZPICO_MAX_SESSIONS), or -1 if the handle is
     /// not a valid pool slot. Used to scope the Rust shim's process-global
     /// service-buffer / reply-waker tables per session (issue 0376).

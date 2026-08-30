@@ -203,15 +203,8 @@ pub struct ZenohSession {
     /// One query serves all four entity kinds — the kind chunk is wildcarded —
     /// rather than one query per slot, which would put four sweeps on the wire
     /// to answer four questions about the same graph.
-    query: Option<(GraphQuery, i32)>,
-    /// Drains served by the sweep in `query`, so a sweep that never reports
-    /// `done` cannot own the single slot forever.
-    ///
-    /// Issue 0903 measured exactly that deadlock: one `GRAPH_WILDCARD` line and
-    /// 98 identical drains — the entity sweep's dropper never fired, so the
-    /// node sweep never got a turn and `get_node_names` went from working to
-    /// empty. `collect_done` is the fast path; this is the floor under it.
-    query_polls: u32,
+    /// Whether the standing liveliness subscriber has been declared.
+    graph_cache_started: bool,
 }
 
 /// Which standing query a drain is reading — phase-381 W3.
@@ -248,12 +241,8 @@ fn entity_on_node(e: &Ros2LivelinessEntity<'_>, node: Option<(&str, &str)>) -> b
 /// Not a caller budget: `get_node_names` never blocks. This is the zenoh
 /// dropper's window, i.e. how long the slot keeps accepting replies before it
 /// is finished and restarted.
-/// Drains a single liveliness sweep may serve before it is retired regardless
-/// of whether its dropper ever fired — see `RmwSession::query_polls`.
-const GRAPH_QUERY_MAX_POLLS: u32 = 4;
-
-const GRAPH_QUERY_TIMEOUT_MS: u32 = 500;
-
+/// Bytes of the graph-cache snapshot a drain copies out of the C side.
+///
 /// Longest liveliness keyexpr this enumeration will read.
 ///
 /// A stack buffer, so it is bounded by construction. An entry longer than this
@@ -441,8 +430,7 @@ impl ZenohSession {
             wake_ctx: core::sync::atomic::AtomicPtr::new(core::ptr::null_mut()),
             entity_counter: portable_atomic::AtomicU32::new(1),
             domain_id: config.domain_id,
-            query: None,
-            query_polls: 0,
+            graph_cache_started: false,
         };
 
         if !config.node_name.is_empty() {
@@ -611,80 +599,37 @@ impl ZenohSession {
         which: GraphQuery,
         f: &mut dyn FnMut(&Ros2LivelinessEntity<'_>) -> bool,
     ) -> Result<(), TransportError> {
-        let handle = match self.query {
-            // A sweep for the OTHER shape is in flight. Do not start a second
-            // one — that is what starves both. Report empty; the next call
-            // after this sweep finishes starts ours.
-            Some((in_flight, _)) if in_flight != which => return Ok(()),
-            Some((_, h)) => h,
-            None => {
-                let key = match which {
-                    GraphQuery::Nodes => {
-                        Ros2Liveliness::node_keyexpr_wildcard::<256>(self.domain_id)
-                    }
-                    GraphQuery::Entities => {
-                        Ros2Liveliness::entity_keyexpr_wildcard::<256>(self.domain_id)
-                    }
-                };
-                #[cfg(feature = "std")]
-                if std::env::var_os("NROS_GRAPH_DUMP").is_some() {
-                    log::warn!("GRAPH_WILDCARD[{:?}] {}", which_label(which), key.as_str());
-                }
-                let mut buf = [0u8; 257];
-                let bytes = key.as_bytes();
-                if bytes.len() >= buf.len() {
-                    return Err(TransportError::InvalidArgument);
-                }
-                buf[..bytes.len()].copy_from_slice(bytes);
-                buf[bytes.len()] = 0;
-                let h = unsafe {
-                    zpico_sys::zpico_liveliness_collect_start(
-                        self.context.handle(),
-                        buf.as_ptr() as *const core::ffi::c_char,
-                        GRAPH_QUERY_TIMEOUT_MS,
-                    )
-                };
-                if h < 0 {
-                    return Err(TransportError::Unsupported);
-                }
-                self.query = Some((which, h));
-                self.query_polls = 0;
-                // Nothing can have arrived on a query started this instant.
-                // An empty answer is the honest one; the next call sees what
-                // landed meanwhile.
-                return Ok(());
-            }
-        };
+        // Used only to label the diagnostics below; the cache is shape-agnostic.
+        let _ = which;
+        // One standing cache serves every caller and every shape (issue 0903).
+        // `which` no longer selects a query — a node token and an entity token
+        // arrive through the same subscriber, and callers already filter by
+        // `EntityKind`. It survives only to label the diagnostics.
+        self.ensure_graph_cache()?;
 
-        let stored =
-            unsafe { zpico_sys::zpico_liveliness_entry_count(self.context.handle(), handle) };
-        // The discriminator any "the graph is empty" report needs: replies
-        // ARRIVED vs entries STORED. Equal-and-zero means the query matched
-        // nothing; arrived-without-stored means the collector dropped them.
-        // Guessing between those cost two wrong fixes on issue 0903.
+        let mut dropped: u32 = 0;
+        let count =
+            unsafe { zpico_sys::zpico_graph_entry_count(self.context.handle(), &mut dropped) };
+        if count < 0 {
+            return Err(TransportError::Unsupported);
+        }
+        let count = count as u32;
+
         #[cfg(feature = "std")]
         if std::env::var_os("NROS_GRAPH_DUMP").is_some() {
-            let arrived =
-                unsafe { zpico_sys::zpico_liveliness_get_count(self.context.handle(), handle) };
             log::warn!(
-                "GRAPH_COUNTS[{:?}] arrived={} stored={}",
+                "GRAPH_COUNTS[{:?}] cached={} dropped={}",
                 which_label(which),
-                arrived,
-                stored
+                count,
+                dropped
             );
         }
-        if stored < 0 {
-            // The slot was recycled underneath us; start again next call.
-            self.clear_query(which);
-            return Ok(());
-        }
 
-        for index in 0..stored as u32 {
+        for index in 0..count {
             let mut key = [0i8; GRAPH_KEYEXPR_MAX];
             let n = unsafe {
-                zpico_sys::zpico_liveliness_entry(
+                zpico_sys::zpico_graph_entry_at(
                     self.context.handle(),
-                    handle,
                     index,
                     key.as_mut_ptr() as *mut core::ffi::c_char,
                     key.len(),
@@ -729,52 +674,56 @@ impl ZenohSession {
                 break;
             }
         }
+        Ok(())
+    }
 
-        // NOTE the absence of a restart here, which is deliberate and was a
-        // defect twice over.
-        //
-        // Retiring a finished sweep belongs to `refresh_query`, called ONCE per
-        // public entry point — not per drain. `names_and_types` drains twice per
-        // reported name (find the next unreported name, then collect its types),
-        // so clearing at the end of a drain made the second pass restart the
-        // query the first pass had just used: the algorithm oscillated between
-        // "just started, empty" and "just cleared" and could never report a
-        // single topic. Measured against a live `rmw_zenoh_cpp` talker —
-        // `get_node_names` worked while `get_topic_names_and_types` returned
-        // zero against a node that plainly had topics.
+    /// Declare the standing liveliness subscriber, once.
+    ///
+    /// `**` covers both token shapes — a node token is 9 chunks and an entity
+    /// token 13 — which a single-`*` pattern cannot. That width failed for the
+    /// GET form, where the router tags replies per interest; it is the natural
+    /// fit for a subscriber, which simply matches.
+    fn ensure_graph_cache(&mut self) -> Result<(), TransportError> {
+        if self.graph_cache_started {
+            return Ok(());
+        }
+        let key = Ros2Liveliness::graph_keyexpr_wildcard::<256>(self.domain_id);
+        #[cfg(feature = "std")]
+        if std::env::var_os("NROS_GRAPH_DUMP").is_some() {
+            log::warn!("GRAPH_CACHE_START {}", key.as_str());
+        }
+        let mut buf = [0u8; 257];
+        let bytes = key.as_bytes();
+        if bytes.len() >= buf.len() {
+            return Err(TransportError::InvalidArgument);
+        }
+        buf[..bytes.len()].copy_from_slice(bytes);
+        buf[bytes.len()] = 0;
+        let rc = unsafe {
+            zpico_sys::zpico_graph_cache_start(
+                self.context.handle(),
+                buf.as_ptr() as *const core::ffi::c_char,
+            )
+        };
+        if rc < 0 {
+            return Err(TransportError::Unsupported);
+        }
+        self.graph_cache_started = true;
         Ok(())
     }
 
     /// Retire a FINISHED sweep so the next public call starts a fresh one.
     ///
     /// Called once per public entry point, after every drain that call needs.
-    /// Not inside `for_each_entity`: a multi-drain algorithm would then pull the
-    /// query out from under itself between passes.
-    /// Retire the standing sweep once it is finished — or once it has had its
-    /// turn.
+    /// Refresh the graph view before a public entry point reads it.
     ///
-    /// Ages the sweep that is IN FLIGHT, whichever shape the caller wants.
-    /// A caller asking for the other shape is precisely the one that needs the
-    /// slot freed, so keying the aging on `which` would let a stuck sweep block
-    /// the very caller waiting on it (issue 0903).
+    /// With the sweep gone there is nothing to retire: the subscriber keeps the
+    /// cache current on its own, so this only guarantees the subscriber EXISTS
+    /// before the first read. Kept as a named step because the call sites read
+    /// better for it, and because the ordering it used to protect — refresh once
+    /// per entry point, never inside a drain — is still the rule.
     fn refresh_query(&mut self, _which: GraphQuery) {
-        let Some((in_flight, handle)) = self.query else {
-            return;
-        };
-        // `collect_done` reports the DROPPER firing. `liveliness_get_check`
-        // reports the FIRST reply, which truncates a sweep to one poll window.
-        let done =
-            unsafe { zpico_sys::zpico_liveliness_collect_done(self.context.handle(), handle) };
-        self.query_polls = self.query_polls.saturating_add(1);
-        if done == 1 || self.query_polls >= GRAPH_QUERY_MAX_POLLS {
-            self.clear_query(in_flight);
-        }
-    }
-
-    fn clear_query(&mut self, which: GraphQuery) {
-        let _ = which;
-        self.query = None;
-        self.query_polls = 0;
+        let _ = self.ensure_graph_cache();
     }
 
     /// Count the entities of one kind on a topic — phase-381 W3.
