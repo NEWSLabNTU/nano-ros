@@ -134,6 +134,48 @@ lan9118 driver never calls the lwIP link-stat macros, so loss at exactly this
 layer is invisible to `lwip_stats`. Every pool below it reads clean while the
 NIC is dropping the tail of every burst.
 
+## Measured with the link paced to 100 Mbps
+
+The lane can now be honest about the wire: `scripts/setup-tap.sh --rate 100mbit`
+in the ASI consumer puts `netem rate` on the tap so frames are serialised at
+the speed the emulated PHY advertises, instead of arriving as fast as the host
+can write them. Everything below is measured with that on.
+
+**Pacing alone changes the headline failure.** The stock image — unchanged, 5 ms
+polled drain — goes from delivering the 8-fragment sample in 0-1 runs of 6 to
+delivering it in **6 of 6**. So "the fragmented sample never arrives" was in
+large part the unpaced emulator, not the product. That is a lane-fidelity
+finding and it belongs at the top of this issue rather than buried in it.
+
+**Packet loss below IP** (wire datagrams counted with `dumpcap -p`, against the
+island's cumulative `ip.recv`; the layer `LINK_STATS` cannot see because the
+lan9118 driver never calls those macros):
+
+| build | link | loss below IP |
+| --- | --- | --- |
+| stock, 5 ms poll | unpaced | 20.8 % |
+| stock, 5 ms poll | paced 100 Mbps | 11.8 % |
+| interrupt-driven RX | paced 100 Mbps | **-0.3 %, 13.3 %, 17.3 %, -0.3 %, 14.1 %** |
+
+The last row is the important one and it is **bimodal**, not an average: two
+runs of five lose essentially nothing, three lose 13-17 %, same binary. So
+interrupt-driven RX can reach zero loss on this lane and does not do so
+reliably, and reporting a mean here would invent a number that no run produced.
+
+**Freshness is NOT explained by loss.** The controller calls a trajectory stale
+after 0.5 s, and it is stale in every arm — stock or interrupt-driven, paced or
+not. Including a run that lost **0 %**. A sample that arrives with no packets
+dropped and is still not delivered at 2 Hz is not a network-stack problem, so
+the residual is above lwIP: Cyclone's receive/defrag path and the executor's
+take rate on an emulated Cortex-R52 carrying ~200 packets/s. That is issue 0889
+territory, not the driver's.
+
+**So the arithmetic below was half right.** The budget correctly says a 5 ms
+polled drain cannot service this FIFO at line rate, and interrupt-driven RX
+does remove the loss when it works. It does not follow — and the measurements
+do not support — that interrupt-driven RX makes the topic usable: it fixes the
+layer it addresses and exposes the next one.
+
 ## Diagnosis by intervention: widen the RX FIFO and it goes away
 
 **This is evidence, not a proposed change.** The lane keeps the stock FIFO —
@@ -283,8 +325,12 @@ at 691 us, and a ~50 us ISR has room to spare where a 5 ms poll has none.
 
 1. **Land interrupt-driven RX.** The budget says a 5 ms polled drain cannot
    service this NIC at line rate, so this is a defect on the part, not a lane
-   quirk. The prototype below is complete and boots; it needs review, not
-   discovery.
+   quirk, and paced measurements show it reaching zero loss where the poll does
+   not. The prototype below is complete and boots; it needs review, not
+   discovery. It is necessary, not sufficient — see the paced results above.
+5. **Then look above lwIP.** With the link paced and loss at zero the topic is
+   still not fresh, so the next constraint is Cyclone's receive path and the
+   executor's take rate, not the NIC.
 2. **Keep drain-first/wait-second** with `poll_interval_ms` as a ceiling
    regardless — strictly better than sleeping before ever looking, and it costs
    nothing on boards with no RX interrupt.
