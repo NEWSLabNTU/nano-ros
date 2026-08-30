@@ -2035,6 +2035,16 @@ tier-health *args:
 nightly-triage runs="3":
     @python3 scripts/ci/nightly-triage.py --runs {{runs}}
 
+# Which open PRs can never merge because nothing ever ran on them? A PR with
+# ZERO check suites is not failing and not pending — it is silently ineligible,
+# and auto-merge can sit armed against a check that was never requested (PR #71,
+# thirteen hours). Read-only; never gates (needs network + authenticated gh).
+#
+#   just pr-verdicts           just pr-verdicts --min-age 5
+[group("setup")]
+pr-verdicts *ARGS:
+    @bash scripts/ci/pr-verdict-check.sh {{ARGS}}
+
 # Triage a merge-queue ejection — answers the one question GitHub cannot:
 # is this MY defect, or is the check red for everybody? Re-queuing an unchanged
 # commit re-runs the same tree and fails the same way, one batch slot at a time.
