@@ -345,6 +345,56 @@ schema emit in `rosidl-codegen`. Threading it there is the work.
 absent from the ament index must not read as "unbounded" — but it is the RARE
 case it was always supposed to be, not the common one.
 
+## Decided 2026-08-30 — the three open questions
+
+**Q1 — the hint goes in an OPTIONS STRUCT, and `_with_info` is retired.**
+`nros_cpp_subscription_register` takes ten flat arguments and
+`_register_with_info` duplicates the whole list to add one thing; a hint
+parameter would make eleven and twelve. That is the trajectory issue 0808
+already called out on `create_session`, and its resolution is recorded in
+`rmw_entity.h`: take a NULLable trailing options struct, on the precedent that
+`rmw_publisher_options_t` / `rmw_subscription_options_t` solved exactly this for
+entities. One break, then every future axis is a field — and the `_with_info`
+twin folds back in as `want_info` instead of being extended in parallel.
+
+**Q2 — the compiler error names the TYPE and the FIELD. DONE.** The poison
+identifier was `NROS_NO_SIZE_BOUND__see_the_reason_above_in_this_header`, which
+named neither. It now carries both, and keeps the two failure kinds apart:
+
+```c
+#define FINGERPRINT_CORPUS_MSG_SHAPES_MAX_SERIALIZED_SIZE_XCDR1 \
+    NROS_UNBOUNDED__fingerprint_corpus_msg_shapes__field_text
+
+#define FINGERPRINT_CORPUS_MSG_NESTED_MAX_SERIALIZED_SIZE_XCDR1 \
+    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_Shapes
+```
+
+A C identifier cannot hold `.` or `(`, so a nested path flattens and the prose
+reason above it in the header carries what the identifier cannot.
+
+**Q3 — TX and RX DO differ, on two independent axes, so SPLIT them.**
+
+The question was whether they will genuinely have different values or treatment.
+They already do, before caps enter:
+
+1. **Encoding.** This stack WRITES XCDR1 only, so a transmit buffer needs the
+   XCDR1 number. A receive buffer must hold whatever arrives, and `CdrReader`
+   dispatches on the encapsulation id and accepts XCDR2, so it needs
+   `max(XCDR1, XCDR2)`. Measured on the corpus: **68 vs 64 for one type** — a
+   transmit buffer sized 68 wastes 4 bytes, a receive buffer sized 64 DROPS a
+   sample.
+2. **Caps.** `cap = 32` emits `char label[32]`, so this image cannot serialize
+   more than that field holds — a real TRANSMIT bound. A remote ROS publisher is
+   bound by the `.msg` and may send 200 bytes, so it is NOT a receive bound.
+   Under caps the two numbers diverge further, and one of them stops existing:
+   a capped unbounded field has a TX bound and NO RX bound at all.
+
+So they are different questions with different answers and different failure
+modes — an oversized TX buffer wastes stack, an undersized RX buffer drops
+samples silently. `..._TX_MAX_SERIALIZED_SIZE_XCDR1` (caps honoured, XCDR1) and
+`..._RX_MAX_SERIALIZED_SIZE` (IDL bounds only, max of both encodings), with the
+current `MAX_SERIALIZED_SIZE_XCDR*` pair becoming the TX side.
+
 ## Layers, in order
 
 1. **One traversal, two outputs** in `rosidl-codegen` (see the correction above
