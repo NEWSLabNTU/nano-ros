@@ -1143,7 +1143,7 @@ impl Session for ZenohSession {
 
     /// phase-381 W3 — enumerate nodes from the standing liveliness query.
     ///
-    /// Thin over [`Self::for_each_entity`]; the drain, the parse and the
+    /// Thin over `for_each_entity` (private); the drain, the parse and the
     /// warm-up policy live there because ten slots share them.
     fn get_node_names(
         &mut self,

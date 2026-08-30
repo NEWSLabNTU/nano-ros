@@ -63,225 +63,43 @@ CONTRACT = os.path.join(ROOT, "docs", "reference", "rmw-implementation-contract.
 #
 # Written against ROS 2 Humble's rmw. A symbol NOT in this table is a hard
 # failure under --check: that is the whole mechanism.
-MAP = {
-    # ---- Entity lifecycle: the vtable's core ----
-    "rmw_create_publisher": ("vtable", "create_publisher"),
-    "rmw_destroy_publisher": ("vtable", "destroy_publisher"),
-    "rmw_create_subscription": ("vtable", "create_subscription"),
-    "rmw_destroy_subscription": ("vtable", "destroy_subscription"),
-    "rmw_create_service": ("vtable", "create_service"),
-    "rmw_destroy_service": ("vtable", "destroy_service"),
-    "rmw_create_client": ("vtable", "create_client"),
-    "rmw_destroy_client": ("vtable", "destroy_client"),
-    # ---- Data plane ----
-    "rmw_publish": ("vtable", "publish"),
-    "rmw_take": ("vtable", "take"),
-    "rmw_take_with_info": ("vtable", "take_with_info"),
-    "rmw_take_sequence": ("vtable", "take_sequence (burst-take, phase 124.D.1)"),
-    "rmw_send_request": ("vtable", "send_request"),
-    "rmw_take_request": ("vtable", "take_request"),
-    "rmw_send_response": ("vtable", "send_response"),
-    "rmw_take_response": ("vtable", "take_response"),
-    "rmw_service_server_is_available": ("vtable", "service_server_is_available"),
-    "rmw_publisher_assert_liveliness": ("vtable", "publisher_assert_liveliness"),
-    # ---- Zero-copy / loaned ----
-    "rmw_borrow_loaned_message": ("vtable", "borrow_loaned_message"),
-    "rmw_return_loaned_message_from_publisher": ("vtable", "return_loaned_message_from_publisher"),
-    "rmw_publish_loaned_message": ("vtable", "publish_loaned_message"),
-    "rmw_take_loaned_message": ("vtable", "take_loaned_message (slot carried, no backend fills it — issue 0781)"),
-    "rmw_return_loaned_message_from_subscription": ("vtable", "return_loaned_message_from_subscription (idem)"),
-    "rmw_take_loaned_message_with_info": ("vtable", "take_loaned_message_with_info (idem)"),
-    # ---- Events ----
-    "rmw_publisher_event_init": ("vtable", "publisher_event_init"),
-    "rmw_subscription_event_init": ("vtable", "subscription_event_init"),
-    # Issue 0780 — was `declined` on two clauses that both failed. "A poll
-    # would be blind without a wait set" contradicts `has_data`, whose own doc
-    # calls a wait-set-free poll the model here; "our callback runs on the safe
-    # context inside drive_io" was true of no backend. Now two slots, split per
-    # entity kind because there is no `rmw_event_t` to carry the entity.
-    "rmw_take_event": (
-        "vtable",
-        "subscription_take_event — grouped; `publisher_take_event` on the "
-        "publisher side. Upstream has one name because its `rmw_event_t` "
-        "carries the entity; ours is declined, so the entity is the argument",
-    ),
-    # A GROUPING, not an absence. "Fused into `*_event_init`" describes an
-    # ANSWER, and this table has a bucket for that. Listed as `declined` it read
-    # on the report as "we do not do this", when what we have is upstream's
-    # function with its arguments moved to init time. The residual — cannot
-    # replace or clear a callback afterwards — is recorded as a deviation on
-    # `publisher_event_init`, where it belongs.
-    "rmw_event_set_callback": (
-        "vtable",
-        "publisher_event_init — grouped; `subscription_event_init` on the "
-        "subscription side. Both take the callback at init, so there is no "
-        "`rmw_event_t` handle to attach one to later",
-    ),
-    # NOT `set_wake_callback` — that record was never true and the header says
-    # so (`rmw_vtable.h`: "it never was: that slot is session-scoped"). W4 gave
-    # the symbol its own exact-parity slot. The first version of
-    # `check_against_vtable()` passed this entry because `set_wake_callback` IS
-    # a slot: it verified that the detail names A slot, not the RIGHT one,
-    # which is the W3.b drift class it was written to stop, surviving inside
-    # its own gate.
-    "rmw_subscription_set_on_new_message_callback": (
-        "vtable", "subscription_set_on_new_message_callback",
-    ),
-    # ---- Answered a layer up or down ----
-    "rmw_init": ("vtable", "create_session — grouped"),
-    "rmw_shutdown": ("vtable", "destroy_session — grouped"),
-    "rmw_context_fini": ("vtable", "destroy_session — grouped; no second teardown phase"),
-    "rmw_init_options_init": (
-        "declined",
-        "upstream needs the init/copy/fini trio because its options OWN heap and carry "
-        "an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. "
-        "Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have",
-    ),
-    "rmw_init_options_copy": ("declined", "as rmw_init_options_init — \"copy\" is `=`"),
-    "rmw_init_options_fini": ("declined", "as rmw_init_options_init — \"fini\" is nothing"),
-    "rmw_create_node": ("vtable", "create_node"),
-    "rmw_destroy_node": ("vtable", "destroy_node"),
-    "rmw_wait": (
-        "declined",
-        "has_data/has_request + drive_io + set_wake_callback + next_deadline_ms ARE "
-        "this, decomposed. A vtable `wait` would add only the BLOCK, moved from the "
-        "platform into a backend that can only block on its own handles — while one "
-        "executor drives sessions from several backends, timers fire off the platform "
-        "clock, and guard conditions fire from an ISR",
-    ),
-    "rmw_create_wait_set": (
-        "declined",
-        "the executor's arena entry table IS the set, allocated once; a per-wait set "
-        "would be heap on the spin path",
-    ),
-    "rmw_destroy_wait_set": ("declined", "as rmw_create_wait_set"),
-    "rmw_create_guard_condition": (
-        "declined",
-        "EntryKind::GuardCondition; no transport variation, and once `wait` is "
-        "declined there is no backend consumer",
-    ),
-    "rmw_destroy_guard_condition": ("declined", "as rmw_create_guard_condition"),
-    "rmw_trigger_guard_condition": (
-        "declined",
-        "GuardCondition::trigger -> the platform wake primitive; ISR-safety is a "
-        "platform-ABI guarantee no backend makes",
-    ),
-    # `layer`, not `declined` — the reason's own first five words are "codegen,
-    # not a backend concern", which is the DEFINITION of this bucket, and we do
-    # answer it: `nros_serdes::{Serialize, Deserialize, DeserializeView}`,
-    # the C pack's `<Type>_serialize`, the C++ pack's `ffi_serialize`. Same
-    # precedent as `rmw_qos_profile_check_compatible`. Keeping an implemented
-    # function in the "deliberately absent" bucket is what made
-    # `get_serialized_message_size` — genuinely absent — unreadable next to it.
-    "rmw_serialize": (
-        "layer",
-        "nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the "
-        "per-language codegen packs; CDR for an IDL type is fixed by ROS interop, "
-        "so a per-backend answer would be a DEFECT. Not a slot for the same "
-        "reason it is not per-backend, and because upstream's parameters are two "
-        "things this ABI declined anyway — a typesupport pointer and an "
-        "`rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying "
-        "an ALLOCATOR, at a seam with no allocator",
-    ),
-    "rmw_deserialize": ("layer", "as rmw_serialize"),
-    "rmw_get_serialized_message_size": (
-        "layer",
-        "nros-serdes `size.rs` — `size_bound` / `max_serialized_size` / `buffer_fits` / "
-        "`serialized_size`, per TYPE and `const` where the type is bounded (phase-380 W1, "
-        "issue 0776, resolved). Not a vtable slot and never will be: upstream takes a "
-        "`rosidl_message_type_support_t *`, declined ABI-wide since W3.c, so the symbol "
-        "cannot cross this seam — but the CAPABILITY it provides is answered, which is what "
-        "`layer` records. This read `gap` until 2026-08-27, after 0776 had closed",
-    ),
-    "rmw_publish_serialized_message": ("vtable", "publish — grouped; our payload IS CDR"),
-    "rmw_take_serialized_message": ("vtable", "take — grouped; our payload IS CDR"),
-    "rmw_take_serialized_message_with_info": ("vtable", "take_with_info — grouped"),
-    "rmw_get_serialization_format": ("vtable", "get_serialization_format — CDR today, but the ANSWER is the backend's"),
-    "rmw_get_implementation_identifier": ("vtable", "get_implementation_identifier — also in `nros_rmw_descriptor_t` (check-rmw-descriptors)"),
-    "rmw_feature_supported": ("vtable", "feature_supported — a NULL slot is still the structural probe; this answers the named `rmw_feature_t` values"),
-    "rmw_init_publisher_allocation": (
-        "declined",
-        "upstream's first two parameters are a `rosidl_message_type_support_t *` "
-        "and a `rosidl_runtime_c__Sequence__bound *`, both declined ABI-wide, so "
-        "the symbol cannot cross this seam whatever the third holds. TWO earlier "
-        "reasons here were wrong: 'pools are baked' (issue 0777 — false for four "
-        "backends of five) and then 'upstream pre-sizes an `rcutils_allocator_t` "
-        "the caller owns' (also false — `rmw_publisher_allocation_t` is "
-        "`{const char *implementation_identifier; void *data;}`, verified against "
-        "Humble's `rmw/types.h`). The CAPABILITY question is separate and live for "
-        "cyclonedds alone; it belongs to issue 0777, not to this parameter list",
-    ),
-    "rmw_fini_publisher_allocation": ("declined", "as above"),
-    "rmw_init_subscription_allocation": ("declined", "as above"),
-    "rmw_fini_subscription_allocation": ("declined", "as above"),
-    # ---- Graph / introspection ----
-    "rmw_get_node_names": (
-        "vtable",
-        "get_node_names — W4. A VISITOR (`rmw_node_visit_fn`), not an out-array: there is "
-        "no allocator at this seam to hand back `rcutils_string_array_t` with",
-    ),
-    "rmw_get_node_names_with_enclaves": ("vtable", "get_node_names — grouped, and HOLLOW: nothing in this ABI accepts an enclave, so the visitor argument is structurally always NULL (issue 0785). The slot is also inert (issue 0800)"),
-    "rmw_get_topic_names_and_types": ("vtable", "get_topic_names_and_types — `rmw_names_and_types_visit_fn`"),
-    "rmw_get_service_names_and_types": ("vtable", "get_service_names_and_types — visitor"),
-    "rmw_get_publisher_names_and_types_by_node": ("vtable", "get_publisher_names_and_types_by_node — visitor"),
-    "rmw_get_subscriber_names_and_types_by_node": ("vtable", "get_subscriber_names_and_types_by_node — visitor"),
-    "rmw_get_service_names_and_types_by_node": ("vtable", "get_service_names_and_types_by_node — visitor"),
-    "rmw_get_client_names_and_types_by_node": ("vtable", "get_client_names_and_types_by_node — visitor"),
-    "rmw_get_publishers_info_by_topic": ("vtable", "get_publishers_info_by_topic — `rmw_topic_endpoint_info_visit_fn`"),
-    "rmw_get_subscriptions_info_by_topic": ("vtable", "get_subscriptions_info_by_topic — endpoint-info visitor"),
-    "rmw_count_publishers": ("vtable", "count_publishers"),
-    "rmw_count_subscribers": ("vtable", "count_subscribers"),
-    "rmw_node_get_graph_guard_condition": ("vtable", "node_get_graph_guard_condition"),
-    "rmw_publisher_count_matched_subscriptions": ("vtable", "publisher_count_matched_subscriptions"),
-    "rmw_subscription_count_matched_publishers": ("vtable", "subscription_count_matched_publishers"),
-    # ---- QoS introspection ----
-    "rmw_publisher_get_actual_qos": (
-        "vtable",
-        "publisher_get_actual_qos — W4. PARTIAL ANSWERS ALLOWED since W5/B2: a backend that can determine four policies and not the fifth writes `*_UNKNOWN` for the fifth and returns OK. UNSUPPORTED now means only \"no read-back at all\"",
-    ),
-    "rmw_subscription_get_actual_qos": ("vtable", "subscription_get_actual_qos — as above"),
-    "rmw_client_request_publisher_get_actual_qos": ("vtable", "client_request_publisher_get_actual_qos — as above"),
-    "rmw_client_response_subscription_get_actual_qos": ("vtable", "client_response_subscription_get_actual_qos — as above"),
-    "rmw_service_request_subscription_get_actual_qos": ("vtable", "service_request_subscription_get_actual_qos — as above"),
-    "rmw_service_response_publisher_get_actual_qos": ("vtable", "service_response_publisher_get_actual_qos — as above"),
-    "rmw_qos_profile_check_compatible": (
-        "layer",
-        "a plain exported ABI function, not a vtable slot: its answer must not vary "
-        "by backend, and the useful call sites (create-time validation, codegen, host "
-        "tooling) have no vtable and may run before a backend registers. Declared in "
-        "nros/rmw_entity.h, defined once in nros-rmw-cffi",
-    ),
-    # ---- Identity ----
-    "rmw_get_gid_for_publisher": ("vtable", "get_gid_for_publisher"),
-    "rmw_compare_gids_equal": ("layer", "a plain exported ABI function; see rmw_qos_profile_check_compatible"),
-    # ---- Declined: RTOS design ----
-    "rmw_publisher_get_network_flow_endpoints": (
-        "vtable",
-        "publisher_get_network_flow_endpoints — W5. The decline read "
-        "\"zenoh-pico/XRCE have no such notion\", which is true of those two and "
-        "silent about Cyclone: the reason was scoped to the ABI when it belonged "
-        "on a backend. NULL there, a visitor here",
-    ),
-    "rmw_subscription_get_network_flow_endpoints": (
-        "vtable", "subscription_get_network_flow_endpoints — as above",
-    ),
-    "rmw_subscription_set_content_filter": (
-        "vtable",
-        "subscription_set_content_filter — W5. \"DDS-only, would bloat every "
-        "non-DDS backend\" argues for a NULL SLOT, not for absence: a declined "
-        "symbol is missing from the ABI for the backend that CAN answer too, and "
-        "one pointer is what the bloat actually costs",
-    ),
-    "rmw_subscription_get_content_filter": (
-        "vtable", "subscription_get_content_filter — as above",
-    ),
-    "rmw_set_log_severity": ("vtable", "set_log_severity"),
-    "rmw_publisher_wait_for_all_acked": ("vtable", "publisher_wait_for_all_acked"),
-    "rmw_client_set_on_new_response_callback": ("vtable", "client_set_on_new_response_callback"),
-    "rmw_service_set_on_new_request_callback": ("vtable", "service_set_on_new_request_callback"),
-}
+MAP_TOML = os.path.join(ROOT, "docs", "reference", "rmw-api-map.toml")
 
-BUCKETS = ("vtable", "layer", "declined", "gap")
+
+def _load_map():
+    """`{symbol: (where, detail)}` from the authored map.
+
+    Read from a FILE rather than held here, so the gate and
+    `gen-rmw-api-comparison.py` cannot disagree: two copies of a map is how a
+    document ends up describing a tree that moved.
+
+    `detail` is the nano-ros name for a slot or a global, and the reason for
+    everything else — the shape `check_against_vtable` already validates.
+    """
+    import tomllib
+
+    with open(MAP_TOML, "rb") as fh:
+        raw = tomllib.load(fh)
+    out = {}
+    for sym, row in raw.items():
+        # `[[arg_rule]]` is a sibling array in the same file — the ARG
+        # attribution the document uses, not a contract symbol. Skipped by
+        # shape rather than by name so a future sibling table needs no edit
+        # here.
+        if not isinstance(row, dict) or "where" not in row:
+            continue
+        where = row["where"]
+        detail = row.get("nano") or row.get("reason", "")
+        out[sym] = (where, detail)
+    return out
+
+
+MAP = _load_map()
+
+# `global` is distinct from `vtable`: a slot is per-BACKEND, a global is
+# defined ONCE for the image. Conflating them hid which of the two a
+# symbol actually lands on (phase-393 followup).
+BUCKETS = ("vtable", "global", "layer", "declined", "gap")
 
 
 # The MAP is authored, and an authored table drifts the moment the thing it

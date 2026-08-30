@@ -147,6 +147,7 @@
 - [Platform API](./reference/platform-api.md)
 - [Platform Differences](./reference/platform-differences.md)
 - [Support Status](./reference/support-status.md)
+- [RMW API vs upstream — every symbol](./reference/rmw-api-comparison.md)
 - [Per-RMW Feature Matrix](./reference/rmw-feature-matrix.md)
 - [Scheduling Wiring Matrix](./reference/sched-matrix.md)
 - [Supported Boards](./reference/supported-boards.md)
