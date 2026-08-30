@@ -22,6 +22,12 @@ sha2 = "0.10"
 rosidl-parser.workspace = true
 rosidl-resolve.workspace = true
 rosidl-lower.workspace = true
+# issue 0896 layer 1 — codegen computes a message's serialized-size bound with
+# THE size rule, not a copy of it. `nros_serdes::size::max_serialized_size` is
+# the same function the runtime uses, so the C constant and the Rust const
+# cannot disagree about encoding rules. Path dep across the workspace boundary:
+# `packages/cli` is its own workspace, and this is a core crate.
+nros-serdes = { path = "../../core/nros-serdes", default-features = false }
 minijinja.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -1268,6 +1268,7 @@ version = "0.5.0"
 dependencies = [
  "criterion",
  "minijinja",
+ "nros-serdes",
  "rosidl-lower",
  "rosidl-parser",
  "rosidl-resolve",
