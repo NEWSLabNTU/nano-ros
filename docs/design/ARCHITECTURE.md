@@ -239,6 +239,11 @@ boards self-describe their dependencies.
   four providers, setup and doctor both deriving from it so remedies are computed rather than
   hand-written, and a `[tool.*]`'s dist declaring the host libraries it needs — measured from the
   dist, not listed by hand → RFC-0062. rosdep is not consulted anywhere.
+- WHERE a tool comes from follows from what it does, not from whether we patched it
+  (RFC-0062 amendment 2): a build input is pinned whatever the host has, a tool that
+  must match something the host already runs comes from the system — shipping our own
+  is the drift RFC-0075 removed for the zenoh router — and the remainder prefers the
+  system once a version constraint can say "good enough" (phase-404).
 - Cross-RTOS launch tree + manifest codegen → RFC-0015; per-RTOS scheduling survey → RFC-0016.
 - Real-time timer primitive → RFC-0017; the RT executor model → RFC-0002.
 

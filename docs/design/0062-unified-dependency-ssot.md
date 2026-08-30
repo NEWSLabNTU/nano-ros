@@ -4,7 +4,7 @@ title: "One dependency SSoT, system-aware"
 status: Stable
 since: 2026-08
 last-reviewed: 2026-08
-implements-tracked-by: [phase-327, phase-398]
+implements-tracked-by: [phase-327, phase-398, phase-404]
 supersedes: []
 ---
 
@@ -24,6 +24,9 @@ dists with `$ORIGIN` rpath so a declared dependency disappears instead
 **Amends:** RFC-0014 (`nros setup` toolchain management) — extends its index
 from two dependency classes to all of them; changes no existing `[tool.*]` /
 `[source.*]` semantics.
+**Amended:** 2026-08-30 (amendment 2) — the provider is chosen by what the
+tool DOES, `check` gains a version constraint, and every resolution reports
+its provider; tracked by phase-404, no code yet.
 **Amended:** 2026-08-29 — `[prereq.*]` (one key namespace over four providers),
 unknown keys are an error, rosdep is no longer consulted, and `[system.*]`
 MERGES into `[prereq.*]` and retires. See the amendment below; it REVERSES
@@ -239,14 +242,112 @@ probe.
 
 ### What this amendment still does not decide
 
-* **Whether `providers` is ordered preference or a fallback chain with a
-  policy** (e.g. never build from source in CI). The `genromfs` case wants
-  "prefer apt", but `--offline` and air-gapped hosts want the opposite for
-  `[tool.*]` dists, and that interacts with RFC-0065 D14.
+* ~~**Whether `providers` is ordered preference or a fallback chain with a
+  policy**~~ — **DECIDED by amendment 2 below (2026-08-30): ordered
+  preference, and the ORDER is derived from what the tool does rather than
+  authored per entry.** The `--offline` tension is resolved there too.
 * **Whether `check` becomes REQUIRED.** Three `[system.*]` entries have none
   today (`ros-rmw-zenoh-cpp`, `python3-venv`, `picolibc-riscv64-unknown-elf`)
   and report `UNPROBED`; requiring one would force an answer for each, which may
   not exist.
+
+## Amendment 2 (2026-08-30) — the provider is chosen by what the tool DOES
+
+Motivated by a question this RFC's own framing invited: if a tool is available
+from the system, what is the point of shipping a copy? The first answer — "we
+ship it when the binary is patched" — is close, and measurement shows it
+explains the wrong thing.
+
+**Only three tools carry a patch**: `qemu` and `cyclonedds` (NEWSLabNTU forks)
+and `play_launch` (ours). By a patched/unpatched rule the other eleven become
+candidates for deletion. They should not all move, and the reasons differ per
+tool, which is the tell that the criterion is wrong.
+
+### The axis is not "patched", it is two questions
+
+**1. Does its output enter a build artifact?** Then PIN it, whatever the system
+has. A compiler, Corrosion, the codegen tool, `idlc` — these decide what the
+produced binary IS, and a host-varying build input is this tree's most expensive
+bug class: museum binaries, the accumulating store shadowing a pin (issue 0500),
+the loader picking a library nobody chose (0774). Corrosion is the concrete
+case: `< 0.6.0` shares one `cargo/build` across workspace roots, so `mixed`
+fails to link with duplicate `#[no_mangle]` symbols — "whatever the host has" is
+a landmine, not a convenience.
+
+**2. Must it match something the host already runs?** Then the system copy is
+not merely ALLOWED, it is MANDATORY, and shipping our own is a defect. This is
+not new: RFC-0075 already deleted our vendored `zenohd` and resolves ROS's
+`rmw_zenohd` instead, because a pinned copy drifted from the zenoh that
+`rmw_zenoh_cpp` links (issue 0609 measured 0.1.1 -> 0.1.9 moving zenoh 1.2.0 ->
+1.8.0 with our pin taking no part). The same binding holds cyclonedds to the
+version ROS ships (0507). Amendment 2 generalises RFC-0075 rather than inventing
+a policy.
+
+Everything that is NEITHER — a debugger, a flasher, an on-chip debug server — is
+the real "prefer the system if it is good enough" population.
+
+### Why "good enough" is currently undecidable
+
+`check` is presence-only: `cmd`, `sharedlib`, `pkg_config`, `header`. **There is
+no version constraint anywhere in the index.** So "use the system copy when it
+satisfies the pin" cannot be expressed today, and that — not policy — is what
+blocks the whole idea.
+
+Measured on Ubuntu 22.04, which is why the constraint must be real rather than
+assumed:
+
+| tool | pin | apt candidate |
+| --- | --- | --- |
+| `sccache`, `corrosion`, `espflash`, `xrce-agent` | — | **not packaged at all** |
+| `arm-none-eabi-gcc` | 13.2 | 10.3 (2021) |
+| `riscv-none-elf-gcc` | 14.2 | 10.2, and a DIFFERENT triple (`riscv64-unknown-elf`) |
+| `openocd` | 0.12.0 | 0.11.0 |
+| `genromfs` | 0.5.7 | 0.5.2 |
+| `qemu` | 11.0.0 (fork) | 9.0.2 |
+| `cyclonedds` | 0.10.5 (fork) | 0.8.2 |
+
+Four of ten are not packaged; most of the rest are years behind. So on this host
+"prefer system" would rarely fire — and on Arch, Fedora or nixpkgs the table
+looks very different. That asymmetry is the argument FOR the mechanism (it is
+what makes a non-Ubuntu host first-class, cf.
+`docs/development/ros2-on-non-ubuntu.md`) and AGAINST deleting dists on the
+strength of one distro's archive.
+
+### What this amendment decides
+
+1. **`providers` is ORDERED PREFERENCE**, closing amendment 1's open question.
+   The order is not authored per entry by taste; it follows from the two
+   questions above, and an entry that departs from its category says why.
+2. **`check` gains a version constraint** — a floor plus a declared way to read
+   the installed version. Without it, preference is unimplementable.
+3. **Every resolution REPORTS its provider.** `nros setup --check` and
+   `just doctor` must say which provider satisfied each tool, and at what
+   version. A host that quietly used its own `openocd` 0.11 otherwise makes
+   "works on my machine" unfalsifiable — the same reason issue 0929's `smoke`
+   probes assert on OUTPUT rather than exit status.
+4. **`--offline` and air-gapped hosts pin the order to the store.** Amendment 1
+   left this tangled with RFC-0065 D14; it is not tangled. Preference is a
+   DEFAULT, and `--offline` is an explicit override that removes `system` from
+   consideration — the same shape as every other escape hatch here.
+
+### What it does NOT decide, deliberately
+
+* **Which dists actually stop shipping.** That is a per-tool call against the
+  measured table once the constraint exists, not a category sweep. Nothing is
+  deleted by this amendment.
+* **Whether a system-provided BUILD input is ever acceptable.** Question 1 says
+  no today. If that is ever relaxed it needs its own evidence, because the whole
+  reproducibility argument rests on it.
+* **How a version is extracted per tool.** `--version` output is not uniform and
+  some tools need a regex; whether that lives in the index or in a small table
+  of known shapes is an implementation question for phase-404.
+
+### Cost of being wrong in each direction
+
+Shipping a dist we did not need costs bytes and a re-cut nobody reads. Using a
+system copy we should have pinned costs a build that differs per host and fails
+somewhere else entirely — which is the failure this repository has paid for most
+often. When the evidence is ambiguous, pin.
 
 ## Problem
 
