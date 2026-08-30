@@ -478,21 +478,34 @@ pub struct MessageCHeaderTemplate<'a> {
     /// `{Msg}_View` + `{Msg}_deserialize_view` + `<nros/view.h>` include
     /// are emitted.
     pub has_borrowed: bool,
-    /// issue 0896 layer 2 — the type's serialized-size bound under XCDR1, or
-    /// `None` when the type is unbounded or a nested type was unresolvable.
+    /// issue 0896 — the largest payload this image can TRANSMIT for the type.
     ///
-    /// TWO constants rather than one maxed value: the publish helper writes
-    /// XCDR1 (the only encoding this stack emits) while a receive buffer must
-    /// hold either, and the two genuinely differ — XCDR2 adds a 4-byte DHEADER
-    /// and aligns 8-byte primitives to 4. A single number would be silently
-    /// wrong for one consumer.
-    pub max_serialized_size_xcdr1: Option<usize>,
-    /// The same under XCDR2. See [`Self::max_serialized_size_xcdr1`].
-    pub max_serialized_size_xcdr2: Option<usize>,
-    /// Why there is no bound, when there is none — either the unbounded member
-    /// (`header.frame_id (string)`) or the nested type that could not be
-    /// reached. Emitted as a header comment so a reader can tell "we looked and
-    /// there is no bound" from "we could not look".
+    /// XCDR1, because that is the only encoding this stack writes AND what ROS
+    /// 2 itself pins: rmw_fastrtps PR #756 (merged to rolling, backported to
+    /// jazzy, May 2024) sets the DataWriter/DataReader data representation to
+    /// XCDR1 "since it is what the type support is using". A live capture from
+    /// `ros:jazzy-ros-base` agrees — `00 01 00 00`, no DHEADER
+    /// (`nros_serdes::cdr` tests).
+    ///
+    /// `None` when unbounded or unresolved.
+    pub tx_max_serialized_size: Option<usize>,
+    /// The largest payload this image can RECEIVE for the type.
+    ///
+    /// `max(XCDR1, XCDR2)` — NOT because modern ROS emits XCDR2, which it does
+    /// not, but because `data_representation` is NEGOTIABLE and a non-default
+    /// peer can send it (RFC-0055; the domain_bridge in issue 0267 did exactly
+    /// that). `CdrReader` dispatches on the encapsulation id and accepts both,
+    /// so a receive buffer must hold either.
+    ///
+    /// The cost of covering it is small and bounded: XCDR2 adds 4 bytes per
+    /// struct for the DHEADER and saves up to 4 per 8-byte-aligned field.
+    /// Measured on the corpus, 68 vs 64 for one type — the max is the XCDR1
+    /// number, so covering XCDR2 there costs nothing at all.
+    ///
+    /// NO encoding suffix on either name, deliberately: each consumer has
+    /// exactly one right answer, so naming the encoding would invite a caller
+    /// to pick the wrong one.
+    pub rx_max_serialized_size: Option<usize>,
     pub unbounded_reason: Option<String>,
     /// issue 0896 Q2 — the same fact as a C IDENTIFIER, so a compiler error
     /// that mentions it names the type and the member:

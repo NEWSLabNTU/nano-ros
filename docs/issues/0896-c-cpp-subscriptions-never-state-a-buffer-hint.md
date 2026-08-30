@@ -391,9 +391,41 @@ They already do, before caps enter:
 
 So they are different questions with different answers and different failure
 modes — an oversized TX buffer wastes stack, an undersized RX buffer drops
-samples silently. `..._TX_MAX_SERIALIZED_SIZE_XCDR1` (caps honoured, XCDR1) and
-`..._RX_MAX_SERIALIZED_SIZE` (IDL bounds only, max of both encodings), with the
-current `MAX_SERIALIZED_SIZE_XCDR*` pair becoming the TX side.
+samples silently.
+
+**Landed as `..._TX_MAX_SERIALIZED_SIZE` and `..._RX_MAX_SERIALIZED_SIZE`, with
+NO encoding suffix**, after checking what ROS 2 actually puts on the wire (below).
+Each consumer has exactly one right answer, so naming the encoding would only
+invite a caller to pick the wrong one.
+
+## What ROS 2 actually encodes, checked 2026-08-30
+
+The earlier reasoning implied "modern ROS might use XCDR2". It does not, and the
+pinning is deliberate.
+
+* **rmw_fastrtps [PR #756](https://github.com/ros2/rmw_fastrtps/pull/756)**,
+  merged to rolling and backported to jazzy (May 2024), sets the
+  DataWriter/DataReader data representation to **XCDR1** — "since it is what the
+  type support is using". rosidl's generated typesupport emits XCDR1, so moving
+  would mean changing rosidl, not the rmw.
+* A live capture from `ros:jazzy-ros-base` rclpy is `00 01 00 00`, no DHEADER
+  (pinned by `nros_serdes::cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`).
+* Humble's shipped `librmw_fastrtps_cpp.so` and `librmw_cyclonedds_cpp.so`
+  contain ZERO occurrences of `xcdr2` / `DELIMITED`.
+* No migration proposal, REP or plan found for a future edition.
+
+**Consequence for the design.** TX is XCDR1, settled — there is no case for a
+second transmit number. RX still takes `max(XCDR1, XCDR2)`, but for a narrower
+reason than first stated: `data_representation` is NEGOTIABLE and a non-default
+peer can send XCDR2 (RFC-0055; the domain_bridge in issue 0267 did). The cost of
+covering that is small and bounded — XCDR2 adds 4 bytes per struct for the
+DHEADER and saves up to 4 per 8-byte-aligned field. On the corpus type it is 68
+vs 64, so the max IS the XCDR1 number and covering XCDR2 costs nothing.
+
+**So the axis that justifies the TX/RX split is CAPS, not encoding.** Encoding
+contributes a few bytes on RX for non-default peers; caps make the two numbers
+genuinely different, and can remove the RX number entirely for a capped
+unbounded field.
 
 ## Layers, in order
 

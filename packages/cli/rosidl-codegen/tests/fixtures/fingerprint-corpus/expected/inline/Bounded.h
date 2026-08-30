@@ -87,8 +87,8 @@ const nros_message_type_t* fingerprint_corpus_msg_bounded_get_type_support(void)
 /// aligns 8-byte primitives to 4 instead of 8. This stack WRITES XCDR1, so the
 /// publish helper below uses that one; a RECEIVE buffer must hold either, so a
 /// subscription wants the larger.
-#define FINGERPRINT_CORPUS_MSG_BOUNDED_MAX_SERIALIZED_SIZE_XCDR1 68
-#define FINGERPRINT_CORPUS_MSG_BOUNDED_MAX_SERIALIZED_SIZE_XCDR2 64
+#define FINGERPRINT_CORPUS_MSG_BOUNDED_TX_MAX_SERIALIZED_SIZE 68
+#define FINGERPRINT_CORPUS_MSG_BOUNDED_RX_MAX_SERIALIZED_SIZE 68
 
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the
@@ -103,7 +103,7 @@ static inline nros_ret_t fingerprint_corpus_msg_bounded_publish(struct nros_publ
 
     /* Exactly what this type can produce -- no guess, and no 256-byte cliff
        for a type that needs more. */
-    uint8_t buf[FINGERPRINT_CORPUS_MSG_BOUNDED_MAX_SERIALIZED_SIZE_XCDR1];
+    uint8_t buf[FINGERPRINT_CORPUS_MSG_BOUNDED_TX_MAX_SERIALIZED_SIZE];
 
     size_t n = 0;
     int32_t r = fingerprint_corpus_msg_bounded_serialize(msg, buf, sizeof(buf), &n);

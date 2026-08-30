@@ -135,9 +135,9 @@ const nros_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
    deliberate error, and this makes the compiler SAY SO. Without it the
    constant is simply absent and the user gets "undeclared identifier", which
    names neither the type nor the member that costs it the bound. */
-#define FINGERPRINT_CORPUS_MSG_SHAPES_MAX_SERIALIZED_SIZE_XCDR1 \
+#define FINGERPRINT_CORPUS_MSG_SHAPES_TX_MAX_SERIALIZED_SIZE \
     NROS_UNBOUNDED__fingerprint_corpus_msg_shapes__field_text
-#define FINGERPRINT_CORPUS_MSG_SHAPES_MAX_SERIALIZED_SIZE_XCDR2 \
+#define FINGERPRINT_CORPUS_MSG_SHAPES_RX_MAX_SERIALIZED_SIZE \
     NROS_UNBOUNDED__fingerprint_corpus_msg_shapes__field_text
 
 

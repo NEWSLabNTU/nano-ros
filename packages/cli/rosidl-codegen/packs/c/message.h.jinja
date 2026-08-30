@@ -108,7 +108,7 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
 /// Get the nros_message_type_t for this message type
 const nros_message_type_t* {{ struct_name }}_get_type_support(void);
 
-{% if max_serialized_size_xcdr1 %}
+{% if tx_max_serialized_size %}
 /// Largest CDR payload this type can produce, encapsulation header included.
 ///
 /// Computed by `nros_serdes::size::max_serialized_size` over this type's own
@@ -119,8 +119,8 @@ const nros_message_type_t* {{ struct_name }}_get_type_support(void);
 /// aligns 8-byte primitives to 4 instead of 8. This stack WRITES XCDR1, so the
 /// publish helper below uses that one; a RECEIVE buffer must hold either, so a
 /// subscription wants the larger.
-#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR1 {{ max_serialized_size_xcdr1 }}
-#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR2 {{ max_serialized_size_xcdr2 }}
+#define {{ constant_prefix }}_TX_MAX_SERIALIZED_SIZE {{ tx_max_serialized_size }}
+#define {{ constant_prefix }}_RX_MAX_SERIALIZED_SIZE {{ rx_max_serialized_size }}
 {% else %}
 /// NO size bound is emitted for this type.
 ///
@@ -136,9 +136,9 @@ const nros_message_type_t* {{ struct_name }}_get_type_support(void);
    deliberate error, and this makes the compiler SAY SO. Without it the
    constant is simply absent and the user gets "undeclared identifier", which
    names neither the type nor the member that costs it the bound. */
-#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR1 \
+#define {{ constant_prefix }}_TX_MAX_SERIALIZED_SIZE \
     {{ unbounded_token }}
-#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR2 \
+#define {{ constant_prefix }}_RX_MAX_SERIALIZED_SIZE \
     {{ unbounded_token }}
 {% endif %}
 
@@ -151,10 +151,10 @@ const nros_message_type_t* {{ struct_name }}_get_type_support(void);
 #endif
 static inline nros_ret_t {{ struct_name }}_publish(struct nros_publisher_t* publisher,
                                                    const {{ struct_name }}* msg) {
-{% if max_serialized_size_xcdr1 %}
+{% if tx_max_serialized_size %}
     /* Exactly what this type can produce -- no guess, and no 256-byte cliff
        for a type that needs more. */
-    uint8_t buf[{{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR1];
+    uint8_t buf[{{ constant_prefix }}_TX_MAX_SERIALIZED_SIZE];
 {% else %}
     /* No bound for this type ({{ unbounded_reason }}), so the global knob is
        still the only available answer. */

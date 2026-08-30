@@ -438,7 +438,7 @@ pub fn generate_c_message_package_with_lookup(
     // The two encodings are computed separately because they genuinely differ;
     // see `MessageCHeaderTemplate::max_serialized_size_xcdr1`.
     let fqn = format!("{package_name}/{message_name}");
-    let (bound_x1, bound_x2, unbounded_reason, unbounded_token) = {
+    let (tx_bound, rx_bound, unbounded_reason, unbounded_token) = {
         use crate::schema_value::{TypeBound, bound_message};
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, lookup);
@@ -465,7 +465,10 @@ pub fn generate_c_message_package_with_lookup(
             format!("NROS_UNRESOLVED__{struct_name}__nested_type_{ident}")
         };
         match (&x1, &x2) {
-            (TypeBound::Bounded(a), TypeBound::Bounded(b)) => (Some(*a), Some(*b), None, None),
+            // TX writes XCDR1; RX must hold either encoding, so it takes the max.
+            (TypeBound::Bounded(a), TypeBound::Bounded(b)) => {
+                (Some(*a), Some(*a.max(b)), None, None)
+            }
             // Unbounded and Unresolved BOTH mean "no constant", and the reason
             // says which — "we looked and there is no bound" licenses bounding
             // the field, "we could not look" licenses fixing the search path.
@@ -500,8 +503,8 @@ pub fn generate_c_message_package_with_lookup(
         type_includes,
         has_fields,
         has_borrowed,
-        max_serialized_size_xcdr1: bound_x1,
-        max_serialized_size_xcdr2: bound_x2,
+        tx_max_serialized_size: tx_bound,
+        rx_max_serialized_size: rx_bound,
         unbounded_reason,
         unbounded_token,
     };
