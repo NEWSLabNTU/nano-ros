@@ -867,6 +867,37 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
     let mut srv_headers = Vec::new();
     let mut action_headers = Vec::new();
 
+    // issue 0896 — nested-type resolver for the size bound. SAME-PACKAGE only:
+    // the interface files handed to this entry point are siblings, so a bare or
+    // same-package reference resolves off their directory. Cross-package
+    // (`std_msgs/Header`) needs the ament index, which this args-file path does
+    // not carry — those report `Unresolved` and emit NO constant, which is the
+    // honest answer. Never a guessed bound.
+    let msg_dirs: Vec<PathBuf> = args
+        .interface_files
+        .iter()
+        .filter_map(|p| p.parent().map(PathBuf::from))
+        .collect();
+    let pkg_for_lookup = args.package_name.clone();
+    let nested_lookup = move |fqn: &str| -> Option<rosidl_parser::Message> {
+        let mut parts = fqn.split('/');
+        let first = parts.next()?;
+        let name = parts.next_back().unwrap_or(first);
+        // A qualified reference to another package cannot be answered here.
+        if first != name && first != pkg_for_lookup {
+            return None;
+        }
+        for dir in &msg_dirs {
+            let candidate = dir.join(format!("{name}.msg"));
+            if let Ok(body) = std::fs::read_to_string(&candidate)
+                && let Ok(m) = rosidl_parser::parse_message(&body)
+            {
+                return Some(m);
+            }
+        }
+        None
+    };
+
     // Process each interface file
     for file_path in &args.interface_files {
         let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -885,12 +916,13 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                 let parsed = rosidl_parser::parse_message(&content)
                     .wrap_err_with(|| format!("Failed to parse message: {}", file_name))?;
 
-                let generated = rosidl_codegen::generate_c_message_package(
+                let generated = rosidl_codegen::generate_c_message_package_with_lookup(
                     &args.package_name,
                     file_name,
                     &parsed,
                     type_hash,
                     &resolver,
+                    &nested_lookup,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C code for message: {}", file_name)

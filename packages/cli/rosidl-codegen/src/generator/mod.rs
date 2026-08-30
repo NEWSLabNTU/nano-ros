@@ -16,7 +16,8 @@ pub use cpp::{
 };
 pub use msg::{
     GeneratedCPackage, GeneratedNrosPackage, GeneratedPackage, generate_c_message_package,
-    generate_message_package, generate_nros_inline_message, generate_nros_message_package,
+    generate_c_message_package_with_lookup, generate_message_package, generate_nros_inline_message,
+    generate_nros_message_package,
 };
 pub use srv::{
     GeneratedCServicePackage, GeneratedNrosServicePackage, GeneratedServicePackage,
