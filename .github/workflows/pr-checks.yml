@@ -253,7 +253,9 @@ jobs:
       # `build/clang-format/`, and no-ops when the right version is already
       # there — so this is also the same command a contributor runs.
       - name: Provision clang-format (pinned by .clang-format-version)
-        run: just setup-clang-format
+        run: |
+          source ./activate.sh
+          just setup-clang-format
 
       # Compiler cache for the COMPILE tier — phase-395. `check-build` compiles
       # the whole workspace from scratch: 587 s of an 878 s gate, measured. Only
@@ -430,7 +432,9 @@ jobs:
       # the ros-launch-resolve submodule + the zenoh-pico source) live in
       # check-build (PR/nightly), so the push lane needs no submodule/source.
       - name: just check fast
-        run: just check fast
+        run: |
+          source ./activate.sh
+          just check fast
 
       # A pin naming a commit no remote can serve is a repo that builds only on
       # the machine that made it: every clone and every CI run dies at
@@ -448,7 +452,9 @@ jobs:
       # clone gets its first chance, and 20 `--depth=1` existence probes cost
       # seconds.
       - name: just check submodule-commits-reachable
-        run: just check submodule-commits-reachable
+        run: |
+          source ./activate.sh
+          just check submodule-commits-reachable
 
       # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
       # THE ARRANGEMENT, phase-395. This job is ONE required status context and
@@ -486,7 +492,9 @@ jobs:
       # that did not propagate, a test that no longer compiles.
       - name: just check compile-smoke (pull request only)
         if: ${{ github.event_name == 'pull_request' && !cancelled() }}
-        run: just check compile-smoke
+        run: |
+          source ./activate.sh
+          just check compile-smoke
 
       # phase-396 W1 — the build tier is NOT on the merge group.
       #
@@ -542,7 +550,9 @@ jobs:
       # filtered vs 428 s for everything.
       - name: build compile-check fixtures (check-source-gates asserts them)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        run: just build-compile-check-fixtures cxx-syntax
+        run: |
+          source ./activate.sh
+          just build-compile-check-fixtures cxx-syntax
 
       # issue 0898 — the OTHER artifact `check-build` asserts and this job never
       # produced. phase-396 W1 named both halves when it took the build tier off
@@ -562,7 +572,9 @@ jobs:
       # the whole tree, against the ~587 s tier it unblocks.
       - name: generate message bindings (native::check asserts them)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        run: just generate-bindings
+        run: |
+          source ./activate.sh
+          just generate-bindings
 
       # The `source /opt/ros/humble/setup.bash` below is load-bearing, not
       # boilerplate: `check-rmw-cyclonedds`'s from-msg targets run
@@ -573,7 +585,7 @@ jobs:
       - name: just check build + no_std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
-          source /opt/ros/humble/setup.bash
+          source ./activate.sh
           just check build
           just check no-std
 
@@ -591,7 +603,9 @@ jobs:
       # errors and an unregenerated pool inventory reach main on 2026-08-27.
       - name: just test-unit (completes L1)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
-        run: just test-unit
+        run: |
+          source ./activate.sh
+          just test-unit
 
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
@@ -619,7 +633,9 @@ jobs:
       - name: just check decoupling (advisory until Phase 104.A)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         continue-on-error: true
-        run: just check decoupling
+        run: |
+          source ./activate.sh
+          just check decoupling
 
   # ----- scaffold-journey (RFC-0040 resolve-only) -----
   scaffold-journey:
@@ -659,7 +675,7 @@ jobs:
 
       - name: just scaffold-journey
         run: |
-          source /opt/ros/humble/setup.bash
+          source ./activate.sh
           just scaffold-journey
 
   # ----- colcon-parity (bare ubuntu — no base image) -----
@@ -707,7 +723,9 @@ jobs:
       # CMakeLists that needs the `nros` codegen tool), builds, and asserts the
       # consumer binary — the same parity check, no inline drift.
       - name: just colcon-parity
-        run: just colcon-parity
+        run: |
+          source ./activate.sh
+          just colcon-parity
 
   # ----- sdk-index gate (verify prebuilt assets resolve + hash) -----
   sdk-index:
