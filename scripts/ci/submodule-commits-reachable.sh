@@ -177,8 +177,15 @@ for path in "${paths[@]}"; do
     # accusation, and the remedy it implies (push the submodule) is wrong.
     case "$err" in
         *"Could not resolve host"*|*"unable to access"*|*"Connection timed out"* \
-        |*"Operation timed out"*|*"network is unreachable"*|*"Temporary failure"*)
-            echo "submodule-commits-reachable: NETWORK UNAVAILABLE while checking $path" >&2
+        |*"Operation timed out"*|*"network is unreachable"*|*"Temporary failure"* \
+        |*"shallow file has changed"*)
+            # `shallow file has changed since we read it` belongs here and not
+            # below: it is the PROBE repo failing locally, not the remote
+            # answering. Reported as unreachable it becomes the exact false,
+            # specific accusation the comment above exists to prevent — "push
+            # the submodule commit first" for a commit that is already
+            # published — and it blocks the push with no honest remedy.
+            echo "submodule-commits-reachable: COULD NOT ASK while checking $path" >&2
             echo "  $err" >&2
             network_failed=1
             break

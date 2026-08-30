@@ -136,7 +136,33 @@ if [ -x "$reach" ]; then
         # where a fresh, unpushed submodule commit tends to arrive.
         case "$remote_sha" in
             *[!0]*) out="$("$reach" --changed "$remote_sha" 2>&1)" ;;
-            *)      out="$("$reach" 2>&1)" ;;
+            *)
+                # A new branch has no remote baseline, but it almost always
+                # DESCENDS from one: anything already on the upstream default
+                # branch is published by definition, or that branch would not
+                # build. Baselining against it keeps the intent above — a fresh
+                # unpushed submodule commit still gets checked, because it is
+                # exactly what a new branch ADDS — without re-verifying every
+                # pin the tree already carries.
+                #
+                # That mattered: a branch whose commits touch NO submodule was
+                # refused because an unrelated, uninitialised pin could not be
+                # probed, and the push had no honest way through.
+                base=""
+                if upstream="$(git rev-parse --verify --quiet refs/remotes/origin/HEAD 2>/dev/null)" \
+                   || upstream="$(git rev-parse --verify --quiet refs/remotes/origin/main 2>/dev/null)"; then
+                    # Only when the push actually descends from it; otherwise
+                    # the diff would be meaningless and every pin must be read.
+                    if git merge-base --is-ancestor "$upstream" "$local_sha" 2>/dev/null; then
+                        base="$upstream"
+                    fi
+                fi
+                if [ -n "$base" ]; then
+                    out="$("$reach" --changed "$base" 2>&1)"
+                else
+                    out="$("$reach" 2>&1)"
+                fi
+                ;;
         esac
         rc=$?
         # 2 = could not ask the remotes. Say so and let the push through: a
