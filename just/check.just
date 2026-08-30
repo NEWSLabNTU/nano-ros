@@ -113,7 +113,7 @@ fast-serial: \
     cargo-profile-mirror build-profile-literals \
     version-lockstep workspace-fmt example-fmt cli-fmt \
     readiness-marker-literals \
-    codegen-invocation string-conventions issue-ids \
+    codegen-invocation string-conventions issue-ids knob-single-reader \
     std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
     absolute-paths \
     c-fmt cpp-fmt python \
@@ -733,6 +733,14 @@ readiness-marker-literals:
 [private]
 issue-ids:
     @scripts/ci/issue-ids-check.sh
+
+# phase-400 W8 — a knob migrated into the RFC-0049 ladder has exactly one
+# reader. Retirement is a wave, not a side effect: a mechanism that still
+# resolves is one people still use, and a fallback that silently wins is how
+# issues 0135 and 0316 happened.
+[private]
+knob-single-reader:
+    @python3 scripts/check/check-knob-single-reader.py
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens

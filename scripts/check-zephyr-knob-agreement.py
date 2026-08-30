@@ -6,7 +6,7 @@ different lane:
 
   * `zephyr/Kconfig` defaults, forwarded to the C lane by
     `zephyr/cmake/nros_rmw_zenoh.cmake` as `zephyr_compile_definitions(...)`;
-  * `config/zephyr/nros-platform.toml`'s `[knobs.zenoh.tx]`, which the RFC-0049
+  * `nros-platform-zephyr/nros-platform.toml`'s `[knobs.zenoh.tx]`, which the RFC-0049
     ladder resolves for the Rust lane.
 
 They agree today — `y / y / 50` against `true / true / 50` — but only by
@@ -32,7 +32,18 @@ except ModuleNotFoundError:  # 3.10 backport, as the sibling gates spell it
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KCONFIG = os.path.join(ROOT, "zephyr/Kconfig")
-PLATFORM = os.path.join(ROOT, "config/zephyr/nros-platform.toml")
+# phase-400 W1 — the descriptor moved beside its crate. Search the same path
+# the resolver does rather than hardcoding one root, so this gate keeps working
+# whichever home a platform's descriptor lives in.
+def _find_platform(root: str, name: str) -> str:
+    for rel in ("packages/platform/nros-platform-" + name, "config/" + name):
+        cand = os.path.join(root, rel, "nros-platform.toml")
+        if os.path.isfile(cand):
+            return cand
+    return os.path.join(root, "config", name, "nros-platform.toml")
+
+
+PLATFORM = _find_platform(ROOT, "zephyr")
 
 # platform TOML key -> Kconfig symbol. Both halves of each row are read below;
 # a row whose Kconfig symbol is absent is a failure, not a skip, because a
@@ -92,7 +103,7 @@ def main():
         got = kconfig_default(kconfig, symbol)
         if got is None:
             problems.append(
-                f"config/zephyr/nros-platform.toml sets [knobs.zenoh.tx].{key} "
+                f"the zephyr platform descriptor sets [knobs.zenoh.tx].{key} "
                 f"but zephyr/Kconfig has no `config {symbol}` with a default — "
                 f"renamed or removed?"
             )

@@ -146,6 +146,19 @@ pub struct Knobs {
     /// backends use the flattened map below.
     #[serde(default)]
     pub zenoh: ZenohKnobs,
+    /// phase-400 W6 — the executor sizing tenant.
+    ///
+    /// Eight knobs that `nros-node/build.rs` reads straight from the
+    /// environment, so today they reach a build only from the shell that ran
+    /// it: a bare `ninja` in a configured tree silently rebuilds at crate
+    /// defaults (the failure nano-ros #0749/#0752 fixed for the Zephyr lane by
+    /// adding Kconfig rows, and which every other lane still has).
+    ///
+    /// Migrating them here does not change a single call site — each keeps its
+    /// existing env name as the lane front-end — but it gives them a platform
+    /// and board rung, and makes them visible to `nros config explain`.
+    #[serde(default)]
+    pub executor: ExecutorKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -190,6 +203,65 @@ impl Knobs {
             None => &self.zenoh.tx,
         }
     }
+}
+
+/// The env front-end name for an executor knob. These are the EXISTING names
+/// `nros-node/build.rs` already reads, kept verbatim: migrating a knob into the
+/// ladder must not change how anyone sets it.
+pub fn executor_env_key(knob: &str) -> &'static str {
+    match knob {
+        "max_cbs" => "NROS_EXECUTOR_MAX_CBS",
+        "max_sc" => "NROS_EXECUTOR_MAX_SC",
+        "max_nodes" => "NROS_EXECUTOR_MAX_NODES",
+        "max_shutdown_cbs" => "NROS_EXECUTOR_MAX_SHUTDOWN_CBS",
+        "action_clients" => "NROS_EXECUTOR_ACTION_CLIENTS",
+        "arena_size" => "NROS_EXECUTOR_ARENA_SIZE",
+        "subscription_buffer_size" => "NROS_SUBSCRIPTION_BUFFER_SIZE",
+        "param_service_buffer_size" => "NROS_PARAM_SERVICE_BUFFER_SIZE",
+        other => panic!("unknown executor knob `{other}`"),
+    }
+}
+
+/// phase-400 W8 — the env front-end for one executor knob, with NO ladder.
+///
+/// For callers that cannot reach a platform tree (an out-of-tree consumer, or a
+/// check with no platform named) but must still honour an operator's override.
+/// It lives HERE, beside `executor_env_key`, so the env-reading idiom for a
+/// migrated knob exists in exactly one crate — which is what
+/// `check-knob-single-reader` enforces, and why a caller that inlined
+/// `std::env::var("NROS_EXECUTOR_MAX_CBS")` is a finding rather than a style
+/// nit: two readers can disagree and nothing reports it.
+pub fn executor_env_only(knob: &str, default: usize) -> usize {
+    std::env::var(executor_env_key(knob))
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(default)
+}
+
+/// `[knobs.executor]` — phase-400 W6. All optional; `None` defers to the rung
+/// below, and the built-in defaults stay in `nros-node/build.rs` so an absent
+/// tree changes nothing.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutorKnobs {
+    pub max_cbs: Option<usize>,
+    pub max_sc: Option<usize>,
+    pub max_nodes: Option<usize>,
+    pub max_shutdown_cbs: Option<usize>,
+    pub action_clients: Option<usize>,
+    pub arena_size: Option<usize>,
+    pub subscription_buffer_size: Option<usize>,
+    pub param_service_buffer_size: Option<usize>,
+}
+
+/// One resolved executor knob: value, rung, and the env name that is still its
+/// front-end. The name travels with the value so `explain` can tell a reader
+/// which variable to set, without a second table to keep in step.
+#[derive(Debug, Clone)]
+pub struct ResolvedUsize {
+    pub value: usize,
+    pub source: KnobSource,
+    pub env_key: &'static str,
 }
 
 /// `[knobs.transport]` — RFC-0086 D1.
@@ -752,6 +824,99 @@ impl PlatformsTree {
         })
     }
 
+    /// phase-400 W6 — resolve the executor sizing tenant.
+    ///
+    /// Same four-rung ladder as every other tenant. `defaults` carries the
+    /// crate's built-in values so this module does not duplicate them: the
+    /// numbers stay in `nros-node/build.rs`, which is the one place that knows
+    /// how the arena is derived from them.
+    ///
+    /// Each knob keeps its existing env name, so migrating a knob changes no
+    /// call site — it only adds the two rungs it never had.
+    pub fn resolve_executor(
+        &self,
+        platform: &str,
+        board: Option<&ExecutorKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_executor_knobs(platform)?;
+
+        let pick = |name: &'static str| -> Option<usize> {
+            match name {
+                "max_cbs" => plat.max_cbs,
+                "max_sc" => plat.max_sc,
+                "max_nodes" => plat.max_nodes,
+                "max_shutdown_cbs" => plat.max_shutdown_cbs,
+                "action_clients" => plat.action_clients,
+                "arena_size" => plat.arena_size,
+                "subscription_buffer_size" => plat.subscription_buffer_size,
+                "param_service_buffer_size" => plat.param_service_buffer_size,
+                _ => None,
+            }
+        };
+        let pick_board = |name: &'static str| -> Option<usize> {
+            let b = board?;
+            match name {
+                "max_cbs" => b.max_cbs,
+                "max_sc" => b.max_sc,
+                "max_nodes" => b.max_nodes,
+                "max_shutdown_cbs" => b.max_shutdown_cbs,
+                "action_clients" => b.action_clients,
+                "arena_size" => b.arena_size,
+                "subscription_buffer_size" => b.subscription_buffer_size,
+                "param_service_buffer_size" => b.param_service_buffer_size,
+                _ => None,
+            }
+        };
+
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let env_key = executor_env_key(name);
+            let (value, source) = match (
+                env(env_key).and_then(|v| v.trim().parse::<usize>().ok()),
+                pick_board(name),
+                pick(name),
+            ) {
+                (Some(v), _, _) => (v, KnobSource::Env),
+                (None, Some(v), _) => (v, KnobSource::Board),
+                (None, None, Some(v)) => (v, KnobSource::Platform),
+                (None, None, None) => (*builtin, KnobSource::Builtin),
+            };
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
+    fn platform_executor_knobs(&self, name: &str) -> Result<ExecutorKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut k = ExecutorKnobs::default();
+        for file in chain.iter().rev() {
+            let f = &file.knobs.executor;
+            macro_rules! take {
+                ($($fld:ident),*) => { $( if f.$fld.is_some() { k.$fld = f.$fld; } )* };
+            }
+            take!(
+                max_cbs,
+                max_sc,
+                max_nodes,
+                max_shutdown_cbs,
+                action_clients,
+                arena_size,
+                subscription_buffer_size,
+                param_service_buffer_size
+            );
+        }
+        Ok(k)
+    }
+
     /// phase-400 W3 / RFC-0086 D1+D2 — resolve the transport tenant and the
     /// knobs it implies.
     ///
@@ -1021,8 +1186,14 @@ serial = true
         let env = |k: &str| (k == "NROS_TRANSPORT_KIND").then(|| "serial".to_string());
         let t = tree.resolve_transport("p", None, &env).unwrap();
         assert_eq!(t.kind.value, "serial");
-        let off = ["links.tcp", "links.udp", "drivers.ethernet", "drivers.phy",
-                   "drivers.mdio", "net.ip_stack"];
+        let off = [
+            "links.tcp",
+            "links.udp",
+            "drivers.ethernet",
+            "drivers.phy",
+            "drivers.mdio",
+            "net.ip_stack",
+        ];
         for knob in off {
             let i = t.implied.iter().find(|i| i.knob == knob).expect(knob);
             assert!(!i.value, "{knob} should be implied off by serial");
@@ -1082,14 +1253,50 @@ serial = true
         ));
     }
 
+    // ---- phase-400 W6 — the executor sizing tenant ----
+
+    #[test]
+    fn executor_knobs_take_the_same_four_rung_ladder() {
+        let tmp = write_tree(&[("p", "[knobs.executor]\nmax_cbs = 9\n")]);
+        let tree = PlatformsTree::load(tmp.path()).unwrap();
+        let defaults: &[(&str, usize)] = &[("max_cbs", 4), ("max_nodes", 4)];
+
+        // platform beats builtin
+        let r = tree.resolve_executor("p", None, &no_env, defaults).unwrap();
+        let cbs = r.iter().find(|(n, _)| *n == "max_cbs").unwrap();
+        assert_eq!(cbs.1.value, 9);
+        assert_eq!(cbs.1.source, KnobSource::Platform);
+        // an untouched knob still falls to the crate default
+        let nodes = r.iter().find(|(n, _)| *n == "max_nodes").unwrap();
+        assert_eq!(nodes.1.value, 4);
+        assert_eq!(nodes.1.source, KnobSource::Builtin);
+
+        // board beats platform
+        let board = ExecutorKnobs {
+            max_cbs: Some(11),
+            ..Default::default()
+        };
+        let r = tree
+            .resolve_executor("p", Some(&board), &no_env, defaults)
+            .unwrap();
+        assert_eq!(r.iter().find(|(n, _)| *n == "max_cbs").unwrap().1.value, 11);
+
+        // env beats both, under the knob's EXISTING name
+        let env = |k: &str| (k == "NROS_EXECUTOR_MAX_CBS").then(|| "13".to_string());
+        let r = tree
+            .resolve_executor("p", Some(&board), &env, defaults)
+            .unwrap();
+        let cbs = r.iter().find(|(n, _)| *n == "max_cbs").unwrap();
+        assert_eq!(cbs.1.value, 13);
+        assert_eq!(cbs.1.source, KnobSource::Env);
+        assert_eq!(cbs.1.env_key, "NROS_EXECUTOR_MAX_CBS");
+    }
+
     // ---- phase-400 W2 / RFC-0071 D8 — knobs keyed by backend ----
 
     #[test]
     fn knobs_accept_a_backend_nano_ros_has_never_heard_of() {
-        let tmp = write_tree(&[(
-            "p",
-            "[knobs.acme-rmw.tx]\nbatch = true\nflush_ms = 7\n",
-        )]);
+        let tmp = write_tree(&[("p", "[knobs.acme-rmw.tx]\nbatch = true\nflush_ms = 7\n")]);
         let tree = PlatformsTree::load(tmp.path()).unwrap();
         // Parsing a third-party backend's knobs must not require nano-ros to
         // know its name — that is the whole point of de-keying the section.
@@ -1190,7 +1397,8 @@ serial = true
         if !root.is_dir() {
             return; // out-of-tree consumer; nothing to check
         }
-        let tree = PlatformsTree::load_search_path(&root_path).expect("the real config/ tree loads");
+        let tree =
+            PlatformsTree::load_search_path(&root_path).expect("the real config/ tree loads");
         let manifest = tree.as_platform_manifest();
         let mut delegating: Vec<String> = Vec::new();
         let mut checked = 0usize;

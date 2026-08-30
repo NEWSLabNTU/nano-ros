@@ -53,11 +53,7 @@ pub fn config_root() -> Option<PathBuf> {
                 let cand = dir.join(root);
                 if cand.is_dir()
                     && std::fs::read_dir(&cand).is_ok_and(|mut e| {
-                        e.any(|x| {
-                            x.is_ok_and(|x| {
-                                x.path().join("nros-platform.toml").is_file()
-                            })
-                        })
+                        e.any(|x| x.is_ok_and(|x| x.path().join("nros-platform.toml").is_file()))
                     })
                 {
                     return Some(cand);
