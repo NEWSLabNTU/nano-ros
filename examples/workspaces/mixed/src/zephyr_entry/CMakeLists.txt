@@ -53,6 +53,5 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../rust_heartbeat_pkg" rust_heartb
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
-    LAUNCH  default
     TYPED
     DEPLOY  zephyr)

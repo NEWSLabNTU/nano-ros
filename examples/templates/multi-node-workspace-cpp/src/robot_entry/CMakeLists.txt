@@ -33,6 +33,5 @@ nano_ros_entry(
     BOARD   native
     TYPED
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
-    LAUNCH  default
     PANIC   platform
     DEPLOY  native)

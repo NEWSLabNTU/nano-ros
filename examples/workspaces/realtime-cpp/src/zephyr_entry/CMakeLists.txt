@@ -32,7 +32,6 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../telem_pkg" telem_pkg)
 nano_ros_add_executable(zephyr_entry
     BOARD   zephyr
     BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
-    LAUNCH  default
     TYPED
     PANIC   platform
     DEPLOY  zephyr)
