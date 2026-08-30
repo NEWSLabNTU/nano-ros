@@ -145,23 +145,22 @@ fork calls `lwip_socket_thread_init()`/`_cleanup()` — and the stall SURVIVES
 both. They were undefined behaviour that had to go before anything downstream
 could be reasoned about, not the answer.
 
-## What is landed, and what is held back
+## What is landed
 
-Landed: this issue, and the `NROS_ZPICO_DEBUG` knob that made the zenoh-pico
-internals readable under gdb.
+All of it. The zenoh-pico patches are on the fork's `nano-ros` line, pushed as a
+fast-forward (`e0832729..ce206ec0`), and the superproject pin moved with them:
 
-HELD BACK, because the three parts only work together and two of them are not
-pushable by the agent (it does not push fork remotes):
+* `567c0c52` — the [[issue-0899]] crash fix.
+* `ce206ec0` — the per-task lwIP netconn semaphore, this issue's finding 2.
+* the board's `LWIP_NETCONN_FULLDUPLEX` flip, this issue's finding 1, in the
+  same superproject commit as the pin bump. It was deliberately held out of the
+  earlier docs commit: shipping it without the fork side would have been the
+  same half-a-requirement mistake this issue is about, in the other direction.
 
-* zenoh-pico fork branch `nano-ros-0899`, local — `567c0c52` (the [[issue-0899]]
-  crash fix) and `ce206ec0` (the per-task netconn semaphore).
-* the board's `LWIP_NETCONN_FULLDUPLEX` flip, on local branch
-  `fix/0906-lwip-fullduplex`.
-
-Shipping the board flip alone would be the same half-a-requirement mistake this
-issue is about, in the other direction, so it waits for the fork branch to be
-pushed and the submodule pin to move. Note the pin is also in flight in PR #70;
-whoever pushes should rebase `nano-ros-0899` onto whatever pin lands.
+None of that CLOSES this issue. The lease teardown still parks in lwIP's netconn
+shutdown/close, so a lapsed session still loses delivery. What landed removes
+two pieces of undefined behaviour that stood between the symptom and any sound
+reasoning about it.
 
 ## Still open, and this is the next thread to pull
 
