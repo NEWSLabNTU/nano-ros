@@ -43,7 +43,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"]' \
     ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-See [Native host build](../platform-guides/native-posix.md).
+See [Native host build](../platform-guides/native-host.md).
 
 ## RTOS and Bare-Metal
 

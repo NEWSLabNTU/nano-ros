@@ -2,7 +2,7 @@
 id: 916
 title: "Live macOS branches were added after macOS was dropped as a host — and
   the `native`/`posix` scaffold aliases behave differently"
-status: open
+status: resolved
 type: bug
 area: cli, tooling
 related: [phase-401, phase-260, phase-327]
@@ -82,6 +82,71 @@ them on the floor would waste that.
    not — and if they must differ, the difference belongs on an explicit field,
    not on a string comparison against one of two aliases.
 3. Re-check and correct the scaffold-journey comment.
+
+## Resolved — all three, and one thing left standing on purpose
+
+### 1. The brew branch is gone
+
+Removed. The deciding evidence is that nano-ros cannot BUILD on macOS for two
+independent reasons — `nros-platform-posix/src/timer.c` calls `timer_create`,
+which macOS does not implement, and `nros-board-linux` calls
+`sched_setaffinity`, absent from libc's apple module — so naming a package
+manager there offered a first step down a road with no second one. A macOS host
+now falls through to `None`, which callers already render as
+`<no supported package manager detected>`.
+
+That is the shape phase-260 W3 chose for the same problem in the planner: *"an
+explicit unsupported-host error, not a silent route"*.
+
+**AGENTS.md's acceptance widened to match.** It read "No `apple`/`darwin`/
+`APPLE` branch", which is why `env::consts::OS == "macos"` survived the sweep —
+the same claim in a spelling the criterion did not name. That spelling is now
+named.
+
+### 2. The aliases now agree, by asking the KIND
+
+`needs_scaffolded_nros_toml(platform)` replaces `platform != "native"` at both
+C and C++ sites. The file being written is a static QEMU-slirp network config
+(`ip`, `mac`, `gateway`, `locator`) that a host build has no use for, so the
+question was always "is this hosted", never "is this spelled `native`".
+
+Deliberately NOT `&& platform != "posix"`: a third hosted alias would
+reintroduce the bug, and the added condition would encode the symptom rather
+than the question. Three tests — both spellings agree, a cross target still
+gets the file, and an unknown platform is not assumed hosted.
+
+### 3. The stale comment is corrected, and its conclusion survives
+
+Measured rather than reasoned:
+
+```console
+$ nros new probe --platform native --lang rust
+nros = { version = "*", default-features = false, features = [...] }
+nros-board-linux = { version = "*", default-features = false }
+```
+
+Active, uncommented. So `--platform native` would satisfy that check today, and
+the premise was stale. `plat="baremetal"` is unchanged — its *other* stated
+reason (since #333, `nros new` refuses freertos for Rust) is current and is
+what the choice now rests on.
+
+## Left standing, deliberately: the SDK index's macOS dists
+
+`nros-sdk-index.toml` carries real macOS artifacts — `qemu-macos-arm64.tar.zst`,
+`arm-none-eabi-gcc-macos-arm64`, the Zephyr SDK macOS tarballs — with live URLs
+and sha256s, plus `sdk_index`/`sdk_store` tests asserting `macos-arm64`
+dispositions.
+
+**Not touched, and this is a judgement rather than an oversight.** Phase-260 had
+no wave covering the index, so these predate the decision rather than
+contradicting it; the URLs point at published assets in a separate repository
+(`nano-ros-sdk`); and the index describes what a package *offers per host key*,
+which is a data-model question distinct from which hosts nano-ros supports.
+Removing rows here would be a release-artifact decision, not a naming or
+branch-hygiene one.
+
+It is recorded so the inconsistency is visible: a macOS host can still be told
+which toolchain tarball it would get, for a build that cannot succeed.
 
 ## Sweep
 

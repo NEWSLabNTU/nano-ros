@@ -1190,11 +1190,24 @@ fn print_licenses(index: &SdkIndex) {
 
 /// Detect the host's package manager: `/etc/os-release` `ID`/`ID_LIKE`
 /// first (works even when several managers are installed), then a
-/// `command -v` probe as fallback. macOS is always `brew`.
+/// `command -v` probe as fallback.
+///
+/// No macOS arm (issue 0916). This returned `Some("brew")` for
+/// `env::consts::OS == "macos"`, added by phase-327 — after phase-260 dropped
+/// macOS as a host, whose acceptance reads "No `apple`/`darwin`/`APPLE` branch
+/// in nano-ros source/CMake/CI". `"macos"` is the same claim in a spelling that
+/// criterion did not name, which is why it survived the sweep.
+///
+/// Removing it rather than keeping it is the honest end: nano-ros does not
+/// BUILD on macOS (`nros-platform-posix/src/timer.c` calls `timer_create`,
+/// which macOS does not implement; `nros-board-linux` calls
+/// `sched_setaffinity`, which libc does not define for apple), so naming a
+/// package manager there offers a first step down a road with no second one.
+/// A macOS host now falls through to `None`, which callers already render as
+/// "<no supported package manager detected>" — the same shape phase-260 W3
+/// chose for the planner: "an explicit unsupported-host error, not a silent
+/// route".
 pub(crate) fn detect_package_manager() -> Option<&'static str> {
-    if std::env::consts::OS == "macos" {
-        return Some("brew");
-    }
     if let Ok(os_release) = std::fs::read_to_string("/etc/os-release") {
         let mut ids = String::new();
         for line in os_release.lines() {

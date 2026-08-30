@@ -1249,7 +1249,7 @@ int main(int argc, char** argv) {{
     );
     fs::write(dir.join("src/main.c"), main_c)?;
 
-    if platform != "native" {
+    if needs_scaffolded_nros_toml(platform) {
         write_default_config_toml(dir)?;
     }
     Ok(())
@@ -1325,10 +1325,32 @@ int main(int argc, char** argv) {{
     );
     fs::write(dir.join("src/main.cpp"), main_cpp)?;
 
-    if platform != "native" {
+    if needs_scaffolded_nros_toml(platform) {
         write_default_config_toml(dir)?;
     }
     Ok(())
+}
+
+/// Does this platform need a scaffolded `nros.toml`?
+///
+/// Only a NON-hosted target does: the file it writes is a static QEMU-slirp
+/// network config (`ip`, `mac`, `gateway`, `locator`), which a host build has
+/// no use for — the host kernel owns the stack.
+///
+/// Issue 0916: this was `platform != "native"`, a literal comparison against
+/// ONE of the two host spellings. `native` and `posix` are aliases for the same
+/// `PlatformKind::Hosted`, differing only in `deploy_token`, so
+/// `--platform posix` got an embedded network config and `--platform native`
+/// did not — two spellings of one platform producing different trees.
+///
+/// Asking the KIND is the fix, not adding `&& platform != "posix"`: a third
+/// hosted alias would reintroduce it, and the question being asked was never
+/// about the name.
+fn needs_scaffolded_nros_toml(platform: &str) -> bool {
+    !matches!(
+        platform_spec(platform).map(|s| s.kind),
+        Ok(PlatformKind::Hosted)
+    )
 }
 
 fn write_default_config_toml(dir: &Path) -> Result<()> {
@@ -1559,5 +1581,38 @@ mod tests {
                 "{platform}: no package dir on deferred platform"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod hosted_alias_tests {
+    use super::*;
+
+    /// `native` and `posix` are two spellings of one platform, so they must
+    /// scaffold the same tree.
+    ///
+    /// Issue 0916: they did not. The C and C++ scaffolds asked
+    /// `platform != "native"`, a literal comparison against one of the two
+    /// aliases, so `--platform posix` got an `nros.toml` full of static
+    /// QEMU-slirp network settings that a host build has no use for.
+    #[test]
+    fn the_two_hosted_spellings_agree_about_nros_toml() {
+        assert!(!needs_scaffolded_nros_toml("native"));
+        assert!(!needs_scaffolded_nros_toml("posix"));
+    }
+
+    /// …and a cross target still gets one, which is what the file is for.
+    #[test]
+    fn a_cross_target_still_gets_nros_toml() {
+        assert!(needs_scaffolded_nros_toml("baremetal"));
+        assert!(needs_scaffolded_nros_toml("freertos"));
+    }
+
+    /// An unknown platform is not silently treated as hosted. `platform_spec`
+    /// errors for it, and erring toward writing the file means the scaffold
+    /// output is inspectable rather than mysteriously missing a config.
+    #[test]
+    fn an_unknown_platform_is_not_assumed_hosted() {
+        assert!(needs_scaffolded_nros_toml("no-such-platform"));
     }
 }

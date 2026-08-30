@@ -439,15 +439,21 @@ fn edf(resolver: Resolver) -> Exec {
     }
 }
 
+/// The platform's canonical token, from the ONE place that owns the mapping.
+///
+/// This was a local `plat_str` match — a second spelling of
+/// `PlatformId::fixture_tokens`, and it disagreed with it: `MP::Linux` printed
+/// `posix` here while the SSoT says `linux`. `matrix.rs`'s own comment beside
+/// that mapping warns about exactly this, calling a duplicate "two spellings of
+/// one fact" (phase-401 W3).
+///
+/// Display-only — these labels feed `format!` and `skip!` messages, never
+/// fixture resolution — but a label that names a platform differently from
+/// every other lane is how a reader learns the wrong token. Delegating also
+/// makes a new `PlatformId` variant a compile error here rather than a silent
+/// `"?"`.
 fn plat_str(p: MP) -> &'static str {
-    match p {
-        MP::ZephyrNativeSim => "zephyr",
-        MP::NuttxArm => "nuttx",
-        MP::ThreadxLinux => "threadx-linux",
-        MP::FreertosMps2 => "freertos",
-        MP::Linux => "posix",
-        _ => "?",
-    }
+    p.fixture_tokens()[0]
 }
 /// THE realtime-dim matrix consumer. Iterates every Runtime `SchedCell` and runs
 /// each in one process, catching per-cell skips/failures so one missing fixture

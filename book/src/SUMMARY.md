@@ -49,7 +49,7 @@
 - [PX4 Autopilot](./getting-started/px4.md)
   - [PX4 (integration shell)](./getting-started/integration-px4.md)
 - [ARM FVP (Cortex-A SMP)](./getting-started/arm-fvp.md)
-- [Native host build (reference)](./platform-guides/native-posix.md)
+- [Native host build (reference)](./platform-guides/native-host.md)
 
 # User Guide
 

@@ -20,9 +20,19 @@ REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 
-# An embedded cell — `--platform native` scaffolds nros commented out (a stub),
-# so it would not exercise the patch block. An embedded platform emits active
-# `nros` + board deps, which is the real convention surface.
+# An embedded cell.
+#
+# This used to say `--platform native` "scaffolds nros commented out (a stub),
+# so it would not exercise the patch block". That premise is STALE (issue 0916)
+# — the Hosted template emits an ACTIVE `nros` dep, and the commented-out form
+# was retired. Measured:
+#
+#   $ nros new probe --platform native --lang rust
+#   nros = { version = "*", default-features = false, features = [...] }
+#   nros-board-linux = { version = "*", default-features = false }
+#
+# So `native` would satisfy this check today. The choice below is NOT that
+# reason; it is the one immediately after, which still holds.
 #
 # `baremetal`, not `freertos`: since `fix(#333)` (2026-07-28) `nros new` REFUSES
 # freertos for Rust —
