@@ -65,6 +65,7 @@ fails if this block drifts.
 - **#0910** (rmw, build) — migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no longer shipped, and our config generator is 54 knobs behind See `0910-*`.
 - **#0913** (testing, embedded) — attaching pyocd RTT kills the zenoh session — the debugger perturbs the system under test, and issue 0879 makes the perturbation permanent See `0913-*`.
 - **#0914** (testing) — Nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot evaluate anything passes every check See `0914-*`.
+- **#0917** (rmw, platform) — The emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst, and a 5 ms RX poll drains it far too late See `0917-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
 - **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
