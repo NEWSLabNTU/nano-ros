@@ -283,3 +283,36 @@ Any zenoh-over-serial image whose executor is busy enough to hold a timeslice
 loses frames silently. Observed as session expiry at `2 x Z_TRANSPORT_LEASE`
 ([issue 0839](0839-action-image-session-expires-every-20s.md)), because the
 dropped frames are the router's keepalives.
+
+## Step 3 landed: interrupt-driven RX, and what the A/B actually shows
+
+Ported to zenoh-pico 1.10's `src/link/transport/serial/uart_zephyr.c` (the file
+that replaced `system/zephyr/network.c`). The ISR drains the LPUART FIFO into a
+ring buffer and the reader blocks on a semaphore, so RX no longer depends on
+thread scheduling. Guarded on `CONFIG_UART_INTERRUPT_DRIVEN`; if the bind is
+refused the reader falls through to the polled loop.
+
+The measurement this issue was waiting on is now possible: it was held off
+because the A/B could not be trusted while the board presented the same zenoh id
+every boot, and issue 0864 fixed that.
+
+`ros2 topic hz /chatter`, same board, same router, same session, talker image:
+
+| path   | rate  | min     | max     | std dev     |
+| ------ | ----- | ------- | ------- | ----------- |
+| polled | 2.004 | 0.466 s | 0.517 s | **0.0234**  |
+| ISR    | 1.941 | 0.512 s | 0.519 s | **0.0028**  |
+
+Jitter drops by roughly 8x and the spread narrows from 51 ms to 7 ms, which is
+what taking RX off the scheduler should look like.
+
+**Read that table with its limits.** The talker is the case this issue says
+polled ALREADY survives -- "one publisher, executor blocked almost always,
+reader keeps up". So this measures jitter on the easy case; it does not by
+itself demonstrate that the starvation failure is fixed, because the talker was
+never the failing case. The failing case is the action image, where three
+queryables, two publishers and their callbacks keep the executor runnable. That
+test belongs with issue 0902 and has not been run under the ISR.
+
+The ~3% lower mean rate is within the noise of a 3-6 sample window and should
+not be read as a cost until it is measured over a longer run.
