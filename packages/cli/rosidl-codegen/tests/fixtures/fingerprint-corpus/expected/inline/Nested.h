@@ -73,17 +73,32 @@ int32_t fingerprint_corpus_msg_nested_deserialize_inline(fingerprint_corpus_msg_
 /// Get the nros_message_type_t for this message type
 const nros_message_type_t* fingerprint_corpus_msg_nested_get_type_support(void);
 
-/// Typed publish helper. Serializes `msg` into a stack buffer of size
-/// `NROS_PUB_BUFFER_SIZE` (override at compile time; default 256) then
-/// hands it to nros_publish_raw. nros_ret_t / nros_publisher_t /
-/// nros_publish_raw all come in via <nros/types.h> (already included
-/// at the top of this header).
+
+/// NO size bound is emitted for this type.
+///
+/// Reason: nested type `Shapes` could not be resolved
+///
+/// "unbounded member" means the bound was computed and does not exist -- bound
+/// the field in the `.msg` (`string<=64`) or give it a `cap` in
+/// `nros-codegen.toml`. "could not be resolved" means the bound was NOT
+/// computed, because a nested type was not reachable; that is a search-path
+/// problem, not a property of the message. Issue 0896.
+
+
+/// Typed publish helper. Serializes `msg` into a stack buffer sized from the
+/// type's own bound where one exists, and from `NROS_PUB_BUFFER_SIZE`
+/// otherwise. nros_ret_t / nros_publisher_t / nros_publish_raw all come in via
+/// <nros/types.h> (already included at the top of this header).
 #ifndef NROS_PUB_BUFFER_SIZE
 #define NROS_PUB_BUFFER_SIZE 256
 #endif
 static inline nros_ret_t fingerprint_corpus_msg_nested_publish(struct nros_publisher_t* publisher,
                                                    const fingerprint_corpus_msg_nested* msg) {
+
+    /* No bound for this type (nested type `Shapes` could not be resolved), so the global knob is
+       still the only available answer. */
     uint8_t buf[NROS_PUB_BUFFER_SIZE];
+
     size_t n = 0;
     int32_t r = fingerprint_corpus_msg_nested_serialize(msg, buf, sizeof(buf), &n);
     if (r != 0) return r;

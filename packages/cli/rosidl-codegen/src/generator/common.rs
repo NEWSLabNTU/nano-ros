@@ -1357,7 +1357,7 @@ pub fn build_nros_schema_for_struct_with_path(
 ///
 /// `const_prefix` namespaces the emitted helper-const idents so multiple
 /// schemas in the same module don't collide on shared field names.
-fn render_field_type_expr(
+pub(crate) fn render_field_type_expr(
     field_name: &str,
     field_type: &FieldType,
     package_name: &str,

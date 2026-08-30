@@ -108,17 +108,49 @@ int32_t {{ struct_name }}_deserialize_inline({{ struct_name }}* msg, const uint8
 /// Get the nros_message_type_t for this message type
 const nros_message_type_t* {{ struct_name }}_get_type_support(void);
 
-/// Typed publish helper. Serializes `msg` into a stack buffer of size
-/// `NROS_PUB_BUFFER_SIZE` (override at compile time; default 256) then
-/// hands it to nros_publish_raw. nros_ret_t / nros_publisher_t /
-/// nros_publish_raw all come in via <nros/types.h> (already included
-/// at the top of this header).
+{% if max_serialized_size_xcdr1 %}
+/// Largest CDR payload this type can produce, encapsulation header included.
+///
+/// Computed by `nros_serdes::size::max_serialized_size` over this type's own
+/// schema -- THE size rule, not a copy of it -- so it cannot disagree with the
+/// Rust `MAX_SERIALIZED_SIZE_XCDR*` const for the same type (issue 0896).
+///
+/// Two constants because the encodings differ: XCDR2 adds a 4-byte DHEADER and
+/// aligns 8-byte primitives to 4 instead of 8. This stack WRITES XCDR1, so the
+/// publish helper below uses that one; a RECEIVE buffer must hold either, so a
+/// subscription wants the larger.
+#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR1 {{ max_serialized_size_xcdr1 }}
+#define {{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR2 {{ max_serialized_size_xcdr2 }}
+{% else %}
+/// NO size bound is emitted for this type.
+///
+/// Reason: {{ unbounded_reason }}
+///
+/// "unbounded member" means the bound was computed and does not exist -- bound
+/// the field in the `.msg` (`string<=64`) or give it a `cap` in
+/// `nros-codegen.toml`. "could not be resolved" means the bound was NOT
+/// computed, because a nested type was not reachable; that is a search-path
+/// problem, not a property of the message. Issue 0896.
+{% endif %}
+
+/// Typed publish helper. Serializes `msg` into a stack buffer sized from the
+/// type's own bound where one exists, and from `NROS_PUB_BUFFER_SIZE`
+/// otherwise. nros_ret_t / nros_publisher_t / nros_publish_raw all come in via
+/// <nros/types.h> (already included at the top of this header).
 #ifndef NROS_PUB_BUFFER_SIZE
 #define NROS_PUB_BUFFER_SIZE 256
 #endif
 static inline nros_ret_t {{ struct_name }}_publish(struct nros_publisher_t* publisher,
                                                    const {{ struct_name }}* msg) {
+{% if max_serialized_size_xcdr1 %}
+    /* Exactly what this type can produce -- no guess, and no 256-byte cliff
+       for a type that needs more. */
+    uint8_t buf[{{ constant_prefix }}_MAX_SERIALIZED_SIZE_XCDR1];
+{% else %}
+    /* No bound for this type ({{ unbounded_reason }}), so the global knob is
+       still the only available answer. */
     uint8_t buf[NROS_PUB_BUFFER_SIZE];
+{% endif %}
     size_t n = 0;
     int32_t r = {{ struct_name }}_serialize(msg, buf, sizeof(buf), &n);
     if (r != 0) return r;

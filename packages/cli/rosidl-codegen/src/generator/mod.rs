@@ -1,5 +1,5 @@
 mod action;
-mod common;
+pub(crate) mod common;
 pub mod cpp;
 mod msg;
 mod srv;

@@ -478,6 +478,22 @@ pub struct MessageCHeaderTemplate<'a> {
     /// `{Msg}_View` + `{Msg}_deserialize_view` + `<nros/view.h>` include
     /// are emitted.
     pub has_borrowed: bool,
+    /// issue 0896 layer 2 — the type's serialized-size bound under XCDR1, or
+    /// `None` when the type is unbounded or a nested type was unresolvable.
+    ///
+    /// TWO constants rather than one maxed value: the publish helper writes
+    /// XCDR1 (the only encoding this stack emits) while a receive buffer must
+    /// hold either, and the two genuinely differ — XCDR2 adds a 4-byte DHEADER
+    /// and aligns 8-byte primitives to 4. A single number would be silently
+    /// wrong for one consumer.
+    pub max_serialized_size_xcdr1: Option<usize>,
+    /// The same under XCDR2. See [`Self::max_serialized_size_xcdr1`].
+    pub max_serialized_size_xcdr2: Option<usize>,
+    /// Why there is no bound, when there is none — either the unbounded member
+    /// (`header.frame_id (string)`) or the nested type that could not be
+    /// reached. Emitted as a header comment so a reader can tell "we looked and
+    /// there is no bound" from "we could not look".
+    pub unbounded_reason: Option<String>,
 }
 
 #[derive(serde::Serialize)]
