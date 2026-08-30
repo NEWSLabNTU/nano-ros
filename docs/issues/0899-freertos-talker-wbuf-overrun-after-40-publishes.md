@@ -206,9 +206,14 @@ below so it can be picked up directly.
   the backtrace above came from symbol names plus AAPCS argument registers
   (`r0`, `r1`, `r2`).
 * Start the talker with `-s -S` and attach; the listener and router run normally.
-* **Apply the issue-0902 workaround first** or you will debug a stale binary:
-  touch a WATCHED zenoh-pico file (e.g. `src/net/primitives.c`) AND the leaf's
-  own `main.c`, or the edit reaches neither the archive nor the image.
+* The stale-binary trap here was [issue 0911](0911-zpico-sys-no-rebuild-edge-on-zenoh-pico-sources.md)
+  (renumbered from 0902), and it is **fixed**: `nros-zpico-build` now watches the
+  `zenoh-pico/src` and `include` trees, so an edit to any compiled source
+  re-runs the build script. The old workaround -- touch a WATCHED file such as
+  `src/net/primitives.c` AND the leaf's own `main.c` -- is no longer needed for
+  the archive. The example RELINK edge (issue 0475's class) is still open on the
+  cargo path, so on that path touching the leaf's `main.c` may still be
+  required.
 
 ## Acceptance
 
