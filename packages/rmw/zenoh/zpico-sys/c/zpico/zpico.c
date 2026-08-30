@@ -199,6 +199,21 @@ typedef struct {
 #ifndef ZPICO_LEASE_TASK_PRIORITY
 #define ZPICO_LEASE_TASK_PRIORITY 16
 #endif
+#ifndef ZPICO_GRAPH_CACHE_SIZE
+/* Bytes of NUL-separated liveliness keyexprs the graph cache holds.
+ *
+ * A ROS 2 liveliness keyexpr runs ~140 bytes. Measured against a host running
+ * one stock `talker` plus the ROS 2 daemon, the domain carried 222 tokens —
+ * ~31 KB — so 8192 held 51 of them and dropped 171. Sized for that measurement
+ * rather than for the talker alone, and still a KNOB: an embedded image with a
+ * small graph should turn it down. Overflow is COUNTED, never silently
+ * truncated —
+ * `dropped` is what `zpico_graph_cache_copy` reports, because a graph answer
+ * that quietly omits entries is the plausible-wrong-answer failure phase-381
+ * exists to avoid. */
+#define ZPICO_GRAPH_CACHE_SIZE 65536
+#endif
+
 #ifndef ZPICO_GET_REPLY_BUF_SIZE
 #define ZPICO_GET_REPLY_BUF_SIZE 4096
 #endif
@@ -287,6 +302,35 @@ typedef struct {
     _z_condvar_t cond;
 #endif
 } get_reply_ctx_t;
+
+/* phase-381 / issue 0903 — the GRAPH CACHE.
+ *
+ * Enumeration used to be a `z_liveliness_get` per question. That is an INTEREST
+ * declaration under the hood (`_z_liveliness_query` sends TOKENS | KEYEXPRS |
+ * RESTRICTED | CURRENT), and a token only reaches a get's callback when the
+ * router tags its declaration with THAT interest id. Measured against a live
+ * `rmw_zenoh_cpp` talker, two sweeps in flight did not both receive replies —
+ * whichever started first got tokens and the other got `arrived=0` across 99
+ * drains — and a single sweep saw 2-4 of the dozen tokens the talker declares,
+ * a different subset each run. Widening the pattern to `**` made it worse.
+ *
+ * A SUBSCRIBER with `history` is what `rmw_zenoh_cpp` itself uses for its graph
+ * cache, and it removes the whole class: one standing declaration, the current
+ * tokens delivered once, every later change pushed. No sweeps, so nothing to
+ * serialize, nothing to starve, and no per-sweep truncation. */
+typedef struct {
+    /* NUL-separated keyexprs, same layout `zpico_entry_at` already walks. */
+    uint8_t buf[ZPICO_GRAPH_CACHE_SIZE];
+    size_t len;
+    uint32_t entry_count;
+    /* Tokens that did not fit. Reported, never hidden. */
+    uint32_t dropped;
+    bool active;
+    z_owned_subscriber_t sub;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_t mutex;
+#endif
+} graph_cache_t;
 
 // Static slots for non-blocking z_get operations
 // ZPICO_MAX_PENDING_GETS is provided via -D compiler flag from build.rs,
@@ -387,6 +431,7 @@ struct zpico_session {
     publisher_entry_t publishers[ZPICO_MAX_PUBLISHERS];
     subscriber_entry_t subscribers[ZPICO_MAX_SUBSCRIBERS];
     liveliness_entry_t liveliness[ZPICO_MAX_LIVELINESS];
+    graph_cache_t graph_cache;
     queryable_entry_t queryables[ZPICO_MAX_QUERYABLES];
 
     // Phase 237 — per-queryable seq-keyed reply slots. Each slot holds one
@@ -3411,6 +3456,199 @@ int32_t zpico_liveliness_entry_count(zpico_session_t* session, int32_t handle) {
  * reason the handler drops rather than truncates: half a keyexpr names a
  * different, plausible entity.
  */
+/* phase-381 / issue 0903 — graph cache: find `key` in the NUL-separated run.
+ *
+ * Returns the offset of the entry, or `SIZE_MAX` when absent. Split out so the
+ * PUT and DELETE arms of the sample handler share one notion of identity, and
+ * so it is testable without a session. */
+static size_t graph_cache_find(const graph_cache_t* c, const char* key, size_t klen) {
+    size_t off = 0;
+    while (off < c->len) {
+        const char* e = (const char*)c->buf + off;
+        size_t n = strlen(e);
+        if (n == klen && memcmp(e, key, klen) == 0) {
+            return off;
+        }
+        off += n + 1;
+    }
+    return SIZE_MAX;
+}
+
+/* Sample handler for the liveliness subscriber.
+ *
+ * A liveliness sample carries its meaning in the KEYEXPR and its KIND: PUT is
+ * "this token exists", DELETE is "it is gone". The payload is empty, as it is
+ * for the query form. */
+static void graph_cache_sample_handler(z_loaned_sample_t* sample, void* arg) {
+    struct zpico_session* s = (struct zpico_session*)arg;
+    if (s == NULL || !s->graph_cache.active) {
+        return;
+    }
+    z_view_string_t ks;
+    z_keyexpr_as_view_string(z_sample_keyexpr(sample), &ks);
+    const char* key = z_string_data(z_view_string_loan(&ks));
+    size_t klen = z_string_len(z_view_string_loan(&ks));
+    if (key == NULL || klen == 0) {
+        return;
+    }
+    graph_cache_t* c = &s->graph_cache;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_lock(&c->mutex);
+#endif
+    size_t at = graph_cache_find(c, key, klen);
+    if (z_sample_kind(sample) == Z_SAMPLE_KIND_DELETE) {
+        if (at != SIZE_MAX) {
+            /* Close the gap so the run stays dense and `entry_count` keeps
+             * indexing it. */
+            size_t n = strlen((const char*)c->buf + at) + 1;
+            memmove(c->buf + at, c->buf + at + n, c->len - at - n);
+            c->len -= n;
+            c->entry_count--;
+        }
+    } else if (at == SIZE_MAX) {
+        if (c->len + klen + 1 <= sizeof(c->buf)) {
+            memcpy(c->buf + c->len, key, klen);
+            c->buf[c->len + klen] = '\0';
+            c->len += klen + 1;
+            c->entry_count++;
+        } else {
+            c->dropped++;
+        }
+    }
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_unlock(&c->mutex);
+#endif
+}
+
+/* Start the standing graph cache on `keyexpr`.
+ *
+ * `history = true` is the whole point: the subscriber is delivered the tokens
+ * that ALREADY exist, then every later change. Without it the cache would only
+ * ever see nodes that appear after us, which is the same blind spot the query
+ * form had for a different reason.
+ *
+ * Idempotent — a second call while active is a no-op, so every graph entry
+ * point can call it without coordinating.
+ */
+int32_t zpico_graph_cache_start(zpico_session_t* session, const char* keyexpr) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || keyexpr == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (s->graph_cache.active) {
+        return 0;
+    }
+    graph_cache_t* c = &s->graph_cache;
+    c->len = 0;
+    c->entry_count = 0;
+    c->dropped = 0;
+#if Z_FEATURE_MULTI_THREAD == 1
+    if (_z_mutex_init(&c->mutex) != _Z_RES_OK) {
+        return ZPICO_ERR_INVALID;
+    }
+#endif
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) != _Z_RES_OK) {
+#if Z_FEATURE_MULTI_THREAD == 1
+        _z_mutex_drop(&c->mutex);
+#endif
+        return ZPICO_ERR_INVALID;
+    }
+    z_owned_closure_sample_t closure;
+    z_closure_sample(&closure, graph_cache_sample_handler, NULL, s);
+    z_liveliness_subscriber_options_t opts;
+    z_liveliness_subscriber_options_default(&opts);
+    opts.history = true;
+    /* Set active BEFORE declaring: the handler can fire from the RX path the
+     * moment the declaration lands, and a flag set afterwards drops exactly the
+     * history burst this call exists to collect. That ordering was defect 4 in
+     * the query form (issue 0903); it is not repeated here. */
+    c->active = true;
+    z_result_t ret = z_liveliness_declare_subscriber(z_session_loan(&s->session), &c->sub,
+                                                     z_view_keyexpr_loan(&ke),
+                                                     z_closure_sample_move(&closure), &opts);
+    if (ret != _Z_RES_OK) {
+        c->active = false;
+#if Z_FEATURE_MULTI_THREAD == 1
+        _z_mutex_drop(&c->mutex);
+#endif
+        return ZPICO_ERR_INVALID;
+    }
+    return 0;
+}
+
+/* Stop the cache and release the subscriber. Idempotent. */
+int32_t zpico_graph_cache_stop(zpico_session_t* session) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL) {
+        return ZPICO_ERR_INVALID;
+    }
+    if (!s->graph_cache.active) {
+        return 0;
+    }
+    s->graph_cache.active = false;
+    z_undeclare_subscriber(z_subscriber_move(&s->graph_cache.sub));
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_drop(&s->graph_cache.mutex);
+#endif
+    return 0;
+}
+
+int32_t zpico_entry_at(const uint8_t* buf, size_t len, uint32_t count, uint32_t index, char* out,
+                       size_t cap);
+
+/* How many tokens the cache currently holds, and how many did not fit.
+ *
+ * `out_dropped` is reported beside the count rather than folded into it,
+ * because a graph answer that silently omits entries is the plausible-wrong-
+ * answer failure this path exists to avoid.
+ */
+int32_t zpico_graph_entry_count(zpico_session_t* session, uint32_t* out_dropped) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || !s->graph_cache.active) {
+        return ZPICO_ERR_INVALID;
+    }
+    graph_cache_t* c = &s->graph_cache;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_lock(&c->mutex);
+#endif
+    uint32_t n = c->entry_count;
+    if (out_dropped != NULL) {
+        *out_dropped = c->dropped;
+    }
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_unlock(&c->mutex);
+#endif
+    return (int32_t)n;
+}
+
+/* Copy cached keyexpr `index` into `out`, NUL-terminated.
+ *
+ * ONE entry per call, under the lock, rather than a bulk snapshot: the cache is
+ * sized for a real ROS graph (tens of KB) and the callers are embedded, where a
+ * buffer that size cannot live on the stack. It also keeps the capacity a fact
+ * about the C side alone — a bulk copy forced the Rust caller to know
+ * `ZPICO_GRAPH_CACHE_SIZE`, and two constants that must agree eventually do not.
+ *
+ * A token may appear or vanish between calls; that is inherent to enumerating a
+ * LIVE graph and is why callers poll to convergence.
+ */
+int32_t zpico_graph_entry_at(zpico_session_t* session, uint32_t index, char* out, size_t cap) {
+    struct zpico_session* s = (struct zpico_session*)session;
+    if (s == NULL || out == NULL || !s->graph_cache.active) {
+        return ZPICO_ERR_INVALID;
+    }
+    graph_cache_t* c = &s->graph_cache;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_lock(&c->mutex);
+#endif
+    int32_t ret = zpico_entry_at(c->buf, c->len, c->entry_count, index, out, cap);
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_unlock(&c->mutex);
+#endif
+    return ret;
+}
+
 int32_t zpico_entry_at(const uint8_t* buf, size_t len, uint32_t count, uint32_t index, char* out,
                        size_t cap) {
     if (buf == NULL || out == NULL || index >= count) {

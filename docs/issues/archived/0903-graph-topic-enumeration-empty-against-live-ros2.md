@@ -2,7 +2,7 @@
 id: 903
 title: "`get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp
   node, while `get_node_names` on the same session returns the node"
-status: open
+status: resolved
 type: bug
 area: rmw
 related: [phase-381, issue-0791]
@@ -140,3 +140,68 @@ Two things remain unexplained and are the next measurements, not guesses:
   reply buffer: `ZPICO_GET_REPLY_BUF_SIZE` is 4096 and these keyexprs are ~140
   bytes. Not a timeout truncation either — the deadlocked sweep stayed open
   indefinitely and still saw two.
+
+
+## Update 2026-08-30 (second) — RESOLVED, and one earlier conclusion RETRACTED
+
+Fixed by replacing the per-question liveliness GET with a standing liveliness
+SUBSCRIBER (`history = true`) — the same mechanism `rmw_zenoh_cpp` uses for its
+own graph cache. Measured against a stock `demo_nodes_cpp talker`, clean build,
+no instrumentation:
+
+```
+GRAPH_NODE /|talker
+GRAPH_PROBE_NODE_COUNT  1
+GRAPH_TOPIC /chatter          [std_msgs::msg::dds_::String_]
+GRAPH_TOPIC /parameter_events [rcl_interfaces::msg::dds_::ParameterEvent_]
+GRAPH_TOPIC /rosout           [rcl_interfaces::msg::dds_::Log_]
+GRAPH_PROBE_TOPIC_COUNT 3
+GRAPH_PROBE_SAW talker
+probe_rc=0
+```
+
+Both forms now agree with `ros2 node list` / `ros2 topic list`.
+
+### Why the get form could not work
+
+`z_liveliness_get` is not a query. `_z_liveliness_query` sends an INTEREST
+(`TOKENS | KEYEXPRS | RESTRICTED | CURRENT`), and `_z_liveliness_process_token_
+declare` only reaches a get's callback when the router tags the declaration with
+THAT interest id. A subscriber has no such indirection — it matches. Measured
+difference: the sweep saw 2-4 tokens, a different subset each run; the cache sees
+the whole domain (`cached=256 dropped=0`, 39,032 bytes).
+
+`**` is right for the cache and wrong for a get, for the same reason.
+
+### RETRACTED: "two concurrent liveliness gets starve each other"
+
+The previous update, the commit that carried it, and PR #67 all state this as
+measured. **It is not supported by the evidence, and I no longer believe it.**
+
+The comparison behind it ran the acceptance script with `SKIP_NODES` set versus
+unset. The script spelled that as:
+
+```sh
+GRAPH_PROBE_SKIP_NODES=${SKIP_NODES:-} \
+```
+
+which sets the variable UNCONDITIONALLY — to the empty string when `SKIP_NODES`
+is unset — and the probe read it with `std::env::var_os(..).is_some()`, for which
+an empty value is still SET. So the node phase was skipped in BOTH arms: the two
+configurations I was comparing were identical, and the `arrived=0` vs `arrived=2`
+difference came from something else in the build, not from concurrency.
+
+The same harness bug is why node enumeration "regressed to 0" for several runs
+while topics improved: nodes were never being enumerated at all. Two of the fixes
+in the previous update were chosen to explain that regression — serializing the
+sweeps behind one slot, and the poll floor under `collect_done` — so their
+justification was wrong even where the code was harmless. They are gone now
+along with the sweep.
+
+The four defects listed in the previous update were real and independently
+verified; only the concurrency claim is withdrawn.
+
+**Lesson worth keeping: `var_os(..).is_some()` treats an empty value as SET, and
+`VAR=${OTHER:-}` always sets it.** A flag spelled that way is on permanently.
+Pair a presence test with a shell form that leaves the variable absent, or test
+the value rather than the presence.

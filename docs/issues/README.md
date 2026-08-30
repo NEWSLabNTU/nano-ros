@@ -106,6 +106,8 @@ which already has it. Regenerate with `scripts/gen-issue-index.py`;
 
 <!-- END GENERATED open-issue list -->
 
+Recently resolved (2026-08-30): **#0903** (rmw) — graph enumeration returned an empty topic list against a live `rmw_zenoh_cpp` node. `z_liveliness_get` is not a query: `_z_liveliness_query` sends an INTEREST, and a token reaches a get's callback only when the router tags its declaration with THAT interest id — so a sweep saw 2-4 of the domain's tokens, a different subset each run. Replaced by a standing liveliness SUBSCRIBER with `history`, the mechanism `rmw_zenoh_cpp` uses for its own graph cache: `cached=256 dropped=0`, and both node and topic enumeration now agree with `ros2 node list` / `ros2 topic list`. Four earlier defects (restart on first reply, refresh inside the drain, four undispatched `CffiSession` slots, `collect` set after the get) were real and are fixed. One earlier conclusion is RETRACTED: "two concurrent liveliness gets starve each other" was an artifact of the acceptance script writing `GRAPH_PROBE_SKIP_NODES=${SKIP_NODES:-}`, which always SETS the variable, against a probe reading it with `var_os(..).is_some()`, for which empty is set — so both arms of that comparison skipped nodes and were identical. See `archived/0903-*`.
+
 Recently resolved (2026-08-29): **#0888** (rmw) — FreeRTOS was the only platform arm of the embedded
 Cyclone config with no `AllowMulticast`, so it inherited the Cyclone default (multicast for data) while
 ThreadX states `spdp` and native_sim states `false`. Not a platform limit — `LWIP_IGMP` is on, the netif
