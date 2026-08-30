@@ -282,7 +282,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             Driver::Cargo => {
                 // W3.b — generate the entry package. This is D4's headline
                 // claim: the entry stops being hand-written.
-                let entry_dir = generate_entry(
+                let generated = generate_entry(
                     &root,
                     &bringup_dir,
                     &bringup,
@@ -292,6 +292,8 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     &platform,
                     nano_ros_root.as_deref(),
                 )?;
+                let entry_dir = generated.as_ref().map(|(d, _)| d.clone());
+                let entity_facts = generated.map(|(_, f)| f).unwrap_or_default();
                 if let Some(d) = &entry_dir {
                     eprintln!("nros build:   entry → {}", d.display());
                 }
@@ -436,7 +438,18 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // live there. Building from build/<coord> would lose every one
                 // of them and resolve message crates against the public
                 // registry — issue 0378 by a different road.
-                Some(Handoff::new("cargo", a).in_dir(&root))
+                // The ENTITY facts ride the handoff (phase-392 W5). The env is
+                // the only carrier that reaches a build script inside the cargo
+                // invocation, which is what `entity_facts` was designed around —
+                // and this is the cargo half of that delivery, the CMake half
+                // being `NanoRosEntityFacts.cmake`. Without it the zenoh backend
+                // sizes SERVICE_BUFFERS for 8 service servers an image may not
+                // have, which overflows DRAM on esp32.
+                let mut h = Handoff::new("cargo", a).in_dir(&root);
+                for (k, v) in &entity_facts {
+                    h = h.with_env(k, v);
+                }
+                Some(h)
             }
             Driver::CMake => {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
@@ -836,7 +849,7 @@ fn generate_entry(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     platform: &str,
     nano_ros_root: Option<&std::path::Path>,
-) -> Result<Option<PathBuf>> {
+) -> Result<Option<(PathBuf, std::collections::BTreeMap<String, String>)>> {
     use crate::{
         builder::entry::{BoardFacts, EntrySpec},
         orchestration::model_location,
@@ -991,7 +1004,42 @@ fn generate_entry(
     let parent = root.join("build").join(coordinate(platform, image));
     let dir = crate::builder::entry::write(&spec, &facts, &parent)
         .map_err(|e| eyre::eyre!("generating the entry for `{image_id}`: {e}"))?;
-    Ok(Some(dir))
+
+    // phase-392 W5 — the ENTITY facts, from the SAME model resolved above.
+    //
+    // `entity_facts`'s own docs say these are "delivered through the process
+    // environment because that is the only carrier that reaches the cargo
+    // invocation a workspace member is built by" — and until now only
+    // `cmake/NanoRosEntityFacts.cmake` wired them, so the CMake path got
+    // declaration-sized tables and the CARGO path silently kept the undeclared
+    // fallback (32 hosted / 8 embedded).
+    //
+    // That is not a missing optimisation, it is a hard failure on a small
+    // target: `esp32_entry` overflowed DRAM by 8,804 B while carrying
+    // `SERVICE_BUFFERS` sized for 8 service servers it does not have. Measured
+    // on a native talker when the CMake side landed: 144,128 -> 4,504 B.
+    //
+    // Resolved here rather than by a second call so there is ONE model read,
+    // which is the property `entity_facts` was written to have.
+    let entity_facts = match std::fs::read_to_string(&model_path)
+        .map_err(|e| e.to_string())
+        .and_then(|y| {
+            ros_launch_manifest_model::SystemModel::from_yaml_str(&y).map_err(|e| e.to_string())
+        }) {
+        Ok(m) => crate::cmd::entity_facts::facts_from_model(&m),
+        Err(e) => {
+            // Not fatal: an unreadable model here means the entry was still
+            // generated, and the undeclared fallback is the historical
+            // behaviour. Say so rather than silently sizing for 8.
+            eprintln!(
+                "nros build: warning: cannot read `{}` for entity facts, so the \
+                 backend keeps its undeclared table budget: {e}",
+                model_path.display()
+            );
+            std::collections::BTreeMap::new()
+        }
+    };
+    Ok(Some((dir, entity_facts)))
 }
 
 /// The crates a BRIDGE entry must name directly, derived from the bringup.
@@ -1193,7 +1241,7 @@ fn all_cargo_entry_dirs(
         if plan::driver_for(&platform, image_has_non_rust(&image, &bringup_dir)) != Driver::Cargo {
             continue;
         }
-        let Some(dir) = generate_entry(
+        let Some((dir, _facts)) = generate_entry(
             root,
             &bringup_dir,
             bringup,
