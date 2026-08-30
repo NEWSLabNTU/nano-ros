@@ -237,7 +237,19 @@ jobs:
         run: |
           source /opt/ros/humble/setup.bash
           just native build-workspace-fixtures > build/ci-logs/workspace.log 2>&1 \
-            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; exit 1; }
+            || { echo "::group::workspace FAILED tail"; tail -120 build/ci-logs/workspace.log; echo "::endgroup::"; \
+                 echo "::group::issue 0919 — feature resolution for zpico-sys"; \
+                 for ws in bridge-cyclonedds rust; do \
+                   echo "--- examples/workspaces/$ws"; \
+                   ( cd "examples/workspaces/$ws" 2>/dev/null \
+                     && cargo tree -e features -i zpico-sys --offline 2>&1 | head -40 ) || true; \
+                   echo "--- $ws generated selection crate"; \
+                   cat "examples/workspaces/$ws/generated/nros-selection/native_entry/Cargo.toml" 2>/dev/null | grep -v '^#' | grep . || true; \
+                   echo "--- $ws generated entry root"; \
+                   cat "examples/workspaces/$ws/build/posix-zenoh/native_entry/Cargo.toml" 2>/dev/null | grep -v '^#' | grep . || true; \
+                 done; \
+                 echo "::endgroup::"; \
+                 exit 1; }
           echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
 
       - name: just test-integration
