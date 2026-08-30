@@ -184,6 +184,21 @@ void *nros_platform_alloc(size_t size) {
     k_spinlock_key_t key = k_spin_lock(&nros_heap_lock);
     void *out = nros_zephyr_heap_alloc(size);
     k_spin_unlock(&nros_heap_lock, key);
+    if (out == NULL) {
+        /* phase-8 diagnosis — arena exhaustion was completely silent. The
+         * caller gets NULL and whatever it does next (retry, block, ignore)
+         * is the only evidence, which is how a 64 KiB default cost a 9-step
+         * bisect to attribute.
+         *
+         * printk, not LOG_*: the logging subsystem may itself allocate, and
+         * this is the path that just failed to allocate. Emitted AFTER the
+         * spinlock is released for the same reason -- never call into
+         * anything reentrant while holding the funnel's lock. */
+        extern size_t nros_zephyr_heap_capacity(void);
+        printk("nros: HEAP EXHAUSTED: request %zu bytes, arena %zu bytes "
+               "(raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE)\n",
+               size, nros_zephyr_heap_capacity());
+    }
     return out;
 }
 
