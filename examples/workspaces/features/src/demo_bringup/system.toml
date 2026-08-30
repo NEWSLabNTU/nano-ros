@@ -14,9 +14,19 @@ name = "features_demo"
 rmw = "zenoh"
 domain_id = 0
 default_launch = "c_params.launch.xml"
-# phase-261 form: the typed [param_services]/[lifecycle] blocks are deprecated.
-features = ["param_services", "lifecycle"]
+# phase-261 form: the typed `[param_services]` block is deprecated (and gone
+# from here) — `features = [...]` is the declarative axis.
+#
+# `lifecycle` is deliberately NOT in this list, and the `[lifecycle]` block below
+# is NOT the deprecated spelling (`deprecated_typed_capability_blocks` names only
+# `safety` and `param_services`). `features = ["lifecycle"]` can only say ON;
+# `autostart` has no `features` spelling and the planner reads it from the typed
+# block alone, so listing the axis here as well was a second declaration of a fact
+# the block already carries — `capability_enabled` ORs the two (phase-405 W5).
+features = ["param_services"]
 
+# The managed-node boot policy. Present ⇒ the lifecycle axis is on; `autostart`
+# is the part `features` cannot express.
 [lifecycle]
 autostart = "active"
 
