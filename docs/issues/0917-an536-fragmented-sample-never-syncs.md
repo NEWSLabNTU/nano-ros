@@ -134,6 +134,60 @@ lan9118 driver never calls the lwIP link-stat macros, so loss at exactly this
 layer is invisible to `lwip_stats`. Every pool below it reads clean while the
 NIC is dropping the tail of every burst.
 
+## Confirmed by intervention: widen the RX FIFO and it goes away
+
+The FIFO was rebuilt from the pinned fork with the data FIFO at 16384 words
+(64 KiB, up from 2640 / 10 560 B) and the status FIFO at 1024 entries (up from
+176), nothing else changed — same image, same rig, same host publisher:
+
+| RX FIFO | runs | trajectory arrived | fresh | faults |
+| --- | --- | --- | --- | --- |
+| 2640 words (10 560 B, stock) | 6 | 0-1 | never | 1 |
+| 16384 words (64 KiB) | 6 | **6** | **6** | **0** |
+
+Every run: `never=0 stale=0 faults=0`. The first time this lane has held a
+fragmented sample AND kept it fresh. A 200-point sample (17 628 B, 13
+fragments) also arrives, 2 of 3 — the third run lost discovery, which is the
+separate intermittent failure noted above and not a size effect.
+
+**The full Autoware demo agrees.** With the widened FIFO, every input's
+"waiting" count freezes at boot (7/7/7/8) and `Waiting for fresh trajectory
+data` **stops growing at 2** instead of climbing for the whole run, with zero
+faults. That is the state the controller needs to stop withholding commands.
+
+Note this also takes the intermittent stack overflow with it across these runs
+(0 faults in 6, where the stock FIFO produced them regularly). Consistent with
+that fault being a consequence of the perpetually-backed-up receive path rather
+than an independent bug — worth re-checking rather than assuming.
+
+The patch is three constants that must move together (the data FIFO is a fixed
+array, so the array, its vmstate descriptor and the runtime size are one
+change):
+
+```
+-    uint32_t rx_fifo[3360];
++    uint32_t rx_fifo[16384];
+-        VMSTATE_UINT32_ARRAY(rx_fifo, lan9118_state, 3360),
++        VMSTATE_UINT32_ARRAY(rx_fifo, lan9118_state, 16384),
+-    s->rx_fifo_size = 2640;
++    s->rx_fifo_size = 16384;
+-    s->rx_status_fifo_size = 176;
++    s->rx_status_fifo_size = 1024;
+```
+
+**Landing it is a maintainer action, not an agent one.** It belongs on the
+qemu fork's patch branch, and the SDK ships qemu as a prebuilt dist
+(`nros-sdk-index.toml`), so it needs a fork push plus a new dist build before
+any consumer sees it. Until then the an536 lane cannot carry an Autoware-sized
+fragmented topic.
+
+One caveat to state plainly: this widens an emulated part beyond what the real
+LAN9118 has (the hardware FIFO is ~10 KiB shared, which is where 2640 words
+comes from). That is defensible for a lane whose purpose is to run real ROS 2
+traffic against a Cortex-R52 image whose actual silicon does DMA rather than a
+FIFO — but it is a deliberate divergence from the modelled part and should be
+recorded as one, not slipped in as a bug fix.
+
 ## Interrupt-driven RX was built and measured, and it is NOT the fix
 
 Worth recording in full, because it is the obvious next move and it does not
