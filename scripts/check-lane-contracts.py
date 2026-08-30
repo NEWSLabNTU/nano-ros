@@ -271,7 +271,11 @@ def parse_justfile():
     """
     recipes = {}
     sources = [(None, JUSTFILE)]
-    mod_dir = os.path.join(ROOT, "just")
+    # Beside the justfile being parsed, NOT under ROOT: the self-tests redirect
+    # `JUSTFILE` to a temp tree, and a module dir pinned to ROOT made them read
+    # the real repo's modules while claiming to test a synthetic justfile. Same
+    # answer in production (the root justfile IS in ROOT), honest under test.
+    mod_dir = os.path.join(os.path.dirname(os.path.abspath(JUSTFILE)), "just")
     if os.path.isdir(mod_dir):
         sources += [
             (fn[:-5], os.path.join(mod_dir, fn))
@@ -335,16 +339,51 @@ def closure(recipes, root):
         stack.extend(recipes[r]["deps"])
         for line in recipes[r]["body"]:
             m = JUST_CALL.match(line)
-            if m:
-                stack.extend(m.group(1).split())
+            if not m:
+                continue
+            args = m.group(1).split()
+            stack.extend(args)
+            # `just <mod> <recipe>` is ONE edge to `<mod>::<recipe>`, not two
+            # edges to recipes named `<mod>` and `<recipe>`. The CI ladder
+            # became a module (`mod ci 'just/ci.just'`), and the flat `ci-l1`
+            # forwarder is now `@just ci l1` — which this loop read as two
+            # names that resolve to nothing, so the tier's closure came back
+            # EMPTY and the gate reported OK over zero test targets. That is
+            # the same vacuous shape the wrapped-invocation case below covers,
+            # reached by a different route: a rename, not a line break.
+            for i in range(len(args) - 1):
+                stack.append(f"{args[i]}::{args[i + 1]}")
     return seen
+
+
+def _join_continuations(body):
+    """Fold backslash-continued shell lines into one logical line.
+
+    Issue 0922 — the scan below is per-LINE and keys on the line ALSO containing
+    `cargo test`/`nextest`. A wrapped invocation puts the verb on one line and
+    its `--test` targets on the next, so the gate saw the recipe, found no test
+    target in it, and reported OK over an empty set — the vacuous shape this
+    file already carries a case against one level up. `ci-l1` gained exactly
+    such a recipe (`test-lane-contracts`) and it was invisible.
+    """
+    out, pending = [], ""
+    for line in body:
+        stripped = line.rstrip()
+        if stripped.endswith("\\"):
+            pending += stripped[:-1] + " "
+            continue
+        out.append(pending + stripped)
+        pending = ""
+    if pending:
+        out.append(pending)
+    return out
 
 
 def tests_invoked(recipes, names):
     """{test_name: recipe} for every `--test NAME` in the closure's bodies."""
     out = {}
     for r in names:
-        for line in recipes.get(r, {}).get("body", []):
+        for line in _join_continuations(recipes.get(r, {}).get("body", [])):
             if "cargo test" not in line and "nextest" not in line:
                 continue
             for m in CARGO_TEST.finditer(line):
@@ -675,6 +714,29 @@ def selftest(verbose=False):
             "gate-a" in closure(r, "ci-l1"))
         chk("...and the reached test is then actually inspected",
             "t_runtime" in tests_invoked(r, closure(r, "ci-l1")))
+
+        # Issue 0922 — the same invocation, WRAPPED. This is the shape
+        # `test-lane-contracts` has, and the per-line scan could not see it:
+        # the verb and its `--test` targets are on different lines.
+        with open(jf, "w", encoding="utf8") as fh:
+            fh.write("ci-l1:\n    @just gate-a\n\n"
+                     "gate-a:\n    cargo nextest run \\\n"
+                     "        --test t_wrapped --test t_second\n")
+        r = parse_justfile()
+        found = tests_invoked(r, closure(r, "ci-l1"))
+        chk("a backslash-continued cargo invocation is still inspected",
+            "t_wrapped" in found and "t_second" in found)
+
+        # A module lane reached through a flat forwarder: `@just ci l1`.
+        with open(jf, "w", encoding="utf8") as fh:
+            fh.write("mod ci 'just/ci.just'\n\nci-l1:\n    @just ci l1\n")
+        os.makedirs(os.path.join(os.path.dirname(jf), "just"), exist_ok=True)
+        with open(os.path.join(os.path.dirname(jf), "just", "ci.just"), "w",
+                  encoding="utf8") as fh:
+            fh.write("l1:\n    cargo nextest run --test t_module\n")
+        r = parse_justfile()
+        chk("a `just <mod> <recipe>` call is ONE edge to <mod>::<recipe>",
+            "t_module" in tests_invoked(r, closure(r, "ci-l1")))
 
     globals()["JUSTFILE"], globals()["TESTS_DIR"] = real
     # ---- phase-396 W5: the pieces that were BLIND, each with a case ----

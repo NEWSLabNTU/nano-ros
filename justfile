@@ -2253,6 +2253,30 @@ claim-list:
 # and they are what the remaining ~180 references in docs and issues resolve to.
 mod ci 'just/ci.just'
 
+# The lane-contract tests: `[[fixture]]`/`[[workspace_fixture]]` bookkeeping,
+# checked WITHOUT building a fixture.
+#
+# Issue 0922 — these live in `nros-tests`, which `test-unit` excludes wholesale
+# because that crate's tests generally need `just build-test-fixtures` staged
+# first. These do not: they read the manifest and shell out to
+# `fixtures-manifest.py`, and the whole target runs in ~0.2 s. The exclusion was
+# by CRATE while the real property is per-TARGET, so the one lane everybody runs
+# before every push could not see them — and a commit that changed the build-side
+# lane predicate while leaving the run-side model behind landed red and stayed
+# red on its PR, which is exactly what these tests exist to prevent.
+#
+# Admissible in an affordability tier under the `check-lane-contracts` rule: no
+# fixture stamp is resolved and no fixture is built. Keep it that way — a target
+# added here that needs a staged artifact breaks the tier's promise.
+[group("main")]
+test-lane-contracts:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    cargo nextest run "${cargo_nextest_args[@]}" -p nros-tests \
+        --test lane_run_narrowing --test matrix_fixture_coverage
+
 [group("ci")]
 ci-l1:
     @just ci l1

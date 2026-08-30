@@ -114,10 +114,51 @@ fn subsets() -> Vec<(String, BTreeSet<Coord>)> {
     ]
 }
 
+/// The rows a coordinate-narrowed RUN would actually execute.
+///
+/// Issue 0922 — this is `in lane` UNION `the resolver cannot skip it`, not
+/// `in lane` alone. An out-of-lane row still runs when the resolver cannot
+/// attribute an artifact back to it: `attribute_path` returns `None` on an
+/// ambiguous root and the resolve fails CLOSED.
+///
+/// Modelling the run as pure coordinate membership made this read as a
+/// build-vs-run check while it was really build-vs-a-model-of-the-run. The two
+/// agreed only while the BUILD also ignored fail-closed rows — which was issue
+/// 0828 itself. Fixing 0828 moved the build onto the real predicate and left
+/// this side behind, so the test went red against a build that had just become
+/// correct (139 built vs 92 modelled).
+///
+/// The skippability here is derived from the PRODUCTION attribution functions,
+/// never from a column the build also reads. A cross-check whose two sides
+/// consume one computation cannot catch a bug in that computation — a
+/// `lane_skippable` column was tried here first and passed the mutation it
+/// existed to catch, because mutating the shared function moved both sides
+/// together. Independence is the point; this is the `check-rmw-api-parity` /
+/// `check-rmw-abi-shape` pairing, not a second spelling of one rule.
 fn run_side(kind: &str, coords: &BTreeSet<Coord>, key: fn(&Row) -> String) -> Vec<String> {
-    lane::manifest_rows()
-        .iter()
-        .filter(|r| r.kind == kind && lane::is_in_lane(r, coords))
+    let rows = lane::manifest_rows();
+    rows.iter()
+        .filter(|r| {
+            if r.kind != kind {
+                return false;
+            }
+            if lane::is_in_lane(r, coords) {
+                return true;
+            }
+            // Out of lane — so it runs only if the resolver fails closed on it.
+            // Ask the same function the resolver asks, by the route this row's
+            // table actually uses.
+            if kind == "workspace_fixture" {
+                // Attributed by `id`, which is unique per row and gated as
+                // such, so a workspace row is always attributable and always
+                // skippable — however many rows share its artifact root, and
+                // 66 of them do.
+                lane::attribute_workspace_id(&r.id).is_none()
+            } else {
+                let probe = std::path::PathBuf::from(&r.artifact_root).join("probe-binary");
+                lane::attribute_path_in(rows, &probe).is_none()
+            }
+        })
         .map(key)
         .collect()
 }
