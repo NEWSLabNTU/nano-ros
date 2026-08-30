@@ -405,7 +405,7 @@ endfunction()
 # duplicate-symbol or wrong-arch link error a long way from its cause.
 #
 # Concretely, `nros_feature_set()` derives the crate's features from RMW,
-# PLATFORM, BOARD and **CAPABILITIES** — and capabilities are per-leaf. So two
+# PLATFORM and **CAPABILITIES** — and capabilities are per-leaf. So two
 # leaves on the same platform and RMW can still want different `nros-c`
 # features, which is why keying on "platform + rmw" would be WRONG. The key
 # below is the full input set that `nros_feature_set` is a function of, so

@@ -102,10 +102,21 @@ function(nano_ros_entry)
     # Phase 219.D — LAUNCH + ARGS + LANG keyword args.
     # R1 / W4.2 — MODEL <system_model.yaml>: the canonical resolved-model
     # input (RFC-0052); mutually exclusive with LAUNCH.
+    # phase-405 W1 — LOCATOR, ARGS and LAUNCH_ARGS are GONE. Each had zero
+    # authored users in the tree (generated CMakeLists excluded, since those are
+    # tool output rather than a caller's choice), and each carried live-looking
+    # code that could never run. Dropping them from the parse turns such a call
+    # into an UNPARSED_ARGUMENTS error rather than a line that silently does
+    # nothing.
+    #
+    # MODEL is deliberately still parsed: it is retired in W4 together with
+    # LAUNCH, because removing it changes how `_NRA_MODEL` is populated and that
+    # interacts with the DEPLOY/BOARD gate ordering. HOST is likewise kept, to
+    # fail loudly for an old caller (see below).
     cmake_parse_arguments(_NRA
         "TYPED"
-        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;LOCATOR;BRINGUP;PANIC"
-        "SOURCES;DEPLOY;ARGS;LAUNCH_ARGS"
+        "NAME;BOARD;LAUNCH;MODEL;LANG;HOST;BRINGUP;PANIC"
+        "SOURCES;DEPLOY"
         ${ARGN})
     # phase-326 (issue 0364) — the bake-time host partition is gone with
     # `<node machine=>` (ROS 1 syntax). HOST stays PARSED so an old caller
@@ -261,9 +272,6 @@ function(nano_ros_entry)
             if(NOT _NRA_LAUNCH STREQUAL "default")
                 list(APPEND _nra_mp_args --launch "${_NRA_LAUNCH}")
             endif()
-            foreach(_kv IN LISTS _NRA_LAUNCH_ARGS)
-                list(APPEND _nra_mp_args --arg "${_kv}")
-            endforeach()
             nros_resolve_cli(_nra_mp_tool CONTEXT "nano_ros_entry LAUNCH")
             execute_process(
                 COMMAND "${_nra_mp_tool}" model-path ${_nra_mp_args}
@@ -347,7 +355,7 @@ function(nano_ros_entry)
             LAUNCH    "${_NRA_LAUNCH}"
             MODEL     "${_NRA_MODEL}"
             BOARD     "${_NRA_BOARD}"
-            ARGS_LIST "${_NRA_ARGS}"
+            ARGS_LIST ""
             TYPED     "${_NRA_TYPED}"
             OUT_VAR_GEN     _gen_tu
             OUT_VAR_LINKLIB _link_libs_cmake)
@@ -534,8 +542,6 @@ function(nano_ros_entry)
        AND _nra_board_active)
         if(DEFINED NROS_ENTRY_LOCATOR)
             set(_nra_locator "${NROS_ENTRY_LOCATOR}")
-        elseif(_NRA_LOCATOR)
-            set(_nra_locator "${_NRA_LOCATOR}")
         elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
             set(_nra_locator "tcp/127.0.0.1:7447")
         elseif(NANO_ROS_PLATFORM STREQUAL "freertos")
