@@ -62,6 +62,12 @@ DERIVED_READERS=(
     # NROS_RMW_SUBSCRIBER_SLOTS, NROS_RMW_MESSAGE_INFO_SLOTS). Added when
     # #0752 forwarded SUBSCRIBER_SLOTS and this file was still env-only.
     packages/rmw/cffi/build.rs
+    # phase-8 — NROS_ZEPHYR_HEAP_SIZE, the rlsf arena behind the Zephyr
+    # allocation funnel. Resolved here rather than with `option_env!` in source
+    # for both reasons this gate exists: a bare environment read misses
+    # `$DOTCONFIG` on the Rust lane, and with no build script cargo never
+    # invalidates on a change to the knob.
+    packages/platform/nros-platform/build.rs
 )
 
 # Knobs the cmake side exports that no Rust build script reads. Each needs a
