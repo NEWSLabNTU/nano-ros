@@ -58,7 +58,103 @@ def skips(root: ET.Element):
         yield case, cls, text
 
 
+
+# The reason a test skipped is the `[SKIPPED] …` line inside the panic text —
+# `nros_tests::skip!` panics, and the junit rewriter keeps the whole panic
+# verbatim. Everything around it (the `thread '…' panicked at file:line` header,
+# the RUST_BACKTRACE note) is machinery, identical for every skip, and grouping
+# on it would put every skip in one bucket.
+SKIP_LINE = re.compile(r"^\s*\[SKIPPED\]\s*(.+?)\s*$", re.M)
+
+
+def reason_of(text: str) -> str:
+    m = SKIP_LINE.search(text or "")
+    if m:
+        return " ".join(m.group(1).split())
+    # No marker: fall back to the first line that is not panic machinery, so a
+    # skip raised some other way still says something rather than nothing.
+    for line in (text or "").split("\n"):
+        line = line.strip()
+        if not line or line.startswith(("thread '", "note:")) or " panicked at " in line:
+            continue
+        return " ".join(line.split())
+    return "(no reason recorded)"
+
+
+def report_reasons(rows, out) -> None:
+    """Print the DISTINCT reasons, most frequent first.
+
+    Without this the lane says "provision what the skips name" and then does not
+    name them. The reasons are already in the junit — every caller was reading
+    the file and throwing them away, so triaging a red nightly meant guessing
+    which precondition was missing from a count.
+    """
+    from collections import Counter
+    counted = Counter(reason_of(t) for _, t in rows)
+    shown = counted.most_common(12)
+    for reason, n in shown:
+        if len(reason) > 150:
+            reason = reason[:147] + "..."
+        print(f"      {n:4}x {reason}", file=out)
+    rest = len(counted) - len(shown)
+    if rest > 0:
+        print(f"      … and {rest} further distinct reason(s)", file=out)
+
+
+def self_test() -> int:
+    """`reason_of` must survive the shapes the junit actually carries.
+
+    The reason is buried in a panic message, so every case here is a way that
+    burial can go wrong. Getting it wrong is not a crash — it is a plausible
+    wrong string in a triage report, which is worse.
+    """
+    cases = [
+        (
+            "thread 't' (1) panicked at a.rs:1:1:\n[SKIPPED] idlc not found on PATH\n"
+            "note: run with `RUST_BACKTRACE=1`",
+            "idlc not found on PATH",
+        ),
+        # whitespace and wrapping collapse, so two identical reasons group
+        ("[SKIPPED]   spaced    out   reason  ", "spaced out reason"),
+        # no marker: fall through to the first line that is not machinery
+        (
+            "thread 't' (1) panicked at a.rs:1:1:\nsome other assertion\nnote: x",
+            "some other assertion",
+        ),
+        # machinery only
+        ("thread 't' (1) panicked at a.rs:1:1:\nnote: run with `RUST_BACKTRACE=1`",
+         "(no reason recorded)"),
+        ("", "(no reason recorded)"),
+    ]
+    failures = 0
+    for text, want in cases:
+        got = reason_of(text)
+        if got != want:
+            print(f"  self-test FAIL: reason_of({text[:34]!r}...) -> {got!r}, want {want!r}")
+            failures += 1
+
+    # Grouping: identical reasons collapse, distinct ones do not.
+    import io
+    buf = io.StringIO()
+    report_reasons(
+        [("a", "[SKIPPED] same"), ("b", "[SKIPPED] same"), ("c", "[SKIPPED] other")], buf
+    )
+    out = buf.getvalue()
+    if "2x same" not in out.replace("   ", "") or "1x other" not in out.replace("   ", ""):
+        print(f"  self-test FAIL: grouping produced:\n{out}")
+        failures += 1
+
+    if failures:
+        print(f"check-skip-budget self-test: {failures} case(s) FAILED")
+        return 1
+    print(f"check-skip-budget self-test: OK ({len(cases)} extraction cases + grouping)")
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if "--self-test" in argv[1:]:
+        return self_test()
+
     args = [a for a in argv[1:] if not a.startswith("--")]
     coords_path = None
     for a in argv[1:]:
@@ -92,9 +188,14 @@ def main(argv: list[str]) -> int:
     surprises: list[str] = []
     laundered: list[str] = []
 
+    actionable: list[tuple[str, str]] = []
     for case, cls, text in skips(root):
         by_class[cls] = by_class.get(cls, 0) + 1
         ident = f"{case.get('classname')} {case.get('name')}"
+        # `lane` means out of scope by design; everything else is a precondition
+        # this host did not meet, which is the only class anyone can act on.
+        if cls != "lane":
+            actionable.append((ident, text))
         if cls == "lane" and selected:
             m = COORD_RE.search(text)
             if m and tuple(g.strip() for g in m.groups()) in selected:
@@ -143,11 +244,15 @@ def main(argv: list[str]) -> int:
           f"{unprovisioned} skipped for an unmet precondition — {breakdown}")
     if unprovisioned:
         print(f"  {unprovisioned} skip(s) name something this host lacks; "
-              f"those are the actionable ones.")
+              f"those are the actionable ones:")
+        report_reasons(actionable, sys.stdout)
     if not selected:
         print("  (no coordinate file; the out-of-lane assertion was NOT checked)")
 
     rc = 0
+    # Deterministic ordering: stderr is unbuffered and stdout is not, so without
+    # this the error block lands ABOVE the summary it says to read above.
+    sys.stdout.flush()
     if executed == 0 and total > 0:
         print("", file=sys.stderr)
         print(
@@ -159,6 +264,24 @@ def main(argv: list[str]) -> int:
             "  Provision what the skips name, or run a lane this host can satisfy.",
             file=sys.stderr,
         )
+        if actionable:
+            # Named once, in the summary above — repeating them here would put
+            # the same list on stdout and stderr and make the interleaved CI log
+            # read as two different findings.
+            print(
+                "  The reasons are listed above, most frequent first.",
+                file=sys.stderr,
+            )
+        else:
+            # Every skip was an out-of-lane DESELECTION, so there is nothing to
+            # provision: the lane selected no test it could run. That is a
+            # scoping fault, not a missing tool, and the remedies are opposite.
+            print(
+                "  Every skip was out-of-lane deselection, so there is nothing to\n"
+                "  provision — this lane selected no test it could run. Check the\n"
+                "  lane's coordinates, not the host.",
+                file=sys.stderr,
+            )
         rc = 1
     if surprises:
         print("", file=sys.stderr)
