@@ -467,6 +467,19 @@ profile dir="." flags="":
 leaf-graph dir flags="":
     @python3 "{{justfile_directory()}}/scripts/nros-leaf-graph.py" {{dir}} {{flags}}
 
+# phase-400 W5 — are these cargo target dirs SAFE to collapse into one?
+#
+#   just shared-dir-churn "build-a build-b build-c"
+#   just shared-dir-churn --self-test
+#
+# Reads the build-script fingerprints the builds ALREADY WROTE and asks whether
+# the SAME unit recorded a different env value (churn) or a different
+# watched-path set (a correctness hazard — cargo decides freshness from the
+# RECORDED list, so the smallest set governs the whole shared dir). Cargo hashes
+# features/profile/target itself; these two are what it does not.
+[group("main")]
+shared-dir-churn dirs:
+    @python3 "{{justfile_directory()}}/scripts/nros-shared-dir-churn.py" {{dirs}}
 
 
 
