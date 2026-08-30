@@ -2,7 +2,7 @@
 
 **Status (2026-08-30). W1, W2 and W2a DONE; W3 holds. The contract work this
 doc scoped is finished — what remains is VERIFICATION, which is a different
-thing and is called out below.** Measured with `just check-rmw-slot-producers`:
+thing and is called out below.** Measured with `just check rmw-slot-producers`:
 produced 53, default 7, unimplemented 0, **inert 14**, and
 `check-rmw-api-parity` reports 0 gap / 0 unclassified.
 

@@ -28,17 +28,24 @@ Two rules:
 type, grouped by when you need them, instead of the 215-line `--list` wall it
 used to be.
 
-The 200 `check-*` gates live in `just/check.just`, brought in with **`import`**
-(a namespace MERGE) rather than `mod` (which namespaces). So every name stays
-flat — `just check fast`, never `just check fast` — and no call site changed.
-`check`, `check-fast`, `check-fast-serial` and `check-build` stay in the root
-justfile because their DEPENDENCY LISTS are the contract:
-`scripts/build/run-gates-parallel.sh` parses `check-fast-serial`'s out of the
-root file to build the fan-out set, so moving it silently empties the parallel
-runner rather than failing. Adding a gate means adding it to
-`check-fast-serial`'s list — **not** to `check-build`, which since phase-396 W1
-runs on `schedule`/`workflow_dispatch` only and therefore gates nothing a merge
-passes through.
+The 207 gates live in `just/check.just`, brought in with **`mod check`**, so the
+verb is `just check <name>` and the recipes are named for what they check —
+`just check fast`, `just check leaf-lockfiles` — with no `check-` prefix on the
+recipe itself. The old flat `check-<name>` spelling is GONE; there are no
+forwarders, so a stale call site fails loudly rather than resolving to something
+else.
+
+Four entry points live in the module beside the gates: `default` (the full tier,
+and it must stay FIRST — `just check` runs a module's first recipe, not the one
+named `default`), `fast`, `fast-serial` and `build`.
+
+`fast-serial` both DECLARES the fan-out set and runs it serially, so its
+dependency list is the contract: `scripts/build/run-gates-parallel.sh` awks
+`/^fast-serial:/` out of `just/check.just` to build the parallel set. Moving it
+silently empties the runner rather than failing. Adding a gate means adding it
+to `fast-serial`'s list — **not** to `build`, which since phase-396 W1 runs on
+`schedule`/`workflow_dispatch` only and therefore gates nothing a merge passes
+through.
 
 - `just --list`: show every recipe (215 of them; the answer is usually bare `just`).
 - `scripts/bootstrap.sh`: first-time entrypoint; installs/checks `just`, then prints setup choices.

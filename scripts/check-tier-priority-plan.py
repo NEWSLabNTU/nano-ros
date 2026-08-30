@@ -148,7 +148,7 @@ def main():
             print(f"        {plat:9s} {d['n']:3d} pin(s)  resolver: "
                   f"{d['plan'].get('resolver', '<unnamed>')}")
             print(f"        {'':9s}      discharge it: "
-                  f"just check-tier-priority-plan-image   (every built image)")
+                  f"just check tier-priority-plan-image   (every built image)")
 
     if unplanned:
         print("\n  ports with NO [priority_plan], so their pins are unchecked:")

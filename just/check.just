@@ -1014,7 +1014,7 @@ tier-priority-plan:
 #
 # SKIPS loudly on a host with no built Zephyr image, rather than passing —
 # issue 0599's rule. Buildless (reads `.config`, builds nothing).
-check-tier-priority-plan-image config="":
+tier-priority-plan-image config="":
     @python3 scripts/check-tier-priority-plan-image.py {{config}}
 
 # Issue 0363 — a stale in-tree `nros` used to surface at `check-dep-chain`,
@@ -2843,30 +2843,30 @@ python:
     @echo "No in-tree Python package to check (nros-cli owns the colcon extension)."
 
 # Analyze per-function stack usage (requires nightly + llvm-tools)
-# Usage: just check-stack [example-dir] [top]
+# Usage: just check stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30
 [group("debug")]
-check-stack example="packages/testing/nros-bench/wcet-cycles-qemu" top="30":
+stack example="packages/testing/nros-bench/wcet-cycles-qemu" top="30":
     ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
 # Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)
-# Usage: just check-stack-elf <path-to-elf> [top]
+# Usage: just check stack-elf <path-to-elf> [top]
 [group("debug")]
-check-stack-elf elf top="30":
+stack-elf elf top="30":
     ./scripts/stack-analysis.sh --elf {{elf}} --top {{top}}
 
 # Analyze stack usage of C examples (requires cmake + gcc)
-# Usage: just check-stack-c [example-dir] [top]
+# Usage: just check stack-c [example-dir] [top]
 # Default: examples/native/c/talker, top 30
 [group("debug")]
-check-stack-c example="examples/native/c/talker" top="30":
+stack-c example="examples/native/c/talker" top="30":
     ./scripts/stack-analysis-c.sh {{example}} --top {{top}}
 
 # Analyze stack usage of all examples (requires nightly + llvm-tools + cmake)
 # Covers: QEMU ARM, native Rust, and native C examples
 # ESP32/STM32F4 excluded (need platform-specific SDKs)
 [group("debug")]
-check-stack-all top="10":
+stack-all top="10":
     #!/usr/bin/env bash
     set -euo pipefail
     failed=0

@@ -60,7 +60,7 @@ sudo apt install qemu-system-arm
 ### Verify Installation
 
 ```bash
-just check-qemu
+just qemu check
 ```
 
 ## Quick Start

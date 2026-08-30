@@ -951,7 +951,7 @@ Recently resolved (2026-08-25): **#0766** (boards/rmw/zephyr) — Zephyr's tiers
 priorities while its transport is a POSIX pthread on a normalised band, so RFC-0079's
 `reserved.transport` could not be a literal. Resolved by making the band DERIVED (§4.1): the descriptor
 names its Kconfig inputs and a resolver, the static gate reports those pins DEFERRED rather than
-pretending to judge them, and `just check-tier-priority-plan-image` resolves the band from every built
+pretending to judge them, and `just check tier-priority-plan-image` resolves the band from every built
 `.config` and checks the pins against each — wired into `just zephyr build-fixtures`, the only place
 `.config` is known to exist. The conversion was READ from Zephyr's own `pthread.c`, not guessed
 (band 16 → posix 7 → k_thread 7). Four `tiers.high.zephyr = 5` violations moved into the resolved pool.
