@@ -3116,3 +3116,51 @@ mod tests {
         assert_eq!(cloned.node_name, config.node_name);
     }
 }
+
+#[cfg(test)]
+mod rx_buffer_hint_tests {
+    use super::*;
+
+    /// issue 0896 / phase-402 — the hint must SURVIVE being set on `TopicInfo`.
+    ///
+    /// This is the seam every path funnels through: the C register writes it
+    /// here, `nros-rmw-cffi` reads `topic.rx_buffer_hint` back out when
+    /// building `rmw_subscription_options_t`, and a size-classing backend
+    /// routes on it. A default that silently stayed 0 is the original defect,
+    /// so the round trip is worth an assertion rather than an assumption.
+    #[test]
+    fn a_hint_set_on_topic_info_is_readable_back() {
+        let t = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "").with_rx_buffer_hint(4096);
+        assert_eq!(t.rx_buffer_hint, 4096);
+    }
+
+    /// Zero is "no opinion", not "zero bytes". The C options struct uses 0 as
+    /// its unset sentinel and the executor only calls the setter when the
+    /// caller stated something, so the default must stay 0 for the
+    /// backend-default path to remain reachable.
+    #[test]
+    fn the_default_hint_is_zero_meaning_no_opinion() {
+        let t = TopicInfo::new("/chatter", "std_msgs/msg/Int32", "");
+        assert_eq!(t.rx_buffer_hint, 0);
+    }
+
+    /// The builder must not disturb the rest of the descriptor — it is applied
+    /// AFTER domain/namespace/node in the C path, so a setter that reset a
+    /// field would drop identity that discovery depends on.
+    #[test]
+    fn setting_the_hint_preserves_the_rest_of_the_descriptor() {
+        let make = || {
+            TopicInfo::new("/chatter", "std_msgs/msg/Int32", "hash")
+                .with_domain(7)
+                .with_namespace("/ns")
+        };
+        let base = make();
+        let hinted = make().with_rx_buffer_hint(1234);
+        assert_eq!(hinted.name, base.name);
+        assert_eq!(hinted.type_name, base.type_name);
+        assert_eq!(hinted.type_hash, base.type_hash);
+        assert_eq!(hinted.domain_id, base.domain_id);
+        assert_eq!(hinted.namespace, base.namespace);
+        assert_eq!(hinted.rx_buffer_hint, 1234);
+    }
+}
