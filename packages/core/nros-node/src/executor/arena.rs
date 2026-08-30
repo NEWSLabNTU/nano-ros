@@ -735,16 +735,6 @@ unsafe fn drain_into_buffer<M, F>(
     Ok(())
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized dispatch for buffered subscriptions.
 ///
 /// First drains the RMW subscriber into the buffer strategy (triple buffer
@@ -755,7 +745,7 @@ unsafe fn drain_into_buffer<M, F>(
 pub(crate) unsafe fn sub_buffered_try_process<M, F>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -771,6 +761,10 @@ where
 
     // Phase 2: dispatch from buffer → user callback
     match &entry.buffer {
+        // Phase 8 — hooked. Triple-buffered: at most one invocation per
+        // `try_process`, and none at all when `reader_acquire` is empty.
+        // The two deserialization `?`s sit BEFORE the start hook, so a
+        // malformed sample returns early without opening a span.
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
                 observe_age::<M>(&data[..len], &entry.age_mon);
@@ -778,11 +772,16 @@ where
                     .map_err(|_| TransportError::DeserializationError)?;
                 let msg = M::deserialize(&mut reader)
                     .map_err(|_| TransportError::DeserializationError)?;
+                trace_cb_start(desc_idx);
                 (entry.callback)(&msg);
+                trace_cb_end(desc_idx);
                 Ok(true)
             }
             None => Ok(false),
         },
+        // Phase 8 — hooked INSIDE the loop: a ring drains N queued messages
+        // per `try_process` and fires the callback once per message, so N
+        // messages must produce N spans, not one.
         BufferStrategy::Ring(ring) => {
             let mut did_work = false;
             while let Some((data, len)) = ring.try_pop() {
@@ -791,7 +790,9 @@ where
                     .map_err(|_| TransportError::DeserializationError)?;
                 let msg = M::deserialize(&mut reader)
                     .map_err(|_| TransportError::DeserializationError)?;
+                trace_cb_start(desc_idx);
                 (entry.callback)(&msg);
+                trace_cb_end(desc_idx);
                 ring.commit_pop();
                 did_work = true;
             }
@@ -833,16 +834,6 @@ pub(crate) struct SubInplaceEntry<M, F> {
     pub(crate) _phantom: PhantomData<M>,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized in-place dispatch for typed subscriptions.
 ///
 /// Drains all pending messages from the backend, deserializing + invoking the
@@ -854,7 +845,7 @@ pub(crate) struct SubInplaceEntry<M, F> {
 pub(crate) unsafe fn sub_inplace_try_process<M, F>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -871,11 +862,21 @@ where
     let mut did_work = false;
     loop {
         let mut deser_err = false;
+        // Phase 8 — hooked inside the `Ok(msg)` arm of the borrow closure,
+        // which the drain loop re-enters once per pending message: N
+        // messages therefore produce N spans. The pair is fully contained
+        // in the closure, so the `?` on `process_raw_in_place` below can
+        // never fire between a start and its end. Deserialization failures
+        // take the `deser_err` arms and emit nothing.
         let processed = handle.process_raw_in_place(|raw| {
             observe_age::<M>(raw, age_mon);
             match CdrReader::new_with_header(raw) {
                 Ok(mut reader) => match M::deserialize(&mut reader) {
-                    Ok(msg) => (callback)(&msg),
+                    Ok(msg) => {
+                        trace_cb_start(desc_idx);
+                        (callback)(&msg);
+                        trace_cb_end(desc_idx);
+                    }
                     Err(_) => deser_err = true,
                 },
                 Err(_) => deser_err = true,
@@ -953,16 +954,6 @@ unsafe fn drain_into_buffer_raw<F>(
     Ok(())
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Dispatch for zero-copy raw buffered subscriptions.
 ///
 /// Drains the RMW handle into the buffer, then passes the raw CDR slice
@@ -973,7 +964,7 @@ unsafe fn drain_into_buffer_raw<F>(
 pub(crate) unsafe fn sub_buffered_raw_try_process<F>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(&[u8]),
@@ -985,17 +976,25 @@ where
     unsafe { drain_into_buffer_raw(entry)? };
 
     match &entry.buffer {
+        // Phase 8 — hooked. Triple-buffered: one invocation per
+        // `try_process` at most, none when `reader_acquire` is empty.
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
+                trace_cb_start(desc_idx);
                 (entry.callback)(&data[..len]);
+                trace_cb_end(desc_idx);
                 Ok(true)
             }
             None => Ok(false),
         },
+        // Phase 8 — hooked INSIDE the loop: one span per drained message,
+        // not one per `try_process`.
         BufferStrategy::Ring(ring) => {
             let mut did_work = false;
             while let Some((data, len)) = ring.try_pop() {
+                trace_cb_start(desc_idx);
                 (entry.callback)(&data[..len]);
+                trace_cb_end(desc_idx);
                 ring.commit_pop();
                 did_work = true;
             }
@@ -1038,16 +1037,6 @@ pub(crate) struct SubBufferedViewEntry<B, F> {
     pub(crate) _phantom: PhantomData<B>,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Dispatch for borrowed (zero-copy) buffered subscriptions.
 ///
 /// Drains the RMW handle into the triple buffer, then materialises a borrowed
@@ -1060,7 +1049,7 @@ pub(crate) struct SubBufferedViewEntry<B, F> {
 pub(crate) unsafe fn sub_buffered_view_try_process<B, F>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     B: ViewableMessage,
@@ -1091,13 +1080,20 @@ where
     }
 
     // Phase 2: borrow the read slot and deserialize a view over it (no copy).
+    //
+    // Phase 8 — hooked. Exactly ONE site: the `BufferStrategy::Ring(_)` arm
+    // above returns `Ok(false)` without ever reaching a callback (borrowed
+    // subscriptions are triple-buffer only, enforced at registration), so it
+    // gets no pair. Both `?`s land before the start hook.
     match tb.reader_acquire() {
         Some((data, len)) => {
             let mut reader = CdrReader::new_with_header(&data[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg = <B::View<'_> as DeserializeView>::deserialize_view(&mut reader)
                 .map_err(|_| TransportError::DeserializationError)?;
+            trace_cb_start(desc_idx);
             (entry.callback)(&msg);
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         None => Ok(false),
@@ -1139,16 +1135,6 @@ pub(crate) struct SubBufferedRawInfoEntry<F, const RX_BUF: usize> {
     pub(crate) callback: F,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Dispatch for raw buffered subscriptions with attachment.
 ///
 /// # Safety
@@ -1156,7 +1142,7 @@ pub(crate) struct SubBufferedRawInfoEntry<F, const RX_BUF: usize> {
 pub(crate) unsafe fn sub_buffered_raw_info_try_process<F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(&[u8], &RawMessageInfo),
@@ -1166,9 +1152,14 @@ where
         .handle
         .try_recv_raw_with_attachment(&mut entry.buffer, &mut entry.att)
     {
+        // Phase 8 — hooked. One sample per dispatch (flat inline buffer, no
+        // ring), so exactly one pair. `Ok(None)` and `Err(_)` never reach a
+        // callback and stay bare.
         Ok(Some((len, att_len))) => {
             let info = RawMessageInfo::new(&entry.att[..att_len]);
+            trace_cb_start(desc_idx);
             (entry.callback)(&entry.buffer[..len], &info);
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -1199,16 +1190,6 @@ pub(crate) struct SubBufferedRawInfoCEntry<const RX_BUF: usize> {
     pub(crate) context: *mut core::ffi::c_void,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Dispatch for the C-style raw buffered subscription with attachment.
 ///
 /// # Safety
@@ -1216,14 +1197,17 @@ pub(crate) struct SubBufferedRawInfoCEntry<const RX_BUF: usize> {
 pub(crate) unsafe fn sub_buffered_raw_info_c_try_process<const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoCEntry<RX_BUF>) };
     match entry
         .handle
         .try_recv_raw_with_attachment(&mut entry.buffer, &mut entry.att)
     {
+        // Phase 8 — hooked. One sample per dispatch; the pair brackets the
+        // whole `unsafe` FFI call, which is the user callback itself.
         Ok(Some((len, att_len))) => {
+            trace_cb_start(desc_idx);
             unsafe {
                 (entry.callback)(
                     entry.buffer.as_ptr(),
@@ -1233,6 +1217,7 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_try_process<const RX_BUF: usize>(
                     entry.context,
                 )
             };
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -1265,16 +1250,6 @@ pub(crate) struct SubBufferedRawSafetyEntry<F, const RX_BUF: usize> {
     pub(crate) callback: F,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Dispatch for the generic raw safety subscription: validate-receive into the
 /// buffer, then pass the raw slice + status to the callback.
 ///
@@ -1284,15 +1259,20 @@ pub(crate) struct SubBufferedRawSafetyEntry<F, const RX_BUF: usize> {
 pub(crate) unsafe fn sub_buffered_raw_safety_try_process<F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(&[u8], &nros_rmw::IntegrityStatus),
 {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyEntry<F, RX_BUF>) };
     match entry.handle.try_recv_validated(&mut entry.buffer) {
+        // Phase 8 — hooked. One sample per dispatch. A failed validation
+        // still delivers the sample WITH its status, so this arm is the only
+        // callback path; `Ok(None)` / `Err(_)` fire nothing.
         Ok(Some((len, status))) => {
+            trace_cb_start(desc_idx);
             (entry.callback)(&entry.buffer[..len], &status);
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -1326,16 +1306,6 @@ pub(crate) struct SubBufferedRawSafetyCEntry<const RX_BUF: usize> {
     pub(crate) context: *mut core::ffi::c_void,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Dispatch for the C-style raw validated subscription: validate-receive into the
 /// buffer, then pass the raw slice + unpacked integrity scalars to the callback.
 ///
@@ -1345,16 +1315,20 @@ pub(crate) struct SubBufferedRawSafetyCEntry<const RX_BUF: usize> {
 pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process<const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyCEntry<RX_BUF>) };
     match entry.handle.try_recv_validated(&mut entry.buffer) {
+        // Phase 8 — hooked. One sample per dispatch. The `crc_valid` unpack
+        // is executor bookkeeping, not user code, so it stays OUTSIDE the
+        // span; the pair brackets only the FFI call.
         Ok(Some((len, status))) => {
             let crc_valid: i8 = match status.crc_valid {
                 Some(true) => 1,
                 Some(false) => 0,
                 None => -1,
             };
+            trace_cb_start(desc_idx);
             unsafe {
                 (entry.callback)(
                     entry.buffer.as_ptr(),
@@ -1365,6 +1339,7 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process<const RX_BUF: usize>(
                     entry.context,
                 )
             };
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -1490,16 +1465,6 @@ pub(crate) unsafe fn sub_buffered_raw_c_has_data(ptr: *const u8) -> bool {
 // Dispatch functions
 // ============================================================================
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized subscription dispatch function (with MessageInfo).
 ///
 /// # Safety
@@ -1507,7 +1472,7 @@ pub(crate) unsafe fn sub_buffered_raw_c_has_data(ptr: *const u8) -> bool {
 pub(crate) unsafe fn sub_info_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -1516,23 +1481,34 @@ where
     let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
 
     // LET mode: use pre-sampled data if available (no MessageInfo in snapshot)
+    //
+    // Phase 8 — hooked. This is a SECOND callback site, mutually exclusive
+    // with the receive path below: LET mode dispatches the snapshot and
+    // returns, so a dispatch emits one pair from here OR one from there,
+    // never both.
     if entry.sampled_len > 0 {
         let len = entry.sampled_len;
         entry.sampled_len = 0;
         let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
             .map_err(|_| TransportError::DeserializationError)?;
         let msg = M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+        trace_cb_start(desc_idx);
         (entry.callback)(&msg, None);
+        trace_cb_end(desc_idx);
         return Ok(true);
     }
 
     match entry.handle.try_recv_raw_with_info(&mut entry.buffer) {
+        // Phase 8 — hooked. One sample per dispatch; `Ok(None)` / `Err(_)`
+        // fire nothing, and both `?`s precede the start hook.
         Ok(Some((len, info))) => {
             let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg =
                 M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+            trace_cb_start(desc_idx);
             (entry.callback)(&msg, info.as_ref());
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -1540,16 +1516,6 @@ where
     }
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized subscription dispatch function (with safety validation).
 ///
 /// # Safety
@@ -1558,7 +1524,7 @@ where
 pub(crate) unsafe fn sub_safety_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
@@ -1567,12 +1533,18 @@ where
     let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
 
     // LET mode: use pre-sampled data (no IntegrityStatus in snapshot)
+    //
+    // Phase 8 — hooked. A SECOND callback site, mutually exclusive with the
+    // validated-receive path below (this one `return`s). The synthetic
+    // all-clear `IntegrityStatus` is built inside the span because it is an
+    // argument expression, not user code — it is three constant stores.
     if entry.sampled_len > 0 {
         let len = entry.sampled_len;
         entry.sampled_len = 0;
         let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
             .map_err(|_| TransportError::DeserializationError)?;
         let msg = M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+        trace_cb_start(desc_idx);
         (entry.callback)(
             &msg,
             &nros_rmw::IntegrityStatus {
@@ -1581,16 +1553,21 @@ where
                 crc_valid: None,
             },
         );
+        trace_cb_end(desc_idx);
         return Ok(true);
     }
 
     match entry.handle.try_recv_validated(&mut entry.buffer) {
+        // Phase 8 — hooked. One sample per dispatch; both `?`s precede the
+        // start hook, and `Ok(None)` / `Err(_)` fire nothing.
         Ok(Some((len, status))) => {
             let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
                 .map_err(|_| TransportError::DeserializationError)?;
             let msg =
                 M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+            trace_cb_start(desc_idx);
             (entry.callback)(&msg, &status);
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -1598,16 +1575,6 @@ where
     }
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized service dispatch function.
 ///
 /// # Safety
@@ -1615,7 +1582,7 @@ where
 pub(crate) unsafe fn srv_try_process<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     Svc: RosService,
@@ -1631,7 +1598,17 @@ where
         ..
     } = entry;
     handle
-        .handle_request::<Svc>(req_buffer, reply_buffer, |req| (callback)(req))
+        // Phase 8 — hooked INSIDE the closure `handle_request` invokes, not
+        // around `handle_request` itself. The closure runs once per request
+        // actually received, so a spin with nothing pending emits nothing;
+        // bracketing the outer call would have timed the receive/reply
+        // machinery and fired on every empty poll.
+        .handle_request::<Svc>(req_buffer, reply_buffer, |req| {
+            trace_cb_start(desc_idx);
+            let reply = (callback)(req);
+            trace_cb_end(desc_idx);
+            reply
+        })
         .map_err(|_| TransportError::ServiceReplyFailed)
 }
 
@@ -1703,16 +1680,6 @@ where
     }
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized action server dispatch function.
 ///
 /// Polls goal acceptance, cancel handling, and result serving.
@@ -1730,7 +1697,7 @@ pub(crate) unsafe fn action_server_try_process<
 >(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     A: RosAction,
@@ -1759,16 +1726,35 @@ where
     let mut did_work = false;
 
     // Handle cancels first
+    //
+    // Phase 8 — hooked INSIDE the closure, not around `try_handle_cancel`.
+    // The core runs this closure only when a cancel request is actually
+    // pending; `Ok(None)` with no user code run is the COMMON outcome, so a
+    // pair at the call boundary would report an invocation on every spin.
     if matches!(
-        server.try_handle_cancel(|id, st| (cancel_callback)(id, st)),
+        server.try_handle_cancel(|id, st| {
+            trace_cb_start(desc_idx);
+            let resp = (cancel_callback)(id, st);
+            trace_cb_end(desc_idx);
+            resp
+        }),
         Ok(Some(_))
     ) {
         did_work = true;
     }
 
     // Handle new goals
+    //
+    // Phase 8 — hooked inside the closure for the same reason. This is a
+    // DISTINCT user callback from the cancel one above and gets its own
+    // pair, so the two are counted separately rather than merged.
     if matches!(
-        server.try_accept_goal(|id, g| (goal_callback)(id, g)),
+        server.try_accept_goal(|id, g| {
+            trace_cb_start(desc_idx);
+            let resp = (goal_callback)(id, g);
+            trace_cb_end(desc_idx);
+            resp
+        }),
         Ok(Some(_))
     ) {
         did_work = true;
@@ -1782,16 +1768,6 @@ where
     Ok(did_work)
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized raw action server dispatch function.
 ///
 /// Polls goal acceptance, cancel handling, and result serving using raw bytes.
@@ -1806,7 +1782,7 @@ pub(crate) unsafe fn action_server_raw_try_process<
 >(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError> {
     let entry = unsafe {
         &mut *(ptr as *mut ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>)
@@ -1822,15 +1798,25 @@ pub(crate) unsafe fn action_server_raw_try_process<
     let mut did_work = false;
 
     // Handle cancels first
-    if let Ok(Some(_)) =
-        core.try_handle_cancel(|id, st| unsafe { (*cancel_callback)(id, st, *context) })
-    {
+    //
+    // Phase 8 — hooked INSIDE the closure: the core runs it only when a cancel
+    // request is actually pending, so nothing is emitted on the common
+    // `Ok(None)` spin.
+    if let Ok(Some(_)) = core.try_handle_cancel(|id, st| {
+        trace_cb_start(desc_idx);
+        let resp = unsafe { (*cancel_callback)(id, st, *context) };
+        trace_cb_end(desc_idx);
+        resp
+    }) {
         did_work = true;
     }
 
     // Handle new goals
     if let Ok(Some(raw_req)) = core.try_recv_goal_request() {
         let goal_data = &core.goal_buffer()[..raw_req.data_len];
+        // Phase 8 — hooked inside the `Ok(Some(..))` arm: no goal request,
+        // no goal callback, nothing emitted.
+        trace_cb_start(desc_idx);
         let response = unsafe {
             (*goal_callback)(
                 &raw_req.goal_id,
@@ -1839,13 +1825,20 @@ pub(crate) unsafe fn action_server_raw_try_process<
                 *context,
             )
         };
+        trace_cb_end(desc_idx);
 
         if response.is_accepted() {
             // Send the accept reply *before* running any long-running
             // post-accept hook so the client observes acceptance promptly.
             let _ = core.accept_goal(raw_req.goal_id, raw_req.sequence_number);
+            // Phase 8 — the post-accept hook is a THIRD, separate user
+            // callback: optional, and run only on the accepted branch, so
+            // it carries its own pair rather than being folded into the
+            // goal callback's span above.
             if let Some(post) = *accepted_callback {
+                trace_cb_start(desc_idx);
                 unsafe { post(&raw_req.goal_id, *context) };
+                trace_cb_end(desc_idx);
             }
         } else {
             let _ = core.reject_goal(raw_req.sequence_number);
@@ -1923,16 +1916,6 @@ fn read_action_field<M: nros_serdes::Deserialize, const CAP: usize>(
     M::deserialize(&mut reader).ok()
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 pub(crate) unsafe fn action_client_raw_try_process<
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
@@ -1940,7 +1923,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
 >(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError> {
     let entry = unsafe {
         &mut *(ptr as *mut ActionClientRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>)
@@ -1969,7 +1952,12 @@ pub(crate) unsafe fn action_client_raw_try_process<
                     uuid
                 },
             };
+            // Phase 8 — hooked at the invocation, inside both the
+            // `Ok(Some(..))` arm and the `Some(cb)` guard: an unregistered
+            // callback or an empty poll emits nothing.
+            trace_cb_start(desc_idx);
             unsafe { cb(&goal_id, accepted, *context) };
+            trace_cb_end(desc_idx);
         }
         did_work = true;
     }
@@ -2006,7 +1994,13 @@ pub(crate) unsafe fn action_client_raw_try_process<
                 let n = raw.len().min(FEEDBACK_BUF - 4);
                 spliced[0..4].copy_from_slice(&core.feedback_buffer[0..4]);
                 spliced[4..4 + n].copy_from_slice(&raw[..n]);
+                // Phase 8 — a DISTINCT callback from the goal-response one,
+                // with its own pair. Hooked inside the
+                // `total_len > FEEDBACK_PAYLOAD_OFFSET` guard: a short
+                // payload runs no user code and must emit nothing.
+                trace_cb_start(desc_idx);
                 unsafe { cb(&goal_id, spliced.as_ptr(), 4 + n, *context) };
+                trace_cb_end(desc_idx);
             }
         }
         did_work = true;
@@ -2076,7 +2070,12 @@ pub(crate) unsafe fn action_client_raw_try_process<
                 let n = raw.len().min(RESULT_BUF - 4);
                 spliced[0..4].copy_from_slice(&core.result_buffer[0..4]);
                 spliced[4..4 + n].copy_from_slice(&raw[..n]);
+                // Phase 8 — the third distinct callback on this entry, its
+                // own pair. Inside the `total_len >= RESULT_PAYLOAD_OFFSET`
+                // guard, which can skip the call entirely.
+                trace_cb_start(desc_idx);
                 unsafe { cb(&goal_id, status, spliced.as_ptr(), 4 + n, *context) };
+                trace_cb_end(desc_idx);
             }
         }
         did_work = true;
@@ -2085,16 +2084,6 @@ pub(crate) unsafe fn action_client_raw_try_process<
     Ok(did_work)
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized raw service-client dispatch function.
 ///
 /// Checks `reply_ready` (set by the transport waker) before calling
@@ -2106,7 +2095,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
 pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError> {
     use core::sync::atomic::Ordering;
     use nros_rmw::ClientTrait;
@@ -2125,8 +2114,14 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     match entry.handle.try_recv_reply_raw(&mut entry.reply_buffer) {
         Ok(Some((len, _seq))) => {
             entry.pending = false;
+            // Phase 8 — hooked inside the `Some(cb)` arm. The callback is
+            // optional here, so a client registered without one completes
+            // the reply and emits nothing; the not-pending and `Ok(None)`
+            // paths return before this point.
             if let Some(cb) = entry.callback {
+                trace_cb_start(desc_idx);
                 unsafe { cb(entry.reply_buffer.as_ptr(), len, entry.context) };
+                trace_cb_end(desc_idx);
             }
             Ok(true)
         }
@@ -2164,16 +2159,6 @@ pub(crate) struct ServiceClientCallbackEntry<Svc: RosService, F, const REPLY_BUF
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized typed service-client dispatch (RFC-0041, Phase 239.1).
 ///
 /// Mirrors [`service_client_raw_try_process`] but deserializes the reply into
@@ -2185,7 +2170,7 @@ pub(crate) struct ServiceClientCallbackEntry<Svc: RosService, F, const REPLY_BUF
 pub(crate) unsafe fn service_client_callback_try_process<Svc, F, const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     Svc: RosService,
@@ -2217,7 +2202,14 @@ where
             // failed E0599. The fully-qualified path resolves under every feature.
             let reply = <Svc::Reply as nros_serdes::Deserialize>::deserialize(&mut reader)
                 .map_err(|_| TransportError::DeserializationError)?;
+            // Phase 8 — hooked AFTER both deserialization `?`s. Placing the
+            // start any earlier would let a `DeserializationError` return
+            // between start and end and leave an unbalanced span; here the
+            // callback is the only thing between the pair, so the measured
+            // interval is user code and nothing else.
+            trace_cb_start(desc_idx);
             (entry.callback)(&reply);
+            trace_cb_end(desc_idx);
             Ok(true)
         }
         Ok(None) => Ok(false),
@@ -2266,21 +2258,20 @@ fn goal_id_from_counter(counter: u64) -> nros_core::GoalId {
     nros_core::GoalId { uuid }
 }
 
-// TODO(phase-8): NOT hooked, and the one leaf that needs a signature change
-// of its own. `dispatch_feedback(data, offset, on_feedback)` carries NO
-// identity at all — not the slot index, not even the arena address — so
-// hooking it means threading `desc_idx` down from
-// `action_client_callback_try_process`. Hook it HERE rather than at its two
-// call sites: it returns without firing when the payload is short, which at a
-// call site would re-introduce exactly the false positive the leaf-hook
-// placement exists to avoid. See `docs/design/callback_tracing.rst`.
 /// Decode one raw feedback slot (outer header + GoalId at [4..20] + inner-CDR
 /// payload at `offset`) and invoke the typed feedback closure (Phase 239.5).
+///
+/// `desc_idx` is threaded in purely so the Phase 8 callback-trace pair can
+/// live at the invocation itself. This function has no entry and no slot of
+/// its own to recover an identity from, and it returns WITHOUT firing on a
+/// short payload or a failed field read — so bracketing its two call sites
+/// instead would report invocations that never happened.
 #[inline]
 fn dispatch_feedback<A, F, const FEEDBACK_BUF: usize>(
     data: &[u8],
     offset: usize,
     on_feedback: &mut F,
+    desc_idx: u8,
 ) where
     A: RosAction,
     F: FnMut(&nros_core::GoalId, &A::Feedback),
@@ -2293,21 +2284,17 @@ fn dispatch_feedback<A, F, const FEEDBACK_BUF: usize>(
     let goal_id = nros_core::GoalId { uuid };
     // #175 — restore the feedback's per-message encap if a typed transport
     // framing (Cyclone) stripped it; the message's top-level encap is `data[0..4]`.
+    //
+    // Phase 8 — hooked INSIDE the `if let Some(fb)`: the early `return`
+    // above and a `None` from `read_action_field` both leave the user
+    // closure un-run, and neither may emit a span.
     if let Some(fb) = read_action_field::<A::Feedback, FEEDBACK_BUF>(&data[0..4], &data[offset..]) {
+        trace_cb_start(desc_idx);
         on_feedback(&goal_id, &fb);
+        trace_cb_end(desc_idx);
     }
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized typed action-client dispatch (RFC-0041, Phase 239.2). Mirrors
 /// [`action_client_raw_try_process`] but deserializes the feedback / result
 /// payloads into `A::Feedback` / `A::Result` and invokes the typed closures.
@@ -2326,7 +2313,7 @@ pub(crate) unsafe fn action_client_callback_try_process<
 >(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     A: RosAction,
@@ -2360,7 +2347,11 @@ where
     if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
         let accepted = total_len >= 5 && core.result_buffer[4] != 0;
         let goal_id = goal_id_from_counter(core.goal_counter);
+        // Phase 8 — hooked inside the `Ok(Some(..))` arm; an empty poll is
+        // the common case and runs no user code.
+        trace_cb_start(desc_idx);
         on_goal_response(&goal_id, accepted);
+        trace_cb_end(desc_idx);
         did_work = true;
     }
 
@@ -2377,10 +2368,14 @@ where
                     tb.writer_publish(len);
                 }
                 if let Some((data, len)) = tb.reader_acquire() {
+                    // Phase 8 — the pair lives INSIDE `dispatch_feedback`
+                    // (it can return without firing); `desc_idx` is threaded
+                    // in so the leaf can name itself.
                     dispatch_feedback::<A, _, FEEDBACK_BUF>(
                         &data[..len],
                         FEEDBACK_PAYLOAD_OFFSET,
                         on_feedback,
+                        desc_idx,
                     );
                     did_work = true;
                 }
@@ -2393,10 +2388,14 @@ where
                     }
                 }
                 while let Some((data, len)) = ring.try_pop() {
+                    // Phase 8 — one pair per drained slot, emitted by
+                    // `dispatch_feedback` itself, so a ring draining N
+                    // messages reports N invocations rather than one.
                     dispatch_feedback::<A, _, FEEDBACK_BUF>(
                         &data[..len],
                         FEEDBACK_PAYLOAD_OFFSET,
                         on_feedback,
+                        desc_idx,
                     );
                     ring.commit_pop();
                     did_work = true;
@@ -2424,7 +2423,12 @@ where
                 &core.result_buffer[0..4],
                 &core.result_buffer[RESULT_PAYLOAD_OFFSET..total_len],
             ) {
+                // Phase 8 — inside the `Some(res)` arm: a failed
+                // deserialize leaves `on_result` un-run and must emit
+                // nothing. Distinct callback, its own pair.
+                trace_cb_start(desc_idx);
                 on_result(&goal_id, status, &res);
+                trace_cb_end(desc_idx);
             }
         }
         did_work = true;
@@ -2433,16 +2437,6 @@ where
     Ok(did_work)
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized raw service dispatch function.
 ///
 /// # Safety
@@ -2450,7 +2444,7 @@ where
 pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<REQ_BUF, REPLY_BUF>) };
     let SrvRawEntry {
@@ -2473,6 +2467,10 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
     };
 
     let mut resp_len: usize = 0;
+    // Phase 8 — hooked below the `Ok(None) => return Ok(false)` arm of the
+    // receive, so an empty poll emits nothing. The `?` on `send_response`
+    // sits AFTER `trace_cb_end`, so no early exit can strand an open span.
+    trace_cb_start(desc_idx);
     let ok = unsafe {
         (*callback)(
             req_buffer.as_ptr().add(data_offset),
@@ -2483,6 +2481,7 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
             *context,
         )
     };
+    trace_cb_end(desc_idx);
     if ok && resp_len > 0 {
         handle
             .send_response(seq_num, &reply_buffer[..resp_len])
@@ -2491,16 +2490,6 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
     Ok(true)
 }
 
-// TODO(phase-8): NOT hooked. The user-callback invocation(s) in this
-// function carry no `trace_cb_start` / `trace_cb_end` pair, so a capture
-// reports this callback as `registered, not instrumented` rather than
-// omitting it — see `docs/design/callback_tracing.rst`, "Registration is
-// exhaustive; instrumentation is staged". The design counts 33 leaf sites
-// in total; this change hooks the 3 the safety island actually runs (one
-// timer, and the C-FFI subscription's triple + ring paths). Hooking the
-// rest is mechanical — bracket the invocation, not the `try_process`
-// boundary — but landing 33 at once is the "looks like coverage and isn't"
-// hazard this design exists to avoid.
 /// Monomorphized guard condition dispatch function.
 ///
 /// # Safety
@@ -2508,14 +2497,20 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
 pub(crate) unsafe fn guard_try_process<F>(
     ptr: *mut u8,
     _delta_us: u64,
-    _desc_idx: u8,
+    desc_idx: u8,
 ) -> Result<bool, TransportError>
 where
     F: FnMut(),
 {
     let entry = unsafe { &mut *(ptr as *mut GuardConditionEntry<F>) };
     if entry.flag.swap(false, portable_atomic::Ordering::AcqRel) {
+        // Phase 8 — hooked inside the flag-consuming branch, the same shape
+        // as `timer_try_process`. A guard is polled on every spin and is
+        // almost always un-triggered, so `Ok(false)` is the common outcome
+        // and must stay silent.
+        trace_cb_start(desc_idx);
         (entry.callback)();
+        trace_cb_end(desc_idx);
         Ok(true)
     } else {
         Ok(false)
