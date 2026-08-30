@@ -424,6 +424,46 @@ pub fn count_callbacks_with_metadata(
 ///
 /// A model with no wiring counts zero and is never checked — the pre-0257
 /// bake, unchanged.
+/// phase-400 W6 — the ladder's answer for `executor.max_cbs`, or `None` when no
+/// platform tree is reachable.
+///
+/// Deliberately tolerant: this is a CHECK, and a check that hard-fails because
+/// it could not find a config tree is a worse outcome than one that falls back
+/// to the documented default.
+fn resolve_max_cbs_through_ladder(platform: Option<&str>) -> Option<usize> {
+    use nros_board_common::platform_config::PlatformsTree;
+    use nros_orchestration_ir::executor_sizing as sz;
+
+    let platform = platform?;
+    let mut dir = std::env::current_dir().ok()?;
+    let repo = loop {
+        if dir.join("nros-sdk-index.toml").exists() {
+            break dir;
+        }
+        if !dir.pop() {
+            return None;
+        }
+    };
+    let path = PlatformsTree::default_search_path(
+        &repo,
+        std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
+    );
+    let tree = PlatformsTree::load_search_path(&path).ok()?;
+    let env_get = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let resolved = tree
+        .resolve_executor(
+            platform,
+            None,
+            &env_get,
+            &[("max_cbs", sz::DEFAULT_MAX_CBS)],
+        )
+        .ok()?;
+    resolved
+        .into_iter()
+        .find(|(n, _)| *n == "max_cbs")
+        .map(|(_, r)| r.value)
+}
+
 pub fn check_executor_capacity(
     model: &SystemModel,
     deploy_key: Option<&str>,
@@ -438,10 +478,22 @@ pub fn check_executor_capacity(
     if counted == 0 {
         return Ok(());
     }
-    let build_default = std::env::var("NROS_EXECUTOR_MAX_CBS")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .unwrap_or(sz::DEFAULT_MAX_CBS);
+    // phase-400 W6/W8 — resolve through the LADDER, not the env alone.
+    //
+    // This read used to be `std::env::var("NROS_EXECUTOR_MAX_CBS")`, which was
+    // correct while env was the knob's only home. Now that the knob has
+    // platform and board rungs, reading the env directly makes this check
+    // disagree with the value the build actually bakes: a platform-set
+    // `max_cbs` would be invisible here and the model would be validated
+    // against the wrong capacity. That is the second-reader hazard
+    // `check-knob-single-reader` exists to catch, and it caught this one.
+    //
+    // Falls back to the previous behaviour when no platform tree is reachable
+    // (an out-of-tree consumer, or no platform named), because a capacity check
+    // that refuses to run is worse than one using the built-in default.
+    let build_default = resolve_max_cbs_through_ladder(deploy_key).unwrap_or_else(|| {
+        nros_board_common::platform_config::executor_env_only("max_cbs", sz::DEFAULT_MAX_CBS)
+    });
     let (capacity, fix) = match declared {
         Some(n) => (
             n,

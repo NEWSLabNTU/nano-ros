@@ -191,10 +191,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
     }
     for i in &transport.implied {
         match i.overridden_by {
-            None => println!(
-                "{:<24} {:<10} implied by {}",
-                i.knob, i.value, i.rule
-            ),
+            None => println!("{:<24} {:<10} implied by {}", i.knob, i.value, i.rule),
             Some(src) => println!(
                 "{:<24} {:<10} {} — OVERRIDES implication {}={} from {}",
                 i.knob,
@@ -205,6 +202,36 @@ fn explain(args: ExplainArgs) -> Result<()> {
                 i.rule
             ),
         }
+    }
+
+    // phase-400 W6 — the executor sizing tenant. Defaults mirror
+    // nros-node/build.rs, which stays the authority on how the arena is derived
+    // from them; this only adds the platform and board rungs those knobs never
+    // had, and makes them visible.
+    let exec_defaults: &[(&str, usize)] = &[
+        ("max_cbs", 4),
+        ("max_sc", 8),
+        ("max_nodes", 4),
+        ("max_shutdown_cbs", 2),
+        ("subscription_buffer_size", 1024),
+        ("param_service_buffer_size", 4096),
+    ];
+    for (name, r) in tree
+        .resolve_executor(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.executor),
+            &env_get,
+            exec_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<24} {:<10} {}  [{}]",
+            format!("executor.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
     }
 
     for w in tree
@@ -221,8 +248,8 @@ fn explain(args: ExplainArgs) -> Result<()> {
 }
 
 /// phase-400 W1 — the repo root itself, for building a platform SEARCH PATH.
-/// Separate from `find_platforms_root` because the path now has more than one
-/// entry and the caller assembles it.
+/// Returns the ROOT, not a platforms directory: the platform path now has more
+/// than one entry and the caller assembles it via `default_search_path`.
 fn find_repo_root() -> Result<PathBuf> {
     let mut dir = std::env::current_dir().wrap_err("resolve cwd")?;
     loop {
@@ -233,29 +260,6 @@ fn find_repo_root() -> Result<PathBuf> {
             return Err(eyre!(
                 "not inside a nano-ros checkout (no nros-sdk-index.toml sentinel) — \
                  pass --platforms-dir or set NROS_PLATFORMS_DIR"
-            ));
-        }
-    }
-}
-
-/// Walk up from cwd to the repo root (marked by `nros-sdk-index.toml`, the
-/// same sentinel the cmake glue uses) and return `config`.
-fn find_platforms_root() -> Result<PathBuf> {
-    let mut dir = std::env::current_dir().wrap_err("resolve cwd")?;
-    loop {
-        if dir.join("nros-sdk-index.toml").exists() {
-            let root = dir.join("config");
-            if root.is_dir() {
-                return Ok(root);
-            }
-            return Err(eyre!(
-                "found repo root at {} but config is missing",
-                dir.display()
-            ));
-        }
-        if !dir.pop() {
-            return Err(eyre!(
-                "not inside a nano-ros checkout (no nros-sdk-index.toml sentinel) —                  pass --platforms-dir or set NROS_PLATFORMS_DIR"
             ));
         }
     }

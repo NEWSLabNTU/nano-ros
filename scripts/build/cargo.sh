@@ -179,12 +179,30 @@ nros_sizes_probe_dir() {
         printf '%s' "${CARGO_TARGET_DIR}-sizes-probe"
         return 0
     fi
+    # An INHERITED `NROS_REPO_DIR` may name a different checkout.
+    #
+    # It is exported by `activate.sh` (phase-218.C), so a shell that activated
+    # another nano-ros — or a git worktree, the case `build-root.sh` already
+    # warns about — carries it in. This used to be trusted blindly and then
+    # `source`d, so pointing at a checkout without `scripts/build/build-root.sh`
+    # produced a raw bash error plus `nros_build_dir: command not found` on
+    # stderr. Harmless to the build, but it is UNCONDITIONAL noise: any gate
+    # asserting a command prints nothing then fails on output it did not cause,
+    # and the failure names the gate rather than the stale variable.
+    #
+    # So validate the inherited value the same way `build-root.sh` reasons about
+    # its own fallback: `scripts/build/` is two levels below the root by
+    # construction, so deriving from `BASH_SOURCE` always names the checkout
+    # this file was read from.
     local repo_root="${NROS_REPO_DIR:-}"
+    if [ -n "$repo_root" ] && [ ! -f "$repo_root/scripts/build/build-root.sh" ]; then
+        repo_root=""
+    fi
     if [ -z "$repo_root" ]; then
         local _self="${BASH_SOURCE[0]:-$0}"
         repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
     fi
-    if [ -n "$repo_root" ]; then
+    if [ -n "$repo_root" ] && [ -f "$repo_root/scripts/build/build-root.sh" ]; then
         # phase-334 W2.b step 2 — derived, not a second spelling of the root.
         source "$repo_root/scripts/build/build-root.sh"
         printf '%s' "$(nros_build_dir "$NROS_KIND_SIZES_PROBE")"
