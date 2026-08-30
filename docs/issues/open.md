@@ -66,8 +66,5 @@ fails if this block drifts.
 - **#0902** (build, rmw) — Editing zenoh-pico rebuilds nothing — `zpico-sys` watches 7 hand-listed files out of the whole library, so a patch is silently not compiled See `0902-*`.
 - **#0914** (testing) — Nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot evaluate anything passes every check See `0914-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
-- **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
-- **#0916** (cli, tooling) — Live macOS branches were added after macOS was dropped as a host — and the `native`/`posix` scaffold aliases behave differently See `0916-*`.
-- **#0926** (cli, tooling) — 6 of 10 SDK dists have undeclared runtime system deps — and two shipped binaries cannot run on this host at all See `0926-*`.
 
 <!-- END GENERATED open-issue list -->
