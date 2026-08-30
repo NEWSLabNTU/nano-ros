@@ -528,9 +528,11 @@ Those headers are a function of the IMAGE's Kconfig — `nros-zephyr-build` read
 but differing in `prj.conf` would share one directory and overwrite each other's
 sizes header. That is the 0135/0460 ABI split — silent, and it is the class
 CLAUDE.md already records for the cmake/cargo lanes disagreeing on
-`MAX_QUERYABLES`.
+`MAX_QUERYABLES`. **Corrected below — for the SIZING knobs it is loud, not
+silent: the issue-0360 stamp guard panics, and its stamp is keyed on them.**
 
-*What would make this landable:* extend the key with the resolved Kconfig knob set
+*What would make this landable (superseded by "The roadmap" below, which sizes it
+and names the two existing implementations to reuse):* extend the key with the resolved Kconfig knob set
 (the same values `nros_zephyr_build::knob_usize` reads, so the key is a function
 of what the header is a function of), and move the generated-header directory out
 of `CARGO_TARGET_DIR` — or key its path the same way. Then measure two images
@@ -539,6 +541,132 @@ with `--timings` before quoting a saving.
 *Status: NOT attempted.* The lane it needs was only unblocked by #0918 in the same
 session, and the two blockers above were found by reading rather than by building.
 Neither has been tested.
+
+#### The roadmap — sized 2026-08-30. Both blockers have an in-tree precedent.
+
+The two blockers above are real, but neither is novel: this repo has already
+solved each of them once, in a neighbouring lane, and the solutions are tested.
+W5 is assembling those two, not inventing anything.
+
+**The KEY already exists, and it was written for exactly this failure.**
+`probe_key()` in `nros-sizes-build` hashes rustc slug + target + SORTED features
++ `knob_identity()`, where `knob_identity()` is every `NROS_*` environment
+variable PLUS every `CONFIG_NROS_*` line of `$DOTCONFIG`. Issue 0528 is the
+reason the knobs are in there: two Zephyr leaves at the same (target, features)
+disagreeing on `CONFIG_NROS_EXECUTOR_MAX_CBS` shared a probe dir, whichever
+probed first wrote the sizes, and the 16-CBS leaf then compiled against a
+constant sized for 4 and died on `EXECUTOR_OPAQUE_U64S too small`. It is pinned
+by `zephyr_dotconfig_sizing_knob_splits_the_probe_key`. So "extend the key with
+the resolved Kconfig knob set" is not a design to be invented — it is a function
+to be reused.
+
+**And a repo-root cargo dir shared across west build trees is already
+load-bearing.** `build/sizes-probe/<rustc-slug>/<key>` has been the DEFAULT since
+phase-343 I1, not an opt-in: 425 leaked private probe dirs, 63.1 GiB,
+deduplicating 81:1. Every Zephyr west build already writes into it. What is
+missing is not the mechanism or the key — it is that the MAIN cargo build never
+got the same treatment.
+
+**Sizing: measured across the 89 build trees, not estimated.** The open worry was
+that putting Kconfig in the key would over-partition and give back the saving. It
+does not.
+
+```
+zephyr-workspace/build-*                     89 trees (70 C/C++, 19 rust)
+distinct NROS_RESOLVED_* knob sets            8
+distinct FULL key (knobs + every --features
+  line in build.ninja + triple), C/C++       14   sizes 12,10,10,10,6,6,5,3,2,2,1,1,1,1
+```
+
+**70 C/C++ build dirs collapse to 14** — 56 of them stop recompiling the ~86 host
+crates and start reusing them. The conservative key (features included, though
+cargo hashes those itself) costs only 14 groups against the 8 the knobs alone
+would give, so there is no reason to narrow it.
+
+The 19 rust trees are out of scope and must stay per-leaf: each is its own cargo
+workspace root, which is what issue 0616 is about.
+
+**Blocker 1 is one redirect site, not a sweep.** Consumers hardcode
+`${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated` in six files; that path is
+correct and must not move. Only the WRITER's notion of the root has to change,
+and it reads `CARGO_TARGET_DIR` in exactly two functions of
+`nros-build-helpers/src/shared.rs` (`write_header_to_target_dir`,
+`target_dir_path`). The same file already has the pattern for a per-leaf
+destination given by the environment: `write_header_to_corrosion` writes to
+`$CORROSION_BUILD_DIR`. So the change is one `generated_header_root()` helper
+preferring a new variable, with Zephyr setting it to the path consumers already
+use — which keeps every include path byte-identical. That is what keeps this out
+of issue 0834: nothing moves on the consumer side at all.
+
+**The other unhashed output is NuttX's solved problem.** `LIB_PATH` is an
+unhashed uplift (`libnros_c.a`) exactly like `nros-nuttx-ffi`, and
+`nros-nuttx.cmake` already evicts it from the shared dir with cargo's own
+`--artifact-dir` plus an explicit depfile copy, for the stated reason that a
+shared depfile hands every other leaf the wrong rebuild triggers. Zephyr needs
+the same two lines.
+
+**Correction to blocker 2's framing: the failure is LOUD, not silent — for the
+sizing knobs.** `write_header_if_absent_or_verify` (issue 0360) `panic!`s when
+two builds disagree about a generated header, and its stamp derives from the
+sizes probe, which is keyed on `knob_identity()`. A `MAX_CBS` divergence
+therefore aborts the build rather than corrupting an image. This is NOT
+established for the `ZPICO_*` transport knobs, which reach the C shim's
+`-D` defines rather than `EXECUTOR_SIZE`; that gap is what acceptance 3 below
+has to close. The earlier "silent 0135/0460 split" reading was pessimistic and
+is corrected here.
+
+##### Stages
+
+**W5.a — evict the unhashed outputs. No sharing yet.** Add
+`generated_header_root()` (new var, falling back to `CARGO_TARGET_DIR`, then
+`cargo_target_dir()`); have Zephyr set it to `${CMAKE_BINARY_DIR}/nros-rust`;
+move `LIB_PATH` to `--artifact-dir` as `nros-nuttx.cmake` does. *Acceptance: with
+sharing OFF, a from-pristine C and C++ leaf produce the same files at the same
+paths as today.* This stage is a deliberate no-op on layout, which is exactly why
+it can be verified before any sharing exists to confound it.
+
+**W5.b — the key, with ONE implementation.** cmake already has the material:
+`NROS_RESOLVED_KNOBS` plus `NROS_RESOLVED_<knob>`, cached at configure. Pass those
+into `nros_shared_cargo_dir(KEY ...)`. But note the asymmetry that makes a second
+implementation dangerous: `knob_identity()` reads `$DOTCONFIG` DIRECTLY, so it
+sees `CONFIG_NROS_*` knobs cmake never resolved, and a cmake-side key derived
+only from `NROS_RESOLVED_KNOBS` is therefore COARSER than the probe's. Either
+derive the cmake key from the same `.config` scan, or gate the two views against
+each other. Two spellings of a sizing key is issue 0135 with a different noun.
+
+**W5.c — wire and measure.** `nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr`
+into `zephyr.just` / `zephyr-ci.just`, consumed through `nros_shared_cargo_dir()`
+— NOT `nros_share_corrosion_cargo_dir()`, which this section already proved is a
+no-op on a lane that uses no Corrosion.
+
+##### Acceptance
+
+1. Two images from the SAME cluster: the second build compiles zero host units of
+   the shared set (`just leaf-graph`, W4 — use it rather than reasoning).
+2. Two images from DIFFERENT clusters, differing in
+   `CONFIG_NROS_EXECUTOR_MAX_CBS`, build correctly in EITHER order and survive
+   repeated alternation. This is issue 0528's reproduction lifted from the probe
+   dir to the main build dir, and it belongs in the tree as a test.
+3. A `ZPICO_*`-only difference either splits the key or is shown to reach no
+   artifact in the shared dir. Do not assume the 0360 stamp covers it — it is
+   derived from the sizes probe, and these knobs are not.
+4. From pristine, two images leave `<build>/nros-rust/nros-{c,cpp}-generated/nros/`
+   populated with no `.stamp` lacking its `.h` — the 0834 survey, run as a check
+   rather than trusted.
+
+##### Stop conditions
+
+* **Any `rm -rf` needed to converge means the design is wrong**, not that the tree
+  is dirty. That is 0834's signature and the reason it has an exemption instead of
+  a fix.
+* **Thrash.** Alternating between two cluster members rebuilds whatever is
+  downstream of the knobs. Measure the order the SWEEP actually builds in, not a
+  synthetic A/B pair — if the sweep interleaves clusters, sharing can cost more
+  than it saves, and that is a result worth having rather than a reason to stop.
+
+**No saving may be quoted before W5.c.** This phase has retracted three estimates
+for skipping the measurement, and the sizing above is a count of build
+directories, not of seconds.
 
 *Original next step, still the sizing that must come first:* wire the C/C++ Zephyr lane to
 `nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr`, the same call the six other
