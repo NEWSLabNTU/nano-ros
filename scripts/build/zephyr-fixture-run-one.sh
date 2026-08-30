@@ -14,7 +14,14 @@ Runs one Zephyr fixture record. The record must contain these tab-separated
 fields:
   kind id target board lang lang_tag role rmw src src_dir build_name build_dir
   log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs
-  sig sig_file best_effort eff_pristine
+  sig sig_file best_effort eff_pristine ws_dir nros_image
+
+`ws_dir` and `nros_image` are EMPTY on an unmigrated leaf and the build runs
+`west build` directly. When both are set (phase-383 W9.b) the build runs
+`nros build <bringup>:<image>` from the workspace instead, which resolves the
+application and the image's overlays and execs the same `west build` — the
+build dir, the pristine mode and the row's cmake defines ride across as native
+args.
 
 Required environment prepared by the caller:
   NROS_ZEPHYR_WORKSPACE
@@ -63,13 +70,13 @@ record_us="${record//$'\t'/$'\x1f'}"
 IFS=$'\x1f' read -r \
     kind id target board lang lang_tag role rmw src src_dir build_name build_dir \
     log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs \
-    sig sig_file best_effort eff_pristine extra_field <<< "$record_us"
+    sig sig_file best_effort eff_pristine ws_dir nros_image extra_field <<< "$record_us"
 
 [ -z "${extra_field:-}" ] || die "record has extra fields: $id"
 
 for field_name in kind id target board lang lang_tag role rmw src src_dir build_name build_dir \
     log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs \
-    sig sig_file best_effort eff_pristine; do
+    sig sig_file best_effort eff_pristine ws_dir nros_image; do
     printf -v "$field_name" '%s' "$(unescape_field "${!field_name}")"
 done
 
@@ -219,7 +226,42 @@ if [ "$needs_west" = "0" ]; then
     fi
 else
     use_west=1
-    build_argv=(west build -b "$board" -d "$build_dir" -p "$actual_pristine" "$src_dir" "${west_extra[@]}")
+    if [ -n "$nros_image" ]; then
+        # phase-383 W9.b — a RETARGETED row. `nros build` resolves the
+        # application from `[image.<id>] entry` and applies the image's `conf`
+        # overlays (RFC-0085 D4/D5), then execs the same `west build`. It is
+        # addressed from the WORKSPACE and never named the application, which is
+        # the whole point: the row stops spelling a fact the image declares.
+        #
+        # The three harness fields stay ROW facts and ride across as native
+        # args, because they are this fixture's ISOLATION and not properties of
+        # the program: `-d <build_dir>` (a private build dir) and `-p` route to
+        # west's own zone, the `-D` defines — the locator among them — to
+        # cmake's. `nros build`'s `route_native_arg` does that split; `-b` is
+        # deliberately NOT passed, because the image declares the board and a
+        # second spelling is refused.
+        #
+        # `--offline`: this lane must not reach the network mid-sweep, matching
+        # `workspace-fixtures-build.sh`'s migrated arms.
+        [ -n "$ws_dir" ] || die "record has nros_image but no ws_dir: $id"
+        [ -d "$ws_dir" ] || die "record ws_dir does not exist: $ws_dir ($id)"
+        # THE nros CLI this lane already chose — the emitter resolved it once and
+        # published it as the codegen tool. Re-resolving here (PATH, or a second
+        # search) is how a lane ends up building with a different binary than the
+        # one its signature names.
+        nros_bin=""
+        for _arg in "${extra_args[@]}"; do
+            case "$_arg" in
+                -D_NANO_ROS_CODEGEN_TOOL=*) nros_bin="${_arg#-D_NANO_ROS_CODEGEN_TOOL=}" ;;
+            esac
+        done
+        [ -n "$nros_bin" ] && [ -x "$nros_bin" ] \
+            || die "no usable nros CLI in the record's -D_NANO_ROS_CODEGEN_TOOL: $id"
+        build_argv=("$nros_bin" build "$nros_image" --workspace "$ws_dir" --offline \
+            -- -d "$build_dir" -p "$actual_pristine" "${extra_args[@]}")
+    else
+        build_argv=(west build -b "$board" -d "$build_dir" -p "$actual_pristine" "$src_dir" "${west_extra[@]}")
+    fi
 fi
 
 mkdir -p "$(dirname "$log")" "$(dirname "$sig_file")" "$ccache_dir" "$ccache_tmpdir"

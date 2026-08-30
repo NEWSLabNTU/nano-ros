@@ -98,14 +98,12 @@ kind = "self"
 # Zephyr (this wave) by changing the BOARD cmake variable.
 [deploy.zephyr]
 kind = "embedded"
-board = "native_sim/native/64"
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) embedded deploy target. The
 # `[tiers.*.nuttx]` tables let the same bringup deploy to native, embedded Zephyr,
 # or embedded NuttX by changing the BOARD cmake variable.
 [deploy.nuttx]
 kind = "embedded"
-board = "nuttx-qemu-arm"
 
 # phase-315 — the embedded BOARD BUILDS of this system.
 #
@@ -130,7 +128,6 @@ board = "nuttx-qemu-riscv"
 # only a CMAKE_TOOLCHAIN_FILE block separated them.
 [deploy.freertos]
 kind = "embedded"
-board = "mps2-an385-freertos"
 
 # phase-315 — the embedded BOARD BUILDS of this system.
 #

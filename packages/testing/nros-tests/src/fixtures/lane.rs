@@ -245,10 +245,16 @@ pub fn west_leaves() -> &'static [WestLeaf] {
         let mut rows = Vec::new();
         for line in text.lines().filter(|l| !l.is_empty()) {
             let f: Vec<&str> = line.split('\x1f').collect();
+            // 15 since phase-383 W9.b appended `ws_dir` and `nros_image` —
+            // EMPTY on an unmigrated leaf, set on one the west lane builds
+            // through `nros build <bringup>:<image>`. Kept as an exact count
+            // rather than a lower bound: this assertion is the only thing that
+            // notices when the emitter and its readers drift, and it is what
+            // caught this very addition.
             assert_eq!(
                 f.len(),
-                13,
-                "unexpected `west-leaves` record shape (expected 13 \\x1f-separated \
+                15,
+                "unexpected `west-leaves` record shape (expected 15 \\x1f-separated \
                  fields): {line:?}"
             );
             // board, lang, lang_tag, rmw, role, dir, build_name, id, ...
