@@ -121,6 +121,39 @@
 #define LWIP_NETIF_API                  1
 
 /* ---- Threading (FreeRTOS) ---- */
+/* nano-ros issue 0906 — these two are ONE setting; lwIP says so.
+ *
+ *   "LWIP_NETCONN_FULLDUPLEX==1: Enable code that allows reading from one
+ *    thread, writing from a 2nd thread and closing from a 3rd thread at the
+ *    same time. LWIP_NETCONN_SEM_PER_THREAD==1 is required to use one
+ *    socket/netconn from multiple threads at once!"   (lwip/opt.h)
+ *
+ * That is precisely our shape: zenoh-pico's read task calls recv, the app task
+ * publishes, and the lease task sends keepalives and CLOSES the socket during a
+ * reconnect. The board previously set SEM_PER_THREAD alone and left FULLDUPLEX
+ * at its default of 0 — half a requirement, which is not a working
+ * configuration for this usage.
+ *
+ * The failure was not subtle once it was measured: a lease teardown entered
+ * `_z_link_free`, lwIP's close waited for an operation that could never
+ * complete, and the lease task parked there forever. The session stayed closed
+ * (`_tp._type == _Z_TRANSPORT_NONE`), so every later publish returned
+ * `NROS_RET_PUBLISH_FAILED` and the image went quiet after ~19 messages while
+ * still printing "Publishing" for each one.
+ *
+ * SEM_PER_THREAD also has a requirement of its own that is easy to miss: the
+ * FreeRTOS port's `sys_arch_netconn_sem_get()` only READS the thread-local
+ * slot, never allocates. A task that has not called `lwip_socket_thread_init()`
+ * hands lwIP a NULL semaphore. Only the app task called it (in
+ * `nros_freertos_init_network`); zenoh-pico's tasks now do too, from
+ * `z_task_wrapper` in the vendored fork. Measured before that fix:
+ * `sys_arch_netconn_sem_get()` returned NULL for `zpico_read` and for
+ * `zpico_lease`.
+ *
+ * So all three move together — FULLDUPLEX, SEM_PER_THREAD, and a
+ * `lwip_socket_thread_init()` in every socket-using task. Changing one alone
+ * gets you a different hang, not a fix. */
+#define LWIP_NETCONN_FULLDUPLEX         1
 #define LWIP_NETCONN_SEM_PER_THREAD     1
 #define TCPIP_THREAD_STACKSIZE          (4 * 1024)
 #define TCPIP_THREAD_PRIO               4
