@@ -67,5 +67,6 @@ fails if this block drifts.
 - **#0902** (rmw) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to explain the difference See `0902-*`.
 - **#0902** (build, rmw) — Editing zenoh-pico rebuilds nothing — `zpico-sys` watches 7 hand-listed files out of the whole library, so a patch is silently not compiled See `0902-*`.
 - **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
+- **#0910** (rmw, build) — migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no longer shipped, and our config generator is 54 knobs behind See `0910-*`.
 
 <!-- END GENERATED open-issue list -->
