@@ -753,9 +753,10 @@ pub fn deprecated_deploy_build_field_warnings(
         hits.sort_unstable();
         out.push(format!(
             "[deploy.{id}] carries build field(s) {} — these move to \
-             `[image.{id}]`. `[deploy.*]` keeps PLACEMENT (kind / nodes / \
-             launch) and is not being retired. Set NROS_SUPPRESS_DEPRECATION=1 \
-             to silence.",
+             `[image.{id}]`. `[deploy.*]` still carries PLACEMENT (kind / \
+             nodes / launch) today and is on its way out entirely, so prefer \
+             `[image.*]` for anything new. Set NROS_SUPPRESS_DEPRECATION=1 to \
+             silence.",
             hits.join(", ")
         ));
     }
