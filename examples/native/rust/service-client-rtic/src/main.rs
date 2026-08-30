@@ -3,7 +3,7 @@
 //! Validates the RTIC service client pattern on native x86:
 //! - `Executor<_, 0, 0>` (zero callback arena)
 //! - `spin_once(0)` (non-blocking I/O drive)
-//! - `client.call()` + `promise.try_recv()` loop (manual polling)
+//! - `client.call()` + `promise.take()` loop (manual polling)
 //!
 //! Note: `Promise::wait()` is NOT usable in RTIC because it requires `&mut Executor`,
 //! which is `#[local]` to the `net_poll` task. Use `try_recv()` loop instead.
@@ -68,7 +68,7 @@ fn main() {
     for _ in 0..3000 {
         executor.spin_once(core::time::Duration::from_millis(0));
 
-        if let Ok(Some(reply)) = promise.try_recv() {
+        if let Ok(Some(reply)) = promise.take() {
             nros_info!(&LOGGER, "Result of add_two_ints: {}", reply.sum);
             got_reply = true;
             break;

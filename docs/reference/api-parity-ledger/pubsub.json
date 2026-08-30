@@ -1518,6 +1518,10 @@
     "verdict": "extension",
     "why": "see `rust:Subscription::process_raw_in_place`."
   },
+  "rust:Subscription::take": {
+    "verdict": "extension",
+    "why": "phase-379 W3. A POLLING receive, which rclrs has no public counterpart for: its subscription API is callback/worker-driven and its `take_*` methods are private (`fn take_response`, `fn take_feedback` in 0.7.0 — no `pub`). So this is ours-only against the RUST reference by construction, not by a naming choice. The NAME follows rcl (`rcl_take`) and rclcpp (`Subscription::take`), which do spell the non-blocking receive that way, and matches our own C surface. It was `try_recv` — Rust channel vocabulary that reads as a different contract to a ROS 2 user, when both forms are non-blocking and both report emptiness without failing. Renamed as a clean break, no deprecation shim: a shim would let call sites keep compiling against the old name silently, and five separate call sites were found only because the break made them hard errors."
+  },
   "rust:Subscription::topic_name": {
     "verdict": "gap",
     "why": "see `rust:Publisher::topic_name`."

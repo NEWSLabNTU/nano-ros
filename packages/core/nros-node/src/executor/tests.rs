@@ -3151,7 +3151,7 @@ fn test_promise_try_recv_returns_none_then_some() {
     let mut promise = client.call(&request).unwrap();
 
     // No reply loaded yet — should return None
-    assert!(promise.try_recv().unwrap().is_none());
+    assert!(promise.take().unwrap().is_none());
 
     // Load a CDR-encoded reply into the mock
     let mut reply_buf = [0u8; 256];
@@ -3163,7 +3163,7 @@ fn test_promise_try_recv_returns_none_then_some() {
     promise.handle.load_reply(reply_buf, reply_len);
 
     // Now try_recv should return the reply
-    let reply = promise.try_recv().unwrap().unwrap();
+    let reply = promise.take().unwrap().unwrap();
     assert_eq!(reply.sum, 99);
 }
 

@@ -20,7 +20,7 @@
 //!
 //! let reply = loop {
 //!     executor.spin_once(core::time::Duration::from_millis(10));
-//!     if let Ok(Some(reply)) = promise.try_recv() {
+//!     if let Ok(Some(reply)) = promise.take() {
 //!         break reply;
 //!     }
 //! };

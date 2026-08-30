@@ -74,7 +74,7 @@ Both layers share the same session; mix per entity.
 - L1 — `node.create_service::<S>(name)` (poll with
   `handle_request()`), `node.create_client::<S>(name)` +
   `client.call(&request)` → `Promise<Reply>` (poll with
-  `promise.try_recv()` or `.await`).
+  `promise.take()` or `.await`).
 - L2 — `executor.register_service::<S, _>(name, |req| reply)`.
   Service clients keep the L1 `Promise` shape; the typed
   callback API isn't surfaced (only `register_service_client_raw`

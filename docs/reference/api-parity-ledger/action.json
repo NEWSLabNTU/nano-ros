@@ -777,9 +777,17 @@
     "verdict": "extension",
     "why": "takes `(goal_id, status, result)` -- as C's `nros_action_succeed`/`_abort`/`_canceled` do, as C++'s POLLING tier does, and as `nros::ActionServer<A>::complete_goal` does since issue 0796; see `cpp:ActionServer::complete_goal`. All four surfaces now agree on the parameter and its order."
   },
+  "rust:ActionServer::for_each_active_goal": {
+    "verdict": "divergence",
+    "why": "phase-379 W5. rclrs hands back an iterator over goals; we take a visitor (`for_each_active_goal(&self, executor, f)`). An iterator would borrow the arena for its whole walk while the executor needs `&mut` to drive the state machine underneath it — a borrow-checker consequence of the arena owning goal storage, not a style preference. Same constraint as the identity row."
+  },
   "rust:ActionServer::get_goal": {
     "verdict": "divergence",
     "why": "rclrs 0.7.0 models a goal's life as a TYPESTATE chain -- `RequestedGoal` -> `AcceptedGoal` -> `ExecutingGoal` -> `TerminatedGoal`, each a distinct type whose methods are only the transitions legal from that state, with the goal moved from one to the next. Ours keeps goals in a STATIC ARENA addressed by UUID (`nros_goal_uuid_t` / `GoalId`), and the server asks the arena about a goal rather than holding it. The constraint is that a typestate chain hands the application an owning handle per goal, and with no allocator and a fixed-capacity arena the storage cannot follow the handle -- MAX_GOALS is declared at build time and the arena outlives every borrow of it. RFC-0069. Note ROS 2 does not agree with ITSELF here: rclcpp_action uses `async_send_goal` and shared `ClientGoalHandle`, rclrs 0.7.0 uses `request_goal` and the typestate chain, so 'match ROS 2' has no single answer for actions -- W5 has to pick a side and say which."
+  },
+  "rust:ActionServer::goal-identity": {
+    "verdict": "divergence",
+    "why": "phase-379 W5. A goal is named by its 16-byte UUID and lives in a fixed-capacity arena; operations take the id (`publish_feedback(exec, goal_id, ..)`, `succeed(exec, goal_id, result)`). This is the ACTION SPEC's own identity model — SendGoal/CancelGoal/GetResult and the feedback and status topics all key on goal_id — and BOTH client libraries layer language ergonomics over it. rclrs 0.7.0's typestate chain (RequestedGoal->AcceptedGoal->ExecutingGoal->TerminatedGoal) hands out an owning handle per goal, and its own `ExecutingGoal` is `Arc`-backed: the typestate is a compile-time wrapper OVER refcounting, not an alternative to it. rclcpp_action's shared_ptr<ServerGoalHandle> states the same requirement plainly. Both need an allocator; a fixed arena cannot provide an owning handle because the storage cannot follow it, and slot reclaim would rest on Drop order in no_std. Note rclrs itself falls back to the UUID once the chain ends: `succeeded_with` returns `TerminatedGoal { uuid }`. COSTS, stated: result retention is capped at MAX_GOALS (issue 0796 — it was push-only, so it held 'the first four, forever'); lookup is O(n) over the arena where a handle is O(1); size_of::<A::Goal>() * MAX_GOALS of static RAM is reserved whether goals arrive or not (issue 0827's class). And the ergonomic loss: `succeeded_with(self)` makes use-after-terminal a COMPILE error, ours can only make it a runtime one."
   },
   "rust:ActionServer::into_goal_receiver": {
     "verdict": "divergence",

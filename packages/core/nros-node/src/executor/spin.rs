@@ -6632,7 +6632,7 @@ impl<'s> Executor<'s> {
     /// let mut promise = client.call(&req)?;
     /// loop {
     ///     executor.spin_once(core::time::Duration::from_millis(10));
-    ///     if let Ok(Some(r)) = promise.try_recv() { break r; }
+    ///     if let Ok(Some(r)) = promise.take() { break r; }
     /// }
     /// ```
     pub async fn spin_async(&mut self) -> ! {

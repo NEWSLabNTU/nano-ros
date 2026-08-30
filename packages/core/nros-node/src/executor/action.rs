@@ -461,6 +461,52 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// the executor, or when the serialized result exceeds the server's
     /// `RESULT_BUF` and so cannot be retained for a later `get_result` (issue
     /// 0796 — this used to return `()` and swallow both).
+    /// Terminate `goal_id` as SUCCEEDED — phase-379 W5.
+    ///
+    /// The three terminal verbs (`succeed` / `abort` / `cancel`) name the
+    /// ACTION SPEC's terminal states, which is also what rclcpp_action's
+    /// `ServerGoalHandle` spells them: `succeed(result)`, `abort(result)`,
+    /// `canceled(result)`. They take the goal ID rather than hanging off a
+    /// handle because a goal here lives in a fixed-capacity arena and is named
+    /// by its UUID — see the `divergence` row for why neither client library's
+    /// ownership model is available without an allocator.
+    ///
+    /// `complete_goal` remains the general form for a status computed at
+    /// runtime.
+    pub fn succeed(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        result: A::Result,
+    ) -> Result<(), NodeError> {
+        self.complete_goal(executor, goal_id, nros_core::GoalStatus::Succeeded, result)
+    }
+
+    /// Terminate `goal_id` as ABORTED. See [`Self::succeed`].
+    pub fn abort(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        result: A::Result,
+    ) -> Result<(), NodeError> {
+        self.complete_goal(executor, goal_id, nros_core::GoalStatus::Aborted, result)
+    }
+
+    /// Terminate `goal_id` as CANCELED. See [`Self::succeed`].
+    ///
+    /// Spelled `cancel`, not rclcpp's `canceled`: the other two are imperatives
+    /// (`succeed`, `abort`), and mixing an imperative with a past participle
+    /// inside one family reads as an accident. The SPEC state is `CANCELED`
+    /// either way.
+    pub fn cancel(
+        &self,
+        executor: &mut Executor,
+        goal_id: &nros_core::GoalId,
+        result: A::Result,
+    ) -> Result<(), NodeError> {
+        self.complete_goal(executor, goal_id, nros_core::GoalStatus::Canceled, result)
+    }
+
     pub fn complete_goal(
         &self,
         executor: &mut Executor,
