@@ -3343,16 +3343,21 @@ setup-launch-resolve:
     # and stayed red — the artifact SHAPE was verified (`readelf -d` shows no
     # `libpython`) while the capability was not.
     #
-    # `--features extension-module` is the half that must NOT link libpython:
+    # `--features extension-module,abi3` — two flags doing two jobs (issue 0915).
+    # `extension-module` is the half that must NOT link libpython:
     # its `Py_*` symbols stay undefined so they bind to whichever interpreter the
-    # loader `dlopen`s with RTLD_GLOBAL. Built from the parser's own workspace,
+    # loader `dlopen`s with RTLD_GLOBAL. `abi3` is what makes those undefined
+    # symbols ones every CPython >= 3.10 exports UNCHANGED — without it the
+    # half referenced six CPython internals and was pinned to whatever version
+    # pyo3 found at build time, which is the pin this whole design removes.
+    # Built from the parser's own workspace,
     # which is where the crate lives and is deliberately NOT in the resolver's
     # dependency graph — a normal dep would put the link back.
     _pyexec_ws="$crate/../third-party/play_launch/src/ros-launch-resolve/parser"
     echo "[setup-launch-resolve] building the Python half (dlopen'ed at runtime)…"
     # profile-literal-ok: host tool: the resolver's own Python half
     cargo build --release --manifest-path "$_pyexec_ws/Cargo.toml" \
-        -p play_launch_parser_pyexec --lib --features extension-module
+        -p play_launch_parser_pyexec --lib --features extension-module,abi3
     _pyexec_so="$(dirname "$bin")/libplay_launch_parser_pyexec.so"
     # profile-literal-ok: host tool: reads back where that build put it
     _pyexec_built="${CARGO_TARGET_DIR:-$_pyexec_ws/target}/release/libplay_launch_parser_pyexec.so"
