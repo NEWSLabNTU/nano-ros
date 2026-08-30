@@ -134,6 +134,62 @@ lan9118 driver never calls the lwIP link-stat macros, so loss at exactly this
 layer is invisible to `lwip_stats`. Every pool below it reads clean while the
 NIC is dropping the tail of every burst.
 
+## Interrupt-driven RX was built and measured, and it is NOT the fix
+
+Worth recording in full, because it is the obvious next move and it does not
+work.
+
+**Built end to end** (patch kept out of tree; ~156 lines):
+
+* driver — `lan9118_lwip_rx_irq_enable` / `_mask` / `_rx_pending`. RSFL is a
+  LEVEL condition (it asserts while the RX status FIFO is non-empty), so the
+  ISR masks rather than clears and the drain task re-enables once the FIFO
+  reads empty. `IRQ_CFG` was already programmed `IRQ_EN|IRQ_POL|IRQ_TYPE` by
+  `lan9118_lwip_init`; only `INT_EN` was left at 0.
+* board — GICv3 SPI wiring for the ethernet line. `lan9118_init(0xe0300000,
+  qdev_get_gpio_in(gicdev, 18))` in `hw/arm/mps3r.c` means SPI 18, INTID **50**.
+  SPIs live in the DISTRIBUTOR, not the redistributor frame the timer PPI uses,
+  and with `GICD_CTLR.ARE_NS` set an SPI also needs an `IROUTER` entry or it is
+  enabled and targets nobody.
+* glue — ISR masks, `vTaskNotifyGiveFromISR`, drain task waits with
+  `ulTaskNotifyTake`. The poll interval becomes a CEILING rather than the
+  cadence, and the task drains FIRST and waits second.
+
+**One ordering trap worth writing down.** Enabling the SPI in `gicv3_init()`
+hangs the image before its first print. The model treats the interrupt output
+as active-LOW until the driver sets `IRQ_POL|IRQ_TYPE`, so between reset and
+`lan9118_lwip_init()` the line is held ASSERTED — the interrupt is taken
+immediately, against a netif that does not exist yet. Enable the GIC side only
+after the driver has configured the source.
+
+**It works, and it does not help.** The ISR fires (464 times in a 35 s run,
+zero spurious IDs), and delivery is **2 of 6** — the same as the unmodified
+build, while simply polling every 1 ms instead of every 5 ms measured 9 of 11.
+
+The counter says why: 464 ISRs over 35 s is ~13/s against ~130 packets/s
+arriving. The FIFO rarely empties, so the mask stays on and the 5 ms timeout
+does the work anyway. Wake latency was never the binding constraint — **the
+FIFO is**. The guest cannot be scheduled between the frames of one burst at
+all, so nothing on the guest side changes how much of a burst fits.
+
+That also explains why 1 ms polling beat it: it does not make the guest react
+faster to a burst, it keeps the FIFO emptier on average so more of the next
+burst fits.
+
+## Directions that remain
+
+* **Keep the cheap half regardless.** Drain-first/wait-second with the poll
+  interval as a ceiling is strictly better than sleep-first, and costs nothing.
+* **Widen the FIFO.** nano-ros pins its own QEMU fork, so `rx_fifo_size` (2640
+  words) is ours to change for this lane. Note the lane currently runs the
+  SYSTEM qemu (9.0.2) — the fork is not built — so this needs the rig pointed
+  at the fork first.
+* **Accept the limit.** On real hardware the RX path is DMA to memory, not a
+  10.5 KB on-chip FIFO, so this specific ceiling is an artifact of the emulated
+  board rather than a product defect. Interrupt-driven RX is still the right
+  shape for real silicon and removes a fixed 5 ms latency floor — it just does
+  not close THIS gap.
+
 ## What the island's own trace shows
 
 `<Tracing><Category>radmin</Category>` on a failing run:
