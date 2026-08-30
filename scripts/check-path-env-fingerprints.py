@@ -98,10 +98,33 @@ ALLOWED = {
     # the target dir being fingerprinted.
     "DEP_DDSC_INCLUDE": "cargo `links` metadata, rooted in this target dir",
     "DEP_DDSC_IDLC": "cargo `links` metadata, rooted in this target dir",
-    # One Zephyr build dir per image; west images are not in a shared cargo
-    # group (`NROS_FIXTURE_SHARED_PLATFORMS`), and the value IS the identity of
-    # the build being configured.
-    "DOTCONFIG": "per-zephyr-build-dir; zephyr leaves share no cargo group",
+    # phase-400 W5 — REASON REPLACED, conclusion unchanged.
+    #
+    # This used to read "per-zephyr-build-dir; zephyr leaves share no cargo
+    # group". The second clause is what W5 sets out to make false, and an
+    # exemption whose premise a planned change removes is the CORROSION_BUILD_DIR
+    # story two entries up, queued to repeat.
+    #
+    # The invariant it actually rests on is narrower and survives W5, and it was
+    # MEASURED rather than reasoned (654 records across 41 C/C++ build trees,
+    # 526 across 18 Rust ones):
+    #
+    #   * on the C/C++ lane — the one W5 collapses onto a shared cargo dir —
+    #     `DOTCONFIG` is UNSET in every build-script environment. Since issue
+    #     0460 that lane bakes all 26 knobs into its `cmake -E env` command, so
+    #     `knob_usize` returns at the env check and never reaches the
+    #     `$DOTCONFIG` fallback that emits this directive's companion read. A
+    #     constant (unset) value cannot split a fingerprint namespace.
+    #   * on the Rust lane it IS set, because zephyr-lang-rust builds its own
+    #     cargo command and forwards no knobs — and that lane shares nothing:
+    #     each Rust leaf is its own cargo workspace root (issue 0616).
+    #
+    # So this is a TRIPWIRE, not a blanket pass. Forwarding `DOTCONFIG` on the
+    # C/C++ lane — a tempting way to close a knob gap — would make its value a
+    # per-build-dir path inside one shared namespace, which is exactly what this
+    # gate exists to prevent. Re-measure with `just shared-dir-churn` before
+    # relying on this entry again.
+    "DOTCONFIG": "unset on the C/C++ lane that shares; set only on the Rust lane, which does not",
     # A deliberate expert override naming a DIFFERENT SystemModel — a change of
     # value is a change of input, which is exactly what should re-run the script.
     "NROS_MODEL_DIR": "deprecated expert override; a new value IS a new input",
