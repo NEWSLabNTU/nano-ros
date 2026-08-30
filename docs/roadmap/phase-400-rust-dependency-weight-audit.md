@@ -505,7 +505,40 @@ The lever is unchanged and still real (86 host crates recompiled per build dir);
 only the mechanism was wrong. Zephyr needs the OTHER consumer of the shared-dir
 helper — `nros_shared_cargo_dir()`, which the NuttX FFI driver already uses
 because it too hand-rolls its cargo invocation and sets `CARGO_TARGET_DIR`
-itself. Wire that into `nros_c_cargo`/`nros_cpp_cargo`, not the Corrosion `-D`.
+itself.
+
+**But that is not a wiring change either, and this is why Zephyr was left out.**
+Two blockers, both of them failure classes this repo has already paid for. Neither
+is a reason to abandon the lever; both have to be designed for BEFORE any code.
+
+**1. The generated headers live INSIDE the cargo target dir.**
+`nros_cargo_build.cmake` writes `${CARGO_TARGET_DIR}/nros-c-generated/nros/
+nros_config_generated.h` (and the cpp sibling), while `zephyr/CMakeLists.txt`
+hardcodes the CONSUMER side as `${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated`
+(lines 272, 395-396). Redirect `CARGO_TARGET_DIR` without moving those and the
+include path points at a directory the build no longer populates — which is
+issue 0834's shape exactly: a mirror that no re-run repairs, and whose only
+recorded escape is `rm -rf` on the west build dir. So the header location has to
+be decoupled from the shared cargo dir first, or moved with it.
+
+**2. The sharing KEY would have to include Kconfig, and today it does not.**
+Those headers are a function of the IMAGE's Kconfig — `nros-zephyr-build` reads
+`DOTCONFIG` and resolves `CONFIG_NROS_*` knobs (issue 0460). The Corrosion key is
+`platform/rmw/board/caps/profile/target`; two Zephyr images agreeing on all six
+but differing in `prj.conf` would share one directory and overwrite each other's
+sizes header. That is the 0135/0460 ABI split — silent, and it is the class
+CLAUDE.md already records for the cmake/cargo lanes disagreeing on
+`MAX_QUERYABLES`.
+
+*What would make this landable:* extend the key with the resolved Kconfig knob set
+(the same values `nros_zephyr_build::knob_usize` reads, so the key is a function
+of what the header is a function of), and move the generated-header directory out
+of `CARGO_TARGET_DIR` — or key its path the same way. Then measure two images
+with `--timings` before quoting a saving.
+
+*Status: NOT attempted.* The lane it needs was only unblocked by #0918 in the same
+session, and the two blockers above were found by reading rather than by building.
+Neither has been tested.
 
 *Original next step, still the sizing that must come first:* wire the C/C++ Zephyr lane to
 `nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr`, the same call the six other
