@@ -1178,6 +1178,23 @@ check = { cmd = "nros" }
 # apt names verified against the archive on Ubuntu 22.04 (2026-08-30).
 # dnf/pacman/brew are best-effort, per this file's existing convention.
 
+[prereq.openocd]
+why = "on-chip debug server for flashing/attaching to a target board"
+# phase-404 W2 — the first entry to use ordered preference, and openocd is the
+# right first case: it is neither a build input (nothing it does enters an
+# artifact) nor an interop peer (no host process must agree with it), which is
+# RFC-0062 amendment 2's remaining category. So a system copy is fine WHEN it
+# is new enough, and `min` is what makes "new enough" decidable — Ubuntu 22.04
+# ships 0.11.0 against our 0.12.0 dist, so on this distro the chain falls
+# through to `sdk` and the user installs nothing.
+providers = ["system", "sdk"]
+source = "openocd"
+apt = ["openocd"]
+dnf = ["openocd"]
+pacman = ["openocd"]
+brew = ["openocd"]
+check = { cmd = "openocd", version = { min = "0.12" } }
+
 [prereq.libcrypt1]
 why = "runtime dep of the arm-none-eabi-gcc dist(s) (issue 0926)"
 apt = ["libcrypt1"]

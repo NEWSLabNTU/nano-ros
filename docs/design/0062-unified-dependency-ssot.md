@@ -334,13 +334,20 @@ strength of one distro's archive.
 
 * **Which dists actually stop shipping.** That is a per-tool call against the
   measured table once the constraint exists, not a category sweep. Nothing is
-  deleted by this amendment.
+  deleted by this amendment. **phase-404 W4 has since classified all 14: nine
+  are pinned build inputs, two are patched forks, two are unpackaged, and ONE
+  (`openocd`) was opted in. Still nothing deleted — preference removes the
+  requirement to install, not the fallback.**
 * **Whether a system-provided BUILD input is ever acceptable.** Question 1 says
   no today. If that is ever relaxed it needs its own evidence, because the whole
   reproducibility argument rests on it.
-* **How a version is extracted per tool.** `--version` output is not uniform and
-  some tools need a regex; whether that lives in the index or in a small table
-  of known shapes is an implementation question for phase-404.
+* ~~**How a version is extracted per tool.**~~ **DECIDED in phase-404 W1: a
+  known-shape default, no regex.** The scan takes the first version-shaped token
+  (a digit run containing a dot), which reads every tool this index pins —
+  `Open On-Chip Debugger 0.12.0-g9ea7f3d`, `QEMU emulator version 11.0.0`,
+  `arm-none-eabi-gcc (Arm GNU Toolchain 13.2.rel1 ...)`. The one escape hatch is
+  `after = "<literal>"`, deliberately not a regex: a pattern per entry is a
+  second place for the index to drift.
 
 ### Cost of being wrong in each direction
 

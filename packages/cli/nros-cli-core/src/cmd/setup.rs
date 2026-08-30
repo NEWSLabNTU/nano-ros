@@ -1292,6 +1292,112 @@ enum ProbeResult {
 /// script and no `.pc` — so either probe alone is a false negative on one of
 /// the two hosts. A false negative here does not degrade gracefully: it hard-
 /// blocks `nros setup --tool esp32-qemu` and prints a sudo command for a
+/// Which provider satisfies a prereq, and at what version (phase-404 W2/W3).
+///
+/// Walks `provider_chain()` IN ORDER and stops at the first provider that
+/// satisfies — not the first that is merely present, which is the distinction
+/// W1's version constraint bought.
+///
+/// ENGAGED ONLY when the entry authors `providers = [..]`. An entry with the
+/// single `provider` field keeps its existing probe exactly, so this is
+/// additive: no declared prerequisite changes behaviour until someone opts it
+/// in. Zero entries used `providers` before phase-404, so the blast radius is
+/// whatever the index opts in, one entry at a time.
+///
+/// `offline` drops `System` from consideration rather than reordering the
+/// chain — RFC-0062 amendment 2 decides preference is a DEFAULT and offline is
+/// an override, which is the same shape as every other escape hatch here.
+fn satisfied_by(
+    index: &SdkIndex,
+    key: &str,
+    dep: &crate::orchestration::sdk_index::PrereqDep,
+    base: Option<&std::path::Path>,
+    offline: bool,
+) -> Option<(crate::orchestration::sdk_index::Provider, Option<String>)> {
+    use crate::orchestration::sdk_index::Provider;
+    for provider in dep.provider_chain() {
+        match provider {
+            Provider::System => {
+                if offline {
+                    continue;
+                }
+                if run_probe_in(dep.check.as_ref(), base) == ProbeResult::Present {
+                    let version = dep
+                        .check
+                        .as_ref()
+                        .and_then(|c| c.cmd.as_ref().zip(c.version.as_ref()))
+                        .and_then(|(cmd, c)| probed_version(cmd, c));
+                    return Some((Provider::System, version));
+                }
+            }
+            Provider::Sdk => {
+                // `source` names the `[tool.*]` key when it differs from the
+                // prereq key; absent, the prereq key IS the tool key.
+                let tool_key = dep.source.as_deref().unwrap_or(key);
+                if let Some(tool) = index.tool.get(tool_key)
+                    && tool_pin_status(index, tool_key, tool).0
+                {
+                    return Some((Provider::Sdk, Some(tool.version.clone())));
+                }
+            }
+            Provider::Source | Provider::Submodule => {
+                if run_probe_in(dep.check.as_ref(), base) == ProbeResult::Present {
+                    return Some((provider, None));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// How a satisfied prereq is named in `--check` output (phase-404 W3).
+///
+/// Not cosmetic. The whole point of preferring a system copy is that we can
+/// then TELL when it was preferred: without this line, a host that quietly used
+/// its own `openocd` 0.11 looks identical to one running the pinned dist, and
+/// "works on my machine" becomes unfalsifiable. Same reasoning as issue 0929's
+/// smoke probes asserting on output rather than exit status.
+fn provider_label(p: crate::orchestration::sdk_index::Provider, version: Option<&str>) -> String {
+    use crate::orchestration::sdk_index::Provider;
+    let name = match p {
+        Provider::System => "system",
+        Provider::Sdk => "sdk",
+        Provider::Source => "source",
+        Provider::Submodule => "submodule",
+    };
+    match version {
+        Some(v) => format!("{name} {v}"),
+        None => name.to_string(),
+    }
+}
+
+/// Run `<cmd> <args>` and read the version out of what it prints (phase-404 W1).
+///
+/// Both streams: a tool is free to print its banner to either, and gdb prints
+/// its whole startup diagnostic to stderr.
+///
+/// The environment is stripped the way issue 0929's smoke probes are, and for
+/// the same reason — a version probe must measure the TOOL, not the caller's
+/// shell.
+fn probed_version(
+    cmd: &str,
+    c: &crate::orchestration::sdk_index::VersionConstraint,
+) -> Option<String> {
+    let args = c.run.as_deref().unwrap_or("--version");
+    let out = std::process::Command::new(cmd)
+        .args(args.split_whitespace())
+        .env_remove("LD_LIBRARY_PATH")
+        .env_remove("PYTHONPATH")
+        .env_remove("PYTHONHOME")
+        .output()
+        .ok()?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    crate::orchestration::sdk_index::extract_version(&text, c.after.as_deref())
+}
 /// package that is already installed.
 fn run_probe(check: Option<&crate::orchestration::sdk_index::CheckProbe>) -> ProbeResult {
     run_probe_in(check, None)
@@ -1313,9 +1419,29 @@ fn run_probe_in(
     let mut answered_missing = false;
     if let Some(cmd) = &check.cmd {
         if command_exists(cmd) {
-            return ProbeResult::Present;
+            // phase-404 W1 — present is not the same as SATISFYING. A host
+            // with `openocd` 0.11.0 answers this branch `Present` today, which
+            // is what makes "prefer the system copy when it is good enough"
+            // undecidable: nothing could express "good enough".
+            match &check.version {
+                None => return ProbeResult::Present,
+                Some(c) => match probed_version(cmd, c) {
+                    // Unreadable version is NOT satisfaction. A tool whose
+                    // output we cannot parse might be any version, and
+                    // guessing in the permissive direction is how a too-old
+                    // system copy gets preferred over a correct dist.
+                    None => answered_missing = true,
+                    Some(found) => {
+                        if crate::orchestration::sdk_index::version_satisfies(&found, c) {
+                            return ProbeResult::Present;
+                        }
+                        answered_missing = true;
+                    }
+                },
+            }
+        } else {
+            answered_missing = true;
         }
-        answered_missing = true;
     }
     if let Some(lib) = &check.sharedlib
         && std::env::consts::OS == "linux"
@@ -1456,8 +1582,22 @@ fn run_system(
     let mut missing: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = Vec::new();
     let mut unknown: Vec<&String> = Vec::new();
     let mut present = 0usize;
+    let offline = std::env::var_os("NROS_OFFLINE").is_some();
+    let mut by_provider: Vec<(&String, String)> = Vec::new();
     for (key, dep) in &prereqs {
         let base = repo_root.and_then(|r| index.prereq_checkout_dir(key, dep, r));
+        // phase-404 W2 — a chain entry resolves through `satisfied_by`; a
+        // single-provider entry keeps its original probe, unchanged.
+        if !dep.providers.is_empty() {
+            match satisfied_by(index, key, dep, base.as_deref(), offline) {
+                Some((p, v)) => {
+                    present += 1;
+                    by_provider.push((key, provider_label(p, v.as_deref())));
+                }
+                None => missing.push((key, dep)),
+            }
+            continue;
+        }
         match run_probe_in(dep.check.as_ref(), base.as_deref()) {
             ProbeResult::Present => present += 1,
             ProbeResult::Missing => missing.push((key, dep)),
@@ -1471,6 +1611,12 @@ fn run_system(
             missing.len(),
             unknown.len()
         );
+        // phase-404 W3 — say WHICH provider won, for every entry that had a
+        // choice. Printed even when everything is green: the interesting case
+        // is a green run whose provider is not the one you expected.
+        for (key, label) in &by_provider {
+            println!("  [OK]      {key} — via {label}");
+        }
         for (key, dep) in &missing {
             println!(
                 "  [MISSING] {key}{}",
@@ -2196,6 +2342,66 @@ mod tests {
         // Nothing to build => nothing to warn about (warn_source_builds is a
         // no-op on an empty slice).
         assert!(source_build_names(&idx, &["mbedtls"], &root, "linux-x86_64").is_empty());
+    }
+
+    // ---- phase-404 W2/W3 ----
+
+    /// The chain engages ONLY on `providers`, so every entry that predates
+    /// phase-404 keeps its exact probe. This is what makes the change additive:
+    /// zero entries used `providers` before, so nothing moved until the index
+    /// opted `openocd` in.
+    #[test]
+    fn a_single_provider_entry_is_not_a_chain() {
+        use crate::orchestration::sdk_index::{PrereqDep, Provider};
+        let plain = PrereqDep::default();
+        assert!(
+            plain.providers.is_empty(),
+            "the old shape stays out of the chain"
+        );
+        assert_eq!(plain.provider_chain(), vec![Provider::System]);
+
+        let chained = PrereqDep {
+            providers: vec![Provider::System, Provider::Sdk],
+            ..Default::default()
+        };
+        assert_eq!(
+            chained.provider_chain(),
+            vec![Provider::System, Provider::Sdk],
+            "order is preference, first satisfying wins"
+        );
+    }
+
+    /// `--offline` DROPS system rather than reordering. Reordering would still
+    /// let a system copy win when the store is empty, which is not what an
+    /// air-gapped or reproducible build asked for.
+    #[test]
+    fn offline_removes_system_from_the_chain_it_does_not_reorder() {
+        use crate::orchestration::sdk_index::Provider;
+        let chain = [Provider::System, Provider::Sdk];
+        let offline: Vec<_> = chain
+            .iter()
+            .copied()
+            .filter(|p| !matches!(p, Provider::System))
+            .collect();
+        assert_eq!(offline, vec![Provider::Sdk]);
+        assert!(
+            !offline.contains(&Provider::System),
+            "system must be absent, not merely last"
+        );
+    }
+
+    #[test]
+    fn the_provider_label_names_the_version_when_there_is_one() {
+        use crate::orchestration::sdk_index::Provider;
+        assert_eq!(
+            provider_label(Provider::System, Some("0.12.0")),
+            "system 0.12.0"
+        );
+        assert_eq!(
+            provider_label(Provider::Sdk, Some("0.12.0-nros2")),
+            "sdk 0.12.0-nros2"
+        );
+        assert_eq!(provider_label(Provider::Submodule, None), "submodule");
     }
 }
 
