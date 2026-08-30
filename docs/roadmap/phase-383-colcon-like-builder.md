@@ -634,6 +634,41 @@ found only because these trees are not uniform the way ours are.
 
       **Do at 0.6.0:** migrate the remaining 42 blocks, then delete the lint, the
       `DEPRECATED_DEPLOY_BUILD_FIELDS` list and the wiring added here.
+
+      **Re-checked 2026-08-31, on request to "do W10.b". Still not due, and the
+      blockers are now three rather than two — but the FIRST one has cleared.**
+
+      1. **The deprecation period has STARTED.** The reason W10.b could not
+         proceed before was that the warning had never been emitted. It is now:
+         a plain `nros build --workspace examples/workspaces/rust --dry-run`
+         prints one line per offending block, naming the field and the
+         `[image.*]` it moves to. So the clock this promise depends on is
+         finally running.
+      2. **The version boundary still has not been crossed.** The workspace is
+         `0.5.0`; W1.f promised removal "at the next minor version". Deleting
+         now would break the promise a week after the warning first appeared,
+         and bumping the minor is a release decision, not a migration step.
+      3. **All 42 remaining fields are the NEW-BLOCK case — 0 are add-a-key.**
+         Measured: every deploy still carrying a build field has no `[image.*]`
+         of that name at all. So "migrate the remaining 42" means creating ~14
+         image blocks, each a new BUILDABLE UNIT that `nros build --all` would
+         then build. That is the behaviour change this work item already
+         declined once, and the count says there is no mechanical subset hiding
+         inside it.
+      4. **`[deploy.*].rmw` is still READ, which this item did not know.** The
+         claim above — "nothing reads these fields at build time" — is true of
+         `cmd/build.rs` and false of the cargo-native path: `[deploy.<t>].rmw`
+         sits in a documented precedence chain (`--rmw` > `[deploy.<t>].rmw` >
+         `[system].rmw` > `zenoh`) in `cargo_metadata_schema.rs`,
+         `nros_config.rs` and `planner.rs`. Only 2 of the 42 fields are `rmw`,
+         but they are not inert, so even the smallest slice of this migration
+         changes a resolution rather than deleting a duplicate.
+
+      **What 0.6.0 must therefore decide, and it is a design question:** which
+      of the 14 deploys deserve to be images. Several are placement-only
+      (`robot1`/`robot2` carrying a host `target`), and giving those an image
+      declares them separately buildable — which may be right, but is a choice
+      about the workspace's shape rather than a rename.
 - [x] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
       return. Every gate in this repo exists because a class recurred; this one
       is cheap and the class is "someone re-adds a hand-written root".
