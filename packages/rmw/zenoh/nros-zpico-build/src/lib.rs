@@ -262,7 +262,31 @@ pub fn config_header(
 
     const GENERIC_SOCKET_TIMEOUT_MS: u32 = 100;
     const NUTTX_SOCKET_TIMEOUT_MS: u32 = 5000;
-    const Z_TRANSPORT_LEASE_MS: u32 = 10_000;
+    // issue 0906 — this MUST NOT be shorter than the peer's keep-alive cadence,
+    // and the peer here is the router ROS ships (RFC-0075).
+    //
+    // `DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5` announces `lease: 60000` with
+    // `keep_alive: 2`, so an idle router speaks every 30 s — and says why:
+    // "ROS setting: increase the value to avoid lease expiration at launch time
+    // with a large number of Nodes starting all together".
+    //
+    // zenoh-pico takes `min(peer_lease, Z_TRANSPORT_LEASE)` and closes the
+    // session when nothing arrives within it. At 10 s that expired while the
+    // router was still 20 s from its next keep-alive — every session, every
+    // time, on every platform we ship. Measured: a talker publishing at 1 Hz
+    // tore down and reconnected every ~20 s, native Linux identically, and each
+    // teardown cost the messages published during it.
+    //
+    // 60 s matches what ROS announces, so the negotiated `min` is 60 s and the
+    // router's 30 s cadence has a 2x margin. The cost is detection latency for
+    // a peer that dies without closing its TCP connection: up to 60 s instead
+    // of 10 s. That is the same tradeoff every other ROS 2 node on this router
+    // already makes, and a peer that dies WITH a socket close is still detected
+    // immediately — the lease is the fallback, not the primary signal.
+    //
+    // Do not lower this without re-reading the router config: the number is a
+    // property of the peer, not a taste.
+    const Z_TRANSPORT_LEASE_MS: u32 = 60_000;
     let socket_timeout = if target.contains("nuttx") {
         NUTTX_SOCKET_TIMEOUT_MS
     } else {

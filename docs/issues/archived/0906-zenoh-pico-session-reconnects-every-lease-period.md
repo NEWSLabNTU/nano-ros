@@ -1,10 +1,10 @@
 ---
 id: 906
 title: "Every zenoh-pico session drops and rebuilds every ~20 s — the ROS router sends it no KeepAlive"
-status: open
+status: resolved
 type: bug
 area: rmw-zenoh, interop
-related: [issue-0899, rfc-0075]
+related: [issue-0899, issue-0924, rfc-0075]
 ---
 
 ## What happens
@@ -181,23 +181,77 @@ sibling board). `LWIP_STATS` is 0 on this board — turn it on first.
 * Both halves of a talker/listener pair must be rebuilt; a stale peer produces
   numbers that look like a fix.
 
-## What to establish first
+## RESOLVED — the client's lease was shorter than the router's keep-alive cadence
 
-Whose job the keepalive is, on this pairing:
+The question this issue posed was "whose job is the keepalive". The answer is
+that the router was already doing its job, on a schedule we had made it
+impossible to meet.
 
-* If the ROUTER is expected to send periodic KeepAlive to an idle client, then
-  `rmw_zenohd` not doing so is the defect, and the pin/version matters
-  (RFC-0075 — the router is whatever ROS ships, so this can move under us).
-* If the CLIENT is expected to keep its own lease refreshed, then zenoh-pico's
-  `if (!_transmitted)` suppression is wrong for a publisher: transmitting does
-  not prove the peer is alive, which is the entire point of a lease.
+`/opt/ros/humble/share/rmw_zenoh_cpp/config/DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5`:
 
-Decide that before writing a fix; the two answers land in different repos.
+    lease: 60000,       // ROS setting: increase the value to avoid lease
+                        // expiration at launch time with a large number of
+                        // Nodes starting all together
+    keep_alive: 2,      // …send `keep_alive` messages in a lease period
+
+So an idle ROS router speaks every **30 s**. `Z_TRANSPORT_LEASE` in
+`nros-zpico-build` was **10 s**, and zenoh-pico takes
+
+    param->_lease = min(peer_lease, Z_TRANSPORT_LEASE)      // transport.c:219
+
+then closes the session when nothing arrives within it. 10 s < 30 s, so the
+session expired while the router was still 20 s from its next keep-alive —
+deterministically, every session, on every platform we ship. The capture that
+opened this issue was not the router going silent; it was the router being
+early, measured against a deadline no peer had agreed to.
+
+**The fix is one constant.** `Z_TRANSPORT_LEASE_MS` is now 60 s, matching what
+ROS announces, so the negotiated minimum is 60 s and the router's 30 s cadence
+has a 2x margin.
+
+The cost is honest and worth stating: a peer that dies WITHOUT closing its TCP
+connection now takes up to 60 s to detect instead of 10 s. That is the same
+tradeoff every other ROS 2 node on this router already makes, and a peer that
+dies with a socket close is still detected immediately — the lease is the
+fallback, not the primary signal.
+
+## Measured
+
+mps2-an385 + FreeRTOS + lwIP under QEMU, talker with a listener peer, same
+router:
+
+    before:  77 published, 19 heard, 58 publish errors, reconnect every ~20 s
+    after:   77 published, 77 heard, 0 errors — three runs out of three
+
+The acceptance run, 330 s (5.5 lease periods), payload capture on the loopback
+side of the slirp forward:
+
+    publishes=327  heard=325  publish_errors=0
+    TCP handshakes to the router:  2      <- one per node. No reconnects.
+
+(The two unheard samples were in flight when the talker was killed by the
+timeout.)
+
+Native Linux, same router, 105 s: 105 publishes, **one** handshake. Before, it
+reconnected at ~20 s exactly like the embedded client.
+
+## What this did NOT fix
+
+The teardown itself still parks in lwIP's netconn shutdown/close — filed as
+[[issue-0924]]. That path is simply no longer reached in the steady state; it
+still is whenever a peer genuinely goes away, and then the image publishes
+`-10` forever. Fixing the trigger does not fix the trap it led to.
+
+The two lwIP threading defects found on the way here — `SEM_PER_THREAD` without
+`FULLDUPLEX`, and the never-allocated per-thread semaphore — are fixed and
+documented above. Neither was the cause; both were undefined behaviour standing
+between the symptom and any sound reasoning about it.
 
 ## Acceptance
 
-* A zenoh-pico client publishing at 1 Hz against `rmw_zenohd` holds ONE session
-  for at least five lease periods, proven by a payload-only packet capture
-  showing no second handshake — not by "messages still arrive".
-* Whichever side owns the keepalive is named in the RMW notes, so the next
-  person does not have to re-derive it from a capture.
+* ~~A zenoh-pico client publishing at 1 Hz against `rmw_zenohd` holds ONE
+  session for at least five lease periods, proven by a payload-only packet
+  capture showing no second handshake~~ — met: 330 s, 2 handshakes, 0 errors.
+* ~~Whichever side owns the keepalive is named~~ — met: the router owns it, it
+  was doing it on a 30 s cadence, and the constant that has to accommodate that
+  now says so at its definition.

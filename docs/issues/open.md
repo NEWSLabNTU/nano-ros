@@ -59,6 +59,7 @@ fails if this block drifts.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
 - **#0899** (rmw, boards) — The FreeRTOS C talker dies mid-run inside zenoh-pico's write buffer — two different asserts, both after tens of successful publishes See `0899-*`.
+- **#0897** (tooling) — `nros-launch-resolve` hard-links one `libpython` soname, so one build serves one interpreter — and abi3, which issue 0400 recommends, does not apply to embedding See `0897-*`.
 - **#0900** (core, memory) — Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use See `0900-*`.
 - **#0902** (rmw) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to explain the difference See `0902-*`.
 - **#0910** (rmw, build) — migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no longer shipped, and our config generator is 54 knobs behind See `0910-*`.
@@ -81,5 +82,6 @@ fails if this block drifts.
 - **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
 - **#0906** (rmw-zenoh, interop) — Every zenoh-pico session drops and rebuilds every ~20 s — the ROS router sends it no KeepAlive See `0906-*`.
 - **#0920** (cli, codegen) — An interrupted codegen leaves a ZERO-BYTE generated file, and the compile error that follows names no leaf See `0920-*`.
+- **#0924** (boards, drivers, rmw-zenoh) — A FreeRTOS lease teardown parks forever in lwIP's netconn shutdown/close See `0924-*`.
 
 <!-- END GENERATED open-issue list -->
