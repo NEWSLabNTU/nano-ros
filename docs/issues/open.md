@@ -69,5 +69,6 @@ fails if this block drifts.
 - **#0914** (testing) — Nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot evaluate anything passes every check See `0914-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
 - **#0921** (build) — Both build scripts watch the submodule's `HEAD` file, which does not move when you commit on a branch — so the stamped pin goes stale exactly while developing play_launch See `0921-*`.
+- **#0919** (ci) — `bridge-cyclonedds`'s `native_entry` fails to link in CI on 16 zenoh-pico platform symbols — CI resolves a different `zpico-sys` unit than any local build produces See `0919-*`.
 
 <!-- END GENERATED open-issue list -->
