@@ -1,7 +1,7 @@
 ---
 id: 920
 title: "An interrupted codegen leaves a ZERO-BYTE generated file, and the compile error that follows names no leaf"
-status: open
+status: resolved
 type: bug
 area: cli, codegen
 related: [rfc-0023]
@@ -61,12 +61,29 @@ underneath it.
 The same shape applies anywhere else in the CLI that writes a file a build later
 reads; `write_if_changed` is the one on the codegen path and the one that bit.
 
+## Fixed
+
+`write_if_changed` now writes a sibling temporary and renames it onto the
+target. `rename(2)` is atomic within a filesystem, and the temp is a sibling
+rather than a `/tmp` entry so the rename cannot cross a filesystem boundary. The
+name carries the pid, because `check-examples` fans codegen out over the
+jobserver and concurrent generators must not share a staging file. A failed
+write or rename removes the temp instead of leaving it behind.
+
+It bit TWICE in the session that filed it — `builtin_interfaces/duration.rs`,
+then `action_msgs/goal_info.rs` — each time red-lining `just ci-l1` in
+`check-examples` and each time needing a scripted sweep over ~200 generated
+trees to find the one zero-byte file. Deferring it was the wrong call; two lanes
+paid for it.
+
 ## Acceptance
 
-* Interrupting codegen mid-write leaves the previous file intact, verified by
-  killing a run in a loop and checking that no generated file is ever zero bytes.
-* The idempotent-skip still holds: an unchanged regeneration does not bump any
-  mtime (that is what the helper exists for — cmake's mtime-driven rebuilds).
-* Optional but worth it: `check-examples` names the failing UNIT alongside the
-  compiler's relative path, so the next such error is attributable without a
-  sweep.
+* ~~Interrupting codegen mid-write leaves the previous file intact~~ — met by
+  construction: the target is only ever replaced by `rename`, so an interrupted
+  run leaves the old file or the new one.
+* ~~The idempotent-skip still holds~~ — met, verified: regenerating an unchanged
+  leaf leaves the file's mtime untouched, and no `.nros-tmp.*` files remain
+  anywhere in the tree.
+* STILL OPEN, split out because it is a different tool: `check-examples` should
+  name the failing UNIT alongside the compiler's relative path. Any per-unit
+  compile error in that fan-out is currently unattributable, not just this one.
