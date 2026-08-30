@@ -77,6 +77,51 @@ def strip_comments(src: str) -> str:
     return re.sub(r"//[^\n]*", "", src)
 
 
+def readers_in(text: str, knob: str) -> bool:
+    """Does this source TEXT read `knob` through one of the env idioms?
+
+    Factored out so the selftest can drive it on synthetic input rather than on
+    the tree, which would make the control depend on the very thing it checks.
+    """
+    stripped = strip_comments(text)
+    if knob not in stripped:
+        return False
+    return any(
+        re.compile(i.format(k=re.escape(knob))).search(stripped) for i in READ_IDIOMS
+    )
+
+
+def self_test() -> None:
+    """Negative control: prove the detector FAILS on a planted second reader.
+
+    On the normal path, not behind a flag — `check-gate-selftests` requires it,
+    on the reasoning that a control nobody runs decays into a comment. This gate
+    earned that scepticism: its first draft matched a knob name inside a COMMENT
+    and reported a reader that did not exist, so both directions are pinned here.
+    """
+    k = "NROS_EXECUTOR_MAX_CBS"
+
+    # positive: each idiom the gate claims to detect
+    for src in (
+        f'let n = env_usize("{k}", 4);',
+        f'std::env::var("{k}").ok()',
+        f'env::var_os("{k}")',
+    ):
+        assert readers_in(src, k), f"selftest: missed a real reader in {src!r}"
+
+    # negative: a mention that is NOT a read must not register
+    for src in (
+        f"// this used to be std::env::var(\"{k}\"), removed in phase-400",
+        f'/* {k} is documented here */',
+        f'panic!("set `{k}` to at least {{n}}")',
+    ):
+        assert not readers_in(src, k), f"selftest: false positive on {src!r}"
+
+    # and the gate must still see a read that FOLLOWS a comment mentioning it
+    mixed = f'// {k} note\nlet n = env_usize("{k}", 4);'
+    assert readers_in(mixed, k), "selftest: comment stripping ate a real read"
+
+
 def main() -> int:
     # Single pass over the sources: read each file once and test every knob
     # against it. The naive shape (a pass per knob) re-reads several thousand
@@ -108,9 +153,9 @@ def main() -> int:
             continue
         if "NROS_" not in text:
             continue
-        text = strip_comments(text)
-        for knob, ps in pats.items():
-            if knob in text and any(p.search(text) for p in ps):
+
+        for knob in pats:
+            if readers_in(text, knob):
                 readers[knob].add(rel)
 
     failures = []
@@ -141,4 +186,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Normal path, every run.
+    self_test()
     sys.exit(main())
