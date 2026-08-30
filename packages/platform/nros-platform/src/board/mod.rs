@@ -8,7 +8,7 @@
 //! Board trait family — Phase 212.N.1.
 //!
 //! Platform-agnostic Board taxonomy living in `nros-platform`. The
-//! board crate (`nros-board-{posix,freertos,threadx,…}`) implements
+//! board crate (`nros-board-{linux,freertos,threadx,…}`) implements
 //! the per-family/per-target surface; user Entry pkgs invoke
 //! `<Board as BoardEntry>::run(setup)` from `main.rs`.
 //!

@@ -132,12 +132,18 @@ path with a booting CI lane.
 
 | Platform   | RTOS          | Network Stack  | Targets                      |
 |------------|---------------|----------------|------------------------------|
-| POSIX      | Linux / *BSD | OS sockets     | x86-64, aarch64              |
+| POSIX      | Linux / *BSD  | OS sockets     | x86-64, aarch64              |
 | Bare-metal | None          | smoltcp        | Cortex-M3, ESP32-C3          |
 | FreeRTOS   | FreeRTOS      | lwIP           | Cortex-M3 (QEMU)             |
 | NuttX      | NuttX         | BSD sockets    | Cortex-A7 (QEMU), RISC-V32 (QEMU rv-virt) |
 | ThreadX    | ThreadX       | NetX Duo       | RISC-V 64 (QEMU), Linux sim  |
 | Zephyr     | Zephyr        | Zephyr sockets | Various boards               |
+
+`posix` there is the *platform* layer, which is genuinely POSIX-clean. The
+host *board* is named `linux`, and that is the narrower claim: only Linux is
+tested, and `nros-board-linux::apply_tier_affinity` calls `sched_setaffinity`
+with `cpu_set_t`, which libc does not define for macOS. **macOS is not
+supported** (AGENTS.md, phase-260).
 
 ## RMW Backends
 

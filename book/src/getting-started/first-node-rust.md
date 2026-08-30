@@ -57,7 +57,7 @@ examples/native/rust/talker/
     └── lib.rs          # the ~65-line talker node body
 ```
 
-POSIX talkers read the locator / domain from environment variables
+Native (host) talkers read the locator / domain from environment variables
 (`NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR` — and `ROS_DOMAIN_ID`)
 — no config file is needed. Embedded targets bake their config from
 `[package.metadata.nros.deploy.<target>]` instead — the shape shows up

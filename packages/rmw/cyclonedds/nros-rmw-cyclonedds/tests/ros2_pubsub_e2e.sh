@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Phase 117.12.A — POSIX E2E vs stock `rmw_cyclonedds_cpp`
-# (pub/sub). Two sub-cases:
+# Phase 117.12.A — native (host) E2E vs stock `rmw_cyclonedds_cpp`
+# (pub/sub). `native` is the ROLE here; the REACH is LINUX, not POSIX:
+# `e2e_iface` below shells out to iproute2's `ip -o -br link show`, and the
+# sourced `ros2_e2e_common.sh` reads `/proc/net/udp`. Two sub-cases:
 #
 #   1. nano-ros publisher → `ros2 topic echo` (consumer)
 #   2. `ros2 topic pub` (producer) → nano-ros subscriber

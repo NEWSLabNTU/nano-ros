@@ -713,9 +713,12 @@ pub fn run() {
     // the only one a `cargo build` on a hosted target can infer
     // unambiguously; embedded RTOSes (FreeRTOS / NuttX / ThreadX /
     // Zephyr) all share `target_os = "none"` so the user still
-    // disambiguates by enabling the matching feature. POSIX hosts
-    // (Linux / macOS / *BSD) no longer need an explicit `platform-posix`
-    // feature in their `Cargo.toml`.
+    // disambiguates by enabling the matching feature. The hosts on the
+    // list below no longer need an explicit `platform-posix` feature in
+    // their `Cargo.toml`. NOTE the list is Linux / *BSD / Android and does
+    // NOT include macOS — this comment used to claim macOS as an
+    // auto-detected POSIX host while the `matches!` never named it, so a
+    // macOS build still has to pass the feature explicitly.
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let auto_posix = matches!(
         target_os.as_str(),

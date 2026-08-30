@@ -88,6 +88,7 @@ pool.app = [1, 89]
 #
 # The distinction matters because on the RTOS ports there ARE foreign
 # occupants (lwIP's `tcpip_thread`, NuttX work queues) whose positions those
-# plans can only assert. POSIX is the one port where the claim is checkable
-# today, and this is it checked.
+# plans can only assert. LINUX is the one port where the claim is checkable
+# today, and this is it checked — the probe reads `/proc/<pid>/task/*/stat`,
+# which is Linux, not POSIX, so a macOS or BSD host could not run it either.
 reserved.foreign = []

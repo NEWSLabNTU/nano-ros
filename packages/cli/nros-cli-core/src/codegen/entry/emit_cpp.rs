@@ -67,7 +67,8 @@ fn emit_qos_overrides(out: &mut String, i: usize, overrides: &[QoSOverrideSpec])
 
 /// Board key → C++ Board adapter path.
 ///
-/// Two adapters ship today (Phase 235): `LinuxBoard` (host/POSIX) and
+/// Two adapters ship today (Phase 235): `LinuxBoard` (the host native board —
+/// Linux; the platform port beneath it is `posix`) and
 /// `ZephyrBoard` (embedded Zephyr — RFC-0032 §8a). Per the §8a decision
 /// there is ONE metadata-driven `ZephyrBoard` rather than per-board C++
 /// types: everything board-specific (the Zephyr `BOARD` id, DTS overlay,

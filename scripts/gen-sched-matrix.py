@@ -37,7 +37,13 @@ SPIN = "packages/core/nros-node/src/executor/spin.rs"
 # match-arm pattern -> display row. Order = display order. The pattern is
 # matched against the arm's guard text, the display name is ours.
 TARGETS = [
-    ('"posix" | "native"', "Linux / POSIX host"),
+    # "Linux host", not "Linux / POSIX host": that row claimed BOTH reaches at
+    # once, which is the `names = ["linux","native","posix"]` shape
+    # `check-host-platform-vocabulary` exists to stop, one layer over. Its
+    # `affinity` cell is delivered by `sched_setaffinity`, which libc does not
+    # define for apple — so the reach is `linux`. `native` is the ROLE and stays
+    # in the match arm; it is not a second reach. (CLAUDE.md "Naming".)
+    ('"posix" | "native"', "Linux host"),
     ('"zephyr"', "Zephyr"),
     ('f.contains("freertos")', "FreeRTOS"),
     ('f.contains("threadx")', "ThreadX"),
@@ -122,9 +128,12 @@ def render():
             f"| {f['n_priorities']} | {b(f['low_number_is_high'])} |")
     lines += [
         "",
-        "Notes carried from the source arms: the POSIX row is deliberately",
+        "Notes carried from the source arms: the Linux row is deliberately",
         "conservative — no `SCHED_DEADLINE` consumer exists, so `edf` is",
-        "false even though Linux could; Zephyr's EDF is",
+        "false even though Linux could; its `affinity` is `sched_setaffinity`,",
+        "which is Linux and not POSIX (absent from libc's apple module), so the",
+        "row's reach is `linux` while the platform layer beneath it stays",
+        "`posix`; Zephyr's EDF is",
         "`CONFIG_SCHED_DEADLINE`; NuttX's reservation is POSIX",
         "`SCHED_SPORADIC`; ThreadX's preemption threshold is native; the",
         "bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),",

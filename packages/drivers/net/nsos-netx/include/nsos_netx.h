@@ -18,7 +18,10 @@
  *     etc. — they just become `socket()`, `bind()`, etc.
  *
  * Limitations:
- *   - Linux only (uses POSIX `<sys/socket.h>`)
+ *   - Linux only. Not because of `<sys/socket.h>` — the calls are plain
+ *     POSIX — but because `translate_sockopt` in `nsos_netx.c` hardcodes
+ *     LINUX's numeric `IP_MULTICAST_*` / `IP_*_MEMBERSHIP` values
+ *     (32..36); macOS and the BSDs number them differently.
  *   - No IP-level features (no nx_ip_status_check, no NX_IP* APIs)
  *   - Sockets are real kernel fds; no NetX packet pool involvement
  */

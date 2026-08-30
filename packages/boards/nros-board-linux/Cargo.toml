@@ -6,10 +6,12 @@ license.workspace = true
 description = "The Linux host board — the POSIX family driver plus the RMW selection point (phase-337 W8.a merged `nros-board-native` in)."
 publish = false
 
-# Host-only crate. POSIX (Linux / macOS / BSD) lives under `std`, so
-# no `no_std` attribute and no per-target gating on `target_os` — the
+# Host-only crate. A hosted Unix target lives under `std`, so no
+# `no_std` attribute and no per-target gating on `target_os` — the
 # whole point of this crate is to be the family driver for hosted
-# Unix targets.
+# Unix targets. Its REACH is `linux`, not `posix`: `apply_tier_affinity`
+# calls `sched_setaffinity` with `cpu_set_t` / `CPU_SET`, which libc does
+# not define for apple, so this crate does not build on macOS.
 
 # issue 0287 — HOST-ONLY. `just check workspace-embedded` builds the whole
 # workspace for a thumb target, and cargo unifies features across ALL members
@@ -77,10 +79,13 @@ nros-log = { version = "0.5.0", path = "../../core/nros-log", default-features =
 # use) compiled on native, ran, and printed NOTHING. Bridging `log` here lets
 # ONE node body work on every board. Unifying the two stacks is phase-338 W7.
 log = { version = "0.4", default-features = false }
-# phase-296 W5.13 — host `sched_setaffinity` for the placement dim's POSIX
+# phase-296 W5.13 — host `sched_setaffinity` for the placement dim's LINUX
 # `Native` realization (the first RUNTIME accept-arm proof of a core pin, issue
-# #260). Host-only; the cfg-gated dep block keeps it out of the embedded
-# feature-unification set.
+# #260). LINUX, not POSIX: `sched_setaffinity` / `cpu_set_t` / `CPU_SET` are
+# absent from libc's apple module, and the call is not `cfg(target_os)`-gated —
+# this dep is the reason the BOARD is named `linux` while the platform beneath
+# it stays `posix`. Host-only; the cfg-gated dep block keeps it out of the
+# embedded feature-unification set.
 libc = "0.2"
 # phase-337 W8.a — the RMW deps and features came from the deleted
 # `nros-board-native` shim. The BOARD is the RMW selection point (Phase 248

@@ -95,7 +95,10 @@ fn main() {
     // Linker flags.
     println!("cargo:rustc-link-search=native={}", install_lib.display());
     println!("cargo:rustc-link-lib=static=ddsc");
-    // Cyclone's DDSRT pulls in pthread + dl + rt on hosted POSIX.
+    // Cyclone's DDSRT pulls in pthread + dl + rt on a hosted glibc/Linux host.
+    // Linux, not POSIX: `librt` and `libdl` are separate libraries only on
+    // glibc — macOS folds both into libSystem and ships no `-lrt`, so this
+    // ungated link line does not resolve there.
     println!("cargo:rustc-link-lib=dylib=pthread");
     println!("cargo:rustc-link-lib=dylib=dl");
     println!("cargo:rustc-link-lib=dylib=rt");

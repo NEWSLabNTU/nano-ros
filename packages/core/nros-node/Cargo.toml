@@ -214,9 +214,9 @@ nros-lifecycle-msgs = { version = "0.5.0", path = "../../interfaces/lifecycle-ms
 # schema crate — no concrete-backend coupling.
 nros-serdes = { version = "0.5.0", path = "../nros-serdes", default-features = false }
 
-# Phase 124.B.7.c — POSIX signalfd / eventfd worker (only on
-# Linux + std). Other targets compile without this dep; the
-# signalfd worker is feature-gated.
+# Phase 124.B.7.c — Linux signalfd / eventfd worker (neither syscall is
+# POSIX, hence the target gate below). Other targets compile without
+# this dep; the signalfd worker is feature-gated.
 [target.'cfg(all(target_os = "linux"))'.dependencies]
 libc = { version = "0.2", optional = true }
 

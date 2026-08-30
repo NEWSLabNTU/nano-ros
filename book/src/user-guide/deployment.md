@@ -4,7 +4,7 @@ Deployment means different things per target, but the order is stable:
 prepare toolchain, build package, move binary/firmware to target, then
 verify ROS 2 communication.
 
-## POSIX
+## Native (host)
 
 Three equivalent entry points; pick by workspace shape:
 
@@ -43,7 +43,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"]' \
     ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-See [Native POSIX](../platform-guides/native-posix.md).
+See [Native host build](../platform-guides/native-posix.md).
 
 ## RTOS and Bare-Metal
 

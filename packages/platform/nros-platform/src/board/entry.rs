@@ -128,8 +128,8 @@ pub trait BoardEntry: super::Board {
     /// `max_sched_contexts` of `0` means "use the build default". The **default
     /// body IGNORES the sizing** and forwards to
     /// [`run_with_deploy`](Self::run_with_deploy), so every board except the
-    /// hosted (posix) one — which opens via `Executor::open` and could grow its
-    /// arena — is byte-identical; the posix board overrides this to
+    /// hosted (Linux) one — which opens via `Executor::open` and could grow its
+    /// arena — is byte-identical; `nros-board-linux` overrides this to
     /// `Executor::open_sized`. `nros::main!()` emits this (instead of
     /// `run_with_deploy`) only when the entry declares `max_callbacks`.
     fn run_with_deploy_sized<F, E>(

@@ -552,8 +552,9 @@ pub trait PlatformThreading {
     fn condvar_signal_all(cv: *mut c_void) -> i8;
     /// Phase 124.B.7.a — ISR-safe variant of [`Self::condvar_signal`].
     /// Callable from interrupt / signal-handler context. Backends
-    /// implement via async-signal-safe primitives (POSIX:
-    /// `eventfd` write forwarded by a worker thread; RTOS:
+    /// implement via async-signal-safe primitives (POSIX: `pipe`
+    /// write forwarded by a worker thread — Linux may use `eventfd`,
+    /// which is a Linux syscall and not POSIX; RTOS:
     /// `xSemaphoreGiveFromISR`, `tx_event_flags_set` from ISR,
     /// `k_sem_give` from ISR). Returns non-zero when the backend
     /// has no ISR-safe path — caller can fall back to

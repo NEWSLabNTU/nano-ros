@@ -299,8 +299,8 @@ nros_lane_wants_platform() {
 #   built_at=2026-08-01T09:12:33Z      (upper bound — stamped on success)
 #   started_at=2026-08-01T08:41:07Z    (lower bound — issue 0499)
 #   lane=tier1
-#   coord=native,rust,zenoh
-#   coord=native,c,zenoh
+#   coord=linux,rust,zenoh
+#   coord=linux,c,zenoh
 #
 # `lane=all` carries no `coord=` lines and means "everything". A file with no
 # `lane=` key at all is a PRE-0393 stamp (bare timestamp); it is read as

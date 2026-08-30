@@ -49,7 +49,7 @@ The `nano_ros_generate_interfaces()` function:
 
 ### FreeRTOS (ARM Cortex-M3)
 
-Same shape as POSIX — set the toolchain + board + platform on the
+Same shape as the native (host) build — set the toolchain + board + platform on the
 cmake command line and the example's `add_subdirectory(nano-ros)` does
 the rest. Phase 138's `cmake/platform/nano-ros-freertos.cmake` +
 `cmake/board/nano-ros-board-mps2-an385-freertos.cmake` compose the
@@ -366,7 +366,7 @@ Error codes (`nros::ErrorCode`):
 
 ## Optional `std` Mode (`NROS_CPP_STD`)
 
-For hosted environments (Linux, POSIX), define `NROS_CPP_STD` to enable STL convenience overloads. This is automatically available when including `<nros/nros.hpp>` with the macro defined.
+For any toolchain with a C++ standard library, define `NROS_CPP_STD` to enable STL convenience overloads. This is automatically available when including `<nros/nros.hpp>` with the macro defined.
 
 ```cpp
 #define NROS_CPP_STD

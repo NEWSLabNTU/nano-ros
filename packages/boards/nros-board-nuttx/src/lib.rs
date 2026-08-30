@@ -802,7 +802,7 @@ fn apply_tier_affinity(_tier: &nros_platform::TierSpec<'_>) {}
 /// session. NuttX ships `std` and its zenoh-pico build sets
 /// `Z_FEATURE_MULTI_THREAD = 1` (`platforms/nuttx/nros-platform.toml`
 /// `[platform.nuttx]`), so `std::thread` maps onto NuttX pthreads and this
-/// mirrors the **native posix** [`nros_board_linux`] `run_tiers` (a scoped
+/// mirrors the **native Linux** [`nros_board_linux`] `run_tiers` (a scoped
 /// thread per tier over one session) rather than the FFI k_thread shim the
 /// Zephyr / bare-metal boards need.
 ///

@@ -676,7 +676,9 @@ pub(crate) struct WakeCtx {
 /// * **NOT async-signal-safe on POSIX**: `pthread_cond_signal`
 ///   isn't on the POSIX async-signal-safe function list. For POSIX
 ///   signal handler wake, use a `signalfd` + select pattern in a
-///   thread that owns the wake duty.
+///   thread that owns the wake duty — that pattern is Linux-only
+///   (`signalfd`/`eventfd` are Linux syscalls, not POSIX), which is
+///   why the `WakeSignalFd` worker is gated `target_os = "linux"`.
 /// * **RTOS ISR**: per-RTOS platform layer wraps the cv with an
 ///   ISR-safe primitive (`xSemaphoreGiveFromISR`,
 ///   `tx_event_flags_set` from ISR, `k_sem_give` from ISR on
@@ -716,7 +718,7 @@ pub(crate) unsafe extern "C" fn nros_rmw_runtime_wake_cb(ctx: *mut core::ffi::c_
     }
 }
 
-/// Phase 124.B.7.c — POSIX signalfd worker.
+/// Phase 124.B.7.c — Linux signalfd worker.
 ///
 /// Owns a Linux `eventfd` plus a worker task that `read()`s the
 /// fd and forwards it as a wake. The eventfd
@@ -882,8 +884,9 @@ impl Drop for WakeSignalFd {
 /// * **POSIX (std)**: `pthread_cond_signal` is NOT on the POSIX
 ///   async-signal-safe function list. Calling from a SIGUSR1
 ///   handler is technically UB. Real fix (Phase 124.B.7.c) routes
-///   via `signalfd`/`eventfd` + a runtime worker thread; until that
-///   lands, signal-handler callers MUST use
+///   via `signalfd`/`eventfd` + a runtime worker thread — Linux
+///   only, since neither syscall is POSIX; until that lands,
+///   signal-handler callers MUST use
 ///   `nros_guard_condition_trigger` from a **separate thread** (not
 ///   from the handler itself), OR set the wake_flag and rely on
 ///   the next poll deadline. This cb currently aliases the regular
@@ -1297,7 +1300,7 @@ pub struct Executor<'s> {
     /// in backends remains valid.
     #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
     pub(crate) wake_ctx: Option<portable_atomic_util::Arc<WakeCtx>>,
-    /// Phase 124.B.7.c — lazily-allocated POSIX signalfd worker.
+    /// Phase 124.B.7.c — lazily-allocated Linux signalfd worker.
     /// Owned by the Executor; spawned on first `signal_fd()` call.
     /// Drop joins the worker thread and closes the fd.
     #[cfg(all(feature = "signal-fd-wake", target_os = "linux"))]
