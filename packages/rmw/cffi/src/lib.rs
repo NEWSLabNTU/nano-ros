@@ -37,9 +37,9 @@ pub mod generated;
 pub use generated::*;
 
 use nros_rmw::{
-    ClientTrait, MessageInfo, Publisher, QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile,
-    QoSReliabilityPolicy, ServiceInfo, ServiceRequest, ServiceTrait, Session, TopicInfo,
-    TransportError,
+    ClientTrait, GraphEndpointInfo, GraphEntityKind, MessageInfo, Publisher, QoSDurabilityPolicy,
+    QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, ServiceInfo, ServiceRequest, ServiceTrait,
+    Session, TopicInfo, TransportError,
 };
 
 // Phase 115.L.0 — generic Rust→C-vtable adapter. Lives behind the
@@ -1518,6 +1518,59 @@ unsafe extern "C" fn node_visit_trampoline(
     cb(name, ns, enc)
 }
 
+/// Longest node name / namespace / topic this seam passes to a backend slot.
+///
+/// A longer one is REFUSED (`BufferTooSmall`), not truncated: a truncated node
+/// name is a different, plausible node, and this seam's whole job is answering
+/// "which node".
+const GRAPH_NAME_CAP: usize = 256;
+
+/// phase-381 — the C endpoint-info visitor, back into a Rust closure call.
+///
+/// Mirrors [`names_and_types_visit_trampoline`]. `qos_profile` is deliberately
+/// dropped: `GraphEndpointInfo` carries no `qos` field, because no backend can
+/// fill it with a GRANTED profile today and reporting the requested one would
+/// be the plausible wrong answer the slot exists to avoid.
+///
+/// # Safety
+/// Called only by a backend slot this crate handed `ctx` to.
+unsafe extern "C" fn endpoint_info_visit_trampoline(
+    ctx: *mut core::ffi::c_void,
+    info: *const generated::rmw_topic_endpoint_info_t,
+) -> bool {
+    if ctx.is_null() || info.is_null() {
+        return true; // skip this entry, keep enumerating
+    }
+    let info = unsafe { &*info };
+    let cb = unsafe { &mut *(ctx as *mut &mut dyn FnMut(&GraphEndpointInfo<'_>) -> bool) };
+
+    // Each borrowed string is skipped rather than lossily converted, for the
+    // same reason as the names-and-types side.
+    let cstr = |p: *const core::ffi::c_char| -> Option<&str> {
+        if p.is_null() {
+            None
+        } else {
+            unsafe { core::ffi::CStr::from_ptr(p) }.to_str().ok()
+        }
+    };
+    let (Some(node_name), Some(node_namespace), Some(topic_type)) = (
+        cstr(info.node_name),
+        cstr(info.node_namespace),
+        cstr(info.topic_type),
+    ) else {
+        return true;
+    };
+
+    let view = GraphEndpointInfo {
+        node_name,
+        node_namespace,
+        topic_type,
+        is_publisher: info.endpoint_type == generated::rmw_endpoint_type_t::RMW_ENDPOINT_PUBLISHER,
+        endpoint_gid: info.endpoint_gid.data,
+    };
+    cb(&view)
+}
+
 /// phase-381 — the C names-and-types visitor, back into a Rust closure call.
 ///
 /// # Safety
@@ -2286,6 +2339,133 @@ impl Session for CffiSession {
                 &view as *const NrosRmwSession,
                 false,
                 Some(names_and_types_visit_trampoline),
+                &mut cb as *mut _ as *mut core::ffi::c_void,
+            )
+        };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
+    }
+
+    /// phase-381 W4, wired here by the live acceptance run.
+    ///
+    /// The zenoh shim implemented this and `get_endpoint_info_by_topic` all
+    /// along; `CffiSession` never dispatched them, so both fell through to the
+    /// trait default and every caller got `Unsupported`. That is issue 0903's
+    /// third defect for the SIX slots the 0903 fix did not cover — it wired the
+    /// five that had a failing symptom in front of it and left these, and
+    /// `check-rmw-slot-producers` calls them `produced` either way because it
+    /// asks whether a slot has a producer, not whether anything reaches it.
+    ///
+    /// Found by `graph_interop.rs` on its first run against a real peer, which
+    /// is the only place it could have been found.
+    fn get_names_and_types_by_node(
+        &mut self,
+        kind: GraphEntityKind,
+        node_name: &str,
+        node_namespace: &str,
+        visit: &mut dyn FnMut(&str, &[&str]) -> bool,
+    ) -> Result<(), TransportError> {
+        // The four slots do NOT share a signature: the publisher and subscriber
+        // forms take `no_demangle`, the service and client forms do not. That
+        // asymmetry is upstream's (`rmw_get_service_names_and_types_by_node`
+        // has no demangle argument), and RFC-0054 makes the C headers the SSoT,
+        // so it is mirrored rather than smoothed over — which is why this is
+        // two calls instead of one `match` producing a function pointer.
+        let mut name_buf = [0u8; GRAPH_NAME_CAP];
+        let mut ns_buf = [0u8; GRAPH_NAME_CAP];
+        if node_name.len() >= GRAPH_NAME_CAP || node_namespace.len() >= GRAPH_NAME_CAP {
+            return Err(TransportError::BufferTooSmall);
+        }
+        name_buf[..node_name.len()].copy_from_slice(node_name.as_bytes());
+        ns_buf[..node_namespace.len()].copy_from_slice(node_namespace.as_bytes());
+
+        let view = self.make_view();
+        let mut cb: &mut dyn FnMut(&str, &[&str]) -> bool = visit;
+        let ctx = &mut cb as *mut _ as *mut core::ffi::c_void;
+        let name = name_buf.as_ptr() as *const core::ffi::c_char;
+        let ns = ns_buf.as_ptr() as *const core::ffi::c_char;
+
+        let rc = match kind {
+            GraphEntityKind::Publisher | GraphEntityKind::Subscriber => {
+                let slot = if matches!(kind, GraphEntityKind::Publisher) {
+                    self.vtable.get_publisher_names_and_types_by_node
+                } else {
+                    self.vtable.get_subscriber_names_and_types_by_node
+                };
+                let Some(f) = slot else {
+                    return Err(TransportError::Unsupported);
+                };
+                unsafe {
+                    f(
+                        &view as *const NrosRmwSession,
+                        name,
+                        ns,
+                        false,
+                        Some(names_and_types_visit_trampoline),
+                        ctx,
+                    )
+                }
+            }
+            GraphEntityKind::Service | GraphEntityKind::Client => {
+                let slot = if matches!(kind, GraphEntityKind::Service) {
+                    self.vtable.get_service_names_and_types_by_node
+                } else {
+                    self.vtable.get_client_names_and_types_by_node
+                };
+                let Some(f) = slot else {
+                    return Err(TransportError::Unsupported);
+                };
+                unsafe {
+                    f(
+                        &view as *const NrosRmwSession,
+                        name,
+                        ns,
+                        Some(names_and_types_visit_trampoline),
+                        ctx,
+                    )
+                }
+            }
+        };
+        if rc == NROS_RMW_RET_OK {
+            Ok(())
+        } else {
+            Err(error_from_ret(rc))
+        }
+    }
+
+    /// The endpoints on a topic — see [`Self::get_names_and_types_by_node`] for
+    /// why this was unreachable until the live run.
+    fn get_endpoint_info_by_topic(
+        &mut self,
+        publishers: bool,
+        topic_name: &str,
+        visit: &mut dyn FnMut(&GraphEndpointInfo<'_>) -> bool,
+    ) -> Result<(), TransportError> {
+        let slot = if publishers {
+            self.vtable.get_publishers_info_by_topic
+        } else {
+            self.vtable.get_subscriptions_info_by_topic
+        };
+        let Some(f) = slot else {
+            return Err(TransportError::Unsupported);
+        };
+        let mut topic_buf = [0u8; GRAPH_NAME_CAP];
+        if topic_name.len() >= GRAPH_NAME_CAP {
+            return Err(TransportError::BufferTooSmall);
+        }
+        topic_buf[..topic_name.len()].copy_from_slice(topic_name.as_bytes());
+
+        let view = self.make_view();
+        let mut cb: &mut dyn FnMut(&GraphEndpointInfo<'_>) -> bool = visit;
+        let rc = unsafe {
+            f(
+                &view as *const NrosRmwSession,
+                topic_buf.as_ptr() as *const core::ffi::c_char,
+                false,
+                Some(endpoint_info_visit_trampoline),
                 &mut cb as *mut _ as *mut core::ffi::c_void,
             )
         };

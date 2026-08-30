@@ -1,6 +1,8 @@
 // Phase 177.36 — ROS 2 graph publisher (`ros_discovery_info`). See graph.hpp.
 #include "graph.hpp"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include "dds/ddsrt/string.h"
@@ -215,6 +217,21 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
         // Nothing has been delivered on a reader created this instant, so the
         // first call legitimately reports an empty graph and the next sees the
         // latched snapshots. Same warm-up the zenoh side documents.
+    }
+
+    // issue 0927 — the one measurement that separates the two explanations for
+    // "we only ever see our own node": a reader that never MATCHED the remote
+    // writer, versus one that matched and dropped the sample. Without it both
+    // look identical from the outside, and the zenoh side lost days to exactly
+    // that ambiguity (issue 0903).
+    //
+    // Env-gated and permanent, same convention as the zenoh shim's
+    // `NROS_GRAPH_DUMP`: the first time this was wanted it was patched in by
+    // hand, and the next person had to re-derive it.
+    if (std::getenv("NROS_GRAPH_DUMP") != nullptr) {
+        dds_instance_handle_t matched[kMaxSamples];
+        int32_t m = dds_get_matched_publications(g->graph_reader, matched, kMaxSamples);
+        std::fprintf(stderr, "GRAPH_CYCLONE matched_publications=%d\n", static_cast<int>(m));
     }
 
     void* raw[kMaxSamples] = {nullptr};

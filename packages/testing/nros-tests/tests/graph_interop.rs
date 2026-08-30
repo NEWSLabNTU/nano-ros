@@ -32,6 +32,30 @@ use nros_tests::{
     ros2::{DEFAULT_ROS_DISTRO, Ros2DdsProcess, Ros2Process, require_ros2, ros2_node_list},
 };
 
+/// The coordinates `interop::CELLS` declares for `graph_interop` — one per
+/// backend. zenoh and Cyclone discover through entirely different mechanisms
+/// (`@ros2_lv` liveliness tokens versus the `ros_discovery_info` topic), so
+/// each needs its own live case; proving one says nothing about the other.
+const GRAPH_CELLS: [(
+    nros_tests::matrix::PlatformId,
+    nros_tests::matrix::Lang,
+    nros_tests::matrix::Rmw,
+    nros_tests::matrix::Workload,
+); 2] = [
+    (
+        nros_tests::matrix::PlatformId::Linux,
+        nros_tests::matrix::Lang::Rust,
+        nros_tests::matrix::Rmw::Zenoh,
+        nros_tests::matrix::Workload::Graph,
+    ),
+    (
+        nros_tests::matrix::PlatformId::Linux,
+        nros_tests::matrix::Lang::Rust,
+        nros_tests::matrix::Rmw::Cyclonedds,
+        nros_tests::matrix::Workload::Graph,
+    ),
+];
+
 /// The nano-ros side sees a stock ROS 2 node.
 ///
 /// Polls rather than sampling once: the graph slots report what has ALREADY
@@ -43,15 +67,11 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
     // The coordinate tripwire: this test is bound to its `interop::CELLS` row,
     // so a cell added without a test (or a test that drifts off its cell) is a
     // failure rather than silent non-coverage.
-    interop::assert_test_bound(
-        "graph_interop",
-        &[(
-            nros_tests::matrix::PlatformId::Linux,
-            nros_tests::matrix::Lang::Rust,
-            nros_tests::matrix::Rmw::Zenoh,
-            nros_tests::matrix::Workload::Graph,
-        )],
-    );
+    // BOTH cells: the tripwire compares what this test NAME covers against
+    // every `interop::CELLS` row that names it, and this file carries the zenoh
+    // and cyclone cases. Declaring only one made the check fail loudly rather
+    // than let a cell drift uncovered — which is the point of it.
+    interop::assert_test_bound("graph_interop", &GRAPH_CELLS);
 
     if !require_ros2() {
         nros_tests::skip!("ROS 2 + rmw_zenoh_cpp not available");
@@ -141,15 +161,11 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
 /// Interop cell: `native-graph-rust-cyclone-r2n` (`interop::CELLS`).
 #[test]
 fn cyclone_enumerates_a_stock_ros2_node() {
-    interop::assert_test_bound(
-        "graph_interop",
-        &[(
-            nros_tests::matrix::PlatformId::Linux,
-            nros_tests::matrix::Lang::Rust,
-            nros_tests::matrix::Rmw::Zenoh,
-            nros_tests::matrix::Workload::Graph,
-        )],
-    );
+    // BOTH cells: the tripwire compares what this test NAME covers against
+    // every `interop::CELLS` row that names it, and this file carries the zenoh
+    // and cyclone cases. Declaring only one made the check fail loudly rather
+    // than let a cell drift uncovered — which is the point of it.
+    interop::assert_test_bound("graph_interop", &GRAPH_CELLS);
 
     if !nros_tests::ros2::require_ros2_cyclonedds() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
