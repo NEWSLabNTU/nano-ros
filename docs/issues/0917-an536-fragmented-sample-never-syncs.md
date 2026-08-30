@@ -176,6 +176,36 @@ does remove the loss when it works. It does not follow — and the measurements
 do not support — that interrupt-driven RX makes the topic usable: it fixes the
 layer it addresses and exposes the next one.
 
+## Host scheduling is NOT the source of the variance
+
+The bimodal loss above looks like host contention — QEMU's vCPU thread losing
+the CPU and failing to drain the FIFO in time — so it was tested rather than
+assumed. QEMU pinned to four dedicated cores with `taskset`, and the host
+publisher pinned to four others, on a 32-core box at load ~5:
+
+| build | unpinned | pinned |
+| --- | --- | --- |
+| stock, 5 ms poll | 12.1, 12.1 | 11.9, 11.6, 13.1, 13.7 |
+| interrupt-driven | -0.3, 13.3, 17.3, -0.3, 14.1, 13.9, 89.0, 13.4 | 16.0, 13.8, 13.6, 0.8 |
+
+**Pinning changes nothing in either build.** The stock image is steady at
+~12-14 % whether pinned or not; the interrupt image stays bimodal (~0 % or
+~14 %) whether pinned or not. So the variance is a timing race between the
+guest and the device model, not the host scheduler — the same self-sustaining
+early race every other symptom on this lane has.
+
+Two notes for anyone tempted to go further down this path:
+
+* **cgroup CPU control is not available unprivileged here** — only `memory` and
+  `pids` are delegated to the user slice, so `CPUWeight`/`AllowedCPUs` silently
+  do nothing without root. Given pinning showed no effect, spending root on it
+  is not indicated.
+* **`-icount shift=auto` does collapse the variance**, which is presumably why
+  the repo's own test runner uses it: 17.8 %, 19.5 %, 18.3 % — a 1.7-point
+  spread where free-running ranges 0-89 %. But it removes the 0 % mode
+  entirely, so it buys reproducibility by measuring a different machine. Right
+  for a regression gate, wrong for deciding whether a driver change helps.
+
 ## Diagnosis by intervention: widen the RX FIFO and it goes away
 
 **This is evidence, not a proposed change.** The lane keeps the stock FIFO —
