@@ -12,6 +12,8 @@
 names = ["zephyr"]
 
 [capabilities]
+ip_stack = true    # Zephyr NET_SOCKETS; demonstrated by the CANHUBK344 TCP image
+serial   = true    # LPUART; demonstrated by the CANHUBK344 serial image
 # Zephyr's zsock serializes send/recv on a per-fd mutex, so total tx
 # throughput without batching is capped at ~one send per recv window —
 # the fact that justifies the batch/split defaults below (phase-279/282).

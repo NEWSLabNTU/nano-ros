@@ -143,6 +143,59 @@ fn explain(args: ExplainArgs) -> Result<()> {
         tx.flush_ms.value,
         tx.flush_ms.source.as_str()
     );
+
+    // phase-400 W3/W4 — the transport tenant and everything it implies.
+    //
+    // Printed with provenance because an opaque layered merge is the failure
+    // mode of every layered-config system RFC-0049 surveyed: a resolver that
+    // cannot say WHY a knob holds its value cannot be debugged without
+    // bisecting fragments.
+    let transport = tree
+        .resolve_transport(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.transport),
+            &env_get,
+        )
+        .map_err(|e| eyre!("{e}"))?;
+    println!(
+        "{:<24} {:<10} {}",
+        "transport.kind",
+        transport.kind.value,
+        transport.kind.source.as_str()
+    );
+    if let Some(ep) = &transport.endpoint.value {
+        println!(
+            "{:<24} {:<10} {}",
+            "transport.endpoint",
+            ep,
+            transport.endpoint.source.as_str()
+        );
+    }
+    for i in &transport.implied {
+        match i.overridden_by {
+            None => println!(
+                "{:<24} {:<10} implied by {}",
+                i.knob, i.value, i.rule
+            ),
+            Some(src) => println!(
+                "{:<24} {:<10} {} — OVERRIDES implication {}={} from {}",
+                i.knob,
+                !i.value,
+                src.as_str(),
+                i.knob,
+                i.value,
+                i.rule
+            ),
+        }
+    }
+
+    for w in tree
+        .transport_warnings(&args.platform, &transport)
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!("warning: {w}");
+    }
+
     for w in warnings {
         println!("warning: {w}");
     }
