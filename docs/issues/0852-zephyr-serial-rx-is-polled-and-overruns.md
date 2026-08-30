@@ -346,3 +346,60 @@ Not yet investigated -- the open question this leaves:
 
 The talker's ~3% lower mean rate under the ISR is within the noise of a 3-6
 sample window and should not be read as a cost.
+
+## Debugging the ISR failure: one cause found and fixed, one still open
+
+RTT kills the session (issue 0881), so the failing load cannot be watched with a
+debugger attached. Instead the ISR path was instrumented with plain counters in
+`.bss` and read over SWD after the run -- the same trick that pinned the
+`pthread_condattr_t` bug.
+
+### The ring-overflow theory was wrong
+
+First reading, action image, three goals:
+
+    bytes_in          145      about one handshake, then nothing
+    isr_calls         145
+    read_timeouts      75
+    max_fill           19      of 1024
+    ring_full_events    0
+    bytes_dropped       0
+
+The ring never came close to full and dropped nothing, so the "reader falls
+behind the ISR under action bursts" theory is refuted. What the numbers say is
+much simpler: RX received the handshake and then stopped completely, and the
+reader spent the rest of the run timing out once per second.
+
+### Cause: RX was armed once and never re-armed
+
+`_z_zephyr_uart_open_impl` calls `uart_configure()` immediately before binding,
+on EVERY open -- and a reconnect is an open. On the mcux LPUART that
+reinitialises the peripheral and clears the RX interrupt enable.
+`_z_serial_rx_bind` returned early for an already-bound device, skipping
+`uart_irq_rx_enable`. So the first open armed RX and no later one ever did.
+
+Fixed on `feat/zephyr-serial-irq-rx-110`: re-arm on every open, and drop
+whatever the previous session left in the ring, since those bytes belong to a
+dead transport and would desynchronise the new one's COBS framing.
+
+Measured effect -- the reconnect storm largely clears:
+
+| build                | router "Unexpected Init flag" errors |
+| -------------------- | ------------------------------------ |
+| ISR, before the fix  | 80 across ten goals, still climbing  |
+| ISR, after the fix   | 3 across seven goals, then flat      |
+
+### Still failing, and this is the open part
+
+The action image completes **0 of 7** goals with the fixed ISR, against **8 of
+10** on the polled path. The link is now stable -- the error count stops growing
+-- but the action exchange still does not complete, so a SECOND defect remains
+in this path, independent of the bind bug.
+
+The counter read taken after that run came back all zeros with 10 read timeouts,
+which is not trustworthy: `pyocd cmd` appears to have reset the target, and a
+reset zeroes the counters. That reading should be redone with a connect mode
+that is known not to reset before drawing any conclusion from it.
+
+`CONFIG_UART_INTERRUPT_DRIVEN` stays off. The work stays on the fork branch,
+out of the pinned integration branch and out of the upstream PR.
