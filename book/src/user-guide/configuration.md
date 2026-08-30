@@ -361,10 +361,10 @@ nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal
 # …or nros-rmw-xrce-cffi / the cyclonedds CMake backend
 ```
 
-## Runtime environment (POSIX only)
+## Runtime environment (native host only)
 
-On Linux/*BSD, `ExecutorConfig::from_env()` reads at process start (embedded
-targets bake their config at build time instead):
+On the `native` host build, `ExecutorConfig::from_env()` reads at process start
+(embedded targets bake their config at build time instead):
 
 | Variable | Description | Default |
 |----------|-------------|---------|

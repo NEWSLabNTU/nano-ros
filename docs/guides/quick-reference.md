@@ -18,7 +18,7 @@ cd examples/native/rust/listener && RUST_LOG=info cargo run --features zenoh
 
 ## UDP Transport
 
-On native/POSIX, zenoh-pico has built-in UDP support via OS sockets:
+On the native (host) build, zenoh-pico has built-in UDP support via OS sockets:
 
 ```bash
 # Use UDP instead of TCP for the zenoh locator
@@ -41,7 +41,7 @@ openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
   -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
 ```
 
-**Native/POSIX** (requires `libmbedtls-dev` — installed by `just setup`):
+**Native (host)** (requires `libmbedtls-dev` — installed by `just setup`):
 
 ```bash
 # Terminal 1: Router with TLS

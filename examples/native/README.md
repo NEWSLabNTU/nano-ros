@@ -1,4 +1,4 @@
-# examples/native — host POSIX (Linux) examples
+# examples/native — host native (Linux) examples
 
 Desktop/host examples in C, C++ and Rust. Just module: **`native`**
 (`just/native.just`).

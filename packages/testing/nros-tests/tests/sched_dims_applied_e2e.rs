@@ -22,7 +22,7 @@
 //!   up front and belongs beside the markers. Every cell also PRINTS its arm
 //!   (`sched-dim arm: …`), so a sweep answers "is the accept path exercised
 //!   anywhere?" without reading defconfigs.
-//! - **AcceptOnly** — the accept marker must be present (posix core-pin, the #260
+//! - **AcceptOnly** — the accept marker must be present (linux core-pin, the #260
 //!   runtime proof: `sched_setaffinity(cpu 0)` succeeds on any LINUX host —
 //!   the call does not exist on macOS, which is why the board is `linux`).
 //! - **StrictCountOne** — exactly one accept marker (zephyr EDF; threadx
@@ -88,7 +88,7 @@ enum Boot {
 
 /// Where the zenoh router runs.
 enum Router {
-    /// Ephemeral (posix core-pin — the entry dials `router.locator()`).
+    /// Ephemeral (linux core-pin — the entry dials `router.locator()`).
     Ephemeral,
     /// The allocator's baked port on `host` (`0.0.0.0` for slirp guests,
     /// `127.0.0.1` for native_sim / host-sim).

@@ -817,7 +817,7 @@ function(nano_ros_node_register)
         nros_platform_link_app(${PROJECT_NAME})
     endif()
 
-    # Phase 244.C4 (RFC-0043) — native (POSIX/host) typed-entry carrier. Mirrors
+    # Phase 244.C4 (RFC-0043) — native (host) typed-entry carrier. Mirrors
     # the FreeRTOS self-executable branch above (add_executable + the generated
     # entry + the component sources + nros_platform_link_app), but the host board
     # resolves locator/domain from $NROS_LOCATOR / $ROS_DOMAIN_ID at runtime

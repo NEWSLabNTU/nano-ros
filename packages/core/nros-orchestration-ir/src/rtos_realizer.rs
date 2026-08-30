@@ -140,6 +140,12 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
         // (priorities are documented-advisory too); flip when phase-162
         // lands real consumers. affinity stays TRUE: 296-W5.13 landed the
         // sched_setaffinity tier consumer (runtime kernel-accept proven).
+        //
+        // That affinity consumer is `nros-board-linux`, and it is LINUX, not
+        // POSIX: `sched_setaffinity` / `cpu_set_t` / `CPU_SET` are absent from
+        // libc's apple module. Both keys land in this arm because the only
+        // hosted board in the tree is the Linux one — on a non-Linux POSIX host
+        // the affinity cap would over-promise.
         "posix" | "native" => SchedCaps {
             edf: false,
             reservation: false,

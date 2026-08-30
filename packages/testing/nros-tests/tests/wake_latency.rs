@@ -6,8 +6,9 @@
 //! Phase 124.B (commits 2e5204ca → 2d1009f5).
 //!
 //! Scope today: thread-context trigger (the realistic ISR-like
-//! context — kernel timer callback, worker thread, etc.). POSIX
-//! signal-handler trigger pending B.7.c signalfd worker.
+//! context — kernel timer callback, worker thread, etc.). LINUX
+//! signal-handler trigger pending B.7.c signalfd worker — `signalfd`/
+//! `eventfd` are Linux, not POSIX, so that sibling is `target_os = "linux"`.
 //!
 //! Run: `cargo test -p nros-tests --test wake_latency --features trigger-test -- --ignored`
 //!

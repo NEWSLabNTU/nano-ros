@@ -51,7 +51,7 @@ domain_id = 0
 locator = "tcp/127.0.0.1:7447"
 
 [dependencies]
-# Board crate — hosted Linux/macOS native board. Supplies the
+# Board crate — hosted Linux native board. Supplies the
 # `LinuxBoard` ZST the macro resolves; force-links the zenoh RMW.
 nros-board-linux = { path = "../../../../../packages/boards/nros-board-linux" }
 # nros — `nros::node!` (lib) + `nros::main!` (bin) macros + Node API.

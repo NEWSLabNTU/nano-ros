@@ -50,13 +50,19 @@ Return contract:
 | Platform | Source | Backing primitive | ISR-safe `signal_from_isr`? |
 |----------|--------|-------------------|------------------------------|
 | POSIX (Linux/glibc)         | `nros-platform-posix/src/platform.c` | `sem_t` + `sem_timedwait`               | aliased to `signal` (no real ISR context on hosted POSIX) |
-| POSIX (macOS)               | `nros-platform-posix/src/platform.c` | `pthread_cond_t` + `pthread_mutex_t` + flag (unnamed `sem_t` deprecated) | aliased to `signal` |
+| POSIX (macOS — unbuilt) ¹   | `nros-platform-posix/src/platform.c` | `pthread_cond_t` + `pthread_mutex_t` + flag (unnamed `sem_t` deprecated) | aliased to `signal` |
 | Zephyr                      | `nros-platform-zephyr/src/platform.c` | `k_sem`                                 | **yes** — `k_sem_give` is documented ISR-safe |
 | FreeRTOS                    | `nros-platform-freertos/src/platform.c` | `xSemaphoreCreateBinary`                | **yes** — `xSemaphoreGiveFromISR` + `portYIELD_FROM_ISR` |
 | ESP-IDF (FreeRTOS-derived)  | `nros-platform-esp-idf/src/platform.c` | `xSemaphoreCreateBinary`                | **yes** — `xSemaphoreGiveFromISR` (per-SoC `portYIELD_FROM_ISR`) |
 | NuttX                       | reuses `nros-platform-posix/src/platform.c` | POSIX `sem_t`                           | aliased to `signal` (NuttX `sem_post` is ISR-safe by spec but the wrapper does not yet distinguish; track in a follow-up) |
 | ThreadX                     | `nros-platform-threadx/src/platform.c` | `tx_semaphore` + `tx_semaphore_ceiling_put` | **yes** — `tx_semaphore_put`/`_ceiling_put` are ISR-safe per ThreadX spec |
 | bare-metal (Cortex-M)       | (none — wake primitive returns `-1` from the trait default) | — | n/a (single-thread, no ISR-driven wake needed) |
+
+¹ The `__APPLE__` branches in `platform.c` exist, but the crate as a whole
+does not build on macOS: `src/timer.c` calls `timer_create(CLOCK_MONOTONIC,
+SIGEV_THREAD)` with no fallback and macOS has no POSIX timers (RFC-0064).
+The macOS rows below describe the wake primitive alone, not a supported
+target.
 
 ## Storage sizing
 
@@ -71,7 +77,7 @@ Indicative sizes (subject to platform ABI / build flags):
 | Platform | `sizeof` wake storage |
 |----------|----------------------|
 | POSIX (Linux x86_64) | 32 (`sem_t`) |
-| POSIX (macOS)        | ~72 (pthread cond + mutex + int) |
+| POSIX (macOS — unbuilt) | ~72 (pthread cond + mutex + int) |
 | Zephyr               | 16–24 (`k_sem` = `_wait_q_t` + optional `obj_core`) |
 | FreeRTOS / ESP-IDF   | 8 (pointer to dynamically allocated semaphore) |
 | NuttX                | 16–32 (`sem_t`) |
@@ -94,7 +100,7 @@ stale wake credits.
 | Platform | Compile-check (`cargo check`) | Link + RTOS regression sweep |
 |----------|-------------------------------|------------------------------|
 | POSIX (Linux) | ✅ | ✅ 15 wake tests (`c_port_posix_wake.rs`, `wake_wrapper.rs`) |
-| POSIX (macOS) | ✅ | not tested in CI |
+| POSIX (macOS) | `platform.c` only — the crate does not build (`timer_create`) | never run |
 | Zephyr native_sim | ✅ | ✅ 13 Zephyr XRCE E2E |
 | Zephyr qemu_cortex_a9 | ✅ | not run since 130.x landed |
 | FreeRTOS (MPS2-AN385 QEMU) | ✅ | ✅ 9 zenoh pubsub/service/action E2E |

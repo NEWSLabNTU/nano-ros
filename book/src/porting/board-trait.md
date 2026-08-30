@@ -77,7 +77,7 @@ What you implement on the transport axis depends on what link layers your board 
 | Serial UART only | `TransportBringup` | No IP, so no `NetworkWait` |
 | CAN / USB CDC / IVC | `TransportBringup` | Link-layer only |
 | Bridged-net (threadx-linux veth) | `TransportBringup` + `NetworkWait` | Host kernel owns IP — `wait_link_up` just probes the bridge |
-| Native POSIX | None | Host OS owns everything; the family crate's `run` skips both mixins |
+| Native (host) | None | Host OS owns everything; the family crate's `run` skips both mixins |
 
 Boards with multiple transports compose via an internal helper (e.g. a `MultiTransport` newtype) rather than blanket impls — each transport's bringup is sequential and order-sensitive (`init_link` before `link_up`, sockets only after link).
 
@@ -168,7 +168,7 @@ See the [Role reference](../user-guide/component-and-entry-pkg.md) for the Entry
 
 The family crate is where the `BoardEntry::run` *body* actually lives. The kernel families with a driver crate:
 
-- `nros-board-linux` — native host (Linux / *BSD); `init_transport`/`wait_link_up` no-ops.
+- `nros-board-linux` — native host; the reach is `linux`, not `posix` — `apply_tier_affinity` calls `sched_setaffinity` with `cpu_set_t`, which libc does not define for macOS. `init_transport`/`wait_link_up` no-ops.
 - `nros-board-freertos` — FreeRTOS-Kernel + lwIP; `run` spawns the executor task, hands DHCP to lwIP's hook.
 - `nros-board-threadx` — ThreadX + NetX BSD; same shape over NetX.
 - `nros-board-nuttx` — NuttX POSIX layer; `init_transport` shells `ifup`-style logic.

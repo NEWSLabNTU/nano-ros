@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Phase 117.12.B — POSIX E2E vs stock `rmw_cyclonedds_cpp`
-# (services). One sub-case for now:
+# Phase 117.12.B — native (host) E2E vs stock `rmw_cyclonedds_cpp`
+# (services). `native` is the ROLE here; the REACH is LINUX, not POSIX:
+# `e2e_iface` below shells out to iproute2's `ip -o -br link show`, and the
+# sourced `ros2_e2e_common.sh` reads `/proc/net/udp`. One sub-case for now:
 #
 #   1. nano-ros service server ↔ `ros2 service call` (stock client)
 #

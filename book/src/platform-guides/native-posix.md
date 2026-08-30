@@ -1,9 +1,17 @@
-# Native POSIX
+# Native (Host) Build
 
-Use the native POSIX target for first experiments, CI smoke tests, and
-ROS 2 interoperability checks on Linux or *BSD. It uses OS sockets,
-the host process environment, and the same source checkout layout as the
+Use the `native` (host) target for first experiments, CI smoke tests, and
+ROS 2 interoperability checks on Linux or *BSD. It uses OS sockets, the
+host process environment, and the same source checkout layout as the
 embedded targets.
+
+`native` is a *role* — the host build rather than a cross build — not a
+reach claim. The reach is `linux`: the platform layer
+(`nros-platform-posix`) is POSIX-clean, but the host board crate's
+`apply_tier_affinity` calls `sched_setaffinity` with `cpu_set_t`, which
+libc does not define for macOS, and only Linux is tested in CI. **macOS is
+not supported** (AGENTS.md, phase-260); *BSD is a supported path that no
+lane exercises.
 
 ## When to Use It
 
@@ -32,7 +40,9 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 nros setup native --rmw zenoh        # or: --rmw xrce / --rmw cyclonedds
 ```
 
-`native` and `posix` are accepted as the same board name.
+`native` and `linux` are the two names of this board (`native` the role,
+`linux` the reach); `posix` names the platform layer underneath it, not the
+board.
 
 For a colcon consumer workspace that already has nano-ros under
 `src/`:
@@ -43,10 +53,10 @@ colcon build && source install/setup.bash
 
 ## Package Layout
 
-For a POSIX application package:
+For a host application package:
 
 ```text
-my_posix_node/
+my_native_node/
 ├── package.xml
 ├── Cargo.toml          # Rust path
 ├── CMakeLists.txt      # C / C++ path
@@ -119,7 +129,7 @@ platform-specific configuration files. See
 
 ## Deployment
 
-POSIX deployment is normal process deployment: install the workspace,
+Host deployment is normal process deployment: install the workspace,
 source `install/setup.bash`, set environment, and run the binary. For
 ROS 2 interop, run [ROS 2 Interoperability](../getting-started/ros2-interop.md)
 and set the ROS side to `rmw_zenoh_cpp`.

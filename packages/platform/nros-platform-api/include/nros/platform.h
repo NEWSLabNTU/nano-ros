@@ -593,8 +593,11 @@ int8_t nros_platform_condvar_signal_all(void *cv);
  *  this variant when triggering from an ISR or POSIX signal handler.
  *
  *  Per-platform implementation:
- *  * POSIX: `eventfd`/`pipe` write — async-signal-safe; a runtime
- *    worker thread forwards to the underlying condvar.
+ *  * POSIX: `pipe` write — async-signal-safe; a runtime worker thread
+ *    forwards to the underlying condvar. (Linux may use `eventfd`
+ *    instead, which is NOT POSIX — `signalfd`/`eventfd` are Linux
+ *    syscalls, which is why `nros-node`'s worker is
+ *    `target_os = "linux"`-gated.)
  *  * Zephyr: `k_sem_give` on the wake semaphore (ISR-safe).
  *  * FreeRTOS: `xSemaphoreGiveFromISR` + `portYIELD_FROM_ISR` on
  *    the wake semaphore.

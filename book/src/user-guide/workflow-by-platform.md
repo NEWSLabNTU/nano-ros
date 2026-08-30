@@ -176,7 +176,7 @@ thing, copy the example out and `cargo build` normally.
 
 | platform | grid row | `nros setup <board>` | examples under | recipes (contributors) | starter page |
 |---|---|---|---|---|---|
-| Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native POSIX](../platform-guides/native-posix.md) |
+| Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native host build](../platform-guides/native-posix.md) |
 | FreeRTOS (QEMU MPS2-AN385) | `freertos` | `qemu-arm-freertos` | `examples/qemu-arm-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
 | NuttX (Arm) | `nuttx` | `qemu-arm-nuttx` | `examples/qemu-arm-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
 | NuttX (RISC-V) | `nuttx-riscv` | `qemu-riscv-nuttx` | `examples/qemu-riscv-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |

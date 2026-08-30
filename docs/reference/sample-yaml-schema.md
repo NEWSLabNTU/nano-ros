@@ -121,7 +121,7 @@ shell scripts run **after** the binary launches. Exit status 0 → pass.
 
 ## Worked examples
 
-### Example 1 — POSIX native talker
+### Example 1 — native (host) talker
 
 `examples/native/rust/talker/sample.yaml`:
 

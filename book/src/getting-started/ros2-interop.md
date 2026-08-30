@@ -84,7 +84,7 @@ ros2 node list         # Shows nano-ros nodes
 
 ### Domain ID
 
-Both sides must use the same ROS domain ID. On **native/POSIX** builds
+Both sides must use the same ROS domain ID. On the **native** (host) build
 nano-ros reads `ROS_DOMAIN_ID` from the environment (default: `0`). On
 **embedded** targets the domain ID is fixed at compile time — per-example
 `config.toml` / `package.xml` deploy metadata, or `CONFIG_NROS_DOMAIN_ID`

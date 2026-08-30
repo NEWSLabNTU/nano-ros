@@ -458,7 +458,7 @@ function(nano_ros_entry)
     endif()
 
     # Phase 249 P4a (issue #57) — wire the strong `nros_app_register_backends()`
-    # for native (POSIX/host) C/C++ entries. `nros_cpp_init` / `nros_support_init`
+    # for native (host) C/C++ entries. `nros_cpp_init` / `nros_support_init`
     # call that symbol unconditionally, and P4a removed its weak default — the only
     # def is the one `nano_ros_link_rmw()` (via `nros_platform_link_app`) generates.
     # The `nano_ros_node_register` native carrier (244.C4) calls it, but the

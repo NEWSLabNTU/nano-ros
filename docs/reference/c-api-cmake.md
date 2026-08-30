@@ -154,7 +154,7 @@ install layout it needs for *its* binaries.
 
 ## FreeRTOS / NuttX Cross-Compilation
 
-Cross-compiled examples consume nano-ros the same way as POSIX:
+Cross-compiled examples consume nano-ros the same way as the native (host) build:
 `add_subdirectory(<repo>)` with `NANO_ROS_PLATFORM` set to the
 target RTOS. Pass `CMAKE_TOOLCHAIN_FILE` for the cross-compiler.
 

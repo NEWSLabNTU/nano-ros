@@ -272,7 +272,7 @@ examples to your own board.
 
 | `examples/<plat>/` | Profile | Guide |
 |---|---|---|
-| `native/` | Host POSIX | Just `cargo run` — no integration shell needed. |
+| `native/` | Host native (Linux) | Just `cargo run` — no integration shell needed. |
 | `qemu-arm-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
 | `qemu-arm-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
 | `qemu-arm-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |

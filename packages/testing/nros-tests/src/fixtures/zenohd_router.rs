@@ -217,7 +217,9 @@ impl ZenohRouter {
     /// test run (e.g. if nextest SIGKILL'd the test process, preventing Drop).
     ///
     /// Binding to loopback prevents cross-platform interference and is
-    /// sufficient for native/POSIX tests.
+    /// sufficient for native tests — every peer is a host process reaching the
+    /// router over `127.0.0.1`. "native" here is the ROLE (host build), not a
+    /// reach claim; the platform beneath it happens to be `posix`.
     ///
     /// For bridge-networked tests (ThreadX Linux sim) that connect via
     /// a non-loopback IP, use [`start_on`](Self::start_on) with `"0.0.0.0"`.
@@ -465,7 +467,8 @@ impl Drop for ZenohRouter {
     }
 }
 
-/// rstest fixture for zenohd on port 7447 (native/POSIX integration tests only).
+/// rstest fixture for zenohd on port 7447 (native, loopback-only integration
+/// tests).
 ///
 /// QEMU slirp platform tests use `ZenohRouter::start_slirp(platform::*.zenohd_port)`
 /// with per-platform ports (7450–7456) for parallel execution.

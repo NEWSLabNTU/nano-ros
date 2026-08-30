@@ -17,16 +17,19 @@ the OS could do* (issue 0261).
 
 | Platform | Kernel EDF | Reservation / sporadic server | Preemption threshold | SMP affinity | Priority levels | Low number = high priority |
 |---|---|---|---|---|---|---|
-| Linux / POSIX host | — | — | — | ✓ | 99 | — |
+| Linux host | — | — | — | ✓ | 99 | — |
 | Zephyr | ✓ | — | — | ✓ | 32 | ✓ |
 | FreeRTOS | — | — | — | ✓ | 16 | — |
 | ThreadX | — | — | ✓ | ✓ | 32 | ✓ |
 | NuttX | — | ✓ | — | ✓ | 255 | — |
 | Bare-metal (RTIC / NVIC) | — | — | — | — | 8 | — |
 
-Notes carried from the source arms: the POSIX row is deliberately
+Notes carried from the source arms: the Linux row is deliberately
 conservative — no `SCHED_DEADLINE` consumer exists, so `edf` is
-false even though Linux could; Zephyr's EDF is
+false even though Linux could; its `affinity` is `sched_setaffinity`,
+which is Linux and not POSIX (absent from libc's apple module), so the
+row's reach is `linux` while the platform layer beneath it stays
+`posix`; Zephyr's EDF is
 `CONFIG_SCHED_DEADLINE`; NuttX's reservation is POSIX
 `SCHED_SPORADIC`; ThreadX's preemption threshold is native; the
 bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),

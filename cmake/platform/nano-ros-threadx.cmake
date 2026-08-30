@@ -360,7 +360,7 @@ function(nros_platform_link_app target)
     # Corrosion staticlibs `libnros_c.a` / `libnros_cpp.a` (which DEFINE
     # it, T). With ld's single-pass archive semantics the cffi member is
     # only extracted if something references the symbol BEFORE those
-    # archives are scanned. The native (POSIX) C++ examples get that for
+    # archives are scanned. The native (host) C++ examples get that for
     # free: their `main.cpp` calls `nros::init()` → `CffiSession::open`/
     # `nros_rmw_cffi_lookup`, which live in the SAME Rust object as
     # `nros_rmw_cffi_register_named`, so the member is pulled early. The

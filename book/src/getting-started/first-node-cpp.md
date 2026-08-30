@@ -53,7 +53,7 @@ examples/native/cpp/talker/
     └── main.cpp        # ~70-line talker
 ```
 
-POSIX talkers read the locator + domain from arguments passed to
+Native (host) talkers read the locator + domain from arguments passed to
 `nros::init(...)`; no config file is needed. Embedded variants under
 `examples/<plat>/cpp/talker/` bake theirs from the
 package.xml `<nano_ros deploy=…/>` tuple.

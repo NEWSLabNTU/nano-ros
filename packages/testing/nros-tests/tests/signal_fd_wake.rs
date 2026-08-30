@@ -1,5 +1,6 @@
-//! POSIX signalfd worker — a `write(2)` to the executor's eventfd unblocks a
-//! `spin_once` that is parked on the wake condvar.
+//! LINUX signalfd worker — a `write(2)` to the executor's eventfd unblocks a
+//! `spin_once` that is parked on the wake condvar. `signalfd`/`eventfd` are
+//! Linux syscalls, not POSIX — hence the `target_os = "linux"` gate below.
 //!
 //! `write(2)` on an eventfd is on the async-signal-safe list per `eventfd(2)`,
 //! so this is the same operation a real signal handler performs; the second

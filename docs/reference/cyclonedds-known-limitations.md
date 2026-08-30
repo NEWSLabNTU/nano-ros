@@ -3,7 +3,7 @@
 Phase 117 ships `nros-rmw-cyclonedds` as the fourth RMW backend
 alongside `rmw-zenoh`, `rmw-xrce`, and `rmw-dds`. The implementation
 is **complete enough for nano-ros ↔ nano-ros pub/sub + service
-round-trips on POSIX**, but several pieces are explicitly deferred.
+round-trips on the native (host) build**, but several pieces are explicitly deferred.
 This page tracks them so consumers (Autoware safety-island, future
 follow-up phases) plan around them rather than rediscovering them at
 integration time.
@@ -115,7 +115,7 @@ participant per service client.
 
 **Caveat — `service_concurrent` test disabled by default
 (Phase 117.X.5).** With the per-client-participant workaround
-in place, cross-participant SEDP discovery on POSIX still
+in place, cross-participant SEDP discovery on the native (host) build still
 consistently drops the last reply on one of the two clients
 (Cyclone 0.10.5). The `(writer_guid, seq)` filter logic is
 functionally validated by `service_roundtrip` (single client,
@@ -128,7 +128,7 @@ publication-matched-status polling in
 
 ## ROS 2 wire interop — done (Phase 117.12)
 
-POSIX E2E against stock ROS 2 nodes on the same domain is
+Native (host) E2E against stock ROS 2 nodes on the same domain is
 validated bidirectionally by two CTest harnesses
 (`nros_rmw_cyclonedds_ros2_pubsub_e2e`,
 `nros_rmw_cyclonedds_ros2_srv_e2e`):

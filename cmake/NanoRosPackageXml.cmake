@@ -20,7 +20,7 @@
 include_guard(GLOBAL)
 
 # `deploy` attribute → the `NANO_ROS_PLATFORM` module axis. `native` is the host
-# POSIX build; the RTOS names map 1:1.
+# build (it maps to the `posix` platform axis value); the RTOS names map 1:1.
 function(_nros_deploy_to_platform deploy out_var)
     if(deploy STREQUAL "native" OR deploy STREQUAL "")
         set(${out_var} "posix" PARENT_SCOPE)

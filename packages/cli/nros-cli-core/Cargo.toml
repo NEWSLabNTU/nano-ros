@@ -107,8 +107,8 @@ tempfile = "3.10"
 
 # Phase 212.J `nros launch` — raw POSIX `kill(2)` for SIGTERM propagation.
 # Unix-only: the launcher is a desktop / native_sim host runner; Windows is not
-# in scope for nano-ros host bringup (every supported workflow targets Linux /
-# macOS today).
+# in scope for nano-ros host bringup (every supported workflow targets Linux
+# today — macOS was dropped as a host in phase-260).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

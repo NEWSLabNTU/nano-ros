@@ -58,7 +58,7 @@ The XRCE-DDS backend uses [Micro-XRCE-DDS-Client](https://github.com/eProsima/Mi
 ## Cyclone DDS (rmw-cyclonedds)
 
 > **Maturity status.** Cyclone DDS supports **pub/sub + service
-> round-trips on POSIX** (full service implementation in
+> round-trips on the native (host) build** (full service implementation in
 > `src/service.cpp`); status events (liveliness, deadline-miss, etc.)
 > are NOT wired to Cyclone listeners yet, and the
 > service-availability probe is deferred (`service_server_available`

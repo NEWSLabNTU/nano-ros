@@ -10,7 +10,7 @@ usage() {
 usage: scripts/build/phase226-cxx-eff.sh [options]
 
 Options:
-  --platform <name>       Fixture platform (default: native)
+  --platform <name>       Fixture platform (default: linux)
   --lang <c|cpp|all>      Fixture language (default: all)
   --rmw <name>            Restrict to one RMW (for example zenoh or xrce)
   --role <name>           Restrict by fixture role directory basename

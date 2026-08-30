@@ -18,7 +18,12 @@
 //! Implements the `Board` trait family from `nros_platform` (the
 //! traits live in `packages/platform/nros-platform/src/board/` and are
 //! re-exported at the `nros_platform` crate root) for the hosted
-//! POSIX target (Linux, macOS, BSD). This is the simplest of the
+//! LINUX target. Not "POSIX (Linux, macOS, BSD)", which this said and
+//! which the crate cannot honour: `apply_tier_affinity` below calls
+//! `sched_setaffinity` with `cpu_set_t` / `CPU_SET`, none of which
+//! libc defines for apple, and nothing here is `cfg(target_os)`-gated.
+//! The PLATFORM beneath it (`nros-platform-posix`) is POSIX-clean —
+//! see the Naming note above. This is the simplest of the
 //! family driver crates:
 //!
 //! - `init_hardware` is a no-op — libstd's runtime already brought up
@@ -498,12 +503,19 @@ impl LinuxBoard {
         // says so, or says why not. Leaving the old wording would have been
         // worse than the original silence — a reader would believe a
         // declaration was inert while it was being honoured.
-        if tiers.iter().any(|t| t.core.is_some()) {
-            <Self as BoardPrint>::println(format_args!(
-                "nros: NOTE — posix tier `core` is advisory (not applied natively); \
-                 priority IS applied where the process may request SCHED_FIFO"
-            ));
-        }
+        //
+        // …and then the `core` half went stale in exactly that way. phase-296
+        // W5.13 landed `apply_tier_affinity`, called for EVERY tier — spawned
+        // (`run_one_tier`) and boot — which pins via `sched_setaffinity` and
+        // prints `core pin tier=…` on success or `core pin FAILED …` on
+        // refusal. So `core` has not been advisory since; the note went on
+        // saying it was, which is the failure the paragraph above describes,
+        // one field over. There is now nothing to announce up front: both
+        // dims report their own outcome per tier, which is strictly better
+        // than a blanket note that can rot.
+        //
+        // Kept as a `linux`, not `posix`, statement — the pin is
+        // `sched_setaffinity`, absent from libc's apple module.
         let setup = &setup;
         // Issue 0447 — held across each tier's `setup` so entity declaration on
         // the one shared session is serialized (see `run_one_tier`).

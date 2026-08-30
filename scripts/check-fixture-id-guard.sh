@@ -78,24 +78,24 @@ echo "check-fixture-id-guard: an id filter that matches nothing"
 # The case that started it: a real id, aimed at the builder that cannot build
 # it. Fatal, because nothing else in this invocation will build it either.
 expect_rc 2 "flag + id of another kind is fatal" \
-    guard "$ws_id" flag fixture native rust
+    guard "$ws_id" flag fixture linux rust
 
 # A typo can never match anywhere, in any stage, under any spelling.
 expect_rc 2 "flag + id that exists nowhere is fatal" \
-    guard "no-such-fixture-id-anywhere" flag fixture native rust
+    guard "no-such-fixture-id-anywhere" flag fixture linux rust
 expect_rc 2 "env + id that exists nowhere is fatal" \
-    guard "no-such-fixture-id-anywhere" env workspace_fixture native rust
+    guard "no-such-fixture-id-anywhere" env workspace_fixture linux rust
 
 # The sweep cases: a narrowing that crosses builders leaves some stages with
 # nothing to do. That is correct, and must not fail the run.
 expect_rc 0 "env + id of another kind passes with a note" \
-    guard "$fx_id" env workspace_fixture native rust
+    guard "$fx_id" env workspace_fixture linux rust
 expect_rc 0 "env + right kind, wrong coordinates passes with a note" \
-    guard "$ws_id" env workspace_fixture native cpp
+    guard "$ws_id" env workspace_fixture linux cpp
 
 # Right kind, wrong coordinates, aimed deliberately: still a wrong invocation.
 expect_rc 2 "flag + right kind, wrong coordinates is fatal" \
-    guard "$ws_id" flag workspace_fixture native cpp
+    guard "$ws_id" flag workspace_fixture linux cpp
 
 echo "check-fixture-id-guard: platform vocabulary"
 expect_rc 2 "unknown platform is fatal" \

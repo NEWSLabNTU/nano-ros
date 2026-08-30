@@ -202,9 +202,10 @@ mechanisms, layered:
    backend contributes an `RMW_INIT_ENTRIES` entry through the
    `nros_rmw_register_backend!` macro. `nros_support_init` /
    `Executor::open` walks the slice and calls each entry. Canonical
-   on Linux / *BSD / Windows / POSIX. Macro expands to a no-op on
-   RTOS targets where `linkme` can't recognise the section (NuttX,
-   Zephyr, ESP-IDF, FreeRTOS bare-metal).
+   on the hosted targets whose linker sections `linkme` recognises —
+   of which nano-ros builds only the `native` host board. Macro
+   expands to a no-op on RTOS targets where `linkme` can't recognise
+   the section (NuttX, Zephyr, ESP-IDF, FreeRTOS bare-metal).
 2. **Rust ctor** (legacy fallback): `#[unsafe(link_section =
    ".init_array")] #[used] static AUTO_REGISTER_CTOR`. `#[used]`
    keeps rustc from dead-stripping.
