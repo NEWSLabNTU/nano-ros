@@ -905,7 +905,7 @@ sysdep-remedies:
 # `just doctor` is its home: doctor is where host state is examined, and this is
 # the one gate whose subject lives in `~/.nros/sdk` rather than in the tree.
 [private]
-check-dist-runtime-deps:
+dist-runtime-deps:
     @python3 scripts/check-dist-runtime-deps.py
 
 # issue 0372 — `activate.sh` / `activate.fish` are SOURCED, so anything that
