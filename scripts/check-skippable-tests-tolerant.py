@@ -46,6 +46,21 @@ BARE = re.compile(r"^\s*(?!#)(?:[A-Za-z_][A-Za-z0-9_]*=\S+\s+)*cargo\s+(?:test|n
 TEST_ARG = re.compile(r"--test\s+([A-Za-z0-9_]+)")
 
 
+IMPORT_DEF = re.compile(r'^import\s+[\'"]([^\'"]+)[\'"]', re.M)
+
+
+def _justfile_sources():
+    """The root justfile plus every file it `import`s (not `mod`s)."""
+    with open(JUSTFILE, encoding="utf8") as fh:
+        text = fh.read()
+    files = [JUSTFILE]
+    for rel in IMPORT_DEF.findall(text):
+        f = os.path.join(ROOT, rel)
+        if os.path.exists(f):
+            files.append(f)
+    return files
+
+
 def skippable(name):
     """Does `tests/<name>.rs` reach `nros_tests::skip!`?"""
     path = os.path.join(TESTS_DIR, f"{name}.rs")
@@ -81,15 +96,23 @@ def main():
     # into a comment.
     selftest()
 
-    with open(JUSTFILE, encoding="utf8") as fh:
-        text = fh.read()
-    problems = scan(text)
+    # `import "just/x.just"` MERGES a file's recipes into the root namespace, so
+    # a bare runner is exactly as reachable from there as from the root file.
+    # Scanning only `justfile` would make this gate's coverage narrower than its
+    # rule the moment a recipe moves — which phase-399 did to 200 of them
+    # (issue 0196's class: a gate that still passes while it stopped looking).
+    problems = []
+    for path in _justfile_sources():
+        with open(path, encoding="utf8") as fh:
+            text = fh.read()
+        rel = os.path.relpath(path, ROOT)
+        problems += [(rel, *p) for p in scan(text)]
 
     if problems:
         print("check-skippable-tests-tolerant: a skip-capable test is run BARE:\n",
               file=sys.stderr)
-        for lineno, line, names in problems:
-            print(f"  justfile:{lineno}", file=sys.stderr)
+        for rel, lineno, line, names in problems:
+            print(f"  {rel}:{lineno}", file=sys.stderr)
             print(f"    {line[:100]}", file=sys.stderr)
             print(f"    skip-capable: {', '.join(names)}", file=sys.stderr)
         print(
