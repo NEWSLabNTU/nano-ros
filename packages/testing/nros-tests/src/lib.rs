@@ -798,6 +798,28 @@ pub fn build_dir(kind: &str, coords: &[&str]) -> std::path::PathBuf {
     out
 }
 
+/// Is there an interpreter the resolver's Python half can load?
+///
+/// Issue 0935 / 0914. "No Python on this host" and "the shipped pair is broken"
+/// produce the SAME parse error, and a test that cannot tell them apart is
+/// worse than none — it is the vacuous-test class `check-no-vacuous-tests`
+/// exists for. So a test that needs Python asks this first and
+/// `nros_tests::skip!`s, keeping a genuine break a FAILURE.
+///
+/// Deliberately probes the same way `pyload` does — a `python3` that answers —
+/// rather than looking for a file, because what matters is that an interpreter
+/// runs, not that one is installed somewhere.
+#[must_use]
+pub fn host_python_available() -> bool {
+    std::process::Command::new("python3")
+        .arg("-c")
+        .arg("import sys; sys.exit(0)")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 /// The `nros-launch-resolve` helper, by ABSOLUTE path (issue 0285 — never
 /// `$PATH`, where a stale `~/.nros/bin` copy shadows the in-tree one).
 /// `just setup-launch-resolve` builds it; `None` means it has not been built.
