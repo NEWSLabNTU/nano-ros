@@ -62,8 +62,48 @@ import sys
 RUN = "run-build-script-build-script-build.json"
 
 
+# A `.fingerprint/` directory ACCUMULATES. Units from configurations the tree no
+# longer builds are never removed, so a tree carries records from every shape it
+# has ever had — measured spanning 08-15 to 08-30 in one tree.
+#
+# Comparing those across trees compares museum records: two trees can "diverge"
+# on a unit neither builds any more. The first version of this tool did exactly
+# that and reported 15 path divergences, one of which survived TWO rebuilds of
+# the tree that was supposed to fix it — because that unit is not in the current
+# configuration and nothing rebuilt it.
+#
+# There is no reliable filesystem signal for "live". `invoked.timestamp` marks
+# build scripts that RE-RAN, not units that participated: measured at 9 of 64 in
+# a freshly built tree, with zero overlap against the units holding records. A
+# unit that is live but FRESH is indistinguishable from an orphan by mtime, so
+# any timestamp rule either drops live units or keeps orphans.
+#
+# So the tool does not guess. It reports the AGE SPREAD of the evidence and
+# refuses to certify a comparison whose records come from different build eras —
+# the answer to "are these trees consistent?" is only meaningful when they were
+# built from the same source state. Build the cluster, then measure.
+CONTEMPORARY_SECS = 6 * 60 * 60
+
+
+def newest_record(tree):
+    """mtime of the most recent build-script record in `tree`, or None."""
+    best = None
+    for pat in (os.path.join(tree, "*", "*", ".fingerprint", "*", RUN),
+                os.path.join(tree, "*", "*", "*", ".fingerprint", "*", RUN)):
+        for f in glob.glob(pat):
+            try:
+                m = os.path.getmtime(f)
+            except OSError:
+                continue
+            best = m if best is None else max(best, m)
+    return best
+
+
 def records(tree):
     """{unit: (env {var: val}, paths frozenset)} for one build tree.
+
+    Only units live in the tree's LAST build (see `_live_units`); a stale orphan
+    is not evidence about a directory anyone would share today.
 
     Bounded globs, not `**`: cargo puts `.fingerprint` at a known depth and a
     recursive walk over a west build tree reads hundreds of thousands of files
@@ -158,7 +198,14 @@ def self_test():
         "two DIFFERENT units in one tree were compared against each other — "
         "feature variants are normal and must never be reported"
     )
-    print("nros-shared-dir-churn: self-test OK (4 cases)")
+
+    # The vacuity guard: two trees sharing NO unit must not read as a pass.
+    with tempfile.TemporaryDirectory() as root:
+        write(root, "a", "only-in-a", {"K": "4"}, ["/s/x.rs"])
+        write(root, "b", "only-in-b", {"K": "4"}, ["/s/x.rs"])
+        rc = main([os.path.join(root, "a"), os.path.join(root, "b")])
+    assert rc == 2, f"comparing zero shared units must be INCONCLUSIVE, got rc={rc}"
+    print("nros-shared-dir-churn: self-test OK (5 cases: identical, env, paths, feature-variants, vacuity)")
 
 
 def main(argv):
@@ -171,7 +218,38 @@ def main(argv):
         print("\nneed at least two build trees to compare", file=sys.stderr)
         return 2
     findings = compare(trees)
-    shared = len({u for t in trees for u in records(t)})
+    seen = {t: records(t) for t in trees}
+    counts = collections.Counter(u for r in seen.values() for u in r)
+    shared = sum(1 for u, n in counts.items() if n > 1)
+
+    # Never certify on nothing. A tool that prints OK when it compared zero units
+    # is the vacuous-pass shape this repo gates against elsewhere
+    # (`check-no-vacuous-tests`): it reads as evidence and is the absence of it.
+    if shared == 0:
+        print(
+            f"nros-shared-dir-churn: INCONCLUSIVE — {len(trees)} trees, "
+            "no unit is common to two or more of them.",
+            file=sys.stderr,
+        )
+        print("Nothing was compared, so this is not a pass.", file=sys.stderr)
+        return 2
+
+    # Records from different build eras are not comparable: the repo moved
+    # between them, so a difference may be history rather than divergence.
+    ages = {t: newest_record(t) for t in trees}
+    known = [a for a in ages.values() if a is not None]
+    spread = (max(known) - min(known)) if known else 0
+    if spread > CONTEMPORARY_SECS:
+        import time
+        print(f"WARNING: these trees were last built {spread / 3600:.1f} h apart.")
+        for t_, a in sorted(ages.items(), key=lambda kv: (kv[1] or 0)):
+            when = time.strftime("%Y-%m-%d %H:%M", time.localtime(a)) if a else "unknown"
+            print(f"  {when}  {t_}")
+        print(
+            "A divergence between trees built from different source states may be\n"
+            "HISTORY, not a property of sharing. Rebuild the cluster, then measure.\n"
+        )
+
     if not findings:
         print(
             f"nros-shared-dir-churn: OK — {len(trees)} trees, {shared} units, "

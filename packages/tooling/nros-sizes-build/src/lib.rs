@@ -157,10 +157,71 @@ impl From<object::Error> for Error {
 /// The watch list is rustc's own depfile for the probe rlib, so it is exact and
 /// carries no hardcoded paths: every source that went into the measurement is
 /// watched, and nothing else.
+/// Locate rustc's depfile for a probe rlib. Issue 0563 / phase-400 W5.
+///
+/// Cargo writes the depfile beside the UPLIFTED artifact
+/// (`<profile>/libnros.rlib` + `<profile>/libnros.d`) and NOT beside the hashed
+/// copy in `deps/`. Measured in this repo's shared probe store: 182 uplifted
+/// rlibs, 182 depfiles, and 269 `deps/` rlibs with none.
+///
+/// `filenames` in cargo's `compiler-artifact` event can name either, so a lookup
+/// that only tried `rlib.with_extension("d")` found nothing whenever it got the
+/// `deps/` spelling — which is why the caller's watch list was empty in some
+/// builds and complete in others, for the same crate, minutes apart.
+fn probe_depfile(rlib: &Path) -> Option<PathBuf> {
+    let beside = rlib.with_extension("d");
+    if beside.is_file() {
+        return Some(beside);
+    }
+    // `deps/libnros-<hash>.rlib` -> `../libnros.d`. The hash suffix is what
+    // distinguishes the unit; the depfile is named for the CRATE.
+    let parent = rlib.parent()?;
+    if parent.file_name()? != "deps" {
+        return None;
+    }
+    let stem = rlib.file_stem()?.to_str()?;
+    let (name, _hash) = stem.rsplit_once('-')?;
+    let uplifted = parent.parent()?.join(format!("{name}.d"));
+    uplifted.is_file().then_some(uplifted)
+}
+
 fn emit_probe_watches(rlib: &Path) {
-    let dep = rlib.with_extension("d");
+    let dep = probe_depfile(rlib).unwrap_or_else(|| {
+        // NOT a silent return. This used to be `let Ok(..) = read else { return }`,
+        // which emitted ZERO watches whenever the depfile was not where it looked
+        // — see `probe_depfile` for why that was most of the time — and left the
+        // consumer's build script watching nothing of the crate it measured.
+        //
+        // That is the exact defect issue 0563 filed and this function was written
+        // to fix, reintroduced by its own error handling, and it is silent in the
+        // direction that ships: the stale size surfaces later as
+        // `EXECUTOR_OPAQUE_U64S too small` in a different crate.
+        //
+        // phase-400 W5 measured what it costs once probe dirs are SHARED: cargo
+        // decides freshness from the RECORDED path list, so one build that
+        // recorded no watches governs every consumer keyed the same way. Observed
+        // as 132 paths in nine Zephyr trees and 21 in a tenth
+        // (`just shared-dir-churn`).
+        //
+        // So the contract in the doc comment above — "every source that went into
+        // the measurement is watched" — is enforced rather than described. If it
+        // cannot be met, the build stops here, where the message can name the
+        // cause, instead of two crates away where it cannot.
+        panic!(
+            "nros-sizes-build: no depfile for probe rlib {}\n\
+             Looked beside it and, for a `deps/` artifact, at the uplifted \
+             sibling one directory up.\n\
+             Without it this probe cannot state what it measured, and the \
+             consumer would silently stop rebuilding when that crate changes \
+             (issue 0563).",
+            rlib.display()
+        )
+    });
     let Ok(text) = std::fs::read_to_string(&dep) else {
-        return;
+        panic!(
+            "nros-sizes-build: cannot read probe depfile {}",
+            dep.display()
+        )
     };
     // `<target>: <src> <src> …`. Only the first colon separates; Windows drive
     // letters are not a concern here and paths in this tree contain no spaces.
@@ -1658,6 +1719,52 @@ mod tests {
         for (k, v) in prior {
             unsafe { env::set_var(k, v) }
         }
+    }
+
+    /// Issue 0563 / phase-400 W5 — both depfile layouts, and the absent case.
+    ///
+    /// The bug this pins was a lookup that tried ONE of the two spellings. It
+    /// found the depfile for an uplifted rlib and missed it for the `deps/` copy,
+    /// so the same crate's watch list was complete in some builds and EMPTY in
+    /// others — silently, because the miss was an early `return`.
+    #[test]
+    fn probe_depfile_found_beside_and_uplifted() {
+        let dir = std::env::temp_dir().join(format!("nros-0563-{}", std::process::id()));
+        let deps = dir.join("release").join("deps");
+        std::fs::create_dir_all(&deps).expect("tmp dirs");
+
+        // 1. uplifted layout — depfile sits beside the artifact.
+        let uplifted = dir.join("release").join("libnros.rlib");
+        let uplifted_d = dir.join("release").join("libnros.d");
+        std::fs::write(&uplifted, b"").unwrap();
+        std::fs::write(&uplifted_d, b"x: y").unwrap();
+        assert_eq!(
+            probe_depfile(&uplifted).as_deref(),
+            Some(uplifted_d.as_path())
+        );
+
+        // 2. `deps/` layout — cargo writes NO depfile here; it belongs to the
+        //    uplifted sibling one directory up, named for the crate not the unit.
+        let hashed = deps.join("libnros-0a605463647b4af3.rlib");
+        std::fs::write(&hashed, b"").unwrap();
+        assert!(
+            !hashed.with_extension("d").exists(),
+            "test premise: cargo does not write a depfile beside the deps/ copy"
+        );
+        assert_eq!(
+            probe_depfile(&hashed).as_deref(),
+            Some(uplifted_d.as_path()),
+            "a deps/ rlib must resolve to the uplifted depfile — missing this is \
+             what made the watch list empty in some builds"
+        );
+
+        // 3. genuinely absent -> None, so the caller can fail loudly rather than
+        //    emit an empty watch list.
+        std::fs::remove_file(&uplifted_d).unwrap();
+        assert!(probe_depfile(&hashed).is_none());
+        assert!(probe_depfile(&uplifted).is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Issue 0528, as a test rather than a memory.

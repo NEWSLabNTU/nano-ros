@@ -839,6 +839,77 @@ unit, across trees, counts.
 On four real cyclonedds trees it reports what the manual measurement found:
 0 env divergences, 1 path divergence, `[21, 132] paths, smallest is a SUBSET`.
 
+
+### W5 open items — closed 2026-08-30, and the path-divergence finding is RETRACTED
+
+**1. The `DOTCONFIG` exemption reason — rewritten.**
+`scripts/check-path-env-fingerprints.py` exempted it as "per-zephyr-build-dir;
+zephyr leaves share no cargo group". The second clause is what W5 sets out to
+falsify, so the entry was a queued repeat of the `CORROSION_BUILD_DIR` story two
+rows above it. Replaced with the invariant that was actually measured and that
+survives W5: unset on the C/C++ lane (the one that shares), set only on the Rust
+lane (which does not, issue 0616). Stated as a TRIPWIRE — forwarding `DOTCONFIG`
+on the C lane to close a knob gap would make it a per-build-dir path inside one
+shared namespace, which is what the gate exists to prevent.
+
+**2. The 132-vs-21 path divergence — RETRACTED. It was contaminated evidence.**
+
+The finding was that 15 units record different watched-path sets across trees of
+one cluster, `nros-c-344671de436426d7` at 132 paths in nine trees and 21 in a
+tenth. Chasing it produced one real defect and one retraction, in that order.
+
+*What is real:* `emit_probe_watches` looked for the depfile ONLY at
+`rlib.with_extension("d")`, and cargo does not put it there for a hashed `deps/`
+artifact. Measured in this repo's shared probe store: **182 uplifted rlibs, 182
+depfiles, 269 `deps/` rlibs with none.** Cargo's `compiler-artifact` event can
+name either spelling. When it named the `deps/` one the lookup missed — and the
+function then did `let Ok(..) = read else { return }`, emitting ZERO watches.
+Silently. That is the defect issue 0563 filed and this function was written to
+fix, reintroduced by its own error handling, and the doc comment above it still
+claimed "every source that went into the measurement is watched".
+
+Fixed: resolve both spellings (`probe_depfile`), and PANIC rather than return
+when neither exists — the contract cannot be met, and the consequence of pretending
+otherwise surfaces two crates away as `EXECUTOR_OPAQUE_U64S too small`. Pinned by
+a unit test covering both layouts and the absent case.
+
+*What is retracted:* the claim that this explains the 21-path record. **It was
+never reproduced.** Two rebuilds of the tree holding it — one after touching
+`nros-c/build.rs` to force the script — left the record byte-identical at its
+08-16 timestamp, because that unit is not in the tree's current configuration and
+nothing rebuilds it. A `.fingerprint/` directory ACCUMULATES: records were found
+spanning 08-15 to 08-30 in one tree. Comparing trees built two weeks apart
+compares the repo's history, not a property of sharing.
+
+Re-measured on trees built from the same source state: **40 shared units, 0 env
+divergences, 0 path divergences.** The same comparison across build eras reports
+the old findings and now says why.
+
+So the depfile fix stands on its own evidence — the measured layout, the code
+path, and the test — and NOT on the symptom that led to it. Whether any live
+build reaches the `deps/` spelling is still unverified; if none does, the fix is
+hardening plus the loud failure, which is the part worth having either way.
+
+**3. `just shared-dir-churn` had two defects of its own, both found by using it.**
+
+* It compared STALE ORPHAN units. First attempted fix — filter by
+  `invoked.timestamp` — was WRONG and measurement said so: that file marks build
+  scripts that RE-RAN, not units that participated (9 of 64 in a freshly built
+  tree, **zero overlap** with the units holding records). A live-but-fresh unit is
+  indistinguishable from an orphan by mtime, so any timestamp rule either drops
+  live units or keeps orphans. The tool now does not guess: it reports the age
+  spread and refuses to certify a comparison whose trees were built more than six
+  hours apart.
+* It printed **OK on zero compared units** — a vacuous pass, the shape
+  `check-no-vacuous-tests` exists to forbid, in a tool whose entire output is a
+  safety claim. Comparing trees with no unit in common now exits INCONCLUSIVE,
+  and the self-test pins it.
+
+*The methodology this settles, and it is the actual deliverable:* **build the
+cluster, then measure it.** A fingerprint directory is a historical record, not a
+statement about the present, and this phase has now spent two separate
+investigations on that distinction — issues 0859-0862 first, this second.
+
 ### W5 design fork — D2, resolved by the per-PACKAGE call
 
 Two coherent designs exist and only one survives contact with `nros_cargo_build()`.
