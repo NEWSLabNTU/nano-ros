@@ -234,6 +234,46 @@ function(nros_resolve_knobs)
     # rather than an error. See NEWSLabNTU/nano-ros#41.
     _nros_resolve_knob(NROS_ZEPHYR_HEAP_SIZE "${CONFIG_NROS_ZEPHYR_HEAP_SIZE}")
 
+    # phase-8 — the two arenas are coupled, and nothing used to check it.
+    #
+    # On this path the EXECUTOR arena is a single heap allocation out of the
+    # PLATFORM arena, plus a fixed overhead, so the sizes are not independent:
+    #
+    #     NROS_EXECUTOR_ARENA_SIZE + overhead  <=  NROS_ZEPHYR_HEAP_SIZE
+    #
+    # Violate it and the image does not fail at link, does not fault, and does
+    # not log. It stops mid-boot on a NULL from an allocation that could never
+    # have succeeded. Measured on an FVP consumer: an executor arena of 458752
+    # against the 64 KiB default asked for 477104 bytes from a 66048-byte arena
+    # -- 7.2x the whole arena, in ONE request, decided entirely at build time.
+    # Attributing it took a nine-step bisect.
+    #
+    # Both values are known here, so this is a build error rather than a runtime
+    # hang. The overhead is EMPIRICAL, not derived: two builds differing only in
+    # NROS_EXECUTOR_ARENA_SIZE (458752 -> 100000) moved the failing request by
+    # exactly that delta, leaving a constant 18352. Treat it as a floor, not a
+    # formula -- which is why this adds margin instead of comparing bare sizes.
+    if(DEFINED NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE
+       AND NOT "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE}" STREQUAL ""
+       AND NOT "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE}" STREQUAL "0")
+        set(_nros_arena_overhead 24576)   # 18352 measured, rounded up to 24 KiB
+        math(EXPR _nros_arena_need
+             "${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE} + ${_nros_arena_overhead}")
+        if(_nros_arena_need GREATER "${NROS_RESOLVED_NROS_ZEPHYR_HEAP_SIZE}")
+            message(FATAL_ERROR
+                "nros: the executor arena cannot fit in the platform heap.\n"
+                "  NROS_EXECUTOR_ARENA_SIZE = ${NROS_RESOLVED_NROS_EXECUTOR_ARENA_SIZE}\n"
+                "  NROS_ZEPHYR_HEAP_SIZE    = ${NROS_RESOLVED_NROS_ZEPHYR_HEAP_SIZE}\n"
+                "  needed (arena + ~${_nros_arena_overhead} overhead) = ${_nros_arena_need}\n"
+                "\n"
+                "The executor arena is ONE heap allocation out of the platform "
+                "arena. Built as configured, this image would stop mid-boot on a "
+                "NULL with no fault and no log. Raise CONFIG_NROS_ZEPHYR_HEAP_SIZE "
+                "(or the NROS_ZEPHYR_HEAP_SIZE environment override) to at least "
+                "${_nros_arena_need}, or lower NROS_EXECUTOR_ARENA_SIZE.")
+        endif()
+    endif()
+
     # XRCE transport tuning.
     #
     # `XRCE_TRANSPORT_MTU` is read unprefixed by xrce-sys/build.rs. The pool
