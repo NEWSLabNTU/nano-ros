@@ -24,7 +24,7 @@ The following tests FAILED:
 Solo, immediately after each, the same lane passes:
 
 ```
-just check-rmw-cyclonedds
+just check rmw-cyclonedds
 100% tests passed, 0 tests failed out of 17
 ```
 
@@ -56,7 +56,7 @@ already.
   is a separate set and its domain allocation has not been audited against the
   lanes running beside it.
 - Whether it reproduces under deliberate load, which is the cheap next step:
-  run the lane with a parallel `just check-workspace` and see if the rate rises.
+  run the lane with a parallel `just check workspace` and see if the rate rises.
 
 ## Resolution — the domain picker walked into the OS's ephemeral port range
 

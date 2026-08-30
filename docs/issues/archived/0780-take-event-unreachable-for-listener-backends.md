@@ -124,7 +124,7 @@ signature (`destroy_service` / `destroy_client`, the two new `*_take_event`
 slots, several `get_*` graph slots) would have swapped SILENTLY.
 
 Issue 0773's write-up proposed exactly this check and deferred it. Added now as
-`scripts/check-vtable-positional-order.py` (`just check-rmw-vtable-order`, on
+`scripts/check-vtable-positional-order.py` (`just check rmw-vtable-order`, on
 the fast line): the `/*slot*/` comment sequence must be an ordered subsequence
 of the header's field order — subsequence because an initialiser may stop early
 and let C++ zero-fill, ordered because it may never name them out of sequence.

@@ -125,7 +125,7 @@ Schema-safe: `SourcePackage.git` / `.git_ref` are already `Option<String>`
 (clone-mode entries keep them, where they ARE the only pin). Verified by loading
 the index through the CLI — `SourcePackage` carries `deny_unknown_fields` and
 the whole file deserializes on load, so a successful `nros sdk-path` proves all
-fourteen edited entries parse. `just check-fast` and `check-cli-tests` green.
+fourteen edited entries parse. `just check fast` and `check-cli-tests` green.
 
 The doc comment now states the split: clone mode's `git`/`ref` are the pin;
 submodule mode has none and resolves through git.

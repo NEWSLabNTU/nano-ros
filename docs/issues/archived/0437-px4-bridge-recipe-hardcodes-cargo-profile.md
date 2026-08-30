@@ -1,6 +1,6 @@
 ---
 id: 437
-title: "`just px4 build-sitl-cpp` hardcodes `--release` and `target/release/`, so `just check-fast` is RED on main"
+title: "`just px4 build-sitl-cpp` hardcodes `--release` and `target/release/`, so `just check fast` is RED on main"
 status: resolved
 type: bug
 area: build
@@ -9,7 +9,7 @@ related: [issue-0362, phase-338]
 
 ## Symptom
 
-`just check-fast` fails on `main` — not in a feature branch, on `main`:
+`just check fast` fails on `main` — not in a feature branch, on `main`:
 
 ```
 [FAIL] hardcoded cargo profile flag: just/px4.just:168:    NROS_PX4_BRIDGE_GEN="$GEN" cargo build --release \
@@ -69,7 +69,7 @@ agree by construction, not by both happening to say `release`.
 
 ## Impact
 
-`just check-fast` is the cheapest gate in the repo and the one every other task
+`just check fast` is the cheapest gate in the repo and the one every other task
 runs first. While this is red on `main`, every unrelated change looks like it
 broke something, and the honest workflow ("green locally before pushing") is
 impossible to follow for anyone who has not already learned to ignore this
@@ -83,7 +83,7 @@ particular failure — which is exactly how a gate stops being believed.
 
 ## Resolution (2026-08-06)
 
-`just check-fast` is green on `main` (`55f8a8c16`). The PX4 SITL lane is
+`just check fast` is green on `main` (`55f8a8c16`). The PX4 SITL lane is
 deliberately release-only — one profile for the whole link, because the FFI
 archive and the symbol fixture land in the SAME PX4 image and a split would let
 PX4 link half of each — so all four sites carry `# profile-literal-ok: symbol

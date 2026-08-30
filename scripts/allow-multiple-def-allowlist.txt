@@ -1,6 +1,6 @@
 # Phase 251 — audited allowlist of build files permitted to use the linker flag
 # `--allow-multiple-definition`. SINGLE SOURCE OF TRUTH for
-# scripts/check-no-allow-multiple-def.sh (and `just check-no-allow-multiple-def`).
+# scripts/check-no-allow-multiple-def.sh (and `just check no-allow-multiple-def`).
 #
 # The flag is FORBIDDEN by default: it lets two different functions with the same
 # name coexist and silently binds callers to whichever copy the linker picks first

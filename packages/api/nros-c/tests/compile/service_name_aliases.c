@@ -20,7 +20,7 @@
  * `-Werror=deprecated-declarations`. Here it would be noise on a passing gate,
  * so it is suppressed for that section only.
  *
- * Reconstructed 2026-08-27: commit 23dcdafdc added the `just check-c` lane that
+ * Reconstructed 2026-08-27: commit 23dcdafdc added the `just check c` lane that
  * compiles this file and the probe beside it, but neither file was committed —
  * so the lane referenced a path that did not exist and `check-c` failed with
  * "No such file or directory" for everyone. Content follows `nros/service.h`'s

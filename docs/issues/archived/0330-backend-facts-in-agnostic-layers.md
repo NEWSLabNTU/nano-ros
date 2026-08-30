@@ -160,7 +160,7 @@ Two things that fell out:
 `examples/zephyr/rust/talker` still builds AND links, `nros_rmw_zenoh_register`
 simply vanishes from `librustapp.a`. No gate existed because, while the facade
 emitted the anchor, it could not go missing; moving it to the app crate makes it
-possible, so `just check-rmw-force-link-anchor`
+possible, so `just check rmw-force-link-anchor`
 (`scripts/check-rmw-force-link-anchor.sh`, wired into `check-fast`) now requires
 an anchor from any Zephyr Rust example whose `rmw-*` feature forwards to a real
 backend dep. Mutation-tested in both directions.

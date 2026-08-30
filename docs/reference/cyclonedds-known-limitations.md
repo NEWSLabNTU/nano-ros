@@ -233,7 +233,7 @@ deploying on Cortex-R52 with strict heap budgets.
 backend "works on POSIX only". Both were overtaken by phase-292/298 and stayed
 wrong for months. Current status is generated, not asserted here — see
 [Board Support Tiers](../../book/src/reference/board-support-tiers.md), checked
-by `just check-board-tiers`.)*
+by `just check board-tiers`.)*
 
 - **`nros-board-fvp-aemv8r-smp` — tier 3, build-only.** The board exists and
   Cyclone runs on it: phase-298 booted the two-tier workspace Entry on

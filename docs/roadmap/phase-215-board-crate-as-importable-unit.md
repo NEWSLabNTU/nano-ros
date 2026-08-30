@@ -419,7 +419,7 @@ a board Kconfig overlay module, `docs/reference/board-cmake-schema.md`.
 - [x] Phase 215.F drift audit passes for every
       `packages/boards/nros-board-*` carrying a `board.cmake`.
       _(verified: `nros-board-fvp-aemv8r-smp` audited clean by both the
-      `phase215_f` integration test and `just check-board-manifest-drift`.)_
+      `phase215_f` integration test and `just check board-manifest-drift`.)_
 
 ## Notes
 

@@ -50,15 +50,14 @@ NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-tool
 
 # Crates that cannot be checked for the HOST: `no_std` staticlibs (no
 # panic_handler, unwinding unsupported) and build-time helpers. Defined once so
-# `check-workspace` and `check-test-targets` cannot drift apart — a bare
+# `check::workspace` and `check::test-targets` cannot drift apart — a bare
 # `--workspace` check fails on these with "`#[panic_handler]` function required".
-HOST_UNCHECKABLE := "--exclude nros-c --exclude nros-cpp --exclude nros-rmw-zenoh-staticlib --exclude nros-rmw-xrce-cffi --exclude nros-rmw-xrce-cffi-staticlib --exclude nros-build-helpers --exclude nros-zpico-build --exclude nros-build-paths"
 
 import "just/sdk-env.just"
 # phase-399 W1 — the 200 gate recipes. `import`, not `mod`: names stay flat
-# (`just check-fast`, not `just check fast`), so no call site anywhere in the
+# (`just check fast`, not `just check fast`), so no call site anywhere in the
 # tree changes. See docs/roadmap/phase-399-justfile-surface-and-event-design.md.
-import "just/check.just"
+mod check 'just/check.just'
 
 # =============================================================================
 # Platform modules (just <platform> <recipe>)
@@ -95,7 +94,7 @@ mod probe 'just/probe.just'
 #                 test-unit, test-integration, doc.
 #   ci            CI lanes + the local mirror of every standalone CI job — one
 #                 recipe per workflow so CI yml is a thin `just <recipe>` caller:
-#                 ci, ci-fast, check-no-std, check-sdk-index, scaffold-journey,
+#                 ci, ci-fast, check::no-std, check::sdk-index, scaffold-journey,
 #                 colcon-parity, acceptance.  (See docs/development/ci-workflow-reorg.md.)
 #   full-matrix   heavy build/test sweeps: build-all, build-test-fixtures, test-all.
 #   verification  Kani/Verus formal verification.
@@ -107,7 +106,7 @@ mod probe 'just/probe.just'
 # Naming + visibility conventions:
 #   * `check-*`  static/precondition gate; the individual gates are `[private]`
 #               building blocks that the `check` aggregate chains. A gate that is
-#               ALSO a useful standalone task (e.g. `check-no-std`) goes in `ci`.
+#               ALSO a useful standalone task (e.g. `check::no-std`) goes in `ci`.
 #   * `test-*`   test runners.   `build-*` builds.   `ci` / `ci-fast` lane aggregates.
 #   * Adding a CI job ⇒ add a matching recipe here (group `ci`) + call it from the
 #     workflow yml. `just check` must stay a SUPERSET of the fast-gate workflow.
@@ -141,8 +140,8 @@ default:
         "" \
         "  WHEN SOMETHING IS WRONG" \
         "    just doctor                is this checkout/env set up correctly?" \
-        "    just check-fast            138 source gates, parallel          ~9 s" \
-        "    just check-tier-preconditions    what is stale, and why" \
+        "    just check fast            138 source gates, parallel          ~9 s" \
+        "    just check tier-preconditions    what is stale, and why" \
         "    just post-rebase           after a rebase/pull: CLI, resolver, index" \
         "" \
         "  BIGGER TIERS  (CI runs these; you rarely need them)" \
@@ -296,7 +295,7 @@ build-example-extras:
                     e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"; tc="+{{NIGHTLY}}" ;;
             esac
             # issue 0635 — the flag spelled in the FORMAT, not folded into a
-            # variable: `check-example-leaf-target-dirs` reads an emitted
+            # variable: `check::example-leaf-target-dirs` reads an emitted
             # command as text and cannot see through a `$flag`.
             t="$(nros_example_build_target_dir "$dir")"
             printf 'cd %s && %s cargo %s build %s --target-dir %s\n' \
@@ -327,7 +326,7 @@ build-all:
     # The version test used to be a quiet `-q` match piped from `make
     # --version`, inline in the condition below. Such a match cannot
     # distinguish a NON-MATCH from a matcher that failed to START, and
-    # `check-grep-q-error-conflation` ratchets on that shape. Here
+    # `check::grep-q-error-conflation` ratchets on that shape. Here
     # the mis-read is quiet rather than loud — a failed grep reads as "not 4.4"
     # and silently drops to the slower non-jobserver path — which is exactly the
     # kind of degradation nobody would ever trace back to a fork.
@@ -446,159 +445,9 @@ profile dir="." flags="":
     # profile-literal-ok: unprofiled: the build PROFILER tool (phase-251), built by a plain `cargo build`
     @"{{justfile_directory()}}/target/debug/nros-build-profile" {{dir}} {{flags}}
 
-# Check everything: Rust (native + embedded + features + examples), C, C++, Python
-# `check-decoupling` is intentionally NOT in this gate: it guards the Phase-104.A
-# "no concrete backend/platform refs in nros/nros-node" goal, which RFC-0031
-# (Stable) superseded — the `?/` forwarding + optional backend deps were
-# deliberately restored (Phase 214.S / 227.3) as the unified RMW-selection model.
-# The recipe stays runnable (`just check-decoupling`) for anyone revisiting the
-# bridge-decoupling track, but it must not fail the green `check` gate.
-# Full static gate = the fast (buildless) tier + the build tier. `just check`
-# runs both (local default + the PR/nightly CI lane). The per-push CI lane runs
-# only `check-fast` so it completes under a rapid push cadence (the build tier's
-# workspace/example clippy + nros-tests/staticlib compiles are minutes; cancelled
-# repeatedly otherwise). See docs/development/ci-workflow-reorg.md.
-# `check-cli-fresh` FIRST, ahead of both lanes — issue 0363's script says its
-# whole contribution is POSITION ("a stale CLI used to surface … minutes into
-# `just check`; here it is the first thing that runs"), and that was not true
-# for a direct `just check`. It was first within `check-build`, but `check-fast`
-# runs earlier and contains recipes that EXEC the CLI, so the in-binary guard
-# fired there instead and the dedicated probe never got its turn. Measured
-# 2026-08-17: the stale-CLI error landed at line 83 of a 96-line run, after 13
-# gates had passed, where the probe itself costs 0.21 s.
-#
-# Listed here as well as in `check-build`: just runs a dependency once per
-# invocation, so this only moves it earlier — it does not run twice. `just ci`
-# also probes via `check-tier-preconditions`; that duplicate is 0.21 s and buys
-# the property that ANY future lane gaining a CLI-using recipe stays covered.
-[group("main")]
-check: check-cli-fresh check-fast check-build check-api-parity
-    #!/usr/bin/env bash
-    set -e
-    # issue 0650 — same reason as `check-fast`'s closing line: "All checks
-    # passed!" must not stand for a gate that never ran. The ledger is shared,
-    # so this reports the fast tier's skips plus any from the build tier.
-    # shellcheck source=scripts/build/check-skip.sh
-    source scripts/build/check-skip.sh
-    nros_check_skip_report "All checks passed!"
 
-# The source-gate tier — FANNED OUT since phase-395 W11 (issue 0726 closed).
-#
-# 90 s serial -> ~8.3 s at -P24, and it runs on every pull request, every merge
-# group and every push, so this is the most-paid-for second in the tree. The 133
-# gates are 56 s of work spread over 90 s at 1-2 runnable cores; the floor is
-# now one gate (`check-rmw-ret-sign`, ~8.5 s).
-#
-# This was opt-in for two phases because one gate went red under fan-out and
-# green standalone. The cause was a `grep -q` that could not tell a forked
-# grep's EAGAIN from "no match" — 76 such sites are now converted to
-# `nros_grep_q` across every `check-fast`-reachable script, and
-# `check-grep-q-error-conflation` keeps new ones out. 17 fan-out runs green,
-# including three at `NROS_GATE_JOBS=64` for deliberate fork pressure.
-#
-# `just check-fast-serial` is the escape hatch: fail-fast ordering, one gate's
-# output at a time.
-[group("main")]
-check-fast:
-    @bash scripts/build/run-gates-parallel.sh
 
-# The GATE LIST, and the serial runner — phase-395 W11.
-#
-# `check-fast` (below) fans these out; this recipe both DECLARES them and runs
-# them one at a time. Keep it: `run-gates-parallel.sh` derives its list from
-# this dependency line, so the list has exactly one home, and a serial run is
-# the right thing when you want fail-fast ordering or unshredded output.
-[group("main")]
-check-fast-serial: _check-skip-reset \
-    check-ci-image-python-deps check-kconfig-overridden-values \
-    check-platform-abi-mirror check-abi-bindings check-board-abi-mirror check-board-manifest-drift check-profile-board-mirror check-example-matrix \
-    check-no-direct-kernel-alloc check-no-allow-multiple-def check-no-board-init check-weak-symbols \
-    check-infra-queryable-counts \
-    check-rmw-force-link-anchor check-rmw-required-slots check-rmw-slot-table check-board-tiers check-tier-priority-plan \
-    check-subtree-guard \
-    check-leaf-lockfiles check-submodule-pinned-locks check-msg-dep-is-path check-cargo-locked check-no-tracked-models check-no-tracked-workspace-roots check-orphan-generated-stamp check-generated-schema-coverage \
-    check-cbindgen-pin check-cbindgen-headers check-nuttx-shared-tree-headers check-nuttx-libc-struct-sizes check-source-manifest \
-    check-nested-workspace-excludes check-nuttx-links-snapshot \
-    check-board-cargo-config-applied check-staleness-probe-exemptions \
-    check-capability-slot-counts check-kconfig-knob-forwarding \
-    check-cargo-profile-mirror check-build-profile-literals \
-    check-version-lockstep check-workspace-fmt check-example-fmt check-cli-fmt \
-    check-readiness-marker-literals \
-    check-codegen-invocation check-string-conventions check-issue-ids \
-    check-std-census check-capability-flavour-guards check-flavour-lanes check-feature-contract check-no-std-stdio check-no-vacuous-tests check-nextest-binary-filters check-cmake-find-program-shadowed check-image-panic-policy check-cmake-image-policy check-tier-spin-gap check-rmw-api-parity check-rmw-abi-shape check-rmw-ret-sign check-rmw-vtable-order check-rmw-alloc-sites check-rmw-slot-producers check-zenohd-router-skips check-single-rust-staticlib check-cli-source-dirs check-rust-targets-covered check-api-parity-ledger check-just-recipe-refs \
-    check-absolute-paths \
-    check-c-fmt check-cpp-fmt check-python \
-    check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-emitter-just-spelling check-issue-index check-roadmap-status check-peer-sweep-lanes check-sysdep-remedies \
-    check-export-f-closure \
-    check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
-    check-cargo-target-spelling check-example-leaf-target-dirs check-example-leaf-build-dirs check-fixture-binary-names check-manifests-parse check-build-rs-rerun-paths \
-    check-lane-skip-protocol check-skip-marker-matching \
-    check-package-xml-comments check-provider-announcements check-provider-index \
-    check-zephyr-knob-agreement check-site-config check-lane-scope-consumers \
-    check-board-facts-delivery check-deploy-board-resolves \
-    check-opaque-storage-guards check-cpp-ffi-error-mapping check-submodule-pins \
-    check-rust-stdio-on-zephyr \
-    check-workspace-order \
-    check-atomic-sync-writes \
-    check-platform-provider-features \
-    check-sdk-store-not-enumerated \
-    check-goal-cdr-stripped \
-    check-test-domain-assignment check-ros-env-spelling \
-    check-zenohd-spawn-sites check-zenohd-resolution-parity \
-    check-zenohd-flag-invocations \
-    check-interface-glob-configure-depends \
-    check-wait-evidence-discarded \
-    check-path-env-fingerprints check-retired-platform-clock-symbols \
-    check-cmake-support-library \
-    check-tests-can-fail
-    #!/usr/bin/env bash
-    set -e
-    # issue 0650 — the closing sentence is REPORTED, not asserted. Six gates in
-    # this lane skip on a missing optional tool (bindgen, ROS 2, colcon, the
-    # in-tree CLI), which they must: this tier is documented to run green on a
-    # pristine worktree. What they may not do is let "Fast checks passed!" stand
-    # for gates that never ran.
-    # shellcheck source=scripts/build/check-skip.sh
-    source scripts/build/check-skip.sh
-    nros_check_skip_report "Fast checks passed!"
 
-# Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
-# embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
-# staticlib link-proof, dep-chain codegen, the example-matrix clippy, and the
-# embedded feature-unification `cargo tree` — which needs every `-sys` source
-# submodule present to resolve). Minutes + source/CLI prereqs; runs on PR + nightly
-# (`check.yml` non-push), not on every direct push to main.
-[group("main")]
-check-build: \
-    check-cli-fresh check-required-features-reachable check-host-triple-literals \
-    check-literal-domain-id \
-    check-launch-resolve-builds \
-    check-test-targets \
-    check-workspace-all check-workspace-features check-nros-log-riscv32 \
-    check-source-gates check-staticlib-symbols check-borrowed-e2e \
-    check-embedded-feature-unification \
-    check-c check-cpp check-rmw-cyclonedds check-rmw-xrce check-rmw-uorb check-cli-tests check-node-std-tests \
-    check-required-features-tests \
-    check-feature-set-ssot \
-    check-no-tracked-file-find \
-    check-pool-inventory \
-    check-mem-report \
-    check-claim-protocol \
-    check-flake-quarantine \
-    check-ci-doc-workflow-refs \
-    check-ps-zombie-blind \
-    check-gate-selftests \
-    check-lane-contracts \
-    check-skippable-tests-tolerant \
-    check-no-alloc-image \
-    check-lane-skip-class \
-    check-grep-q-error-conflation \
-    check-no-silent-sample-drop \
-    check-sched-dim-arms \
-    check-image-paths-apply-policy \
-    native::check
-    @echo "Build checks passed!"
 
 # Two sessions opened `phase-350` for unrelated work on 2026-08-13, neither able
 # to see the other — the same check-then-act race as issue ids, in the third
@@ -639,7 +488,7 @@ issue-new slug="":
 # pointing `core.hooksPath` at tracked scripts means a clone can run repo code on
 # push, so it stays opt-in and `just setup` calls it explicitly.
 #
-# The builtins are VISIBILITY; `check-submodule-pins` + the hook are ENFORCEMENT.
+# The builtins are VISIBILITY; `check::submodule-pins` + the hook are ENFORCEMENT.
 # Git has no setting that refuses a rewind, but it does know how to describe one,
 # and by default it does not: a pin move renders as two hex strings
 # (`-Subproject commit d3f0d26` / `+Subproject commit 43ddb0e`) whose order no
@@ -835,10 +684,10 @@ test-unit verbose="":
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
     # `nros-rmw-{zenoh,dds,xrce}-cffi` excluded for the same reason as
-    # `check-workspace`: their `*Rmw` type imports are platform-feature
+    # `check::workspace`: their `*Rmw` type imports are platform-feature
     # gated, and `cargo nextest run --workspace` activates no features.
     # Real coverage of these shims comes from their per-feature
-    # invocations under `check-workspace-features`.
+    # invocations under `check::workspace-features`.
     args=(--workspace --exclude nros-tests \
           --exclude nros-rmw-xrce-cffi \
           --exclude nros-rmw-xrce-cffi-staticlib \
@@ -948,12 +797,12 @@ test-integration verbose="":
 # skip, so a BARE `cargo nextest run` counts every unmet precondition as a
 # failure. Only the junit rewrite turns them back into skips — and it used to
 # live inside `test-all` and `_nextest-platform`, so a lane that called nextest
-# directly (`check-required-features-tests`) reported thirteen capability skips
+# directly (`check::required-features-tests`) reported thirteen capability skips
 # as a tier-1 red on any host without `ros-<distro>-rmw-zenoh-cpp`, hiding every
 # step after it.
 #
 # Takes the nextest arguments verbatim; callers keep their own `--features` /
-# `--test` spelling so `check-required-features-reachable` can still read
+# `--test` spelling so `check::required-features-reachable` can still read
 # reachability off the literal text.
 [private]
 _nextest-tolerant +nextest_args:
@@ -1040,7 +889,7 @@ _nextest-platform test_name verbose="" feature_args="" filter="":
     # A target behind `required-features` is skipped SILENTLY by cargo — not
     # reported as filtered, not counted anywhere — so a caller needing one must
     # ask for its feature. The caller passes the WHOLE FLAG (`--features rmw`),
-    # not a bare feature name, because `check-required-features-reachable` reads
+    # not a bare feature name, because `check::required-features-reachable` reads
     # reachability off the literal `--features` text in this file: a
     # `--features {{{{feature_args}}}}` here would leave the real feature name
     # spelled nowhere the gate can see, which is the gate-narrower-than-its-rule
@@ -1198,7 +1047,7 @@ test-zpico-multisession verbose="":
     fi
     just _nextest-tolerant "${args[@]}"
     # issue 0652 — `loan_e2e` for the same reason, and it is why the feature is
-    # off `check-required-features-tests`: it runs a publisher and a subscriber
+    # off `check::required-features-tests`: it runs a publisher and a subscriber
     # in ONE process (same-process pub/sub on a single session hits zenoh-pico's
     # write filter), so it needs the pool this lane's env provides. #0652 named
     # this recipe as its home and left the wiring undone, so the target stayed
@@ -1285,19 +1134,19 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
     fi
 # Build ONLY the compile-check fixtures (issue 0034 / issue 0871).
 #
-# `check-source-gates` runs three `cargo test`s that ASSERT a prebuilt
-# `.compile-ok` stamp. It sits in `check-build`, which CI runs on pull requests
+# `check::source-gates` runs three `cargo test`s that ASSERT a prebuilt
+# `.compile-ok` stamp. It sits in `check::build`, which CI runs on pull requests
 # in a job that builds no fixtures at all — so every PR failed with
 #
 #     Test fixture binary not prebuilt: build/compile-check-fixtures/
 #     platform_hdr_posix_cpp_heap/.compile-ok
 #
-# while `main` stayed green, because the same job runs only `check-fast` on
+# while `main` stayed green, because the same job runs only `check::fast` on
 # push. A gate `main` never runs is the issue-0196 class: the build side and the
 # test side disagreeing about what exists.
 #
 # Separate from `build-test-fixtures` because that builds the whole matrix; this
-# is the small subset `check-source-gates` actually asserts, so CI can afford it
+# is the small subset `check::source-gates` actually asserts, so CI can afford it
 # as a step. `build-test-fixtures` calls THIS, so there is one spelling.
 [group("build")]
 build-compile-check-fixtures builder="":
@@ -1325,29 +1174,29 @@ build-compile-check-fixtures builder="":
 # staleness gate and the test run derive from ONE computation, which is what
 # `ci_lane.rs` already claimed and only two of the three actually did.
 #
-# issue 0677 — `check-fast` runs FIRST, before anything expensive.
+# issue 0677 — `check::fast` runs FIRST, before anything expensive.
 #
 # Every other dependency here asks "is the ENVIRONMENT ready to build?"
 # (`_require-build-sources`, `_require-leaf-includes`, the generators). None
 # asked "is the TREE in a state where building is MEANINGFUL?", so a defect a
 # static gate already names was discovered by a multi-hour multi-platform
 # compile instead: #0532 item 5 retired the wall-clock pair, `nros-c` kept
-# calling it, and `check-retired-platform-clock-symbols` — which names both
+# calling it, and `check::retired-platform-clock-symbols` — which names both
 # symbols and was already failing — sat in a lane nothing on this path ran.
 # The link error surfaced two fixture rebuilds later.
 #
-# `check-fast` is the right edge precisely because of the contract documented
+# `check::fast` is the right edge precisely because of the contract documented
 # on it: BUILDLESS and SOURCE-FREE, no CLI, no `nros sync`, no provisioned
 # toolchain, green in 23s on a pristine detached worktree. That is what makes
 # this dependency affordable in front of a build measured in hours, and it is
-# the property to preserve — a gate added to `check-fast` that needs the
+# the property to preserve — a gate added to `check::fast` that needs the
 # environment makes THIS edge expensive, and an expensive edge gets deleted.
 #
 # "Run `just ci` first" is not a substitute: fixtures must already be fresh for
 # `test-all` to mean anything, so the honest order is build-then-test, which
 # puts the expensive step first by construction.
 [group("full-matrix")]
-build-test-fixtures lane="all": check-fast _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": check::fast _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
@@ -1355,7 +1204,7 @@ build-test-fixtures lane="all": check-fast _require-build-sources _clear-fixture
     # template crates whose tests only prove they compile — the test asserts the
     # `.compile-ok` stamp instead of running cargo at run time.
     #
-    # ONE spelling, because `check-source-gates` needs these too and CI runs it
+    # ONE spelling, because `check::source-gates` needs these too and CI runs it
     # in a job that builds no fixtures (issue 0871). Calling the recipe rather
     # than re-invoking the script keeps the two callers from drifting.
     just build-compile-check-fixtures
@@ -1370,18 +1219,18 @@ build-test-fixtures lane="all": check-fast _require-build-sources _clear-fixture
     nros_fixtures_stamp_write "$(nros_lane_arg "{{lane}}")"
     # issue 0499 option 2 — record the identity reading HERE, where the tree is
     # known-fresh, because this is the one moment its number can be trusted. In
-    # `check-fast` the same script reads whatever a long-lived tree accumulated;
+    # `check::fast` the same script reads whatever a long-lived tree accumulated;
     # here the stamp was just written, so `started_at` filters to exactly what
     # this build produced.
     #
     # REPORT, never fail: a build that produced its artifacts correctly must not
     # be failed by a budget, and a red at the end of a 40-minute build is the
-    # kind nobody can act on. The gate in `check-fast` still fails; this only
+    # kind nobody can act on. The gate in `check::fast` still fails; this only
     # makes the trustworthy reading visible, so drift shows up as a moving
     # number in build logs instead of surfacing days later on a stale tree.
     bash scripts/check-artifact-identity-budget.sh || true
     # issue 0616 — the archives exist now, so ask them whether any image ships
-    # two allocators. This is the check `check-feature-contract` clause (e)
+    # two allocators. This is the check `check::feature-contract` clause (e)
     # cannot make: it counts DEFINITIONS IN SOURCE (exactly one, always), while
     # the invariant is per LINKED ARTIFACT and there are four staticlib roots.
     # Hard failure, not `|| true`: a duplicate lang item is a broken image, not
@@ -1888,7 +1737,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # That is how `zephyr-qos-port` sat switched off since phase-329. The
     # `binary()` half is gated statically on the fast line; the `test()` half
     # needs the test list, which only this lane has.
-    just check-nextest-test-filters
+    just check nextest-test-filters
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))
@@ -1903,7 +1752,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     # it. `custom_transport_loopback` is the one target behind `rmw`, and it
     # needs native fixtures, which is why it belongs HERE (`test-all` depends on
     # `_require-fixtures`) rather than in the fixture-free
-    # `check-required-features-tests`.
+    # `check::required-features-tests`.
     #
     # BEFORE the main run, not after, and that ordering is load-bearing: every
     # `cargo nextest` invocation rewrites `junit.xml`, and `_rewrite-skipped-junit`
@@ -2073,7 +1922,7 @@ rust-rtos-link-check: _require-leaf-includes
     # permanent false-STALE source when a probe and a builder disagree.
     # These two wrote `examples/<leaf>/target/` — a plain `cd <leaf> && cargo
     # build`, which is verbatim the second build path phase-340 P2 names. The
-    # gate `check-example-leaf-target-dirs` calls that shape either residue or
+    # gate `check::example-leaf-target-dirs` calls that shape either residue or
     # "a writer this gate cannot see"; it was the latter, found by deleting the
     # dirs and watching exactly these two come back during `just ci`.
     #
@@ -2152,7 +2001,7 @@ rust-rtos-link-check: _require-leaf-includes
 #
 # L0 and L1 need NO FIXTURES. That is not a new property, it is one this tree
 # already had and did not expose: only `test` and `test-all` depend on
-# `_require-fixtures-ready`, while `check-fast`, `check-build` and `test-unit`
+# `_require-fixtures-ready`, while `check::fast`, `check::build` and `test-unit`
 # do not. Measured 2026-08-28: 89 of 163 test FILES call a fixture resolver and
 # 74 do not, so a large share of the suite was gated behind a precondition it
 # never needed.
@@ -2160,14 +2009,14 @@ rust-rtos-link-check: _require-leaf-includes
 # An agent or an outside contributor can run L0+L1 on a fresh clone with no SDK,
 # no QEMU and no cross toolchain.
 
-# L0 is `just ci-fast`, which already exists (`check-fast check-no-std`). It is
+# L0 is `just ci-fast`, which already exists (`check::fast check::no-std`). It is
 # NOT re-spelled here as `ci-l0`: a second name for one lane is the "two
 # spellings" defect this tree keeps paying for, and the map from lane to verb
 # belongs in the doc, not in a duplicate recipe.
 
 # phase-395 W17 — does each platform's CI evidence SUPPORT the tier it claims?
 #
-# The network half of `check-board-tiers`. That gate is in `check-fast`: offline
+# The network half of `check::board-tiers`. That gate is in `check::fast`: offline
 # and deterministic, so it can prove a tier's obligation is STRUCTURALLY met and
 # cannot know whether the lane is GREEN — it printed "Board support tiers match
 # the evidence" while the 0 7 nightly failed on three platforms.
@@ -2699,7 +2548,7 @@ build-workspace-embedded:
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    # issue 0287 — same DERIVED exclude list as check-workspace-embedded. These
+    # issue 0287 — same DERIVED exclude list as check::workspace-embedded. These
     # two carried byte-identical 20-line hand-written copies; keeping one list
     # in one place is the point, since a member added to one and not the other
     # fails in whichever lane was forgotten, in an unrelated crate.
@@ -3119,7 +2968,7 @@ setup-cli:
     # issue 0596 — SOURCE staleness, not `bin -nt resolver`. Having just built
     # the CLI, that comparison was true forever: `setup-launch-resolve` no-ops
     # when the resolver's sources are unchanged, so it never relinks. Same
-    # helper as check-tier-preconditions, one spelling.
+    # helper as check::tier-preconditions, one spelling.
     source scripts/build/launch-resolve-stale.sh
     if nros_launch_resolve_stale "$root"; then
         echo "[setup-cli] WARNING: nros-launch-resolve is older than its own SOURCES." >&2
@@ -3137,8 +2986,8 @@ setup-cli:
 # so rebuilding fixtures BEFORE the CLI re-stales everything you just built.
 #
 # Paid four times in one session, each time as a different-looking failure:
-# three red `check-fast` gates (a stale CLI), a `nros sync` refusing on the 0409
-# pin guard (a stale resolver), and `check-issue-index` red (concurrent filings
+# three red `check::fast` gates (a stale CLI), a `nros sync` refusing on the 0409
+# pin guard (a stale resolver), and `check::issue-index` red (concurrent filings
 # on main). None of them says "you just rebased".
 #
 # What it deliberately does NOT do is touch submodules. AGENTS.md is explicit
@@ -3160,7 +3009,7 @@ post-rebase:
     #    or `nros sync` refuses (issue 0409) — deep in a fixture build, not here.
     just setup-launch-resolve || exit 1
     # 3. The generated issue list. `merge=union` means concurrent filings on
-    #    main both land; the generator re-sorts and `check-issue-index` is the
+    #    main both land; the generator re-sorts and `check::issue-index` is the
     #    backstop for whatever residue that leaves.
     python3 scripts/gen-issue-index.py || exit 1
     echo ""
@@ -3190,7 +3039,7 @@ post-rebase:
         echo "             ($uninit_n uninitialised — normal; init only what you build.)"
     fi
     echo ""
-    echo "post-rebase: done. Fixtures are NOT rebuilt — \`just check-tier-preconditions\`"
+    echo "post-rebase: done. Fixtures are NOT rebuilt — \`just check tier-preconditions\`"
     echo "             reports what the tier you are about to run still needs."
 
 

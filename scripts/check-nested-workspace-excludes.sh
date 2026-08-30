@@ -22,7 +22,7 @@
 # phase-331 renamed and folded workspaces; the root's five `ws-*` exclude paths
 # went stale in the move and two live leaves (`realtime-rust/src/zephyr_entry`,
 # `safety/src/zephyr_rust_safety_entry`) lost their root exclude. Nothing failed:
-# `cargo metadata` at the ROOT is happy, `just check-fast` is happy, and the
+# `cargo metadata` at the ROOT is happy, `just check fast` is happy, and the
 # breakage only appears when someone runs cargo (or west) from inside the leaf —
 # which in CI is the embedded lane, a day of latency away.
 #

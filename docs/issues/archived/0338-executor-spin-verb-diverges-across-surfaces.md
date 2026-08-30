@@ -73,7 +73,7 @@ on the global `nros::ok()`, which is what the free-function `nros::spin()` uses.
 `std_compat`'s `executor_spin(...)` chrono wrapper became `executor_spin_for`,
 with the old name deprecated the same way. Only ONE in-tree caller existed.
 
-**Guard:** `tests/compile/spin_verbs.cpp`, run by `just check-cpp`. It is a
+**Guard:** `tests/compile/spin_verbs.cpp`, run by `just check cpp`. It is a
 COMPILE-time probe because the defect was the SHAPE of the API — which arities
 exist and what they mean — so the assertion that catches a regression is that
 these calls type-check with these signatures. Mutation-checked: renaming the new
@@ -104,7 +104,7 @@ an entity — and have no rclc counterpart, so C6's "additions are fine" applies
 and `register` is the honest verb. Renaming them for symmetry would have made
 the API less accurate, not more.
 
-**Guard:** `nros-c/tests/compile/executor_verb_aliases.c`, run by `just check-c`.
+**Guard:** `nros-c/tests/compile/executor_verb_aliases.c`, run by `just check c`.
 It takes function POINTERS to both spellings and asserts the alias resolves to
 the SAME function, so a macro pointing at a nonexistent symbol fails at the gate
 rather than at some consumer's link step. Mutation-checked: deleting one alias

@@ -56,7 +56,7 @@ staleness guard) landed with zero e2e coverage from this suite.
    dropped-`nano-ros`-segment derivations.
 2. Re-triage whatever still fails after the paths are right — 287's ament
    reshape may have changed plan/build outputs the asserts encode.
-3. Wire the suite into a lane: minimum `just check-cli-tests` (or fold into
+3. Wire the suite into a lane: minimum `just check cli-tests` (or fold into
    `test-all`) running `cargo test --manifest-path packages/cli/Cargo.toml`;
    the heavier fixture builds may need the same prebuilt-fixture treatment as
    the main suite (no compilation inside tests is the repo rule — several of
@@ -109,7 +109,7 @@ What landed instead:
      synthesises the component name for staticlib pkgs).
    Assertions updated to the live recorder's id scheme (no more
    `node_`/`pub_`/`timer_` prefixes).
-3. **Lane wired**: `just check-cli-tests` (private, in `check-build`) runs
+3. **Lane wired**: `just check cli-tests` (private, in `check-build`) runs
    `cargo test --manifest-path packages/cli/Cargo.toml --workspace` — the ~870
    unit tests + the salvaged e2e now run on every `just check`. A cwd race in
    `phase_212_f_bringup` (two `set_current_dir` tests, process-global cwd)

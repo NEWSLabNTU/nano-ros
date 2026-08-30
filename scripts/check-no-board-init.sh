@@ -16,7 +16,7 @@
 # appearing on the same (non-comment) line as `nros_board_common`. `ThreadxConfig`
 # (a config trait that was never part of board_init) stays allowed.
 #
-# Hooked from `just check` via `just check-no-board-init`.
+# Hooked from `just check` via `just check no-board-init`.
 
 set -euo pipefail
 

@@ -21,12 +21,12 @@ resolved_in: "scripts/ci/dep-chain-check.sh — own-feature detect + package.xml
 >    ship no `package.xml` (no generated interfaces) → "Failed to read
 >    package.xml". Fixed: skip codegen when `$ex/package.xml` is absent.
 >
-> Validated: `just check-dep-chain` → **9 passed, 0 failed (of 9 cells)**.
+> Validated: `just check dep-chain` → **9 passed, 0 failed (of 9 cells)**.
 
 ## Symptom
 
 `scripts/ci/dep-chain-check.sh` (the `check.yml` per-(board,rmw) resolution gate,
-now also `just check-dep-chain`) fails 2 of 9 cells:
+now also `just check dep-chain`) fails 2 of 9 cells:
 
 ```
 error: the package 'stm32f4-bsp-talker' does not contain this feature: rmw-zenoh

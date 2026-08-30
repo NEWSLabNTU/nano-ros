@@ -621,7 +621,7 @@ pub unsafe extern "C" fn nros_executor_count_subscribers(
 /// and that is deliberate: cbindgen does not expand macros, so a
 /// macro-generated `#[no_mangle]` function gets no header declaration and is
 /// uncallable from C — which is the entire point of these. Measured, not
-/// assumed: the macro version compiled, passed `just check-c`, and produced
+/// assumed: the macro version compiled, passed `just check c`, and produced
 /// zero lines in `nros_generated.h`. The shared body lives in a private helper
 /// instead, so there is still one implementation.
 #[cfg(feature = "rmw-cffi")]

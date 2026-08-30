@@ -10,7 +10,7 @@ related: [issue-0559, issue-0582, issue-0457, issue-0463, phase-351]
 
 ## Symptom
 
-`just check-fast` — and therefore `just ci` — is red:
+`just check fast` — and therefore `just ci` — is red:
 
 ```
 check-cargo-config-tracked: pure sync-output cargo config IS tracked:

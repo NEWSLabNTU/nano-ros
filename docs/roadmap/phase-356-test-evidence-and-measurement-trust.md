@@ -260,7 +260,7 @@ be built to exercise a call that cannot succeed.
 
 ## SMP bring-up — feasibility MEASURED 2026-08-20, and it is closer than costed
 
-The compile half is done (all three arms; `just check-sched-dim-arms`). This is
+The compile half is done (all three arms; `just check sched-dim-arms`). This is
 the state of the run half, established by probing rather than by reading.
 
 **The host can build AND run a Zephyr SMP image today.** Zephyr's own

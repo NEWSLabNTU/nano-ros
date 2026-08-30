@@ -180,7 +180,7 @@ format:
 # Lint and check all code (packages + Python)
 check:
     just check-packages
-    just check-python
+    just check python
 
 # === QUALITY COMMANDS ===
 

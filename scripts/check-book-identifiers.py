@@ -23,7 +23,7 @@ positives go in EXEMPT with a reason, not silenced by loosening the
 regexes.
 
 Run:  python3 scripts/check-book-identifiers.py
-Gate: just check-book-identifiers
+Gate: just check book-identifiers
 """
 
 import os

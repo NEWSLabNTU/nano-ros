@@ -384,7 +384,7 @@ first cut was 583 ms; memoising the batch driver and dropping a fork per row
 did the rest. If a sweep shows that mattering, make the EXPORT cheaper — never
 add a second eligibility rule in Rust.
 
-Verified without a provisioned tree: `just check-fast`, `check-fixture-groups`,
+Verified without a provisioned tree: `just check fast`, `check-fixture-groups`,
 `build_root_derivation.sh` (54 checks), `nros-tests` lib + lane +
 `tests/fixture_group_resolution.rs`. That last one drives the export with
 `NROS_FIXTURE_SHARED_PLATFORMS` widened to include `linux` — B3's exact change —
@@ -2671,7 +2671,7 @@ observed from the gate's side, and it is also what issue 0464 is about.
 
 The consequence for the gate: **its count grows with how many times the tree has
 been built, not with what the source says.** A budget recorded on one tree
-red-lights another that merely built more, and `just check-fast` then fails for
+red-lights another that merely built more, and `just check fast` then fails for
 a reason no diff explains — which is expensive precisely because the gate is in
 the fast tier that every task runs first.
 

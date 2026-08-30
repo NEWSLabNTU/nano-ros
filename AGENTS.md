@@ -30,7 +30,7 @@ used to be.
 
 The 200 `check-*` gates live in `just/check.just`, brought in with **`import`**
 (a namespace MERGE) rather than `mod` (which namespaces). So every name stays
-flat — `just check-fast`, never `just check fast` — and no call site changed.
+flat — `just check fast`, never `just check fast` — and no call site changed.
 `check`, `check-fast`, `check-fast-serial` and `check-build` stay in the root
 justfile because their DEPENDENCY LISTS are the contract:
 `scripts/build/run-gates-parallel.sh` parses `check-fast-serial`'s out of the

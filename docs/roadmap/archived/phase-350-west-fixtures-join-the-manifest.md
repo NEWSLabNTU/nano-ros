@@ -170,7 +170,7 @@ remaining true one is `esp-idf-smoke`; two are exempt postprocess rows.
 W3-blocked by construction, not zero-risk. The comment is accurate today (it
 says nothing runs those two examples), so it stays until W3 decides.
 
-*Acceptance, met:* `just check-fixtures-manifest` green with the new `--check`
+*Acceptance, met:* `just check fixtures-manifest` green with the new `--check`
 leg; `grep -rn 'int32.observer\|int32_observer'` returns only archived docs and
 this phase's own issue.
 

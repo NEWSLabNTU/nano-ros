@@ -2,13 +2,13 @@
 // latest-value polling subscriber (analog of
 // `autoware_utils::InterProcessPollingSubscriber`).
 //
-// The header `-fsyntax-only` loop in `just check-cpp` only PARSES the templates;
+// The header `-fsyntax-only` loop in `just check cpp` only PARSES the templates;
 // it does not instantiate them. This TU instantiates `PollingSubscription`
 // against a message type matching the generated shape (`SERIALIZED_SIZE_MAX`,
 // `TYPE_NAME`, `TYPE_HASH`, `ffi_deserialize`), so the wrapper BODY
 // (`drain`, `take_data`, `take_new_data`, `take`, `peek`) is type-checked and
 // the `Node::create_polling_subscription` factory path is exercised.
-// `just check-cpp` compiles this with `-fsyntax-only -std=c++14`.
+// `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
 #include <nros/nros.hpp>
 
 #include <type_traits>

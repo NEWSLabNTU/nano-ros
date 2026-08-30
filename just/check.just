@@ -1,3 +1,203 @@
+# The gate tiers and the 198 gates they run — `just check <name>`.
+#
+# `mod`, not `import`. Phase-399 moved these 200 recipes out of the root
+# justfile and deliberately kept them FLAT, on the argument that nobody types a
+# gate name so a namespace buys nothing while renaming every call site. That
+# was right about the typing and wrong about the listing: 62 of the gates were
+# public, so `just --list` still opened with a wall of `check-*`.
+#
+#   just check                the full tier (default recipe below)
+#   just check fast           138 source gates, parallel            ~9 s
+#   just check fast-serial    the same set, one at a time
+#   just check build          the compile tier
+#   just check <gate>         one gate, by the name it prints when it fails
+#
+# ONE spelling, no forwarders: the ~330 references across docs, scripts,
+# packages and workflows were rewritten with the rename rather than aliased,
+# so what a gate is called is what the tool prints, what the docs say, and what
+# you type — with no second name that drifts.
+#
+# `default` must be the FIRST recipe: `just <module>` runs a module's first
+# recipe, not the one named `default`. Getting that wrong made `just ci`
+# silently run a weaker tier during the sibling reorg.
+
+set working-directory := '..'
+
+# Both re-derived here rather than inherited: a `mod` does not see the root's
+# variables, and every sibling module (native, esp32, workspace) already does
+# exactly this. NIGHTLY reads the PINNED toolchain file rather than copying a
+# version string, so the four copies cannot disagree about which nightly —
+# they all answer from `tools/rust-toolchain.toml`.
+NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
+
+# Workspace members that cannot be checked on the host: staticlib/cdylib crates
+# whose link step needs a target toolchain. Used only by the gates, so it lives
+# here now — the root had no other user.
+HOST_UNCHECKABLE := "--exclude nros-c --exclude nros-cpp --exclude nros-rmw-zenoh-staticlib --exclude nros-rmw-xrce-cffi --exclude nros-rmw-xrce-cffi-staticlib --exclude nros-build-helpers --exclude nros-zpico-build --exclude nros-build-paths"
+
+# Check everything: Rust (native + embedded + features + examples), C, C++, Python
+# `decoupling` is intentionally NOT in this gate: it guards the Phase-104.A
+# "no concrete backend/platform refs in nros/nros-node" goal, which RFC-0031
+# (Stable) superseded — the `?/` forwarding + optional backend deps were
+# deliberately restored (Phase 214.S / 227.3) as the unified RMW-selection model.
+# The recipe stays runnable (`just decoupling`) for anyone revisiting the
+# bridge-decoupling track, but it must not fail the green `default` gate.
+# Full static gate = the fast (buildless) tier + the build tier. `just default`
+# runs both (local default + the PR/nightly CI lane). The per-push CI lane runs
+# only `fast` so it completes under a rapid push cadence (the build tier's
+# workspace/example clippy + nros-tests/staticlib compiles are minutes; cancelled
+# repeatedly otherwise). See docs/development/ci-workflow-reorg.md.
+# `cli-fresh` FIRST, ahead of both lanes — issue 0363's script says its
+# whole contribution is POSITION ("a stale CLI used to surface … minutes into
+# `just default`; here it is the first thing that runs"), and that was not true
+# for a direct `just default`. It was first within `build`, but `fast`
+# runs earlier and contains recipes that EXEC the CLI, so the in-binary guard
+# fired there instead and the dedicated probe never got its turn. Measured
+# 2026-08-17: the stale-CLI error landed at line 83 of a 96-line run, after 13
+# gates had passed, where the probe itself costs 0.21 s.
+#
+# Listed here as well as in `build`: just runs a dependency once per
+# invocation, so this only moves it earlier — it does not run twice. `just ci`
+# also probes via `tier-preconditions`; that duplicate is 0.21 s and buys
+# the property that ANY future lane gaining a CLI-using recipe stays covered.
+[group("main")]
+default: cli-fresh fast build api-parity
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — same reason as `fast`'s closing line: "All checks
+    # passed!" must not stand for a gate that never ran. The ledger is shared,
+    # so this reports the fast tier's skips plus any from the build tier.
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_skip_report "All checks passed!"
+
+# The source-gate tier — FANNED OUT since phase-395 W11 (issue 0726 closed).
+#
+# 90 s serial -> ~8.3 s at -P24, and it runs on every pull request, every merge
+# group and every push, so this is the most-paid-for second in the tree. The 133
+# gates are 56 s of work spread over 90 s at 1-2 runnable cores; the floor is
+# now one gate (`rmw-ret-sign`, ~8.5 s).
+#
+# This was opt-in for two phases because one gate went red under fan-out and
+# green standalone. The cause was a `grep -q` that could not tell a forked
+# grep's EAGAIN from "no match" — 76 such sites are now converted to
+# `nros_grep_q` across every `fast`-reachable script, and
+# `grep-q-error-conflation` keeps new ones out. 17 fan-out runs green,
+# including three at `NROS_GATE_JOBS=64` for deliberate fork pressure.
+#
+# `just fast-serial` is the escape hatch: fail-fast ordering, one gate's
+# output at a time.
+[group("main")]
+fast:
+    @bash scripts/build/run-gates-parallel.sh
+
+# The GATE LIST, and the serial runner — phase-395 W11.
+#
+# `fast` (below) fans these out; this recipe both DECLARES them and runs
+# them one at a time. Keep it: `run-gates-parallel.sh` derives its list from
+# this dependency line, so the list has exactly one home, and a serial run is
+# the right thing when you want fail-fast ordering or unshredded output.
+[group("main")]
+fast-serial: \
+    ci-image-python-deps kconfig-overridden-values \
+    platform-abi-mirror abi-bindings board-abi-mirror board-manifest-drift profile-board-mirror example-matrix \
+    no-direct-kernel-alloc no-allow-multiple-def no-board-init weak-symbols \
+    infra-queryable-counts \
+    rmw-force-link-anchor rmw-required-slots rmw-slot-table board-tiers tier-priority-plan \
+    subtree-guard \
+    leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots orphan-generated-stamp generated-schema-coverage \
+    cbindgen-pin cbindgen-headers nuttx-shared-tree-headers nuttx-libc-struct-sizes source-manifest \
+    nested-workspace-excludes nuttx-links-snapshot \
+    board-cargo-config-applied staleness-probe-exemptions \
+    capability-slot-counts kconfig-knob-forwarding \
+    cargo-profile-mirror build-profile-literals \
+    version-lockstep workspace-fmt example-fmt cli-fmt \
+    readiness-marker-literals \
+    codegen-invocation string-conventions issue-ids \
+    std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
+    absolute-paths \
+    c-fmt cpp-fmt python \
+    nuttx-integration-makefile eyre-context-alias core-only-predicate workspace-build-output cc-build-policy ffi-struct-mirrors sizes-header-mirrors retired-submodule-refs no-absolute-model-paths \
+    cpp-freestanding-includes fixtures-manifest fixture-id-guard generated-leaf-regenerable cargo-config-tracked doc-refs book-links book-no-just emitter-just-spelling issue-index roadmap-status sysdep-remedies \
+    export-f-closure peer-sweep-lanes \
+    activate-shells build-root fixture-groups rmw-descriptors artifact-identity-budget \
+    cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs fixture-binary-names manifests-parse build-rs-rerun-paths \
+    lane-skip-protocol skip-marker-matching \
+    package-xml-comments provider-announcements provider-index \
+    zephyr-knob-agreement site-config lane-scope-consumers \
+    board-facts-delivery deploy-board-resolves \
+    opaque-storage-guards cpp-ffi-error-mapping submodule-pins \
+    rust-stdio-on-zephyr \
+    workspace-order \
+    atomic-sync-writes \
+    platform-provider-features \
+    sdk-store-not-enumerated \
+    goal-cdr-stripped \
+    test-domain-assignment ros-env-spelling \
+    zenohd-spawn-sites zenohd-resolution-parity \
+    zenohd-flag-invocations \
+    interface-glob-configure-depends \
+    wait-evidence-discarded \
+    path-env-fingerprints retired-platform-clock-symbols \
+    cmake-support-library \
+    tests-can-fail
+    # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
+    # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
+    # depend on a root recipe, so it is called rather than depended on. It must
+    # still run FIRST: it truncates the ledger every gate below appends to.
+    @just _check-skip-reset
+    #!/usr/bin/env bash
+    set -e
+    # issue 0650 — the closing sentence is REPORTED, not asserted. Six gates in
+    # this lane skip on a missing optional tool (bindgen, ROS 2, colcon, the
+    # in-tree CLI), which they must: this tier is documented to run green on a
+    # pristine worktree. What they may not do is let "Fast checks passed!" stand
+    # for gates that never ran.
+    # shellcheck source=scripts/build/check-skip.sh
+    source scripts/build/check-skip.sh
+    nros_check_skip_report "Fast checks passed!"
+
+# Build tier — gates that COMPILE or need the workspace to RESOLVE (workspace +
+# embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
+# staticlib link-proof, dep-chain codegen, the example-matrix clippy, and the
+# embedded feature-unification `cargo tree` — which needs every `-sys` source
+# submodule present to resolve). Minutes + source/CLI prereqs; runs on PR + nightly
+# (`default.yml` non-push), not on every direct push to main.
+[group("main")]
+build: \
+    cli-fresh required-features-reachable host-triple-literals \
+    literal-domain-id \
+    launch-resolve-builds \
+    test-targets \
+    workspace-all workspace-features nros-log-riscv32 \
+    source-gates staticlib-symbols borrowed-e2e \
+    embedded-feature-unification \
+    c cpp rmw-cyclonedds rmw-xrce rmw-uorb cli-tests node-std-tests \
+    required-features-tests \
+    feature-set-ssot \
+    no-tracked-file-find \
+    pool-inventory \
+    mem-report \
+    claim-protocol \
+    flake-quarantine \
+    ci-doc-workflow-refs \
+    ps-zombie-blind \
+    gate-selftests \
+    lane-contracts \
+    skippable-tests-tolerant \
+    no-alloc-image \
+    lane-skip-class \
+    grep-q-error-conflation \
+    no-silent-sample-drop \
+    sched-dim-arms \
+    image-paths-apply-policy
+    # `native::check`, which was a DEPENDENCY at the root. A module cannot name
+    # another module's recipe — from in here `native::` would mean a submodule
+    # of `check` — so it becomes an explicit call. Same constraint the sibling
+    # `ci` module hit.
+    @just native check
+    @echo "Build checks passed!"
+
 # nano-ros gate recipes — phase-399 W1.
 #
 # The 200 `check-*` recipes that `check-fast-serial` / `check-build` fan out
@@ -45,7 +245,7 @@
 # people stop running.
 # Kept as an alias for anyone with it in muscle memory; `check-fast` IS this now.
 [private]
-check-fast-parallel:
+fast-parallel:
     @bash scripts/build/run-gates-parallel.sh
 
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
@@ -58,7 +258,7 @@ check-fast-parallel:
 # NIGHTLY, always: `rustfmt.toml` enables nightly-only options and stable
 # produces different output (CLAUDE.md).
 [private]
-check-workspace-fmt:
+workspace-fmt:
     cargo +{{NIGHTLY}} fmt --check
 
 # Compile the TEST targets. Buildless gates never touch `#[cfg(test)]` code, and
@@ -88,13 +288,13 @@ check-workspace-fmt:
 # `check-fast` + `check-build`, so a local `just check` / `just ci` runs the
 # identical set, and CI still runs it on PR + nightly. What changes is that the
 # push lane can now finish — measured on a pristine, source-free, CLI-free
-# checkout: `just check-fast` green in 23s, two graceful skips, no failures.
+# checkout: `just check fast` green in 23s, two graceful skips, no failures.
 #
 # The reason it was written (a struct field breaking every test initializer
 # while buildless gates stay green — twice in one session) is untouched: the
 # gate still runs, in the tier that can actually compile.
 [private]
-check-test-targets:
+test-targets:
     #!/usr/bin/env bash
     set -euo pipefail
     # clippy, not `cargo check`: it COMPILES the same targets, so linting here
@@ -106,7 +306,7 @@ check-test-targets:
         {{HOST_UNCHECKABLE}} -- -D warnings
     # The CLI is its own workspace (own manifest + lock) and its exclusions have
     # a single home in `check-cli-clippy` — call it rather than restate them.
-    just check-cli-clippy
+    just check cli-clippy
     echo "clippy + test targets clean (root + cli)."
 
 # issue 0560 reason 2 — `setup-launch-resolve` was a dependency of
@@ -127,7 +327,7 @@ check-test-targets:
 # lane answers a different question — "can this be checked?" — and the honest
 # answer without the submodule is no.
 [private]
-check-launch-resolve-builds:
+launch-resolve-builds:
     #!/usr/bin/env bash
     set -euo pipefail
     resolve="packages/cli/third-party/play_launch/src/ros-launch-resolve/resolve/Cargo.toml"
@@ -146,7 +346,7 @@ check-launch-resolve-builds:
 # runtime BY DESIGN (the verb under test is a compile-driver; see
 # nros-cli-core/tests/plan_pipeline_e2e.rs).
 [private]
-check-cli-tests:
+cli-tests:
     #!/usr/bin/env bash
     set -e
     cargo test --manifest-path packages/cli/Cargo.toml --workspace --quiet
@@ -173,7 +373,7 @@ check-cli-tests:
 # reader of the process environment — is behind a non-default `env` feature for
 # the same reason, so its 11 tests were in no lane the hour they were written.
 # Same recipe, because it is the same defect class, not a new one.
-check-node-std-tests:
+node-std-tests:
     #!/usr/bin/env bash
     set -e
     cargo test -p nros-node --lib --features std --quiet
@@ -215,7 +415,7 @@ check-node-std-tests:
 # `Executor::signal_fd()` had been dead on every Linux host (issue 0667). Same
 # thesis as the three above, one capability further out.
 [group("test")]
-check-required-features-tests:
+required-features-tests:
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -296,7 +496,7 @@ check-required-features-tests:
     echo "required-features test targets passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on
-# packages/cli, so ~107 warnings accreted unnoticed. Mirrors check-cli-tests
+# packages/cli, so ~107 warnings accreted unnoticed. Mirrors cli-tests
 # (separate workspace, its own Cargo.toml/lock). Two deliberate deviations from
 # a bare `--workspace` clippy:
 #   * `--exclude ros-launch-manifest-{model,sched,types}` — these are vendored
@@ -307,7 +507,7 @@ check-required-features-tests:
 #     and reach clippy-driver ("Unrecognized option: 'locked'"). Passing it
 #     ourselves makes the shim skip its own injection.
 [private]
-check-cli-clippy:
+cli-clippy:
     #!/usr/bin/env bash
     set -e
     cargo clippy --manifest-path packages/cli/Cargo.toml --workspace --all-targets \
@@ -326,21 +526,21 @@ check-cli-clippy:
 # build failed on the wire, capabilities a mixed workspace lost), so drift here
 # needs a check rather than a convention. Buildless.
 [private]
-check-feature-set-ssot:
+feature-set-ssot:
     @./scripts/check-feature-set-ssot.sh
 
 # Forbid `find` scans for git-tracked files (7m36s -> 0.8s, measured).
 # Ratchet: no NEW `grep -q` conditional that reads a tool error as a
 # non-match (issue 0726). Existing sites are baselined per file.
 [private]
-check-grep-q-error-conflation:
+grep-q-error-conflation:
     @python3 scripts/check-grep-q-error-conflation.py
 
 # Issue 0737 — an example's message callback may not drop a sample silently.
 # From outside the process a silent `return` and a message that never arrived
 # are the SAME observation; that ambiguity cost two hosts an investigation each.
 [private]
-check-no-silent-sample-drop:
+no-silent-sample-drop:
     @python3 scripts/check-no-silent-sample-drop.py
 
 # phase-373 W1 — every `test()`/`binary()` predicate in .config/nextest.toml must
@@ -350,15 +550,15 @@ check-no-silent-sample-drop:
 # sources. It needs the test binaries, so it runs from `test-all` rather than
 # `just check`, which builds none.
 [private]
-check-nextest-test-filters:
+nextest-test-filters:
     @python3 scripts/check-nextest-test-filters.py
 
 [group("check")]
-check-no-tracked-file-find:
+no-tracked-file-find:
     @./scripts/check-no-tracked-file-find.sh
 
 [private]
-check-version-lockstep:
+version-lockstep:
     @./scripts/check-version-lockstep.sh
 
 # Compile-time SOURCE/precondition gates that ship as `nros-tests` test binaries
@@ -367,7 +567,7 @@ check-version-lockstep:
 # wrapped here so `just check` runs the identical set. Compiles nros-tests, so
 # slower than the buildless gates but still a static/precondition check.
 [private]
-check-source-gates:
+source-gates:
     #!/usr/bin/env bash
     set -e
     # These tests assert a BUILD-STAGE stamp (`.compile-ok`), so this gate has
@@ -435,7 +635,7 @@ check-source-gates:
 # violated that. Formatting needs no dependency graph, so calling `rustfmt`
 # per file honours the tier and cannot regress this way again.
 [private]
-check-example-fmt:
+example-fmt:
     #!/usr/bin/env bash
     set -e
     # Enumerate via the git index (tracked files only) — no filesystem
@@ -463,7 +663,7 @@ check-example-fmt:
 # the `--allow-multiple-definition` masked dups are ONLY the shared Rust dep
 # closure (no app ODR violation). The `check.yml` staticlib step (SSoT).
 [private]
-check-staticlib-symbols:
+staticlib-symbols:
     #!/usr/bin/env bash
     set -e
     bash scripts/build/link-determinism-fixture.sh
@@ -478,7 +678,7 @@ check-staticlib-symbols:
 # (cargo + codegen + a raw gcc/g++ link with a weak config-variant anchor) fits no
 # `compile_check_fixture` builder.
 [private]
-check-borrowed-e2e:
+borrowed-e2e:
     #!/usr/bin/env bash
     set -e
     bash scripts/build/borrowed-e2e-fixture.sh
@@ -490,7 +690,7 @@ check-borrowed-e2e:
 # Embedded feature-unification guard — no `feature "std"` activation path may
 # reach an embedded target's production-link view. The `check.yml` step (SSoT).
 [private]
-check-embedded-feature-unification:
+embedded-feature-unification:
     #!/usr/bin/env bash
     set -e
     # shellcheck source=scripts/lib/grep-q.sh
@@ -511,19 +711,19 @@ check-embedded-feature-unification:
 
 # Canonical `nros codegen` invocation-shape guard. The `check.yml` step (SSoT).
 [private]
-check-codegen-invocation:
+codegen-invocation:
     @scripts/ci/codegen-invocation-check.sh
 
 # String-convention guards (forbidden org / retired-tool refs in user surfaces).
 # The `check.yml` step (SSoT).
 [private]
-check-string-conventions:
+string-conventions:
     @scripts/ci/string-conventions-check.sh
 
 # Issue 0481 — a readiness grep naming an AMBIGUOUS literal waits out its whole
 # timeout in silence and still passes. Buildless: reads sources only.
 [private]
-check-readiness-marker-literals:
+readiness-marker-literals:
     @bash scripts/check-readiness-marker-literals.sh
 
 # Issue-id integrity: ids unique across docs/issues/ + archived/, and each
@@ -531,14 +731,14 @@ check-readiness-marker-literals:
 # picking the same "next free" id — six were duplicated across thirteen files
 # before this gate existed, which made every `See 0051-*` pointer ambiguous.
 [private]
-check-issue-ids:
+issue-ids:
     @scripts/ci/issue-ids-check.sh
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens
 # when a gate here needs more than the index).
 [private]
-check-absolute-paths:
+absolute-paths:
     @scripts/ci/absolute-path-check.sh
 
 # Per-platform (board, rmw) dependency-chain resolution — proves each cell's dep
@@ -547,7 +747,7 @@ check-absolute-paths:
 # nros CLI; SKIPS cleanly when ROS isn't sourced so `just check` still runs
 # everywhere (CI sources ROS).
 [private]
-check-dep-chain:
+dep-chain:
     #!/usr/bin/env bash
     set -e
     if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
@@ -565,7 +765,7 @@ check-dep-chain:
 # Phase 121.4.b — verify <nros/platform.h> matches the Rust extern block
 # and the `nros_platform_export_*!` macro emissions in nros-platform-cffi.
 [private]
-check-platform-abi-mirror:
+platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
 
 # RFC-0054 (phase-299 W3) — the committed bindgen output must match a fresh
@@ -579,7 +779,7 @@ check-platform-abi-mirror:
 # nano-ros build, no SDK, seconds — so it belongs on the fast line where every
 # task runs it. Loud skip when the host has no cmake/ninja/compiler: `check-fast`
 # is documented to run green on a pristine worktree.
-check-cmake-support-library:
+cmake-support-library:
     #!/usr/bin/env bash
     set -euo pipefail
     _missing=""
@@ -589,19 +789,19 @@ check-cmake-support-library:
     if [ -n "$_missing" ]; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
-        nros_check_skip check-cmake-support-library \
+        nros_check_skip cmake-support-library \
             "missing host tool(s):$_missing"
         exit 0
     fi
     ./tests/cmake-support-library-tests.sh
 
-check-abi-bindings:
+abi-bindings:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v bindgen >/dev/null 2>&1; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
-        nros_check_skip check-abi-bindings \
+        nros_check_skip abi-bindings \
             "bindgen-cli not installed (cargo install bindgen-cli --locked --version 0.72.1)"
         exit 0
     fi
@@ -622,13 +822,13 @@ check-abi-bindings:
 # Phase 176.4 — verify <nros/board.h> matches the Rust extern block
 # and the `nros_board_export!` macro emission in nros-board-cffi.
 [private]
-check-board-abi-mirror:
+board-abi-mirror:
     @bash scripts/check-board-abi-mirror.sh
 
 # issue 0488 residue 4 follow-up — the NuttX integration Makefile is on a path no
 # lane executes (`CONFIG_NROS` is set by no shipped defconfig), so it rots.
 [private]
-check-nuttx-integration-makefile:
+nuttx-integration-makefile:
     @bash scripts/check-nuttx-integration-makefile.sh
 
 # Issue 0555 — `nros_platform_clock_{ms,us}` are `static inline` wrappers in
@@ -637,39 +837,39 @@ check-nuttx-integration-makefile:
 # (#541, upstream 5dc2fa869, #547, #548), and #548 asked for this gate by name.
 # Two arms: a use with the header out of scope, and a hand-written `extern`
 # declaration — which compiles and then fails at link. Buildless.
-check-retired-platform-clock-symbols:
+retired-platform-clock-symbols:
     @python3 scripts/check-retired-platform-clock-symbols.py
 
 # eyre's `Context` alias is behind `#[cfg(feature = "anyhow")]` from 0.6.13, so
 # code using it compiles only against a graph that resolves 0.6.12.
 [private]
-check-eyre-context-alias:
+eyre-context-alias:
     @bash scripts/check-eyre-context-alias.sh
 
 # phase-340 W2.d — `--core-only` selects by the derived variant predicate; this
 # holds it equivalent to the authored-`target_dir` spelling it replaced, on
 # every platform a caller actually passes.
 [private]
-check-core-only-predicate:
+core-only-predicate:
     @bash packages/testing/nros-tests/tests/core_only_predicate.sh
 
 # phase-344 W7 — RFC-0070 R1 at WORKSPACE scope only. examples/** copy-out
 # leaves keep the Cargo/CMake convention and are deliberately exempt.
 [private]
-check-workspace-build-output:
+workspace-build-output:
     @bash scripts/check-workspace-build-output.sh
 
 # issue 0478 — every cc::Build must name the nano-ros cc policy helper
 # (the strict diagnostics of 0383, and the clang-only frame-pointer flag gcc
 # rejects). Both classes escaped once through an unrouted call site.
 [private]
-check-cc-build-policy:
+cc-build-policy:
     @bash scripts/check-cc-build-policy.sh
 
 # Issue 0160 — hand-mirrored FFI structs (component.h vs cbindgen's
 # nros_cpp_ffi.h) must not drift on append (the #131 stale-mirror ABI class).
 [private]
-check-ffi-struct-mirrors:
+ffi-struct-mirrors:
     @bash scripts/check-ffi-struct-mirrors.sh
 
 # Issue 0268 — the per-build sizes headers (`nros_{,cpp_}config_generated.h`)
@@ -679,19 +879,19 @@ check-ffi-struct-mirrors:
 # (0268: freertos C, 336 bytes; 0245: zephyr C++, 32 bytes). Scans whatever
 # build trees exist locally; prints the tree count so a vacuous pass is visible.
 [private]
-check-sizes-header-mirrors:
+sizes-header-mirrors:
     @bash scripts/check-sizes-header-mirrors.sh
 
 # Issue 0336 — a retired submodule path must not survive anywhere that a user or
 # a CI job would follow it. RFC-0060's sweep missed scripts/bootstrap.sh, nine
 # doc copies and eight workflow refs; this grep would have caught all of them.
 [private]
-check-retired-submodule-refs:
+retired-submodule-refs:
     @bash scripts/check-retired-submodule-refs.sh
 
 # phase-327 W3 (issue 0368) — no hand-written sudo-apt remedy text in just
 # recipes; the [system.*] index class + `nros setup --system` own that text.
-check-sysdep-remedies:
+sysdep-remedies:
     @bash scripts/check-sysdep-remedies.sh
 
 # issue 0372 — `activate.sh` / `activate.fish` are SOURCED, so anything that
@@ -702,7 +902,7 @@ check-sysdep-remedies:
 # available shell against both store shapes and asserts they reach their last
 # line. zsh/fish absent = loud skip, never a silent pass.
 [private]
-check-activate-shells:
+activate-shells:
     @bash scripts/check-activate-shells.sh
 
 # Phase 215.F.2 — board-crate manifest drift gate. For every
@@ -712,7 +912,7 @@ check-activate-shells:
 # cmake face and the Cargo face. Skips when the in-tree `nros` CLI isn't
 # built (the packages/cli phase215_f integration test still covers it).
 [private]
-check-board-manifest-drift:
+board-manifest-drift:
     @bash scripts/check-board-manifest-drift.sh
 
 # Phase 230.0.2 (RFC-0034) — no crate may call the host kernel allocator
@@ -720,7 +920,7 @@ check-board-manifest-drift:
 # nros_platform_alloc. Advisory until Wave 1 migrates the inventory
 # (set NROS_ALLOC_GATE_HARD=1 to enforce).
 [private]
-check-no-direct-kernel-alloc:
+no-direct-kernel-alloc:
     @bash scripts/check-no-direct-kernel-alloc.sh
 
 # Phase 251 — forbid `--allow-multiple-definition` in the build system (it lets
@@ -728,13 +928,13 @@ check-no-direct-kernel-alloc:
 # any non-allowlisted real use; allowlist (scripts/allow-multiple-def-allowlist.txt)
 # carries the audited exceptions, target empty. Buildless.
 [private]
-check-no-allow-multiple-def:
+no-allow-multiple-def:
     @bash scripts/check-no-allow-multiple-def.sh
 
 # Phase 313 W6 — forbid the retired `nros_board_common::board_init` API from
 # creeping back (boards use `nros_platform::board::*` or the C ABI). Buildless.
 [private]
-check-no-board-init:
+no-board-init:
     @bash scripts/check-no-board-init.sh
 
 # Issue 0330 (class of 0155/0163) — a Zephyr Rust example whose `rmw-*` feature
@@ -745,7 +945,7 @@ check-no-board-init:
 # `zephyr_component_main!` (so it could not go missing); 0330 moved it to the
 # app crate, which is what makes this gate necessary. Buildless.
 [private]
-check-rmw-force-link-anchor:
+rmw-force-link-anchor:
     @bash scripts/check-rmw-force-link-anchor.sh
 
 # Issues 0332 + 0349 — the RMW vtable's required-slot list and its
@@ -754,7 +954,7 @@ check-rmw-force-link-anchor:
 # but not expect-ed refuses working backends (0349 — how xrce became
 # unregistrable). Checked both directions. Buildless.
 [private]
-check-rmw-required-slots:
+rmw-required-slots:
     @bash scripts/check-rmw-required-slots.sh
 
 # phase-320 W2 — board support tiers must match the evidence, and every board
@@ -768,12 +968,12 @@ check-rmw-required-slots:
 # It had drifted to describing a 33-slot ABI that was really 74: 17 dead names,
 # 61 slots unmentioned. Buildless.
 [private]
-check-rmw-slot-table:
+rmw-slot-table:
     @python3 scripts/gen-rmw-slot-table.py --self-test
     @python3 scripts/gen-rmw-slot-table.py --check
 
 [private]
-check-board-tiers:
+board-tiers:
     @python3 scripts/check-board-tiers.py
     @python3 scripts/gen-board-support-table.py --check
 
@@ -786,7 +986,7 @@ check-board-tiers:
 # cross-references each plan against the code it describes, so the plan cannot
 # drift into a second spelling of the same fact. Buildless.
 [private]
-check-tier-priority-plan:
+tier-priority-plan:
     @python3 scripts/check-tier-priority-plan.py
 
 # RFC-0079 §4.1 — finish the check `check-tier-priority-plan` DEFERS.
@@ -813,7 +1013,7 @@ check-tier-priority-plan-image config="":
 # that tier's whole contract ("needs neither the nros CLI nor any provisioned
 # source"): every buildless gate became unreachable on a tree whose CLI was
 # merely out of date — which ANY pull, rebase or stash makes it, since the stamp
-# covers CLI sources. Measured: `just check-fast` failed in 0.77s having checked
+# covers CLI sources. Measured: `just check fast` failed in 0.77s having checked
 # nothing. Four source-level reds sat on main behind exactly this.
 #
 # phase-395 W12 — `check-dep-chain` has since MOVED OUT of `check-build` to
@@ -824,14 +1024,14 @@ check-tier-priority-plan-image config="":
 # cause beats failing minutes in with a cargo resolution error. The post-submit
 # lane runs this same predicate before its own dep-chain step.
 [private]
-check-cli-fresh:
+cli-fresh:
     @bash scripts/check-cli-fresh.sh
 
 # Issue 0652 — a `required-features` target no recipe enables is invisible:
 # cargo does not report it as filtered, it simply never builds it, so it looks
 # like coverage while running nothing. Baseline is a shrinking backlog.
 [group("main")]
-check-required-features-reachable:
+required-features-reachable:
     @python3 scripts/check-required-features-reachable.py
 
 # Issue 0582 — a place meaning "the host" spelled as a literal triple. Nine
@@ -840,7 +1040,7 @@ check-required-features-reachable:
 # names neither. Invisible on x86, which is why it survived a year after being
 # written down.
 [group("main")]
-check-host-triple-literals:
+host-triple-literals:
     @python3 scripts/check-host-triple-literals.py
 
 # Issues 0400/0706/0712 — EVERY `export -f` list in scripts/build/ must close
@@ -850,11 +1050,11 @@ check-host-triple-literals:
 # that build_root_derivation.sh covered the other — true, but that scenario
 # EXECUTES one call path, so a helper on a branch not taken is invisible to it.
 [private]
-check-export-f-closure:
+export-f-closure:
     @bash scripts/check-export-f-closure.sh
 
 [group("main")]
-check-literal-domain-id:
+literal-domain-id:
     @python3 scripts/check-literal-domain-id.py
 
 # Issue 0550 — a submodule checked out BEHIND the commit the superproject
@@ -863,7 +1063,7 @@ check-literal-domain-id:
 # observe it. It runs as the first item of `check-tier-preconditions`, ahead of
 # the CLI stamp, because `git submodule update` rewrites source mtimes and would
 # re-stale anything cleared before it. Exposed standalone for diagnosis.
-check-submodule-drift:
+submodule-drift:
     @bash scripts/check-submodule-drift.sh
 
 # Issue 0359 — leaf `Cargo.lock` files outside the root workspace must keep
@@ -875,7 +1075,7 @@ check-submodule-drift:
 # backlog can only shrink. ~30s (it resolves each leaf; NOT `--offline`, which
 # would conflate a cold cargo cache with real drift).
 [private]
-check-leaf-lockfiles:
+leaf-lockfiles:
     @bash scripts/check-leaf-lockfiles.sh
 
 # issue 0560 — a lock whose dependency versions are decided by a SUBMODULE's
@@ -888,7 +1088,7 @@ check-leaf-lockfiles:
 # resolution is what breaks. Sub-second, no network, and the leaf set is DERIVED
 # from `.gitmodules` rather than listed.
 [private]
-check-submodule-pinned-locks:
+submodule-pinned-locks:
     @python3 scripts/check-submodule-pinned-locks.py
 
 # RFC-0067 D1 / phase-333 W2 — a generated message crate must be referenced as a
@@ -899,7 +1099,7 @@ check-submodule-pinned-locks:
 # unclosable. A path dep has no registry in its resolution at all, from any cwd.
 # Also fails on leftover retired message patch entries. Buildless.
 [private]
-check-msg-dep-is-path:
+msg-dep-is-path:
     @bash scripts/check-msg-dep-is-path.sh
 
 # A nested workspace's `exclude` needs a matching repo-root exclude, or cargo
@@ -910,7 +1110,7 @@ check-msg-dep-is-path:
 # resolves fine, so the break only shows up in the embedded lane. Pure text, no
 # cargo invocation. Buildless.
 [private]
-check-nested-workspace-excludes:
+nested-workspace-excludes:
     @bash scripts/check-nested-workspace-excludes.sh
 
 # phase-339 W3 / issue 0433 — no NuttX consumer may link the SHARED live kernel
@@ -919,7 +1119,7 @@ check-nested-workspace-excludes:
 # architecture's fixtures. Consumers resolve the per-arch export snapshot
 # through `nros_board_common::nuttx_export` instead. Source grep, buildless.
 [private]
-check-nuttx-links-snapshot:
+nuttx-links-snapshot:
     @bash scripts/check-nuttx-links-snapshot.sh
 
 # issue 0445 / 0442 — every freshness probe shares ONE exemption rule and ONE
@@ -928,7 +1128,7 @@ check-nuttx-links-snapshot:
 # message. Issue 0444 hid behind 0442 (an exemption applied on one probe arm
 # and not its sibling) for exactly as long as those cells read STALE.
 [private]
-check-staleness-probe-exemptions:
+staleness-probe-exemptions:
     @bash scripts/check-staleness-probe-exemptions.sh
 
 # issue 0460 — a capability's service count must match the slots the executor
@@ -937,7 +1137,7 @@ check-staleness-probe-exemptions:
 # live in `nros-node`, which does not depend on it — so nothing in the type
 # system ties them together.
 [private]
-check-capability-slot-counts:
+capability-slot-counts:
     @bash scripts/check-capability-slot-counts.sh
 
 # issue 0460 — a knob Kconfig forwards must be read by the Rust lane too. The
@@ -946,7 +1146,7 @@ check-capability-slot-counts:
 # compiled its crates' defaults whatever Kconfig said — silently, for every
 # knob at once.
 [private]
-check-kconfig-knob-forwarding:
+kconfig-knob-forwarding:
     @bash scripts/check-kconfig-knob-forwarding.sh
 
 # issue 0440 — a leaf that deploys to a board must carry that board's STATIC
@@ -956,7 +1156,7 @@ check-kconfig-knob-forwarding:
 # node package's config and dropped the whole `-l<kernel lib>` group — valid
 # TOML, happy cargo, and every NuttX Rust entry failing at LINK time.
 [private]
-check-board-cargo-config-applied:
+board-cargo-config-applied:
     #!/usr/bin/env bash
     # phase-341 W4 — REPLACED. The old gate (a shell script of this name,
     # deleted 2026-08-21 once nothing invoked it) asked whether a leaf still
@@ -982,7 +1182,7 @@ check-board-cargo-config-applied:
     if ! nros_cli_usable "$nros"; then
         # shellcheck source=scripts/build/check-skip.sh
         source scripts/build/check-skip.sh
-        nros_check_skip check-board-projections "$nros_cli_unusable_reason"
+        nros_check_skip board-projections "$nros_cli_unusable_reason"
         exit 0
     fi
     fail=0
@@ -1022,24 +1222,24 @@ check-board-cargo-config-applied:
 # instead. Measured before W0: 27 of 64 structs had none, purely because three
 # crates predated the schema emitter and nobody said so.
 [private]
-check-generated-schema-coverage:
+generated-schema-coverage:
     @python3 scripts/check-generated-schema-coverage.py
 
 # `nros sync` skips the leaf with a count instead of a name. Buildless.
 [private]
-check-deploy-board-resolves:
+deploy-board-resolves:
     @python3 scripts/check-deploy-board-resolves.py
 
 [private]
-check-board-facts-delivery:
+board-facts-delivery:
     @python3 scripts/check-board-facts-delivery.py
 
 [private]
-check-lane-scope-consumers:
+lane-scope-consumers:
     @python3 scripts/check-lane-scope-consumers.py
 
 [private]
-check-no-tracked-models:
+no-tracked-models:
     @bash scripts/check-no-tracked-models.sh
 
 # issue 0359/0378 — `--locked` is injected project-wide by the scripts/bin/cargo
@@ -1047,7 +1247,7 @@ check-no-tracked-models:
 # cmake/corrosion, which invoke `cargo` by name). This asserts the mechanism is
 # still wired; without it every build silently rewrites Cargo.lock. Buildless.
 [private]
-check-cargo-locked:
+cargo-locked:
     @bash scripts/check-cargo-locked.sh
 
 # Issue 0452 — cbindgen's requirement must stay EXACT and inherited, because the
@@ -1056,7 +1256,7 @@ check-cargo-locked:
 # lock is never committed), so a caret req is how 0.29.4 output lands in a tree
 # whose lock says 0.29.3. Buildless.
 [private]
-check-cbindgen-pin:
+cbindgen-pin:
     @bash scripts/check-cbindgen-pin.sh
 
 # Issue 0525 — NuttX is built IN PLACE and one checkout serves both arches, so
@@ -1064,7 +1264,7 @@ check-cbindgen-pin:
 # LAST. A compile input taken from there silently gets the other arch (issue
 # 0511: the ARM image linked with the RISC-V memory map). Buildless.
 [private]
-check-nuttx-shared-tree-headers:
+nuttx-shared-tree-headers:
     @python3 scripts/check-nuttx-shared-tree-headers.py
 
 # Issue 0570 — the vendored NuttX `libc` fork mirrors NuttX's opaque types as
@@ -1079,11 +1279,11 @@ check-nuttx-shared-tree-headers:
 # filter, build output cannot leak in, deterministic order, dep-info parsed as
 # Make syntax, and failures fatal. Hermetic (throwaway git repo in $TMPDIR).
 [private]
-check-source-manifest:
+source-manifest:
     @bash scripts/check-source-manifest.sh
 
 [private]
-check-nuttx-libc-struct-sizes:
+nuttx-libc-struct-sizes:
     @python3 scripts/check-nuttx-libc-struct-sizes.py
 
 # Issue 0586 — the C++ FFI must not discard a backend error in favour of
@@ -1091,7 +1291,7 @@ check-nuttx-libc-struct-sizes:
 # UNMAPPED variants. Also holds the two mappers exhaustive, so a NEW variant
 # fails to compile until someone maps it (issue 0557 is what the collapse cost).
 [private]
-check-cpp-ffi-error-mapping:
+cpp-ffi-error-mapping:
     @python3 scripts/check-cpp-ffi-error-mapping.py
 
 # A submodule pin may only move FORWARD. Every submodule here keeps linear
@@ -1102,7 +1302,7 @@ check-cpp-ffi-error-mapping:
 # `socklen_t` build fix, and nothing noticed for seven hours.
 # Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
 [private]
-check-submodule-pins:
+submodule-pins:
     @bash scripts/ci/submodule-pins-check.sh
 
 # The sibling of `check-submodule-pins`: that one asks whether a pin moved the
@@ -1128,7 +1328,7 @@ check-submodule-pins:
 # failure — "your submodule is unpushed" is a false and very specific
 # accusation to make at an offline laptop, and the remedy it implies is wrong.
 [group("check")]
-check-submodule-commits-reachable:
+submodule-commits-reachable:
     #!/usr/bin/env bash
     set -uo pipefail
     source scripts/build/lane-skip.sh
@@ -1147,7 +1347,7 @@ check-submodule-commits-reachable:
 # print on native_sim, it recurses in `zvfs_write` until the stack is gone. Go
 # through `cpp_diag!`, which uses std stdio only where that is safe.
 [private]
-check-rust-stdio-on-zephyr:
+rust-stdio-on-zephyr:
     @python3 scripts/check-rust-stdio-on-zephyr.py
 
 # Issue 0452 — the committed cbindgen headers must match a fresh generation.
@@ -1155,7 +1355,7 @@ check-rust-stdio-on-zephyr:
 # direction since RFC-0054. Builds no longer regenerate these in place, so
 # without this gate a stale header could sit in the tree indefinitely.
 [private]
-check-cbindgen-headers:
+cbindgen-headers:
     @cargo run -q -p nros-cbindgen-headers -- --check
 
 # A cargo profile defined in BOTH `Cargo.toml` and `.cargo/config.toml` must
@@ -1164,7 +1364,7 @@ check-cbindgen-headers:
 # silently gives half the tree different optimization settings, with no error
 # anywhere. Buildless.
 [private]
-check-cargo-profile-mirror:
+cargo-profile-mirror:
     @bash scripts/check-cargo-profile-mirror.sh
 
 # phase-336 — no build site may NAME a cargo profile: the flag and the artifact
@@ -1172,13 +1372,13 @@ check-cargo-profile-mirror:
 # builder writes one directory, the reader looks in another), which is why it
 # is a gate and not a convention.
 [private]
-check-build-profile-literals:
+build-profile-literals:
     @bash scripts/check-build-profile-literals.sh
 
 # Issue 0320 — committed SystemModels must be portable: no absolute host paths in
 # `meta.inputs[].path`. Buildless; regenerate with `nros sync`.
 [private]
-check-no-absolute-model-paths:
+no-absolute-model-paths:
     @bash scripts/check-no-absolute-model-paths.sh
 
 # Issue 0332 — nros-cpp public headers must not include a hosted STL header
@@ -1186,23 +1386,23 @@ check-no-absolute-model-paths:
 # gate: the `-ffreestanding` compile probe runs against the host's full
 # libstdc++ and cannot see the 0112 class.
 [private]
-check-cpp-freestanding-includes:
+cpp-freestanding-includes:
     @bash scripts/check-cpp-freestanding-includes.sh
 
 # Phase 247 W2 (issue 0050) — fast source-level weak-symbol gate: fail when an
 # owned C/C++/asm file outside the audited allowlist
 # (scripts/weak-symbols-allowlist.txt, shared with weak_symbol_audit.rs)
 # introduces a weak symbol, or a listed file's count drifts. Buildless + fast.
-# The deeper image gate is `just check-weak-symbols-image` (needs fixtures).
+# The deeper image gate is `just check weak-symbols-image` (needs fixtures).
 [private]
-check-weak-symbols:
+weak-symbols:
     @bash scripts/check-weak-symbols.sh
 
 # Phase 176.3 — verify the orchestration generator's PlatformProfile
 # board-crate references match the actual board crates (existence +
 # `run` entry). Skips when the colcon-nano-ros submodule is absent.
 [private]
-check-profile-board-mirror:
+profile-board-mirror:
     @bash scripts/check-profile-board-mirror.sh
 
 # Phase 247 W1 (issue 0050) — image-level weak-symbol gate: assert each
@@ -1211,13 +1411,13 @@ check-profile-board-mirror:
 # fixtures (skips covered classes whose artifacts are absent) — NOT in the fast
 # `check` aggregate; run after the fixture build / in the per-platform CI lanes.
 # The fast source-level half is `weak_symbol_audit.rs` (in `just test`).
-check-weak-symbols-image:
+weak-symbols-image:
     @bash scripts/check-weak-symbols-image.sh
 
 # Phase 118.I.5 — keep collapsed examples from regrowing a retired RMW
 # directory axis without an explicit documented carve-out.
 [private]
-check-example-matrix:
+example-matrix:
     @bash scripts/check-example-matrix.sh
 
 # The fixture manifest's own validators — every `[[workspace_fixture]]` and
@@ -1235,7 +1435,7 @@ check-example-matrix:
 # Buildless and source-free (path existence + regex over tracked files), ~0.1s
 # for all 112 rows, so it belongs in the per-push fast tier.
 [private]
-check-fixtures-manifest:
+fixtures-manifest:
     @python3 scripts/build/fixtures-manifest.py validate-workspaces
     @python3 scripts/build/fixtures-manifest.py validate-compile-checks
     # Issue 0482 — plain `[[fixture]]` rows had NO validator at all, while the
@@ -1261,7 +1461,7 @@ check-fixtures-manifest:
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id
 # collision is what breaks these.
-check-doc-refs:
+doc-refs:
     @bash scripts/check-doc-refs.sh
 
 # Every relative link in the book must resolve. `check-doc-refs` answers a
@@ -1271,7 +1471,7 @@ check-doc-refs:
 # seven were plain depth errors (`../../docs/…` from `book/src/<dir>/` is
 # `book/docs/…`). Buildless: reads tracked files, resolves paths, no mdbook.
 [private]
-check-book-links:
+book-links:
     @python3 scripts/check-book-links.py
 
 # The book's USER track (getting-started/, user-guide/, start-here/,
@@ -1280,7 +1480,7 @@ check-book-links:
 # explicitly contributor-marked block ("**Contributors (…):**" within 8
 # lines). Buildless: tracked files + regex, no mdbook.
 [private]
-check-book-no-just:
+book-no-just:
     @python3 scripts/check-book-no-just.py
 
 # Tool-emitted messages must not prescribe a bare `just` recipe — users do
@@ -1289,7 +1489,7 @@ check-book-no-just:
 # threadx board error named `just setup-threadx`, a recipe that does not
 # exist. Same class as check-book-no-just, one layer down.
 [private]
-check-emitter-just-spelling:
+emitter-just-spelling:
     @bash scripts/check-emitter-just-spelling.sh
 
 # The "Open issues" list in docs/issues/README.md must name EXACTLY the files in
@@ -1298,7 +1498,7 @@ check-emitter-just-spelling:
 # #0474): each was archived with a `git mv` while its README row stayed in the
 # OPEN spelling, so the index advertised an open issue whose file was gone.
 [private]
-check-issue-index:
+issue-index:
     @python3 scripts/gen-issue-index.py --self-test
     @bash scripts/check-issue-index.sh
     @python3 scripts/gen-issue-index.py --check
@@ -1310,33 +1510,33 @@ check-issue-index:
 # directory over had three plain `fs::write` writers and died mid-sweep on an
 # empty read. Buildless — greps the guarded function bodies.
 [private]
-check-atomic-sync-writes:
+atomic-sync-writes:
     @bash scripts/check-atomic-sync-writes.sh
 
 # Issue 0617 — an RTOS `platform-*` feature must SUPPLY malloc and panic. A
 # no_std final artifact needs exactly one `#[global_allocator]` and one
 # `#[panic_handler]`; a HOST build cannot catch a missing provider because
 # `std` supplies both, which is how NuttX shipped with neither.
-check-platform-provider-features:
+platform-provider-features:
     @python3 scripts/check-platform-provider-features.py
 
 # phase-365 W4 / issue 0625 — the SDK store is CONSTRUCTED from the project's
 # pin, never enumerated. A wildcard where the version belongs means a consumer
 # is picking a version by searching a store SHARED between projects, to answer a
 # pin that is PER-PROJECT.
-check-sdk-store-not-enumerated:
+sdk-store-not-enumerated:
     @python3 scripts/check-sdk-store-not-enumerated.py
 
 # Issue 0454 / phase-354 W3 — an FFI taking `goal_cdr` must strip the
 # encapsulation header before handing bytes to `send_goal_raw`, which takes
 # FIELDS and appends them after a header the writer already wrote.
-check-goal-cdr-stripped:
+goal-cdr-stripped:
     @python3 scripts/check-goal-cdr-stripped.py
 
 # Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
 # shared bus, and two concurrent runs colliding on it presents as WRONG DATA
 # rather than as a collision.
-check-test-domain-assignment:
+test-domain-assignment:
     @bash scripts/check-test-domain-assignment.sh
 
 # Issue 0763 — a test's ROS 2 environment is spelled in ONE place
@@ -1350,11 +1550,11 @@ check-test-domain-assignment:
 # SKIPPED forever on a jazzy host. The gate does not forbid the exception — it
 # makes adding one a reviewable line in a diff. Buildless: greps tracked source.
 [private]
-check-ros-env-spelling:
+ros-env-spelling:
     @python3 scripts/check-ros-env-spelling.py
 
 # Issue 0573 — ZenohRouter must stay the only zenohd spawner.
-check-zenohd-spawn-sites:
+zenohd-spawn-sites:
     @bash scripts/check-zenohd-spawn-sites.sh
 
 # Issue 0670 — a timed-out wait's evidence must not be thrown away.
@@ -1375,7 +1575,7 @@ check-zenohd-spawn-sites:
 #
 # 87 sites are baselined as a SHRINKING backlog; what this buys today is that an
 # eighty-eighth cannot arrive silently.
-check-wait-evidence-discarded:
+wait-evidence-discarded:
     @python3 scripts/check-wait-evidence-discarded.py
 
 # Issue 0653 — the shell and Rust router resolvers must resolve the SAME router.
@@ -1391,7 +1591,7 @@ check-wait-evidence-discarded:
 # (`scripts/dev/zenohd-resolution-cases.tsv`), answered here for the shell and by
 # `zenohd_resolution_matches_the_shared_table` for the Rust — behaviour on both
 # sides, not a diff of two languages.
-check-zenohd-resolution-parity:
+zenohd-resolution-parity:
     @bash scripts/check-zenohd-resolution-parity.sh
 
 # Issue 0654 — the router takes NO command-line configuration, so a `zenohd
@@ -1399,7 +1599,7 @@ check-zenohd-resolution-parity:
 # rejected, and the reader gets a default-configured router with no diagnostic.
 # Gated because the class regenerates by copy-paste from a neighbouring example
 # header — which is how it reached ~95 files.
-check-zenohd-flag-invocations:
+zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
 
 # phase-363 (W2's class) — `file(GLOB)` over `.msg`/`.srv`/`.action` captures the
@@ -1407,14 +1607,14 @@ check-zenohd-flag-invocations:
 # an unrelated reconfigure and the build ships the OLD generated sources. W2
 # fixed the file it was looking at; the Zephyr COPY kept the bug until the
 # phase's standing re-sweep found it. Gated so there is no third occurrence.
-check-interface-glob-configure-depends:
+interface-glob-configure-depends:
     @python3 scripts/check-interface-glob-configure-depends.py
 
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute
 # attempt. Run at the head of `ci`; callable directly to check a tree before
 # committing to a run.
-check-tier-preconditions:
+tier-preconditions:
     @bash scripts/check-tier-preconditions.sh
 
 # Every lane that runs the peer-spawning suites sweeps first (issues 0659,
@@ -1422,32 +1622,32 @@ check-tier-preconditions:
 # see whether a LANE calls it — `just test` ran the same suites without one and
 # left 67 orphans holding DDS ports.
 [private]
-check-peer-sweep-lanes:
+peer-sweep-lanes:
     @bash scripts/check-peer-sweep-lanes.sh
 
 # Every ACTIVE roadmap phase carries a findable status line; a finished one
 # belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
 # phases lost theirs within days of `ecc195ed6` doing exactly that.
 [private]
-check-roadmap-status:
+roadmap-status:
     @bash scripts/check-roadmap-status.sh
 
 # A leaf `.cargo/config.toml` is tracked iff it holds content `nros sync`
 # cannot regenerate. `**/.cargo/config.toml` is gitignored (most are pure sync
 # output); this is the discrimination the blanket rule cannot make.
-check-cargo-config-tracked:
+cargo-config-tracked:
     @bash scripts/check-cargo-config-tracked.sh
 
 # A leaf that consumes its own `generated/` must be visible to
 # `scripts/regenerate-bindings.sh` (which globs tracked package.xml), or its
 # bindings freeze silently — eight test bins had frozen several phases back.
-check-generated-leaf-regenerable:
+generated-leaf-regenerable:
     @bash scripts/check-generated-leaf-regenerable.sh
 
 # Issue 0406 — a fixture builder narrowed to an id it cannot match must FAIL,
 # not exit 0 having built nothing. Buildless: exercises the shared guard and
 # one real builder invocation that stops before any compilation.
-check-fixture-id-guard:
+fixture-id-guard:
     @bash scripts/check-fixture-id-guard.sh
 
 # Phase 134.5 — verify the in-tree zenoh staticlib's internal symbol
@@ -1457,7 +1657,7 @@ check-fixture-id-guard:
 # every C/C++ native link broke. Run after
 # `cargo build -p nros-rmw-zenoh-staticlib --release`.
 [group("debug")]
-check-zenoh-archive:
+zenoh-archive:
     # profile-literal-ok: symbol fixture: the archive built by build-zenoh-posix-fixture
     @bash scripts/check-zenoh-archive-symbols.sh target/release/libnros_rmw_zenoh_staticlib.a
 
@@ -1470,7 +1670,7 @@ check-zenoh-archive:
 # that brings it to green. Wire it as a required check once the
 # migration completes.
 [group("debug")]
-check-decoupling:
+decoupling:
     @bash scripts/check-decoupling.sh
 
 # A test that can SKIP must be run by a runner that understands skips.
@@ -1479,7 +1679,7 @@ check-decoupling:
 # bare runner turns an unmet precondition into a red naming a test the change
 # never touched.
 [private]
-check-skippable-tests-tolerant:
+skippable-tests-tolerant:
     @python3 scripts/check-skippable-tests-tolerant.py
 
 # A tier's affordability claim must be TRUE. `ci-l1` says "NO FIXTURES"; it
@@ -1487,14 +1687,14 @@ check-skippable-tests-tolerant:
 # down, and nothing noticed until that lane became a REQUIRED status check and
 # CI went permanently red.
 [private]
-check-lane-contracts:
+lane-contracts:
     @python3 scripts/check-lane-contracts.py
 
 # A gate must exercise its own failure path EVERY time it runs, not once behind
 # a flag on the day it was written. A baseline ratchet: the debt may only
 # shrink, and a script that gains a selftest must leave the baseline.
 [private]
-check-gate-selftests:
+gate-selftests:
     @python3 scripts/check-gate-selftests.py
 
 # A `ps` scan enumerating process-GROUP membership must exclude zombies — a
@@ -1502,14 +1702,14 @@ check-gate-selftests:
 # container job: `tail -f /dev/null`), never leaves `ps`. Issue 0853: three
 # sites had the idiom and all three were wrong.
 [private]
-check-ps-zombie-blind:
+ps-zombie-blind:
     @bash scripts/check-ps-zombie-blind.sh
 
 # A CI doc must not cite a workflow file that does not exist. Same class as
 # `check-just-recipe-refs`: a reference that silently stops resolving, in a
 # place that still reads as current.
 [private]
-check-ci-doc-workflow-refs:
+ci-doc-workflow-refs:
     @python3 scripts/check-ci-doc-workflow-refs.py
 
 # The zephyr CI image must install every Python module its own checker demands
@@ -1517,7 +1717,7 @@ check-ci-doc-workflow-refs:
 # `just zephyr setup` before any build — and a uniformly red lane cannot report
 # a regression, which is how issue 0876 rode in.
 [group("checks")]
-check-ci-image-python-deps:
+ci-image-python-deps:
     @python3 scripts/check-ci-image-python-deps.py
 
 # A Kconfig line that a later CONF_FILE fragment overrides is a line that does
@@ -1525,21 +1725,21 @@ check-ci-image-python-deps:
 # shared board fragments are legitimately an override layer. Refresh with
 # `python3 scripts/check-kconfig-overridden-values.py --update`, and say why.
 [group("checks")]
-check-kconfig-overridden-values:
+kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py
 
 # Quarantine registry gate — every entry has an open issue and an unexpired
 # review date. Expiry is a HARD failure on purpose: quarantine without expiry is
 # deletion with extra steps.
 [private]
-check-flake-quarantine:
+flake-quarantine:
     @python3 scripts/test/quarantine.py --check
 
 # The claim CAS, proven against a throwaway bare repo — hermetic, no network,
 # ~2 s. On the fast line because a coordination primitive that cannot fail is
 # worse than none: it would report agreement it never established.
 [private]
-check-claim-protocol:
+claim-protocol:
     @bash scripts/reserve-claim.sh --selftest
 
 # A COMPILE SMOKE TEST for the pull-request gate — phase-395.
@@ -1562,7 +1762,7 @@ check-claim-protocol:
 # appears under `--no-default-features` survives this and is caught in the
 # queue. It is a smoke test, and the name says so.
 [private]
-check-compile-smoke:
+compile-smoke:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
@@ -1583,7 +1783,7 @@ check-compile-smoke:
 # board it links does. `--print` feeds `lane-filter.sh nostd`, so the gate and
 # the lane share one derivation.
 [group("ci")]
-check-flavour-lanes:
+flavour-lanes:
     @python3 scripts/check-flavour-lanes.py
 
 # phase-359 W0 — the `std` census ratchet. Buildless (reads sources), so it
@@ -1596,7 +1796,7 @@ check-flavour-lanes:
 # to lower the baseline in the same commit, so progress lands in the diff
 # instead of a claim in a message.
 [group("ci")]
-check-std-census:
+std-census:
     @python3 scripts/check-std-census.py
 
 # Issue 0701 — the OTHER half of ARCHITECTURE §2 clause (a).
@@ -1615,7 +1815,7 @@ check-std-census:
 # walk is the antipattern this repo keeps paying for. The counting path is
 # untouched; this is a separate mode, with its own `--self-test`.
 [group("ci")]
-check-capability-flavour-guards:
+capability-flavour-guards:
     @python3 scripts/check-std-census.py --self-test
     @python3 scripts/check-std-census.py --check-guards
 
@@ -1631,7 +1831,7 @@ check-capability-flavour-guards:
 # found a real violation (`nros-rmw-zenoh-staticlib`) on its first real run,
 # which W2.a's hand-sweep had missed.
 [group("ci")]
-check-feature-contract:
+feature-contract:
     @python3 scripts/check-feature-contract.py
 
 # Issue 0589 — no `std::`-qualified stdio in a `#![no_std]` crate's `src/`.
@@ -1648,7 +1848,7 @@ check-feature-contract:
 # readings this gate shipped with and had to fix: a `cfg_attr(not(feature =
 # "std"), no_std)` crate read as hosted, and two calls on one line counted once.
 [group("ci")]
-check-no-std-stdio:
+no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
 
 # A test whose body only PRINTS cannot fail, so it reports PASS on exactly the
@@ -1657,7 +1857,7 @@ check-no-std-stdio:
 # growing back. Self-testing: `--self-test` covers the delegating-helper and
 # multi-line-print cases that a naive "has no assert!" rule gets wrong.
 [group("ci")]
-check-no-vacuous-tests:
+no-vacuous-tests:
     @python3 scripts/check-no-vacuous-tests.py --self-test
     @python3 scripts/check-no-vacuous-tests.py
 
@@ -1668,7 +1868,7 @@ check-no-vacuous-tests:
 # `test()` names are deliberately NOT checked — they are rstest-generated case
 # names that appear nowhere in the sources (see the script's header).
 [group("ci")]
-check-nextest-binary-filters:
+nextest-binary-filters:
     @python3 scripts/check-nextest-binary-filters.py --self-test
     @python3 scripts/check-nextest-binary-filters.py
 
@@ -1676,7 +1876,7 @@ check-nextest-binary-filters:
 # so the "initialise then search" spelling never searches. All three sites in
 # this tree paired it with a quiet fallback (FetchContent clone, "no SDK
 # libstdc++", host-idlc), so none failed loudly.
-check-cmake-find-program-shadowed:
+cmake-find-program-shadowed:
     @python3 scripts/check-cmake-find-program-shadowed.py --self-test
     @python3 scripts/check-cmake-find-program-shadowed.py
 
@@ -1691,14 +1891,14 @@ check-cmake-find-program-shadowed:
 # Parses definitions rather than `just --summary`, which omits private recipes —
 # bodies call those constantly (`just _count-real-failures`).
 [group("ci")]
-check-just-recipe-refs:
+just-recipe-refs:
     @python3 scripts/check-just-recipe-refs.py
 
 # phase-366 M6 / RFC-0077 — every image declares exactly one ending, and what it
 # declares matches what it supplies. `check-archive-lang-items` counts per LINK
 # LINE, which catches duplication and is blind to ABSENCE (an image with no
 # provider has no archive to count — issue 0617). Buildless, source-level.
-check-image-panic-policy:
+image-panic-policy:
     @python3 scripts/check-image-panic-policy.py
 
 # issue 0719 — the C/C++ half of the same question. `check-image-panic-policy`
@@ -1706,12 +1906,12 @@ check-image-panic-policy:
 # that it cannot see "the C/C++ side, where the policy is a cargo feature on the
 # staticlib". This is that side: every cmake path that links `NanoRos::NanoRos*`
 # into an executable must apply an ending, directly or through the entry verbs.
-check-cmake-image-policy:
+cmake-image-policy:
     @python3 scripts/check-cmake-image-policy.py
 
 # Issue 0636 option 3 — every tier spin loop reaches a scheduling point.
 [group("check")]
-check-tier-spin-gap:
+tier-spin-gap:
     @python3 scripts/check-tier-spin-gap.py
 
 # Issue 0773 — the length-or-status shape, gated.
@@ -1722,7 +1922,7 @@ check-tier-spin-gap:
 # multiplexing a byte count with an `NROS_RMW_RET_*` code — and nobody was
 # running it anyway. It has a structural check now and a non-zero exit, so it
 # belongs on the line.
-check-rmw-ret-sign:
+rmw-ret-sign:
     @python3 scripts/check-rmw-ret-sign.py
 
 # Issue 0780 — a POSITIONAL vtable initialiser must agree with the header.
@@ -1732,7 +1932,7 @@ check-rmw-ret-sign:
 # every line below initialises its neighbour while still carrying the old name.
 # The compiler catches that only when the shifted types disagree — which is
 # luck: adjacent slots sharing a signature swap silently.
-check-rmw-vtable-order:
+rmw-vtable-order:
     @python3 scripts/check-vtable-positional-order.py
 
 # Issue 0787 — host lanes for the two C backends that had none.
@@ -1750,13 +1950,13 @@ check-rmw-vtable-order:
 #
 # Each skips LOUDLY (counted by `scripts/build/check-skip.sh`) when its
 # prerequisite is absent, so "not built here" can never read as "builds".
-check-rmw-xrce:
+rmw-xrce:
     #!/usr/bin/env bash
     set -e
     source scripts/build/build-root.sh
     if [ ! -f packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/CMakeLists.txt ]; then
         source scripts/build/check-skip.sh
-        nros_check_skip check-rmw-xrce \
+        nros_check_skip rmw-xrce \
             "micro-XRCE-DDS-Client submodule not initialised (git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client)"
         exit 0
     fi
@@ -1765,7 +1965,7 @@ check-rmw-xrce:
     cmake --build "$BD" --parallel
     ctest --test-dir "$BD" --output-on-failure
 
-check-rmw-uorb:
+rmw-uorb:
     #!/usr/bin/env bash
     set -e
     source scripts/build/build-root.sh
@@ -1782,7 +1982,7 @@ check-rmw-uorb:
 # contract, so it needs no ROS install; regenerate that with `--contract` in the
 # distrobox when the distro moves.
 [group("check")]
-check-rmw-api-parity:
+rmw-api-parity:
     @python3 scripts/rmw-api-parity.py --self-test
     @python3 scripts/rmw-api-parity.py --check
 
@@ -1793,7 +1993,7 @@ check-rmw-api-parity:
 # slot, with every difference declared. Both read committed snapshots
 # (`docs/reference/rmw-implementation-{contract,signatures}.txt`), so neither
 # needs a ROS install and both run on the fast line.
-check-rmw-abi-shape:
+rmw-abi-shape:
     @python3 scripts/rmw-abi-shape.py --self-test
     @python3 scripts/rmw-abi-shape.py --check
 
@@ -1803,7 +2003,7 @@ check-rmw-abi-shape:
 # per-message path or at entity creation. `--check` fails on a steady-state
 # allocation with no declared reason, so a new one is argued for rather than
 # merged. Source-only, no ROS install, fast line.
-check-rmw-alloc-sites:
+rmw-alloc-sites:
     @python3 scripts/rmw-alloc-sites.py --self-test
     @python3 scripts/rmw-alloc-sites.py --check
 
@@ -1813,7 +2013,7 @@ check-rmw-alloc-sites:
 # and nothing reads is legitimate — an ABI mirroring upstream reserves the shape
 # first — but it must be a DECISION, so it belongs to a declared family. Source
 # -only, no ROS install, fast line.
-check-rmw-slot-producers:
+rmw-slot-producers:
     @python3 scripts/check-rmw-slot-producers.py --self-test
     @python3 scripts/check-rmw-slot-producers.py --check
 
@@ -1822,7 +2022,7 @@ check-rmw-slot-producers:
 # `RouterUnavailable` (skip), and it keeps every other router error a failure.
 # 31 sites went around it, which is why tier 2 reported 7 real failures on a
 # host whose ROS lives in a distrobox. Source-only, fast line.
-check-zenohd-router-skips:
+zenohd-router-skips:
     @python3 scripts/check-zenohd-router-skips.py --self-test
     @python3 scripts/check-zenohd-router-skips.py
 
@@ -1839,7 +2039,7 @@ check-zenohd-router-skips:
 #
 # Check the API-parity ledger and the correlator's matching rules.
 [group("check")]
-check-api-parity-ledger:
+api-parity-ledger:
     @python3 scripts/api-parity.py --self-test
 
 # Phase 379 W2 (landed 2026-08-25) — every item where the nano-ros user API does
@@ -1856,7 +2056,7 @@ check-api-parity-ledger:
 #
 # Verify the user API still corresponds to rclc / rclcpp / rclrs.
 [group("check")]
-check-api-parity:
+api-parity:
     @python3 scripts/api-parity.py --check
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
@@ -1864,7 +2064,7 @@ check-api-parity:
 # because they are separate cargo builds with different `-C metadata`, the
 # duplicated statics do not collide and BOTH get allocated. Sibling if/else arms
 # are fine and expected; the gate only flags two umbrellas on ONE branch.
-check-single-rust-staticlib:
+single-rust-staticlib:
     @python3 scripts/check-single-rust-staticlib.py
 
 # Issue 0604 — `packages/cli/cli-source-dirs.txt` must equal cargo's resolve.
@@ -1880,7 +2080,7 @@ check-single-rust-staticlib:
 # The generated file is only as trustworthy as this check: a stale list is a
 # silent wrong stamp in whichever direction it drifted.
 [group("ci")]
-check-cli-source-dirs:
+cli-source-dirs:
     @python3 scripts/gen-cli-source-dirs.py --check
 
 # Issue 0833 — every Rust cross target DECLARED in-tree (board nros-board.toml,
@@ -1896,7 +2096,7 @@ check-cli-source-dirs:
 # freertos build-fixtures` failed at cmake configure with an error four layers
 # from its cause.
 [group("ci")]
-check-rust-targets-covered:
+rust-targets-covered:
     @python3 scripts/check-rust-targets-covered.py
 
 # Issue 0739 — every build-time sizing knob is enumerable, and the pools that
@@ -1906,7 +2106,7 @@ check-rust-targets-covered:
 # with a knob, silently. Generated, not transcribed — a hand-written list is the
 # thing that goes stale the first time a feature lands.
 [private]
-check-pool-inventory:
+pool-inventory:
     @python3 scripts/gen-pool-inventory.py --check
 
 # Phase 392 W1 — the declared arithmetic has to survive contact with a linker.
@@ -1916,7 +2116,7 @@ check-pool-inventory:
 # fixture-backed comparison is `static_memory_declared_pools`, which resolves a
 # built image through the harness and so inherits the staleness probe.
 [private]
-check-mem-report:
+mem-report:
     @python3 scripts/nros-mem-report.py --selftest
 
 # Issue 0816 — the book promises no-alloc integrations and nothing verified the
@@ -1932,7 +2132,7 @@ check-mem-report:
 # check is green on the zenoh funnel and red on a cyclone leaf (`operator new`
 # in four TUs), so it waits on a fix or an `--allow` carrying a tracked issue id.
 [private]
-check-no-alloc-image:
+no-alloc-image:
     @python3 scripts/check-no-alloc-image.py --selftest
     @python3 scripts/check-no-alloc-image.py --claims
 
@@ -1942,14 +2142,14 @@ check-no-alloc-image:
 # zenoh liveliness documented as a no-op while wired) — generated, not
 # transcribed, same reasoning as check-pool-inventory.
 [private]
-check-rmw-feature-matrix:
+rmw-feature-matrix:
     @python3 scripts/gen-rmw-feature-matrix.py --check
 
 # Support-status page (tiers, RTOS/RMW/toolchain pins, editions) — version
 # strings parsed from nros-sdk-index.toml + rust-toolchain.toml so a pin bump
 # moves the page in the same commit.
 [private]
-check-support-status:
+support-status:
     @python3 scripts/gen-support-status.py --check
 
 # Every `nros…` identifier the book quotes must exist in the tree. The
@@ -1958,7 +2158,7 @@ check-support-status:
 # try_recv_safe…) — plausible spellings nothing failed on until a reader typed
 # them. First run of this gate caught 8 more.
 [private]
-check-book-identifiers:
+book-identifiers:
     @python3 scripts/check-book-identifiers.py
 
 # Scheduling wiring matrix — parsed from sched_caps_for() (the function the
@@ -1966,20 +2166,20 @@ check-book-identifiers:
 # this drifted three ways at once (scheduling-models said EDF unused while
 # spin.rs dispatches it). Same reasoning as check-rmw-feature-matrix.
 [private]
-check-sched-matrix:
+sched-matrix:
     @python3 scripts/gen-sched-matrix.py --check
 
 # Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
 # `capability`, so a fixture the lane deliberately did not build gets counted as
 # a missing capability and the sweep summary lies about which gap a run has.
 [private]
-check-lane-skip-class:
+lane-skip-class:
     @python3 scripts/check-lane-skip-class.py
 
 # no_std core-crate compile check across the embedded targets `ci.yml` gates
 # (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.
 [group("ci")]
-check-no-std:
+no-std:
     #!/usr/bin/env bash
     set -e
     crates="-p nros-core -p nros-log -p nros-serdes -p nros-params \
@@ -2022,13 +2222,13 @@ check-no-std:
         "echo '== check-no-std: riscv32imc-unknown-none-elf ==' && cargo check $crates --no-default-features --target riscv32imc-unknown-none-elf" \
         "echo '== check-no-std: executor slice (alloc+rmw-cffi), thumbv7m ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target thumbv7m-none-eabi" \
         "echo '== check-no-std: executor slice (alloc+rmw-cffi), riscv32imc ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target riscv32imc-unknown-none-elf" \
-        | nros_pool_run check-no-std
-    echo "check-no-std OK."
+        | nros_pool_run no-std
+    echo "no-std OK."
 
 # Verify nros-sdk-index.toml + the QEMU configure flags
 # (the `sdk-index` job in .github/workflows/pr-checks.yml). Buildless + fast.
 [group("ci")]
-check-sdk-index:
+sdk-index:
     python3 scripts/sdk/verify-index.py nros-sdk-index.toml
     ./scripts/sdk/check-qemu-configure.sh
 
@@ -2048,7 +2248,7 @@ check-sdk-index:
 # and were never formatted by this gate — several are deliberately on older
 # editions.
 [private]
-check-cli-fmt:
+cli-fmt:
     #!/usr/bin/env bash
     set -euo pipefail
     ws_edition="$(sed -n 's/^edition[[:space:]]*=[[:space:]]*"\([0-9]*\)".*/\1/p' packages/cli/Cargo.toml | head -1)"
@@ -2084,7 +2284,7 @@ check-cli-fmt:
 # host clippy -> `check-test-targets` (now `--all-targets`, `-D warnings`),
 # `fmt --check` -> `check-workspace-fmt`.
 [private]
-check-workspace: check-workspace-fmt
+workspace: workspace-fmt
     @echo "check-workspace: fmt + clippy now run in the fast tier."
 
 # Check workspace for embedded target (Cortex-M4F)
@@ -2097,7 +2297,7 @@ check-workspace: check-workspace-fmt
 # thumbv7 artifacts never share cargo's per-target-dir build lock with the
 # host clippy — letting `check-workspace-all` run the two concurrently.
 [private]
-check-workspace-embedded:
+workspace-embedded:
     #!/usr/bin/env bash
     set -euo pipefail
     # issue 0287 — the exclude list is DERIVED, not hand-written.
@@ -2139,14 +2339,14 @@ check-workspace-embedded:
 # via `CARGO_BUILD_JOBS` so total parallelism stays bounded (same knob the
 # build recipes thread — no hardcoded `-j`). Both still run standalone.
 [private]
-check-workspace-all:
+workspace-all:
     #!/usr/bin/env bash
     set -uo pipefail
     jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
     half=$(( jobs / 2 )); [ "$half" -lt 1 ] && half=1
-    CARGO_BUILD_JOBS="$half" just check-workspace &
+    CARGO_BUILD_JOBS="$half" just check workspace &
     host=$!
-    CARGO_BUILD_JOBS="$half" just check-workspace-embedded &
+    CARGO_BUILD_JOBS="$half" just check workspace-embedded &
     emb=$!
     rc=0
     wait "$host" || rc=1
@@ -2157,13 +2357,13 @@ check-workspace-all:
 # riscv32imc so portable-atomic fallback regressions surface in
 # the standard check tier.
 [private]
-check-nros-log-riscv32:
+nros-log-riscv32:
     @echo "Checking nros-log for riscv32imc..."
     cargo check -p nros-log --target riscv32imc-unknown-none-elf --no-default-features
 
 # Check workspace with various feature combinations
 [private]
-check-workspace-features:
+workspace-features:
     @echo "Checking feature combinations..."
     # Phase 128.C.3 — `nros/rmw-zenoh-cffi` feature deleted; the
     # umbrella now only carries `rmw-cffi`. Backend selection is
@@ -2209,7 +2409,7 @@ check-workspace-features:
 
 # Check C formatting only (clang-format) — BUILDLESS, source-free → push lane.
 [private]
-check-c-fmt:
+c-fmt:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/clang-format.sh
@@ -2237,7 +2437,7 @@ check-c-fmt:
 # initialised (typical for contributors not touching the DDS backend). The
 # `cyclonedds::ci` recipe itself fails hard on real test failures.
 [private]
-check-rmw-cyclonedds:
+rmw-cyclonedds:
     #!/usr/bin/env bash
     set -e
     if [ ! -f third-party/dds/cyclonedds/CMakeLists.txt ]; then
@@ -2252,7 +2452,7 @@ check-rmw-cyclonedds:
 # issue 0083) to emit the OPAQUE_U64S macro header, so it needs sources/CLI
 # submodule → build tier (check-build), NOT the source-free push lane.
 [private]
-check-c: check-c-fmt
+c: c-fmt
     #!/usr/bin/env bash
     set -e
     echo "Checking C code (build + syntax)..."
@@ -2374,7 +2574,7 @@ check-c: check-c-fmt
     # one TU (ffi.h first, so component.h's hand mirrors are guarded out) makes
     # the compiler the drift gate: any divergence is a "conflicting types"
     # error. Field-level struct-mirror parity is the buildless
-    # check-ffi-struct-mirrors gate (push lane).
+    # ffi-struct-mirrors gate (push lane).
     # issue 0400 follow-up — this build GENERATES the headers the checks below
     # compile against, so its failure must not be swallowed. It used to run
     # `--quiet 2>/dev/null || true`, which turned "the generator never ran" into
@@ -2405,7 +2605,7 @@ check-c: check-c-fmt
 
 # Check C++ formatting only (clang-format) — BUILDLESS, source-free → push lane.
 [private]
-check-cpp-fmt:
+cpp-fmt:
     #!/usr/bin/env bash
     set -e
     source scripts/dev/clang-format.sh
@@ -2422,7 +2622,7 @@ check-cpp-fmt:
 # the zenoh-pico source submodule) → source-dependent → build tier (check-build),
 # NOT the source-free push lane.
 [private]
-check-cpp: check-cpp-fmt
+cpp: cpp-fmt
     #!/usr/bin/env bash
     set -e
     echo "Checking C++ headers (build + syntax + clippy)..."
@@ -2625,7 +2825,7 @@ check-cpp: check-cpp-fmt
 
 # Check Python code: formatting + linting with ruff
 [private]
-check-python:
+python:
     @echo "No in-tree Python package to check (nros-cli owns the colcon extension)."
 
 # Analyze per-function stack usage (requires nightly + llvm-tools)
@@ -2711,7 +2911,7 @@ check-stack-all top="10":
 # that emitted an EMPTY `--target-dir` because it sourced build-root.sh from
 # inside a function. An in-process-only assertion could not see that.
 [private]
-check-build-root:
+build-root:
     @bash packages/testing/nros-tests/tests/build_root_derivation.sh
 
 # phase-340 W2 — the preconditions for putting a platform's rows in a SHARED
@@ -2744,11 +2944,11 @@ check-build-root:
 # `NanoRosRmwDispatch.cmake`, which is itself gated for staleness against the
 # resolver, so agreeing with it IS agreeing with the resolver.
 [private]
-check-rmw-descriptors:
+rmw-descriptors:
     @python3 scripts/check-rmw-descriptors.py
 
 [private]
-check-fixture-groups:
+fixture-groups:
     @python3 scripts/check-fixture-groups.py
     @bash packages/testing/nros-tests/tests/fixture_group_collision_gate.sh
 
@@ -2759,7 +2959,7 @@ check-fixture-groups:
 # coordinate, hence no shared cargo group. See the script's header for the
 # measurement. Self-tests its own classifier on every run.
 [private]
-check-example-leaf-target-dirs:
+example-leaf-target-dirs:
     @python3 scripts/check-example-leaf-target-dirs.py
 
 # issue 0718 — an example leaf builds in-tree (RFC-0026), so every build
@@ -2767,21 +2967,21 @@ check-example-leaf-target-dirs:
 # The six threadx rust leaves ignored `build-cyclonedds` and not `build-zenoh`,
 # and their c/cpp siblings ignored both, so no single leaf looked wrong.
 [private]
-check-example-leaf-build-dirs:
+example-leaf-build-dirs:
     @python3 scripts/check-example-leaf-build-dirs.py
 
 # issue 0720 — a test asks a fixture resolver for an artifact BY NAME, and a
 # name no CMake target produces resolves to a missing path, which the test
 # reports as a `fixture missing` SKIP. So the failure mode is silence, not red.
 [private]
-check-fixture-binary-names:
+fixture-binary-names:
     @python3 scripts/check-fixture-binary-names.py
 
 # issue 0722 — a manifest is read by whichever workspace claims it, and this
 # tree has many roots. A crate no root claims can carry a duplicate key that
 # cargo REFUSES, while `cargo metadata` from the repo root stays green.
 [private]
-check-manifests-parse:
+manifests-parse:
     @python3 scripts/check-manifests-parse.py
 
 # issue 0650 — a fixture lane that cannot run must report SKIPPED (rc 78), never
@@ -2789,7 +2989,7 @@ check-manifests-parse:
 # false OK is how six diverged riscv64 examples reached main: every host without
 # the toolchain reported the lane green. Self-tests its own classifier.
 [private]
-check-lane-skip-protocol:
+lane-skip-protocol:
     @python3 scripts/check-lane-skip-protocol.py
 
 # issue 0658 — `[SKIPPED:<class>]` does not contain `[SKIPPED]`, so a hand-rolled
@@ -2799,7 +2999,7 @@ check-lane-skip-protocol:
 # (`nros_tests::skip_marker`, `scripts/test/skip_marker.py`). Self-tests its own
 # matcher against the actual pre-fix line on every run.
 [private]
-check-skip-marker-matching:
+skip-marker-matching:
     @python3 scripts/check-skip-marker-matching.py
 
 # issue 0490 — a `cargo:rerun-if-changed` naming a path that does not exist makes
@@ -2808,7 +3008,7 @@ check-skip-marker-matching:
 # `packages/rmw/cffi/build.rs`, which sits under every image. Self-tests its own
 # checker on every run.
 [private]
-check-build-rs-rerun-paths:
+build-rs-rerun-paths:
     @python3 scripts/check-build-rs-rerun-paths.py
 
 # issue 0491 — the sibling rule to the gate above: a `cargo:rerun-if-env-changed`
@@ -2818,7 +3018,7 @@ check-build-rs-rerun-paths:
 # then invalidate each other forever — six FreeRTOS rows rebuilt 6 units on every
 # probe, permanently. Self-tests its own classifier on every run.
 [private]
-check-path-env-fingerprints:
+path-env-fingerprints:
     @python3 scripts/check-path-env-fingerprints.py
 
 # issue 0702 — a test that cannot fail is worse than no test. Rejects an `Err`
@@ -2827,7 +3027,7 @@ check-path-env-fingerprints:
 # roll-call). Buildless: it reads tracked test sources, so it belongs on the
 # fast line beside the other source gates.
 [private]
-check-tests-can-fail:
+tests-can-fail:
     @python3 scripts/check-tests-can-fail.py
 
 # issue 0651 — every Zephyr symbol `zephyr/Kconfig` names must EXIST on BOTH
@@ -2847,7 +3047,7 @@ check-tests-can-fail:
 # OK with a footnote. It used to fail only when NO line was present, so the
 # ordinary dev host — 3.7 present, 4.4 nowhere — went green having measured
 # nothing about the line the gate exists for.
-check-zephyr-kconfig-symbols:
+zephyr-kconfig-symbols:
     @python3 scripts/check-zephyr-kconfig-symbols.py
 
 # phase-340 W4 — the artifact-identity budget: how many times one crate is
@@ -2879,7 +3079,7 @@ check-zephyr-kconfig-symbols:
 # Needs built output, so it belongs with the lanes that produce it rather than
 # in `check-fast`.
 [private]
-check-archive-lang-items:
+archive-lang-items:
     @bash scripts/check-archive-lang-items.sh
 
 # Issue 0260 / phase-356 W3 — the sched-dim ACCEPT arms no build otherwise
@@ -2899,7 +3099,7 @@ check-archive-lang-items:
 # truth; the script has covered all three since it landed, so the comment was
 # describing a state that never shipped. Read the script, not this line, when
 # they disagree: it prints one section per arm.
-check-sched-dim-arms:
+sched-dim-arms:
     @bash scripts/check-sched-dim-arms-compile.sh
 
 # Issue 0719 — every path that BUILDS an image applies the image's policies.
@@ -2912,7 +3112,7 @@ check-sched-dim-arms:
 # STRUCTURAL, and it self-tests the one thing that makes it so: the sweep that
 # preceded it keyed on the text `nano_ros_entry(` and excluded a file because a
 # COMMENT there mentioned the name.
-check-image-paths-apply-policy:
+image-paths-apply-policy:
     @bash scripts/check-image-paths-apply-policy.sh
 
 # `--self-test` (issue 0661) drives both era verdicts over a synthetic tree,
@@ -2923,7 +3123,7 @@ check-image-paths-apply-policy:
 # not there, which is how 0661 spent its length on two ordinary host
 # build-dependency artifacts.
 [private]
-check-artifact-identity-budget:
+artifact-identity-budget:
     @bash scripts/check-artifact-identity-budget.sh
 
 # phase-340 W3 — ONE `--target` spelling for every cargo command cmake emits.
@@ -2942,7 +3142,7 @@ check-artifact-identity-budget:
 # FAILS rather than falling back to the implicit spelling. Buildless: no
 # compiler, no cargo, no fixtures.
 [private]
-check-cargo-target-spelling:
+cargo-target-spelling:
     @bash packages/testing/nros-tests/tests/cargo_target_spelling.sh
 
 # issue 0516 — a COMMENTED-OUT element in a package.xml must not read as a
@@ -2955,7 +3155,7 @@ check-cargo-target-spelling:
 # so compare them. ONE gate for every provider family: a copy of the rule beside
 # each family's descriptors is the second-spelling antipattern (#282 -> #326).
 [private]
-check-provider-announcements:
+provider-announcements:
     @python3 scripts/check-provider-announcements.py
 
 # phase-348 W3 — the provider index and the cmake seam that reads it. cmake asks
@@ -2968,7 +3168,7 @@ check-provider-announcements:
 # is what stops them drifting (the phase-347 pattern). `--write` renders missing
 # blocks; generator and gate are one file so they cannot disagree.
 [private]
-check-site-config:
+site-config:
     @python3 scripts/check-site-config.py
 
 # issue 0529 — Zephyr's zenoh tx knobs have TWO sources: `zephyr/Kconfig`
@@ -2977,13 +3177,13 @@ check-site-config:
 # Rust lane). They agree today only by coincidence; this compares them so a
 # divergence is loud. Buildless.
 [private]
-check-zephyr-knob-agreement:
+zephyr-knob-agreement:
     @python3 scripts/check-zephyr-knob-agreement.py
 
 # Issue 0472 — every `*_OPAQUE_U64S` macro must have a compile-time size guard,
 # so a probe that under-states a size is a build error and not a short buffer
 # written past in C.
-check-opaque-storage-guards:
+opaque-storage-guards:
     @python3 scripts/check-opaque-storage-guards.py
 
 # phase-348 W4 — build order derived from package.xml `<depend>`, not from the
@@ -2992,15 +3192,15 @@ check-opaque-storage-guards:
 # the entry packages already state that as <exec_depend>. Covers the cycle and
 # bad-subdir rejections and the cmake seam. Needs `just setup-cli`.
 [private]
-check-workspace-order:
+workspace-order:
     @bash packages/testing/nros-tests/tests/workspace_order_gate.sh
 
 [private]
-check-provider-index:
+provider-index:
     @bash packages/testing/nros-tests/tests/provider_index_gate.sh
 
 [private]
-check-package-xml-comments:
+package-xml-comments:
     @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh
 
 # issue 0762 — a killed build launcher must take its whole subtree with it.
@@ -3008,12 +3208,12 @@ check-package-xml-comments:
 # construction (the terminal comes back while the build keeps running), so
 # nothing short of watching the processes can catch a regression.
 [private]
-check-subtree-guard:
+subtree-guard:
     @bash packages/testing/nros-tests/tests/subtree_guard.sh
 
 # Check zenoh transport
 [private]
-check-zenoh:
+zenoh:
     cargo clippy --quiet -p nros-rmw --features std
 
 # Issue 0827 — the infrastructure-queryable counts have ONE definition each,
@@ -3021,7 +3221,7 @@ check-zenoh:
 # queryable, so these are a term in every service-buffer pool the RMW sizes;
 # they had SEVEN spellings and no definition, two of them already wrong.
 [private]
-check-infra-queryable-counts:
+infra-queryable-counts:
     @python3 scripts/check-infra-queryable-counts.py
 
 # phase-383 W10.c — an example workspace ROOT is generated, never tracked.
@@ -3033,7 +3233,7 @@ check-infra-queryable-counts:
 # `git add -A` re-added three, which `.gitignore` cannot prevent because it does
 # not apply to files git already tracks.
 [private]
-check-no-tracked-workspace-roots:
+no-tracked-workspace-roots:
     @python3 scripts/check-no-tracked-workspace-roots.py
 
 # issue 0834 — a per-build sizes header must never lose its `.stamp` twin.
@@ -3044,5 +3244,5 @@ check-no-tracked-workspace-roots:
 # consumer-side symptom is a stub `#error` (C++) or an undeclared macro (C),
 # from a file nobody was looking at. This names the directory instead.
 [private]
-check-orphan-generated-stamp:
+orphan-generated-stamp:
     @python3 scripts/check-orphan-generated-stamp.py

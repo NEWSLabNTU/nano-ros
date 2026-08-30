@@ -86,7 +86,7 @@ them.
 ## Verified
 
 ```
-just check-rmw-cyclonedds                          -> 17/17, exit 0   (hosted)
+just check rmw-cyclonedds                          -> 17/17, exit 0   (hosted)
 NROS_ZEPHYR_FIXTURE_FILTER='build-c-listener-cyclonedds' \
   just zephyr build-fixtures                       -> exit 0, 0 undefined refs
 ```

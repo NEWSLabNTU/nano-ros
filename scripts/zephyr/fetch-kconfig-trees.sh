@@ -97,4 +97,4 @@ for d in "$DEST"/*/; do
     printf '  %-26s %s\n' "$(basename "$d")" "$(git -C "$d" rev-parse --short HEAD 2>/dev/null || echo '?')"
 done
 echo
-echo "Now: just check-zephyr-kconfig-symbols"
+echo "Now: just check zephyr-kconfig-symbols"

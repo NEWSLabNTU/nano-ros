@@ -61,7 +61,7 @@ Same for `-p nros-cpp`. Adding `--features std` makes both pass:
 | `cargo check -p nros-cpp` | **fails** |
 | `cargo check -p nros-cpp --features std` | passes |
 
-`just check-c` and `just check-cpp` pass, because they name features. Nothing in
+`just check c` and `just check cpp` pass, because they name features. Nothing in
 CI is red.
 
 ## Cause, and it is deliberate

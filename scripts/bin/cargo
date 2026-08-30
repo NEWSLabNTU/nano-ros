@@ -54,7 +54,7 @@ FLAGS="${NROS_CARGO_FLAGS-"--locked"}"
 # that. Neither is ever "this" shim, so neither guard fires: cargo spins at
 # 100 % CPU and never runs, with no output to say why. Three parallel worktree
 # agents hit this simultaneously; one burned ~50 minutes on it and two more sat
-# stuck for 20+ minutes each, which is also why a `just check-fast` inside a
+# stuck for 20+ minutes each, which is also why a `just check fast` inside a
 # worktree looked like cargo-lock contention.
 #
 # So identify a shim by CONTENT, not by location: any `cargo` on PATH carrying

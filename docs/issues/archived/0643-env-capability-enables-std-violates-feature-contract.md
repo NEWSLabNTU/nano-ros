@@ -85,7 +85,7 @@ it does not grant it"* — `env = ["std"]` became `env = []`. That is resolution
 of the three above, chosen by whoever is running phase-359, which is where the
 choice belonged.
 
-Verified here rather than assumed: `just check-feature-contract` now reports
+Verified here rather than assumed: `just check feature-contract` now reports
 
 ```
 ok  (a/manifest) `std` lists `alloc`; nothing else enables either

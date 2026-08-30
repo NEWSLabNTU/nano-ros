@@ -108,7 +108,7 @@ symbol to adopt.
 
 ## Direction item 2, done 2026-08-26 — the measurement, and it is re-runnable
 
-`scripts/rmw-alloc-sites.py` (lane `just check-rmw-alloc-sites`, on the fast
+`scripts/rmw-alloc-sites.py` (lane `just check rmw-alloc-sites`, on the fast
 line). It attributes every allocation call in a backend's own sources to its
 enclosing function and splits them by whether that function is reached per
 MESSAGE or at entity creation. `--check` fails on a steady-state allocation with

@@ -463,7 +463,7 @@ Per-step, on a green `pr-checks` run:
 
 | job | total | dominant steps |
 | --- | --- | --- |
-| `check` | **214 s** | **`just check-fast` 144 s**, container init 59 s |
+| `check` | **214 s** | **`just check fast` 144 s**, container init 59 s |
 | `nros new -> sync -> resolve` | 113 s | container init 61 s, scaffold 29 s |
 | `colcon build` | 119 s | apt repo 39 s + ROS/colcon install 48 s |
 
@@ -486,7 +486,7 @@ the store must be cold, and it is, but nothing in this workflow pays for that.
 
 ### Revised ranking, on measurements
 
-1. **`just check-fast` — 144 s, 67% of the critical job.** The fix already
+1. **`just check fast` — 144 s, 67% of the critical job.** The fix already
    exists: the fan-out runs the same gates in 7 s locally against 45 s serial.
    Expect a far smaller ratio on a 2-core runner than on 32 cores, so this needs
    measuring in CI rather than assuming the local speed-up transfers.
@@ -503,7 +503,7 @@ Note nightly is 1681 s and was NOT broken down. If CI time matters, nightly is
 
 ## The gate fan-out is REVERTED as the default (2026-08-24)
 
-Attempting item 1 of the CI plan — switch CI's `just check-fast` step to the
+Attempting item 1 of the CI plan — switch CI's `just check fast` step to the
 fan-out — instead disproved the fan-out's premise, and it is no longer the
 default for `build-test-fixtures`.
 
@@ -511,7 +511,7 @@ Measured on one tree, back to back:
 
 | | |
 | --- | --- |
-| serial `just check-fast` | **84 s** |
+| serial `just check fast` | **84 s** |
 | fan-out `-P32` | **>516 s** (killed) |
 | fan-out `-P2` (runner-scale) | **>600 s** (killed) |
 
@@ -540,7 +540,7 @@ cache states.
 ### Consequences
 
 * `build-test-fixtures` gates through serial `check-fast` again. The fan-out
-  remains available as `just check-fast-parallel` but should not be made the
+  remains available as `just check fast-parallel` but should not be made the
   default without solving the cargo-sharing problem.
 * **CI item 1 is dead as written.** `check-fast` at 144 s in CI cannot be fixed
   by fanning it out; on a 2-core runner it would be far worse.
@@ -670,7 +670,7 @@ permission.
    `pgrep -f`, the other counted an unrelated build's compilers.
 3. **Failing solo separates a concurrency artifact from a real failure — it does
    NOT separate a real failure from an unmet precondition.**
-   `just check-tier-preconditions` reports all of those at once.
+   `just check tier-preconditions` reports all of those at once.
 4. **Cold vs warm is a 5x spread on this tree**, and a single measurement taken
    just after disturbing it is not evidence.
 

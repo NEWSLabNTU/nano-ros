@@ -97,4 +97,4 @@ code could not make it, which is why a jazzy pin survived on a humble host.
   guard FAIL and cancels the run, rather than letting 15 tests bail into green.
   Probe removed after the check.
 - `check_parser_failures.sh` prints `using ROS share: /opt/ros/humble/share`.
-- `just check-cli-tests` and `just check-cli-clippy` green.
+- `just check cli-tests` and `just check cli-clippy` green.

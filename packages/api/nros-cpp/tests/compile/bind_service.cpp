@@ -1,10 +1,10 @@
 // Compile regression for issue 0089 gap-4: typed `nros::bind_service<Svc, C, &m>`.
 //
-// The header `-fsyntax-only` loop in `just check-cpp` only PARSES the templates;
+// The header `-fsyntax-only` loop in `just check cpp` only PARSES the templates;
 // it does not instantiate them. This TU instantiates `bind_service` against a
 // service type matching the generated shape (`struct Svc { Request; Response;
 // TYPE_NAME }` with `ffi_{,de}serialize`), so the template BODY is type-checked.
-// `just check-cpp` compiles this with `-fsyntax-only -std=c++14`.
+// `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
 #include <nros/component.hpp>
 #include <nros/nros.hpp>
 

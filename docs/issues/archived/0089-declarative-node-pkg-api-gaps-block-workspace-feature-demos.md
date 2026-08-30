@@ -26,7 +26,7 @@ All five API gaps closed:
    to `packages/core/nros-cpp/include/nros/component.hpp` (typed request/response
    via the generated bindings; `Svc::TYPE_NAME`; no hand-rolled CDR). Verified by a
    compile-instantiation regression (`tests/compile/bind_service.cpp`, wired into
-   `just check-cpp`). The typed *client* is covered by the poll `Service<S>` + the
+   `just check cpp`). The typed *client* is covered by the poll `Service<S>` + the
    `tick(TickCtx)` surface (gap 1).
 5. **Logging sink init by the workspace Entry** — phase-264 **W3** (posix board
    inits `nros_log::sinks::default()` at boot).

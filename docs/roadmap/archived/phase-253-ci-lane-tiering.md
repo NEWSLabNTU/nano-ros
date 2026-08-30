@@ -28,7 +28,7 @@ run all of a file's jobs.
 | **images.yml** | `ci-base`/`zephyr` (← build-ci-base-image / build-zephyr-ci-image) | push (ci/docker paths) + dispatch | per-job, ✗ |
 | **docs.yml** | `deploy` (← deploy-book) | push (book/api paths) + dispatch | `deploy-book`, ✗ |
 
-Local recipes unchanged: `just check-fast`/`check`, `test-unit`, `test-integration`,
+Local recipes unchanged: `just check fast`/`check`, `test-unit`, `test-integration`,
 `<plat> setup/build/test`, `zephyr build-one/ci-both/check-copy-out`, `check-sdk-index`,
 `scaffold-journey`, `colcon-parity`, `acceptance`, `doc`/`book`.
 
@@ -39,7 +39,7 @@ combos, riscv32 no_std, nros-tests source gates, staticlib link-proof, dep-chain
 ## Done
 
 - `check.yml` thinned + split (fast/build tiers, push=fast); `ci.yml` deleted
-  (folded as `just check-no-std`).
+  (folded as `just check no-std`).
 - Heavy/medium lanes moved off per-push → PR + nightly + dispatch
   (host-integration, host-unit, platform-ci, zephyr-dual-line, nros-acceptance).
 - `just check` is the fast-gate SSoT (wraps every `check.yml` gate); local recipe

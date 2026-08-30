@@ -10,13 +10,13 @@
 // ACCEPT_AND_DEFER was never told the goal had been accepted, and
 // `nros::ActionClient<A>` had no cancel at all.
 //
-// The header `-fsyntax-only` loop in `just check-cpp` only PARSES these
+// The header `-fsyntax-only` loop in `just check cpp` only PARSES these
 // templates. This TU INSTANTIATES them against an action type matching the
 // generated shape, so `set_accepted_callback`, `install_callbacks`,
 // `cancel_goal` and `try_recv_cancel_response` are type-checked — including
 // the trampoline whose address is taken.
 //
-// `just check-cpp` compiles this with `-fsyntax-only -std=c++14`.
+// `just check cpp` compiles this with `-fsyntax-only -std=c++14`.
 #include <nros/nros.hpp>
 
 #include <type_traits>

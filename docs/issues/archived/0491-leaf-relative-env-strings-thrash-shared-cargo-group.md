@@ -134,7 +134,7 @@ keeps watching the old path. In-tree that cannot happen (the paths are fixed by
 the checkout). An out-of-tree consumer who repoints one must `cargo clean` that
 build dir.
 
-Gate: `scripts/check-path-env-fingerprints.py` (`just check-fast`), the sibling
+Gate: `scripts/check-path-env-fingerprints.py` (`just check fast`), the sibling
 of 0490's `check-build-rs-rerun-paths`. It reads BOTH producers, self-tests both
 directions on each (a synthetic Rust source and a synthetic manifest), and
 carries a per-name `ALLOWED` map, each entry stating why that variable's

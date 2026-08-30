@@ -54,9 +54,14 @@ TESTS_DIR = os.path.join(ROOT, "packages", "testing", "nros-tests", "tests")
 # runs" is exactly what went stale — phase-395 put `check-build` on the merge
 # group, nothing here knew, and the required check was red for every pull
 # request for a day (phase-396).
+# Keyed by the recipe name as `just --show` resolves it. Both tiers now live in
+# MODULES (`just ci l1`, `just check fast`), so the key is the module path —
+# spelling them the old flat way made this gate report "no such recipe" for a
+# lane that had simply moved, which is the same false-staleness it exists to
+# catch elsewhere.
 LANES = {
-    "ci-l1": "compile + unit, NO fixture build (CLAUDE.md)",
-    "check-fast": "buildless and source-only",
+    "ci::l1": "compile + unit, NO fixture build (CLAUDE.md)",
+    "check::fast": "buildless and source-only",
 }
 
 WORKFLOW_DIR = os.path.join(ROOT, ".github", "workflows")
@@ -145,7 +150,7 @@ def workflow_jobs():
                     step_if = ""
             if re.match(r"^\s+if:", line):
                 step_if = line
-            # Only `run:` shell counts. A step NAMED "just check-build + no_std"
+            # Only `run:` shell counts. A step NAMED "just check build + no_std"
             # is a label, and reading it as an invocation attributed the recipe
             # to every event the workflow has — which is precisely the
             # nightly-vs-required distinction this is here to make.
@@ -313,7 +318,7 @@ def _parse_one(lines, mod):
 
 # `just a b c` inside a recipe body. Header dependencies are NOT the only edge
 # in this justfile, and assuming they were made this gate pass over everything:
-# `ci-l1` declares no dependencies at all and calls `@just check-cli-fresh
+# `ci-l1` declares no dependencies at all and calls `@just check cli-fresh
 # check-fast check-build check-api-parity` in its body, so a header-only walk
 # found a closure of size 1 and cheerfully reported "0 test target(s)" — a gate
 # that verified nothing while printing OK.

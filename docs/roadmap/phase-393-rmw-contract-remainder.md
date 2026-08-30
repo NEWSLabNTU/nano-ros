@@ -40,7 +40,7 @@ is the USER API (rclc/rclcpp/rclrs) one layer up.
 
 The contract is EMPIRICAL: the 88 `rmw_*` symbols every `librmw_*_cpp.so`
 defines, not the 177 the headers declare. Measured 2026-08-27 by
-`just check-rmw-api-parity`:
+`just check rmw-api-parity`:
 
 | bucket | n | meaning |
 | --- | --- | --- |
@@ -54,7 +54,7 @@ issue 0800 found. Of those 70: **34 answered by a slot something writes and
 reads, 36 by an INERT one** (no producer, no consumer). So the honest headline
 is **34 of 88 working**, plus 5 at another layer, 13 declined and 0 missing.
 
-`just check-rmw-slot-producers` keeps that split honest in both directions, and
+`just check rmw-slot-producers` keeps that split honest in both directions, and
 `rmw-api-parity` now prints it beside the buckets so 70 cannot read as 70
 working.
 

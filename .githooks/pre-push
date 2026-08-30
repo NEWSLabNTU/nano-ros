@@ -193,9 +193,9 @@ elif ! command -v just >/dev/null 2>&1; then
     # a defect, and a hook that blocks on its own tooling gets removed.
     echo "pre-push: \`just\` not on PATH — fast gates NOT run." >&2
 else
-    echo "pre-push: running \`just check-fast\` (issue 0840)." >&2
+    echo "pre-push: running \`just check fast\` (issue 0840)." >&2
     echo "          Bypass: git push --no-verify, or NROS_SKIP_PREPUSH_CHECKS=1" >&2
-    if ! (cd "$repo_root" && just check-fast); then
+    if ! (cd "$repo_root" && just check fast); then
         echo "" >&2
         echo "pre-push: REFUSING to push — the fast gate tier is red." >&2
         echo "" >&2

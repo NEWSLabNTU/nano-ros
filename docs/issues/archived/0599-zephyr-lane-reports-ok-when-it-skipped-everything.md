@@ -61,7 +61,7 @@ exactly why the skip exists. What is wrong is that **the skip is invisible at
 the level where the decision is made**, and the report is affirmatively wrong:
 `OK` is not "skipped".
 
-`just check-tier-preconditions` — which exists to report *every* unmet
+`just check tier-preconditions` — which exists to report *every* unmet
 precondition before committing to a run — does not mention it either. It checks
 the CLI stamp, leaf syncs, build sources and fixture coverage, and reports the
 tier as runnable.
@@ -78,7 +78,7 @@ Observed 2026-08-15 on a tree with no `zephyr-workspace`:
 * `tmp/build-test-fixtures-<stamp>/zephyr.log` — one line, the skip.
 * Lane summary — `== zephyr == OK`, alongside seven genuinely-built lanes.
 * `just ci-matrix` — dies in `_lane-gate` on the four `.inputsig` files above.
-* `just check-tier-preconditions` — reports no Zephyr-related problem.
+* `just check tier-preconditions` — reports no Zephyr-related problem.
 
 Reproduce by moving or not creating `zephyr-workspace` and running
 `just build-test-fixtures lane=tier2`.

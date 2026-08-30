@@ -14,7 +14,7 @@
 # just/*.just + justfile). A COMMENT that merely names the flag is not a use
 # (the flag appears in many rationale comments / docs / Rust test prose).
 #
-# Hooked from `just check` via `just check-no-allow-multiple-def`.
+# Hooked from `just check` via `just check no-allow-multiple-def`.
 
 set -euo pipefail
 

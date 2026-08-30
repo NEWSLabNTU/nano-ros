@@ -71,9 +71,9 @@ fi
 # --- freertos: vTaskCoreAffinitySet ----------------------------------------
 head2 "freertos core-pin arm (vTaskCoreAffinitySet)"
 if [ -z "${FREERTOS_DIR:-}" ] || [ ! -d "${FREERTOS_DIR}" ]; then
-    nros_check_skip "check-sched-dim-arms(freertos)" "FREERTOS_DIR unset/absent (source ./activate.sh)"
+    nros_check_skip "sched-dim-arms(freertos)" "FREERTOS_DIR unset/absent (source ./activate.sh)"
 elif [ -z "$arm_gcc_usable" ]; then
-    nros_check_skip "check-sched-dim-arms(freertos)" "$arm_gcc_unusable_why"
+    nros_check_skip "sched-dim-arms(freertos)" "$arm_gcc_unusable_why"
 else
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-m3 -mthumb \
         -DconfigUSE_CORE_AFFINITY=1 \
@@ -123,9 +123,9 @@ fi
 # reason: there are no stubs to drift.
 head2 "nuttx core-pin arm (pthread_setaffinity_np)"
 if [ -z "${NUTTX_DIR:-}" ] || [ ! -d "${NUTTX_DIR}/include" ]; then
-    nros_check_skip "check-sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
+    nros_check_skip "sched-dim-arms(nuttx)" "NUTTX_DIR unset/absent (source ./activate.sh)"
 elif [ -z "$arm_gcc_usable" ]; then
-    nros_check_skip "check-sched-dim-arms(nuttx)" "$arm_gcc_unusable_why"
+    nros_check_skip "sched-dim-arms(nuttx)" "$arm_gcc_unusable_why"
 elif [ ! -f "$NUTTX_DIR/nros-nuttx-export-arm/include/nuttx/config.h" ]; then
     # Issue 0525. The tree is SHARED SOURCE, but `nuttx/config.h` is build
     # OPTIONS, and one shared copy cannot hold two arches: it belongs to
@@ -133,7 +133,7 @@ elif [ ! -f "$NUTTX_DIR/nros-nuttx-export-arm/include/nuttx/config.h" ]; then
     # taking the shared copy means type-checking ARM against whatever riscv
     # last wrote — silently, and it passes, which is worse than not running.
     # Hence a SKIP rather than a fallback: no arm snapshot, no verdict.
-    nros_check_skip "check-sched-dim-arms(nuttx)" \
+    nros_check_skip "sched-dim-arms(nuttx)" \
         "no arm NuttX export snapshot (nros-nuttx-export-arm); the shared tree's config.h is another arch's"
 else
     # Per-arch build options come from this arch's export snapshot; the shared
@@ -173,9 +173,9 @@ fi
 # arm-none-eabi-gcc the other arms need.
 head2 "threadx core-pin arm (tx_thread_smp_core_exclude)"
 if [ -z "${THREADX_DIR:-}" ] || [ ! -d "${THREADX_DIR}/common_smp/inc" ]; then
-    nros_check_skip "check-sched-dim-arms(threadx)" "THREADX_DIR unset, or no common_smp/inc (source ./activate.sh)"
+    nros_check_skip "sched-dim-arms(threadx)" "THREADX_DIR unset, or no common_smp/inc (source ./activate.sh)"
 elif [ -z "$arm_gcc_usable" ]; then
-    nros_check_skip "check-sched-dim-arms(threadx)" "$arm_gcc_unusable_why"
+    nros_check_skip "sched-dim-arms(threadx)" "$arm_gcc_unusable_why"
 else
     out="$(arm-none-eabi-gcc -fsyntax-only -mcpu=cortex-a7 \
         -DTX_THREAD_SMP \

@@ -527,7 +527,7 @@ check JOBS="75%":
     fi
     # issue 0624 — assert the leaf `target/` population is still empty HERE, at
     # the end of the lane that used to repopulate it. The gate also runs in
-    # `check-fast`, but only BEFORE this lane, so a writer added to this recipe
+    # `check::fast`, but only BEFORE this lane, so a writer added to this recipe
     # produced a failure on the NEXT run, attributed to whatever else changed in
     # between. Checking after the writer makes it same-run and self-evident.
     python3 scripts/check-example-leaf-target-dirs.py

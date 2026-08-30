@@ -533,7 +533,7 @@ def _producer_note(contract):
         f"        {counts.get('produced', 0)} filled by some backend, "
         f"{counts.get('default', 0)} NULL with documented behaviour, "
         f"{counts.get('inert', 0)} written and read by nothing.",
-        "        `just check-rmw-slot-producers` is that dimension (issue 0800).",
+        "        `just check rmw-slot-producers` is that dimension (issue 0800).",
         "",
         f"  Of the {live_syms + len(inert_syms)} contract symbol(s) in the `vtable` "
         f"column, {live_syms} are answered by a slot something",

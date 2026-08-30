@@ -68,7 +68,7 @@ trivially CI-wireable, mirrors the `scripts/check-*.sh` gate family).
 ### Work
 
 - **W1.1 — DONE (2026-06-13).** `scripts/check-weak-symbols-image.sh` +
-  `just check-weak-symbols-image`. Coverage map (artifact `find` base + name-glob
+  `just check weak-symbols-image`. Coverage map (artifact `find` base + name-glob
   → override-default symbols that must be strong there); `nm` each final image
   (`.a`/`.o`/`.rlib` skipped); strong→ok, weak→FAIL, absent→WARN; skips covered
   classes whose artifacts aren't prebuilt. Validated: 10 checks across 3 real
@@ -142,7 +142,7 @@ the allowlist SSoT (cross-check + negative-path proof); an injected regression
 - **W2.2 — DONE.** `check-weak-symbols` added to the `check:` aggregate
   (justfile) + a `[private] check-weak-symbols` recipe.
 - **W2.3 — DONE.** The image gate (W1) stays out of the fast `check` — it's the
-  standalone `just check-weak-symbols-image` (needs prebuilt fixtures), for
+  standalone `just check weak-symbols-image` (needs prebuilt fixtures), for
   `test-all` / per-platform CI.
 
 **Acceptance MET.** `just check` now fails on an unaudited / drifted weak site;
@@ -150,8 +150,8 @@ a new weak symbol added without allowlisting is caught pre-merge with no build.
 
 ## Project `just check` status — RESOLVED (2026-06-14)
 
-The phase-247 gates pass standalone (`just check-weak-symbols`,
-`just check-weak-symbols-image`, the `weak_symbol_audit` test). The lib-level
+The phase-247 gates pass standalone (`just check weak-symbols`,
+`just check weak-symbols-image`, the `weak_symbol_audit` test). The lib-level
 clippy blockers that previously made `check-workspace` abort *before* reaching
 the wired `check-weak-symbols` gate have all been **cleared** — the exact
 `check-workspace` recipe now exits 0 with **zero warnings**, so the gate runs

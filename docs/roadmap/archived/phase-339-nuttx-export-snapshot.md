@@ -232,7 +232,7 @@ RC=0
 $ cargo nextest run … test_rtos_action_e2e::platform_2_Platform__Nuttx
 3 tests run: 3 passed (2 flaky)    # zero STALE verdicts
 $ just fixture-staleness           # no non-running coordinate
-$ just check-nuttx-links-snapshot  # OK
+$ just check nuttx-links-snapshot  # OK
 ```
 
 Three things happened after the body above was written, and it is wrong about

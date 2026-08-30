@@ -86,7 +86,7 @@ Three things move together, because the header is the SSoT (RFC-0054):
   and all five C ports but not the macro); this phase does not fix that, but it
   must not add a sixth instance of it.
 
-**Acceptance:** `just check-abi-bindings` green; every port still links.
+**Acceptance:** `just check abi-bindings` green; every port still links.
 
 ### W2 — the five C ports
 

@@ -42,8 +42,8 @@ gate nobody believes is worse than no gate.
 
 Not deterministic. Measured after seeing it once:
 
-* `just check-workspace-order` solo — 3/3 pass
-* `just check-fast` — 2/2 pass, zero `Broken pipe` occurrences
+* `just check workspace-order` solo — 3/3 pass
+* `just check fast` — 2/2 pass, zero `Broken pipe` occurrences
 
 So it needs the fan-out plus load. It was observed on a run whose `check-fast`
 list had just gained a gate (`check-export-f-closure`, issue 0712), which

@@ -9,7 +9,7 @@ related: [issue-0363, issue-0466, issue-0561]
 
 ## What happens
 
-After any `just setup-cli`, every subsequent `just check-tier-preconditions`
+After any `just setup-cli`, every subsequent `just check tier-preconditions`
 prints:
 
 ```

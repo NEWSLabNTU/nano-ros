@@ -20,7 +20,7 @@ ros_editions_xrce.rs:104: literal `Result of add_two_ints:` — use nros_tests::
 test result: FAILED. 0 passed; 1 failed
 ```
 
-Six offenders (the sixth is `ros_editions_zenoh.rs:87`). `just check-fast`
+Six offenders (the sixth is `ros_editions_zenoh.rs:87`). `just check fast`
 stays green because the gate is a TEST, not a check — so this is red in the
 `test-all` half of `just ci`.
 

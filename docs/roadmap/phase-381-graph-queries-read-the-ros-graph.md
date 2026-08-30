@@ -272,7 +272,7 @@ that there is no other thread to do the work.
   in a live interop cell.
 * A backend with no graph reports "unsupported", not an empty list.
 * Phase-379's `graph.json` rows flip from `gap` to `same`, and
-  `just check-api-parity` stays green — which is the mechanical proof the
+  `just check api-parity` stays green — which is the mechanical proof the
   surface landed rather than a hand-check.
 
 ## Adjacent, cheap, and not blocked on any of this

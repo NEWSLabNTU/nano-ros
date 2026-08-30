@@ -105,15 +105,24 @@ def _justfile_sources():
 
 
 def gate_scripts():
-    """Scripts invoked by a `check-*` recipe in the justfile (or an import)."""
-    lines = []
-    for f in _justfile_sources():
-        with open(f, encoding="utf8") as fh:
-            lines.extend(fh.read().split("\n"))
-        lines.append("# --- file boundary: a recipe never spans two files ---")
+    """Scripts invoked by a gate — i.e. by a recipe in the `check` module.
+
+    A gate used to be spelled `check-foo:` at the root, so "is this a gate?"
+    was a question about the NAME. The `check` module now holds them as bare
+    names (`foo:`), so it becomes a question about the FILE — which is the more
+    honest one anyway, since the prefix was only ever a namespace worn as a
+    name.
+
+    Deliberately just `just/check.just` and not the root: widening it to every
+    recipe in every justfile made this report 135 problems, most of them root
+    verbs like `bootstrap.sh` that assert nothing and were never gates.
+    """
+    gate_file = os.path.join(ROOT, "just", "check.just")
+    with open(gate_file, encoding="utf8") as fh:
+        lines = fh.read().split("\n")
     found, in_recipe = set(), False
     for line in lines:
-        if re.match(r"^check-[a-z0-9-]+[ :]", line):
+        if re.match(r"^[a-z][a-z0-9-]*[ :]", line):
             in_recipe = True
             continue
         if line and not line[0].isspace():

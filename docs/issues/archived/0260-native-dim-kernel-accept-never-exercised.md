@@ -211,7 +211,7 @@ What it does change is the shape of the remaining work:
 
 ### Piece 1 — every arm compiles
 
-`just check-sched-dim-arms` (`scripts/check-sched-dim-arms-compile.sh`,
+`just check sched-dim-arms` (`scripts/check-sched-dim-arms-compile.sh`,
 phase-356 W3) type-checks each RTOS call site against that RTOS's own vendored
 headers under a synthetic SMP config, because the arms sit behind macros no
 image defines:

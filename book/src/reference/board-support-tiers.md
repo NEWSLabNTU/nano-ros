@@ -6,7 +6,7 @@
 
 What nano-ros promises for each in-tree board package, and why.
 
-Every tier here is **checked against evidence** by `just check-board-tiers`: a board cannot claim tier 1 or 2 without runtime cells in the test matrix, cannot claim tier 3 while holding runtime cells, and cannot be omitted from this table at all. That gate exists because the previous hand-written table drifted into claiming a license-gated target was CI-tested.
+Every tier here is **checked against evidence** by `just check board-tiers`: a board cannot claim tier 1 or 2 without runtime cells in the test matrix, cannot claim tier 3 while holding runtime cells, and cannot be omitted from this table at all. That gate exists because the previous hand-written table drifted into claiming a license-gated target was CI-tested.
 
 For **procurement guidance on parts that have no crate in this tree** (Nordic, NXP, TI and friends), see [Supported Boards](supported-boards.md). That table is hand-maintained and covers hardware this one cannot describe; this table is generated and covers what is actually in the repo.
 
@@ -70,6 +70,6 @@ Shared traits, family drivers, ABI mirrors, PACs, and descriptor directories. No
 
 ## Maintainers
 
-A tier is a promise, and `just check-board-tiers` requires someone to have made it: **tier 1 needs 3 named maintainers, tier 2 needs 2, tier 3 needs 1** (phase-375 W1). Rust's target-tier policy is the model — a named person per target, and demotion when the maintainer becomes unreachable; that mechanism, not the directory layout, is what actually retires abandoned targets.
+A tier is a promise, and `just check board-tiers` requires someone to have made it: **tier 1 needs 3 named maintainers, tier 2 needs 2, tier 3 needs 1** (phase-375 W1). Rust's target-tier policy is the model — a named person per target, and demotion when the maintainer becomes unreachable; that mechanism, not the directory layout, is what actually retires abandoned targets.
 
 Rows that predate the rule are grandfathered by `scripts/board-maintainer-baseline.json`, a list that only shrinks. So the rule binds a NEW board immediately and an existing one as its owner is found — a gate that failed all 22 rows on the day it landed would have been bypassed instead. Recording an owner is the point; inventing one would be worse than leaving the row at the tier it can carry.

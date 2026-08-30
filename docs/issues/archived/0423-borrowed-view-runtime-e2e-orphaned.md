@@ -31,5 +31,5 @@ W5 pattern), fixing both rots:
 
 Now: `scripts/build/borrowed-e2e-fixture.sh` links `build/borrowed-e2e/borrowed_{c,cpp}_e2e`;
 `tests/borrowed_e2e.rs` RUNS them (no compile-at-test) and asserts every view aliases
-the CDR buffer; `just check-borrowed-e2e` wires build+test into `check-build`. Both
+the CDR buffer; `just check borrowed-e2e` wires build+test into `check-build`. Both
 pass (C + C++). No longer a negative-diagnostic-registry member.

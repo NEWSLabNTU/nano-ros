@@ -34,9 +34,9 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | C/C++ integration shape | AGENTS.md “C/C++ Integration” + RFC-0018/0019 + [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) |
 | User-facing workflow | [book/src/](book/src/) (`just book`) |
 | Phase history / current work items | [docs/roadmap/](docs/roadmap/) (active) + `archived/` |
-| What do I type? | `just` with no args — the ~8 verbs, grouped by when you need them (phase-399). The 200 `check-*` gates live in `just/check.just`, `import`ed so every name stays flat: `just check-fast`, never `just check fast`. `just --list` is still everything |
+| What do I type? | `just` with no args — the ~8 verbs, grouped by when you need them (phase-399). The 200 `check-*` gates live in `just/check.just`, `import`ed so every name stays flat: `just check fast`, never `just check fast`. `just --list` is still everything |
 | Periodic tech-debt / antipattern / UX audit | [docs/development/codebase-audit-checklist.md](docs/development/codebase-audit-checklist.md) |
-| How our RMW C API compares to upstream `rmw` | `just check-rmw-api-parity` (is every contract symbol CLASSIFIED?) + `just check-rmw-abi-shape` (does the vtable MIRROR it — name, args, return?), both phase-376, both on the fast line. Contract is the 88 symbols EVERY `librmw_*_cpp.so` defines, not the 177 headers declare. The parity MAP is AUTHORED, so it drifts when slots move: it read `("gap", "no vtable slot")` for 28 slots W4 had landed and named 17 pre-W3.b spellings, while the shape tool found one real gap — two green tools disagreeing by 25 symbols. Cross-checked now (`check_against_vtable`, both directions). A gap that is real but open goes in `gap` with a TRACKED ISSUE ID in the reason; that is what `--check` tolerates, and nothing else |
+| How our RMW C API compares to upstream `rmw` | `just check rmw-api-parity` (is every contract symbol CLASSIFIED?) + `just check rmw-abi-shape` (does the vtable MIRROR it — name, args, return?), both phase-376, both on the fast line. Contract is the 88 symbols EVERY `librmw_*_cpp.so` defines, not the 177 headers declare. The parity MAP is AUTHORED, so it drifts when slots move: it read `("gap", "no vtable slot")` for 28 slots W4 had landed and named 17 pre-W3.b spellings, while the shape tool found one real gap — two green tools disagreeing by 25 symbols. Cross-checked now (`check_against_vtable`, both directions). A gap that is real but open goes in `gap` with a TRACKED ISSUE ID in the reason; that is what `--check` tolerates, and nothing else |
 | Profile a build's time (passive, read-only) | `just profile <dir>` → `nros-build-profile` (phase-251); [book](book/src/user-guide/build-profiling.md) |
 | Measure a built image's static RAM (by symbol, crate, declared pool) | `just mem-report <elf>` → `scripts/nros-mem-report.py` (phase-392 W1); `--json` + `--baseline` for a before/after delta |
 | Verify the book's setup flow on a pristine host | `just probe bootstrap` — runs the `probe=NN`-tagged book blocks in a clean container (`scripts/probe/`, issue 0204) |
@@ -224,7 +224,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     `main`.** A lag here is just a lag. Advance it with
     `git -C packages/cli/third-party/play_launch fetch origin && … checkout origin/main`, then
     `just setup-launch-resolve` (issue 0409 — a resolver from a different layer-2 checkout writes
-    models that are MISSING DATA rather than failing) and `just check-submodule-pinned-locks`.
+    models that are MISSING DATA rather than failing) and `just check submodule-pinned-locks`.
     Still forward-only, and still non-recursive (layer-3 `src/vendor/*`, container, msgs are never
     built here, so `src/play_launch_container` showing modified is expected, not dirt to fix).
 
@@ -317,7 +317,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   exactly the shape whose assertion is one frame down.
   **A target behind `required-features` that no recipe enables is the same lie one level up** —
   cargo skips it SILENTLY (not reported as filtered, simply never built) so it reads as coverage.
-  Gate: `check-required-features-reachable`; lane: `just check-required-features-tests`. When the
+  Gate: `check-required-features-reachable`; lane: `just check required-features-tests`. When the
   laned targets finally ran, four were broken and one capability was entirely non-functional
   (issues 0652/0612/0667). Assert LOWER bounds on timing too: an upper-bound-only wake test
   passes a `spin_once` that never waited.
@@ -353,7 +353,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   after or during — a `format` run overlapping a fixture build costs the whole build. **A refresh re-arms the in-tree CLI's source stamp too, not just fixtures
   (issue 0466)** — and the order is load-bearing: rebuild the CLI FIRST (`just setup-cli`),
   THEN fixtures, because fixtures key on that stamp; doing it the other way re-stales
-  everything you just built. `just check-tier-preconditions` reports every unmet
+  everything you just built. `just check tier-preconditions` reports every unmet
   precondition at once (CLI, leaf `nros sync`, build sources, fixtures for the lane)
   instead of one per attempt; it runs at the head of `just ci`. Rebase once → rebuild affected fixtures → test WITHOUT pulling again. Core-crate
   or repr(C)-struct changes ⇒ wipe workspace build dirs (incremental mixes pre/post-append

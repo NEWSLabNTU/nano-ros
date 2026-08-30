@@ -7,7 +7,7 @@
 # `NROS_CPP_STD`, never on `__STDC_HOSTED__` alone — a hosted compiler run
 # `-nostdinc++` against that minimal libcpp still has no `<string>`.
 #
-# The `-ffreestanding` compile probe in `just check-cpp` cannot see this: it runs
+# The `-ffreestanding` compile probe in `just check cpp` cannot see this: it runs
 # against the host's full libstdc++, so an ungated `#include <string>` compiles
 # clean. A `-nostdinc++` variant would need Zephyr's libcpp on the include path,
 # which the probe host does not have. This gate detects the class at the source

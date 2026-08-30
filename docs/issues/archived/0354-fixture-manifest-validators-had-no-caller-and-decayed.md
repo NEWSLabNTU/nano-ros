@@ -61,7 +61,7 @@ before wiring it in is anything but a broken build):
    in `CMakeLists.txt`), and `<build_type>` follows its workspace's convention
    (`ament_cargo` for Rust, `cmake` for C).
 
-Then: **`just check-fixtures-manifest`**, wired into `check-fast`. It is
+Then: **`just check fixtures-manifest`**, wired into `check-fast`. It is
 buildless and source-free — path existence plus regex over tracked files, ~0.1s
 for all 112 rows — so it fits the per-push tier that the fast gate exists for.
 

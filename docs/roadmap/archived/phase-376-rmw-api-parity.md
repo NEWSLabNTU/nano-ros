@@ -95,7 +95,7 @@ functions in the ABI headers, tracked by the same tooling.
 
 | command | question | today |
 | --- | --- | --- |
-| `just check-rmw-api-parity` | is every contract symbol *classified* — a slot, another layer, or declined with a reason? | **passes**; fails the moment upstream grows an unclassified symbol |
+| `just check rmw-api-parity` | is every contract symbol *classified* — a slot, another layer, or declined with a reason? | **passes**; fails the moment upstream grows an unclassified symbol |
 | `just rmw-abi-shape` | does each one have a slot with upstream's **name** and **args**, and are the signatures vendor-free? | **0/79 name+args**, 10 vendor types |
 | `scripts/rmw-api-inventory.py` | what does upstream actually declare (177), and with what signatures? | input to the two above |
 
@@ -705,7 +705,7 @@ Mutation-checked: pointing one alias at a non-existent slot fails the self-test.
 | every `declined` reason re-checked; narrowest scope preferred (a per-backend NULL slot beats an ABI-wide absence) | **landed** — 21 → 14: 4 became slots, `event_set_callback` was a grouping, `serialize`/`deserialize` were `layer`, `take_event` filed as 0780 |
 | re-decide `set_log_severity` — declined for a policy choice dressed as a constraint | **landed** — slot + `set_backend_log_severity()`; both clauses of the decline were false (`Logger::level` is an `AtomicU8`, the compile-time part is an open ceiling) |
 | re-decide `subscription_{set,get}_content_filter` — a NULL slot costs one pointer and lets a DDS backend answer | **landed** — both slots, plus the network-flow pair, whose reason had the same shape |
-| `rmw-abi-shape --check` joins the `just check` line | **landed** — `just check-rmw-abi-shape`, self-test + check, on the fast line |
+| `rmw-abi-shape --check` joins the `just check` line | **landed** — `just check rmw-abi-shape`, self-test + check, on the fast line |
 | parity MAP cross-checked against the header, both directions | **landed** — the MAP was stale in two ways at once (see below) |
 
 ### W5's audit, run in full (2026-08-24)
@@ -864,9 +864,9 @@ claim; each is a thing the audit FOUND while checking it.
 ## Running it
 
 ```
-just check-rmw-api-parity     # is every contract symbol CLASSIFIED?
-just check-rmw-abi-shape      # does the vtable MIRROR it — name, args, return?
-just check-rmw-ret-sign       # does anything still multiplex a length with a status?
+just check rmw-api-parity     # is every contract symbol CLASSIFIED?
+just check rmw-abi-shape      # does the vtable MIRROR it — name, args, return?
+just check rmw-ret-sign       # does anything still multiplex a length with a status?
 just rmw-abi-shape            # the same report, without the gate
 
 # Regenerate the recorded upstream data (needs ROS — run in the distrobox):

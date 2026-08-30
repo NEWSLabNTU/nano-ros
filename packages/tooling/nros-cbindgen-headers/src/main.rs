@@ -1,6 +1,6 @@
 //! Issue 0452 — regenerate (or check) the COMMITTED cbindgen headers.
 //!
-//! `just regen-c-headers` runs this; `just check-cbindgen-headers` runs it with
+//! `just regen-c-headers` runs this; `just check cbindgen-headers` runs it with
 //! `--check`. It is the **only** writer of these files: build scripts compare
 //! and warn (see `nros_build_helpers::generate_cbindgen_header`) so that no
 //! build dirties the worktree.
@@ -151,7 +151,7 @@ fn main() -> ExitCode {
             }
             eprintln!("       Run `just regen-c-headers` and commit the result (issue 0452).");
             eprintln!("       If the diff is only the C23 enum-base guard, your cbindgen is not");
-            eprintln!("       the pinned one — check `just check-cbindgen-pin` first.");
+            eprintln!("       the pinned one — check `just check cbindgen-pin` first.");
             return ExitCode::FAILURE;
         }
     }

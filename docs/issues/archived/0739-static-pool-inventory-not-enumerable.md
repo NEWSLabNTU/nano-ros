@@ -44,7 +44,7 @@ needed appeared in `book/src/reference/environment-variables.md`.
 ## Fix
 
 `scripts/gen-pool-inventory.py` generates
-`book/src/reference/static-pool-inventory.md`; `just check-pool-inventory`
+`book/src/reference/static-pool-inventory.md`; `just check pool-inventory`
 (fast lane) fails when it drifts. Generated rather than written, because a
 hand-kept list goes stale the first time a feature lands — which is the defect
 itself, one level up.

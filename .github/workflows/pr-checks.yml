@@ -6,7 +6,7 @@
 # path-filter job gates the narrow lanes so they only run when their paths move
 # (on a PR); on push/schedule/dispatch every job runs.
 #
-#   - check          : `just check-fast` (push) / `just check` + check-no-std
+#   - check          : `just check fast` (push) / `just check` + check-no-std
 #                      (PR/nightly). The buildless gate survives the rapid push
 #                      cadence; the compile tier runs on PR + nightly only.
 #   - scaffold-journey : `just scaffold-journey` (RFC-0040 resolve-only journey).
@@ -326,8 +326,8 @@ jobs:
       # (check-c / check-cpp — nros-c/nros-cpp build + syntax + clippy, which pull
       # the ros-launch-resolve submodule + the zenoh-pico source) live in
       # check-build (PR/nightly), so the push lane needs no submodule/source.
-      - name: just check-fast
-        run: just check-fast
+      - name: just check fast
+        run: just check fast
 
       # A pin naming a commit no remote can serve is a repo that builds only on
       # the machine that made it: every clone and every CI run dies at
@@ -344,8 +344,8 @@ jobs:
       # Every pin, not only the moved ones: a PR is where a reviewer's fresh
       # clone gets its first chance, and 20 `--depth=1` existence probes cost
       # seconds.
-      - name: just check-submodule-commits-reachable
-        run: just check-submodule-commits-reachable
+      - name: just check submodule-commits-reachable
+        run: just check submodule-commits-reachable
 
       # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
       # THE ARRANGEMENT, phase-395. This job is ONE required status context and
@@ -381,9 +381,9 @@ jobs:
       # only appears under `--no-default-features` still reaches the queue.
       # What it does catch is the common case: a type error, a signature change
       # that did not propagate, a test that no longer compiles.
-      - name: just check-compile-smoke (pull request only)
+      - name: just check compile-smoke (pull request only)
         if: ${{ github.event_name == 'pull_request' && !cancelled() }}
-        run: just check-compile-smoke
+        run: just check compile-smoke
 
       # phase-396 W1 — the build tier is NOT on the merge group.
       #
@@ -467,12 +467,12 @@ jobs:
       # /opt/ros. The configure-time probe only checks the converter script
       # EXISTS (issue-0196 class: probe narrower than the rule), so an
       # unsourced env fails at 80% of the build rather than at configure.
-      - name: just check-build + no_std (nightly / manual only)
+      - name: just check build + no_std (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source /opt/ros/humble/setup.bash
-          just check-build
-          just check-no-std
+          just check build
+          just check no-std
 
       # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
       # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
@@ -498,10 +498,10 @@ jobs:
           # this output. `|| true` — a stats failure must never fail a gate.
           command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
 
-      - name: just check-decoupling (advisory until Phase 104.A)
+      - name: just check decoupling (advisory until Phase 104.A)
         if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         continue-on-error: true
-        run: just check-decoupling
+        run: just check decoupling
 
   # ----- scaffold-journey (RFC-0040 resolve-only) -----
   scaffold-journey:

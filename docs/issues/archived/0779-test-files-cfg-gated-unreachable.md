@@ -84,7 +84,7 @@ that had never run now run, all passing:
 | `registry_race` | 3 | `#![cfg(all(feature = "std", feature = "bridge-stub"))]` |
 | `custom_transport` | 1 | `#![cfg(all(feature = "platform-posix", feature = "link-custom"))]` |
 
-`just check-required-features-tests` goes 26 → 31.
+`just check required-features-tests` goes 26 → 31.
 
 ### The trap in this issue's own table
 
@@ -120,7 +120,7 @@ alone, which is why they were not switched on blind with these two.
 
 ## Resolved (2026-08-25) — BASELINE is empty; all 15 files run
 
-The remaining three are wired. `just check-required-features-tests` runs **73**
+The remaining three are wired. `just check required-features-tests` runs **73**
 tests across every suite, none reporting zero, and
 `check-required-features-reachable` reports `0 baselined backlog`.
 

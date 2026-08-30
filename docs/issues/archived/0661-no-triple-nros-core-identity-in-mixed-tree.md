@@ -76,7 +76,7 @@ identical in features and profile, that cannot be shared.
 ## Reproduce
 
 ```
-just check-artifact-identity-budget
+just check artifact-identity-budget
 ls -la examples/workspaces/mixed/build-workspace-fixtures/cargo/*/nros-relwithdebinfo/deps/libnros_core-*.rlib
 ```
 

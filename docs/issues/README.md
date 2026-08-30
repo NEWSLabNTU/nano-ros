@@ -131,7 +131,7 @@ profile dir, and a hand-rolled `export RMW_IMPLEMENTATION=`. `just check` would 
 So the defect was never a missing gate — nothing between the edit and the push asked whether any tier
 ran. Note this is a DIFFERENT shape from the two checks `pre-push` already carried: those catch
 defects that become true AT REBASE, invisible to anything the author ran earlier, and would not have
-caught any of these four. Fixed by running `just check-fast` from `pre-push` on branch pushes.
+caught any of these four. Fixed by running `just check fast` from `pre-push` on branch pushes.
 `check-fast` and not `check` on purpose — `check` compiles, and a hook costing minutes gets
 `--no-verify`'d within a week, after which its presence implies a guarantee nobody has (CLAUDE.md's
 own lesson about the pre-phase-318 `just ci`). Measured 63–64 s idle, stable because the tier is
@@ -519,7 +519,7 @@ themselves with "no runtime allocation to pre-size; pools are baked", true of ON
 conclusion survived (upstream's allocation argument is an opaque per-impl handle nothing here can produce);
 the premise did not, and had been reused six times. Both replacement reasons written for it were ALSO false
 before one held, which is the finding. Now measured rather than asserted: `scripts/rmw-alloc-sites.py`
-(`just check-rmw-alloc-sites`, fast line) attributes every allocation to its enclosing function and splits
+(`just check rmw-alloc-sites`, fast line) attributes every allocation to its enclosing function and splits
 per-message from entity-creation — cyclonedds 6 steady-state, xrce 0 (it reached zero when #0782 landed),
 uorb 0 — and `--check` fails on a new steady-state site with no declared reason. Two of cyclone's six are
 `ddsrt_calloc(1, desc->m_size)`, fixed size and knowable at create time, so removable by holding one sample
@@ -684,7 +684,7 @@ message path; it does not, and has not since Phase 210.E.3.c (the option is pars
 ignored — Zephyr has no install layout). Parity already holds; the ASI lane gate keyed on
 `TARGET zephyr_interface` is dead weight on the consumer side. See `archived/0753-*`. (2026-08-22)
 
-Recently resolved (2026-08-22): **#0750** (testing, WONTFIX by demand) — the NuttX/FreeRTOS/ThreadX core-pin arms COMPILE (`just check-sched-dim-arms`) but have never RUN. Closed on the question nobody asked while the plan was being drawn: which shipped device needs it? Census of `matrix::CELLS` — 197 Runtime cells, and the platform the reference consumer actually names (`nano_ros_use_board(fvp-aemv8r-smp)`, Cortex-R52 SMP, the architecture `nros-board-s32z270-freertos` targets in silicon) has ZERO, while a host simulator (ThreadxLinux) has 21. No multi-core NuttX or ThreadX target exists here, and FreeRTOS's Posix port has no SMP hooks at all — only RP2040 (hardware) does. CI tiers are COMPUTED covers, so a cell on a rarely-demanded platform taxes tier 2 and nightly forever to re-prove what the Zephyr a53 cell proves today. What stays: B (`22e511442`, a real fix — `snapshot_root` honoured `$NUTTX_EXPORT_DIR` and `nuttx_include_root` did not, so an image could link SMP libs against uniprocessor headers), the opt-in `arm-smp` defconfig/lane that demonstrate it, and the board-neutral `CORE_PIN_OBSERVED_CPU1`. If SMP coverage grows it grows toward R52/FVP, whose obstacle is licensing, not test design. See `archived/0750-*`. (2026-08-22)
+Recently resolved (2026-08-22): **#0750** (testing, WONTFIX by demand) — the NuttX/FreeRTOS/ThreadX core-pin arms COMPILE (`just check sched-dim-arms`) but have never RUN. Closed on the question nobody asked while the plan was being drawn: which shipped device needs it? Census of `matrix::CELLS` — 197 Runtime cells, and the platform the reference consumer actually names (`nano_ros_use_board(fvp-aemv8r-smp)`, Cortex-R52 SMP, the architecture `nros-board-s32z270-freertos` targets in silicon) has ZERO, while a host simulator (ThreadxLinux) has 21. No multi-core NuttX or ThreadX target exists here, and FreeRTOS's Posix port has no SMP hooks at all — only RP2040 (hardware) does. CI tiers are COMPUTED covers, so a cell on a rarely-demanded platform taxes tier 2 and nightly forever to re-prove what the Zephyr a53 cell proves today. What stays: B (`22e511442`, a real fix — `snapshot_root` honoured `$NUTTX_EXPORT_DIR` and `nuttx_include_root` did not, so an image could link SMP libs against uniprocessor headers), the opt-in `arm-smp` defconfig/lane that demonstrate it, and the board-neutral `CORE_PIN_OBSERVED_CPU1`. If SMP coverage grows it grows toward R52/FVP, whose obstacle is licensing, not test design. See `archived/0750-*`. (2026-08-22)
 
 Recently resolved (2026-08-22): **#0751** — `check-kconfig-knob-forwarding` held its two reader classes to
 different standards. Tabulating READERS must have a `KCONFIG_KNOBS` table AND call
@@ -1052,7 +1052,7 @@ question. See `archived/0723-*` and `archived/0727-*`. (2026-08-20)
 Recently resolved (2026-08-20): **#0730** — the zephyr embedded C++ cyclonedds lane was the one
 bare-`rmw-cffi` feature composition, so the alloc-gated `TransportError::BackendDynamic` vanished
 under nros-cpp's deliberately exhaustive mapper (E0599 on `aarch64-none`). `alloc` is now spelled at
-the dep-site (phase-361 W8.d) and `just check-cpp` compiles the exact coordinate with the feature
+the dep-site (phase-361 W8.d) and `just check cpp` compiles the exact coordinate with the feature
 string read from the cmake lane. See `archived/0730-*`. (2026-08-20)
 
 Recently resolved (2026-08-20): **#0729** — `nros setup board` and `board-facts` resolved boards by
@@ -1606,7 +1606,7 @@ no-port population is supported. See `archived/0709-*`. (2026-08-20)
 Recently resolved (2026-08-20): **#0701** — `check-feature-contract` clause (a) enforced only "a capability
 does not GRANT the heap"; nothing enforced the rest of the same sentence, "emit `compile_error!` naming the
 feature", so a capability whose gated code called `std::` with no guard failed the USER's build with a bare
-`cannot find crate std`, four frames deep. Gated by `just check-capability-flavour-guards`
+`cannot find crate std`, four frames deep. Gated by `just check capability-flavour-guards`
 (`check-std-census.py --check-guards`, fast tier, 0.4 s), which attributes each `std::` site to the
 CONJUNCTION of its module declaration and its enclosing item — both shapes learned by getting them wrong
 first, and both in `--self-test`. Scope is the whole tree, not the census's nine: measured at 132 further
@@ -3923,7 +3923,7 @@ say nothing), and `placement` needs the registry plus an interference model. See
 Recently resolved (2026-08-21): **#260** — the RFC-0052 Native sched dims were e2e-verified only on
 the FALLBACK arm: every realtime fixture was uniprocessor, so the SMP core-pin ACCEPT path was
 compile-verified only. Both halves are now done. Every arm COMPILES —
-`just check-sched-dim-arms` type-checks the freertos/nuttx/threadx call sites against their own
+`just check sched-dim-arms` type-checks the freertos/nuttx/threadx call sites against their own
 vendored headers under a synthetic SMP config, and Zephyr's compiles for real since #0655. And one
 arm RUNS and is OBSERVED: fixture `workspace-zephyr-c-realtime-smp` on
 `qemu_cortex_a53/qemu_cortex_a53/smp` (**2 CPUs**, `core = 1` on the spawned `high` tier) drives the
@@ -4122,7 +4122,7 @@ this machine's ROS lives in the distrobox. `ZenohRouter::start*` returns `Router
 router error a failure) — written for #0599 and reachable only through the `zenohd()`/`zenohd_unique()`
 rstest fixtures, while **31 direct call sites went around it with `.expect(...)`**. Same shape as #0800 one
 layer over: the mechanism existed, was documented, and nothing was wired to it. All 31 now use `or_skip`,
-the `ZenohRouter` doc example stopped teaching `.unwrap()`, and `just check-zenohd-router-skips` gates the
+the `ZenohRouter` doc example stopped teaching `.unwrap()`, and `just check zenohd-router-skips` gates the
 class (balanced-paren aware; deliberately does not flag `unwrap_or_else(|e| skip!(...))`, which errs the
 other way). Second defect found inside the same red: #0695 derived the junit path from `CARGO_TARGET_DIR`,
 which is false on cargo-nextest 0.9.143 — the BUILD honours it, the junit still goes to
@@ -4215,7 +4215,7 @@ different costume. Item 4 stays open by nature: the enclave now has a carrier bu
 Rust stub files and the adapter, all compiler-enumerated. See `archived/0808-*`.
 
 Recently resolved (2026-08-25): **#0787** (ci/rmw) — xrce and uORB had no host lane, so their C was
-only ever compiled by tier 2. `just check-rmw-xrce` / `check-rmw-uorb` now build and CTest both on the
+only ever compiled by tier 2. `just check rmw-xrce` / `check-rmw-uorb` now build and CTest both on the
 check-build line. The SDKs were never the blocker: xrce vendors its client as submodules and uORB defaults
 `LINK_PX4=OFF` precisely to build without PX4 — nobody had written the recipe. The lanes immediately found
 uORB not COMPILING (a phase-376 sweep whose regex missed a commented-out parameter name), neither backend

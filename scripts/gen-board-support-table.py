@@ -64,7 +64,7 @@ def render(entries):
     lines.append("What nano-ros promises for each in-tree board package, and why.")
     lines.append("")
     lines.append("Every tier here is **checked against evidence** by "
-                 "`just check-board-tiers`: a board cannot claim tier 1 or 2 without "
+                 "`just check board-tiers`: a board cannot claim tier 1 or 2 without "
                  "runtime cells in the test matrix, cannot claim tier 3 while holding "
                  "runtime cells, and cannot be omitted from this table at all. That "
                  "gate exists because the previous hand-written table drifted into "
@@ -98,7 +98,7 @@ def render(entries):
         lines.append("")
     lines.append("## Maintainers")
     lines.append("")
-    lines.append("A tier is a promise, and `just check-board-tiers` requires someone to "
+    lines.append("A tier is a promise, and `just check board-tiers` requires someone to "
                  "have made it: **tier 1 needs 3 named maintainers, tier 2 needs 2, "
                  "tier 3 needs 1** (phase-375 W1). Rust's target-tier policy is the "
                  "model — a named person per target, and demotion when the maintainer "

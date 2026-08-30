@@ -38,7 +38,7 @@ produces.
 
 The build tier is gated on `github.event_name != 'push'`:
 
-    - name: just check-build + no_std
+    - name: just check build + no_std
       if: ${{ github.event_name != 'push' && !cancelled() }}
 
 So a push to `main` stops after `check-fast` and never reaches

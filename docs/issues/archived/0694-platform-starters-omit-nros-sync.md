@@ -162,7 +162,7 @@ The same `cd <leaf> && cargo build` also writes `examples/**/target/`,
 which `check-example-leaf-target-dirs` rejects — in-tree cargo builds are
 expected to reach the shared group dir via `nros_fixture_target_dir_flag`
 (phase-340 P2). Following `bare-metal.md` verbatim inside the checkout left
-269 MB of residue and turned `just check-fast` red; observed while verifying
+269 MB of residue and turned `just check fast` red; observed while verifying
 the fix for the first defect.
 
 This is not the pages being wrong about cargo — a copied-out example *should*

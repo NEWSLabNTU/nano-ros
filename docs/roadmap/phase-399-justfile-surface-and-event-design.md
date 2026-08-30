@@ -61,7 +61,7 @@ eleven `test-*` recipes against 203 `check-*`. Moving eleven recipes out of a
 about a wall of 203, and that wall is gone.
 
 This is the whole design decision, so state it plainly: `mod` would namespace
-them (`just check fast`) and `import` keeps them flat (`just check-fast`).
+them (`just check fast`) and `import` keeps them flat (`just check fast`).
 `mod` reads better in isolation and is wrong here, because the names are load-
 bearing in about two hundred places — five workflow files, `run-gates-parallel.sh`'s
 awk over `check-fast-serial`'s dependency list, CLAUDE.md, AGENTS.md, every

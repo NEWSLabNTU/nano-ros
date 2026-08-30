@@ -97,7 +97,7 @@ position and shape before anything fills it is legitimate for an ABI that
 mirrors upstream; what was missing is that nothing distinguished reserved from
 working.
 
-`scripts/check-rmw-slot-producers.py` (`just check-rmw-slot-producers`, fast
+`scripts/check-rmw-slot-producers.py` (`just check rmw-slot-producers`, fast
 line) is that distinction, and it is two-way: an inert slot in no declared
 family fails, and a family naming a slot that stopped being inert fails.
 

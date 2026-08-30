@@ -367,7 +367,7 @@ rows, tier1 = 10 coordinates. `git grep 'examples/workspaces/ws-'` outside
 ## Status — all waves landed (2026-08-03)
 
 W1 through W6 are done. What was verified, stated at the tier it was actually
-run at (RFC-0061): **tier 1**. `just check-fast` green, `matrix_fixture_coverage`
+run at (RFC-0061): **tier 1**. `just check fast` green, `matrix_fixture_coverage`
 green, and a cold `build-test-fixtures lane=native` built 72 fixtures with 0
 errors. The embedded lanes were NOT swept — the freertos realtime fixture was
 built and its generated tier table inspected by hand (issue 0395), but no tier-2

@@ -1,5 +1,5 @@
 // issue #201 — RUNTIME lifetime probe for nros::HeapSequence element
-// destructor semantics (compiled AND executed by `just check-cpp`).
+// destructor semantics (compiled AND executed by `just check cpp`).
 //
 // Verifies, with a counting allocator, that a two-level heap shape — a heap
 // sequence whose elements own heap memory (HeapString + nested HeapSequence,

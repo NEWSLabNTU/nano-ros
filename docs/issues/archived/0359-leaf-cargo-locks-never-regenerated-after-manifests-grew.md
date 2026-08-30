@@ -105,7 +105,7 @@ phase-321/322's package reorganisation, not here.
 
 ## Gate landed (2026-07-31)
 
-`scripts/check-leaf-lockfiles.sh` (`just check-leaf-lockfiles`, wired into
+`scripts/check-leaf-lockfiles.sh` (`just check leaf-lockfiles`, wired into
 `check-fast`) runs `cargo metadata --locked --offline` over every tracked leaf
 lock and fails on CHANGE against
 `scripts/leaf-lockfile-drift-baseline.txt` — in both directions:

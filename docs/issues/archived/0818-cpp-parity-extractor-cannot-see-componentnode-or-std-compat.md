@@ -65,7 +65,7 @@ never opens.
 
 ## Second-order: no gate covers the pairing either
 
-`just check-cpp` compiles each header **standalone and without**
+`just check cpp` compiles each header **standalone and without**
 `NROS_CPP_STD`. So the configuration where `std_compat.hpp`'s declarations
 coexist with the rest of the API is exercised by **neither** the parity tool nor
 the C++ lane. Group A's overload set is correct today by inspection and by a
@@ -125,7 +125,7 @@ key is now the whole record.
 
 Direction (3) — a `tests/compile/` TU pairing `nros.hpp` with `NROS_CPP_STD` —
 is NOT done. The parity tool now compiles that combination, so the pairing is
-exercised, but `just check-cpp` still compiles every header standalone without
+exercised, but `just check cpp` still compiles every header standalone without
 the flag. Worth a follow-up if a second collision of the group-A kind appears.
 
 ## Direction (as filed)

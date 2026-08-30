@@ -207,7 +207,7 @@ named owner plus a demotion clause.
 
 ## Acceptance
 
-- `just check-board-tiers` passes, mutation-tested in **both** directions: a
+- `just check board-tiers` passes, mutation-tested in **both** directions: a
   board declared above its evidence fails, and one declared below fails too.
 - `book/src/reference/supported-boards.md` is generated, not hand-written.
 - No matrix cell claims `Runtime` for a target that cannot run unattended.
@@ -219,7 +219,7 @@ named owner plus a demotion clause.
 
 ## Outcome (2026-07-31)
 
-`packages/boards/board-support.toml` is the registry; `just check-board-tiers`
+`packages/boards/board-support.toml` is the registry; `just check board-tiers`
 validates it against matrix.rs, fixtures.toml, the nightly workflow and the
 `rust-rtos-link-check` recipe, and `book/src/reference/board-support-tiers.md`
 is generated from it. Wired into `check-fast`.

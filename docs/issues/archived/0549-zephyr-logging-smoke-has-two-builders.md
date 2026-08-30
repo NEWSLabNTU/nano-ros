@@ -112,7 +112,7 @@ One builder, one dir, built with the lane.
 lane had to produce it: `just zephyr build-fixtures` (filtered to the leaf) wrote
 `build-logging-smoke/zephyr/zephyr.exe` in 119 s, and
 `logging_smoke_zephyr_native_sim_emits_every_severity` then passed against it.
-West fixtures 4/4. `just check-fast` green; 32/32 across the fixture and lane
+West fixtures 4/4. `just check fast` green; 32/32 across the fixture and lane
 gates; `check-zephyr-fixture-rows` still 58 = 58.
 
 The defs the leaf gets now are a superset of what the deleted recipe passed

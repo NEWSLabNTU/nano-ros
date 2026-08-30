@@ -10,13 +10,13 @@ related: [phase-376, issue-0773, issue-0778, issue-0319, issue-0652]
 
 ## Problem
 
-`just check-rmw-cyclonedds` builds the cyclonedds backend and runs its 17-test
+`just check rmw-cyclonedds` builds the cyclonedds backend and runs its 17-test
 suite on the host, on the fast line, with no SDK provisioning. There is no
 equivalent for the other two C backends:
 
 | backend | host lane | what compiles it |
 | --- | --- | --- |
-| cyclonedds | `just check-rmw-cyclonedds` | fast line, every run |
+| cyclonedds | `just check rmw-cyclonedds` | fast line, every run |
 | xrce | **none** | tier 2 fixture builds only (needs the Micro-XRCE-DDS SDK) |
 | uORB | **none** | tier 2 fixture builds only (needs PX4) |
 
@@ -72,7 +72,7 @@ and this issue exists because a convention is not enough.
 
 ## Resolved 2026-08-25 — and the SDKs were never the blocker
 
-`just check-rmw-xrce` and `just check-rmw-uorb` build each backend and run its
+`just check rmw-xrce` and `just check rmw-uorb` build each backend and run its
 CTest suite. Both are on the `check-build` line beside `check-rmw-cyclonedds`.
 
 The issue above assumed provisioning was the obstacle and offered "a cheaper

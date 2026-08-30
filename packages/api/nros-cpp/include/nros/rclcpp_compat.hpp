@@ -489,7 +489,7 @@ enum class FutureReturnCode {
 
 // Future type is templated rather than `const auto& future` so the header
 // stays parseable under `-std=c++14` (the C++20 abbreviated-function-template
-// syntax breaks `just check-cpp`'s freestanding probe).
+// syntax breaks `just check cpp`'s freestanding probe).
 //
 // issue 0339 — the bounded branch used to call `Executor::spin(timeout_ms)`
 // and never consult the future, so it BURNED THE WHOLE TIMEOUT even when the

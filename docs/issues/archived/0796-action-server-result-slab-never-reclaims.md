@@ -146,10 +146,10 @@ keep compiling.
 
 Worth recording how the mirrors were found: the declaration existed in **three**
 places — `nros_cpp_ffi.h`, `nros-c/component.h` and `action_server.hpp` — and
-editing two of them compiled fine. `just check-c`'s cross-include TU (the gate
+editing two of them compiled fine. `just check c`'s cross-include TU (the gate
 CLAUDE.md describes for exactly this drift class) caught the third with
 `conflicting types`. Six example call sites used the raw FFI directly and were
-updated. `just check-c` and `just check-cpp` are green.
+updated. `just check c` and `just check cpp` are green.
 
 **Both problems are now fixed**, and so is the `Related` list below.
 
