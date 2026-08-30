@@ -39,6 +39,7 @@ use eyre::Result;
 use ros_launch_resolve::{
     model::{ModelBuildInputs, build_checked_model},
     ros::launch_dump::LaunchDump,
+    verbs::parse_launch_file,
 };
 
 #[derive(Parser)]
@@ -135,7 +136,18 @@ fn main() -> Result<()> {
         // a `host:=robot1`-style override that stops short of the parser
         // silently resolves the default configuration (phase-326 found this
         // resolving the multihost per-host models — both nodes survived).
-        play_launch_parser::parse_launch_file(&launch_path, arg_binding.clone())
+        // `verbs::parse_launch_file`, NOT `play_launch_parser`'s — the verb
+        // wrapper is where the Python half is discovered and `dlopen`ed
+        // (issue 0897 W3), and it is deliberately the ONE place that happens.
+        //
+        // This binary called the parser directly and so never reached it, which
+        // is not a missing nicety: after W2b removed the compile-time libpython
+        // link, nothing installed a backend here at all, and every `$(eval …)`
+        // or `.launch.py` failed with "this build has no Python backend" — on
+        // hosts that have Python. `host-tests` was red on main from that pin
+        // until this line changed. A failure to load stays non-fatal, so a host
+        // with no usable interpreter still resolves XML and YAML.
+        parse_launch_file(&launch_path, arg_binding.clone())
             .map_err(|e| eyre::eyre!("parsing {}: {e}", launch_path.display()))?
     };
     let dump: LaunchDump = serde_json::from_str(&serde_json::to_string(&record)?)?;
