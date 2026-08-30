@@ -63,9 +63,24 @@ tier1:
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier1)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
-    NROS_FIXTURE_LANE=tier1 bash scripts/check-tier-preconditions.sh
+    # issue 0482 — the preflight needs the SAME coordinate file the run gets.
+    # Without it the check refuses ("lane 'tier1' is coordinate-scoped, but
+    # NROS_TEST_COORDS is unset"), which made `just ci` unable to satisfy its own
+    # precondition: it failed identically before and after a successful
+    # `just build-test-fixtures lane=tier1`, so the message pointed at fixtures
+    # that were already there. The variable is computed two lines above and was
+    # passed to the RUN but not to the CHECK — the two halves of one fact, and
+    # only one of them had it.
     NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
-        just check rust-rtos-link-check test-all
+        bash scripts/check-tier-preconditions.sh
+    # `check` is a MODULE since the import->mod conversion, so it cannot share an
+    # invocation with root recipes: `just check rust-rtos-link-check test-all`
+    # parses as "recipe rust-rtos-link-check IN module check" and dies with
+    # "justfile does not contain recipe `check rust-rtos-link-check`". It used to
+    # mean three recipes. Split, so the module default runs as itself.
+    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" just check
+    NROS_FIXTURE_LANE=tier1 NROS_TEST_COORDS="$coords" \
+        just rust-rtos-link-check test-all
     echo "CI passed (tier 1 — host-executable platforms; cross coverage needs \`just ci-matrix\`)!"
 
 # L3 — cross build + link + SYMBOL checks. No QEMU.
@@ -186,8 +201,11 @@ matrix:
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier2)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    # Split for the reason the tier1 lane above gives: `check` is a MODULE and
+    # cannot share an invocation with root recipes.
+    NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords" just check
     NROS_FIXTURE_LANE=tier2 NROS_TEST_COORDS="$coords" \
-        just check rust-rtos-link-check test-all
+        just rust-rtos-link-check test-all
     echo "CI passed (tier 2 — 1-wise cover; pairwise interactions need \`just ci-matrix-nightly\`)!"
 
 # Tier 2 nightly — the pairwise cover over platform x lang x rmw x kind (37 of 50
@@ -214,8 +232,10 @@ matrix-nightly:
     source scripts/build/fixture-lane.sh
     coords="$(nros_lane_coords_file tier2-nightly)"
     coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+    # Split — see the tier1 lane.
+    NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords" just check
     NROS_FIXTURE_LANE=tier2-nightly NROS_TEST_COORDS="$coords" \
-        just check rust-rtos-link-check test-all test-ignored
+        just rust-rtos-link-check test-all test-ignored
     echo "CI passed (tier 2 nightly — pairwise cover)!"
 
 # Tier 3 — everything. The former `ci`.
@@ -238,7 +258,8 @@ matrix-nightly:
 # runs tier 2, which never claimed to cover it.
 [group("ci")]
 full:
-    @just check rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored
+    @just check
+    @just rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored
     @just zephyr tier3-cell
     @echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
 
