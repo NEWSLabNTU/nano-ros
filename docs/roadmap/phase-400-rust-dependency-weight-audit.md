@@ -493,7 +493,21 @@ collapse those without re-reading 0616 — `nros-platform` holds the tree's one
 `#[global_allocator]`, and two copies of it is the intermittent failure that issue
 describes.
 
-*Next step, and the sizing that must come first:* wire the C/C++ Zephyr lane to
+**CORRECTION 2026-08-30 — the first attempt at this wiring was a NO-OP, and was
+reverted.** Passing `-DNROS_SHARED_CARGO_ROOT` through west does nothing on
+Zephyr: `NROS_SHARED_CARGO_ROOT` is read by `nros_share_corrosion_cargo_dir` on
+the CORROSION path, and Zephyr does not use Corrosion. `zephyr/CMakeLists.txt`
+says so at line 197 — "`nros_c_cargo` — not a Corrosion target". Proven rather
+than reasoned: after a full pristine C++ build with the wiring in place,
+`build/corrosion-cargo/zephyr/` did not exist.
+
+The lever is unchanged and still real (86 host crates recompiled per build dir);
+only the mechanism was wrong. Zephyr needs the OTHER consumer of the shared-dir
+helper — `nros_shared_cargo_dir()`, which the NuttX FFI driver already uses
+because it too hand-rolls its cargo invocation and sets `CARGO_TARGET_DIR`
+itself. Wire that into `nros_c_cargo`/`nros_cpp_cargo`, not the Corrosion `-D`.
+
+*Original next step, still the sizing that must come first:* wire the C/C++ Zephyr lane to
 `nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr`, the same call the six other
 platforms already make, then re-measure a two-image build with `--timings` before
 quoting a saving. **This phase has retracted three estimates for skipping exactly
