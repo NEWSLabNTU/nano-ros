@@ -17,33 +17,43 @@
 # rewriting absolute paths into a MOVED tree, and the compile actually
 # succeeding from there.
 #
+# WHY IT SCAFFOLDS RATHER THAN COPYING AN EXAMPLE
+#
+# The first version copied `examples/workspaces/rust` to $TMPDIR. That can never
+# work, and issue 0905 is the record of finding out why: an IN-TREE example is
+# not portable by construction. Its leaf `Cargo.toml` path-deps the framework
+# relatively —
+#
+#     nros = { path = "../../../../../packages/api/nros" }
+#
+# which from `/tmp/<x>/ws/src/<leaf>` resolves to `/packages/api/nros`, and its
+# generated `.cargo/config.toml` climbs six levels into this checkout. Both are
+# correct where they were written and meaningless one directory elsewhere.
+#
+# A real user's workspace has neither: it names `nros` by version and lets
+# `nros sync` write the patch. So the check builds that shape — with the same
+# verbs a user runs — instead of moving a tree that was never meant to move.
+#
 # WHAT THIS PROVES, AND WHAT IT DOES NOT
 #
-# Proves: the three trees can be three trees. The workspace is copied out of the
-# checkout, the Zephyr is named explicitly, the framework is named explicitly,
-# and the image builds and runs.
+# Proves: the three trees can be three trees. The workspace is created outside
+# the checkout and never lived in it, the Zephyr is named explicitly, the
+# framework is named explicitly, and the image builds.
 #
-# Does NOT prove: dependency resolution from a clean install. The example
-# workspaces path-dep the nano-ros crates, so a copied tree still points back at
-# this checkout. That is legitimate — a user path-deps or registry-deps the same
-# way — but it means this measures LOCATIONS, not a from-scratch resolve. Do not
-# let a green run here be read as the stronger claim.
+# Does NOT prove: resolution from a PUBLISHED nano-ros. `nros sync` patches the
+# registry names to this checkout, which is what a user does today (RFC-0040 —
+# the crates are not published). When they are, this is the check that should
+# gain a no-`NROS_REPO_DIR` variant.
 #
 # Usage:
-#   scripts/dev/two-tree-check.sh [--workspace examples/workspaces/rust]
-#                                 [--image demo_bringup:zephyr]
-#                                 [--keep]
+#   scripts/dev/two-tree-check.sh [--keep]
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SRC_WS="$REPO/examples/workspaces/rust"
-IMAGE="demo_bringup:zephyr"
 KEEP=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --workspace) SRC_WS="$2"; shift 2 ;;
-        --image)     IMAGE="$2"; shift 2 ;;
         --keep)      KEEP=1; shift ;;
         -h|--help)   sed -n '2,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "two-tree-check: unknown argument $1" >&2; exit 2 ;;
@@ -70,43 +80,105 @@ OUT="$(mktemp -d "${TMPDIR:-/tmp}/nros-two-tree-XXXXXX")"
 cleanup() { [ "$KEEP" -eq 1 ] || rm -rf "$OUT"; }
 trap cleanup EXIT
 
+WS="$OUT/ws"
+mkdir -p "$WS/src"
+
 echo "two-tree-check: three trees"
 echo "  framework : $REPO"
 echo "  zephyr    : $ZEPHYR_WS"
-echo "  workspace : $OUT/ws   (copied from $SRC_WS)"
+echo "  workspace : $WS   (scaffolded here; never inside the checkout)"
 echo
 
-# Copy the SOURCES only. `build/`, `target*/` and `generated/` are outputs of
-# the tree they were made in; carrying them over would let the copy pass on
-# artifacts that were never rebuilt in their new location — which is precisely
-# the thing under test.
-mkdir -p "$OUT/ws"
-tar -C "$SRC_WS" \
-    --exclude='build' --exclude='target' --exclude='target-*' \
-    --exclude='generated' --exclude='.cargo/nros-managed-patch.toml' \
-    -cf - . | tar -C "$OUT/ws" -xf -
+cd "$WS"
 
-cd "$OUT/ws"
+echo "==> nros new system demo_bringup"
+nros new system demo_bringup --component-name talker_pkg --into src >/dev/null
 
-echo "==> nros sync   (rewrites absolute paths for THIS tree)"
+# The node package, by hand and deliberately.
+#
+# `nros new <name> --platform native` makes a standalone RUNNABLE project — it
+# pins a board and a platform port, which is right for what it is and wrong for
+# a package an entry links onto a different platform. A node package is
+# board-agnostic: one `nros` dep, `alloc` + `rmw-cffi`, nothing else. That is
+# what `examples/workspaces/rust/src/talker_pkg` carries, and there is no verb
+# that emits it — so this writes the minimum rather than pretending otherwise.
+mkdir -p src/talker_pkg/src
+cat > src/talker_pkg/package.xml <<'XML'
+<?xml version="1.0"?>
+<package format="3">
+  <name>talker_pkg</name>
+  <version>0.1.0</version>
+  <description>Node package for the two-tree check.</description>
+  <maintainer email="dev@example.com">dev</maintainer>
+  <license>Apache-2.0</license>
+</package>
+XML
+cat > src/talker_pkg/Cargo.toml <<'TOML'
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+# Board- and RMW-agnostic, like every node package: `alloc` is the universal
+# baseline and `rmw-cffi` is the vtable seam. The entry chooses the platform.
+[dependencies]
+nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi"] }
+TOML
+cat > src/talker_pkg/src/lib.rs <<'RS'
+#![no_std]
+
+//! Minimal node package for the two-tree check.
+//!
+//! It declares a node that creates nothing. What is under test here is WHERE
+//! the three trees are, not what the nodes do — so this is the smallest thing
+//! that still exercises the real seam: `nros::node!` emits the free
+//! `register()` the entry's `nros::main!` calls, and a signature mismatch here
+//! is a compile error in generated code, which is exactly the failure a node
+//! package must not be able to cause.
+
+use nros::{Callback, CallbackCtx, ExecutableNode, Node, NodeContext, NodeResult};
+
+pub struct Talker;
+
+impl Node for Talker {
+    const NAME: &'static str = "talker";
+    const ENTITY_BOUNDS: nros::EntityBounds = nros::EntityBounds::exact(0, 0, 0, 0, 0);
+
+    fn register(_ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        Ok(())
+    }
+}
+
+impl ExecutableNode for Talker {
+    type State = ();
+
+    fn init() -> Self::State {}
+
+    fn on_callback(_state: &mut Self::State, _cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {}
+}
+
+nros::node!(Talker);
+RS
+
+echo "==> nros new entry zephyr_entry --platform zephyr"
+nros new entry zephyr_entry --platform zephyr >/dev/null
+
+echo
+echo "==> nros sync   (writes this tree's patch table)"
 NROS_REPO_DIR="$REPO" nros sync
 
 echo
-echo "==> nros build $IMAGE"
-NROS_REPO_DIR="$REPO" nros build "$IMAGE" --zephyr-workspace "$ZEPHYR_WS"
+echo "==> nros build demo_bringup:zephyr_entry"
+NROS_REPO_DIR="$REPO" nros build demo_bringup:zephyr_entry \
+    --zephyr-workspace "$ZEPHYR_WS"
 
-# Assert the artifact is in the COPY, not back in the checkout. A build that
-# silently produced its output in the source tree would look identical up to
-# here, and would mean none of this proved anything.
-ELF="$OUT/ws/build/zephyr/zephyr.elf"
+ELF="$WS/build/zephyr/zephyr.elf"
 if [ ! -f "$ELF" ]; then
     echo "two-tree-check: FAIL — no artifact at $ELF" >&2
-    exit 1
-fi
-if [ -e "$SRC_WS/build/zephyr/zephyr.elf" ] \
-   && [ "$SRC_WS/build/zephyr/zephyr.elf" -nt "$ELF" ]; then
-    echo "two-tree-check: FAIL — the source tree's artifact is newer;" >&2
-    echo "  the build wrote back into $SRC_WS instead of the copy." >&2
     exit 1
 fi
 

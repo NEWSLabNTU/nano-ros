@@ -3,7 +3,7 @@ id: 905
 title: "A workspace copied out of the nano-ros checkout cannot resolve its leaf
   `.cargo/config.toml` include, and it is not established whether `nros sync`
   repairs it"
-status: open
+status: resolved
 type: bug
 area: cli, build
 related: [issue-0457, issue-0463, issue-0285]
@@ -104,6 +104,88 @@ consumer now, whatever it was when it was written.
   `a_plan_is_answerable_with_no_zephyr_on_the_machine`,
   `a_missing_framework_names_how_to_supply_it`). Every location decision the
   planner makes is covered; this is the one that happens after it.
+
+## Resolved — the reproducer was wrong, not the product
+
+### The measurement this issue asked for
+
+Run properly this time: fresh CLI, stderr visible.
+
+```console
+$ cd <copy>/ws && NROS_REPO_DIR=<checkout> nros sync
+sync: wrote [patch.crates-io] → <copy>/ws/.cargo/config.toml
+sync: done.
+```
+
+One file — the workspace ROOT config — and never the leaf's. Deleting the leaf
+config and re-running does not recreate it. So `nros sync` genuinely does not
+manage that file for this workspace, and it is not supposed to: `zephyr_entry`
+is in the root manifest's `exclude` list, so it is not its own authority there,
+and cargo reaches the root config by walking up from the leaf.
+
+That answers the open question. It is also not the failure.
+
+### The actual reason a copied example cannot build
+
+Its **`Cargo.toml`** path-deps the framework relatively:
+
+```toml
+nros = { path = "../../../../../packages/api/nros" }
+```
+
+which from `/tmp/<x>/ws/src/<leaf>` resolves to `/packages/api/nros`:
+
+```text
+error: failed to get `nros` as a dependency of package `zephyr_entry`
+Caused by: unable to update /packages/api/nros
+```
+
+An in-tree example is **not portable by construction**, and no amount of sync
+fixes that — the relative spellings are correct where they were written and
+meaningless one directory elsewhere. The `.cargo/config.toml` include this
+issue was filed about is the same fact arriving one step earlier.
+
+A real user's workspace has neither: it names `nros` by version and lets
+`nros sync` write the patch, which is what `nros new` scaffolds.
+
+### Fix: the check scaffolds instead of copying
+
+`scripts/dev/two-tree-check.sh` now builds the workspace with the same verbs a
+user runs — `nros new system`, `nros new entry`, `nros sync`, `nros build` — in
+`$TMPDIR`, so the tree never lived in the checkout and has nothing to inherit.
+
+```text
+two-tree-check: three trees
+  framework : /home/aeon/repos/nano-ros
+  zephyr    : /home/aeon/repos/nano-ros/zephyr-workspace
+  workspace : /tmp/nros-two-tree-jzlPYF/ws   (scaffolded here)
+…
+two-tree-check: OK
+  artifact: /tmp/nros-two-tree-jzlPYF/ws/build/zephyr/zephyr.elf
+```
+
+In that shape sync DOES write a per-leaf config, and its paths are right — the
+central trio absolute (the `#272` out-of-tree branch), the rest a `pathdiff`
+relative path that crosses the filesystem root. The second spelling is ugly and
+depth-dependent but correct, and the build proves it.
+
+### Left behind: there is no verb for a NODE package
+
+Getting the check to build surfaced this. `nros new <name> --platform native`
+makes a standalone RUNNABLE project — it pins `nros-board-linux` and
+`nros-platform-cffi`, which is right for what it is and wrong for a package an
+entry links onto a different platform:
+
+```text
+error: no matching package named `nros-board-linux` found
+required by package `talker_pkg`
+  ... which satisfies path dependency `talker_pkg` of package `zephyr_entry`
+```
+
+A node package is board- and RMW-agnostic: one `nros` dep with `alloc` +
+`rmw-cffi`, which is what `examples/workspaces/rust/src/talker_pkg` carries.
+Nothing emits that. The check writes the minimum by hand and says why; a
+`nros new node <name>` would replace it.
 
 ## Sweep
 

@@ -660,22 +660,37 @@ banned — so that tier is `scripts/dev/two-tree-check.sh`, which copies a
 workspace to `$TMPDIR`, syncs, builds, and asserts the artifact landed in the
 copy rather than back in the source.
 
-**What it found on its first run** is the honest result: a leaf
-`.cargo/config.toml` carries a RELATIVE `include = ["../../../../../../nros-patch.toml"]`,
-six levels up into the nano-ros checkout, and a moved workspace cannot resolve
-it —
+**What it found on its first run, and how that turned out** (issue 0905,
+resolved): copying an in-tree example out was the wrong reproducer, not a
+product bug. Such a workspace is not portable by construction — its leaf
+`Cargo.toml` path-deps the framework relatively, so
+`nros = { path = "../../../../../packages/api/nros" }` becomes
+`/packages/api/nros` from `$TMPDIR`, and its generated `.cargo/config.toml`
+include climbs six levels into the checkout. Both are correct where they were
+written and meaningless one directory elsewhere.
+
+A real user's workspace has neither: it names `nros` by version and lets
+`nros sync` write the patch. So the check now **scaffolds** with the same verbs
+a user runs — `nros new system`, `nros new entry`, `nros sync`, `nros build` —
+and the tree never lived in the checkout:
 
 ```text
-error: could not load Cargo configuration
-failed to load config include `../../../../../../nros-patch.toml`
+two-tree-check: three trees
+  framework : …/nano-ros
+  zephyr    : …/nano-ros/zephyr-workspace
+  workspace : /tmp/nros-two-tree-jzlPYF/ws   (scaffolded here)
+…
+two-tree-check: OK
+  artifact: /tmp/nros-two-tree-jzlPYF/ws/build/zephyr/zephyr.elf
 ```
 
-That relative spelling is deliberate for an IN-TREE example leaf (`#272`: a
-host-absolute path would break every other checkout), and `nros sync` writes
-absolute inlines for an out-of-tree consumer instead. What is not yet
-established is whether sync REWRITES an in-tree config that has been copied
-out — the first attempt to check was invalidated by a stale-CLI guard whose
-output had been suppressed, so this is recorded as open rather than diagnosed.
+**So D1's shape is now demonstrated end to end**, not just at plan level: three
+trees, a workspace that never lived in the checkout, and an image that builds.
+
+One gap it left: there is no verb that scaffolds a NODE package.
+`nros new <name> --platform native` makes a standalone runnable project, which
+pins a board an entry on another platform cannot link. The check writes the
+minimum by hand and says so.
 
 ## Verified end to end
 
