@@ -68,10 +68,10 @@ jobs:
       # lands on the author's change looking like a code failure. Assert first.
       - name: Verify this runner's labels are true
         run: ./scripts/ci/runner-doctor.sh nros-sdk-zephyr,nros-big
-      - name: just ci-l3
+      - name: just ci l3
         run: |
           source ./activate.sh
-          just ci-l3
+          just ci l3
       - name: Upload logs and size reports
         if: always()
         uses: actions/upload-artifact@v4

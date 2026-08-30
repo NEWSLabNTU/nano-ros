@@ -95,7 +95,7 @@ jobs:
 
           \`\`\`
           git fetch origin && git rebase origin/main
-          just ci-l1                 # the SAME tier the merge group runs
+          just ci l1                 # the SAME tier the merge group runs
           \`\`\`
 
           **Do not re-queue an unchanged commit.** The queue re-runs the same tree and

@@ -55,7 +55,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 ## Practices
 - **Run the TIER your change earns, after every task** (RFC-0061 / phase-318).
   **Never `sudo`** — tell the user.
-  - `just ci-l1` — **compile + unit, ~6 min, NO FIXTURES** (phase-395 W2).
+  - `just ci l1` — **compile + unit, ~6 min, NO FIXTURES** (phase-395 W2).
     Run this before every push. It is `check` + `test-unit`, and it needs no
     fixture build, no SDK, no QEMU and no cross toolchain — only `test`/
     `test-all` depend on fixtures, and 74 of 163 test files never needed them.
@@ -84,7 +84,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   - `just ci` — **tier 1**, host only. Gates and runs only native fixtures, so a
     stale ThreadX fixture cannot block it. Costs a fixture build; run it when
     you need fixture-backed coverage, not as the reflex before every push.
-  - `just ci-matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
+  - `just ci matrix` — **tier 2**, when the diff touches `packages/core`, codegen,
     or `cmake/`. 1-wise over platform/lang/rmw/kind: every value once, ~28 % of
     the coordinates. It sees each platform and each language, but NOT their
     pairing. `just build-test-fixtures lane=tier2` is the build it needs
@@ -98,11 +98,11 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     those stale, `_lane-gate` still PASSES, and `test-all` reports ~190
     stale-fixture failures. Until 0828 lands a core-crate diff needs
     `lane=all`; a tier-2 green otherwise rides residue the lane never names.
-  - `just ci-matrix-nightly` — the pairwise cover (~70 %). Where the
+  - `just ci matrix-nightly` — the pairwise cover (~70 %). Where the
     platform×language and rmw×language classes actually surface (0268/0245 sizes
     headers, 0332 freestanding headers, 0331 vtable ABI). Tier 2 costs a day of
     latency on those, which is the price of a middle tier anyone can afford.
-  - `just ci-full` — **tier 3**, the whole matrix. Pre-release, on demand.
+  - `just ci full` — **tier 3**, the whole matrix. Pre-release, on demand.
   Green tier 1 means "the logic and the seams are sound", never "it builds on the
   targets". Say which tier you ran; do not report a tier-1 green as if it were a
   sweep. The old single `just ci` WAS tier 3 — an instruction nobody could afford
@@ -120,7 +120,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   coverage was narrower than the rule they enforce.
 - **Green CI locally BEFORE pushing — don't iterate on remote CI.** Run `just format`
   then the tier your change earns (above) locally and fix every failure first, so the
-  push passes remote CI on the first try. `just ci-full` = `check` (fast + build, incl. embedded
+  push passes remote CI on the first try. `just ci full` = `check` (fast + build, incl. embedded
   clippy + every per-feature/per-example clippy, and the per-component lanes `check-c` /
   `check-cpp` / `check-rmw-cyclonedds` / `check-cli-tests`) + `rust-rtos-link-check` +
   `test-all`. A backend's own test suite belongs in a `check-*` lane, never as a named step
@@ -140,7 +140,7 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   2026-05-15) and now the push is REJECTED. Recovery is `git rebase origin/main`, never
   `--force`. **DIRECT PUSH TO `main` NO LONGER WORKS** (live 2026-08-28): the
   ruleset also requires a pull request and the merge queue, with no bypass. Work
-  goes `just claim` -> branch -> `just ci-l1` -> PR -> `gh pr merge --auto
+  goes `just claim` -> branch -> `just ci l1` -> PR -> `gh pr merge --auto
   --rebase`. ONE required check, the aggregator `CI` — never add a job name to
   the required set, and never path-filter a required workflow: a check that
   produces no verdict blocks forever, which deadlocked two PRs on 2026-08-28.

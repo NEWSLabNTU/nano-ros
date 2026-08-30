@@ -103,10 +103,10 @@ jobs:
         run: |
           source ./activate.sh
           just build-test-fixtures lane=tier2
-      - name: just ci-matrix
+      - name: just ci matrix
         run: |
           source ./activate.sh
-          just ci-matrix
+          just ci matrix
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
