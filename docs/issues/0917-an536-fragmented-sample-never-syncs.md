@@ -53,6 +53,16 @@ Measured, not argued:
   failure, not this one).
 * **Not a broken NACKFRAG path.** At a low publish rate the reader does send
   them — 17 `NACKFRAG` in a traced 120-point run. The machinery works.
+* **Not the writer's history depth.** `KEEP_LAST(1)` lets the writer drop a
+  sample the reader is still reassembling, which would explain a stall that
+  never repairs; at depth 20 it is still 2 of 6.
+* **Not the subscription buffer above Cyclone.** `NROS_SUBSCRIPTION_BUFFER_SIZE`
+  64 KiB → 256 KiB, no change.
+* **Not the take/deserialize path above Cyclone at all.** With `rhc` tracing and
+  the small topics slowed to 0.5 Hz so the streams are separable, a failing run
+  logs 16-20 `rhc_store` — about what the small topics alone account for, where
+  a delivered 10 Hz trajectory would add ~250. The sample never reaches the
+  reader history cache, so it is lost in reassembly and not after it.
 
 ## What the island's own trace shows
 
