@@ -7,13 +7,22 @@ a decision; the rest carry that decision across a layer boundary. This page
 separates the two, because a list that does not is a list of nine ways to
 set a locator (issue 0934).
 
-**The class is derived from WHO READS the symbol**, not asserted: a symbol
-forwarded to a build script or consumed by compiled code is where a value is
-stated; one that only becomes a compile definition is transport; one nothing
-reads is dead. The `evidence` column is that derivation, so a wrong class is
-a visible disagreement rather than an opinion.
+**Every symbol on this page is one a user may set.** Kconfig says so
+itself: each carries a PROMPT, which is what a prompt means. An earlier
+draft split these into public and carrier by asking who read them, and got
+the layer wrong — cmake reading `${CONFIG_X}` to emit `ZPICO_X=<value>` is
+cmake CARRYING the choice, not owning it.
 
-74 Kconfig symbols — **48 public**, 24 carrier, 2 dead.
+The real carriers are one layer down and are NOT Kconfig symbols: the
+`ZPICO_*` / `NROS_*` environment variables, the `-D` cache variables and
+the compile definitions this page's symbols feed. Setting one of those by
+hand bypasses the question Kconfig asked.
+
+The `evidence` column is where each value is consumed, so a symbol with no
+reader stands out: a prompt asking a question whose answer is discarded is
+worse than no prompt.
+
+79 Kconfig symbols — **78 settable**, 1 provided for application code, 0 derived, 0 dead.
 
 ## Facts with more than one spelling
 
@@ -26,9 +35,9 @@ place to set it and these symbols carry it.
 
 | symbol | default | class | evidence |
 | --- | --- | --- | --- |
-| `CONFIG_NROS_RMW_ZENOH` | — | public | cmake, rust-source |
+| `CONFIG_NROS_RMW_ZENOH` | — | public | cmake, rust-source, kconfig select/depends |
 | `CONFIG_NROS_RMW_XRCE` | — | public | c-source, cmake, rust-source |
-| `CONFIG_NROS_RMW_CYCLONEDDS` | — | public | cmake, rust-source |
+| `CONFIG_NROS_RMW_CYCLONEDDS` | — | public | cmake, rust-source, kconfig select/depends |
 
 `nano_ros_workspace(BACKEND …)` and `-DNROS_RMW` are the cmake carriers. cmake already warns that BACKEND silently beats the cache var; nothing yet compares either against `[system].rmw`.
 
@@ -38,7 +47,7 @@ place to set it and these symbols carry it.
 
 | symbol | default | class | evidence |
 | --- | --- | --- | --- |
-| `CONFIG_NROS_DOMAIN_ID` | `0` | public | c-source, cmake, rust-source |
+| `CONFIG_NROS_DOMAIN_ID` | `0` | public | c-source, cmake, rust-source, kconfig select/depends |
 | `CONFIG_NROS_CYCLONE_DOMAIN_ID` | `NROS_DOMAIN_ID` | public | c-source, cmake, rust-source |
 
 `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults FROM `NROS_DOMAIN_ID` — the one derivation edge in this cluster. Pinning it to a literal is the phase-180 split-brain (CLAUDE.md).
@@ -81,10 +90,16 @@ Read by compiled code or forwarded to a build script. On Zephyr the
 | symbol | default | evidence |
 | --- | --- | --- |
 | `CONFIG_NROS_BATCH_UNICAST_SIZE` | `1024` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_CODEGEN_TOOL` | — | cmake |
+| `CONFIG_NROS_CPP_API` | — | cmake, kconfig select/depends |
 | `CONFIG_NROS_CYCLONE_CONFIG_XML` | — | c-source |
+| `CONFIG_NROS_C_API` | — | cmake |
+| `CONFIG_NROS_FAULT_LOG` | `n` | cmake, kconfig select/depends |
+| `CONFIG_NROS_FAULT_LOG_FLASH` | `n` | c-source |
 | `CONFIG_NROS_FRAG_MAX_SIZE` | `2048` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_GET_POLL_INTERVAL_MS` | `10` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_GET_REPLY_BUF_SIZE` | `4096` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_GRAPH_CACHE_SIZE` | `65536` | cmake |
 | `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | `2` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_MAX_LIVELINESS` | `16` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_MAX_PENDING_GETS` | `4` | forwarded-to-cargo, cmake, rust-source |
@@ -92,65 +107,57 @@ Read by compiled code or forwarded to a build script. On Zephyr the
 | `CONFIG_NROS_MAX_QUERYABLES` | `8` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_MAX_SUBSCRIBERS` | `8` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_RMW_SUBSCRIBER_SLOTS` | `8` | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_RUST_API` | `NROS_RMW_ZENOH` | cmake, kconfig select/depends |
 | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | `1024` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_SNTP_EPOCH` | — | c-source, rust-source |
+| `CONFIG_NROS_SNTP_EPOCH` | — | c-source, rust-source, kconfig select/depends |
 | `CONFIG_NROS_SNTP_SERVER` | `10.0.2.2` | c-source |
 | `CONFIG_NROS_SNTP_TIMEOUT_MS` | `3000` | c-source |
 | `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | `1024` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | `16384` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_SUBSCRIBER_RING_DEPTH` | `4` | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_TRACE_CALLBACKS` | — | cmake |
+| `CONFIG_NROS_TRANSPORT_SERIAL` | — | kconfig select/depends |
 | `CONFIG_NROS_XRCE_BUFFER_SIZE` | `1024` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | `4` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | `4` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS` | `8` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_STREAM_HISTORY` | `16` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_TRANSPORT_MTU` | `512` | forwarded-to-cargo, cmake |
-| `CONFIG_NROS_ZENOH_LEASE_PRIORITY` | `16` | c-define, cmake, rust-source |
-| `CONFIG_NROS_ZENOH_READ_PRIORITY` | `16` | c-define, cmake, rust-source |
-| `CONFIG_NROS_ZENOH_TX_BATCH` | `y` | cmake, rust-source |
-| `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` | `50` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK` | `y` | cmake, rust-source |
-| `CONFIG_NROS_ZEPHYR_TASK_SLOTS` | `4` | c-define, c-source, cmake |
-
-## Carriers — do not set by hand
-
-Only ever read by cmake or turned into a compile definition. Setting one
-directly is at best redundant and at worst a second authority.
-
-| symbol | default | evidence |
-| --- | --- | --- |
-| `CONFIG_NROS_CODEGEN_TOOL` | — | cmake |
-| `CONFIG_NROS_CPP_API` | — | cmake |
-| `CONFIG_NROS_C_API` | — | cmake |
-| `CONFIG_NROS_RUST_API` | `NROS_RMW_ZENOH` | cmake |
-| `CONFIG_NROS_TRACE_CALLBACKS` | — | cmake |
+| `CONFIG_NROS_ZENOH_AUTO_RECONNECT` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_LEASE_FACTOR` | `3` | c-define, cmake |
 | `CONFIG_NROS_ZENOH_LEASE_MS` | `10000` | c-define, cmake |
+| `CONFIG_NROS_ZENOH_LEASE_PRIORITY` | `16` | c-define, cmake, rust-source |
 | `CONFIG_NROS_ZENOH_LINK_CAN` | `n` | cmake |
-| `CONFIG_NROS_ZENOH_LINK_ISOTP` | `n` | cmake |
-| `CONFIG_NROS_ZENOH_LINK_SERIAL` | `n` | cmake |
+| `CONFIG_NROS_ZENOH_LINK_ISOTP` | `n` | cmake, kconfig select/depends |
+| `CONFIG_NROS_ZENOH_LINK_SERIAL` | `n` | cmake, kconfig select/depends |
 | `CONFIG_NROS_ZENOH_LINK_TCP` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST` | `n` | cmake |
 | `CONFIG_NROS_ZENOH_LINK_UDP_UNICAST` | `n` | cmake |
 | `CONFIG_NROS_ZENOH_LINK_WS` | `n` | cmake |
-| `CONFIG_NROS_ZENOH_MULTI_THREAD` | `y` | cmake |
+| `CONFIG_NROS_ZENOH_MULTI_THREAD` | `y` | cmake, kconfig select/depends |
 | `CONFIG_NROS_ZENOH_PUBLICATION` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_QUERY` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_QUERYABLE` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_RAWETH_TRANSPORT` | `n` | cmake |
+| `CONFIG_NROS_ZENOH_READ_PRIORITY` | `16` | c-define, cmake, rust-source |
 | `CONFIG_NROS_ZENOH_SCOUTING` | `n` | cmake |
 | `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` | `100` | c-define, cmake |
 | `CONFIG_NROS_ZENOH_SUBSCRIPTION` | `y` | cmake |
+| `CONFIG_NROS_ZENOH_TX_BATCH` | `y` | cmake, rust-source, kconfig select/depends |
+| `CONFIG_NROS_ZENOH_TX_BATCH_FLUSH_MS` | `50` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_ZENOH_TX_SPLIT_LOCK` | `y` | cmake, rust-source |
+| `CONFIG_NROS_ZEPHYR_HEAP_SIZE` | `65536` | forwarded-to-cargo, c-source, cmake, rust-source |
 | `CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM` | `n` | cmake |
+| `CONFIG_NROS_ZEPHYR_TASK_SLOTS` | `4` | c-define, c-source, cmake |
 | `CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE` | `0` | c-define, cmake |
 
-## Dead — delete or wire
+## Provided for application code
 
-Declared and read by nothing. A knob that is documented and inert is
-worse than one that is absent.
+No reader in THIS tree, and not dead: the guides teach an application
+to use these in its own `main()`. Kconfig generating the macro is the
+service. Each names where that contract is written down.
 
 | symbol | default | evidence |
 | --- | --- | --- |
-| `CONFIG_NROS_INIT_DELAY_MS` | `2000` | no reader found |
-| `CONFIG_NROS_TRANSPORT_SERIAL` | — | no reader found |
+| `CONFIG_NROS_INIT_DELAY_MS` | `2000` | `docs/guides/cpp-api.md:451` shows an application calling `zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS)` from its own `main()`; `docs/guides/zephyr-setup.md:220` documents it as a knob. |
 
