@@ -70,19 +70,22 @@ endfunction()
 
 # ---------------------------------------------------------------------------
 # nano_ros_add_executable(<name> <sources…> [DEPLOY <target>…] [BOARD <board>]
-#     [LAUNCH <pkg:launch.xml>] [TYPED] [LOCATOR <l>] [ARGS <a>…])
+#     [LAUNCH <pkg:launch.xml>] [TYPED])
 #
 # Standalone entry. DEPLOY/BOARD default to the package.xml `<export>` tuple in
 # W4; until then DEPLOY defaults to `native` and an embedded board is passed
 # explicitly (or comes from a prior `nano_ros_use_board`).
 #
-# 287-W6 workspace slice 3 — LAUNCH/TYPED/LOCATOR/ARGS pass through to
+# 287-W6 workspace slice 3 — LAUNCH/TYPED pass through to
 # `nano_ros_entry` so a workspace Entry pkg (multi-node carrier generated from
 # a bringup launch manifest) can use the ament verb instead of the raw
 # `nano_ros_entry(...)` call.
 # ---------------------------------------------------------------------------
 function(nano_ros_add_executable name)
-    cmake_parse_arguments(_NRE "TYPED" "BOARD;LAUNCH;MODEL;HOST;LOCATOR;LANG" "DEPLOY;SOURCES;ARGS" ${ARGN})
+    # phase-405 W1 — LOCATOR and ARGS dropped in lockstep with
+    # `nano_ros_entry`. A verb that still accepted them would forward keywords
+    # the callee no longer parses, which lands them in SOURCES.
+    cmake_parse_arguments(_NRE "TYPED" "BOARD;LAUNCH;MODEL;HOST;LANG" "DEPLOY;SOURCES" ${ARGN})
     set(_srcs ${_NRE_SOURCES} ${_NRE_UNPARSED_ARGUMENTS})
     if(NOT _srcs AND NOT _NRE_LAUNCH AND NOT _NRE_MODEL)
         message(FATAL_ERROR
@@ -147,12 +150,6 @@ function(nano_ros_add_executable name)
             "MODEL at the per-host SystemModel instead (resolved with "
             "`host:=${_NRE_HOST}`, e.g. "
             "MODEL config/multihost_${_NRE_HOST}_model.yaml).")
-    endif()
-    if(_NRE_LOCATOR)
-        list(APPEND _entry_extra LOCATOR ${_NRE_LOCATOR})
-    endif()
-    if(_NRE_ARGS)
-        list(APPEND _entry_extra ARGS ${_NRE_ARGS})
     endif()
     # Language: explicit LANG wins (the only way a LAUNCH-only entry — no
     # sources to infer from — can select C; nano_ros_entry's sourceless
