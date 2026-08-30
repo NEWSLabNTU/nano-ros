@@ -90,12 +90,19 @@ install = "make -j$(nproc) && make install"
 # system python3.8. Pretty-printers, `gdb.execute`, `re`/`collections`/`json`
 # all work; the 34 modules ARM built in are the whole surface.
 #
-# linux-arm64 gets NEITHER fix: there gdb links `libpython3.8.so.1.0`
-# dynamically, so it needs the shared library and not merely a stdlib, and 22.04
-# packages none. Its tarball is byte-identical to -nros2 (same sha256), which is
-# the check that this release touched only x86_64.
+# -nros4 fixes linux-arm64 too (issue 0932), by a DIFFERENT route, because the
+# two hosts embed Python differently: there gdb LINKS `libpython3.8.so.1.0` and
+# fails at the loader before any interpreter runs, so a stdlib alone could not
+# help. 22.04 packages no python3.8 — Ubuntu's own focal archive does, for
+# arm64, and a library needing at most GLIBC_2.29 runs on the runner's 2.35.
+#
+# arm64 therefore ends up with MORE working Python than x86_64: `struct` and
+# `math` are built into Ubuntu's libpython and 41 more modules arrive in
+# lib-dynload, all resolving against the shared library — so `import struct`
+# works there and can never work on x86_64. The build asserts exactly that, per
+# host, before publishing.
 [tool.arm-none-eabi-gcc]
-version = "13.2-nros3"
+version = "13.2-nros4"
 smoke = [
     { run = "bin/arm-none-eabi-gcc --version", expect = "Arm GNU Toolchain" },
     { run = "bin/arm-none-eabi-gdb --version", expect = "GNU gdb" },
@@ -107,9 +114,9 @@ smoke = [
 system = ["libcrypt1"]
 upstream = "13.2.rel1" # ARM release id (SSOT — build script no longer hand-derives)
 # Repackaged from ARM's release; no in-repo source build (binary toolchain).
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros3/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "1e5f6dbf853b70ae5b1fcc17dd3d3a877172f5520adc7ddb1d1da40ce73282ea" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros3/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "127136d54db66f2ed405d8bc01b1280a9cc78f2cbcc04466894c75c109b942d7" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros3/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "27d5e5f6f9428157df7900c91b000486184f99fbc1a35ea5c3ca219be9068197" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "841e456d571e3f60244652a5ac7287f9e06a9c61f1fc93d2fbbc037b05f5a6ab" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748" }
 
 [tool.zephyr-sdk]
 # The Zephyr SDK, host-keyed (issue 0610). `scripts/zephyr/setup.sh` used to
