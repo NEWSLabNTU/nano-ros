@@ -655,29 +655,32 @@ found only because these trees are not uniform the way ours are.
          then build. That is the behaviour change this work item already
          declined once, and the count says there is no mechanical subset hiding
          inside it.
-      4. ~~**`[deploy.*].rmw` is still READ.**~~ **RETRACTED on 2026-08-31, the
-         same day it was written. The fields ARE inert, as this item said all
-         along.** The claim came from grepping for the precedence chain and
-         stopping at the doc comment. Following it to its callers instead:
-         `SystemToml::resolved_rmw` consults `[deploy.<t>].rmw` only when its
-         `target` argument is `Some`, and its ONE production caller —
-         `bridged_rmws()` — passes `None`. Every other reference is that
-         function's own unit test. The other two sites (`nros_config.rs`,
-         `planner.rs`) read `DeployTargetMetadata`, which is
-         `[package.metadata.nros.deploy.*]` in a Cargo.toml — a different
-         surface that this migration does not touch.
+      4. **`[deploy.*].rmw` IS still read — 40 of the 42 fields are inert, the
+         other 2 are not.** This item said so, a same-day retraction said
+         otherwise, and the retraction was wrong; the compiler settled it.
 
-         So the RFC-0031 rung is dead, filed as issue 0938. It is invisible
-         because both `[deploy.*].rmw` in the tree set `"zenoh"`, which is
-         exactly what `[system].rmw` already yields there.
+         `SystemToml::resolved_rmw` has three production callers, not one.
+         `bridged_rmws()` passes `target = None` — which is what a grep finds
+         and what the retraction stopped at — but `codegen_system.rs:677` and
+         `planner.rs:735` both pass a real deploy target. `nros plan --target`
+         advertises it in its own `--help`: "select the `[deploy.<t>]` the
+         planner resolves per-target values against (RMW override, …)".
 
-         Worth naming the pattern: this is the SECOND function inside phase-383
-         found shipping with passing unit tests and no production caller — the
-         W10.b deprecation lint was the first. A unit test proves a function
-         computes; it says nothing about whether anything calls it.
+         So there are TWO live RMW resolution paths reading DIFFERENT tables —
+         `nros build` via `[image.*]` (RFC-0065), `nros plan` /
+         `codegen-system` via `[deploy.<t>].rmw` (RFC-0031) — and
+         `codegen_system` bakes its answer into `#define NROS_SYSTEM_RMW`.
+         Filed as issue 0938.
 
-      **So the deletion is mechanically safe** — all 42 fields are unread — and
-      what remains is not a correctness risk but a shape decision.
+         **What this costs W10.b:** deleting `[deploy.*].rmw` at 0.6.0 changes
+         behaviour for `plan` and `codegen-system` unless those verbs are first
+         taught the image table, or declared superseded by `nros build`. The
+         `board` and `target` fields remain inert; only the 2 `rmw` ones carry
+         this.
+
+      **So the deletion is mechanically safe for 40 of the 42** — `board` and
+      `target` are unread — and the remaining 2 (`rmw`) need issue 0938 settled
+      first.
 
       **What 0.6.0 must therefore decide, and it is a design question:** which
       of the 14 deploys deserve to be images. Several are placement-only
