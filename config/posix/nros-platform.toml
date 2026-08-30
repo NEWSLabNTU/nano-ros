@@ -11,6 +11,14 @@
 # directory is just where the file lives. names[0] is canonical.
 names = ["posix"]
 
+# phase-400 W3 / RFC-0086 — software-stack FACTS. A transport that needs a
+# capability this platform declares `false` fails at config time; a capability
+# left undeclared is permitted with a warning, because absent means "nobody has
+# described this platform yet", not "impossible".
+[capabilities]
+ip_stack = true    # host sockets
+serial   = true    # tty
+
 [build.zenoh]
 defines = ["ZENOH_GENERIC", "ZENOH_LINUX"]
 # Phase 156 — `Z_FEATURE_MULTI_THREAD = 1` so
