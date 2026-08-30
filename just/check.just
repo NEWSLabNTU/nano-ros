@@ -354,6 +354,7 @@ build-serial: \
     c \
     cli-fresh \
     cli-tests \
+    config-surface \
     cpp \
     embedded-feature-unification \
     launch-resolve-builds \
@@ -2802,6 +2803,16 @@ rust-targets-covered:
 [private]
 pool-inventory:
     @python3 scripts/gen-pool-inventory.py --check
+
+# Issue 0934 — one fact, up to nine spellings. Most are CARRIERS (how a decision
+# crosses a layer), not decisions; nothing recorded which was which, so a reader
+# saw nine ways to set a locator. This enumerates every Kconfig symbol and
+# demands each be declared public, carrier or dead. RATCHETED rather than
+# absolute: 55 of 74 are unclassified today, and a gate that demanded zero would
+# be switched off on day one.
+[private]
+config-surface:
+    @python3 scripts/gen-config-surface.py --check
 
 # Phase 392 W1 — the declared arithmetic has to survive contact with a linker.
 # `check-pool-inventory` proves the FORMULA is present and evaluates; this proves
