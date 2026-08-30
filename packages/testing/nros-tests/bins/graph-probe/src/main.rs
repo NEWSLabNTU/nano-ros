@@ -46,7 +46,22 @@ fn main() {
     // test (phase-338 W3). A graph probe that can only speak zenoh cannot
     // answer whether CYCLONE reads the graph, which is the next question.
     nros_board_linux::register_linked_rmw();
-    let config = ExecutorConfig::new(&locator).node_name("graph_probe");
+    // The DOMAIN, which `ExecutorConfig::new` does not read.
+    //
+    // issue 0927 — this probe used the plain constructor, so it sat on domain 0
+    // whatever `ROS_DOMAIN_ID` said, and every cyclone run enumerated only
+    // itself. That reads as "Cyclone's `ros_discovery_info` reader cannot see a
+    // peer" and was filed as exactly that; the reader is fine. zenoh never
+    // showed it because a zenoh cell is keyed by a unique LOCATOR, not a
+    // domain, so domain 0 was always right there.
+    let domain_id: u32 = std::env::var("ROS_DOMAIN_ID")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(0);
+    let config = ExecutorConfig::new(&locator)
+        .node_name("graph_probe")
+        .domain_id(domain_id);
+    println!("GRAPH_PROBE_DOMAIN {domain_id}");
     let mut executor = Executor::open(&config).expect("open session");
     let _node = executor.create_node("graph_probe").expect("create node");
 

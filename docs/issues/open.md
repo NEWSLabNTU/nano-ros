@@ -68,6 +68,5 @@ fails if this block drifts.
 - **#0902** (build, rmw) — Editing zenoh-pico rebuilds nothing — `zpico-sys` watches 7 hand-listed files out of the whole library, so a patch is silently not compiled See `0902-*`.
 - **#0914** (testing) — Nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot evaluate anything passes every check See `0914-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
-- **#0927** (rmw) — Cyclone's `ros_discovery_info` reader enumerates its OWN node and never a live ROS 2 peer See `0927-*`.
 
 <!-- END GENERATED open-issue list -->
