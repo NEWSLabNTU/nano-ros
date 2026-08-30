@@ -59,7 +59,7 @@ passes through.
 - `just test`: standard dev tier; skips heavy platform/ROS 2 groups.
 - `just test-all`: full matrix, doctests, Miri, and C codegen tests. Run `just build-test-fixtures` first.
 - `just check`: formatting and clippy checks across Rust, C, C++, and Python surfaces.
-- `just ci-l1`: `check` plus `test-unit`. ~6 min, and it builds **no fixtures** —
+- `just ci l1`: `check` plus `test-unit`. ~6 min, and it builds **no fixtures** —
   only `test`/`test-all` require them. This is the verb to run before a push
   (phase-395 W2); it catches the compile-tier reds that the `pre-push`
   `check-fast` hook deliberately excludes.
@@ -97,7 +97,7 @@ Project naming:
 
 Prefer the narrowest tier that covers the change. Reusable Rust integration tests belong in `packages/testing/nros-tests/tests/`; shell tests belong in `tests/`; temporary tests can start as Bash and should be promoted when reused. Tests must fail on unmet preconditions with `assert!`, `bail!`, or the project skip helper; do not silently `eprintln!` and return from a test.
 
-**New runtime tests join a matrix, not a new file.** A (platform × language × RMW × workload) coordinate belongs as a cell in `matrix::CELLS` (self-contained/baked) or `interop::CELLS` (live ROS 2 peer + direction), consumed by the existing rstest consumers — phase-331 W4 put workspace RMW cells there too. Hand-coordinated per-cell test files are the pre-RFC-0051 shape the tree keeps having to re-consolidate (phase-295, phase-329); the taxonomy and the fold-in plan are `docs/roadmap/phase-329-test-taxonomy-completion.md`. Fixture builds are **lane-scoped** (#393): `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>` builds exactly the lane's coordinates and stamps the scope; build the lane you will test rather than the whole matrix. **But a lane's coordinates are what it keeps FRESH, not what its run needs to EXIST** (#482) — the two are separate questions, mapped by `nros_lane_build_lane` (declared by `CiLane::run_scope`), and `_require-fixtures` refuses a mismatch instead of letting the run discover it 231 failures later. Each lane narrows its run in the way its cost lives: tier 1 by test/binary NAME (`NROS_TEST_SCOPE=native`), so it needs the broader `lane=native` build; tier 2 and the nightly lane by fixture COORDINATE (`NROS_TEST_COORDS`, phase-340 W3), so each is its own build lane — `just build-test-fixtures lane=tier2 && just ci-matrix`. Name filtering cannot express tier 2: it is 1-wise over platform, so every platform is in the lane and a platform-token filter excludes nothing, while the saving is in lang x rmw *within* a platform (#357). The coordinate narrowing therefore happens in the fixture RESOLVER (`nros_tests::fixtures::lane`), which attributes a resolved artifact back to its `examples/fixtures.toml` row through `row_artifact_root()` — the sibling of `row_coord()`, so the BUILD's `--coords-from` filter and the RUN's skip are one predicate over one coordinate file. Out-of-lane fixtures report `[SKIPPED] out of lane`; an IN-lane fixture that is absent or stale still fails hard, and a path no manifest row claims (zephyr west leaves, the compile-check lane, the shared `build/cargo-fixtures` dirs — all built module-level) is never skipped.
+**New runtime tests join a matrix, not a new file.** A (platform × language × RMW × workload) coordinate belongs as a cell in `matrix::CELLS` (self-contained/baked) or `interop::CELLS` (live ROS 2 peer + direction), consumed by the existing rstest consumers — phase-331 W4 put workspace RMW cells there too. Hand-coordinated per-cell test files are the pre-RFC-0051 shape the tree keeps having to re-consolidate (phase-295, phase-329); the taxonomy and the fold-in plan are `docs/roadmap/phase-329-test-taxonomy-completion.md`. Fixture builds are **lane-scoped** (#393): `just build-test-fixtures lane=<all|native|tier1|tier2|tier2-nightly>` builds exactly the lane's coordinates and stamps the scope; build the lane you will test rather than the whole matrix. **But a lane's coordinates are what it keeps FRESH, not what its run needs to EXIST** (#482) — the two are separate questions, mapped by `nros_lane_build_lane` (declared by `CiLane::run_scope`), and `_require-fixtures` refuses a mismatch instead of letting the run discover it 231 failures later. Each lane narrows its run in the way its cost lives: tier 1 by test/binary NAME (`NROS_TEST_SCOPE=native`), so it needs the broader `lane=native` build; tier 2 and the nightly lane by fixture COORDINATE (`NROS_TEST_COORDS`, phase-340 W3), so each is its own build lane — `just build-test-fixtures lane=tier2 && just ci matrix`. Name filtering cannot express tier 2: it is 1-wise over platform, so every platform is in the lane and a platform-token filter excludes nothing, while the saving is in lang x rmw *within* a platform (#357). The coordinate narrowing therefore happens in the fixture RESOLVER (`nros_tests::fixtures::lane`), which attributes a resolved artifact back to its `examples/fixtures.toml` row through `row_artifact_root()` — the sibling of `row_coord()`, so the BUILD's `--coords-from` filter and the RUN's skip are one predicate over one coordinate file. Out-of-lane fixtures report `[SKIPPED] out of lane`; an IN-lane fixture that is absent or stale still fails hard, and a path no manifest row claims (zephyr west leaves, the compile-check lane, the shared `build/cargo-fixtures` dirs — all built module-level) is never skipped.
 
 **No compilation inside tests.** A test must not invoke `cargo build`, `cmake --build`, `idf.py build`, `west build`, `nros generate` + compile, or any other compiler/build at run time. Compilation belongs in the **build stage** — `just build-test-fixtures` and the per-platform `build-fixtures` lanes (driven by `examples/fixtures.toml`). A test consumes a **prebuilt fixture artifact** and exercises its behavior. Reasons: in-test builds make the test wall-clock dominated by compile time (so they blow the per-test timeout under any load and report as spurious `timed out` failures), serialize on the cargo/cmake build locks, and conflate "does it build" with "does it behave". If a test's *intent* is to verify that something compiles (a macro form, a codegen output, an API shape), make it a **fixture in the build step** — add a row to `examples/fixtures.toml` (or a build-lane target) so the artifact is built once during `build-test-fixtures`, and have the test assert the fixture exists / inspect the built artifact, the same way the native C/XRCE tests consume their prebuilt CMake fixtures. The build either succeeds (fixture present → test checks it) or fails loudly in the build stage where it belongs.
 
@@ -254,7 +254,7 @@ empty, admins included. **The flow is now:**
 just claim issue-NNNN                  # so two agents do not do one job
 git switch -c fix/NNNN-<slug>
 # ... work ...
-just ci-l1                             # STRICTER than the gate (see below)
+just ci l1                             # STRICTER than the gate (see below)
 git push -u origin fix/NNNN-<slug>
 gh pr create --base main --fill
 gh pr merge --auto --rebase            # fire and forget; the queue lands it
@@ -390,11 +390,11 @@ may resolve an artifact only if that JOB builds it.
 
 | stage | runs | measured | gates? |
 | --- | --- | --- | --- |
-| local, before push | `just ci-l1` | ~6 min warm | you |
+| local, before push | `just ci l1` | ~6 min warm | you |
 | pull request | `check-fast` only (133 source gates) | ~5 min | **required** |
 | merge group | + `test-unit` | ~9 min | **required** |
 
-**`just ci-l1` is NOT what CI runs, and that is deliberate** (phase-399 W3).
+**`just ci l1` is NOT what CI runs, and that is deliberate** (phase-399 W3).
 CI's required context is `check-fast` + `test-unit`; `ci-l1` additionally runs
 `check-build` and `check-api-parity`. So the local tier is a SUPERSET of the
 gate — you catch compile-tier breakage before the queue does, and the queue
@@ -421,14 +421,14 @@ that: a lane in an affordability tier may resolve a compile-stage stamp only if
 it builds it (~13 s), and may never reach a runtime fixture. Fixture-bearing
 lanes are post-merge.
 
-### Why `just ci-l1` locally is not optional
+### Why `just ci l1` locally is not optional
 
 The PR gate no longer compiles. That means **a compile error in your branch is
 caught by the merge queue, not by your PR** — and there it ejects the other
 pull requests batched with it. GitHub re-tests them in smaller groups, so the
 damage is bounded, but it is real and it is paid by other agents.
 
-`just ci-l1` is exactly the tier the merge group runs. Running it before you
+`just ci l1` is exactly the tier the merge group runs. Running it before you
 push is what makes the cheap PR gate affordable for everyone else. Skipping it
 does not save you time; it moves your time onto three other agents.
 
@@ -480,14 +480,14 @@ here.
 
 ```
 git fetch origin && git rebase origin/main
-just ci-l1        # STRICTER than the gate (see 'Where each tier runs')
+just ci l1        # STRICTER than the gate (see 'Where each tier runs')
 ```
 
 Two things reproduce this way, and the second is the reason the queue exists:
 
 * **Your PR is simply broken.** The PR gate is deliberately cheap (source gates
   only), so a compile error reaches the queue rather than your PR. Rebasing is
-  incidental; `just ci-l1` finds it.
+  incidental; `just ci l1` finds it.
 * **A semantic conflict.** Your change and something that landed while you
   waited are each correct alone and wrong together — a caller you added against
   a signature someone else changed. No textual conflict, so git merges cleanly
@@ -562,7 +562,7 @@ and verified.
 
 ### Agent Practices
 
-- **Run `just ci-l1` before every push** (~6 min, no fixtures); run `just ci` when the change earns fixture-backed coverage. Never `sudo` — tell the user.
+- **Run `just ci l1` before every push** (~6 min, no fixtures); run `just ci` when the change earns fixture-backed coverage. Never `sudo` — tell the user.
 - **Green CI locally BEFORE pushing** — run `just format` then `just ci`. CI stops at the first failing step; re-run until fully green. A toolchain bump can surface new pre-existing lints (e.g. rust-1.96 `unnecessary_cast` / `drop_non_drop` / `not_unsafe_ptr_arg_deref`) — fix them locally rather than discovering them remotely.
 - **Always nightly for `rustfmt`** — `rustfmt.toml` enables nightly-only options; stable produces different output. Run `cargo +nightly fmt`.
 - **Never merge in git.** Use `git pull --rebase` or `git fetch` + `git rebase`. Never create merge commits unless asked.
