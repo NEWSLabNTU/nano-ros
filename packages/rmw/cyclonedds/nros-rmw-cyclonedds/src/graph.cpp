@@ -228,10 +228,22 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
     // Env-gated and permanent, same convention as the zenoh shim's
     // `NROS_GRAPH_DUMP`: the first time this was wanted it was patched in by
     // hand, and the next person had to re-derive it.
+    // `fprintf`, NOT `fprintf` — the crate's other TU (descriptors.cpp)
+    // already spells it this way and compiles everywhere. `<cstdio>` is only
+    // REQUIRED to declare the name in namespace `std`; putting it in the global
+    // namespace too is permitted, not guaranteed, and the minimal C++ library on
+    // `threadx-riscv64` does the opposite of what a hosted libstdc++ does. The
+    // `std::` spelling built fine on every host lane and failed only there:
+    //
+    //   graph.cpp:234: error: 'fprintf' is not a member of 'std'
+    //
+    // Same family as issue 0112 (`<string>` gated on `__STDC_HOSTED__` rather
+    // than on the C++ library actually in use): "the compiler is hosted" does
+    // not imply "the C++ standard library is complete".
     if (std::getenv("NROS_GRAPH_DUMP") != nullptr) {
         dds_instance_handle_t matched[kMaxSamples];
         int32_t m = dds_get_matched_publications(g->graph_reader, matched, kMaxSamples);
-        std::fprintf(stderr, "GRAPH_CYCLONE matched_publications=%d\n", static_cast<int>(m));
+        fprintf(stderr, "GRAPH_CYCLONE matched_publications=%d\n", static_cast<int>(m));
         // WHY a writer was refused, which `matched_publications` cannot say.
         // A remote writer whose offered QoS is weaker than what this reader
         // REQUESTS is never matched, and the reader looks identical to one on a
@@ -239,7 +251,7 @@ bool graph_visit_nodes(GraphState* g, void* ctx,
         // this distinguishes "incompatible" from "not there" in one number.
         dds_requested_incompatible_qos_status_t iq = {};
         if (dds_get_requested_incompatible_qos_status(g->graph_reader, &iq) == DDS_RETCODE_OK) {
-            std::fprintf(stderr,
+            fprintf(stderr,
                          "GRAPH_CYCLONE incompatible_qos total=%u last_policy_id=%u\n",
                          iq.total_count, iq.last_policy_id);
         }
