@@ -1469,6 +1469,21 @@ fn probe_net_type_sizes(
         }
     } else if use_nuttx {
         build.define("ZENOH_NUTTX", None);
+        // ZENOH_LINUX ALONGSIDE ZENOH_NUTTX, deliberately. Its only effect here
+        // is to pick the Linux arm of the six `#if defined(ZENOH_LINUX) …
+        // #elif defined(ZENOH_NUTTX)` pairs in zenoh-pico's
+        // `src/system/unix/system.c` — everywhere else NuttX is already named
+        // explicitly (`platform.h`'s unix-header selection and `network.c`'s two
+        // `LINUX || NUTTX` sites), so it is NOT what selects the unix layer.
+        //
+        // Keep it. NuttX ships `<sys/random.h>` and `getrandom()`, so the Linux
+        // arm compiles and works, while the NuttX arm it shadows opens
+        // `/dev/urandom` — a device node a NuttX configuration is not obliged
+        // to provide. Dropping this define would silently move every NuttX
+        // image onto six code paths nothing here has ever exercised.
+        //
+        // The consequence worth knowing: those six `ZENOH_NUTTX` arms are DEAD
+        // in our builds. Do not "fix" one and expect it to take effect.
         build.define("ZENOH_LINUX", None);
         // Issue 0551 — the SHARED tree's `include/` is not a guaranteed compile
         // input. `build-nuttx.sh`'s snapshot short-circuit says so in as many
