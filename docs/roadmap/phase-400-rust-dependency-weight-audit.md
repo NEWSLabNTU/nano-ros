@@ -708,7 +708,7 @@ both build to `zephyr.elf`; both caches show the new variables resolving to the
 old literal; the `-I...nros-{c,cpp}-generated` flags in `build.ninja` are
 unchanged. `check-fast` 138/138.
 
-### W5 blocker 3 — `DOTCONFIG`, and the exemption W5 falsifies
+### W5 blocker 3 — `DOTCONFIG` (RETRACTED — read the retraction below before acting on this)
 
 Found by reading the fingerprints of a real build tree rather than the sources.
 `scripts/check-path-env-fingerprints.py` (issue 0491) forbids fingerprinting a
@@ -751,6 +751,93 @@ and keeps `rerun-if-changed=<path>` so editing `.config` in a single tree still
 re-runs. Equal for every tree in a cluster, different across clusters — which is
 0491's own rule ("what a build script depends on is the CONTENT"), applied to a
 variable whose content happens to live in a file.
+
+### W5 blocker 3 — RETRACTED 2026-08-30. `DOTCONFIG` is not fingerprinted on the lane that shares.
+
+The section above filed `DOTCONFIG` as a blocker on the reading that Zephyr build
+scripts fingerprint it and its value is a per-tree path. **Measured, it is not a
+blocker, and the reasoning was the same mistake this phase has now made four
+times: computed from the source, not from a build.**
+
+```
+DOTCONFIG in run-build-script fingerprints, all zephyr build trees:
+  C/C++ lane (nros-rust/)   654 records, 41 trees   ALL <unset>
+  rust  lane (rust/)        526 records, 18 trees   ALL set
+```
+
+The split is issue 0460's design working. The C lane bakes all 26 knobs into its
+`cmake -E env` command, so `knob_usize` returns at the env check and the
+`$DOTCONFIG` fallback is never reached — hence `val: null` in every record. The
+Rust lane cannot get env from cmake (zephyr-lang-rust builds its own command), so
+it reads the file. **W5 shares the C/C++ lane only** — the Rust leaves are
+separate workspace roots and share nothing (issue 0616). On the lane that shares,
+the value is a constant, so it contributes no churn.
+
+**Generalised, because "is `DOTCONFIG` a problem" was the wrong question.** The
+question is whether the SAME unit records a different value in two trees that
+would share a directory:
+
+```
+clusters examined 8   shared units 99
+ENV divergence: 0
+```
+
+Zero, in every cluster. So the env half of the fingerprint namespace is already
+consistent, which is the precondition for sharing rather than an obstacle to it.
+
+Three fixes were designed for this non-problem and are all dropped: a
+`NROS_KCONFIG_DIGEST` content digest, a per-cluster `.config` projection, and a
+sweep to export every knob cmake does not currently resolve.
+
+**What survives is the file half, and it is the more serious one.** 15 units
+record a DIFFERENT watched-path set across trees of one cluster. Examined:
+`nros-c-344671de436426d7` records 132 paths in nine trees and 21 in a tenth, the
+21 a strict SUBSET, all ten built within seven minutes — so not artifact age,
+which was checked before this was written down.
+
+That matters because cargo decides freshness from the RECORDED list; it cannot
+know the new one without running the script. A shared dir holding the 21-path
+record leaves the other 111 in-repo sources unwatched for every member of the
+cluster. Sharing does not create the under-watch — that tree is already
+under-watched today — it promotes one tree's defect to twelve.
+
+*Not diagnosed.* Why the script emits two different lists is unknown, and it is a
+lead with a reproduction rather than a root cause.
+
+**Upstream has nothing coming.** Cargo's `-Zchecksum-freshness` replaces mtime
+with content hashing but explicitly excludes build-script inputs — "Files
+ingested by build scripts will continue to use mtimes, even when
+checksum-freshness is enabled" (rust-lang/cargo#14136). So the general hazard is
+not waiting on a cargo release, and nobody should plan around one.
+
+**Two follow-ups this leaves:**
+
+* `scripts/check-path-env-fingerprints.py` exempts `DOTCONFIG` with the reason
+  "per-zephyr-build-dir; zephyr leaves share no cargo group". Under W5 the
+  CONCLUSION stays right and the REASON goes stale. That file requires an
+  exemption to state the invariant it rests on — precisely because
+  `CORROSION_BUILD_DIR` held one whose premise issue 0805 falsified — so it needs
+  rewriting to the true invariant: uniformly unset on the lane that shares, set
+  only on the lane that does not. That also arms the tripwire, because anyone who
+  later passes `DOTCONFIG` on the C lane converts it into churn.
+* W5.c acceptance gains an item: watched-path sets must be stable per unit across
+  a cluster before that cluster is collapsed.
+
+### W5 tooling — `just shared-dir-churn`, so the acceptance item is runnable
+
+`scripts/nros-shared-dir-churn.py` reads the build-script fingerprints that
+builds ALREADY WROTE and reports, for units common to two or more trees, both
+divergences: env value (churn) and watched-path set (correctness). It is the W4
+move applied to W5 — ask the build, not the source — and it exists because the
+blocker it was written to investigate turned out not to be there.
+
+`--self-test` encodes four cases, including the one that would make the tool cry
+wolf on every build: two DIFFERENT units inside ONE tree recording different env
+values is NORMAL (feature variants) and must never be reported. Only the same
+unit, across trees, counts.
+
+On four real cyclonedds trees it reports what the manual measurement found:
+0 env divergences, 1 path divergence, `[21, 132] paths, smallest is a SUBSET`.
 
 ### W5 design fork — D2, resolved by the per-PACKAGE call
 
