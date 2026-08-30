@@ -683,8 +683,53 @@ found only because these trees are not uniform the way ours are.
       **So the deletion is mechanically safe for all 42**, and what remains is
       a shape decision rather than a correctness risk.
 
-      **Direction set 2026-08-31: `[deploy.*]` retires ENTIRELY, not just its
-      build fields.** This item was scoped to the build fields, on the standing
+      **SURVEYED 2026-08-31, and the retirement premise does not hold.** Three
+      parallel surveys (readers, TOML inventory, upstream schema) plus one
+      decisive experiment. Recorded here because the previous paragraph — which
+      said placement "moves to `[image.*]` too" — was extrapolation, and the
+      code says otherwise.
+
+      * **`[deploy.*]` is upstream's, and upstream has no image concept.** The
+        table is `ros_launch_manifest_model::system_config::DeployBlock`, pinned
+        at a tag. rlm's `apply_to_launch` is the SOLE source of placement (node
+        FQN → target/domain/locator/rmw); there is no `ImageBlock` anywhere in
+        that crate. nano-ros's own `image.rs` header agrees: "An image needs no
+        deploy block and a deploy block needs no image" — `[image.*]` is a NEW
+        table, explicitly not a rename.
+      * **The table is mostly placement.** 77 deploy blocks across 26 files:
+        `kind` in all 77, plus `launch` 11 and `nodes` 8, against `board` 27,
+        `target` 13, `rmw` 2. And a `[deploy.<n>.nros]` site layer — 30 `sdk` +
+        17 `netstack` keys — with no `[image.*]` counterpart at all, wired into
+        cmake and two `just` gates.
+      * **The build fields are NOT inert, which kills W10.b as written.**
+        Measured: removing `target` from `[deploy.robot1]`/`[robot2]` DROPS
+        `target: x86_64-unknown-linux-gnu` from the generated SystemModels.
+        `board_facts.rs` hard-ERRORS when `.board` is absent, and
+        `cmake/NanoRosBoardFacts.cmake` shells that verb;
+        `check-deploy-board-resolves.py` errors if it finds zero deploy values.
+        13 production reader sites across `plan`, `codegen-system`,
+        `ws board-facts`, `doctor`, `check`.
+      * **`nros build --dry-run` cannot see any of this.** It reads deploy ONLY
+        to emit the deprecation lint; no deploy value influences a build
+        decision. Seven images came back byte-identical under a deletion that
+        does change generated models — the proof method W10.a established is
+        sound for the build path and silent about the model path.
+
+      **What landed instead: the 2 `[deploy.*].rmw` fields are gone**, the one
+      slice that is provably inert now that the image rung outranks them (issue
+      0938). Both duplicated the `[system].rmw` they would fall through to.
+      Zero `[deploy.*].rmw` remain in the tree.
+
+      **What retirement would actually require**, in ascending cost: delete the
+      lints and the `nros check` counter (cheap); find an `[image.*]` home for
+      `launch`, `domain_id`, `locator`, and the `.nros` site block (medium);
+      and replace rlm's placement projection, which is consumed OUTSIDE this
+      repo and drives which nodes land in which entry binary (hard, and a
+      schema change in another repository). Issues 0356/0370 record what
+      silently emptying that projection looks like.
+
+      **Superseded direction (2026-08-31, kept for the record): `[deploy.*]`
+      retires ENTIRELY, not just its build fields.** This item was scoped to the build fields, on the standing
       claim that "`[deploy.*]` keeps PLACEMENT and is not being retired" — the
       deprecation message said exactly that, and it has been corrected. Placement
       moves to `[image.*]` too, so the eventual state is one table describing a
