@@ -767,10 +767,37 @@ include path then has no single answer.
 (triple, profile, knobs); evict the per-image outputs. Feature variants then
 coexist safely because cargo hashes features into `deps/` — which is already
 observable: `build-c-listener-zenoh` holds NINE `nros-c` build-script units side
-by side today, in one directory, without incident. Only the UNHASHED outputs
-collide, and there are exactly two: the uplifted `libnros_c.a` (evict with
-`--artifact-dir`, as `nros-nuttx.cmake` already does, for the reason it already
-gives) and the generated headers (W5.a's split, above).
+by side today, in one directory, without incident.
+
+**Only the UNHASHED outputs collide — and there are ELEVEN, not the two first
+written here.** Enumerated from a real tree
+(`build-c-listener-zenoh/nros-rust/x86_64-unknown-linux-gnu/nros-relwithdebinfo/`)
+rather than recalled:
+
+    libnros_c.a  libnros_c.rlib  libnros_c.so  libnros_c.d
+    libnros_cpp.a  libnros_cpp.rlib  libnros_cpp.d
+    libnros_rmw_zenoh_staticlib.a  libnros_rmw_zenoh_staticlib.d
+    nros-c-generated/   nros-cpp-generated/
+
+THREE packages uplift, not one, and each uplifts several shapes.
+`.cargo-lock`, `.cargo-build-lock` and `.cargo-artifact-lock` sit beside them and
+are cargo's own, not ours to separate. Everything else in the directory
+(`deps/`, `build/`, `incremental/`, `.fingerprint/`, `.rustc_info.json`) carries
+a cargo hash and is identical-or-distinct by construction.
+
+**The rule, stated so the design can be checked against it: share only what is
+provably identical across the builds sharing it; separate everything else.** An
+eviction list assembled by recall is how one of the eleven gets missed, and a
+missed one is the wrong artifact linked into an image — which then gets "fixed"
+with `rm -rf`, destroying the evidence and teaching the next person that the tree
+is untrustworthy. The enumeration is the deliverable, not the list of things
+someone happened to notice.
+
+Note precisely what `--artifact-dir` buys and what it does not: cargo still
+uplifts into the profile dir, so the contended copy remains there — what changes
+is that the CONSUMER reads a per-image artifact dir, so nothing reads the
+contended one. `nros-nuttx.cmake` also copies the depfile explicitly, because
+that is per-image too and `--artifact-dir` does not carry it.
 
 D2 is the NuttX pattern with one extra eviction. That is the design W5.c should
 build.
