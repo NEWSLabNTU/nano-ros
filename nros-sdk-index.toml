@@ -77,22 +77,25 @@ install = "make -j$(nproc) && make install"
 # declaration with them. `arm-none-eabi-gdb` no longer dies at the loader with
 # `libncursesw.so.5: cannot open shared object file`.
 #
-# IT IS NOT FULLY FIXED, and this is deliberately not papered over. ARM embeds
-# Python in gdb and it fails to initialise on a host without the exact Python
-# it expects, so gdb now STARTS and still prints nothing:
+# -nros3 FIXES the debugger too (issue 0929). ARM embeds a CPython STATICALLY
+# and bakes its `sys.prefix` to their build container, so the interpreter found
+# no stdlib and aborted — fatally, taking gdb with it, which is why gdb exited 0
+# printing NOTHING. The dist now ships the matching stdlib and a launcher points
+# `PYTHONHOME` at it: 1.6 MB compressed, no build, and the release job VERIFIES
+# `--version` prints `GNU gdb` before publishing.
 #
-#   Could not find platform independent libraries <prefix>
+# `import struct` and `import math` still fail, and that is ARM's ceiling rather
+# than ours: their x86_64 gdb exports ZERO Python C-API symbols, so no `.so`
+# extension module can load into it on ANY host — including one with a full
+# system python3.8. Pretty-printers, `gdb.execute`, `re`/`collections`/`json`
+# all work; the 34 modules ARM built in are the whole surface.
 #
-# No declaration can help: the x86_64 gdb has no `libpython` in its NEEDED list
-# at all (it is statically embedded), so `check-dist-runtime-deps` cannot see
-# it, and the arm64 gdb wants `libpython3.8.so.1.0`, which Ubuntu 22.04 has no
-# package for. A prereq naming a package apt cannot provide is worse than
-# silence. Tracked in 0928; the compiler, assembler and linker are unaffected.
-#
-# linux-arm64 is NOT bundled for that reason — the build refuses rather than
-# shipping a dist bundled everywhere except the library it could not resolve.
+# linux-arm64 gets NEITHER fix: there gdb links `libpython3.8.so.1.0`
+# dynamically, so it needs the shared library and not merely a stdlib, and 22.04
+# packages none. Its tarball is byte-identical to -nros2 (same sha256), which is
+# the check that this release touched only x86_64.
 [tool.arm-none-eabi-gcc]
-version = "13.2-nros2"
+version = "13.2-nros3"
 smoke = [
     { run = "bin/arm-none-eabi-gcc --version", expect = "Arm GNU Toolchain" },
     { run = "bin/arm-none-eabi-gdb --version", expect = "GNU gdb" },
@@ -104,9 +107,9 @@ smoke = [
 system = ["libcrypt1"]
 upstream = "13.2.rel1" # ARM release id (SSOT — build script no longer hand-derives)
 # Repackaged from ARM's release; no in-repo source build (binary toolchain).
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros2/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "ee8e89d54db50834832e9e8894c486aeba1477fdc06c607223f0b123e73ebcec" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros2/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "127136d54db66f2ed405d8bc01b1280a9cc78f2cbcc04466894c75c109b942d7" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros2/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros3/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "1e5f6dbf853b70ae5b1fcc17dd3d3a877172f5520adc7ddb1d1da40ce73282ea" }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros3/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "127136d54db66f2ed405d8bc01b1280a9cc78f2cbcc04466894c75c109b942d7" }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros3/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748" }
 
 [tool.zephyr-sdk]
 # The Zephyr SDK, host-keyed (issue 0610). `scripts/zephyr/setup.sh` used to

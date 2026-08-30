@@ -2,7 +2,7 @@
 id: 929
 title: "`arm-none-eabi-gdb` starts but produces no output — ARM's embedded
   Python cannot initialise, and no declaration can fix it"
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [0926, 0928]
@@ -140,3 +140,38 @@ stops working.
 
 So direction 4 is now a legitimate choice rather than a quiet lie. The debugger
 is still broken, and this issue stays open for that.
+
+## Resolved (2026-08-30) — x86_64
+
+`arm-none-eabi-gcc` **13.2-nros3** ships the matching CPython 3.8 stdlib inside
+the dist with a launcher pointing `PYTHONHOME` at it. 46 MB of `Lib/` trimmed to
+11 MB on disk, **1.6 MB compressed**; no build, no compiler.
+
+Three details worth keeping:
+
+* **The Python minor is derived from the binary and an unpinned one FAILS the
+  build.** ARM bumps it between releases and a stdlib for the wrong minor
+  installs cleanly then fails at run time.
+* **The launcher stays in `bin/` with the real binary beside it**, unlike the
+  macOS bundler which moves binaries to `lib/`. gdb derives `--data-directory`
+  from its own location; moving it out of `bin/` moves `share/gdb` out from
+  under it. Verified: the data directory still resolves.
+* **The release job verifies `--version` prints `GNU gdb` before publishing**, so
+  this issue's exact symptom is now a build failure rather than a user's.
+
+Confirmed on the released tarball, and the `smoke` probe added for this issue
+flipped on its own across all three surfaces:
+
+    nros setup --tool arm-none-eabi-gcc --check  ->  [OK] ... 13.2-nros3
+    nros setup --check                           ->  0 installed but not working
+    just doctor                                  ->  [OK] installed tools run
+
+**The ceiling is ARM's, and this reaches it.** Their x86_64 gdb exports ZERO
+Python C-API symbols, so no `.so` extension module can load into it on ANY host
+— `import struct` and `import math` fail even with a full system python3.8
+installed. The 34 modules they built in are the whole surface; pretty-printer
+machinery, `gdb.execute`, `re`, `collections` and `json` all work.
+
+**linux-arm64 is NOT fixed and is now issue 0932** — there gdb links
+`libpython3.8.so.1.0` dynamically, so it fails at the LOADER rather than at
+interpreter init, and needs the shared library rather than a stdlib.
