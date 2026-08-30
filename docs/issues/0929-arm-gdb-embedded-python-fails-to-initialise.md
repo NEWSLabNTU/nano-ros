@@ -50,13 +50,55 @@ before blaming the environment — the ROS path in the error text is a red
 herring, the same shape as 0774 and as the `LD_LIBRARY_PATH` trap the 0928
 bundler now guards against.
 
+## What it actually is, and what actually blocks it (measured 2026-08-30)
+
+**"ARM's embedded Python" is CPython 3.8 statically linked into gdb**, built
+inside ARM's own container. The binary has no `libpython` in `NEEDED`; the
+interpreter is compiled in, and its `sys.prefix` is baked to a path that exists
+on no user machine:
+
+    program name = '/usr/local/bld-tools/bld-tools-virtual-env/bin/python'
+    searched:      /usr/lib/python38.zip, /usr/lib/python3.8
+    Fatal Python error: init_fs_encoding: failed to get the Python codec
+      of the filesystem encoding
+
+Note **Fatal**. This is not a warning gdb continues past — the interpreter
+aborts during init and takes gdb with it, which is why `--version` prints
+nothing while exiting 0. The static interpreter still needs a Python 3.8
+**stdlib on disk** to find `encodings`.
+
+**Nothing blocks the x86_64 fix. It is proven and it is small.** Pointing
+`PYTHONHOME` at an unmodified CPython 3.8 `Lib/` — pure Python, no compiled
+extension modules, no build — makes gdb fully work:
+
+    $ PYTHONHOME=<dir> arm-none-eabi-gdb --batch -ex 'python print(6*7)' -ex 'print 2+2'
+    42
+    $1 = 4
+    $ ... -ex 'set architecture arm' -ex 'show architecture'
+    The target architecture is set to "arm".
+
+Cost, measured: the full 3.8 `Lib/` is 46 MB; dropping `test`, `idlelib`,
+`tkinter`, `lib2to3`, `distutils`, `ensurepip`, `turtledemo`, `pydoc_data` and
+`unittest/test` leaves **11 MB on disk / 1.6 MB compressed**, with gdb still
+fully functional. That is the whole price of direction 2 on x86_64.
+
+**linux-arm64 is a different and harder problem.** There the interpreter is NOT
+static — gdb links `libpython3.8.so.1.0` — so a stdlib alone is insufficient and
+the shared library is not in Ubuntu 22.04's archive either. It needs the `.so`
+from somewhere (a python.org build, deadsnakes, or building 3.8) before the same
+launcher trick applies. Splitting the hosts is legitimate: x86_64 is the primary
+host and is one small change away.
+
 ## Directions
 
-1. **Set `PYTHONHOME` from a launcher**, the way the macOS bundler already wraps
-   binaries — if ARM's gdb can be pointed at a stdlib we ship. Needs checking
-   whether 13.2's gdb accepts a 3.10 stdlib or hard-wants 3.8.
-2. **Ship the matching Python stdlib in the dist.** Larger, but it is what makes
-   the dist genuinely self-contained rather than self-contained-except-gdb.
+1. ~~**Set `PYTHONHOME` from a launcher**~~ + 2. ~~**ship the stdlib**~~ —
+   **these are one direction and it is MEASURED (above): a trimmed 3.8 `Lib/`
+   at 1.6 MB compressed, plus a launcher exporting `PYTHONHOME`, and gdb works.**
+   The launcher idiom already exists in the sdk repo (`bundle_macos_libs` wraps
+   binaries to set `DYLD_LIBRARY_PATH`); this is the same move for one variable
+   on Linux. The open question is not feasibility but packaging: whether the
+   stdlib ships inside the arm-none-eabi-gcc dist or as its own indexed tool
+   that several dists could share.
 3. **Take ARM's non-Python gdb if one exists** for the release we pin, or a
    newer ARM toolchain whose gdb links the Python the runner has.
 4. **Accept and say so** — document that `arm-none-eabi-gdb` needs a host Python
