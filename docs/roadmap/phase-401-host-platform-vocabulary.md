@@ -224,8 +224,9 @@ independent reason, one layer below the affinity call.
       anyone runs. Mutation-checked against the real file; guarded uses,
       `_GNU_SOURCE` and comment mentions are all correctly excused.
 
-      **Reopen this wave only with a macOS runner in hand.** The cost is a port,
-      the risk is un-run code, and the naming question it was meant to settle is
+      **DEFERRED by decision, 2026-08-30.** macOS support is not being pursued.
+      Reopen this wave only with a macOS runner in hand: the cost is a port, the
+      risk is un-run code, and the naming question it was meant to settle is
       already settled without it.
 
 ## What is deliberately NOT touched
