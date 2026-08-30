@@ -60,7 +60,9 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
   macOS and `posix` was the false claim. The board is `["native", "linux"]`,
   the platform stays `posix`, and the two layers legitimately differ: the
   platform names software-stack facts, the board names what we support.
-  Gate: `check-host-platform-vocabulary`. (Strictly the reach is "Linux and
+  Gates: `check-host-platform-vocabulary` (no board claims both reaches) and
+  `check-posix-platform-purity` (the crate named for the standard holds to one —
+  Linux-only code belongs in `nros-board-linux`). (Strictly the reach is "Linux and
   some BSDs, not macOS"; `linux` is the closest of the three words. Making
   `posix` true would mean cfg-gating that affinity call to a loud no-op.)
 - **nano-ros** — project name (prose, docs)
