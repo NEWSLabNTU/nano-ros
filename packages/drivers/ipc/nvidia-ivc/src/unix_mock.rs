@@ -27,6 +27,27 @@
 //! 2. **Cross-process bring-up** ([`register_fd`]) — each side
 //!    registers its own end of an AF_UNIX *connected* pair.
 
+// LINUX, despite the name — and the name is the feature's, so it stays
+// (Cargo.toml already documents the backend as "Linux-only"). Three things in
+// the libc shims at the bottom of this file are not portable unix:
+//
+//   * `__errno_location` is glibc's spelling. The BSDs export `__error`, so on
+//     FreeBSD this is an undefined symbol at LINK time — a failure several
+//     frames away from the constraint that caused it.
+//   * `MSG_DONTWAIT` is hardcoded `0x40`, which is the Linux value; FreeBSD's
+//     is `0x80`.
+//   * `EAGAIN` is hardcoded `11`, which is the Linux value; FreeBSD's is `35`.
+//
+// The literals are deliberate ("kept narrow so we don't pull in an extra crate
+// dep"), so the fix is not to guess the other values but to say which platform
+// they are for, here, where a reader meets them.
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+compile_error!(
+    "the `unix-mock` backend is Linux-only: it hardcodes glibc's \
+     `__errno_location` and Linux's `MSG_DONTWAIT`/`EAGAIN` values. Port the \
+     libc shims at the bottom of `unix_mock.rs` before enabling it elsewhere."
+);
+
 use core::{
     cell::{Cell, UnsafeCell},
     ffi::c_void,

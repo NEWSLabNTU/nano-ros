@@ -433,10 +433,38 @@ fn sweep_stale_header_temps(output_path: &Path) {
 
 /// Whether `pid` names a live process. Non-Unix conservatively answers "yes",
 /// so a temp file is kept rather than deleted out from under a running build.
+///
+/// `kill(pid, 0)` rather than `/proc/<pid>`: procfs is LINUX, not unix — FreeBSD
+/// does not mount it by default — so under the `cfg(unix)` guard this had a
+/// running build's temp file reading as abandoned on every non-Linux unix, and
+/// the `cfg(not(unix))` arm could not conserve it because BSD *is* unix. Signal
+/// 0 is the POSIX existence check, so one arm now covers the whole family, and
+/// `EPERM` is treated as live (the process exists; we merely may not signal it),
+/// which keeps the conservative direction this function promises.
 fn pid_is_live(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        Path::new(&format!("/proc/{pid}")).exists()
+        // Declared inline for the same reason as `flock` above — this crate is
+        // in every C/C++ build script's graph and does not carry a `libc` dep.
+        unsafe extern "C" {
+            fn kill(pid: i32, sig: i32) -> i32;
+        }
+        // `EPERM` is 1 on every POSIX system this tree targets.
+        const EPERM: i32 = 1;
+        // A pid that does not fit `pid_t`, or is zero, names no process — and
+        // `kill(0, …)` would address the CALLER's own process group.
+        let Ok(pid) = i32::try_from(pid) else {
+            return true; // unparseable: keep the file rather than guess
+        };
+        if pid <= 0 {
+            return false;
+        }
+        // SAFETY: signal 0 delivers nothing; it runs the existence and
+        // permission checks alone.
+        if unsafe { kill(pid, 0) } == 0 {
+            return true;
+        }
+        std::io::Error::last_os_error().raw_os_error() == Some(EPERM)
     }
     #[cfg(not(unix))]
     {

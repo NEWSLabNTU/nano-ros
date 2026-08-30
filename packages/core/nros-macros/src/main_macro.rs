@@ -2572,6 +2572,15 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // and closed for this tree: native and threadx-linux are Linux, and macOS is
     // a supported host for the native family.
     //
+    // The *BSDs are on that list too, and were missing — the mirror of the bug
+    // the paragraph above describes. `nros-platform-posix` is POSIX-clean and
+    // the BSDs are a supported host family, but `target_os = "freebsd"` is not
+    // "linux", "macos" or "windows", so this gate was TRUE there and emitted a
+    // `#[panic_handler]` into a libstd image: `duplicate lang item panic_impl`,
+    // for every `nros::main!()` entry, at the first line of the build. A list
+    // spelled as an allowlist of hosted OSes only works if it actually lists
+    // them.
+    //
     // …unless this package also produces a `staticlib`, in which case the LIB
     // owns the item for BOTH artifacts and emitting here would be a duplicate.
     // Derived, so every image can write the same `panic = …` regardless of shape.
@@ -2581,11 +2590,27 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     } else {
         match args.panic {
             PanicPolicy::Platform => quote! {
-                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                #[cfg(not(any(
+                    target_os = "linux",
+                    target_os = "macos",
+                    target_os = "windows",
+                    target_os = "freebsd",
+                    target_os = "netbsd",
+                    target_os = "openbsd",
+                    target_os = "dragonfly"
+                )))]
                 ::nros::panic_to_platform!();
             },
             PanicPolicy::Halt => quote! {
-                #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+                #[cfg(not(any(
+                    target_os = "linux",
+                    target_os = "macos",
+                    target_os = "windows",
+                    target_os = "freebsd",
+                    target_os = "netbsd",
+                    target_os = "openbsd",
+                    target_os = "dragonfly"
+                )))]
                 ::nros::panic_halt!();
             },
             // `own` emits nothing — the image said it brings its own.
