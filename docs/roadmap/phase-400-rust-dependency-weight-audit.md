@@ -447,6 +447,51 @@ build time — but a directory of crates nobody builds and nobody uses is a fals
 statement about what the project needs, which is the same reason W1 was worth
 doing.
 
+### Duplicate compiles (feature / version variants) — measured, and it is ~2 %
+
+Asked whether crates get built repeatedly because of feature or version variants.
+Measured on a cold `packages/cli` release build (202 units, 111.8 CPU-s), using
+`--timings` for cost and `just leaf-graph` for the edges:
+
+| duplicate kind | crates | redundant CPU | share |
+| --- | --- | --- | --- |
+| VERSION variants, actually compiled | 3 (`hashbrown`, `thiserror`, `thiserror-impl`) | 1.2 s | 1.1 % |
+| same version compiled as a lib twice | 5 | 2.27 s | 2.0 % |
+
+**The lock overstates the version problem by 10x.** The root `Cargo.lock` lists 35
+multi-version packages, which reads as alarming; only 3 are ever compiled. The
+rest are `windows-*` (9 crates, ~25 versions) and embedded crates that never build
+on a Linux host. Reading the lock alone is the same workspace-vs-actual-build trap
+this phase hit three times — W4 exists for exactly this.
+
+**The five same-version duplicates are NOT a feature choice anyone made, and are
+not fixable by configuration.** `cc`, `find-msvc-tools`, `shlex`, `unicode-ident`
+and `memchr` are each needed by BOTH the build-dependency/proc-macro graph and the
+normal dependency graph, and cargo compiles those as separate units. Three
+hypotheses were tested against a real build and all three were REFUTED — the
+duplicate set was byte-identical (same 5 crates) in every case:
+
+| tried | result | total CPU |
+| --- | --- | --- |
+| as shipped (`panic=abort`, `lto=fat`, `codegen-units=1`) | 5 dups, 2.27 s | 111.8 s |
+| `panic=unwind`, `lto=false`, `codegen-units=16` | 5 dups, 2.69 s | 134.7 s |
+| `build-override` matched to the release profile | 5 dups, 3.28 s | 137.8 s |
+
+Two of the three "fixes" made the build 20 % SLOWER. The split is cargo's
+build-graph separation, which no profile setting collapses.
+
+**`memchr`'s feature difference is a symptom, not the cause — and "fixing" it is a
+provable no-op.** Its two units differ in features
+(`['alloc','default','std']` vs `['alloc','std']`) only because resolver v2
+resolves features independently for the two graphs. The units are already
+distinct by graph position, so aligning features cannot merge them. It is also
+not actionable: `just leaf-graph` reports its requirers as `object`, `quick_xml`
+and `serde_json` — all external, none ours.
+
+*Conclusion: not a lever.* ~2 %, inherent to cargo, and every intervention tried
+costs more than it saves. Recorded so the question is not re-opened from the
+lockfile's 35 rows.
+
 ### The pattern this phase keeps hitting, three times now
 
 W2's orchestration half, and now W3, failed the same way the 31.9 % figure did:
