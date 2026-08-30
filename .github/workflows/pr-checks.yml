@@ -38,8 +38,38 @@ on:
       - ".gitmodules"
       - ".github/workflows/pr-checks.yml"
   pull_request:
-    branches: [main]
-    # NO `paths:` filter, and this is load-bearing rather than an oversight.
+    # NO `branches:` filter and NO `paths:` filter. Both are load-bearing rather
+    # than oversights, and they are the same trap on two different axes.
+    #
+    # `branches: [main]` was here until PR #71 deadlocked on it. That PR was
+    # STACKED — opened against `fix/0041-zephyr-heap-knob` (PR #61's branch),
+    # not against main — so every `pull_request` event it produced was filtered
+    # out before a workflow could be dispatched:
+    #
+    #   01:32  opened            base is not main  -> filtered
+    #   01:57  synchronize       base is not main  -> filtered
+    #   01:58  base retargeted to main             -> GitHub emits
+    #          `pull_request.edited`, which is NOT one of the default types
+    #          (`opened`, `synchronize`, `reopened`), so nothing dispatched
+    #   01:58  auto-merge enabled
+    #
+    # Net: ZERO check suites for the head sha, thirteen hours and counting,
+    # auto-merge armed against a required check that was never requested. Not
+    # failing — permanently ineligible, exactly like PR #13 below.
+    #
+    # Retargeting is the trap's teeth: it is the natural thing to do when the
+    # PR underneath you merges, it looks like it should re-run everything, and
+    # it re-runs nothing. Dropping the filter fixes it at the root instead of
+    # subscribing to `edited` (which would also fire on every title and body
+    # edit): a stacked PR now gets its checks while it is still stacked, and
+    # because check runs attach to the COMMIT rather than to the PR, the
+    # retarget inherits them and the rollup is already populated.
+    #
+    # A stacked PR's checks are not wasted work either — its head sha is what
+    # eventually reaches the queue, so this is the same verification, earlier.
+    #
+    # And the `paths:` half, which is the older lesson:
+    #
     #
     # `check` is a REQUIRED status check. A path-filtered required check never
     # runs for a pull request outside those paths, so it never REPORTS, so the
@@ -47,9 +77,12 @@ on:
     # (docs only) hit exactly this: zero checks in its rollup and no way to
     # merge.
     #
-    # The same sentence is already written under `merge_group:` below. It was
-    # true here too and applying it only there is the "fix the reported site,
-    # not the class" mistake CLAUDE.md names.
+    # The same sentence is already written under `merge_group:` below, and it
+    # was true of `branches:` above. Three spellings of one rule: a required
+    # check must be reachable from every event that can produce the head sha
+    # a merge is asked to admit. Applying the rule to one axis at a time is
+    # the "fix the reported site, not the class" mistake CLAUDE.md names —
+    # each of the three was fixed only after it had already frozen a PR.
     #
     # Affordable because the PR gate is now cheap — `check-fast` plus a compile
     # smoke, not the full tier — so a docs-only PR pays a few minutes rather
