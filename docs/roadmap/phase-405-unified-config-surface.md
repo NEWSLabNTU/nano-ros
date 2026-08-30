@@ -101,6 +101,50 @@ on `[deploy.*]`'s build fields; `[system].features` supersedes the typed
 neither has been closed. `examples/workspaces/features` still uses BOTH
 capability spellings in one file.
 
+**Executed 2026-08-31, and the second half is BLOCKED — on code, not on data.**
+
+*Capabilities (R11).* The window is already closed in the data: **zero** in-tree
+`system.toml` carries `[safety]` or `[param_services]`, which are the only two
+`deprecated_typed_capability_blocks()` names. The one typed block left is
+`examples/workspaces/features`'s `[lifecycle]`, and it is **not** the deprecated
+spelling and **not** convertible — `features = ["lifecycle"]` can only say ON,
+while `autostart = "active"` is read from the typed block alone
+(`planner.rs:636`, keyed on `s.lifecycle.is_some()`, not on `capability_enabled`).
+So the double declaration was resolved the only non-lossy way: the redundant
+`"lifecycle"` was dropped from `[system].features` and the block kept. Effective
+set unchanged (`nros config show --format cmake` still emits
+`param_services;lifecycle`); only the provenance line moves from
+`[<axis>] + [system] features` to `[<axis>]`.
+
+*`[deploy.*]` build fields (R12).* **Nothing is safely removable today.**
+`profile` and `features` have zero in-tree uses; `rmw` has two, both in
+`multi_pkg_workspace_{freertos,nuttx}` fixtures that declare no `[image.*]` at
+all, so no image supplies the value. That leaves `board` — and **`board` is not
+only a build field, it is the JOIN KEY for site config.** `nros ws board-facts`
+resolves `[deploy.<t>.nros]` (SDK roots, netstack, `NROS_BOARD_TOML`) by matching
+`--board` against `t.board`, or by `--deploy` and then requiring `t.board`
+(`board_facts.rs:112`, `:274`); it has **no `[image.*]` fallback**. Measured on
+the four blocks that pass the "an image already supplies the same value, and the
+deploy carries no `.nros`" test — `c`/`cpp` `freertos-posix`, `cpp` `an536`,
+`rust` `esp32-qemu` — removing `board` turns a working resolution into
+`no [deploy.*] with board = "…"` / `names no board`, and
+`nros_resolve_board_facts` treats that as SOFT, so the build loses `NROS_BOARD` /
+`NROS_BOARD_TOML` / `NROS_NETSTACK` **silently**. `check-site-config.py` keys on
+the same field (`if board not in BOARDS: continue`), so it would stop checking
+the site block rather than fail.
+
+Corroborating: `examples/workspaces/mixed`'s `[deploy.freertos.nros]` is ALREADY
+unreachable for exactly this reason — that block names no `board`, so
+`board-facts --deploy freertos` errors instead of delivering it. The hazard is
+live, not hypothetical.
+
+**So R12 needs a code wave before a data wave:** teach `board-facts` (and the two
+gates) to resolve a board through `[image.*]`, then delete the `[deploy.*].board`
+copies. That belongs with W2 — it is the same "make the other site a projection
+of the model" work — and D6's *"become deletable once their `[image.*]` lands"*
+should be read as "once the RESOLVER reads the image", not "once the image is
+written".
+
 **W6 — the gated duplications.** SDK roots exist four times and the zenoh tx
 trio three; both are asserted-equal by a gate rather than merged.
 `scripts/check-zephyr-knob-agreement.py` states the case against itself better
