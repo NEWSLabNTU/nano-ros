@@ -368,6 +368,17 @@ doctor:
             echo "$sys_out" | sed 's/^/  /'
             fail=1
         fi
+        # Issue 0926 — the check above asks "is every DECLARED package here?".
+        # This asks the other half: "is the declaration COMPLETE?", by
+        # re-measuring the provisioned dists. Both are needed, and only the
+        # second would have caught `[tool.qemu] system = ["libslirp"]` being
+        # correct and 19 sonames short. Skips itself when there is no store.
+        if dist_out="$(python3 scripts/check-dist-runtime-deps.py 2>&1)"; then
+            echo "  [OK] dist runtime deps ($(echo "$dist_out" | head -1 | sed 's/^check-dist-runtime-deps[: ]*//'))"
+        else
+            echo "$dist_out" | sed 's/^/  /'
+            fail=1
+        fi
     else
         echo "  [SKIP] system packages (nros CLI not built — run: just setup-cli)"
     fi

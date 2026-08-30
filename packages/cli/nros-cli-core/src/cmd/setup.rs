@@ -1648,8 +1648,45 @@ fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
     };
     let (present, held) = tool_pin_status(index, name, tool);
     if present {
-        println!("  [OK]      tool    {name} {}", tool.version);
-        return Ok(());
+        // issue 0926 — PINNED is not USABLE. The `system = [..]` probe below
+        // lived only in the install path, behind the already-present
+        // short-circuit, so a dist that is provisioned and cannot start
+        // reported `[OK]` here. That is the gap issue 0368 F3 was filed for,
+        // one path over: "nothing consulted it on the path where the tool is
+        // used". Measured on a 22.04 host — `openocd` present at the pinned
+        // version and dead on `libftdi.so.1`, `arm-none-eabi-gdb` dead on
+        // `libncursesw.so.5`.
+        let prereqs = index.prereqs();
+        let missing: Vec<&str> = tool
+            .system
+            .iter()
+            .filter(|k| {
+                prereqs
+                    .get(k.as_str())
+                    .is_some_and(|d| run_probe(d.check.as_ref()) == ProbeResult::Missing)
+            })
+            .map(|k| k.as_str())
+            .collect();
+        if missing.is_empty() {
+            println!("  [OK]      tool    {name} {}", tool.version);
+            return Ok(());
+        }
+        let entries: Vec<(&String, &crate::orchestration::sdk_index::PrereqDep)> = prereqs
+            .iter()
+            .filter(|(k, _)| missing.contains(&k.as_str()))
+            .collect();
+        let hint = detect_package_manager()
+            .map(|mgr| native_install_command(mgr, &compose_packages(&entries, mgr)))
+            .unwrap_or_else(|| "<no supported package manager detected>".to_string());
+        println!(
+            "  [BROKEN]  tool    {name} {} — installed, but {} system \
+             package(s) it needs are missing: {}",
+            tool.version,
+            missing.len(),
+            missing.join(", ")
+        );
+        println!("            Install with:  {hint}");
+        bail!("nros setup --tool {name} --check: present but unusable");
     }
     println!(
         "  [MISSING] tool    {name} {} (run: nros setup --tool {name})",

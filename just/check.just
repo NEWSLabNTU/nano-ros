@@ -894,6 +894,20 @@ retired-submodule-refs:
 sysdep-remedies:
     @bash scripts/check-sysdep-remedies.sh
 
+# Issue 0926 / phase-327 W4 — a dist's `system = [..]` must cover the libraries
+# it ACTUALLY needs, re-measured from the provisioned dists themselves.
+#
+# NOT on the fast line, and not in an affordability tier: it needs a provisioned
+# store, which no such lane builds (`check-lane-contracts`). It SKIPS loudly
+# when there is no store, so running it anywhere is safe — it simply cannot
+# answer without its input, and says which.
+#
+# `just doctor` is its home: doctor is where host state is examined, and this is
+# the one gate whose subject lives in `~/.nros/sdk` rather than in the tree.
+[private]
+check-dist-runtime-deps:
+    @python3 scripts/check-dist-runtime-deps.py
+
 # issue 0372 — `activate.sh` / `activate.fish` are SOURCED, so anything that
 # aborts them mid-file silently drops every export below the failure. Two
 # unmatched SDK-store globs did exactly that under zsh (fatal `nomatch`), on

@@ -50,7 +50,7 @@ version = "11.0.0-nros2"
 # stock Ubuntu does not ship it. Re-cut with an $ORIGIN rpath bundle as
 # -nros3 to drop this. Declared so setup/doctor can say so BEFORE the smoke
 # check fails with a bare loader error.
-system = ["libslirp"]
+system = ["libblkid1", "libbz2", "libffi8", "libgcrypt20", "libglib2", "libgpgerror0", "libmount1", "libncursesw6", "libpcre2", "libpcre3", "libpixman1", "libpng16", "libselinux1", "libslirp", "libtinfo6", "libz1", "libzstd1"]
 upstream = "nano-ros-v11.0.0-patches" # exact upstream rev/branch (SSOT for build-tool.yml)
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-x86_64.tar.zst", sha256 = "a1cb9df6f41070d43042c2455e23823431226e9274c67435eafcbc9cddb1166e" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros2/qemu-linux-arm64.tar.zst", sha256 = "33d243e541d2415ceccae65a5e7d7c0aa22c85eeff00c516462f90e4edb4b181" }
@@ -63,6 +63,7 @@ install = "make -j$(nproc) && make install"
 
 [tool.arm-none-eabi-gcc]
 version = "13.2-nros1"
+system = ["libcrypt1", "libncursesw5", "libtinfo5"]
 upstream = "13.2.rel1" # ARM release id (SSOT — build script no longer hand-derives)
 # Repackaged from ARM's release; no in-repo source build (binary toolchain).
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros1/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "2d913ea50094cefc29a85bf18dddcbf8854b7a2ec9ca892e89f2f25ba06b32da" }
@@ -174,6 +175,7 @@ install = "cargo install --path . --root {prefix} --locked --features vendored-o
 
 [tool.openocd]
 version = "0.12.0-nros1"
+system = ["libftdi1", "libhidapi", "libudev1", "libusb1"]
 upstream = "v0.12.0" # upstream tag (SSOT — build script no longer hand-derives)
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-linux-x86_64.tar.zst", sha256 = "f21e7be90a71c354251956ce43b30520e116de9ceab57ac70d521eccd99809ca" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros1/openocd-linux-arm64.tar.zst", sha256 = "39ed5882df9f20ca2dda18a850418441dcbb17a2f39071dae587d40f0a590987" }
@@ -184,6 +186,7 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # superbuild (pulls Fast-DDS/Fast-CDR), so prefer the prebuilt once seeded.
 [tool.xrce-agent]
 version = "2.4.3-nros1"
+system = ["libssl3"]
 upstream = "v2.4.3" # = source.ref (eProsima release tag)
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-x86_64.tar.zst", sha256 = "61c2e7786ffdbc3ea7f19882f12fb9dd3c28756c6dafd6ec459c9fa86de9438f" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-arm64.tar.zst", sha256 = "29c6d7db3147bd9b0fac7d76ece23d90fa22907a7a556b88c3c2f9d6b8ba0344" }
@@ -203,6 +206,7 @@ install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {p
 # NEWSLabNTU fork's `nano-ros` integration branch, pinned to the submodule sha.
 [tool.cyclonedds]
 version = "0.10.5-nros1"
+system = ["libssl3"]
 upstream = "12b4af2c5ac98657d42df84a5a45006ceede503b" # fork sha = submodule pointer
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-x86_64.tar.zst", sha256 = "ed8a51eac91a884f39bfff4fe824923e5edf1f9dadb4a941c99a9f080c7217d3" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-arm64.tar.zst", sha256 = "4c224398115bd45e14b37d6c8de7e94f4aed6f46da762f517654221327c51d5e" }
@@ -259,6 +263,7 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # the submodule pin so the two cannot disagree.
 [tool.play_launch_parser]
 version = "0.1.0-nros1"
+system = ["libexpat1", "libpython310", "libz1"]
 upstream = "838ce948551f8ba263648fbb7eeb572cec9d5950" # = source.ref (play_launch pin; no upstream tags)
 [tool.play_launch_parser.source]
 git = "https://github.com/NEWSLabNTU/play_launch"
@@ -1066,3 +1071,229 @@ why = "the nano-ros CLI itself — codegen, sync, and this build verb"
 # No package manager ships it. `./scripts/bootstrap.sh` (users) or
 # `just setup-cli` (contributors) provides it; the probe is the whole entry.
 check = { cmd = "nros" }
+
+# --- dist RUNTIME libraries (issue 0926, phase-327 W4) ----------------------
+#
+# Measured, not hand-listed: the external ldd closure of every binary in each
+# provisioned dist, minus the base glibc/gcc runtime and minus what the dist
+# ships itself. `check-dist-runtime-deps` re-measures and fails if a dist needs
+# something its `system = [...]` does not name, so this table cannot drift back
+# out of date the way the hand-authored `[tool.qemu] system = ["libslirp"]` did
+# — that one line was correct and 19 short.
+#
+# The audit MUST run under `env -u LD_LIBRARY_PATH`. Measured with ROS on the
+# path, cyclonedds appeared to need four `libiceoryx_*` libs: the loader had
+# resolved `libddsc.so.0` to ROS's own cyclonedds build rather than to the
+# dist's copy behind `RUNPATH=$ORIGIN/../lib`. That is issue 0774's class, and
+# an audit inheriting the caller's environment measures the caller.
+#
+# Two of these pin a version INSIDE the soname — `libpython3.10.so.1.0` and
+# `libssl.so.3` — so they are host-distro constraints rather than ordinary
+# prerequisites: no `apt install` satisfies them on a release that ships a
+# different minor/major. Declaring them lets setup and doctor SAY so; only
+# re-cutting the dist removes them.
+#
+# apt names verified against the archive on Ubuntu 22.04 (2026-08-30).
+# dnf/pacman/brew are best-effort, per this file's existing convention.
+
+[prereq.libblkid1]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libblkid1"]
+dnf = ["libblkid"]
+pacman = ["util-linux-libs"]
+check = { sharedlib = "libblkid.so.1" }
+
+[prereq.libbz2]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libbz2-1.0"]
+dnf = ["bzip2-libs"]
+pacman = ["bzip2"]
+brew = ["bzip2"]
+check = { sharedlib = "libbz2.so.1.0" }
+
+[prereq.libcrypt1]
+why = "runtime dep of the arm-none-eabi-gcc dist(s) (issue 0926)"
+apt = ["libcrypt1"]
+dnf = ["libxcrypt"]
+pacman = ["libxcrypt-compat"]
+check = { sharedlib = "libcrypt.so.1" }
+
+[prereq.libexpat1]
+why = "runtime dep of the play_launch_parser dist(s) (issue 0926)"
+apt = ["libexpat1"]
+dnf = ["expat"]
+pacman = ["expat"]
+brew = ["expat"]
+check = { sharedlib = "libexpat.so.1" }
+
+[prereq.libffi8]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libffi8"]
+dnf = ["libffi"]
+pacman = ["libffi"]
+brew = ["libffi"]
+check = { sharedlib = "libffi.so.8" }
+
+[prereq.libftdi1]
+why = "runtime dep of the openocd dist(s) (issue 0926)"
+apt = ["libftdi1"]
+dnf = ["libftdi"]
+pacman = ["libftdi-compat"]
+brew = ["libftdi0"]
+check = { sharedlib = "libftdi.so.1" }
+
+[prereq.libgcrypt20]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libgcrypt20"]
+dnf = ["libgcrypt"]
+pacman = ["libgcrypt"]
+brew = ["libgcrypt"]
+check = { sharedlib = "libgcrypt.so.20" }
+
+[prereq.libglib2]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libglib2.0-0"]
+dnf = ["glib2"]
+pacman = ["glib2"]
+brew = ["glib"]
+provides = ["libgio-2.0.so.0", "libglib-2.0.so.0", "libgmodule-2.0.so.0", "libgobject-2.0.so.0"]
+check = { sharedlib = "libgio-2.0.so.0" }
+
+[prereq.libgpgerror0]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libgpg-error0"]
+dnf = ["libgpg-error"]
+pacman = ["libgpg-error"]
+brew = ["libgpg-error"]
+check = { sharedlib = "libgpg-error.so.0" }
+
+[prereq.libhidapi]
+why = "runtime dep of the openocd dist(s) (issue 0926)"
+apt = ["libhidapi-hidraw0"]
+dnf = ["hidapi"]
+pacman = ["hidapi"]
+brew = ["hidapi"]
+check = { sharedlib = "libhidapi-hidraw.so.0" }
+
+[prereq.libmount1]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libmount1"]
+dnf = ["libmount"]
+pacman = ["util-linux-libs"]
+check = { sharedlib = "libmount.so.1" }
+
+[prereq.libncursesw5]
+why = "runtime dep of the arm-none-eabi-gcc dist(s) (issue 0926)"
+apt = ["libncursesw5"]
+dnf = ["ncurses-compat-libs"]
+pacman = ["ncurses5-compat-libs"]
+check = { sharedlib = "libncursesw.so.5" }
+
+[prereq.libncursesw6]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libncursesw6"]
+dnf = ["ncurses-libs"]
+pacman = ["ncurses"]
+brew = ["ncurses"]
+check = { sharedlib = "libncursesw.so.6" }
+
+[prereq.libpcre2]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libpcre2-8-0"]
+dnf = ["pcre2"]
+pacman = ["pcre2"]
+brew = ["pcre2"]
+check = { sharedlib = "libpcre2-8.so.0" }
+
+[prereq.libpcre3]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libpcre3"]
+dnf = ["pcre"]
+pacman = ["pcre"]
+brew = ["pcre"]
+check = { sharedlib = "libpcre.so.3" }
+
+[prereq.libpixman1]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libpixman-1-0"]
+dnf = ["pixman"]
+pacman = ["pixman"]
+brew = ["pixman"]
+check = { sharedlib = "libpixman-1.so.0" }
+
+[prereq.libpng16]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libpng16-16"]
+dnf = ["libpng"]
+pacman = ["libpng"]
+brew = ["libpng"]
+check = { sharedlib = "libpng16.so.16" }
+
+[prereq.libpython310]
+why = "runtime dep of the play_launch_parser dist(s) (issue 0926)"
+apt = ["libpython3.10"]
+dnf = ["python3.10-libs"]
+pacman = ["python310"]
+check = { sharedlib = "libpython3.10.so.1.0" }
+
+[prereq.libselinux1]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libselinux1"]
+dnf = ["libselinux"]
+pacman = ["libselinux"]
+check = { sharedlib = "libselinux.so.1" }
+
+[prereq.libssl3]
+why = "runtime dep of the cyclonedds, xrce-agent dist(s) (issue 0926)"
+apt = ["libssl3"]
+dnf = ["openssl-libs"]
+pacman = ["openssl"]
+brew = ["openssl@3"]
+provides = ["libcrypto.so.3", "libssl.so.3"]
+check = { sharedlib = "libcrypto.so.3" }
+
+[prereq.libtinfo5]
+why = "runtime dep of the arm-none-eabi-gcc dist(s) (issue 0926)"
+apt = ["libtinfo5"]
+dnf = ["ncurses-compat-libs"]
+pacman = ["ncurses5-compat-libs"]
+check = { sharedlib = "libtinfo.so.5" }
+
+[prereq.libtinfo6]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libtinfo6"]
+dnf = ["ncurses-libs"]
+pacman = ["ncurses"]
+brew = ["ncurses"]
+check = { sharedlib = "libtinfo.so.6" }
+
+[prereq.libudev1]
+why = "runtime dep of the openocd dist(s) (issue 0926)"
+apt = ["libudev1"]
+dnf = ["systemd-libs"]
+pacman = ["systemd-libs"]
+check = { sharedlib = "libudev.so.1" }
+
+[prereq.libusb1]
+why = "runtime dep of the openocd dist(s) (issue 0926)"
+apt = ["libusb-1.0-0"]
+dnf = ["libusbx"]
+pacman = ["libusb"]
+brew = ["libusb"]
+check = { sharedlib = "libusb-1.0.so.0" }
+
+[prereq.libz1]
+why = "runtime dep of the play_launch_parser, qemu dist(s) (issue 0926)"
+apt = ["zlib1g"]
+dnf = ["zlib"]
+pacman = ["zlib"]
+brew = ["zlib"]
+check = { sharedlib = "libz.so.1" }
+
+[prereq.libzstd1]
+why = "runtime dep of the qemu dist(s) (issue 0926)"
+apt = ["libzstd1"]
+dnf = ["libzstd"]
+pacman = ["zstd"]
+brew = ["zstd"]
+check = { sharedlib = "libzstd.so.1" }

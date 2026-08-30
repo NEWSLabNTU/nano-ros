@@ -158,6 +158,18 @@ pub struct PrereqDep {
     pub pacman: Vec<String>,
     #[serde(default)]
     pub brew: Vec<String>,
+    /// Every soname this entry satisfies, when it satisfies more than the one
+    /// `check.sharedlib` probes — issue 0926. `libssl3` provides BOTH
+    /// `libssl.so.3` and `libcrypto.so.3`; `libglib2` provides four.
+    ///
+    /// Exists so `check-dist-runtime-deps` can map a measured soname back to
+    /// the key a `system = [..]` must name, WITHOUT keeping a soname table of
+    /// its own — a second mapping beside this one is the drift that let
+    /// `[tool.qemu] system = ["libslirp"]` stand while 19 sonames went
+    /// undeclared. The probe stays `check.sharedlib`: one soname is enough to
+    /// decide presence, and probing four would only be slower.
+    #[serde(default)]
+    pub provides: Vec<String>,
     /// The key in `[tool.*]` / `[source.*]` this resolves through, when the
     /// provider is not `system` and the names differ. Absent ⇒ the prereq key
     /// IS the class key.
@@ -203,6 +215,12 @@ impl From<&SystemDep> for PrereqDep {
             dnf: d.dnf.clone(),
             pacman: d.pacman.clone(),
             brew: d.brew.clone(),
+            // Empty, and that is not a dropped field: `[system.*]` has no
+            // `provides` to map. The legacy shape predates it, and phase-398
+            // W4 retired `[system.*]` outright — an entry arriving here is a
+            // pre-migration index, which by definition declares no soname
+            // beyond its probe.
+            provides: Vec::new(),
             source: None,
             check: d.check.clone(),
         }
