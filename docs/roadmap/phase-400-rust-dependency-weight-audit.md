@@ -840,6 +840,79 @@ On four real cyclonedds trees it reports what the manual measurement found:
 0 env divergences, 1 path divergence, `[21, 132] paths, smallest is a SUBSET`.
 
 
+
+### W5.b — LANDED 2026-08-30. The key is ready; the LANE is refused, loudly.
+
+Two mechanical pieces, and one result that was worth more than either.
+
+**`nros_shared_cargo_dir()` moved to `cmake/NanoRosSharedCargoDir.cmake`,
+unchanged.** It lived in `NanoRosCorrosion.cmake` because its first two consumers
+did. The Zephyr C/C++ lane is the third and uses no Corrosion — that module is
+never included there — so the helper was simply unreachable from the platform
+with 89 unshared cargo directories. Including the Corrosion module to reach it
+would drag Corrosion provisioning into a lane with no use for it, and a second
+normalise-and-hash is what the helper's own doc block forbids.
+
+**The key is computed by `_nros_root_cargo_dir()`, per PACKAGE.** Not alongside
+the header dir, and not cached once: its key contains this package's features,
+and `nros_cargo_build()` is called once per package. The first draft did cache it
+once and had to name a variable that does not exist — caught by writing it out,
+not by building.
+
+    triple, profile   the artifact's target and optimisation
+    features          keys nros-c and nros-cpp apart; their archives differ
+    knobs             every NROS_RESOLVED_*, because they reach compiled code
+                      through the build-script environment (issue 0528)
+
+Features are in the key rather than left to cargo's hashing BECAUSE of the
+uplift: with them in, the eleven unhashed artifacts that collide are
+byte-identical by construction, so the collision is harmless. That is how this
+lane avoids `--artifact-dir`, which needs `-Z unstable-options` — and this lane
+forces nightly only for `armv7a|thumbv|riscv32`, so native_sim is on STABLE and
+the NuttX eviction mechanism is unavailable here. Checked, not assumed.
+
+The 0616 duplicate-root guard moved with it. It hashes `CARGO_TARGET_DIR`, and
+deferring the resolution past it left it hashing an EMPTY string — registering
+ownership under an empty key and silently protecting nothing.
+
+#### The header blocker is now DEMONSTRATED, not predicted — and by accident
+
+Enabling sharing on this lane produces a broken build. That was the prediction;
+this is the observation, and it arrived unplanned. An earlier reverted experiment
+had left `-DNROS_SHARED_CARGO_ROOT` in the CMake cache of ONE build dir. It was
+inert while Zephyr never read the variable. W5.b makes Zephyr read it, so a stale
+cache entry silently switched sharing ON for that dir, and the C++ leaf failed:
+
+```
+ninja: error: 'nros-rust/nros-c-generated/nros/nros_generated.h',
+needed by 'CMakeFiles/listener_lib.dir/src/Listener.cpp.obj',
+missing and no known rule to make it
+```
+
+Exactly the predicted mechanism: the build script writes the headers under
+`$CARGO_TARGET_DIR`, so a shared dir means image B takes a cargo cache hit, the
+script never re-runs, and B's per-image header dir — where W5.a correctly points
+the consumers — is never populated.
+
+Worth naming the second lesson: **W5.b converts a previously inert stale cache
+value into an active behaviour change.** A `-D` that no code reads is not a
+no-op forever; it is a latent input waiting for a reader.
+
+*So the opt-in is REFUSED with a FATAL_ERROR* naming the failure and the escape
+hatch (`-DNROS_ZEPHYR_SHARED_CARGO_UNSAFE_OK=ON` for whoever develops W5.c).
+A fatal error rather than a silent fall back to per-image dirs: a caller who
+passed the flag asked for sharing, and quietly not sharing is how a measurement
+gets attributed to a build that never shared anything.
+
+*Verified:* C and C++ Zephyr leaves both build to `zephyr.elf`; `check fast`
+139/139; the stale cache entry cleared with `cmake -U` and a re-configure, never
+`rm -rf` (the build converged, so the antipattern rule applies).
+
+*Status: W5.c NOT attempted.* One problem remains and it is the whole of it —
+getting the generated headers to each image while the dependency mass is shared.
+Three candidate routes, none free, all recorded above and in the design-fork
+section.
+
 ### W5 open items — closed 2026-08-30, and the path-divergence finding is RETRACTED
 
 **1. The `DOTCONFIG` exemption reason — rewritten.**
