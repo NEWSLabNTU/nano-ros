@@ -986,55 +986,39 @@ directly, so there is no `nros_ws_runtime-static` to attach env to. The models
 that would benefit MOST are here: W5.b1 measured 22 of 115 models as
 `param+lifecycle` (32 slots -> 19) and they are `features` models.
 
-**`mixed` is now DIAGNOSED, and the answer indicts the wave rather than the
-wiring.** The umbrella is created and `nros_entity_facts_env` IS reached; it
-returns at its first guard, `if(NOT _seen) return()`, because
-`nros_record_entity_facts` never recorded anything. That function's own first
-guard is:
+**`mixed` is NOT diagnosed, and the previous diagnosis here was wrong.**
+Retracted rather than edited, because the reasoning error is the useful part.
 
-```cmake
-if(_model STREQUAL "" OR NOT EXISTS "${_model}")
-    return()
-endif()
-```
-
-and it is called as `nros_record_entity_facts("${_NRA_MODEL}")`. **`_NRA_MODEL`
-is empty for every entry in the tree**, measured:
+It claimed `_NRA_MODEL` is empty for every entry, from this measurement:
 
 ```
 grep -rl nano_ros_entry examples/workspaces/*/src/*/CMakeLists.txt \
-  | xargs grep -lE '^\s*MODEL ' | wc -l     ->  0
+  | xargs grep -lE '^\s*MODEL ' | wc -l   ->  0
 ```
 
-Zero. Not "few" — none.
-
-That is not an oversight in the entries; it is the DOCUMENTED shape. phase-330
-W4.a made SystemModels build artifacts and entries name their INPUT
-(`BRINGUP` + `LAUNCH`), with `MODEL` demoted to a deprecated expert override.
-CLAUDE.md says so in as many words. `mixed`'s own entry reads:
+That number is real and proves only that **no entry passes `MODEL`
+literally** — which is expected, since `LAUNCH` and `MODEL` are mutually
+exclusive and `LAUNCH` is canonical. The conclusion drawn from it skipped the
+ninety lines where `NanoRosEntry.cmake` POPULATES `_NRA_MODEL` from the launch
+input:
 
 ```cmake
-BRINGUP "${CMAKE_CURRENT_SOURCE_DIR}/../demo_bringup"
-LAUNCH  default
+execute_process(
+    COMMAND "${_nra_mp_tool}" model-path ${_nra_mp_args}
+    OUTPUT_VARIABLE _NRA_MODEL      # ← set here, for every LAUNCH entry
 ```
 
-**So W5.c hooked the entity-facts read to a parameter the current entry shape
-deliberately does not use.** The mechanism is not broken; it is attached to the
-wrong seam, and it could never have fired for any workspace in this tree. Every
-row of the table above has the same cause — `c` and `cpp` reach the umbrella's
-early return first, but even without that they would have hit this.
+So `_NRA_MODEL` is populated, through `nros model-path` — which IS
+`model_location`, reached via the CLI. The file even says so: the mapping rule
+"lives ONCE in nros_orchestration_ir::model_location … NOT re-implemented here
+(the second-spelling drift class)". Calling it a hand-derived path was exactly
+backwards.
 
-**The fix is to resolve the model the way the Rust consumers do.** The models
-exist (`examples/workspaces/mixed/build/nros/models/demo_bringup/*.yaml`); what
-is missing is that `nros_record_entity_facts` takes a PATH instead of taking
-`BRINGUP`/`LAUNCH` and locating the artifact through
-`nros_orchestration_ir::model_location`, which CLAUDE.md names as the one
-sanctioned locator ("consumers locate the artifact via `model_location`, never a
-hand-derived path"). W5.c hand-derived one.
-
-That makes this the same defect class as issue 0409 and the `nros sync`
-resolver: a second way of finding a generated artifact, which works until the
-first way moves.
+**What is still unexplained**, narrowed: for `mixed`, either `nros model-path`
+fails, or the model file does not exist at the moment
+`nros_record_entity_facts` tests `EXISTS`, or `_NANO_ROS_CODEGEN_TOOL` is
+undefined at that point in the include order. Those are three checks, not a
+theory.
 
 **So the honest state of W5:** the sizing logic, the exhaustion diagnostic and
 the checked override all landed and are unit-tested, and the figure they consume
