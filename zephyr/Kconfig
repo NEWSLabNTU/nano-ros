@@ -678,6 +678,24 @@ config NROS_GET_REPLY_BUF_SIZE
       Size of the buffer for get (service call) reply payloads (bytes).
       Maps to ZPICO_GET_REPLY_BUF_SIZE.
 
+config NROS_GRAPH_CACHE_SIZE
+    int "Graph liveliness cache size"
+    default 65536
+    help
+      Bytes of NUL-separated liveliness keyexprs the graph cache holds.
+      Maps to ZPICO_GRAPH_CACHE_SIZE.
+
+      The 65536 default is sized for a HOST-scale domain: upstream measured a
+      box running one stock talker plus the ROS 2 daemon carrying 222 tokens,
+      about 31 KB, at roughly 140 bytes per keyexpr.
+
+      That default is 20% of this board's entire SRAM, and it lands in .bss
+      whether or not the graph is ever queried. An image whose domain holds a
+      handful of entities should turn it down: 8192 still holds ~58 tokens.
+      Overflow is counted and reported by zpico_graph_cache_copy, never
+      silently truncated, so a value that is too small shows up as a drop
+      count rather than as a wrong answer.
+
 config NROS_GET_POLL_INTERVAL_MS
     int "Get poll interval (ms)"
     default 10
