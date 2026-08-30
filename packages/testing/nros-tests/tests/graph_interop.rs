@@ -29,7 +29,7 @@ use std::{process::Command, time::Duration};
 
 use nros_tests::{
     fixtures, interop,
-    ros2::{DEFAULT_ROS_DISTRO, Ros2Process, require_ros2, ros2_node_list},
+    ros2::{DEFAULT_ROS_DISTRO, Ros2DdsProcess, Ros2Process, require_ros2, ros2_node_list},
 };
 
 /// The nano-ros side sees a stock ROS 2 node.
@@ -95,6 +95,23 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
         "the nano-ros node must ENUMERATE the stock talker; probe said:\n{output}"
     );
 
+    // Every OTHER graph slot, against the same live peer.
+    //
+    // This is the assertion phase-393's closing note asks for and phase-381 did
+    // not have: `check-rmw-slot-producers` calls all eleven `produced`, which
+    // means something writes and reads each slot — NOT that either was ever
+    // exercised against a real ROS 2 node. Issue 0903 was nine slots that had
+    // never been called sitting behind two that had, and the two that worked
+    // made the family look covered.
+    //
+    // The probe exits 5 and names each failing slot, so the status assertion
+    // above already catches this; the marker is asserted too because a probe
+    // that stopped running the checks would otherwise pass silently.
+    assert!(
+        output.contains(nros_tests::output::GRAPH_PROBE_ALL_SLOTS_OK),
+        "all eleven graph slots must answer against a live peer; probe said:\n{output}"
+    );
+
     // And the reverse direction, which is what `ros2 node list` answers. Our
     // node was visible in the graph long before it could read one — that
     // asymmetry is what issue 0791 filed — so asserting only our side would
@@ -103,5 +120,72 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
     assert!(
         listed.contains("talker"),
         "ros2 node list must see the stock talker (sanity: the graph is live):\n{listed}"
+    );
+}
+
+/// Cyclone's graph reader, against a live ROS 2 node — phase-381 step 2.
+///
+/// W5 gave Cyclone a READER for `ros_discovery_info`, the topic it had only
+/// ever PUBLISHED, and nothing ever ran it against a real peer. That is the
+/// state zenoh was in right up until issue 0903, where twelve slots that were
+/// `produced`, mutation-tested and parity-clean turned out not to work at all —
+/// so "Cyclone's is fine, it is the same shape" is exactly the assumption this
+/// test exists to refuse.
+///
+/// Cyclone answers FEWER slots than zenoh, and that is the point of W6 rather
+/// than a defect: a slot it cannot serve must answer `UNSUPPORTED`, never an
+/// empty list. The probe classifies the two separately, so this asserts the
+/// node enumeration works and that whatever else does not is *declared*
+/// missing rather than silently blank.
+///
+/// Interop cell: `native-graph-rust-cyclone-r2n` (`interop::CELLS`).
+#[test]
+fn cyclone_enumerates_a_stock_ros2_node() {
+    interop::assert_test_bound(
+        "graph_interop",
+        &[(
+            nros_tests::matrix::PlatformId::Linux,
+            nros_tests::matrix::Lang::Rust,
+            nros_tests::matrix::Rmw::Zenoh,
+            nros_tests::matrix::Workload::Graph,
+        )],
+    );
+
+    if !nros_tests::ros2::require_ros2_cyclonedds() {
+        nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
+    }
+
+    // A domain of our own. Cyclone discovers by multicast SPDP, so a shared
+    // domain would let another test's participants into this graph and make
+    // the node assertion below depend on what else is running.
+    let domain = nros_tests::unique_ros_domain_id();
+
+    let _talker =
+        Ros2DdsProcess::demo_nodes_cpp_talker_cyclonedds_with_domain(DEFAULT_ROS_DISTRO, domain)
+            .expect("start the stock talker on cyclone");
+
+    let probe = fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Cyclonedds)
+        .expect("prebuilt cyclone graph-probe");
+    let out = Command::new(probe)
+        .env("GRAPH_PROBE_EXPECT_NODE", "talker")
+        .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
+        .env("ROS_DOMAIN_ID", domain.to_string())
+        .env("NROS_DOMAIN_ID", domain.to_string())
+        .output()
+        .expect("run graph-probe");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(
+        out.status.success(),
+        "cyclone graph-probe must exit 0 once it sees the talker; got {:?}\n{output}",
+        out.status.code()
+    );
+    assert!(
+        output.contains(nros_tests::output::GRAPH_PROBE_SAW),
+        "cyclone must ENUMERATE the stock talker; probe said:\n{output}"
     );
 }

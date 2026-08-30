@@ -1374,6 +1374,14 @@ check-interface-glob-configure-depends:
 check-tier-preconditions:
     @bash scripts/check-tier-preconditions.sh
 
+# Every lane that runs the peer-spawning suites sweeps first (issues 0659,
+# 0923). The reaper's own unit tests call `sweep_in` directly, so they cannot
+# see whether a LANE calls it — `just test` ran the same suites without one and
+# left 67 orphans holding DDS ports.
+[private]
+check-peer-sweep-lanes:
+    @bash scripts/check-peer-sweep-lanes.sh
+
 # Every ACTIVE roadmap phase carries a findable status line; a finished one
 # belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
 # phases lost theirs within days of `ecc195ed6` doing exactly that.

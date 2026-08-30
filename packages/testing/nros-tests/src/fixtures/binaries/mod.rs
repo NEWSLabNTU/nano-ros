@@ -3433,11 +3433,31 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
 /// that against `ros2 node list`. Zenoh only for now: it is the backend whose
 /// twelve graph slots are filled, and the one issue 0903 was measured against.
 pub fn build_graph_probe() -> TestResult<&'static Path> {
-    static BIN: OnceCell<PathBuf> = OnceCell::new();
-    BIN.get_or_try_init(|| {
+    build_graph_probe_rmw(Rmw::Zenoh)
+}
+
+/// The graph probe built against `rmw` — phase-381 step 2.
+///
+/// Per-RMW because Cyclone's `ros_discovery_info` READER had never been run
+/// against a live peer, and zenoh's path is the reason that matters: every unit
+/// test passed while the feature did not work at all (issue 0903). One cell per
+/// backend, one binary per cell.
+pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
+    static ZENOH_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static CYCLONE_BIN: OnceCell<PathBuf> = OnceCell::new();
+    static XRCE_ABSENT: OnceCell<PathBuf> = OnceCell::new();
+    let cell = match rmw {
+        Rmw::Zenoh => &ZENOH_BIN,
+        Rmw::Cyclonedds => &CYCLONE_BIN,
+        // XRCE has no graph, so it has no `[[fixture]]` row and no static
+        // slot. `select_row` below reports the missing row precisely; W6 makes
+        // "no graph" an `UNSUPPORTED` ANSWER at runtime rather than a fixture.
+        Rmw::Xrce => &XRCE_ABSENT,
+    };
+    cell.get_or_try_init(|| {
         let row = crate::fixtures::groups::select_row(
             "packages/testing/nros-tests/bins/graph-probe",
-            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Zenoh),
+            &crate::fixtures::groups::FixtureVariant::rmw(rmw),
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/graph-probe"));

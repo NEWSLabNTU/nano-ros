@@ -2,10 +2,7 @@
 //!
 //! Provides helpers for running ROS 2 commands and processes.
 
-use crate::{
-    TestError, TestResult,
-    process::{kill_process_group, set_new_process_group},
-};
+use crate::{TestError, TestResult, process::kill_process_group};
 use std::{
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -325,11 +322,13 @@ impl Ros2Process {
         let name = name.into();
         let mut command = Command::new("bash");
         command
-            .args(["-c", cmd])
+            // issue 0923 — the peer takes its whole group down when this
+            // process dies, rather than waiting for the next lane's sweep.
+            .args(["-c", &crate::process::group_suicide_wrapper(cmd)[..]])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         #[cfg(unix)]
-        set_new_process_group(&mut command);
+        crate::process::set_orphan_group_suicide(&mut command);
         let handle = command
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
@@ -1319,11 +1318,13 @@ impl Ros2DdsProcess {
         let name = name.into();
         let mut command = Command::new("bash");
         command
-            .args(["-c", cmd])
+            // issue 0923 — the peer takes its whole group down when this
+            // process dies, rather than waiting for the next lane's sweep.
+            .args(["-c", &crate::process::group_suicide_wrapper(cmd)[..]])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         #[cfg(unix)]
-        set_new_process_group(&mut command);
+        crate::process::set_orphan_group_suicide(&mut command);
         let handle = command
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
@@ -1451,6 +1452,27 @@ impl Ros2DdsProcess {
             "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone topic pub {topic}"))
+    }
+
+    /// A stock `demo_nodes_cpp talker` on CycloneDDS, on a specific domain.
+    ///
+    /// phase-381 step 2. The zenoh half of the graph acceptance runs the same
+    /// node; Cyclone needed its own because the two backends discover through
+    /// entirely different mechanisms — zenoh's `@ros2_lv` liveliness tokens
+    /// versus Cyclone's `ros_discovery_info` topic — so proving one says
+    /// nothing about the other. Issue 0903 is the evidence: zenoh's path passed
+    /// every unit test and did not work at all.
+    ///
+    /// Longer than the 10 s the `topic pub` helpers use: the graph probe polls
+    /// to convergence with a budget of its own, and a talker that exits first
+    /// turns a real answer into an empty one.
+    pub fn demo_nodes_cpp_talker_cyclonedds_with_domain(
+        distro: &str,
+        domain_id: u8,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let cmd = format!("{env_setup} && timeout --foreground 40 ros2 run demo_nodes_cpp talker");
+        Self::spawn_bash(&cmd, "ros2-cyclone demo_nodes_cpp talker")
     }
 
     /// CycloneDDS service call on a specific ROS domain.
