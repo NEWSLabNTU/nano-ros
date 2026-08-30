@@ -2,7 +2,7 @@
 id: 904
 title: "`nros_variant_symbol.o` still embeds its absolute `OUT_DIR` on the NuttX
   cross build, so phase-340 W6's byte-identical-artifact fix does not hold there"
-status: open
+status: resolved
 type: bug
 area: build
 related: [phase-340, phase-400, issue-0616, issue-0360, issue-0369]
@@ -67,6 +67,38 @@ should not re-run that experiment.
 Note for reproducing: `CC_ENABLE_DEBUG_OUTPUT=1` buys nothing here — build-script
 stdout is captured by cargo unless the script fails, so cc-rs's debug lines never
 surface. Getting the resolved argv needs the build script to emit it itself.
+
+## RESOLVED 2026-08-30 — by removing the dependence, not by explaining the flag
+
+`packages/tooling/nros-build-helpers/csrc/variant_symbol.c` is now a TRACKED
+source compiled with `-DNROS_VARIANT_SYMBOL=nros_config_variant_<slug>`, instead
+of a TU generated into `OUT_DIR`. `-ffile-prefix-map` is gone from that
+`cc::Build`: nothing depends on it any more.
+
+Measured on the NuttX ARM cross build, the same way the bug was measured — the
+leaf built into two target dirs:
+
+```
+tmp/v1/.../out/1181bf78a940625c-variant_symbol.o
+tmp/v2/.../out/1181bf78a940625c-variant_symbol.o     same name (same source path)
+bbb35138e54a18f28b12f7c107fb2113  both               byte-identical
+target-dir path hits: 0
+paths recorded: .../nros-build-helpers/csrc/variant_symbol.c   (checkout, not target dir)
+```
+
+Behaviour is unchanged where it matters: `arm-none-eabi-nm` reports
+`V nros_config_variant_sz_7d5cf103c1b9382c` — the same weak symbol, with the same
+size-derived suffix, as before the change.
+
+Scope, stated so it is not over-claimed: this buys CROSS-TARGET-DIR identity,
+which is what phase-340 W6 existed for. The recorded path is still this
+checkout's, so it is not cross-machine reproducibility.
+
+**The original mechanism was never explained, and that is deliberate.** The probe
+runs, reports supported, and the flag works when applied by hand — yet it was not
+in effect. Rather than keep chasing a silent flag, the fix deletes the
+requirement for it to work. If the mechanism matters later, the reproduction is
+preserved above.
 
 ## The fix that does not depend on the answer
 
