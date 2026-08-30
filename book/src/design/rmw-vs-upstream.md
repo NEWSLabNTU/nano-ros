@@ -21,6 +21,13 @@ work in Rust; this page sticks to the C-vtable surface throughout.
 > `rx_buffer_hint`) moved out of `rmw_qos_profile_t` into per-create
 > options structs. This page uses the new names throughout.
 
+> **Looking for the exhaustive list?** This page is the rationale — the
+> divergences worth understanding before writing a backend. The complete
+> table, every upstream symbol with both signatures side by side and the
+> reason for each difference, is
+> [RMW API vs upstream — every symbol](../reference/rmw-api-comparison.md),
+> and it is GENERATED, so it cannot drift from the headers the way prose can.
+
 ## TL;DR
 
 | Concern | upstream `rmw.h` | `nros-rmw-cffi` |

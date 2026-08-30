@@ -745,7 +745,7 @@ impl ExecutorNodeRuntime {
 
     /// Wrap an already-built [`Executor`] over CALLER-SUPPLIED slot storage.
     ///
-    /// Size `backing` with [`RuntimeSizing::u64_len`]; a short one panics,
+    /// Size `backing` with [`crate::runtime_storage::RuntimeSizing::u64_len`]; a short one panics,
     /// naming both sizes (fail-loud on every profile — a short backing is
     /// silent corruption, the `executor::storage::carve` / issue #131 lesson).
     ///

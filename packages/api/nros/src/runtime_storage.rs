@@ -1,6 +1,6 @@
 //! Caller-supplied storage for the component pool — phase-391 W5, step 2.
 //!
-//! Mirrors [`nros_node::executor::storage::ExecutorSizing`] one layer up, and
+//! Mirrors [`nros_node::ExecutorSizing`] one layer up, and
 //! for the same stated reason: **public + non-generic**, the "C/C++ is a thin
 //! wrapper" principle. The entry, the macro and the FFI seam supply these as
 //! plain `usize`s rather than as const generics C cannot name —

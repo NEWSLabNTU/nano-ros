@@ -3935,10 +3935,17 @@ setup-docs:
             cargo install --locked --force "$crate" --version "$version"
         fi
     }
-    ensure_cargo_tool mdbook mdbook 0.4.36
-    # mdbook-mermaid 0.17 uses the mdBook 0.5 preprocessor protocol and
-    # fails with mdbook 0.4.x. Keep the pair pinned until mdBook upgrades.
-    ensure_cargo_tool mdbook-mermaid mdbook-mermaid 0.14.0
+    # mdBook comes from the project's own PREBUILT release, not `cargo install`:
+    # it drags a large dependency tree and a docs tool has no business costing a
+    # compile. `tools/mdbook` wins over any on PATH, so the book renders the same
+    # on every host (issue 0500's lesson — a tool resolved by PATH is whichever
+    # one happens to be first).
+    bash scripts/setup-mdbook.sh
+    # PAIRED, and the pairing is the whole reason this line moved with the one
+    # above: mdbook-mermaid 0.17 speaks the mdBook 0.5 preprocessor protocol and
+    # 0.14 speaks 0.4's. Bumping mdBook to 0.5.4 without this fails at render
+    # time, not at install time.
+    ensure_cargo_tool mdbook-mermaid mdbook-mermaid 0.17.1
     if ! command -v doxygen >/dev/null 2>&1; then
         echo "  [INFO] doxygen not found; install with your package manager for API docs."
     else
@@ -3986,7 +3993,19 @@ book:
     just doc-cpp
     just doc-rmw-cffi
     just doc-platform-cffi
-    mdbook build book
+    # Prefer the PINNED binary; fall back to PATH; fail with the remedy rather
+    # than `mdbook: command not found` after rustdoc has already run for minutes.
+    if [ -x tools/mdbook ]; then
+        MDBOOK=tools/mdbook
+    elif command -v mdbook >/dev/null 2>&1; then
+        MDBOOK=mdbook
+    else
+        echo "ERROR: mdbook not found. Provision the pinned one:" >&2
+        echo "           just setup-mdbook" >&2
+        exit 1
+    fi
+    echo "book: using $MDBOOK ($($MDBOOK --version))"
+    "$MDBOOK" build book
     mkdir -p book/book/api
     rm -rf book/book/api/rust book/book/api/c book/book/api/cpp \
            book/book/api/rmw-cffi book/book/api/platform-cffi
@@ -4194,6 +4213,13 @@ changelog-release version:
 # On a PEP 668 host the system interpreter refuses, and the error says exactly
 # what to do instead (venv, or `--user`). That refusal is pip's and it is
 # better than any pre-flight guess this script could make.
+# Provision the pinned mdBook from the project's prebuilt release (no compile).
+# Separate from `setup-docs` so the book tool can be fixed without re-running
+# the whole docs setup.
+[group("docs")]
+setup-mdbook:
+    @bash scripts/setup-mdbook.sh
+
 [group("docs")]
 dev-tools *args:
     @python3 scripts/check-python-deps.py dev-tools {{args}}

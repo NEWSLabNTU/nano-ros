@@ -861,7 +861,7 @@ impl Ros2Liveliness {
 
     /// Demangle a `%`-separated name back to a ROS name (`%demo` -> `/demo`).
     ///
-    /// The inverse of [`Self::mangle_topic_name`], and deliberately written
+    /// The inverse of `mangle_topic_name` (private), and deliberately written
     /// beside it: the two are one format, and the round-trip test below is what
     /// keeps them one.
     pub fn demangle_topic_name<const N: usize>(mangled: &str) -> heapless::String<N> {
