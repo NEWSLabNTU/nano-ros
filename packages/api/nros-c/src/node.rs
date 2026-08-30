@@ -27,6 +27,104 @@ pub enum nros_node_state_t {
     NROS_NODE_STATE_SHUTDOWN = 2,
 }
 
+/// phase-379 W4 — a checkable reference to the node an entity was created on.
+///
+/// Replaces the `*const nros_node_t` each entity used to store. That pointer
+/// was never dereferenced anywhere in the C API — it was assigned, nulled, and
+/// asserted on — so it bought provenance nobody could use while leaving a raw
+/// pointer that invites a dereference the platform cannot support:
+///
+/// * bare metal is safe (no MMU, no relocation, handles in `.bss`), but
+/// * an RTOS node declared on a task stack dies with `vTaskDelete`, and
+/// * `nros_node_t a = b;` is legal and silent — C has no move semantics, and we
+///   have no allocator to hide an indirection behind.
+///
+/// rcl's alternative (`rcl_publisher_fini(&pub, &node)`) does not remove that
+/// assumption; it relocates it to a caller who cannot check it either.
+///
+/// So the entity stores an IDENTITY instead: the executor slot the node is
+/// bound to, plus the generation that slot carried when the entity was created.
+/// `nros_node_fini` bumps the generation, which makes "finalise an entity after
+/// its node" a return code rather than a silent success.
+///
+/// `generation == 0` is reserved and never issued, so a zeroed struct — the
+/// common C mistake — can never resolve.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct nros_node_ref_t {
+    /// Executor node slot (`nros_node_t::node_id`). 0 = the primary node.
+    pub node_id: u8,
+    /// Slot generation when the entity was created. 0 = no node bound.
+    pub generation: u32,
+}
+
+impl nros_node_ref_t {
+    /// The reference an uninitialised entity carries: bound to nothing.
+    pub const fn none() -> Self {
+        Self {
+            node_id: 0,
+            generation: 0,
+        }
+    }
+
+    /// Is this reference bound to a node at all?
+    pub const fn is_bound(&self) -> bool {
+        self.generation != 0
+    }
+}
+
+/// Per-slot generation counters, bumped when a node is finalised.
+///
+/// A plain static rather than executor state because the C `nros_node_t` is
+/// CALLER-allocated: there is no runtime-owned place to hang it that every
+/// entity can reach without the pointer this type exists to remove.
+static NODE_GENERATIONS: [core::sync::atomic::AtomicU32; nros_node::config::MAX_NODES] =
+    [const { core::sync::atomic::AtomicU32::new(1) }; nros_node::config::MAX_NODES];
+
+/// Mint a reference to `node`'s current binding.
+///
+/// # Safety
+/// `node` must point at an initialised `nros_node_t` for the duration of the
+/// call. The reference outlives the pointer deliberately — that is the point.
+pub(crate) unsafe fn node_ref_of(node: *const nros_node_t) -> nros_node_ref_t {
+    if node.is_null() {
+        return nros_node_ref_t::none();
+    }
+    let id = unsafe { (*node).node_id };
+    nros_node_ref_t {
+        node_id: id,
+        generation: current_generation(id),
+    }
+}
+
+/// The generation slot `id` carries now.
+pub(crate) fn current_generation(id: u8) -> u32 {
+    NODE_GENERATIONS
+        .get(id as usize)
+        .map(|g| g.load(core::sync::atomic::Ordering::Acquire))
+        .unwrap_or(0)
+}
+
+/// Retire slot `id`, so every reference minted against it stops resolving.
+///
+/// Wraps past `u32::MAX` back to 1, never 0 — 0 stays reserved for "unbound".
+pub(crate) fn retire_generation(id: u8) {
+    if let Some(g) = NODE_GENERATIONS.get(id as usize) {
+        let next = g
+            .load(core::sync::atomic::Ordering::Acquire)
+            .wrapping_add(1);
+        g.store(
+            if next == 0 { 1 } else { next },
+            core::sync::atomic::Ordering::Release,
+        );
+    }
+}
+
+/// Does `r` still name a live binding?
+pub(crate) fn node_ref_is_live(r: nros_node_ref_t) -> bool {
+    r.is_bound() && current_generation(r.node_id) == r.generation
+}
+
 /// Node structure.
 ///
 /// Represents a ROS 2 node with a name and namespace.
@@ -371,6 +469,11 @@ pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nros_ret_t {
         return NROS_RET_NOT_INIT;
     }
 
+    // phase-379 W4 — retire the slot BEFORE marking shutdown, so any entity
+    // still holding a reference to this binding fails its own `_fini` with a
+    // stale-node error instead of succeeding silently against a dead node.
+    retire_generation(node.node_id);
+
     node.support = ptr::null();
     node.state = nros_node_state_t::NROS_NODE_STATE_SHUTDOWN;
 
@@ -641,5 +744,73 @@ pub(crate) unsafe fn resolve_session_and_domain(
             session.domain_id()
         };
         Some((session, domain_id))
+    }
+}
+
+#[cfg(test)]
+mod node_ref_tests {
+    use super::*;
+
+    /// phase-379 W4 — a reference minted before `nros_node_fini` stops
+    /// resolving after it.
+    ///
+    /// This is the whole behavioural change. Before W4 the entity held a
+    /// `*const nros_node_t` that nothing dereferenced, so "finalise the node,
+    /// then finalise its publisher" succeeded silently and the teardown-order
+    /// obligation the C API places on the caller was unenforceable.
+    #[test]
+    fn retiring_a_slot_invalidates_references_minted_against_it() {
+        // Slot 3 rather than 0: the primary node is the legacy path and the
+        // interesting case is a bound one.
+        let id = 3u8;
+        let before = nros_node_ref_t {
+            node_id: id,
+            generation: current_generation(id),
+        };
+        assert!(node_ref_is_live(before), "a fresh reference must resolve");
+
+        retire_generation(id);
+        assert!(
+            !node_ref_is_live(before),
+            "a reference minted before the slot was retired must stop resolving"
+        );
+
+        let after = nros_node_ref_t {
+            node_id: id,
+            generation: current_generation(id),
+        };
+        assert!(node_ref_is_live(after), "the rebound slot issues live refs");
+        assert_ne!(
+            before.generation, after.generation,
+            "retiring must change the generation, or nothing is detectable"
+        );
+    }
+
+    /// `generation == 0` is reserved, so a zeroed struct never resolves.
+    ///
+    /// A zeroed handle is the commonest C mistake, and it is exactly the shape
+    /// `calloc`, a `static`, and `memset` all produce.
+    #[test]
+    fn a_zeroed_reference_is_never_live() {
+        let zeroed = nros_node_ref_t {
+            node_id: 0,
+            generation: 0,
+        };
+        assert!(!zeroed.is_bound());
+        assert!(!node_ref_is_live(zeroed));
+        assert!(!node_ref_is_live(nros_node_ref_t::none()));
+    }
+
+    /// The wrap never lands on 0, because 0 means "unbound".
+    #[test]
+    fn generation_wrap_skips_the_reserved_value() {
+        let id = (nros_node::config::MAX_NODES - 1) as u8;
+        NODE_GENERATIONS[id as usize].store(u32::MAX, core::sync::atomic::Ordering::Release);
+        retire_generation(id);
+        assert_ne!(
+            current_generation(id),
+            0,
+            "wrapping past u32::MAX must skip 0, or a zeroed struct would resolve"
+        );
     }
 }

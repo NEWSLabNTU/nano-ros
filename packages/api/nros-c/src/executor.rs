@@ -99,14 +99,29 @@ pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'sta
 /// # Safety
 /// `node` must be NULL or point to an initialized `nros_node_t` with
 /// valid `name_len` / `namespace_len`.
-unsafe fn set_executor_node_identity(rust_exec: &mut CExecutor, node: *const nros_node_t) {
-    if node.is_null() {
+unsafe fn set_executor_node_identity(
+    rust_exec: &mut CExecutor,
+    node: crate::node::nros_node_ref_t,
+) {
+    // phase-379 W4 — resolve the IDENTITY against the executor's own
+    // `NodeRecord`, rather than dereferencing a `*const nros_node_t` the entity
+    // captured at init.
+    //
+    // This is the call that made the stored pointer load-bearing: it reads the
+    // node's name and namespace, long after the entity was created, from
+    // caller-owned storage the runtime does not control. On an RTOS that
+    // storage can be a task stack `vTaskDelete` has already freed. The record
+    // holds the same two strings and outlives the caller's struct.
+    if !crate::node::node_ref_is_live(node) {
         return;
     }
-    let node_ref = &*node;
-    let name_str = core::str::from_utf8_unchecked(&node_ref.name[..node_ref.name_len]);
-    let ns_str = core::str::from_utf8_unchecked(&node_ref.namespace[..node_ref.namespace_len]);
-    rust_exec.set_node_identity(name_str, ns_str);
+    let id = nros_node::executor::NodeId::from_raw(node.node_id);
+    let Some(record) = rust_exec.node(id) else {
+        return;
+    };
+    let name = record.name.clone();
+    let namespace = record.namespace.clone();
+    rust_exec.set_node_identity(name.as_str(), namespace.as_str());
 }
 
 // ============================================================================
@@ -1421,10 +1436,10 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         // so multi-RMW bridges land on the right session. Legacy
         // `nros_node_init`-style Nodes carry `node_id == 0` and fall
         // through to the single-Node entry point.
-        let node_raw_id = if subscription_ref.node.is_null() {
+        let node_raw_id = if !subscription_ref.node.is_bound() {
             0
         } else {
-            (*subscription_ref.node).node_id
+            subscription_ref.node.node_id
         };
         // Phase 189.M2.b — the single kept C-FFI subscription core.
         let node_id =
@@ -1537,7 +1552,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
 
     {
         let rust_exec = get_executor(&mut executor._opaque);
-        set_executor_node_identity(rust_exec, node);
+        set_executor_node_identity(rust_exec, unsafe { crate::node::node_ref_of(node) });
         // Phase 305 W3 (issue 0255) — resolve `~`/relative names + launch remaps
         // against the identity just set (executor-side remap table).
         let __resolved_name = match rust_exec.resolve_entity_name(topic_str) {
@@ -1706,10 +1721,10 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
         };
         let topic_str = __resolved_name.as_str();
 
-        let node_raw_id = if subscription_ref.node.is_null() {
+        let node_raw_id = if !subscription_ref.node.is_bound() {
             0
         } else {
-            (*subscription_ref.node).node_id
+            subscription_ref.node.node_id
         };
         let node_id =
             (node_raw_id != 0).then(|| nros_node::executor::NodeId::from_raw(node_raw_id));
@@ -1897,10 +1912,10 @@ pub unsafe extern "C" fn nros_executor_add_service(
         // Phase 104.C.8.b — route multi-Node services through the
         // `_on(NodeId, ...)` variant when the Node was created via
         // `nros_executor_node_init`.
-        let node_raw_id = if service_ref.node.is_null() {
+        let node_raw_id = if !service_ref.node.is_bound() {
             0
         } else {
-            (*service_ref.node).node_id
+            service_ref.node.node_id
         };
         // Phase 193.4 — the service's QoS (set via nros_service_init_with_qos;
         // defaults to services_default via nros_service_init).
@@ -2027,10 +2042,10 @@ pub unsafe extern "C" fn nros_executor_add_client(
         let service_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — service-client multi-Node dispatch.
-        let node_raw_id = if client_ref.node.is_null() {
+        let node_raw_id = if !client_ref.node.is_bound() {
             0
         } else {
-            (*client_ref.node).node_id
+            client_ref.node.node_id
         };
         // Phase 193.4b — the client's QoS (set via nros_client_init_with_qos;
         // defaults to services_default via nros_client_init).
@@ -2224,10 +2239,10 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         let action_name = __resolved_name.as_str();
 
         // Phase 104.C.8.b — action-server multi-Node dispatch.
-        let node_raw_id = if server_ref.node.is_null() {
+        let node_raw_id = if !server_ref.node.is_bound() {
             0
         } else {
-            (*server_ref.node).node_id
+            server_ref.node.node_id
         };
 
         // Register with the nros-node executor using trampolines. The
@@ -2369,10 +2384,10 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         // Phase 104.C.8.b — action-client multi-Node dispatch.
         // `spec.node_id` selects the target Node's session (or the
         // executor's own node when `None`).
-        let node_raw_id = if client_ref.node.is_null() {
+        let node_raw_id = if !client_ref.node.is_bound() {
             0
         } else {
-            (*client_ref.node).node_id
+            client_ref.node.node_id
         };
         let node_id = if node_raw_id != 0 {
             Some(nros_node::executor::NodeId::from_raw(node_raw_id))

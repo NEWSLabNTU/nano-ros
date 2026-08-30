@@ -39,14 +39,6 @@
     "verdict": "declined",
     "why": "rcl passes an `rcl_allocator_t` by value through most of its API so a caller can supply its own. nano-ros has ONE allocator, `nros_platform_alloc`, enforced by check-no-direct-kernel-alloc, so the type would only ever hold the same value. This is the `no-allocator` signature rule (signature_rules.py) one level up: the rule removes the parameter, this removes the type it would carry."
   },
-  "c:view_bytes_t": {
-    "verdict": "extension",
-    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
-  },
-  "c:view_str_t": {
-    "verdict": "extension",
-    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
-  },
   "c:endpoint_info_t": {
     "verdict": "divergence",
     "why": "phase-381 W3. The ours-half of the `topic_endpoint_info_array_t` divergence this file already records: upstream returns an allocating array, there is no allocator at this seam, and the endpoint count has no bound the CALLER can know. So it streams through a visitor, one entry of peak memory, every string borrowed for the call. The endpoint carries no QoS. The GRANTED profile is what answers 'why is nothing arriving', no backend can read one back yet, and reporting the remote's DECLARED profile would be a confident wrong answer -- so the field is absent here and the rmw ABI's `*_UNKNOWN` sentinels carry it at the vtable seam, which is that ABI's documented way to say 'could not determine'."
@@ -95,9 +87,21 @@
     "verdict": "extension",
     "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
   },
+  "c:node_ref_t": {
+    "verdict": "divergence",
+    "why": "phase-379 W4. rcl asks the caller to re-supply the node at teardown (`rcl_publisher_fini(&pub, &node)`); we keep `nros_publisher_fini(&pub)` and store this identity instead of the `*const nros_node_t` the entity used to hold. The PLATFORM constraint is that C gives the caller no tools to enforce the lifetime rcl's shape depends on: a node declared on an RTOS task stack dies with `vTaskDelete`, `nros_node_t a = b;` is legal and silent, and there is no allocator to hide an indirection behind. rcl's form does not remove that assumption, it relocates it to a caller who cannot check it either. An identity CAN be checked: `nros_node_fini` retires the slot's generation, so finalising an entity after its node returns NROS_RET_STALE_NODE instead of succeeding silently against caller storage the runtime does not own. Generation 0 is reserved so a zeroed struct never resolves."
+  },
   "c:transport_ops_t": {
     "verdict": "extension",
     "why": "a bring-your-own transport vtable (`open`/`close`/`write`/`read` + `abi_version` + `user_data`) so a board can supply its own link. rcl reaches the network through rmw and an installed middleware implementation, neither of which an MCU has; the vtable is how a board with a UART, a CAN controller or a vendor TCP stack participates at all."
+  },
+  "c:view_bytes_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:view_str_t": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
   },
   "cpp:ErrorCode": {
     "verdict": "divergence",

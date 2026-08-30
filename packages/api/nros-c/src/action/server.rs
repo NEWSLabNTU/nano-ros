@@ -70,7 +70,7 @@ pub struct nros_action_server_t {
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
-    pub node: *const nros_node_t,
+    pub node: crate::node::nros_node_ref_t,
     /// Phase 193.4b — action-server QoS, applied to the three underlying
     /// service servers (send_goal / cancel_goal / get_result). The feedback +
     /// status publishers keep their own profiles. Defaults to the services
@@ -107,7 +107,7 @@ impl Default for nros_action_server_t {
             cancel_callback: None,
             accepted_callback: None,
             context: ptr::null_mut(),
-            node: ptr::null(),
+            node: crate::node::nros_node_ref_t::none(),
             qos: crate::qos::nros_qos_t::default(),
             sched_context_id: 0,
             _internal: ActionServerInternal::invalid_default(),
@@ -383,7 +383,7 @@ pub unsafe extern "C" fn nros_action_server_init(
     server.cancel_callback = cancel_callback;
     server.accepted_callback = accepted_callback;
     server.context = context;
-    server.node = node;
+    server.node = unsafe { crate::node::node_ref_of(node) };
 
     // Phase 193.4b — default to the services profile;
     // nros_action_server_init_with_qos overrides. Read at registration time by
@@ -818,7 +818,7 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
     server.cancel_callback = None;
     server.accepted_callback = None;
     server.context = ptr::null_mut();
-    server.node = ptr::null();
+    server.node = crate::node::nros_node_ref_t::none();
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_SHUTDOWN;
 
     NROS_RET_OK
@@ -876,7 +876,7 @@ pub unsafe extern "C" fn nros_action_server_init_polling(
     server_mut.type_hash_len =
         crate::util::copy_cstr_into(type_info_ref.type_hash, &mut server_mut.type_hash);
 
-    server_mut.node = node;
+    server_mut.node = unsafe { crate::node::node_ref_of(node) };
 
     #[cfg(feature = "rmw-cffi")]
     {

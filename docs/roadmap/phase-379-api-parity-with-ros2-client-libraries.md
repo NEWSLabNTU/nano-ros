@@ -1,5 +1,12 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
+**Status (2026-08-30). W1 AND W2 COMPLETE; W3-W5 DECIDED and in progress.**
+Every blocking decision the phase was holding is settled below — W3 lands as a
+clean break, `handle-owns-node` stays with an identity instead of a pointer,
+actions are addressed by UUID rather than by handle, and prelude membership is a
+query over the ledger rather than taste. The waves are implementation now, not
+adjudication.
+
 **Status (2026-08-25). W1 AND W2 COMPLETE.** The correlator runs on all three
 languages; every one of the 2397 items where the nano-ros user API does not
 correspond to rclc/rclcpp/rclrs carries a written verdict, in 17 topic shards
@@ -488,9 +495,122 @@ The lesson worth keeping: **the reference moves.** A prose catalog would have
 gone on describing 0.5.1; `--refresh` re-derived the surface and the ledger's own
 gate found the 124 rows that needed re-deciding.
 
-### Open: does the C `handle-owns-node` shape stay — it is currently a signature
-   rule covering six `*_fini` entry points, which asserts it is a platform
-   decision. If it is not, those six become signature changes. W4.
+### Settled: W3 lands as a CLEAN BREAK (2026-08-30)
+
+No deprecation shims. The renames are source-breaking on the Rust surface and
+they land in one release, one commit per family — a user who upgrades twice and
+is renamed twice is worse off than one who is renamed once.
+
+Ordering constraint that survives the decision: the QoS accessors (`deadline_ms`,
+`lifespan_ms`, `liveliness_lease_ms`) encode that we take an integer where
+rclcpp takes a `Duration`. Their names FOLLOW the `Clock`/`Duration` decision, so
+that decision comes first or they are renamed twice — which is exactly what a
+clean break is meant to avoid.
+
+### Settled: `handle-owns-node` STAYS, and becomes checkable (2026-08-30)
+
+The signature keeps its shape — `nros_publisher_fini(&pub)`, not rcl's
+`rcl_publisher_fini(&pub, &node)` — but the STORAGE changes, because the rule as
+written asserted a platform decision that the implementation did not earn.
+
+Today each entity holds `const struct nros_node_t *node`, which assumes the
+node's ADDRESS is stable for the entity's lifetime. Examined per platform:
+
+* **Bare metal is the safe case.** No MMU, no runtime relocation, XIP, handles
+  in `.bss`. An address taken at init is stable until reset.
+* **RTOS with dynamic tasks is not.** A task declaring `nros_node_t node;` on
+  its stack and creating a publisher that outlives it leaves the entity pointing
+  into memory `vTaskDelete` has freed. "Handle on the task stack" is a normal C
+  idiom, not a pathological one.
+* **C cannot prevent the copy.** `nros_node_t a = b;` is legal and silent, and
+  every entity built against `b` still points at `b`. Rust would forbid it with
+  ownership types; C has none and we have no allocator to hide an indirection
+  behind.
+* **Teardown order becomes an unenforceable caller obligation.** Destroy the
+  node first and `*_fini` dereferences a dead pointer — on the path that runs
+  when something has already gone wrong.
+
+rcl's alternative does NOT remove that assumption; it relocates it to the caller
+and makes it unverifiable — pass a different node and it is UB, pass a dangling
+one and it is the same dereference spelled at the call site.
+
+So: keep the signature, replace the pointer with an identity into the
+`NodeRecord` table that already exists (`NROS_EXECUTOR_MAX_NODES`):
+
+```c
+typedef struct nros_node_ref_t { uint16_t slot; uint32_t generation; } nros_node_ref_t;
+```
+
+`generation` is bumped when a slot is RELEASED, and `0` is reserved so a zeroed
+struct — the common C mistake — is never accidentally valid. Resolution bounds
+the slot and compares the generation, so every hazard above turns from a
+dereference into a return code. `u32` rather than `u16` deliberately: 16 bits
+would leave a 65 535-cycle wrap to reason about, and 4 bytes buys the argument
+away.
+
+ABI break, accepted: nothing is released yet, and it lands with the W3 break.
+
+The constraint the `divergence` row can now NAME: the caller cannot be asked to
+enforce a lifetime C gives it no tools to enforce, so the runtime enforces
+IDENTITY instead — and identity is checkable where a pointer is not.
+
+### Settled: actions are addressed by UUID, not by handle (2026-08-30)
+
+W5 must pick a side because ROS 2 does not agree with itself. It picks NEITHER
+library, and the reason is in rclrs's own types rather than in preference.
+
+`rclrs` 0.7.0 (`action/action_server/executing_goal.rs`):
+
+```rust
+pub struct ExecutingGoal<A: Action> { live: Arc<LiveActionServerGoal<A>> }
+
+pub fn succeeded_with(self, result: A::Result) -> TerminatedGoal {
+    self.live.transition_to_succeed(result);
+    TerminatedGoal { uuid: *self.live.goal_id() }
+}
+```
+
+The typestate is a compile-time wrapper OVER AN `Arc` — not an alternative to
+refcounting, a lint on top of it. `rclcpp_action`'s
+`shared_ptr<ServerGoalHandle>` is the same requirement stated plainly. Both need
+an allocator; neither is portable to `no_std`.
+
+And note where `succeeded_with` lands: `TerminatedGoal { uuid }`. **rclrs itself
+falls back to the UUID** once the typestate ends, because the UUID is what the
+ACTION SPEC defines — `SendGoal`/`CancelGoal`/`GetResult` and the feedback and
+status topics all key on `goal_id`. The handle is the ergonomic layer, and it is
+the layer that costs an allocator.
+
+Ours keeps the spec's identity and omits the ergonomics:
+
+```rust
+server.publish_feedback(exec, &goal_id, &fb)?;
+server.succeed(exec, &goal_id, result)?;   // W3 rename, see below
+```
+
+Honest asymmetry, to be recorded in the row rather than only the wins:
+`succeeded_with(self)` makes use-after-terminal a COMPILE error; ours can only
+make it a runtime one.
+
+### Settled: prelude membership is a LEDGER QUERY, not taste (2026-08-30)
+
+709 items is not a readable surface, and the current `nros::prelude` mixes user
+API with machinery — `CdrReader`, `HandleSet`, `InvocationMode`,
+`MetadataRecorder`, `NodeRuntimeAdapter` sit beside `Node` and `QoSProfile`.
+
+Two tiers, with a mechanical rule:
+
+> A name belongs in `nros::prelude` IFF the parity ledger gives it a
+> non-`extension` verdict — i.e. it has a correspondent in rclrs/rclcpp/rclc.
+
+Everything else stays reachable at `nros::`; the RTOS machinery moves to
+`nros::embedded`. The rule needs a small allow-list of extensions that are
+load-bearing (`ExecutorConfig`, `SpinOptions` — nothing starts without them),
+each with a one-line reason, same discipline as a `divergence` row.
+
+Gated by `check-api-parity`: `prelude ⊆ {non-extension} ∪ ALLOWED_EXTENSIONS`.
+Without the gate the rule decays into a comment, which is the failure mode this
+repo keeps re-learning.
 
 ## Acceptance
 

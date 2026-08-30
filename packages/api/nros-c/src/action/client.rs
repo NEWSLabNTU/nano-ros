@@ -117,7 +117,7 @@ pub struct nros_action_client_t {
     /// User context pointer
     pub context: *mut c_void,
     /// Pointer to parent node
-    pub node: *const nros_node_t,
+    pub node: crate::node::nros_node_ref_t,
     /// Phase 189.M3.3.b — scheduling-context slot to bind the action client's
     /// executor handle to. `0` = inherit the executor / Node default; set via
     /// `nros_action_client_init_with_options`. When non-zero,
@@ -151,7 +151,7 @@ impl Default for nros_action_client_t {
             feedback_callback: None,
             result_callback: None,
             context: ptr::null_mut(),
-            node: ptr::null(),
+            node: crate::node::nros_node_ref_t::none(),
             sched_context_id: 0,
             _internal: ActionClientInternal::new(),
             _opaque: [0u64; crate::opaque_sizes::ACTION_CLIENT_OPAQUE_U64S],
@@ -201,7 +201,7 @@ pub unsafe extern "C" fn nros_action_client_init(
     client.type_hash_len = crate::util::copy_cstr_into(type_info.type_hash, &mut client.type_hash);
 
     // Store node pointer
-    client.node = node;
+    client.node = unsafe { crate::node::node_ref_of(node) };
 
     // Metadata only — no transport handles created here.
     // Transport handles are created in nros_executor_add_action_client,
@@ -1018,7 +1018,7 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
     client.feedback_callback = None;
     client.result_callback = None;
     client.context = ptr::null_mut();
-    client.node = ptr::null();
+    client.node = crate::node::nros_node_ref_t::none();
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
@@ -1076,7 +1076,7 @@ pub unsafe extern "C" fn nros_action_client_init_polling(
     client_mut.type_hash_len =
         crate::util::copy_cstr_into(type_info_ref.type_hash, &mut client_mut.type_hash);
 
-    client_mut.node = node;
+    client_mut.node = unsafe { crate::node::node_ref_of(node) };
 
     #[cfg(feature = "rmw-cffi")]
     {

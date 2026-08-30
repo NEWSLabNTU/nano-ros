@@ -70,7 +70,7 @@ pub struct nros_publisher_t {
     /// Type hash length
     pub type_hash_len: usize,
     /// Pointer to parent node
-    pub node: *const nros_node_t,
+    pub node: crate::node::nros_node_ref_t,
     /// Inline opaque storage for the RMW publisher handle.
     /// Avoids heap allocation — managed by nros_publisher_init/fini.
     pub _opaque: [u64; PUBLISHER_OPAQUE_U64S],
@@ -86,7 +86,7 @@ impl Default for nros_publisher_t {
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
-            node: ptr::null(),
+            node: crate::node::nros_node_ref_t::none(),
             _opaque: [0u64; PUBLISHER_OPAQUE_U64S],
         }
     }
@@ -215,7 +215,7 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
         crate::util::copy_cstr_into(type_info.type_hash, &mut publisher.type_hash);
 
     // Store node reference
-    publisher.node = node;
+    publisher.node = unsafe { crate::node::node_ref_of(node) };
 
     // Get QoS settings
     let _qos_settings = if qos.is_null() {
@@ -673,6 +673,14 @@ pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -
     );
 
     // Drop the inline RMW publisher handle
+    // phase-379 W4 — the node this entity was created on is gone, so its
+    // teardown ORDER was wrong. Reported rather than performed: before W4 the
+    // entity held a pointer nothing dereferenced and this case succeeded
+    // silently, which is what made the ordering obligation unenforceable.
+    if publisher.node.is_bound() && !crate::node::node_ref_is_live(publisher.node) {
+        return crate::error::NROS_RET_STALE_NODE;
+    }
+
     #[cfg(feature = "rmw-cffi")]
     {
         core::ptr::drop_in_place(
@@ -681,7 +689,7 @@ pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -
     }
 
     publisher._opaque = [0u64; PUBLISHER_OPAQUE_U64S];
-    publisher.node = ptr::null();
+    publisher.node = crate::node::nros_node_ref_t::none();
     publisher.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN;
 
     NROS_RET_OK
@@ -803,7 +811,7 @@ mod verification {
             pub_.state,
             nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
         );
-        assert!(pub_.node.is_null());
+        assert!(!pub_.node.is_bound(), "fini must unbind the node reference");
         assert!(pub_._opaque.iter().all(|&v| v == 0));
     }
 }
