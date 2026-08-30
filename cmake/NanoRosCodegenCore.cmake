@@ -460,6 +460,38 @@ function(_nros_is_zephyr _out)
     endif()
 endfunction()
 
+# phase-400 W5.a — WHERE the per-build nros config headers land.
+#
+# `nros-{c,cpp}`'s build script writes them under `$CARGO_TARGET_DIR`, and every
+# consumer below (three `zephyr_include_directories`, four `OBJECT_DEPENDS` file
+# edges) used to spell that as the LITERAL `${CMAKE_BINARY_DIR}/nros-rust`. The
+# two agree only because `nros_cargo_build()` happens to choose that path, so
+# the literal is a copy of a decision made in another file — and the moment the
+# cargo dir moves (W5's shared group) the include path points at a directory
+# nothing populates. That is issue 0834's shape: a mirror no re-run repairs.
+#
+# So the writer publishes `NROS_GENERATED_HEADER_DIR` (`nros_resolve_cargo_dirs()`
+# in zephyr/cmake/nros_cargo_build.cmake, resolved ONCE and cached like
+# `nros_resolve_knobs()`) and the readers ask for it here. The fallback keeps
+# every non-Zephyr caller — and any configure that reaches a consumer before the
+# Zephyr module loads — on exactly the path they had.
+#
+# Note it is deliberately NOT the cargo target dir, which that same function
+# resolves alongside it under a different name: W5.c shares the cargo dir across
+# images, and these headers must stay per-image when it does.
+#
+# Only the ROOT workspace matters: these headers come from `nros-c` / `nros-cpp`,
+# which are always members of the nros workspace, never of a generated one. The
+# `nros-rust-ws-<name>` branch that issue 0616 added for foreign roots produces
+# no headers and therefore needs no accessor.
+function(_nros_generated_header_dir _out)
+    if(NROS_GENERATED_HEADER_DIR)
+        set(${_out} "${NROS_GENERATED_HEADER_DIR}" PARENT_SCOPE)
+    else()
+        set(${_out} "${CMAKE_BINARY_DIR}/nros-rust" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(nros_resolve_cli _out)
     cmake_parse_arguments(_RC "OPTIONAL" "CONTEXT" "" ${ARGN})
     if(NOT _RC_CONTEXT)
