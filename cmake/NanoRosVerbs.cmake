@@ -337,9 +337,10 @@ function(nano_ros_auto_add_library name)
                 add_dependencies(${name} ${_cargo_tgt})
             endif()
         endforeach()
+        _nros_generated_header_dir(_nrv_gen_dir)
         set_property(SOURCE ${_srcs} APPEND PROPERTY OBJECT_DEPENDS
-            "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h"
-            "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
+            "${_nrv_gen_dir}/nros-cpp-generated/nros/nros_cpp_config_generated.h"
+            "${_nrv_gen_dir}/nros-c-generated/nros/nros_config_generated.h")
     endif()
 endfunction()
 

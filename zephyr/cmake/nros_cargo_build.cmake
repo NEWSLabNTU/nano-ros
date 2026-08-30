@@ -306,6 +306,51 @@ function(nros_set_cargo_env_from_kconfig)
 endfunction()
 
 # =============================================================================
+# nros_resolve_cargo_dirs()
+#
+# phase-400 W5.a — resolve the ROOT workspace's cargo `--target-dir` once, and
+# cache it, so the WRITER and the seven generated-header CONSUMERS cannot
+# disagree about it.
+#
+# Same discipline, and the same reason, as `nros_resolve_knobs()` above: the
+# value is read from several files in an order nobody controls, so resolving it
+# per-reader is how two readers end up with two answers. Consumers ask through
+# `_nros_generated_header_dir()` (cmake/NanoRosCodegenCore.cmake), which falls
+# back to the historical literal when this has not run — a non-Zephyr build never
+# loads this file.
+#
+# CACHE INTERNAL rather than PARENT_SCOPE for the `_NROS_ENTRY_DIR` reason
+# (AGENTS.md CMake Pitfalls): the readers are functions in other included files,
+# and a normal var does not survive the frame pop.
+#
+# Idempotent, and deliberately not re-resolving: a second call inside one
+# configure must not be able to return a different directory than the first.
+function(nros_resolve_cargo_dirs)
+    if(NROS_GENERATED_HEADER_DIR)
+        return()
+    endif()
+    # TWO directories, deliberately separate even though they are equal today.
+    #
+    # They answer different questions, and W5.c makes the answers diverge:
+    #
+    #   NROS_GENERATED_HEADER_DIR  — where the per-build config headers live.
+    #       PER-IMAGE, always. Their content is a function of this image's
+    #       Kconfig and of the feature set nros-c/nros-cpp were built with, so
+    #       two images must never write one copy. Sharing this is issue 0360's
+    #       variant collision (and, one layer down, 0528's probe dir).
+    #   NROS_ROOT_CARGO_TARGET_DIR — where cargo's dependency mass lives.
+    #       SHAREABLE, and the whole point of W5: ~86 host crates are currently
+    #       recompiled in each of 89 west build trees.
+    #
+    # Keeping them one variable would force the choice made in W5.a to decide
+    # W5.c, which is how a wiring change acquires a design it never argued for.
+    set(NROS_GENERATED_HEADER_DIR "${CMAKE_BINARY_DIR}/nros-rust" CACHE INTERNAL
+        "per-image root of the generated nros config headers (phase-400 W5.a)")
+    set(NROS_ROOT_CARGO_TARGET_DIR "${CMAKE_BINARY_DIR}/nros-rust" CACHE INTERNAL
+        "cargo --target-dir for the nros root workspace (phase-400 W5.a)")
+endfunction()
+
+# =============================================================================
 # _nros_cargo_workspace_root(<manifest> <out-var>)
 #
 # Resolve the WORKSPACE root manifest that cargo would use for <manifest>, as a
@@ -412,9 +457,12 @@ function(nros_cargo_build)
     _nros_cargo_workspace_root("${_cargo_manifest}" _cargo_ws_root)
     get_filename_component(_nros_ws_root "${NROS_REPO_DIR}/Cargo.toml" REALPATH)
     if(_cargo_ws_root STREQUAL _nros_ws_root)
-        # The nros workspace keeps the historical location, so every consumer
-        # of `<build>/nros-rust/...` (generated headers, LIB_PATH) is unmoved.
-        set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/nros-rust)
+        # phase-400 W5.a — the ROOT workspace's directory is resolved ONCE, by
+        # `nros_resolve_cargo_dirs()` below, and published so the generated-header
+        # CONSUMERS can follow it instead of re-spelling it as a literal. Today it
+        # still resolves to `<build>/nros-rust`, so nothing moves.
+        nros_resolve_cargo_dirs()
+        set(CARGO_TARGET_DIR ${NROS_ROOT_CARGO_TARGET_DIR})
     else()
         get_filename_component(_foreign_dir "${_cargo_ws_root}" DIRECTORY)
         get_filename_component(_foreign_name "${_foreign_dir}" NAME)

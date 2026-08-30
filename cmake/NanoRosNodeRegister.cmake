@@ -90,7 +90,7 @@ function(_nros_node_register_apply_config_header_deps _tgt)
     #    OUTPUT-mirror targets (packages/core/nros-{c,cpp}/CMakeLists.txt).
     #  * Zephyr (`zephyr/CMakeLists.txt` → `nros_cargo_build`): the
     #    `nros_{c,cpp}_cargo_build` targets, which emit the per-build header into
-    #    `${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated`. `app` already
+    #    the cargo target dir's `nros-{c,cpp}-generated`. `app` already
     #    depends on these, but a `nano_ros_node_register` component lib is a
     #    SEPARATE target and otherwise races them → in-tree stub (issue 0088).
     # Guarded by `if(TARGET)`, so each flavour contributes only where it exists.
@@ -255,7 +255,7 @@ function(nano_ros_node_register)
     # Issue 0088 (Zephyr path) — on Zephyr the per-build nros config headers are
     # BYPRODUCTS of an always-run `nros_{c,cpp}_cargo_build` target
     # (zephyr/cmake/nros_cargo_build.cmake), written into
-    # `${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated`. The Zephyr component
+    # the cargo target dir's `nros-{c,cpp}-generated`. The Zephyr component
     # lib is a plain `add_library` that inherits the generated + stub include dirs
     # (via `zephyr_include_directories`) but has no hard edge to the byproduct, so
     # its TUs can compile before the cargo build writes the real header and pick up
@@ -272,8 +272,12 @@ function(nano_ros_node_register)
     # non-Zephyr path.
     _nros_is_zephyr(_nrc_is_zephyr)
     if(_nrc_is_zephyr AND _NRC_SOURCES)
+        # phase-400 W5.a — ask where the headers ARE, do not restate where they
+        # were. A file-level OBJECT_DEPENDS naming a path cargo no longer writes
+        # is a ninja edge to a file that never appears.
+        _nros_generated_header_dir(_nrc_gen_dir)
         set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
-            "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_generated.h")
+            "${_nrc_gen_dir}/nros-c-generated/nros/nros_config_generated.h;${_nrc_gen_dir}/nros-c-generated/nros/nros_generated.h")
     endif()
 
     set(_lib "${PROJECT_NAME}_${_NRC_NAME}_component")
@@ -380,7 +384,7 @@ function(nano_ros_node_register)
             # Phase 242 — the per-build `<nros/nros_cpp_config_generated.h>` /
             # `<nros/nros_config_generated.h>` (storage sizes, etc.) are emitted
             # as byproducts of the nros-cpp / nros-c cargo builds into
-            # `${CMAKE_BINARY_DIR}/nros-rust/nros-{cpp,c}-generated` (prepended
+            # the cargo target dir's `nros-{cpp,c}-generated` (prepended
             # to the include path by zephyr/CMakeLists.txt). `app` already
             # depends on those targets, but this component lib is a SEPARATE
             # add_library; without the same dependency its TUs can compile
@@ -489,8 +493,9 @@ function(nano_ros_node_register)
                 # OBJECT_DEPENDS forces each TU to wait for the generated headers. (A C node /
                 # the single-node carrier compiles into `app`, which already depends on the
                 # cargo build, so neither hits this.)
+                _nros_generated_header_dir(_nrc_gen_dir)
                 set_source_files_properties(${_NRC_SOURCES} PROPERTIES OBJECT_DEPENDS
-                    "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h;${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
+                    "${_nrc_gen_dir}/nros-cpp-generated/nros/nros_cpp_config_generated.h;${_nrc_gen_dir}/nros-c-generated/nros/nros_config_generated.h")
             endif()
         endif()
     endif()
@@ -957,9 +962,10 @@ function(nano_ros_node_register)
         # APPEND for the reason the sibling site gives: the Zephyr
         # interface-codegen module stamps OBJECT_DEPENDS on sources too, and a
         # plain set CLOBBERS whichever side ran first.
+        _nros_generated_header_dir(_nrc_gen_dir)
         set_property(SOURCE "${_zephyr_entry_src}" APPEND PROPERTY OBJECT_DEPENDS
-            "${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated/nros/nros_cpp_config_generated.h"
-            "${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated/nros/nros_config_generated.h")
+            "${_nrc_gen_dir}/nros-cpp-generated/nros/nros_cpp_config_generated.h"
+            "${_nrc_gen_dir}/nros-c-generated/nros/nros_config_generated.h")
         target_link_libraries(app PRIVATE ${_lib})
     endif()
 

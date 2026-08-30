@@ -148,6 +148,12 @@ set(NROS_ZEPHYR_DIR ${CMAKE_CURRENT_LIST_DIR})
 # resolution, both consumers (issue 0316).
 nros_resolve_knobs()
 
+# phase-400 W5.a — and resolve the cargo target dir on the same terms, for the
+# same reason: `nros_cargo_build()` writes the per-build config headers under it
+# and seven consumers include from it, so it must have ONE value per configure
+# no matter which of them runs first.
+nros_resolve_cargo_dirs()
+
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_zenoh.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_xrce.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_rmw_cyclonedds.cmake)
@@ -265,11 +271,13 @@ endif()
 # =============================================================================
 
 if(CONFIG_NROS_C_API)
-    # Phase 119.3: prepend `${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated`
-    # to include path. nros-c's build.rs writes the per-build header
-    # there for this Zephyr build's exact storage sizes. The source-tree
-    # header is a stub that `#error`s if reached.
-    zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated)
+    # Phase 119.3: prepend `<cargo target dir>/nros-c-generated` to the include
+    # path. nros-c's build.rs writes the per-build header there for this Zephyr
+    # build's exact storage sizes. The source-tree header is a stub that
+    # `#error`s if reached.
+    # phase-400 W5.a — the directory is `nros_resolve_cargo_dirs()`'s answer, not
+    # a literal repeated from nros_cargo_build.cmake. Same path today.
+    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/nros-c-generated)
     # Add nros-c include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/api/nros-c/include)
 
@@ -392,8 +400,8 @@ if(CONFIG_NROS_CPP_API)
     # include path before source-tree dirs. C++ user code transitively
     # pulls `<nros/nros_config_generated.h>` (C-side) via parameter.hpp,
     # so both variants must resolve to the per-build versions.
-    zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-cpp-generated)
-    zephyr_include_directories(${CMAKE_BINARY_DIR}/nros-rust/nros-c-generated)
+    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/nros-cpp-generated)
+    zephyr_include_directories(${NROS_GENERATED_HEADER_DIR}/nros-c-generated)
     # `cxx-compat/` ships a stripped-down `<cstdlib>` / `<cstdio>` /
     # `<cstring>` / etc. for Zephyr targets whose C++ stdlib layer is
     # minimal. `zephyr/lib/cpp/minimal/include` only carries

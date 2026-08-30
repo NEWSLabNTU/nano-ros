@@ -383,7 +383,7 @@ function(nano_ros_entry)
         # as a strong symbol, overriding Zephyr's weak default `main`), and the TU inherits
         # `app`'s include set — incl. the per-build `<nros/nros_{,cpp_}config_generated.h>`
         # storage-size headers the Zephyr module emits into
-        # `${CMAKE_BINARY_DIR}/nros-rust/nros-{c,cpp}-generated` via
+        # the cargo target dir's `nros-{c,cpp}-generated` via
         # `zephyr_include_directories` — and `app`'s `nros_cpp_cargo_build` ordering, for
         # free. (A separate static lib does NOT get whole-archived → `main` silently dropped.)
         target_sources(app PRIVATE ${_sources_for_exe})

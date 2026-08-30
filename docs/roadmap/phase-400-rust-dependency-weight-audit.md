@@ -674,6 +674,117 @@ platforms already make, then re-measure a two-image build with `--timings` befor
 quoting a saving. **This phase has retracted three estimates for skipping exactly
 that step.**
 
+### W5.a — LANDED 2026-08-30. The generated-header location is one decision again.
+
+Seven consumers spelled the header directory as the literal
+`${CMAKE_BINARY_DIR}/nros-rust` — three `zephyr_include_directories`, four
+`OBJECT_DEPENDS` file edges — while `nros_cargo_build()` decided it independently
+in another file. They agreed only by coincidence, which is what made blocker 1
+dangerous: move the cargo dir and the include path keeps pointing at a directory
+nothing populates (issue 0834's shape, whose only recorded escape is `rm -rf`).
+
+`nros_resolve_cargo_dirs()` now resolves it ONCE and caches it, on the same
+terms and for the same reason as `nros_resolve_knobs()` beside it, and consumers
+ask through `_nros_generated_header_dir()` (cmake/NanoRosCodegenCore.cmake, next
+to `_nros_is_zephyr` — the same "promote the second idiom to the single
+definition" that issue 0282 needed). The fallback keeps every non-Zephyr caller
+on the path it had.
+
+**It resolves TWO directories, not one, and that is the substantive part.**
+
+```
+NROS_GENERATED_HEADER_DIR    per-image, ALWAYS — content is a function of this
+                             image's Kconfig and of nros-{c,cpp}'s features
+NROS_ROOT_CARGO_TARGET_DIR   shareable — the ~86 host crates W5 is about
+```
+
+Equal today, so this changes nothing; separate so that W5.c can move one without
+moving the other. Collapsing them would have let a wiring change decide a design
+it never argued for — and the first draft of W5.a did exactly that before the
+fork below was noticed.
+
+*Verified, not asserted:* `build-c-listener-zenoh` and `build-cpp-listener-zenoh`
+both build to `zephyr.elf`; both caches show the new variables resolving to the
+old literal; the `-I...nros-{c,cpp}-generated` flags in `build.ninja` are
+unchanged. `check-fast` 138/138.
+
+### W5 blocker 3 — `DOTCONFIG`, and the exemption W5 falsifies
+
+Found by reading the fingerprints of a real build tree rather than the sources.
+`scripts/check-path-env-fingerprints.py` (issue 0491) forbids fingerprinting a
+PATH-valued env var as a STRING, and exempts `DOTCONFIG` with this reason:
+
+> "per-zephyr-build-dir; zephyr leaves share no cargo group"
+
+**That is precisely the invariant W5 removes.** The same file records what
+happened last time an exemption of that shape went stale: `CORROSION_BUILD_DIR`
+held one on the premise that every cmake build dir owns its own cargo target dir,
+issue 0805 made leaves SHARE, and while the exemption stood every leaf
+invalidated the previous leaf's build script — 459 s of cargo on one platform's
+warm rebuild, against 6.7 s once fixed. W5 is the same change one lane over.
+
+It is not hypothetical here. In `build-c-listener-zenoh`,
+`rerun-if-env-changed=DOTCONFIG` appears in the build-script output of `nros`,
+`nros-node`, `nros-params` and `nros-rmw-cffi`. Its value is a per-tree path, so
+in a shared dir those scripts re-run — and their dependents rebuild — on every
+alternation between images.
+
+**Exporting more knobs does not close it.** All 26 `NROS_RESOLVED_KNOBS` already
+reach the C lane's cargo command, and `knob_usize` returns before touching
+`$DOTCONFIG` when the env carries the value. These crates fall through anyway,
+for knobs cmake never resolves — `NROS_EXECUTOR_ARENA_SIZE`, `NROS_MAX_ARRAY_LEN`,
+`NROS_RMW_MAX_NODES`, the `NROS_RUNTIME_*` family. Chasing that list is
+whack-a-mole with no gate behind it.
+
+**Dropping the directive is worse, and this is the trap.** The obvious reading of
+0491's doctrine — "watch the CONTENT" — is already half-done: `dotconfig_usize`
+emits `rerun-if-changed=<path>` too. But that path is recorded from the run that
+happened. Build tree A first, then tree B against the same shared dir, and cargo
+checks *A's* `.config`, finds it unchanged, declares the script fresh, and B
+compiles A's values. Silent, and in the direction that ships. The env fingerprint
+is load-bearing for CORRECTNESS; it cannot simply be deleted to stop the churn.
+
+*The fix that satisfies both:* fingerprint the content under a SPELLING-INDEPENDENT
+name. cmake computes a digest of the `CONFIG_NROS_*` lines and passes
+`NROS_KCONFIG_DIGEST`; `dotconfig_usize` fingerprints that instead of `DOTCONFIG`,
+and keeps `rerun-if-changed=<path>` so editing `.config` in a single tree still
+re-runs. Equal for every tree in a cluster, different across clusters — which is
+0491's own rule ("what a build script depends on is the CONTENT"), applied to a
+variable whose content happens to live in a file.
+
+### W5 design fork — D2, resolved by the per-PACKAGE call
+
+Two coherent designs exist and only one survives contact with `nros_cargo_build()`.
+
+**D1 — the headers follow the shared dir.** Then the key must contain everything
+the headers depend on, features included. It fails: `nros_cargo_build()` is called
+per PACKAGE, and `nros-c` and `nros-cpp` are built with different feature sets, so
+a features-keyed dir gives them DIFFERENT directories — while `nros-cpp`'s build
+script also writes `nros-c`'s headers (deliberately, for CPP-only images). The
+include path then has no single answer.
+
+**D2 — the headers stay per-image; the dependency mass is shared.** Key on
+(triple, profile, knobs); evict the per-image outputs. Feature variants then
+coexist safely because cargo hashes features into `deps/` — which is already
+observable: `build-c-listener-zenoh` holds NINE `nros-c` build-script units side
+by side today, in one directory, without incident. Only the UNHASHED outputs
+collide, and there are exactly two: the uplifted `libnros_c.a` (evict with
+`--artifact-dir`, as `nros-nuttx.cmake` already does, for the reason it already
+gives) and the generated headers (W5.a's split, above).
+
+D2 is the NuttX pattern with one extra eviction. That is the design W5.c should
+build.
+
+*One more thing W5.c has to do first:* `nros_shared_cargo_dir()` is NOT reachable
+from the Zephyr path — `NanoRosCorrosion.cmake` is never included there. It must
+be factored into its own module rather than pulling in the Corrosion one, which
+is what that helper's own comment already asks for ("A second copy of the
+normalise-and-hash rule is how the two would drift apart").
+
+*Status: W5.a landed and verified. W5.b and W5.c NOT attempted.* Blocker 3 was
+found while designing W5.c and has not been fixed; the digest above is a design,
+not a measurement.
+
 ### Duplicate compiles (feature / version variants) — measured, and it is ~2 %
 
 Asked whether crates get built repeatedly because of feature or version variants.
