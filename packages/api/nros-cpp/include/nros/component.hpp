@@ -55,9 +55,10 @@ inline Result create_subscription_raw(Node& node, const char* topic, const char*
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     size_t handle = static_cast<size_t>(-1);
+    // phase-402: nullptr options = every field default (sched_context 0,
+    // default callback group), which is exactly the pre-phase-402 behaviour.
     nros_cpp_ret_t ret = nros_cpp_subscription_register(h, topic, type_name, "", ffi_qos, callback,
-                                                        ctx, /*sched_context=*/0, &handle,
-                                                        /*callback_group=*/nullptr);
+                                                        ctx, &handle, /*options=*/nullptr);
     return Result(ret);
 }
 

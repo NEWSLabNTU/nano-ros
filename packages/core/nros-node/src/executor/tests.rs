@@ -2253,6 +2253,8 @@ fn test_raw_subscription_callback() {
             raw_cb,
             core::ptr::null_mut(),
             None, // no group
+            // phase-402 W2 — no hint in this test; 0 = no opinion.
+            0,
         )
         .unwrap();
 
@@ -2454,6 +2456,8 @@ fn test_let_semantics_raw_subscription() {
             raw_let_cb,
             core::ptr::null_mut(),
             None, // no group
+            // phase-402 W2 — no hint in this test; 0 = no opinion.
+            0,
         )
         .unwrap();
 

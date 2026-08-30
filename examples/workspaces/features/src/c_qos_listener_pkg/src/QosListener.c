@@ -58,10 +58,10 @@ static nros_ret_t qos_listener_configure(const nros_cpp_node_t* node, void* exec
     setvbuf(stdout, NULL, _IOLBF, 0);
     self->recv = 0;
     size_t handle;
-    int32_t rc = nros_cpp_subscription_register(
-        node, "/chatter", std_msgs_msg_int32_get_type_name(), "", qos_profile(), on_raw, self,
-        /*sched_context=*/0, &handle,
-        /*callback_group=*/NULL);
+    int32_t rc =
+        nros_cpp_subscription_register(node, "/chatter", std_msgs_msg_int32_get_type_name(), "",
+                                       qos_profile(), on_raw, self, &handle,
+                                       /*options=*/NULL); /* phase-402: NULL = defaults */
     if (rc == 0) {
         printf("Waiting for messages\n");
     }

@@ -1438,6 +1438,8 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
             callback,
             context,
             None, // Phase 273 W3: group threading is via nros_executor_add_subscription_in_group
+            // phase-402 W2 — this path states no hint; 0 = no opinion.
+            0,
         );
 
         match result {
@@ -1731,6 +1733,8 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
             callback,
             context,
             group_str,
+            // phase-402 W2 — this path states no hint; 0 = no opinion.
+            0,
         );
 
         match result {

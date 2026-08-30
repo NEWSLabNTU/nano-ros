@@ -29,13 +29,15 @@ extern "C" {
 typedef void (*nros_cpp_subscription_message_callback_t)(const uint8_t* data, size_t len,
                                                          void* ctx);
 
-// Phase 273 (RFC-0047): `callback_group` appended at end (NULL = default group).
+// phase-402: the trailing `sched_context` / `callback_group` arguments moved
+// into `nros_cpp_subscription_options_t` (defined by the cbindgen output above);
+// a NULL `options` is all-defaults, i.e. the pre-phase-402 behaviour.
 nros_cpp_ret_t nros_cpp_subscription_register(const nros_cpp_node_t* node, const char* topic,
                                               const char* type_name, const char* type_hash,
                                               nros_cpp_qos_t qos,
                                               nros_cpp_subscription_message_callback_t callback,
-                                              void* context, uint8_t sched_context,
-                                              size_t* out_handle_id, const char* callback_group);
+                                              void* context, size_t* out_handle_id,
+                                              const nros_cpp_subscription_options_t* options);
 
 // Phase 189.M3.4 — callback-style register that also delivers the sample's wire
 // attachment (5-arg trampoline). Same cbindgen-exclusion reason as above.
@@ -46,7 +48,7 @@ typedef void (*nros_cpp_subscription_message_info_callback_t)(const uint8_t* dat
 nros_cpp_ret_t nros_cpp_subscription_register_with_info(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_message_info_callback_t callback, void* context,
-    uint8_t sched_context, size_t* out_handle_id);
+    size_t* out_handle_id, const nros_cpp_subscription_options_t* options);
 // Phase 269 W3 — callback-style subscription that delivers the sample's E2E
 // integrity status alongside the CDR bytes. Same cbindgen-exclusion reason as
 // above (takes `RawSubscriptionSafetyCallback`, an external nros-node alias
@@ -63,7 +65,7 @@ typedef void (*nros_cpp_subscription_validated_callback_t)(const uint8_t* data, 
 nros_cpp_ret_t nros_cpp_subscription_register_validated(
     const nros_cpp_node_t* node, const char* topic, const char* type_name, const char* type_hash,
     nros_cpp_qos_t qos, nros_cpp_subscription_validated_callback_t callback, void* context,
-    uint8_t sched_context, size_t* out_handle_id);
+    size_t* out_handle_id, const nros_cpp_subscription_options_t* options);
 #endif // NANO_ROS_SAFETY_E2E
 } // extern "C"
 
@@ -583,10 +585,13 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    nros_cpp_ret_t ret =
-        nros_cpp_subscription_register(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
-                                       &Subscription<M>::message_trampoline, &out, sched, &handle,
-                                       nullptr); // callback_group: nullptr = default group
+    // phase-402: `sched_context` is a FIELD now. `callback_group` stays unset,
+    // i.e. the default group.
+    nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
+    ffi_options.sched_context = sched;
+    nros_cpp_ret_t ret = nros_cpp_subscription_register(
+        &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
+        &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
@@ -613,10 +618,13 @@ Result Node::create_subscription_in(const CallbackGroup& group, Subscription<M>&
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
-    nros_cpp_ret_t ret =
-        nros_cpp_subscription_register(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
-                                       &Subscription<M>::message_trampoline, &out, sched, &handle,
-                                       group.get_name()); // Phase 273: pass group name
+    // phase-402: both the sched slot and the Phase 273 group name are FIELDS now.
+    nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
+    ffi_options.sched_context = sched;
+    ffi_options.callback_group = group.get_name();
+    nros_cpp_ret_t ret = nros_cpp_subscription_register(
+        &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos, &Subscription<M>::message_trampoline,
+        &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
@@ -644,9 +652,12 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
+    // phase-402: `sched_context` is a FIELD now.
+    nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
+    ffi_options.sched_context = sched;
     nros_cpp_ret_t ret = nros_cpp_subscription_register_with_info(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
-        &Subscription<M>::message_info_trampoline, &out, sched, &handle);
+        &Subscription<M>::message_info_trampoline, &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
@@ -688,9 +699,12 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
                         ? 0u
                         : static_cast<uint8_t>(options.sched_context);
     size_t handle = static_cast<size_t>(-1);
+    // phase-402: `sched_context` is a FIELD now.
+    nros_cpp_subscription_options_t ffi_options = nros_cpp_subscription_default_options();
+    ffi_options.sched_context = sched;
     nros_cpp_ret_t ret = nros_cpp_subscription_register_validated(
         &handle_, topic, M::TYPE_NAME, M::TYPE_HASH, ffi_qos,
-        &Subscription<M>::message_safety_trampoline, &out, sched, &handle);
+        &Subscription<M>::message_safety_trampoline, &out, &handle, &ffi_options);
     if (ret == 0) {
         out.sched_handle_id_ = handle;
         out.callback_mode_ = true;
