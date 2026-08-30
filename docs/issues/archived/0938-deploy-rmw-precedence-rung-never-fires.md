@@ -2,7 +2,7 @@
 id: 938
 title: "Two verbs resolve RMW from different tables: `nros build` reads
   `[image.*]`, `nros plan` / `codegen-system` read `[deploy.<t>].rmw`"
-status: open
+status: resolved
 type: bug
 area: cli
 related: [rfc-0031, phase-383, phase-255]
@@ -75,3 +75,38 @@ paths, so W10.b cannot delete the field at 0.6.0 without addressing them.
 Grep found the callers it was pointed at. The lesson is the one this repo keeps
 relearning — a claim about whether code is reachable has to be made with a tool
 that knows the call graph, not a text search.
+
+## Resolved (2026-08-31) — the image rung landed
+
+`resolved_rmw` now reads, highest first:
+
+    --rmw  >  [image.<id>].rmw over [image_defaults]  >  [deploy.<t>].rmw  >  [system].rmw  >  zenoh
+
+via a new `SystemToml::image_rmw_for`, which performs the SAME
+`with_base(&image_defaults)` merge `facade::image_rmw` does — reached by id
+rather than by entry-package name, so `nros plan` and `nros build` cannot drift
+apart on one workspace. The duality is gone: where both tables are set, every
+verb now answers with the image.
+
+**The deploy rung was kept BELOW the image one rather than deleted.** Deleting
+it changes behaviour for workspaces that still carry the field, and W1.f's
+deprecation has not reached its version boundary. Image-wins is the whole fix —
+where both exist the answer matches `nros build`, where only deploy exists
+nothing changes — and the rung goes when `[deploy.*]` retires (phase-383 W10.b).
+
+Tested by the case that had no coverage: an `[image.gw].rmw = "xrce"` beside a
+`[deploy.gw].rmw = "cyclonedds"` must resolve `xrce`. Removing the new rung
+makes it fail, so the test measures the fix rather than restating it. A second
+case pins `[image_defaults]` as the base.
+
+**RFC-0031 amended** in the same change. It had said RMW is "a property of the
+deploy target / binary" — one thing when written, two after RFC-0065 split
+placement from the buildable unit — so it now picks the binary and names
+`[image.<id>]`. Its precedence list gained the image rung and marks the deploy
+rung deprecated. The old text promised "no duality"; that is now true rather
+than aspirational.
+
+**The deprecation message was corrected too.** It told users `[deploy.*]` "is
+not being retired", which is no longer the direction: placement moves to
+`[image.*]` as well, so it now says the table is on its way out and to prefer
+`[image.*]` for anything new.

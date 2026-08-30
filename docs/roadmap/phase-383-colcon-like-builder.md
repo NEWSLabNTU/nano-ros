@@ -655,32 +655,46 @@ found only because these trees are not uniform the way ours are.
          then build. That is the behaviour change this work item already
          declined once, and the count says there is no mechanical subset hiding
          inside it.
-      4. **`[deploy.*].rmw` IS still read — 40 of the 42 fields are inert, the
-         other 2 are not.** This item said so, a same-day retraction said
-         otherwise, and the retraction was wrong; the compiler settled it.
+      4. **`[deploy.*].rmw` IS still read — and as of 2026-08-31 it is
+         OUTRANKED.** This item said the fields were inert, a same-day
+         retraction agreed, and both were wrong about the 2 `rmw` ones; the
+         compiler settled it.
 
          `SystemToml::resolved_rmw` has three production callers, not one.
-         `bridged_rmws()` passes `target = None` — which is what a grep finds
-         and what the retraction stopped at — but `codegen_system.rs:677` and
-         `planner.rs:735` both pass a real deploy target. `nros plan --target`
-         advertises it in its own `--help`: "select the `[deploy.<t>]` the
-         planner resolves per-target values against (RMW override, …)".
+         `bridged_rmws()` passes `target = None` — what a grep finds — but
+         `codegen_system.rs` and `planner.rs` pass a real deploy target, and
+         `nros plan --target` advertises it in its own `--help`. So `nros build`
+         resolved RMW from `[image.*]` while `plan` and `codegen-system` read
+         `[deploy.<t>].rmw`, and a workspace setting both BUILT one backend and
+         BAKED another into `#define NROS_SYSTEM_RMW`. Issue 0938.
 
-         So there are TWO live RMW resolution paths reading DIFFERENT tables —
-         `nros build` via `[image.*]` (RFC-0065), `nros plan` /
-         `codegen-system` via `[deploy.<t>].rmw` (RFC-0031) — and
-         `codegen_system` bakes its answer into `#define NROS_SYSTEM_RMW`.
-         Filed as issue 0938.
+         **Fixed by adding an image rung above the deploy one**, so every verb
+         now answers with the image where both are set. The deploy rung stays
+         below it until the field retires — deleting it outright would change
+         behaviour for workspaces still carrying it, before the deprecation
+         boundary.
 
-         **What this costs W10.b:** deleting `[deploy.*].rmw` at 0.6.0 changes
-         behaviour for `plan` and `codegen-system` unless those verbs are first
-         taught the image table, or declared superseded by `nros build`. The
-         `board` and `target` fields remain inert; only the 2 `rmw` ones carry
-         this.
+         **What this leaves W10.b:** all 42 fields are now safely deletable at
+         0.6.0. `board` and `target` were always unread; `rmw` is now
+         unreachable whenever an image declares one, and where no image does,
+         deleting it falls through to `[system].rmw` — which is what those two
+         fixtures already set it to.
 
-      **So the deletion is mechanically safe for 40 of the 42** — `board` and
-      `target` are unread — and the remaining 2 (`rmw`) need issue 0938 settled
-      first.
+      **So the deletion is mechanically safe for all 42**, and what remains is
+      a shape decision rather than a correctness risk.
+
+      **Direction set 2026-08-31: `[deploy.*]` retires ENTIRELY, not just its
+      build fields.** This item was scoped to the build fields, on the standing
+      claim that "`[deploy.*]` keeps PLACEMENT and is not being retired" — the
+      deprecation message said exactly that, and it has been corrected. Placement
+      moves to `[image.*]` too, so the eventual state is one table describing a
+      buildable unit and where it runs, rather than two describing halves of it.
+
+      That does not change what 0.6.0 does here — the build fields go first,
+      because they are the redundant half and their removal is provably inert.
+      Placement retirement needs its own work item: `kind`, `nodes` and `launch`
+      have live readers, and unlike the build fields there is no second table
+      already carrying the same values.
 
       **What 0.6.0 must therefore decide, and it is a design question:** which
       of the 14 deploys deserve to be images. Several are placement-only

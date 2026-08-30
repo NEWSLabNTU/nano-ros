@@ -900,14 +900,49 @@ impl SystemToml {
             .or_else(|| self.system.locator.clone())
     }
 
-    /// Phase 255 — the RMW backend name for `target`, applying the RFC-0031
-    /// precedence (highest wins): the CLI `--rmw` flag, then `[deploy.<target>].rmw`,
-    /// then `[system].rmw`, then the `"zenoh"` default. Both codegen paths (the
-    /// planner's board-feature lowering + the bake's C `#define`) resolve through
-    /// this single helper so a given target gets exactly one RMW — no duality.
+    /// `[image.<id>].rmw` with `[image_defaults]` as the base — the RFC-0065
+    /// answer to "what does this image link".
+    ///
+    /// Deliberately the same merge `facade::image_rmw` performs, reached from
+    /// the id rather than from an entry package name, so `nros plan` and
+    /// `nros build` cannot drift apart on the same workspace (issue 0938).
+    #[must_use]
+    pub fn image_rmw_for(&self, id: &str) -> Option<String> {
+        let base = self.image_defaults.clone().unwrap_or_default();
+        self.image.get(id).and_then(|img| img.with_base(&base).rmw)
+    }
+
+    /// The RMW backend name for `target`: the CLI `--rmw` flag, then
+    /// `[image.<target>].rmw` (over `[image_defaults]`), then the DEPRECATED
+    /// `[deploy.<target>].rmw`, then `[system].rmw`, then `"zenoh"`.
+    ///
+    /// Issue 0938 — the image rung is new and is what removes a real duality.
+    /// `nros build` has resolved an image's RMW from `[image.*]` since RFC-0065
+    /// while this helper — used by `nros plan` and `nros codegen-system`, the
+    /// latter baking the answer into `#define NROS_SYSTEM_RMW` — read only
+    /// `[deploy.<t>].rmw`. A workspace setting both therefore BUILT one backend
+    /// and BAKED another, with no diagnostic. This comment's previous version
+    /// promised exactly what was missing: "so a given target gets exactly one
+    /// RMW — no duality".
+    ///
+    /// The deploy rung is kept BELOW the image one rather than deleted, because
+    /// deleting it would change behaviour for every workspace that still
+    /// carries the field, and the deprecation W1.f promised has not reached its
+    /// version boundary. Image-wins is the whole fix: where both exist the
+    /// answer now matches `nros build`, and where only deploy exists nothing
+    /// changes. It goes when `[deploy.*]` retires (phase-383 W10.b).
+    ///
+    /// `target` names an image in the RFC-0065 world and a deploy in the
+    /// RFC-0031 one; they share a namespace by construction, since an image is
+    /// what a deploy target used to be.
     pub fn resolved_rmw(&self, target: Option<&str>, cli: Option<&str>) -> String {
         if let Some(c) = cli {
             return c.to_string();
+        }
+        if let Some(t) = target
+            && let Some(r) = self.image_rmw_for(t)
+        {
+            return r;
         }
         if let Some(t) = target
             && let Some(dt) = self.deploy.get(t)
@@ -1654,6 +1689,49 @@ kind = "qemu"
         assert_eq!(sys.resolved_rmw(Some("native"), Some("xrce")), "xrce");
         // [deploy.<t>].rmw overrides [system].rmw.
         assert_eq!(sys.resolved_rmw(Some("native"), None), "cyclonedds");
+        // …but an [image.<t>].rmw outranks it — issue 0938. This is the case
+        // that had NO coverage and no diagnostic: the workspace built one
+        // backend (`nros build` reads the image) and baked another
+        // (`codegen-system` read the deploy).
+        let both: SystemToml = toml::from_str(
+            r#"
+[system]
+name = "d"
+rmw = "zenoh"
+domain_id = 0
+
+[image.gw]
+board = "native"
+rmw = "xrce"
+
+[deploy.gw]
+rmw = "cyclonedds"
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            both.resolved_rmw(Some("gw"), None),
+            "xrce",
+            "the image owns the RMW; a deploy field must not override it"
+        );
+        // And `[image_defaults]` is the base, exactly as `facade::image_rmw`
+        // merges it — one answer for `nros build` and `nros plan`.
+        let defaults: SystemToml = toml::from_str(
+            r#"
+[system]
+name = "d"
+rmw = "zenoh"
+domain_id = 0
+
+[image_defaults]
+rmw = "cyclonedds"
+
+[image.gw]
+board = "native"
+"#,
+        )
+        .unwrap();
+        assert_eq!(defaults.resolved_rmw(Some("gw"), None), "cyclonedds");
         // deploy block without rmw → falls to [system].rmw.
         assert_eq!(sys.resolved_rmw(Some("qemu"), None), "zenoh");
         // unknown / no target → [system].rmw.

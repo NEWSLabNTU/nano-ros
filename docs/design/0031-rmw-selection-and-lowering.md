@@ -3,7 +3,7 @@ rfc: 0031
 title: "RMW backend selection and lowering"
 status: Stable
 since: 2026-06
-last-reviewed: 2026-06
+last-reviewed: 2026-08
 implements-tracked-by: [phase-227]
 supersedes: []
 superseded-by: null
@@ -37,15 +37,20 @@ A single, cross-language selection model was needed.
 ### Scope: per-deploy, not per-node
 
 A binary links the cffi runtime plus exactly **one** registered backend vtable,
-so **RMW is a property of the deploy target / binary**. All nodes in a deploy
-inherit it. In-process multi-RMW exists only via an explicit `[[bridge]]`
+so **RMW is a property of the binary**. All nodes in it inherit it.
+
+> **Amended 2026-08-31 (issue 0938).** This section said "the deploy target /
+> binary", which was one thing when it was written: a deploy target WAS the
+> buildable unit. RFC-0065 split the two — `[deploy.*]` is PLACEMENT (where
+> nodes run) and `[image.*]` is the buildable unit — so the sentence now has to
+> pick, and it picks the binary. **RMW is declared on `[image.<id>]`.** In-process multi-RMW exists only via an explicit `[[bridge]]`
 (RFC-0009), which opens additional sessions deliberately.
 
 ### Declared home, lowered per language
 
 | Scope | User declares RMW in | Lowered by toolchain to |
 |---|---|---|
-| Workspace | `system.toml` `[system] rmw` (+ `[deploy.<t>] rmw` override) | Rust entry/node pkg → the **board crate's** `rmw-<x>` feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
+| Workspace | `system.toml` `[image.<id>] rmw` (over `[image_defaults] rmw`, then `[system] rmw`; a `[deploy.<t>] rmw` is DEPRECATED and outranked) | Rust entry/node pkg → the **board crate's** `rmw-<x>` feature; C/C++ node pkg → `-DNANO_ROS_RMW`; C++ entry → CMake cache |
 | Single-node, with `system.toml` | `[system] rmw` | same lowering |
 | Single-node, no `system.toml` | CLI/build flag, else default | same lowering |
 
@@ -74,9 +79,19 @@ feature.
 ### Precedence (highest wins)
 
 1. CLI / build flag — `nros … --rmw <x>`, `-DNANO_ROS_RMW=<x>`.
-2. `system.toml` `[deploy.<target>] rmw`.
-3. `system.toml` `[system] rmw`.
-4. Default — `zenoh`.
+2. `system.toml` `[image.<id>] rmw`, over `[image_defaults] rmw`.
+3. `system.toml` `[deploy.<target>] rmw` — **DEPRECATED**, retires with the rest
+   of `[deploy.*]`'s build fields (phase-383 W10.b).
+4. `system.toml` `[system] rmw`.
+5. Default — `zenoh`.
+
+> **Amended 2026-08-31 (issue 0938).** Rung 2 is new and rung 3 was previously
+> rung 2. The reason is not tidiness: `nros build` has resolved an image's RMW
+> from `[image.*]` since RFC-0065, while `nros plan` and `nros codegen-system`
+> read only `[deploy.<t>].rmw` — so a workspace declaring both BUILT one
+> backend and BAKED another into `#define NROS_SYSTEM_RMW`, with no diagnostic.
+> The ladder above is now what every path resolves, which is what the previous
+> "no duality" claim in this RFC had promised without delivering.
 
 > **Status (2026-06-17) — LANDED, single source, both paths (phase-255).** This precedence was
 > historically only partly wired: the C/C++ bake read `[system].rmw`, but the Rust build path
