@@ -203,8 +203,24 @@ jobs:
         uses: actions/checkout@v4
 
       # ----- shared setup -----
-      - name: Install clang-format (pinned via pypi wheel)
-        run: pip install --no-cache-dir "clang-format==17.0.5"
+      #
+      # `just setup-clang-format`, NOT a pip install with a literal version.
+      #
+      # This step used to be `pip install "clang-format==17.0.5"` while
+      # `.clang-format-version` pinned 17.0.6 — two sources of truth for one
+      # version, already drifted. And they drifted INVISIBLY: the resolver
+      # (`scripts/dev/clang-format.sh`) prefers `build/clang-format/bin/`, which
+      # only the recipe creates, so CI fell through to the PATH copy and printed
+      # `WARN: clang-format 17.0.5 on PATH != pinned 17.0.6` to stderr in a lane
+      # nobody reads unless it fails. Different clang-format versions reformat
+      # differently, so CI was checking a different standard than every local
+      # run.
+      #
+      # The recipe reads the pin, installs project-locally into
+      # `build/clang-format/`, and no-ops when the right version is already
+      # there — so this is also the same command a contributor runs.
+      - name: Provision clang-format (pinned by .clang-format-version)
+        run: just setup-clang-format
 
       # Compiler cache for the COMPILE tier — phase-395. `check-build` compiles
       # the whole workspace from scratch: 587 s of an 878 s gate, measured. Only

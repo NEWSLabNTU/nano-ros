@@ -703,6 +703,19 @@ pacman = ["doxygen"]
 brew = ["doxygen"]
 check = { cmd = "doxygen" }
 
+# Doxygen's call/collaboration diagrams are drawn by graphviz's `dot`, so a
+# doxygen without it silently produces a docs build with no diagrams — a
+# DEGRADED result, not an error, which is why it went undeclared while
+# `.github/workflows/docs.yml` installed the two together in one apt line. The
+# workflow was the only place that knew they belong together.
+[prereq.graphviz]
+why = "doxygen's diagrams (HAVE_DOT); without it the C API docs build with no graphs and say nothing about it"
+apt = ["graphviz"]
+dnf = ["graphviz"]
+pacman = ["graphviz"]
+brew = ["graphviz"]
+check = { cmd = "dot" }
+
 [prereq.gcc-arm-none-eabi]
 why = "ARM bare-metal cross gcc via the apt path (the [tool.arm-none-eabi-gcc] dist is the store alternative)"
 # The LIBC is a separate package on Debian and was missing here, so the apt path

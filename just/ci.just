@@ -250,6 +250,65 @@ full:
 #   just colcon-parity     (needs ROS 2 + colcon on the host)
 #   just acceptance        (builds the CLI + a scaffolded project)
 # The full heavy lane stays `just ci` / `just test-all`.
+# Provision the zenoh router ROS itself ships (RFC-0075 / phase-362).
+#
+# ONE spelling. `host-tests.yml` carried this twice — once as an if/else, once
+# as a `||` chain — in two jobs that need the same thing, which is the second
+# spelling CLAUDE.md warns about wearing CI clothes. There is no `just zenohd
+# setup` any more because the vendored router was deleted; what remains is a
+# distro package, and installing it is the only provisioning step.
+#
+# Absence is NOT a failure: the zenoh lanes SKIP and announce it, and
+# `check-zenohd-router-skips` enforces that they can. A job that always fails
+# is worse than lanes that honestly report what the host lacks.
+#
+# Needs root, which CI has and a workstation should not be asked for — so when
+# it cannot install, it PRINTS the command instead of running `sudo` (CLAUDE.md:
+# never sudo, tell the user).
+[group("ci")]
+provision-zenohd:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    distro="${ROS_DISTRO:-humble}"
+    pkg="ros-${distro}-rmw-zenoh-cpp"
+    if [ -n "$(command -v rmw_zenohd 2>/dev/null)" ] || \
+       ls /opt/ros/"$distro"/lib/rmw_zenoh_cpp/rmw_zenohd >/dev/null 2>&1; then
+        echo "provision-zenohd: $pkg already present"
+        exit 0
+    fi
+    if [ "$(id -u)" != "0" ]; then
+        # The remedy is DERIVED, never hand-written: `ros-rmw-zenoh-cpp` is
+        # declared in `nros-sdk-index.toml` `[prereq.*]`, and `nros setup
+        # --system` composes the native install command for whatever package
+        # manager this host has. `check-sysdep-remedies` enforces that, and it
+        # rejected a hand-written apt remedy here on the first run — the same
+        # ad-hoc provisioning this change exists to remove. (That gate is a text
+        # scan, so it also rejects a comment QUOTING the forbidden command,
+        # which is why this one describes it instead.)
+        # The protocol, not `echo … ; exit 0`. This step genuinely did not do
+        # its job, and issue 0650's rule is that such a step must not report
+        # success. `check-lane-skip-protocol` rejected the bare form here on
+        # the first run — the third of this repo's own gates to catch this one
+        # recipe while it was being written to remove ad-hoc provisioning.
+        #
+        # CI runs as root, so this branch is the workstation case: nothing is
+        # installed behind your back, and the command comes from the index.
+        source scripts/build/lane-skip.sh
+        nros_lane_skip "not root: $pkg not installed. It is a declared prereq, so 'nros setup --system' prints the install command for this host and --sudo runs it. Without it the zenoh lanes report [SKIPPED:capability]."
+    fi
+    if apt-get install -y --no-install-recommends "$pkg" 2>/dev/null; then
+        echo "provision-zenohd: installed $pkg"
+        exit 0
+    fi
+    # One retry after refreshing the index — a container image's apt lists are
+    # often older than the package.
+    apt-get update -qq || true
+    if apt-get install -y --no-install-recommends "$pkg"; then
+        echo "provision-zenohd: installed $pkg (after apt-get update)"
+        exit 0
+    fi
+    echo "::warning::no rmw_zenoh_cpp available — zenoh lanes will skip"
+
 [group("ci")]
 fast:
     @just check fast check::no-std
