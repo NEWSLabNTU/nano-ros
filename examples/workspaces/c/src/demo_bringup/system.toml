@@ -55,7 +55,6 @@ kind = "self"
 
 [deploy.freertos]
 kind = "embedded"
-board = "mps2-an385-freertos"
 
 # phase-385 W1 — the emulated Cortex-R52 cell.
 [deploy.an536]
@@ -64,7 +63,6 @@ board = "mps3-an536-freertos"
 
 [deploy.nuttx]
 kind = "embedded"
-board = "nuttx-qemu-arm"
 
 [deploy.threadx-linux]
 kind = "embedded"
@@ -109,7 +107,6 @@ board = "nuttx-qemu-arm"
 
 [deploy.zephyr]
 kind = "embedded"
-board = "native_sim/native/64"
 
 [deploy.robot1]
 kind = "self"

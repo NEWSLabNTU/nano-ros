@@ -157,19 +157,98 @@ first.
 
 ## What this RFC does not decide
 
-* **Which of D3's two shapes the supplier takes.** The CMake-variable one adds
-  no command and is the one to try first; the west extension is the fallback if
-  the module genuinely needs to invoke a workspace-side tool.
-* **How west learns the workspace path.** A `-DNROS_WORKSPACE=<dir>` on the
-  west command line is the obvious first answer, but the app's `CMakeLists.txt`
-  could equally derive it from its own location — the entry package IS in the
-  workspace. The second needs no user action and is probably right; it is not
-  yet checked against a freestanding app.
-* **The harness fields.** `west_build_name`, `west_id` and
-  `west_zenoh_locator` in `examples/fixtures.toml` are per-fixture concerns (a
-  private build dir and locator so parallel legs do not collide), not image
-  ones. Whether they become image keys, stay row keys, or move into the
-  handoff's native args is what currently blocks phase-383 W9.b's last 14 rows.
+Two of the three below are now DECIDED and struck through rather than deleted:
+a design doc that quietly drops its own open questions leaves no way to tell an
+answered one from a forgotten one. Only the third is still open.
+
+* ~~**Which of D3's two shapes the supplier takes.**~~ **DECIDED — D14.**
+  Neither, as posed: the supplier is a QUERY (`nros image-facts`), not a build
+  verb, which is what dissolves the recursion D2 worried about. Its consumer
+  landed as `cmake/NanoRosImageAgreement.cmake`, a cross-check rather than a
+  replacement — see D14's refinement for why replacing the Kconfig derivation
+  would have taken the standalone path away.
+* ~~**How west learns the workspace path.**~~ **DECIDED — D14, and it is the
+  second answer.** No `-DNROS_WORKSPACE=`: the app's `CMakeLists.txt` passes
+  `${CMAKE_CURRENT_SOURCE_DIR}` and `nros` walks UP to the package carrying
+  `system.toml`. No user action, and it is now checked — against a freestanding
+  app (`examples/workspaces/rust/src/zephyr_entry`, which is outside
+  `zephyr-workspace/`) and against a workspace scaffolded in `$TMPDIR` by
+  `scripts/dev/two-tree-check.sh`.
+
+  Not the nearest `Cargo.toml`: an entry package HAS one, so that walk finds
+  the package rather than the workspace, and a C or C++ workspace has none.
+  Not a relative start either — `Path::new(".").parent()` ends the walk after
+  one step, and `.` is exactly what a caller passes for "here" (measured: it
+  printed nothing).
+* ~~**The harness fields.**~~ **DECIDED — D16.** They stay ROW keys and reach
+  west through the handoff's native args. Not image keys: they are this test
+  row's ISOLATION, and two rows may legitimately build one image.
+
+Nothing in this RFC is open now.
+
+## D16 — the harness fields stay ROW keys and ride the handoff's native args
+
+**Decided 2026-08-30, closing this RFC's last open item and phase-383 W9.b.**
+
+`west_build_name`, `west_id` and `west_zenoh_locator` had three candidate
+homes: image keys, row keys, or derived. Read as *who owns the fact*, the
+question answers itself — **an image describes a PROGRAM; these three describe a
+test row's ISOLATION**, and the two are not the same thing even when a
+workspace happens to have one row per image today. Two rows may build one image
+and still need different build directories and different router ports; an image
+key could not express that, and would put a testing concern in a file a user
+writes.
+
+So the row keeps them, and the west lane stops assembling `west build` by hand:
+
+```
+nros build <bringup>:<image> --workspace <ws> --offline \
+  -- -d <west_build_name> -p <pristine> <the row's -D defines>
+```
+
+`route_native_arg` already splits that passthrough correctly — `-d`/`-p` into
+west's own zone, every `-D` into cmake's — so **no CLI change was needed**, and
+`-b` stays refused, because the image declares the board and a second spelling
+is exactly what D4 removed.
+
+**Derivation was considered and rejected, per field, for different reasons:**
+
+| field | derivable? | verdict |
+| --- | --- | --- |
+| `west_build_name` | in form (from `id`) | **No.** It is the artifact PATH: `<build-root>/<name>/zephyr/zephyr.exe` is spelled as a literal in ~17 test-side resolvers (`fixtures/binaries/mod.rs`, `zephyr.rs`, `lane.rs`). Deriving it MOVES fixtures, which is the rename class this repo has been bitten by. |
+| `west_id` | yes, from `id` | **Out of scope.** It never reaches the build tool at all — it is the make-target name — so it is not part of this question. It is a second identity for a row that already has one, and worth collapsing separately. |
+| `west_zenoh_locator` | only with a new key | **No.** Every value IS `nros_tests::alloc::port_of(board, lang, workload)` — 7430 is `(ZephyrNativeSim, Rust, EntryPubsub)`, 7691 is `(…, Cpp, RealtimeTiers)` — but a row carries no `workload`, and `zephyr-fixture-leaves.sh` deliberately keeps the allocator FORMULA out of the manifest so the manifest does not become a second spelling of the allocator. The authored literal is that second spelling already; collapsing it means giving rows a `workload` key, which is a change to the matrix vocabulary, not to this handoff. |
+
+**What a forgotten field costs, unchanged by this decision:** `west_build_name`
+falls back to `build-<lang>-<role>-<rmw>`, and every workspace row has
+`role = entry`, so two rows silently share one build directory and the second
+overwrites the first. That hazard predates the retarget and is worth a gate; it
+is not created by it.
+
+**One consequence for the ROW, though: `entry` goes away.** D4 made the IMAGE
+name its application (`[image.zephyr] entry = "zephyr_entry"`), so a retargeted
+row restating it would be one fact in two places that can disagree — and
+`validate_workspace_fixture` already refuses a row naming both `entry` and
+`image`. A migrated west row therefore names only the image, and the manifest
+resolves the application through `image_entry_package()`, which reads the
+image's own `entry`. Verified byte-for-byte: dropping the key left the emitted
+`west-leaves` record identical.
+
+### What was measured
+
+`examples/workspaces/rust` `demo_bringup:zephyr`, retargeted end to end and
+built through the real lane (`zephyr-fixture-run-one.sh`, exit 0, 1305 ninja
+steps, a fresh `zephyr.exe`), then:
+
+* **the Zephyr `.config` is byte-identical** to the one the lane's own `west
+  build` produces in the same build directory. The retarget adds exactly one
+  argument, `-DEXTRA_CONF_FILE=<app>/prj-zenoh.conf` (the image's `conf`), on
+  top of an unchanged `-DCONF_FILE`; a control build with `-UEXTRA_CONF_FILE`
+  produced a `diff`-clean `.config`. The re-application is a no-op because
+  `prj-zenoh.conf` and the NSOS tail share no symbol.
+* **`test_zephyr_workspace_entry_native_sim_e2e` passes** on the retargeted
+  image — 19 messages delivered cross-process to an external native listener.
+
 
 ## D4 — the application is named by its own DEPLOY declaration, in whichever
 ## file its language uses; ambiguity is an error

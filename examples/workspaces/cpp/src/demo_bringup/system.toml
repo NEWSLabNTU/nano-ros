@@ -56,13 +56,11 @@ kind = "self"
 
 [deploy.freertos]
 kind = "embedded"
-board = "mps2-an385-freertos"
 
 # phase-372 W2 — the S32Z270 cross cell (Cortex-R52); same entry leaf, one
 # board per configure.
 [deploy.s32z270]
 kind = "embedded"
-board = "s32z270-freertos"
 
 # phase-385 W1 — the AN536 cell: the same entry leaf on the emulated R52, which
 # unlike the S32Z270 above can actually be booted.
@@ -117,7 +115,6 @@ board = "freertos-posix"
 
 [deploy.zephyr]
 kind = "embedded"
-board = "native_sim/native/64"
 
 # phase-330 W4.0 (RFC-0063) — binding variants declared as INPUTS.
 # These resolves take launch ARGUMENTS, which nothing in the launch tree

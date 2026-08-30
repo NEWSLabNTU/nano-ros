@@ -489,11 +489,46 @@ found only because these trees are not uniform the way ours are.
       builds the same way (1326/1326). All 14 images resolve to the right
       application under `--dry-run`.
 
-      **What is still open is only the harness fields.** `west_build_name`,
-      `west_id` and `west_zenoh_locator` are per-ROW isolation (a private build
-      dir and port so parallel legs do not collide), not image properties, so
-      retargeting the 14 rows means deciding where those live — RFC-0085's
-      remaining open item, not a missing capability.
+      **Update 2026-08-30 — the harness fields are decided (RFC-0085 D16) and
+      7 of the 14 rows are retargeted.** They stay ROW keys and reach west
+      through `nros build … -- -d <build-dir> -p <mode> <-D defines>`;
+      `route_native_arg` already splits that passthrough (west zone / cmake
+      zone), so no CLI change was needed. `entry` comes OFF a retargeted row —
+      D4 made the image name its application, and `validate_workspace_fixture`
+      refuses a row naming both.
+
+      Plumbing: `west-leaves` gained two columns (`ws_dir`, qualified
+      `<bringup>:<image>`), EMPTY on an unmigrated leaf, and they join the leaf
+      SIGNATURE only when set — an always-present column would have re-signed
+      all ~70 zephyr leaves and re-run west on every one at ~20 min each.
+      Verified: the other 69 signatures are byte-identical to the ones on disk.
+
+      **Proven on `workspace-rust-zephyr`** (`demo_bringup:zephyr`), through the
+      real lane (`zephyr-fixture-run-one.sh`, exit 0, 1305 ninja steps):
+
+      * the Zephyr `.config` is byte-identical to the lane's own `west build`
+        in the same build dir — the retarget adds only
+        `-DEXTRA_CONF_FILE=<app>/prj-zenoh.conf`, and a control build with
+        `-UEXTRA_CONF_FILE` diffed clean (the fragment is already 2nd of 3 in
+        `CONF_FILE`, and shares no symbol with the NSOS tail);
+      * `test_zephyr_workspace_entry_native_sim_e2e` PASSES on it — 19 messages
+        delivered cross-process.
+
+      Six more were retargeted on `--dry-run` equivalence plus the same
+      conf-overlap check, NOT on a build: `zephyr_robot1`, and `zephyr` in
+      `realtime-cpp`, `realtime-c`, `c`, `cpp`, `mixed`. Each dry-run resolves
+      the same application dir and the same board the row already names.
+
+      **Six are still blocked, and NOT on the harness fields — on their IMAGE
+      declarations (W9.a):**
+
+      | rows | why |
+      | --- | --- |
+      | rs-params, rs-lifecycle, rs-qos (features), rs-safety, rs-realtime | their images declare `board = "zephyr"` — a DEPLOY TOKEN, not a board id. `nros build` hands it to west verbatim (`west build -b zephyr`), which is not a Zephyr board. The rows all say `native_sim/native/64`. |
+      | c-realtime-smp | `realtime-c` `smp_bringup:zephyr` declares `board = "native_sim/native/64"`, but the row builds `qemu_cortex_a53/qemu_cortex_a53/smp` with an a53 board conf. Board IS an image property, so this row needs its own image (e.g. `[image.zephyr_smp]`) — retargeting as-is would silently build the wrong board. |
+
+      The esp32 row (`workspace-rust-esp32`) is untouched and was NOT
+      investigated; it carries no `west_*` field and is a separate question.
 - [x] **W9.c** Re-run the tier the diff earns per CLAUDE.md — this touches
       `cmake/` and codegen, so **`just ci-matrix`** at minimum.
 
@@ -571,7 +606,33 @@ found only because these trees are not uniform the way ours are.
       in practice", plus two `rmw`. Nothing reads these fields at build time
       today; `cmd/build.rs` already resolves everything from `[image.*]`.
 
-      **Do at 0.6.0:** migrate those 37 blocks, then delete the lint, the
+      **Re-measured 2026-08-30, and the "37" was stale: 56 build fields across
+      13 files** — `board` ×48, `target` ×12, `rmw` ×2. Splitting them by what
+      the migration would actually have to do:
+
+      | | count | what 0.6.0 must do |
+      | --- | --- | --- |
+      | image already carries the same value | 20 | nothing — pure duplication |
+      | image lacks the key, or has no `[image.*]` at all | 42 | create the key/block |
+      | image and deploy DISAGREE | **0** | — |
+
+      Zero disagreements is the reassuring number: every deploy build field is
+      either redundant or unopposed, so the migration cannot silently change
+      what an image builds.
+
+      **The 20 redundant ones are now GONE** (7 files). Removing a key the image
+      already agrees with cannot change a resolution, and that was proven rather
+      than assumed: `nros build <img> --dry-run` captured for five images of
+      `examples/workspaces/rust` before and after is byte-identical.
+
+      **The other 42 were deliberately left.** Each needs an `[image.*]` key or
+      a whole new image block, and creating one makes a new BUILDABLE UNIT that
+      `nros build --all` would then build — a behaviour change, not a
+      migration. Several are placement-only deploys (`robot1`/`robot2` carrying
+      a host `target`), where whether an image should exist at all is a design
+      question, not a mechanical one.
+
+      **Do at 0.6.0:** migrate the remaining 42 blocks, then delete the lint, the
       `DEPRECATED_DEPLOY_BUILD_FIELDS` list and the wiring added here.
 - [x] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
       return. Every gate in this repo exists because a class recurred; this one

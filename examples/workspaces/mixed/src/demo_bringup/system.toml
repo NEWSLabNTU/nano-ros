@@ -48,7 +48,6 @@ kind = "self"
 
 [deploy.freertos]
 kind = "embedded"
-board = "mps2-an385-freertos"
 
 [deploy.threadx-linux]
 kind = "embedded"
@@ -89,7 +88,6 @@ board = "mps2-an385-freertos"
 
 [deploy.zephyr]
 kind = "embedded"
-board = "native_sim/native/64"
 
 # phase-330 W4.0 (RFC-0063) — binding variants declared as INPUTS.
 # These resolves take launch ARGUMENTS, which nothing in the launch tree

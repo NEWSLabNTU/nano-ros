@@ -74,15 +74,12 @@ kind = "self"
 # entry's fixtures.toml row.
 [deploy.zephyr]
 kind = "embedded"
-board = "native_sim/native/64"
 
 [deploy.freertos]
 kind = "embedded"
-board = "mps2-an385-freertos"
 
 [deploy.nuttx]
 kind = "embedded"
-board = "nuttx-qemu-arm"
 
 [deploy.threadx-linux]
 kind = "embedded"

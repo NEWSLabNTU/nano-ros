@@ -286,7 +286,14 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+# phase-383 W9.b — RETARGETED. The west lane builds this leaf with
+# `nros build demo_bringup:zephyr` instead of assembling `west build` itself;
+# `nros build` resolves the application from `[image.zephyr] entry` and applies
+# the image's `conf` overlay (RFC-0085 D4/D5). The three `west_*` keys below
+# stay ROW keys and reach west as native args (`-d`, and the `-D` defines) —
+# they are this ROW's isolation (a private build dir, a private router port),
+# not properties of the image, and two rows may build one image.
+image = "zephyr"
 codegen_out = "build-fixtures/demo_bringup"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
@@ -4617,7 +4624,8 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry_robot1"
+# phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
+image = "zephyr_robot1"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-rs-mh-robot1-entry-zenoh"
@@ -4665,7 +4673,8 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+# phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
+image = "zephyr"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-cpp-realtime-entry-zenoh"
@@ -4691,7 +4700,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+# phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
+image = "zephyr"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-c-realtime-entry-zenoh"
@@ -4755,7 +4765,8 @@ lang = "c"
 rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+# phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
+image = "zephyr"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-c-entry-zenoh"
@@ -4774,7 +4785,8 @@ lang = "cpp"
 rmw = "zenoh"
 dir = "examples/workspaces/cpp"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+# phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
+image = "zephyr"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-cpp-entry-zenoh"
@@ -4796,7 +4808,8 @@ lang = "mixed"
 rmw = "zenoh"
 dir = "examples/workspaces/mixed"
 bringup = "src/demo_bringup"
-entry = "zephyr_entry"
+# phase-383 W9.b — RETARGETED (see `workspace-rust-zephyr` for the rationale).
+image = "zephyr"
 board = "native_sim/native/64"
 conf_files = ["prj.conf", "prj-zenoh.conf"]
 west_build_name = "build-ws-mixed-entry-zenoh"

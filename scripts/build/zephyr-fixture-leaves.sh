@@ -36,7 +36,7 @@ Options:
 Record fields:
   kind id target board lang lang_tag role rmw src src_dir build_name build_dir
   log xrce_agent_port zenoh_locator cyclone_domain conf_files extra_cmake_defs
-  sig sig_file best_effort eff_pristine
+  sig sig_file best_effort eff_pristine ws_dir nros_image
 EOF
 }
 
@@ -240,12 +240,16 @@ emit_record() {
     local sig_file="${20}"
     local best_effort="${21}"
     local eff_pristine="${22}"
+    # phase-383 W9.b — the retarget pair. EMPTY on an unmigrated leaf, which is
+    # how the runner tells `west build` from `nros build <bringup>:<image>`.
+    local ws_dir="${23:-}"
+    local nros_image="${24:-}"
 
     local fields=(
         "$kind" "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw"
         "$src" "$src_dir" "$build_name" "$build_dir" "$log" "$xrce_agent_port"
         "$zenoh_locator" "$cyclone_domain" "$conf_files" "$extra_cmake_defs"
-        "$sig" "$sig_file" "$best_effort" "$eff_pristine"
+        "$sig" "$sig_file" "$best_effort" "$eff_pristine" "$ws_dir" "$nros_image"
     )
     local i
     for i in "${!fields[@]}"; do
@@ -337,7 +341,8 @@ fi
 
 selected=0
 while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
-    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files _row_reserved; do
+    row_zenoh_locator row_xrce_port row_cyclone_domain row_conf_files _row_reserved \
+    row_ws_dir row_nros_image; do
     [ -n "$board" ] || continue
 
     # Host gating, unchanged: cyclonedds leaves need an idlc. The manifest lists
@@ -364,6 +369,11 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         examples/*) src_rel="${src#examples/}"; src_dir="$nros_root/$src" ;;
         *) src_rel="$src"; src_dir="$nros_root/$src" ;;
     esac
+    # phase-383 W9.b — `nros build` is addressed from the WORKSPACE, which is
+    # not `src_dir` (that is the application). Repo-relative in the record, so
+    # absolute here, like every other path this script hands the runner.
+    ws_dir=""
+    [ -z "$row_ws_dir" ] || ws_dir="$nros_root/$row_ws_dir"
     best_effort=0
     xrce_agent_port=""
     zenoh_locator=""
@@ -443,10 +453,19 @@ while IFS=$'\x1f' read -r board lang lang_tag rmw role src build_name id \
         "toolchain_cache_dir=$toolchain_cache_dir" \
         "make=$make_bin" \
         "sccache_launcher=$sccache_launcher")"
+    # phase-383 W9.b — the retarget pair joins the signature ONLY when the row
+    # is migrated. Appending an always-present (usually empty) line would change
+    # the signature of all ~70 leaves at once and re-run west on every one, at
+    # roughly 20 minutes each: a schema addition must not be a rebuild event for
+    # rows it does not describe.
+    if [ -n "$row_nros_image" ]; then
+        sig="$(printf '%s\n%s\n%s' "$sig" "ws_dir=$ws_dir" "nros_image=$row_nros_image")"
+    fi
     emit_record fixture "$id" "$target" "$board" "$lang" "$lang_tag" "$role" "$rmw" \
         "$src_rel" "$src_dir" "$build_name" "$build_dir" "$log_dir/${build_name}.log" \
         "$xrce_agent_port" "$zenoh_locator" "$cyclone_domain" "$conf_files" \
-        "$extra_cmake_defs" "$sig" "$sig_file" "$best_effort" "$pristine"
+        "$extra_cmake_defs" "$sig" "$sig_file" "$best_effort" "$pristine" \
+        "$ws_dir" "$row_nros_image"
 done < <(python3 "$nros_root/scripts/build/fixtures-manifest.py" west-leaves "${coords_args[@]}")
 
 # phase-350 W1 — the mps2 witness leaves and the logging-smoke leaf used to sit

@@ -19,6 +19,7 @@ Read it in bash with `IFS=$'\x1f' read -r dir env args`. <env> is space-joined
 (--no-default-features / --features a,b / --target-dir D / --target TRIPLE) —
 the profile is added by the caller; word-split <cargo-args> into an argv array.
 """
+
 import argparse
 import re
 import subprocess
@@ -104,19 +105,19 @@ def load_workspace_fixtures(path):
 # checks with no runtime artifact, the other sixteen produce binaries and JSON
 # that tests read or execute.
 COMPILE_CHECK_BUILDERS = (
-    "cargo-check",       # stage the tree, `cargo check`, stamp `.compile-ok`
-    "cargo-build",       # stage the tree, `cargo build`, keep the binary
-    "cmake-configure",   # cmake configure (+ build) into build/cmake-fixtures/<id>
-    "cross-build",       # `cargo build --target <target>` for one or more profiles
-    "cxx-syntax",        # `c++ -fsyntax-only` over a snippet; no artifact
+    "cargo-check",  # stage the tree, `cargo check`, stamp `.compile-ok`
+    "cargo-build",  # stage the tree, `cargo build`, keep the binary
+    "cmake-configure",  # cmake configure (+ build) into build/cmake-fixtures/<id>
+    "cross-build",  # `cargo build --target <target>` for one or more profiles
+    "cxx-syntax",  # `c++ -fsyntax-only` over a snippet; no artifact
     # phase-350 W2 (issue 0536) — the west lane's two shapes. Both build into
     # `build/west-fixtures/<id>` via `scripts/build/west-fixtures.sh`, NOT via
     # `compile-check-fixtures.sh`: west needs a provisioned Zephyr workspace, so
     # the lane that owns it runs them. They live in this table because that is
     # what they ARE — "configure (or build) succeeded and artifact X exists" —
     # and because a row here is what `output` was invented for.
-    "west-build",        # full `west build`; `output` is the image
-    "west-configure",    # `west build --cmake-only`; `output` is a configure artifact
+    "west-build",  # full `west build`; `output` is the image
+    "west-configure",  # `west build --cmake-only`; `output` is a configure artifact
 )
 
 # The two builders above, so the west lane and the compile-check lane can each
@@ -177,7 +178,9 @@ def validate_compile_check_fixture(entry):
     # other builder needs a source tree that exists.
     if builder == "cxx-syntax":
         if entry.get("dir"):
-            _fail(entry, "cxx-syntax rows take no 'dir' (the snippet is resolved by id)")
+            _fail(
+                entry, "cxx-syntax rows take no 'dir' (the snippet is resolved by id)"
+            )
     else:
         if not entry.get("dir"):
             _fail(entry, f"missing required key 'dir' for builder {builder!r}")
@@ -340,8 +343,7 @@ def row_is_variant(entry):
     # `rmw` is deliberately NOT here: it is a COORDINATE, not a configuration.
     # A default-rmw row is core.
     return any(
-        entry.get(k)
-        for k in ("features", "no_default_features", "env", "cargo_args")
+        entry.get(k) for k in ("features", "no_default_features", "env", "cargo_args")
     )
 
 
@@ -472,7 +474,15 @@ def row_artifact_root(entry):
     A row that authors no `target_dir` shares `<dir>/target` with every sibling
     row of the same dir, so this is a prefix a path may match ambiguously; the
     consumer resolves that by preferring the LONGEST match and by treating an
-    ambiguous match as "not attributable" (fail closed — never skip).
+    ambiguous match as "not attributable" (fail closed — never skip). A tie
+    among rows at the SAME coordinate is not ambiguous: the coordinate is what
+    the caller asked for and every tied row gives it (issue 0922).
+
+    An EMPTY root does NOT mean "fail closed" any more. That was true when west
+    leaves had no lane route at all; issue 0713 gave them one
+    (`require_west_leaf_in_lane`, keyed on the build-dir name both halves
+    already agree on), so they are narrowed by coordinate like everything else
+    and `row_is_lane_skippable` returns True for them.
     """
     d = (entry.get("dir") or "").rstrip("/")
     if not d:
@@ -561,7 +571,14 @@ _COORDS_CACHE = {}
 # So the filter below asks the resolver's question, not the cover's: skip a row
 # only if the run could have skipped it too.
 def _shared_artifact_roots(entries):
-    """Artifact roots claimed by more than one row — i.e. unattributable."""
+    """Artifact roots that are AMBIGUOUS — claimed by rows at differing coordinates.
+
+    Issue 0922 — "more than one row" is not the test, and using it over-built 20
+    rows. `attribute_path` treats a tie between rows at the SAME coordinate as
+    unambiguous, because the coordinate is the only thing the caller asked for
+    and every tied row gives the same answer. Two `zenoh` rows of one leaf are a
+    tie the resolver resolves; a `zenoh` row and an `xrce` row are not.
+    """
     seen, shared = {}, set()
     for e in entries:
         root = row_artifact_root(e)
@@ -570,17 +587,37 @@ def _shared_artifact_roots(entries):
             # their lane narrowing is by coordinate alone, which is sound
             # because the resolver never tries to attribute them.
             continue
-        if root in seen and seen[root] != id(e):
+        coord = row_coord(e)
+        if root in seen and seen[root] != coord:
             shared.add(root)
-        seen.setdefault(root, id(e))
+        seen.setdefault(root, coord)
     return shared
 
 
 _SHARED_ROOTS_CACHE = {}
 
 
-def row_is_lane_skippable(entry, all_entries):
-    """Can a coordinate-scoped RUN skip this row? Only then may the build omit it."""
+def row_is_lane_skippable(entry, all_entries, kind="fixture"):
+    """Can a coordinate-scoped RUN skip this row? Only then may the build omit it.
+
+    Issue 0922 — the answer depends on HOW the run attributes an artifact back
+    to a row, and the two tables do it differently:
+
+    * `[[fixture]]` rows are attributed BY PATH (`attribute_path`), so a root
+      shared with a sibling is ambiguous, resolves to `None`, and fails closed.
+    * `[[workspace_fixture]]` rows are attributed BY `id` (`attribute_workspace_id`),
+      which is unique per row and gated as such. Their artifact roots are shared
+      constantly and by design — 66 of 110 rows sit on 12 shared roots, because a
+      workspace builds every one of its entries into one tree — and none of that
+      sharing reaches attribution.
+
+    Applying the path rule to workspace rows called 84 of them unskippable when
+    the run skips 46, so `lane=tier2` rebuilt 38 workspace rows it never runs.
+    That is the 0828 fix overshooting: 0828 was under-building, and a blanket
+    root rule turns it into over-building on the other table.
+    """
+    if kind == "workspace_fixture":
+        return True
     key = id(all_entries)
     if key not in _SHARED_ROOTS_CACHE:
         _SHARED_ROOTS_CACHE[key] = _shared_artifact_roots(all_entries)
@@ -676,7 +713,7 @@ def row_coord(entry):
     )
 
 
-def matches_filters(entry, args, *, for_probe=False, all_entries=None):
+def matches_filters(entry, args, *, for_probe=False, all_entries=None, kind="fixture"):
     # `skip_build` rows stay in the manifest for documentation/inventory but
     # are intentionally NOT built as fixtures (e.g. an incomplete example).
     # Exclude them from both the build list and the stale probe — a row that
@@ -715,7 +752,7 @@ def matches_filters(entry, args, *, for_probe=False, all_entries=None):
             # have skipped it. An unattributable row (shared artifact root) is
             # run at every lane, so omitting it builds a lane whose own tests
             # then fail on staleness the lane never promised.
-            if all_entries is None or row_is_lane_skippable(entry, all_entries):
+            if all_entries is None or row_is_lane_skippable(entry, all_entries, kind):
                 return False
     # Issue #29 — `--core-only` excludes the isolated-`target_dir` variant cells
     # (the RMW/feature rebuilds that duplicate the dep graph + overrun disk).
@@ -754,12 +791,12 @@ def _load_toml(entry, path):
 
 
 def _package_name(entry, path):
-    package = (_load_toml(entry, path).get("package") or {})
+    package = _load_toml(entry, path).get("package") or {}
     return package.get("name")
 
 
 def _workspace_members(entry, path):
-    workspace = (_load_toml(entry, path).get("workspace") or {})
+    workspace = _load_toml(entry, path).get("workspace") or {}
     return workspace.get("members") or []
 
 
@@ -775,7 +812,7 @@ def _workspace_excludes(entry, path):
     generated root is what made that visible (`workspace-rust-esp32` is a `lang
     = "rust"` row whose entry is driven by idf.py).
     """
-    workspace = (_load_toml(entry, path).get("workspace") or {})
+    workspace = _load_toml(entry, path).get("workspace") or {}
     return workspace.get("exclude") or []
 
 
@@ -793,6 +830,42 @@ def entry_name(entry):
     return "{}_entry".format(re.sub(r"[-./]", "_", image))
 
 
+def image_entry_package(entry):
+    """The entry PACKAGE a row builds, honouring a west image's own `entry` key.
+
+    RFC-0085 D4: on Zephyr the application is a HAND-WRITTEN package that west
+    builds in place, and the image names it — `[image.zephyr] entry =
+    "zephyr_entry"` — because six of the fourteen Zephyr images match more than
+    one candidate and a first-match scan picks the wrong one. So a migrated west
+    row derives its package from the IMAGE's declaration rather than restating
+    it, which is what lets the row stop carrying `entry` at all.
+
+    Falls back to [`entry_name`] — the generated `<image>_entry` spelling — for
+    every other migrated row, whose entry package really is generated.
+    """
+    authored = entry.get("entry")
+    if authored:
+        return authored
+    image = entry.get("image")
+    if image:
+        block = _image_block(entry, image)
+        if block and block.get("entry"):
+            return block["entry"]
+    return entry_name(entry)
+
+
+def _image_block(entry, image):
+    """`[image.<id>]` from the row's bringup `system.toml`, or None."""
+    root = Path(entry.get("dir") or "")
+    bringup = entry.get("bringup")
+    if not bringup:
+        return None
+    system_toml = root / bringup / "system.toml"
+    if not system_toml.is_file():
+        return None
+    return (_load_toml(entry, system_toml).get("image") or {}).get(image)
+
+
 def _require_image(entry, system_toml, image):
     """The `[image.<id>]` a migrated row builds must be declared.
 
@@ -800,7 +873,7 @@ def _require_image(entry, system_toml, image):
     the thing whose absence makes the row unbuildable, and it is checkable
     without running the builder.
     """
-    table = (_load_toml(entry, system_toml).get("image") or {})
+    table = _load_toml(entry, system_toml).get("image") or {}
     if image not in table:
         declared = ", ".join(sorted(table)) or "(none)"
         _fail(
@@ -811,7 +884,7 @@ def _require_image(entry, system_toml, image):
 
 
 def _system_default_launch(entry, path):
-    system = (_load_toml(entry, path).get("system") or {})
+    system = _load_toml(entry, path).get("system") or {}
     return system.get("default_launch")
 
 
@@ -1037,6 +1110,26 @@ def validate_workspace_fixture(entry):
     # `[workspace]`) asks about files this row deliberately no longer has.
     if entry.get("image"):
         _require_image(entry, system_toml, entry["image"])
+        # ...unless it is a WEST row, where the application is hand-written and
+        # west builds it in place (RFC-0085 D2/D4). Nothing is generated there,
+        # so the package under `src/` is exactly as real as an unmigrated row's
+        # — the difference is only that the IMAGE names it instead of the row.
+        # Checking it here keeps the migrated west row under the same existence
+        # contract it had before, which is the whole reason the `entry` key
+        # could be dropped rather than merely stopped being read.
+        if platform in ("zephyr", "zephyr-cortex-m"):
+            pkg = image_entry_package(entry)
+            if not pkg:
+                _fail(
+                    entry,
+                    f"names image {entry['image']!r} but neither the row nor "
+                    f"`[image.{entry['image']}] entry` in {system_toml} names "
+                    f"the application package west must build (RFC-0085 D4)",
+                )
+            entry_dir = root / "src" / pkg
+            _require_dir(entry, entry_dir, "entry dir")
+            _require_file(entry, entry_dir / "package.xml", "entry package.xml")
+            _validate_zephyr_workspace(entry, root, entry_dir)
         return
 
     entry_dir = root / "src" / entry["entry"]
@@ -1239,7 +1332,12 @@ def main():
             if e.get("platform") not in ("zephyr", "zephyr-cortex-m"):
                 continue
             e = dict(e)
-            e["dir"] = f"{e['dir'].rstrip('/')}/src/{e['entry']}"
+            # phase-383 W9.b — the WORKSPACE root, kept before `dir` is
+            # rewritten to the application. `nros build` is addressed from the
+            # workspace, not from the app, so a migrated row needs both and the
+            # rewrite destroys one of them.
+            e["ws_dir"] = e["dir"].rstrip("/")
+            e["dir"] = f"{e['dir'].rstrip('/')}/src/{image_entry_package(e)}"
             e.setdefault("west_role", "entry")
             west_rows.append(e)
 
@@ -1291,6 +1389,20 @@ def main():
                         # trailing position is kept EMPTY rather than removed so
                         # the record width does not change under readers.)
                         "",
+                        # phase-383 W9.b — the retarget columns. EMPTY on every
+                        # unmigrated row, which is how the emitter tells "build
+                        # this leaf with `west build`" from "build it with
+                        # `nros build <bringup>:<image>`". `ws_dir` is the
+                        # workspace `nros build` is addressed from; the image is
+                        # QUALIFIED here for the same reason
+                        # `workspace-fixtures-build.sh` qualifies it — one image
+                        # id can be declared by two bringups of one workspace.
+                        str(e.get("ws_dir", "")),
+                        (
+                            f"{Path(e['bringup']).name}:{e['image']}"
+                            if e.get("image") and e.get("bringup")
+                            else ""
+                        ),
                     )
                 )
                 + "\n"
@@ -1322,9 +1434,11 @@ def main():
         # be able to tell them apart from a cargo/cmake row it CAN skip. Without
         # this field the consumer would have to re-derive the builder from
         # `lang`, which is the proxy phase-344 W2 already found wrong.
+        fixture_rows = load(a.manifest)
+        workspace_rows = load_workspace_fixtures(a.manifest)
         for kind, rows in (
-            ("fixture", load(a.manifest)),
-            ("workspace_fixture", load_workspace_fixtures(a.manifest)),
+            ("fixture", fixture_rows),
+            ("workspace_fixture", workspace_rows),
         ):
             for e in rows:
                 if e.get("skip_build"):
@@ -1370,7 +1484,9 @@ def main():
         #
         # cmake rows are excluded (`is_cargo_row`) because `fixtures-build.sh`
         # only routes the cargo path through `nros_fixture_target_dir_flag`.
-        rows = [e for e in load(a.manifest) if not e.get("skip_build") and is_cargo_row(e)]
+        rows = [
+            e for e in load(a.manifest) if not e.get("skip_build") and is_cargo_row(e)
+        ]
         derived = shell_group_batch(
             (e.get("platform", ""), cargo_args(e), env_str(e)) for e in rows
         )
@@ -1477,7 +1593,7 @@ def main():
         entries = []
         ws_rows = load_workspace_fixtures(a.manifest)
         for e in ws_rows:
-            if not matches_filters(e, a, all_entries=ws_rows):
+            if not matches_filters(e, a, all_entries=ws_rows, kind="workspace_fixture"):
                 continue
             if a.for_probe and e.get("skip_probe"):
                 continue
@@ -1513,7 +1629,9 @@ def main():
             # cargo record: <dir>\x1f<env>\x1f<cargo-args>
             # With --with-platform: <platform>\x1f<dir>\x1f<env>\x1f<cargo-args>
             prefix = f"{e.get('platform', '')}{SEP}" if a.with_platform else ""
-            sys.stdout.write(f"{prefix}{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n")
+            sys.stdout.write(
+                f"{prefix}{e['dir']}{SEP}{env_str(e)}{SEP}{cargo_args(e)}\n"
+            )
 
 
 if __name__ == "__main__":
