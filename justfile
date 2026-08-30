@@ -3157,6 +3157,20 @@ setup-launch-resolve:
         # shellcheck source=scripts/build/launch-resolve-stale.sh
         source "$root/scripts/build/launch-resolve-stale.sh"
         if ! nros_launch_resolve_stale "$root"; then
+            # SAY SO. A bare `exit 0` made this recipe print nothing on the
+            # skip path and `built:` on the build path, so "I rebuilt it" and
+            # "I decided not to" were indistinguishable from the outside —
+            # which is how issue 0921 stayed hidden: the recipe reported
+            # success, the binary kept a stale pin, and the disagreement
+            # surfaced two steps later in `nros sync` naming neither.
+            #
+            # The PIN is the informative part, because it is the value the 0409
+            # guard compares against the CLI's. Printing it turns "why does sync
+            # think these disagree?" into one line of output.
+            _pin="$("$bin" --version 2>/dev/null \
+                | sed -n 's/.*play_launch \([0-9a-f]*\).*/\1/p' | head -1)"
+            echo "[setup-launch-resolve] already current: $bin"
+            echo "                       play_launch ${_pin:-unknown} — sources unchanged, not rebuilt"
             exit 0
         fi
     fi
@@ -3229,7 +3243,12 @@ setup-launch-resolve:
     # shellcheck source=scripts/build/launch-resolve-stale.sh
     source "$root/scripts/build/launch-resolve-stale.sh"
     nros_launch_resolve_stamp "$root" > "$bin.nros-source-stamp"
+    # Same reasoning as the skip path above: name the pin, since that is what
+    # the 0409 guard compares and what a mismatch will be reported against.
+    _pin="$("$bin" --version 2>/dev/null \
+        | sed -n 's/.*play_launch \([0-9a-f]*\).*/\1/p' | head -1)"
     echo "[setup-launch-resolve] built: $bin"
+    echo "                       play_launch ${_pin:-unknown}"
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
