@@ -110,6 +110,21 @@ exclusions=(
     --exclude 'target-*/'
     --exclude 'build/'
     --exclude 'build-*/'
+    # issue 0925 — the GENERATED workspace manifests, which NAME the `build/`
+    # members the rule above excludes.
+    #
+    # `examples/workspaces/<ws>/Cargo.toml` is a build artifact (phase-383 W3.a,
+    # and its first line says "GENERATED ... DO NOT EDIT"). Its `members` are
+    # `build/<platform>-<rmw>/<entry>` paths from the generating host. Copying
+    # it while excluding `build/` hands the mirror a manifest whose members do
+    # not exist, and `cargo metadata` fails on the first one — so EVERY fixture
+    # build in the box died in `generate-bindings`, on a different workspace
+    # each time. Four ~25 min cycles were spent on it.
+    #
+    # Excluded rather than repaired: `nros build` regenerates it in the mirror
+    # from what the mirror actually has, which is the only correct member list
+    # for that tree. None of the seven is tracked.
+    --exclude '/examples/workspaces/*/Cargo.toml'
     --exclude '.cargo-target-box/'
     # HOST-BUILT TOOL BINARIES. Everything else under `third-party/` is SOURCE
     # and must be mirrored (zenoh-pico, cyclonedds, px4, …); these two are

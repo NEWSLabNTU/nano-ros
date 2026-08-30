@@ -14,6 +14,12 @@ set -o pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root" || exit 1
 
+# issue 0726 — `grep -q` in a conditional cannot tell a tool ERROR (>=2) from a
+# NON-MATCH (1), and the two failure directions are opposite: a grep that fails
+# to start would make this gate claim a lane does not sweep when it does.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$root/scripts/lib/grep-q.sh"
+
 # ONE extraction, used by both the selftest and the real check — a control that
 # exercises a copy of the logic proves nothing about the logic that ships.
 extract_body() {
@@ -33,14 +39,22 @@ selftest() {
     cargo nextest run'
     body_bad='    cargo nextest run'
 
-    if ! grep -q 'nros-peer-sweep' <<<"$body_ok"; then
-        echo "check-peer-sweep-lanes selftest: FAILED to accept a sweeping lane" >&2
-        return 1
-    fi
-    if grep -q 'nros-peer-sweep' <<<"$body_bad"; then
-        echo "check-peer-sweep-lanes selftest: FAILED to reject a non-sweeping lane" >&2
-        return 1
-    fi
+    nros_grep_q 'nros-peer-sweep' <<<"$body_ok"
+    case $? in
+        0) ;;
+        1)
+            echo "check-peer-sweep-lanes selftest: FAILED to accept a sweeping lane" >&2
+            return 1
+            ;;
+    esac
+    nros_grep_q 'nros-peer-sweep' <<<"$body_bad"
+    case $? in
+        1) ;;
+        0)
+            echo "check-peer-sweep-lanes selftest: FAILED to reject a non-sweeping lane" >&2
+            return 1
+            ;;
+    esac
 
     # The extraction has to stop at the next recipe, or a LATER lane's sweep
     # would satisfy an earlier lane that has none — the failure mode that makes
@@ -62,10 +76,14 @@ SELFTEST_EOF
         echo "check-peer-sweep-lanes selftest: body extraction returned NOTHING" >&2
         return 1
     fi
-    if grep -q 'nros-peer-sweep' <<<"$extracted"; then
-        echo "check-peer-sweep-lanes selftest: body extraction LEAKED into the next recipe" >&2
-        return 1
-    fi
+    nros_grep_q 'nros-peer-sweep' <<<"$extracted"
+    case $? in
+        1) ;;
+        0)
+            echo "check-peer-sweep-lanes selftest: body extraction LEAKED into the next recipe" >&2
+            return 1
+            ;;
+    esac
     return 0
 }
 
@@ -94,7 +112,8 @@ for lane in "${LANES[@]}"; do
         fail=1
         continue
     fi
-    if ! grep -q 'nros-peer-sweep' <<<"$body"; then
+    nros_grep_q 'nros-peer-sweep' <<<"$body"
+    if [ $? -eq 1 ]; then
         echo "check-peer-sweep-lanes: '$lane' runs the peer suites but never sweeps."
         echo "  Add, before nextest starts:"
         echo "      cargo run -q -p nros-tests --bin nros-peer-sweep 2>/dev/null || true"
