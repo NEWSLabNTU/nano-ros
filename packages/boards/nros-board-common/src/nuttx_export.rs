@@ -156,7 +156,9 @@ pub fn snapshot_or_tree(
 /// rule): the config IS the memory map and the ABI, so a reconfigure must
 /// invalidate anything derived from it, including on the losing branch.
 pub fn include_root(nuttx_dir: &Path) -> PathBuf {
-    // Issue 0525 — ONE spelling of this resolution, shared with `nuttx-sys`'s
-    // bindgen script, which cannot reach these board helpers.
+    // Issue 0525 — ONE spelling of this resolution, shared with any standalone
+    // build script that cannot reach these board helpers. (`nuttx-sys`'s bindgen
+    // script was the original such consumer; phase-400 deleted it as
+    // unreferenced, but the shared spelling is the point, not the consumer.)
     nros_build_paths::nuttx_include_root(nuttx_dir)
 }

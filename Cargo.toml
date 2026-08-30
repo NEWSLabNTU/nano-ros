@@ -357,14 +357,6 @@ exclude = [
     "packages/rmw/transport-callbacks",
     # Shared bare-metal helpers (PRNG, sleep, libc stubs) — embedded-only
     "packages/platform/nros-baremetal-common",
-    # lwIP BSD socket bindings for FreeRTOS (requires FREERTOS_DIR + LWIP_DIR)
-    "packages/drivers/sys/freertos-lwip-sys",
-    # NetX Duo BSD socket bindings for ThreadX (requires THREADX_DIR + NETX_DIR)
-    "packages/drivers/sys/threadx-netx-sys",
-    # NuttX POSIX socket bindings (requires NUTTX_DIR)
-    "packages/drivers/sys/nuttx-sys",
-    # Zephyr POSIX socket bindings (requires ZEPHYR_BUILD_DIR)
-    "packages/drivers/sys/zephyr-posix-sys",
     # Serial (UART) link layer (embedded-only, requires cross-compilation)
     "packages/rmw/zenoh/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)
