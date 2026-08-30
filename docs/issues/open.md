@@ -73,5 +73,6 @@ fails if this block drifts.
 - **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
 - **#0910** (rmw, build) — migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no longer shipped, and our config generator is 54 knobs behind See `0910-*`.
 - **#0938** (cli) — RFC-0031's `[deploy.<t>].rmw` precedence rung never fires — one production caller passes `target = None`, and both live uses are masked See `0938-*`.
+- **#0938** (cli) — Two verbs resolve RMW from different tables: `nros build` reads `[image.*]`, `nros plan` / `codegen-system` read `[deploy.<t>].rmw` See `0938-*`.
 
 <!-- END GENERATED open-issue list -->
