@@ -225,7 +225,7 @@ lever lands and nothing else changes.
 | --- | --- | --- | --- |
 | W2 | gate orchestration **and** cbindgen, together | ~~**50.4 s**~~ see below | ~~42.6 %~~ |
 | W3 | ~~`bindgen` -> committed output~~ RETRACTED | ~~20.6 s~~ 0 s | — |
-| W4 | attribute the contested pool inside the leaf's graph | (enabling) | — |
+| W4 | *landed* — `just leaf-graph`: ask the build, not the workspace | (enabling) | — |
 | W1 | *landed* — unused dep removed | 1 crate | — |
 
 **Numbering note.** W1 keeps its number because it has landed and is cited by
@@ -465,20 +465,54 @@ first, and is now the only remaining item with a defensible premise.** Its whole
 job is to answer "what does this build actually resolve?" from the build itself
 rather than from the workspace. Everything above is what guessing costs.
 
-### W4 — attribute the contested pool inside the LEAF's graph
+### W4 — LANDED 2026-08-30. `just leaf-graph` — ask the build, not the workspace.
 
-Everything above uses reverse dependencies from the WORKSPACE
-(`cargo tree -i`), not from the leaf, because the leaf does not resolve
-standalone (`zephyr-build` comes from the west environment). The exclusive/
-contested split is therefore provisional.
+Everything above used reverse dependencies from the WORKSPACE (`cargo tree -i`),
+not from the leaf, because the leaf does not resolve standalone (`zephyr-build`
+comes from the west environment). Three estimates were built on that and all
+three were wrong. This wave removes the excuse.
 
-This wave is cheap insurance, not groundwork for its own sake: the orchestration
-number has already moved 31.9 % -> 2.6 % -> 12.6 % across three attribution
-methods, and only the last was computed from real dependency paths. Do this if a
-wrong estimate would be expensive; skip it if W2 is going to be measured
-end-to-end anyway, since the acceptance check there catches the same error.
+`scripts/nros-leaf-graph.py` (`just leaf-graph <target-dir>`) reads
+`<target-dir>/**/.fingerprint/<crate>-<hash>/*.json` — the files cargo writes for
+every unit it actually built, each carrying a `deps` array naming its dependency
+units. That is the edge set of the build that RAN: no re-resolution, no
+assumption about features or platform, and no need for the leaf to resolve
+standalone. `--exclusive-to X` then computes by FIXPOINT what would actually
+leave if X went, which is the calculation the failed estimates approximated by
+eye.
 
-*Acceptance:* a crate -> requirers table taken inside the west build.
+Host and target sides are reported separately, keyed on whether a target-triple
+component appears in the path rather than on directory depth. A cross build has
+two graphs in one target dir, and conflating them is how a host-only tool gets
+counted against firmware.
+
+**Validated against the method it replaces, including a real disagreement.** On
+`packages/cli/target`, the tool reported zerocopy's direct requirers as
+`ahash, half, ppv_lite86`; `cargo tree -i zerocopy -e normal,build` reported only
+`ahash`. The tool was right — adding `dev` to cargo's edge filter reproduces the
+tool's answer exactly:
+
+```
+cargo tree -i zerocopy -e normal,build      ->  ahash
+cargo tree -i zerocopy -e normal,build,dev  ->  ahash, half, ppv-lite86
+just leaf-graph packages/cli/target         ->  ahash, half, ppv_lite86
+```
+
+That mismatch is the phase in miniature: `cargo tree` answered a NARROWER
+question than the one being asked, silently, and the answer looked authoritative.
+The build had compiled the dev-dependency units; the query had excluded them.
+
+`--self-test` encodes the W2 failure as a regression case: in a graph where both
+`macros` and `cbindgen` require `serde`, dropping `macros` must NOT drop `serde`,
+and dropping both MUST. Two bugs were found and fixed by testing rather than
+reasoning — side detection assumed a top-level `target/`, and a `**` glob walked
+hundreds of thousands of files (0.11 s after bounding it).
+
+*Acceptance (met):* a crate -> requirers table taken from the build's own
+artifacts, cross-checked against `cargo tree -i` on a graph where both can be
+asked the same question.
+
+**Use it before quoting any future number in this phase.**
 
 ### W1 — landed
 
