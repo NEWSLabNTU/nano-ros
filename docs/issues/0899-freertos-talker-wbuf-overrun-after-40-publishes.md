@@ -339,6 +339,72 @@ Three earlier readings in this issue were wrong and are withdrawn:
   40/40/40 → 19/60/67 shift attributed to "fixing" this was run-to-run
   variance. Worth reporting upstream on its own merits; not this bug.
 
+## THE FIX, measured
+
+Committed on the zenoh-pico fork's patch line as `nano-ros-0899` (local — the
+agent does not push fork remotes, so the superproject pin still names
+`dac320e3` and must not be moved until the branch is pushed).
+
+**The lock cannot live in the transport** — the thing being freed cannot guard
+its own lifetime. `_z_session_t` gains `_mutex_transport`, a recursive mutex
+that outlives every teardown. `_z_send_n_msg` and `_z_send_n_batch` hold it for
+the whole send; both already take a `_z_session_t *`. `_z_send_t_msg` does not
+need it — its callers are the lease and read tasks, and the teardown joins the
+read task before freeing anything.
+
+`_mutex_inner` was NOT reusable: it guards the session's registries and is held
+across RX dispatch, so putting the tx path under it would invert an existing
+lock order.
+
+**The teardown side is a HANDSHAKE, not a critical section, and that distinction
+is the whole fix.** Wrapping the lock around close+clear+reopen is the obvious
+shape and it DEADLOCKS — `_z_link_free` closes the socket and blocks in lwIP
+until the stack completes it, which needs the publisher to make progress. That
+was measured, not predicted: a `gdb-multiarch` attach to the hung image (via a
+plain `-s` gdbstub opened only after the guest went quiet, so the guest ran at
+full speed until then) read a teardown-stage counter of 47 — inside
+`_z_link_free`. The image went quiet at the first or second lapse instead of
+asserting. Trading a crash for a hang is not a fix.
+
+So the lease task publishes the INVALIDATION under the lock and lets go:
+
+    _z_session_transport_lock(zsp);
+    zsp->_tp._type = _Z_TRANSPORT_NONE;
+    _z_session_transport_unlock(zsp);
+
+While that take is held, no publisher is inside the transport. After the
+release, every publisher reads `_Z_TRANSPORT_NONE`, takes the `default:` arm and
+returns `_Z_ERR_TRANSPORT_NOT_AVAILABLE` without touching one freed byte.
+`_z_open` already sets `_type` to NONE on entry and restores it on success, so
+the window closes by itself when the reopen lands, and a reopen that keeps
+failing keeps publishers erroring rather than blocking on a link that is not
+there.
+
+**A/B, mps2-an385 + FreeRTOS + lwIP under QEMU, talker WITH a listener peer
+attached, 80 s window, same router, same hour:**
+
+    before:  19 / 19 / 19          publishes, FreeRTOS queue.c assert EVERY run
+    after:   76 / 77 / 77 / 77 / 76 publishes, five runs, no assert, no hang
+
+Native Linux (POSIX mutexes) rebuilt and re-run against the same router: 40
+publishes in 40 s, unchanged.
+
+**Two measurement traps this A/B walked into first, both worth repeating:**
+
+* **Without the listener the bug does not reproduce.** A first "fix verified"
+  round scored 96/97/96 — and so did the control, because neither run had a
+  peer. Any A/B on this issue must start the listener.
+* **Diagnostic `printf`s hide it.** The probe-laden builds reached 67–106
+  publishes where the same code without prints died at 19. Every number above
+  comes from a build whose only probes fire on the anomaly itself.
+
+## What the fix does NOT fix
+
+Delivery still stops at the first lapse — the listener hears 19 (occasionally
+40) of the talker's 77. That is [[issue-0906]] and possibly a further defect in
+what a reopen restores; it was previously invisible because the crash arrived
+first. The crash is fixed; the session churn is not.
+
 ## Acceptance
 
 * The talker survives a sustained run with a peer attached.

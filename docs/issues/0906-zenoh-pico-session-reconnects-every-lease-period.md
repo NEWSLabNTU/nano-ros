@@ -66,6 +66,22 @@ continues — which is why it has gone unnoticed.
 * A session that dies on a timer is a strong candidate for interop flakiness
   reported elsewhere and attributed to discovery or to QEMU load.
 
+## A reconnect does not restore delivery
+
+Found while verifying [[issue-0899]]'s fix, which stopped the FreeRTOS image
+crashing at the first lapse and so made the next symptom visible for the first
+time.
+
+Talker and listener, both on mps2-an385, 80 s window, five runs: the talker
+publishes 76–77 messages and the listener hears **19** of them (40 in one run) —
+exactly the count up to the first lapse. Publishing continues, reconnects
+succeed, and the subscriber never receives another sample.
+
+So the churn is not merely wasteful. Either the subscription is not re-declared
+after `_z_reopen`, or it is re-declared and no longer matches. That is a
+third question this issue has to answer, and it is the one that actually costs
+messages.
+
 ## What to establish first
 
 Whose job the keepalive is, on this pairing:
