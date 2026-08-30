@@ -65,6 +65,36 @@ bundler now guards against.
    toolchain with a broken debugger, which is precisely the shape 0926 removed
    for openocd.
 
-Direction 4's caveat is the reason this is filed rather than dropped: a green
+Direction 4's caveat WAS the reason this is filed rather than dropped: a green
 check over a broken binary is the failure mode this whole campaign existed to
-remove, and it has quietly reappeared in one place.
+remove, and it had quietly reappeared in one place.
+
+## That caveat is fixed (2026-08-30) — the defect itself is not
+
+`[tool.*]` gained `smoke = [{ run, expect }]`: commands that must WORK once the
+dist is installed. `system = [..]` asks whether the libraries a dist links are
+present; this asks whether the thing does anything, and gdb is the proof the two
+differ — it resolves every library it names, exits 0, and prints nothing.
+
+`expect` matches a substring of the OUTPUT rather than an exit status, because a
+status probe passes this exact bug. Probes run with `LD_LIBRARY_PATH`,
+`PYTHONPATH` and `PYTHONHOME` removed so they measure the dist and not the
+caller's shell — the contamination that sent this issue's first diagnosis down a
+blind alley.
+
+All three surfaces that could have lied now report it:
+
+    nros setup --tool arm-none-eabi-gcc --check
+      [BROKEN]  tool  arm-none-eabi-gcc 13.2-nros2 — installed, every declared
+                library present, and `bin/arm-none-eabi-gdb --version` does not
+                work: expected `GNU gdb`, printed NOTHING
+    nros setup --check   -> same line, and "1 installed but not working"
+    just doctor          -> same line, and doctor goes red
+
+Declared for healthy dists too (openocd, qemu, riscv-none-elf-gcc), which all
+report `[OK]`: a check that exists only where something is known broken tests
+one binary, while declared across the class it tells you when a working one
+stops working.
+
+So direction 4 is now a legitimate choice rather than a quiet lie. The debugger
+is still broken, and this issue stays open for that.

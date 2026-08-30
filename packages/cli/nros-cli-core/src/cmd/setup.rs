@@ -1633,6 +1633,67 @@ fn tool_pin_status(index: &SdkIndex, name: &str, tool: &ToolPackage) -> (bool, V
     (false, held)
 }
 
+/// The first `[tool.*].smoke` entry that does not work, with what it printed.
+///
+/// issue 0929. `system = [..]` proves the libraries resolve; this proves the
+/// binary does something. `arm-none-eabi-gdb` is why both are needed: it links
+/// nothing missing, exits 0, and prints NOTHING, because ARM's embedded Python
+/// aborts during init. An exit-status probe calls that healthy.
+///
+/// Absent `smoke` means no opinion, not a pass — most dists have none yet, and
+/// silence must not read as coverage.
+fn failing_smoke(
+    index: &SdkIndex,
+    name: &str,
+    tool: &crate::orchestration::sdk_index::ToolPackage,
+) -> Option<(String, String)> {
+    let _ = index;
+    let store = crate::orchestration::sdk_store::store_root();
+    let prefix = crate::orchestration::sdk_store::tool_prefix(&store, name, &tool.version);
+    for probe in &tool.smoke {
+        let mut argv = probe.run.split_whitespace();
+        let Some(exe) = argv.next() else { continue };
+        let out = std::process::Command::new(prefix.join(exe))
+            .args(argv)
+            // A smoke check must measure the DIST, not the caller's shell. On a
+            // host with ROS sourced, `LD_LIBRARY_PATH` shadows a bundled
+            // library and `PYTHONPATH` redirects an embedded interpreter — both
+            // measured while diagnosing 0929, where the ROS path in gdb's error
+            // text sent the first diagnosis down a blind alley (issue 0774's
+            // class).
+            .env_remove("LD_LIBRARY_PATH")
+            .env_remove("PYTHONPATH")
+            .env_remove("PYTHONHOME")
+            .output();
+        let (text, note) = match out {
+            Ok(o) => (
+                format!(
+                    "{}{}",
+                    String::from_utf8_lossy(&o.stdout),
+                    String::from_utf8_lossy(&o.stderr)
+                ),
+                None,
+            ),
+            Err(e) => (String::new(), Some(format!("could not run it: {e}"))),
+        };
+        if let Some(n) = note {
+            return Some((probe.run.clone(), n));
+        }
+        if !text.contains(&probe.expect) {
+            let shown = if text.trim().is_empty() {
+                format!(
+                    "printed NOTHING; expected output containing `{}`",
+                    probe.expect
+                )
+            } else {
+                format!("expected `{}`, got:\n{}", probe.expect, text.trim())
+            };
+            return Some((probe.run.clone(), shown));
+        }
+    }
+    None
+}
+
 /// Issue 0466 finding (b) — is ONE tool at the version the index pins?
 ///
 /// The generic `--check` walks every class and answers "is anything missing".
@@ -1668,6 +1729,20 @@ fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
             .map(|k| k.as_str())
             .collect();
         if missing.is_empty() {
+            // issue 0929 — every library resolves; now ask whether it RUNS.
+            // Not the same question, and the difference is what let a toolchain
+            // with a dead debugger report `[OK]`.
+            if let Some((cmd, why)) = failing_smoke(index, name, tool) {
+                println!(
+                    "  [BROKEN]  tool    {name} {} — installed, every declared \
+                     library present, and `{cmd}` does not work:",
+                    tool.version
+                );
+                for line in why.lines().take(4) {
+                    println!("            {line}");
+                }
+                bail!("nros setup --tool {name} --check: present but not working");
+            }
             println!("  [OK]      tool    {name} {}", tool.version);
             return Ok(());
         }
@@ -1707,6 +1782,9 @@ fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
 /// remedy COMPUTED from the entry. Exit 1 when anything is missing.
 fn run_check_all(index: &SdkIndex) -> Result<()> {
     let mut missing = 0usize;
+    // Separate from `missing` only because the `report` closure below captures
+    // that one mutably; both are summed at the end.
+    let mut broken = 0usize;
     let mut report = |class: &str, name: &str, ok: ProbeResult, remedy: String| match ok {
         ProbeResult::Present => println!("  [OK]      {class:<7} {name}"),
         ProbeResult::Missing => {
@@ -1752,6 +1830,20 @@ fn run_check_all(index: &SdkIndex) -> Result<()> {
         } else {
             format!("{name} {} (store holds: {})", tool.version, held.join(", "))
         };
+        // issue 0929 — the same two questions this class already learned to ask
+        // one verb over: is the pin THERE, and does it WORK. Reporting a tool
+        // whose binaries are dead as `[OK]` is what made a broken debugger
+        // invisible to `nros setup --check` as well as to `--tool X --check`;
+        // a fix on one path only would have left the other lying.
+        let smoke_failure = present.then(|| failing_smoke(index, name, tool)).flatten();
+        if let Some((cmd, why)) = smoke_failure {
+            println!("  [BROKEN]  tool    {label} — `{cmd}` does not work");
+            for line in why.lines().take(2) {
+                println!("            {line}");
+            }
+            broken += 1;
+            continue;
+        }
         let ok = if present {
             ProbeResult::Present
         } else {
@@ -1883,8 +1975,17 @@ fn run_check_all(index: &SdkIndex) -> Result<()> {
         );
     }
 
-    if missing > 0 {
-        bail!("nros setup --check: {missing} declared dependenc(ies) missing (remedies above)");
+    if missing + broken > 0 {
+        if broken > 0 && missing == 0 {
+            bail!(
+                "nros setup --check: {broken} tool(s) installed but NOT WORKING \
+                 (above). Nothing is missing — reinstalling will not help."
+            );
+        }
+        bail!(
+            "nros setup --check: {missing} declared dependenc(ies) missing, \
+             {broken} installed but not working (remedies above)"
+        );
     }
     println!("nros setup --check: every probed declared dependency is present.");
     Ok(())

@@ -439,6 +439,31 @@ pub struct ToolPackage {
     /// the smoke check can fail with a bare loader error.
     #[serde(default)]
     pub system: Vec<String>,
+    /// issue 0929 — commands that must WORK once the dist is installed.
+    ///
+    /// `system` answers "are the libraries it links present?". That is not the
+    /// same question as "does it run", and the gap is not hypothetical:
+    /// `arm-none-eabi-gdb` resolves every shared library it names and still
+    /// does nothing, because ARM embeds a Python that fails to initialise. So
+    /// `--check` reported `[OK]` for a toolchain with a dead debugger — the
+    /// exact shape issue 0926 removed for openocd, reappearing one cause over.
+    #[serde(default)]
+    pub smoke: Vec<SmokeCheck>,
+}
+
+/// One "does it actually run?" probe for a `[tool.*]` dist (issue 0929).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SmokeCheck {
+    /// Argv, relative to the install prefix (`bin/arm-none-eabi-gdb --version`).
+    pub run: String,
+    /// Substring the command must print. Checked on stdout AND stderr, because
+    /// a tool is free to write its banner to either.
+    ///
+    /// Required, and the reason is the bug that motivated this: gdb EXITS 0
+    /// while printing nothing at all, so an exit-status probe calls it healthy.
+    /// Asserting on output is what distinguishes "ran" from "started".
+    pub expect: String,
 }
 
 /// A board's required SDK package set — the board→toolchain SSOT (Phase 191.1).

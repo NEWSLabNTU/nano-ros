@@ -46,6 +46,9 @@ build_sources = [
 # nros1 lacked slirp and couldn't network).
 [tool.qemu]
 version = "11.0.0-nros6"
+smoke = [
+    { run = "bin/qemu-system-arm --version", expect = "QEMU emulator version" },
+]
 # issue 0928 — the re-cut LANDED, and this pin was three months behind it.
 # -nros6 bundles its closure into `lib/` with `RUNPATH=$ORIGIN/../lib` (18
 # libs), so the 17 packages -nros2 needed a user to apt-install are gone.
@@ -90,6 +93,10 @@ install = "make -j$(nproc) && make install"
 # shipping a dist bundled everywhere except the library it could not resolve.
 [tool.arm-none-eabi-gcc]
 version = "13.2-nros2"
+smoke = [
+    { run = "bin/arm-none-eabi-gcc --version", expect = "Arm GNU Toolchain" },
+    { run = "bin/arm-none-eabi-gdb --version", expect = "GNU gdb" },
+]
 # `libcrypt` is on the bundler's host-only exclude list (linuxdeploy's), like
 # `libselinux` for qemu — so it stays the host's and stays declared. Deleting
 # the whole list with the ncurses entries was caught by
@@ -166,6 +173,9 @@ dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/release
 
 [tool.riscv-none-elf-gcc]
 version = "14.2-nros1"
+smoke = [
+    { run = "bin/riscv-none-elf-gcc --version", expect = "riscv-none-elf-gcc" },
+]
 upstream = "14.2.0-3" # xPack build (SSOT — was hardcoded only in the build script)
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-x86_64.tar.zst", sha256 = "0f7a938cf5724c6c4ac48af140ede038015d63df1a6460f671d1215fff5ba622" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-arm64.tar.zst", sha256 = "8eba3c6e8e9dd51ae0583146209100a5e09a670649f1ed0840c26608caa32095" }
@@ -217,6 +227,9 @@ install = "cargo install --path . --root {prefix} --locked --features vendored-o
 # looks like one they have.
 [tool.openocd]
 version = "0.12.0-nros2"
+smoke = [
+    { run = "bin/openocd --version", expect = "Open On-Chip Debugger" },
+]
 upstream = "v0.12.0" # upstream tag (SSOT — build script no longer hand-derives)
 dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-linux-x86_64.tar.zst", sha256 = "0c999015212391add99f0428b2d8401383f3a65ff5cc43157f71c2eb15b5b47c" }
 dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-linux-arm64.tar.zst", sha256 = "3235ef67860cc83ac6ac95f940801602683e25ecfed00c968ef01580e5115b6d" }
@@ -1124,6 +1137,23 @@ check = { cmd = "nros" }
 # that nothing needs — a declaration drifting away from reality, which is the
 # failure this campaign exists to remove. `check-dist-runtime-deps` re-adds any
 # of them the moment a dist actually needs it, so nothing is lost by deleting.
+# --- does it RUN? (issue 0929) ------------------------------------------------
+#
+# `system = [..]` asks whether the libraries a dist links are present. That is
+# not the same question as whether the thing works, and `arm-none-eabi-gdb` is
+# the proof: it resolves every library it names, exits 0, and prints NOTHING,
+# because ARM embeds a Python that fails to initialise. `--check` called that
+# `[OK]` — the shape 0926 removed for openocd, back one cause over.
+#
+# So `expect` is a substring of the OUTPUT, not an exit status: a status probe
+# passes the very bug this exists to catch. Probes run with LD_LIBRARY_PATH,
+# PYTHONPATH and PYTHONHOME removed, so they measure the dist rather than the
+# caller's shell.
+#
+# Declared for healthy dists too, deliberately. A check that exists only where
+# something is known broken tests one binary; declared across the class it
+# tells you when a working one stops working.
+
 # --- dist RUNTIME libraries (issue 0926, phase-327 W4) ----------------------
 #
 # Measured, not hand-listed: the external ldd closure of every binary in each
