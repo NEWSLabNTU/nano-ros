@@ -538,14 +538,24 @@ config NROS_ZENOH_QUERYABLE
 
 config NROS_ZENOH_LINK_TCP
     bool "TCP link"
+    depends on NET_SOCKETS
     default y
     help
       Enable TCP transport link. This is the primary transport for
       connecting to a zenoh router.
       Maps to Z_FEATURE_LINK_TCP.
 
+      phase-400 W5 — `depends on NET_SOCKETS` MIRRORS the resolver rule
+      `transport.kind=tcp requires ip_stack` (RFC-0086 D2). Without it this
+      symbol stayed `y` under CONFIG_NETWORKING=n and the build died in
+      zenoh-pico on AF_INET / socklen_t / struct sockaddr — a config error
+      surfacing as a link error two layers down. The rule LIVES in the
+      resolver, because the cargo and CMake lanes have no `depends on`; this
+      is the Zephyr projection of it, held by the drift test.
+
 config NROS_ZENOH_LINK_UDP_UNICAST
     bool "UDP unicast link"
+    depends on NET_SOCKETS
     default n
     help
       Enable UDP unicast transport link.
@@ -553,6 +563,7 @@ config NROS_ZENOH_LINK_UDP_UNICAST
 
 config NROS_ZENOH_LINK_UDP_MULTICAST
     bool "UDP multicast link"
+    depends on NET_SOCKETS
     default n
     help
       Enable UDP multicast transport link.
@@ -560,6 +571,7 @@ config NROS_ZENOH_LINK_UDP_MULTICAST
 
 config NROS_ZENOH_SCOUTING
     bool "Scouting (UDP discovery)"
+    depends on NET_SOCKETS
     default n
     help
       Enable scouting for automatic router discovery via UDP.
@@ -567,6 +579,7 @@ config NROS_ZENOH_SCOUTING
 
 config NROS_ZENOH_LINK_SERIAL
     bool "Serial/UART link"
+    depends on SERIAL
     default n
     help
       Enable serial/UART transport link.
