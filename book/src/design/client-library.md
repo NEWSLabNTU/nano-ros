@@ -28,7 +28,7 @@ The same `Promise<T>` value serves three usage patterns. None of the other clien
 let promise = client.call(&request)?;
 // ... continue running other work ...
 executor.spin_once(10);
-if let Some(reply) = promise.try_recv()? {
+if let Some(reply) = promise.take()? {
     handle(reply);
 }
 ```

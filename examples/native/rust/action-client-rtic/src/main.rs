@@ -3,7 +3,7 @@
 //! Validates the RTIC action client pattern on native x86:
 //! - `Executor<_, 0, 0>` (zero callback arena)
 //! - `spin_once(0)` (non-blocking I/O drive)
-//! - `client.send_goal()` + `promise.try_recv()` for acceptance
+//! - `client.send_goal()` + `promise.take()` for acceptance
 //! - `client.try_recv_feedback()` for feedback
 //!
 //! Note: `Promise::wait()` and `FeedbackStream::wait_next()` are NOT usable
@@ -60,7 +60,7 @@ fn main() {
     let mut accepted = false;
     for _ in 0..1000 {
         executor.spin_once(core::time::Duration::from_millis(0));
-        if let Ok(Some(result)) = promise.try_recv() {
+        if let Ok(Some(result)) = promise.take() {
             accepted = result;
             break;
         }

@@ -3,7 +3,7 @@
 //! Validates the RTIC integration pattern on native x86:
 //! - `Executor<_, 0, 0>` (zero callback arena)
 //! - `spin_once(0)` (non-blocking I/O drive)
-//! - `subscription.try_recv()` (manual polling)
+//! - `subscription.take()` (manual polling)
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/rtic-listener/`.
 
@@ -44,7 +44,7 @@ fn main() {
     loop {
         executor.spin_once(core::time::Duration::from_millis(0));
 
-        match subscription.try_recv() {
+        match subscription.take() {
             Ok(Some(msg)) => {
                 nros_info!(&LOGGER, "I heard: [{}]", msg.data);
             }

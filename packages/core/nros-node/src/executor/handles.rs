@@ -1096,7 +1096,18 @@ impl<M, const RX_BUF: usize> Drop for Subscription<M, RX_BUF> {
 
 impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// Try to receive a typed message (non-blocking).
-    pub fn try_recv(&mut self) -> Result<Option<M>, NodeError> {
+    /// Take one message if the middleware has one — phase-379 W3.
+    ///
+    /// Named `take` after rcl (`rcl_take`) and rclcpp (`Subscription::take`),
+    /// which spell the non-blocking receive that way — as does our own C
+    /// surface. NOT after rclrs: its subscription API is callback/worker-driven
+    /// and has no public polling counterpart at all (its `take_*` methods are
+    /// private), which is why the ledger records this as an `extension` against
+    /// the Rust reference rather than a match. `try_recv` was Rust
+    /// channel vocabulary that reads as a different contract to a ROS 2 user:
+    /// both are non-blocking and both report emptiness without failing, so
+    /// nothing asked for the other word. Renamed as a clean break, no shim.
+    pub fn take(&mut self) -> Result<Option<M>, NodeError> {
         match self
             .handle
             .try_recv_raw(&mut self.buffer)
@@ -1250,7 +1261,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
             // registered — the wake would otherwise be delivered to the
             // previous waker (or nowhere) and the task would hang.
             self.handle.register_waker(cx.waker());
-            match self.try_recv() {
+            match self.take() {
                 Ok(Some(msg)) => core::task::Poll::Ready(Ok(msg)),
                 Ok(None) => core::task::Poll::Pending,
                 Err(e) => core::task::Poll::Ready(Err(e)),
@@ -1283,7 +1294,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         let mut budget = WaitBudget::new(max_spins, timeout);
         loop {
             executor.spin_once(spin_interval);
-            if let Some(msg) = self.try_recv()? {
+            if let Some(msg) = self.take()? {
                 return Ok(Some(msg));
             }
             if !budget.tick() {
@@ -1815,7 +1826,7 @@ impl<M: RosMessage + Unpin, const RX_BUF: usize> futures_core::Stream for Subscr
         let this = self.get_mut();
         // Register-then-check: see Subscription::recv for rationale.
         this.handle.register_waker(cx.waker());
-        match this.try_recv() {
+        match this.take() {
             Ok(Some(msg)) => core::task::Poll::Ready(Some(Ok(msg))),
             Ok(None) => core::task::Poll::Pending,
             Err(e) => core::task::Poll::Ready(Some(Err(e))),
@@ -2047,7 +2058,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// let mut promise = client.call(&request)?;
     /// loop {
     ///     executor.spin_once(core::time::Duration::from_millis(10));
-    ///     if let Some(reply) = promise.try_recv()? {
+    ///     if let Some(reply) = promise.take()? {
     ///         break;
     ///     }
     /// }
@@ -2227,7 +2238,18 @@ impl<T> Promise<'_, T> {
     ///
     /// Returns `Ok(Some(reply))` if the reply has arrived,
     /// `Ok(None)` if still pending.
-    pub fn try_recv(&mut self) -> Result<Option<T>, NodeError> {
+    /// Take one message if the middleware has one — phase-379 W3.
+    ///
+    /// Named `take` after rcl (`rcl_take`) and rclcpp (`Subscription::take`),
+    /// which spell the non-blocking receive that way — as does our own C
+    /// surface. NOT after rclrs: its subscription API is callback/worker-driven
+    /// and has no public polling counterpart at all (its `take_*` methods are
+    /// private), which is why the ledger records this as an `extension` against
+    /// the Rust reference rather than a match. `try_recv` was Rust
+    /// channel vocabulary that reads as a different contract to a ROS 2 user:
+    /// both are non-blocking and both report emptiness without failing, so
+    /// nothing asked for the other word. Renamed as a clean break, no shim.
+    pub fn take(&mut self) -> Result<Option<T>, NodeError> {
         // Phase 120: NoData (no reply yet) is the steady-state polling
         // condition — map to Ok(None) instead of ServiceRequestFailed.
         match match self.handle.try_recv_reply_raw(self.reply_buffer) {
@@ -2272,7 +2294,7 @@ impl<T> Promise<'_, T> {
         // Always spin at least once so a zero-timeout still polls.
         loop {
             executor.spin_once(spin_interval);
-            if let Some(result) = self.try_recv()? {
+            if let Some(result) = self.take()? {
                 return Ok(result);
             }
             if !budget.tick() {
@@ -2293,7 +2315,7 @@ impl<T> core::future::Future for Promise<'_, T> {
         // Register-then-check (closes the race where a reply lands
         // between try_recv returning None and the waker registering).
         this.handle.register_waker(cx.waker());
-        match this.try_recv() {
+        match this.take() {
             Ok(Some(reply)) => core::task::Poll::Ready(Ok(reply)),
             Ok(None) => core::task::Poll::Pending,
             Err(e) => core::task::Poll::Ready(Err(e)),
@@ -2340,7 +2362,7 @@ impl<T> Promise<'_, T> {
         Fut: core::future::Future<Output = ()>,
     {
         loop {
-            match self.try_recv()? {
+            match self.take()? {
                 Some(reply) => return Ok(reply),
                 None => yield_fn().await,
             }

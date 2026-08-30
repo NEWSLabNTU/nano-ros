@@ -502,7 +502,7 @@ fn test_tls_talker_listener_communication(
 /// - `Executor<_, 0, 0>` (zero callback arena)
 /// - `spin_once(0)` (non-blocking I/O drive)
 /// - `publisher.publish()` (direct, outside executor)
-/// - `subscription.try_recv()` (manual polling)
+/// - `subscription.take()` (manual polling)
 #[rstest]
 fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     use std::process::Command;

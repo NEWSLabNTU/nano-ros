@@ -166,7 +166,7 @@ fn client_scenario_2() {
             let start = Instant::now();
             loop {
                 executor.spin_once(core::time::Duration::from_millis(10));
-                match promise.try_recv() {
+                match promise.take() {
                     Ok(Some(_)) => break,
                     Ok(None) => {
                         if start.elapsed() > Duration::from_secs(5) {
@@ -230,7 +230,7 @@ fn publish_scenario_3() {
                 let call_start = Instant::now();
                 loop {
                     executor.spin_once(core::time::Duration::from_millis(10));
-                    match promise.try_recv() {
+                    match promise.take() {
                         Ok(Some(_)) => break,
                         Ok(None) => {
                             if call_start.elapsed() > Duration::from_secs(5) {

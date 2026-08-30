@@ -1228,26 +1228,69 @@ pub use nros_params::{
 /// ```
 /// use nros::prelude::*;
 /// ```
-pub mod prelude {
+/// phase-379 W5 — the RTOS machinery, named explicitly.
+///
+/// The second tier of the two-tier surface. `nros::prelude` is the API a ported
+/// ROS 2 node uses; everything here exists because the target is an RTOS, has no
+/// correspondent in rclrs/rclcpp/rclc, and a ROS 2 developer reading a node
+/// should not have to step over it.
+///
+/// Nothing moved out of `nros::` — these are re-exports, and every name is still
+/// reachable at its old path. What changed is that they are no longer dragged in
+/// by `use nros::prelude::*`.
+///
+/// The membership rule is mechanical rather than taste: a name belongs in the
+/// PRELUDE iff the parity ledger gives it a non-`extension` verdict — i.e. it
+/// corresponds to something in rclrs, rclcpp or rclc. Names with no
+/// correspondent belong here, unless they are load-bearing for startup
+/// (`ExecutorConfig`, `SpinOptions`), which is an argued allow-list rather than
+/// an exception anyone may grow.
+pub mod embedded {
+    // Wire encoding. A node publishes typed messages; these are for code that
+    // handles bytes, which upstream hides entirely.
+    pub use crate::{CdrReader, CdrWriter};
+
+    // Handle bookkeeping — the static tables that replace an allocator.
+    #[cfg(feature = "rmw-cffi")]
+    pub use crate::{HandleId, HandleSet, InvocationMode};
+
+    // Component/runtime plumbing, and the source-metadata capture the
+    // orchestration layer records. None of it appears in a ported node.
+    pub use crate::{MetadataRecorder, NodeRuntimeAdapter, RuntimeNodeRecord};
+
+    // Entity REGISTRATION vocabulary. A ported node writes
+    // `create_publisher(...)`; these are what the declaration macros and the
+    // orchestration layer use to describe what was created.
     pub use crate::{
-        CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
-        QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, RosMessage,
-        RosService, Serialize, StandaloneNode, SubscriptionHandle, TopicInfo,
+        ActionTag, Callback, CallbackEffectKind, CallbackEffects, DeclaredNode,
+        DeclaredNodeRuntime, EntityKind, NodeRuntime, ServiceTag, SourceLocationMetadata,
+        SourceNameKind, SubscriptionTag, record_node_metadata, register_node,
+    };
+    // Gated where the root gates it — the export follows the capability, not
+    // the tier.
+    #[cfg(feature = "alloc")]
+    pub use crate::SourceMetadataExport;
+}
+
+pub mod prelude {
+    // phase-379 W5 — the RTOS machinery moved to `nros::embedded`. Removed
+    // here rather than re-exported from both: a two-tier surface that still
+    // drags tier two in through the glob is one tier with extra words.
+
+    pub use crate::{
+        Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle, QoSDurabilityPolicy,
+        QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy, RosMessage, RosService, Serialize,
+        StandaloneNode, SubscriptionHandle, TopicInfo,
     };
 
     // Re-export component-mode API.
     #[cfg(feature = "rmw-cffi")]
     pub use crate::NodeExecutorRuntime;
     #[cfg(feature = "alloc")]
-    pub use crate::SourceMetadataExport;
     pub use crate::{
-        ActionTag, Callback, CallbackEffectKind, CallbackEffects, DeclaredNode,
-        DeclaredNodeRuntime, EntityKind, MetadataRecorder, Node, NodeActionClient,
-        NodeActionServer, NodeContext, NodeDeclError, NodeOptions, NodeParameter, NodePublisher,
-        NodeResult, NodeRuntime, NodeRuntimeAdapter, NodeServiceClient, NodeServiceServer,
-        NodeSubscription, NodeTimer, ParameterDefault, RuntimeNodeRecord, ServiceTag,
-        SourceLocationMetadata, SourceNameKind, SubscriptionTag, node, record_node_metadata,
-        register_node,
+        Node, NodeActionClient, NodeActionServer, NodeContext, NodeDeclError, NodeOptions,
+        NodeParameter, NodePublisher, NodeResult, NodeServiceClient, NodeServiceServer,
+        NodeSubscription, NodeTimer, ParameterDefault, node,
     };
 
     // Re-export lifecycle types
@@ -1258,8 +1301,8 @@ pub mod prelude {
 
     // Re-export executor config + handle types (always available)
     pub use crate::{
-        ExecutorConfig, GuardCondition, HandleId, HandleSet, InvocationMode, NodeError,
-        SessionMode, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, TransportError, Trigger,
+        ExecutorConfig, GuardCondition, NodeError, SessionMode, SpinOnceResult, SpinOptions,
+        SpinPeriodPollingResult, TransportError, Trigger,
     };
 
     // issue 0687 — `ExecutorConfig::from_env()` is an extension trait now (the

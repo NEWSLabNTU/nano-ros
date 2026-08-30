@@ -394,12 +394,19 @@ autoware survey nodes call. The `types` stage has already produced two:
 `cpp:FutureReturnCode` (we express SUCCESS and TIMEOUT, not INTERRUPTED, so a
 ported `spin_until_future_complete` caller cannot tell shutdown from timeout)
 and `rust:RclReturnCode` (we have the type and do not export it — issue 0783).
-`init` added a third and it is the largest of them: **nano-ros has no shutdown
-hook at all** — not `rclcpp::on_shutdown`, not `Context::add_on_shutdown_callback`,
-not the pre-shutdown variant that runs BEFORE entities are torn down. Nothing
-about `no_std` prevents a fixed-capacity callback array, and a node that must
-park an actuator or release a bus on the way down has nowhere to do it. That
-matters more on a device than on a desktop.
+~~`init` added a third and it is the largest of them: **nano-ros has no shutdown
+hook at all**.~~ **DONE — corrected 2026-08-30.** True when written; the
+capability landed since. `Executor` carries `add_pre_shutdown_callback` /
+`add_on_shutdown_callback` (plus `remove_*` and `shutdown_callback_count`) over
+fixed-capacity arrays sized by `MAX_SHUTDOWN_CBS`, and the C surface exposes
+`nros_executor_add_pre_shutdown_callback` / `..._add_on_shutdown_callback`. The
+prediction in the original text held exactly: nothing about `no_std` prevented a
+fixed-capacity callback array.
+
+Recorded rather than deleted, because it was nearly re-implemented from this
+paragraph — a phase doc that describes a gap someone has since closed is a
+worse trap than one that describes nothing, and the only thing that caught it
+was grepping for the symbol before writing it.
 
 `node` added the first `rename` rows, and they are the cheapest work in the
 campaign: **`Node::create_subscriber` should be `create_subscription`.** rclrs,

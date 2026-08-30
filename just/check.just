@@ -118,7 +118,7 @@ fast-serial: \
     absolute-paths \
     c-fmt cpp-fmt python \
     nuttx-integration-makefile eyre-context-alias core-only-predicate workspace-build-output cc-build-policy ffi-struct-mirrors sizes-header-mirrors retired-submodule-refs no-absolute-model-paths \
-    cpp-freestanding-includes fixtures-manifest fixture-id-guard generated-leaf-regenerable cargo-config-tracked doc-refs book-links book-no-just emitter-just-spelling issue-index roadmap-status sysdep-remedies \
+    cpp-freestanding-includes fixtures-manifest fixture-id-guard generated-leaf-regenerable cargo-config-tracked doc-refs book-links book-no-just emitter-just-spelling issue-index roadmap-status prelude-tiers sysdep-remedies \
     export-f-closure peer-sweep-lanes \
     activate-shells build-root fixture-groups rmw-descriptors artifact-identity-budget \
     cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs fixture-binary-names manifests-parse build-rs-rerun-paths \
@@ -1630,6 +1630,14 @@ interface-glob-configure-depends:
 # committing to a run.
 tier-preconditions:
     @bash scripts/check-tier-preconditions.sh
+
+# phase-379 W5 — `nros::prelude` is the rclrs-shaped API, `nros::embedded` is
+# the RTOS machinery. Membership is a LEDGER QUERY (a name may sit in the
+# prelude only if the parity ledger does not call it an `extension`), plus an
+# argued allow-list for the extensions a node cannot start without.
+[private]
+prelude-tiers:
+    @python3 scripts/check-prelude-tiers.py
 
 # Every lane that runs the peer-spawning suites sweeps first (issues 0659,
 # 0923). The reaper's own unit tests call `sweep_in` directly, so they cannot
