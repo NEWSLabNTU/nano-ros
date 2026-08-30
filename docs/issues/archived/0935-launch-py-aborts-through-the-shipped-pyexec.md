@@ -2,7 +2,7 @@
 id: 935
 title: "Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s
   inputs and outputs travel by a thread-local the dlopen split duplicated"
-status: open
+status: resolved
 type: bug
 area: tooling, cli
 related: [0914, 0897, 0915, phase-332]
@@ -105,3 +105,45 @@ shape issue 0914 asked for and the fixtures already exist. It must SKIP (not
 pass) where no interpreter is usable, or it re-creates the hole one level down.
 Note `multihost_partition_bake` currently has no Python probe, so on a
 Python-less host it fails rather than skipping.
+
+## Resolved (2026-08-30)
+
+`exec_file` now carries its context BOTH ways — the shape `$(eval …)` always had
+and the reason that half never broke:
+
+* the request carries `configs`, so the object stands up ITS OWN launch context
+  around the execution;
+* the response carries `captures` — nodes, containers, load_nodes and the global
+  parameters `SetParameter` writes — which the loader merges into the caller's
+  context. They used to be written to the object's copy and discarded when the
+  call returned.
+
+`merge_into` APPENDS rather than replaces: the traverser may already hold
+captures from XML siblings or an earlier include, and a `.launch.py` adds to
+that tree rather than becoming it.
+
+ABI version 1 -> 2 on both sides, and the loader rejects a missing `captures`
+explicitly. A v1 object with a v2 loader would run the file and return nothing —
+a tree resolving to no nodes, indistinguishable from an empty launch file — so
+it has to be a sentence rather than a silence.
+
+play_launch: NEWSLabNTU/play_launch@d16b354. Submodule pin bumped.
+
+### Tested at the two levels this needed
+
+* **ABI level** (play_launch): two tests asserting on the RESPONSE — captures
+  come back, and a configuration sent in the request reaches Python. That is the
+  only place this is visible in-process, since every in-process test links ONE
+  copy of the parser and a thread-local therefore looks shared.
+* **Packaging level** (nano-ros): `launch_py_resolves_as_shipped` invokes the
+  INSTALLED binary by path and asserts the Python-declared node reaches the
+  model.
+
+Both confirmed by removing the fix and watching them go red.
+
+### Issue 0914's residue, closed with it
+
+`host_python_available()` is now a shared helper and `multihost_partition_bake`
+uses it too. Without a probe those tests FAILED on a Python-less host where they
+should skip — "no Python here" and "the pair is broken" produce the same parse
+error, which is the vacuous shape 0914 named.
