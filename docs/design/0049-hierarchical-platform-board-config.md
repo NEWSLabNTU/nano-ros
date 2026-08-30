@@ -38,6 +38,16 @@ pattern adopted: schema declared centrally, one file per ownership layer
 inside that layer's package, fixed resolution order, capability-derived
 defaults at the hardware layers.
 
+> **Amended by [RFC-0086](0086-unified-configuration-transport-tenant-and-coupling.md)
+> (2026-08-30), implemented by phase-400.** Three changes. (1) The ladder gains
+> knob-to-knob constraints — `requires` / `implies` / `exactly-one-of` — because
+> capability cross-checking alone cannot express that choosing a transport turns
+> off the links and drivers it does not use. (2) The platform axis is moved into
+> its package and resolved by search path, which is what this RFC's own "no
+> central file" rule requires and what `config/<p>/` does not do. (3) The
+> `[knobs.zenoh.tx]` / `[build.zenoh]` sections are keyed on the resolved
+> backend, closing the leak RFC-0071 D8 names.
+
 ## Design
 
 ### Ownership — one schema, one file per package, no central file
