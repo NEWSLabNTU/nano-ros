@@ -35,6 +35,32 @@ The workflow already exports the *correct* v2 variables (`ACTIONS_RESULTS_URL`,
 `ACTIONS_RUNTIME_TOKEN`), matching the current upstream docs. The configuration
 was right; the binary was too old to read it.
 
+> **CORRECTION, 2026-08-30 — the second sentence was false, and it kept this
+> issue open for two days after the bump appeared to close it.** The workflow
+> named the right variables but could not read them:
+>
+>     export ACTIONS_RESULTS_URL="${ACTIONS_RESULTS_URL:-}"
+>
+> is self-referential. The runner injects those two variables into **JS action**
+> contexts, never into `run:` shell steps, so absent from the shell environment
+> that line exports the EMPTY STRING. After the 0.17.0 bump the error text
+> merely changed — `ACTIONS_CACHE_URL not found` became `cache url for ghac not
+> found` — and the backend stayed permanently unavailable.
+>
+> Measured on run 33293963079: `check-compile-smoke` 104 s and
+> `Build nros CLI` 74 s, i.e. **178 s of 396 s (45%) compiling uncached on
+> every pull request**, behind a `::warning::` and nothing else.
+>
+> `actions/cache@v4` is the proof rather than a guess: it is a JS action, it
+> needs the same two variables, and it succeeds in this very job.
+>
+> Fixed by exporting them through `actions/github-script` into `$GITHUB_ENV`.
+> And the reason nobody saw it: the `sccache --show-stats` step — whose own
+> comment says a silently-missing cache "looks exactly like one that is
+> working; the only difference is in this output" — did not list
+> `pull_request`, so the event that compiles on every push had no stats. Both
+> the export and the diagnostic excluded the case they existed for.
+
 **And sccache is the `RUSTC_WRAPPER`** — the justfile sets it whenever the
 binary is on PATH. So a cache backend that cannot start does not degrade to an
 uncached build: it prefixes every `rustc` invocation with a command that exits
