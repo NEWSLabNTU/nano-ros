@@ -2,8 +2,18 @@
 
 **Implements:** [RFC-0062](../design/0062-unified-dependency-ssot.md)
 **Resolves:** [issue 0368](../issues/0368-setup-all-on-a-clean-host-seven-modules-fail-on-undeclared-prereqs.md)
-**Status:** Complete but for the qemu dist re-cut (2026-08-01; W4's -nros3
-rpath re-cut needs the sdk repo and is the one open item)
+**Status:** COMPLETE and ARCHIVED (2026-08-30). W4's second half — "the ldd
+audit of the other dists", open since 2026-08-01 — was run on 2026-08-30 and
+found the same class in five more dists plus two binaries that could not start
+on a stock 22.04 host (`openocd` on `libftdi.so.1`, `arm-none-eabi-gdb` on
+`libncursesw.so.5`). Declared, reported at the point of use, and gated by
+`check-dist-runtime-deps`; see issue 0926. The `-nros3` rpath re-cut is NOT
+done and is now issue 0928 — it is a nano-ros-sdk change rather than work this
+repository can carry, which is why the phase archives with it outstanding
+rather than staying open indefinitely against another repo.
+
+**Original status (2026-08-01):** Complete but for the qemu dist re-cut (W4's
+-nros3 rpath re-cut needs the sdk repo and is the one open item)
 **Informed by:** RFC-0014 (the index this extends), issue 0196 (a gate must
 cover the class it enforces — here applied to doctor probes), issue 0363
 (sync must not narrow a tracked patch table on failure — W5's guard).

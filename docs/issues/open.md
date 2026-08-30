@@ -66,5 +66,6 @@ fails if this block drifts.
 - **#0902** (build, rmw) — Editing zenoh-pico rebuilds nothing — `zpico-sys` watches 7 hand-listed files out of the whole library, so a patch is silently not compiled See `0902-*`.
 - **#0914** (testing) — Nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot evaluate anything passes every check See `0914-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
+- **#0928** (tooling) — Re-cut the qemu and openocd dists with $ORIGIN rpath so their host library deps vanish instead of being declared See `0928-*`.
 
 <!-- END GENERATED open-issue list -->

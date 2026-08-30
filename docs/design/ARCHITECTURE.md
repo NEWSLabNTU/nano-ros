@@ -235,6 +235,10 @@ boards self-describe their dependencies.
 - Out-of-tree board provisioning → RFC-0013.
 - `nros setup` as the single toolchain/SDK entrypoint, index-driven from `nros-sdk-index.toml`
   → RFC-0014. (`just <module> setup` recipes are thin callers.)
+- That index is the SSoT for EVERY dependency class, not just toolchains: `[prereq.<key>]` over
+  four providers, setup and doctor both deriving from it so remedies are computed rather than
+  hand-written, and a `[tool.*]`'s dist declaring the host libraries it needs — measured from the
+  dist, not listed by hand → RFC-0062. rosdep is not consulted anywhere.
 - Cross-RTOS launch tree + manifest codegen → RFC-0015; per-RTOS scheduling survey → RFC-0016.
 - Real-time timer primitive → RFC-0017; the RT executor model → RFC-0002.
 
