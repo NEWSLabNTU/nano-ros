@@ -272,207 +272,159 @@ short-lived CLI process, as already noted.
 this issue exists to prevent, so the shape is recorded rather than begun —
 layer 1 below is restated in these terms.
 
+## The delivery shape, rewritten 2026-08-30 (the first one was wrong)
+
+The original plan put the hint in an options struct on
+`nros_cpp_subscription_register` and had the user set it. Judged against the
+real call site in `examples/workspaces/c/src/listener_pkg/src/Listener.c`, that
+design is worse than doing nothing, in four ways:
+
+1. **It is an opt-in fix for a silent-default bug.** Anyone who does not read
+   this issue keeps the defect.
+2. **It names the type TWICE with nothing checking they agree** —
+   `..._get_type_name()` and `..._get_rx_buffer_hint()` are independent
+   arguments. Copy a subscription, change the type name, forget the hint, and
+   the buffer is sized for the WRONG type, silently. **That failure mode does
+   not exist today; the fix would have created it.**
+3. **11 arguments instead of 10**, plus two setup lines, at every call site.
+4. **The deliberate compile error arrives as "undeclared identifier"** — for an
+   unbounded type there is simply no accessor, so the error never names
+   `String` and never names the field `data`.
+
+The right shape is already in the tree, on the publish side. A generated helper
+KNOWS ITS OWN TYPE, so it should use its own constant and ask the user for
+nothing:
+
+```c
+static inline nros_ret_t std_msgs_msg_int32_publish(...) {
+    uint8_t buf[STD_MSGS_MSG_INT32_MAX_SERIALIZED_SIZE_XCDR1];  /* was NROS_PUB_BUFFER_SIZE, 256 */
+```
+
+Nobody edits a line; types under 256 get smaller stack frames and types over 256
+stop failing. Subscribe should mirror it, and the missing sibling IS the problem
+— codegen emits `_publish` and no `_subscribe`, which is why the raw call is
+hand-written and type-erased at all:
+
+```c
+int32_t rc = std_msgs_msg_int32_subscribe(node, "/chatter", on_raw, self, &handle);
+```
+
+ONE token. Type name, type hash and buffer hint all derive from it, so they
+cannot drift, because there is only one. Shorter than today's call rather than
+longer, and correct for a user who never heard of this issue.
+
+**This deletes the ABI work.** Layers 3-4 of the old plan — the options struct
+and the `nros_subscription_options_t` break — stop being the delivery mechanism.
+The raw path may gain a hint later for callers who need one, but it is no longer
+how the fix reaches anybody.
+
+## Layer 1's real constraint: on Humble the nested resolver resolves NOTHING
+
+Surveyed before writing the traversal, and it reshapes the layer.
+
+Building a sizeable value needs nested types resolved in-process. The tree has
+exactly one mechanism for that — `rosidl_bindgen::MsgResolver`, a
+`dyn Fn(&str) -> Option<Message>` threaded into the RIHS hash path — and it
+lives in `rosidl-bindgen`, NOT in `rosidl-codegen`, which is the crate that
+emits the schema. So the resolver is not in scope at any
+`build_nros_schema_for_struct*` call site today; every one of them is inside
+`common.rs` with only field ASTs to hand.
+
+Worse, the resolver's own doc says what it does on the default edition:
+
+> A [`MsgResolver`] that resolves no cross-package types — for self-contained
+> packages … or **Humble (placeholder hash, resolver never consulted)**.
+
+`no_cross_pkg_resolver` returns `None` for everything. On Humble — the edition
+the examples and fixtures use — a cross-package nested type such as
+`std_msgs/Header` or `builtin_interfaces/Time` **cannot be resolved at all**.
+
+**Measured rather than asserted, because the first draft of this paragraph said
+"that is most real messages" and that is not supported.** Across the 10 `.msg`
+files in `examples/` and `packages/interfaces/`: 2 have any non-primitive field,
+and exactly 1 references another package (`std_msgs`). So on the IN-TREE corpus
+this blocks one message, not most.
+
+That cuts both ways and neither reading is safe on its own. It means layer 1 is
+not blocked for the fixtures — but it also means the fixtures cannot tell us
+whether it is blocked for USERS, and the messages this campaign exists for are
+the heavily-nested ones (an Autoware type reaches `std_msgs`,
+`builtin_interfaces` and `geometry_msgs` before it reaches a number). The
+in-tree corpus is too small to generalise from in either direction; a real
+measurement wants a user workspace.
+
+This collides head-on with the trap recorded above. Unresolvable is not
+unbounded, so an unresolved nested type must not silently produce "no
+constant" — but *failing the generate* would fail nearly every Humble message
+with a `Header`, which is plainly not shippable either. **Neither branch of the
+rule as written is acceptable, so the rule needs a third outcome before any code
+is written:**
+
+* `Bounded(n)` — emit the constant.
+* `Unbounded(field)` — emit the poisoned macro naming the field (layer 5).
+* `Unresolved(type_name)` — emit NEITHER, and say so in the generated header as
+  a comment naming the type that could not be reached, so a reader can tell "we
+  looked and it has no bound" from "we could not look".
+
+Sizing anything from an `Unresolved` is the defect this issue is about, so the
+third outcome must be distinguishable at every consumer, not folded into the
+second.
+
+**The better fix, if it is affordable:** give codegen a real resolver on Humble
+too. The bindgen path already owns the package's `share_dir` and resolves
+same-package nested types itself; the ament index that would answer the
+cross-package ones is available at `nros sync` time. That turns `Unresolved`
+into a rare error case instead of the common one. It is also a larger change
+than this issue has scoped, and it should be measured (how many types in
+`examples/` actually go unresolved on Humble today?) before being assumed.
+
+**Layer 1 is not started for this reason** — the plumbing would have to be
+redone once this is decided, and the decision is not mine to guess.
+
 ## Layers, in order
 
-0. **Name the field that cost the bound.** When `max_serialized_size` returns
-   `None`, report which member is unbounded. No new surface; makes the existing
-   `.msg` fix actionable.
-1. **One traversal, two outputs** in `rosidl-codegen` (see the correction
-   above — rendering the string FROM the value is not possible). Every `match`
-   arm emits its expression string and builds its `nros_serdes::FieldType`
-   value together. No behaviour change; the existing emitter tests plus the
-   golden corpus are the check — and the corpus is worth trusting now, since
-   phase-390 W2 found and repaired the arm that was byte-identical to the
-   default and exercised nothing.
-2. **Both bounds, computed by `max_serialized_size` over those values**, nested
-   types resolved by the same closure the RIHS path already uses. Emitted as two
-   `#define`s (XCDR1 and XCDR2) from `packs/c/message.h.jinja` and the C++
-   sibling, plus the `_get_rx_buffer_hint` accessor returning their max. An
-   unbounded type emits NEITHER, so the accessor is absent and a call site
-   naming it fails to compile. A test must assert each equals the Rust
-   `MAX_SERIALIZED_SIZE_XCDR*` const for the same type — same input, same
-   function, so a disagreement means the value mapping is wrong. Retarget
-   `NROS_PUB_BUFFER_SIZE` onto the XCDR1 constant in the same change.
-2b. **Thread the RFC-0033 `cap` into the schema emit** so a field bounded only
-   in `nros-codegen.toml` stops reading as unbounded. Same test, extended with a
-   capped field.
-3. **Design the call-site spelling** — the C analogue of W3b's
-   `nros::rx_buffer_for!`. Do this BEFORE 4-5: the C subscription is raw by
-   design, so this is how the number reaches the runtime at all, and it decides
-   what the ABI must carry.
-4. **Carry it on BOTH C-facing subscription paths** (see below) — they are
-   independent, and the examples use the one the issue did not name.
-5. **`nros-c` forwards it** into the `TopicInfo` it already builds
-   (`subscription.rs:487`, one line), and the component path likewise.
+1. **One traversal, two outputs** in `rosidl-codegen` (see the correction above
+   — rendering the string FROM the value is not possible). Every `match` arm
+   emits its expression string and builds its `nros_serdes::FieldType` value
+   together, so a new variant that one output handles and the other forgets is a
+   compile error rather than a silent divergence.
 
-Out-of-band bounds (config / model) are a SEPARATE track that reuses layer 3's
-spelling. They are not needed for any type whose `.msg` already bounds it.
+   **The trap to avoid here:** nested types must be RESOLVED to build a sizeable
+   value, and resolution can fail (a dependency not on the search path). A
+   failure to resolve is NOT the same as "no bound exists" — phase-380's rule is
+   that `None` means UNBOUNDED and never UNKNOWN. An unresolvable nested type
+   must fail the generate, not silently emit no constant, or this issue's own
+   defect comes back wearing a different hat.
 
-## Correction: this is cbindgen, not bindgen
+2. **Both constants emitted**, computed by `max_serialized_size` over those
+   values — `<PREFIX>_MAX_SERIALIZED_SIZE_XCDR1` and `_XCDR2` — from
+   `packs/c/message.h.jinja` and the C++ sibling. A test asserts each equals the
+   Rust `MAX_SERIALIZED_SIZE_XCDR*` const for the same type: same input, same
+   function, so a disagreement means the traversal is wrong.
 
-Earlier text here said `nros_subscription_options_t` needs
-`scripts/gen-abi-bindings.sh` and is gated by `check-abi-bindings`. Wrong
-direction. That pair covers HAND-WRITTEN RMW/platform C headers consumed by
-bindgen into `nros-{rmw,platform}-cffi/src/generated.rs`.
-`nros_subscription_options_t` is a Rust `#[repr(C)]` struct
-(`nros-c/src/subscription.rs:145`) emitted OUT to the committed
-`packages/api/nros-c/include/nros/nros_generated.h` by cbindgen. Regenerate
-with `just regen-c-headers` — THE single writer (issue 0452) — and
-`check-cbindgen-headers` gates staleness.
+3. **Retarget the publish helper** onto the XCDR1 constant. Complete, shippable,
+   invisible: no API change, no opt-in, strictly smaller for every type under
+   256 bytes. **This is the whole win on the publish side and it lands with
+   layer 2.**
 
-The layout note stands: `sched_context` + `message_info: u8` + `_reserved: [u8; 2]`,
-so a `uint32_t` does not fit in the reserved bytes and the struct grows.
+4. **Emit the missing `_subscribe` helper**, passing the hint. This is the
+   subscribe-side delivery, and the reason the C path was type-erased in the
+   first place.
 
-## There are TWO C-facing subscription paths, and the examples use the other one
+5. **Unbounded types get a message that names the field.** No plain
+   `_subscribe`; a `_subscribe_sized` taking an explicit byte count, plus a
+   poisoned macro so the error says what is wrong:
 
-* **`nros-c`** — `nros_subscription_init_with_options` takes
-  `nros_subscription_options_t` and calls `session.create_subscription`
-  directly (`subscription.rs:501`). This is the path the issue described.
-* **`nros-cpp`** — `nros_cpp_subscription_register` (`nros-cpp/src/
-  subscription.rs:144`), which is what RFC-0043 typed components call, and what
-  every `examples/workspaces/c` node uses. **Ten flat arguments and no options
-  struct**, plus a `_register_with_info` twin that duplicates the whole list.
+   ```c
+   #define std_msgs_msg_string_subscribe(...) \
+     NROS_UNBOUNDED__std_msgs_String__field_data__use_subscribe_sized_or_bound_it
+   ```
 
-The second is the one that must carry the hint for the examples to benefit, and
-its argument list cannot grow. That is precisely the problem issue 0808 solved
-for `create_session`, and its resolution is already written down in
-`rmw_entity.h`: take a NULLable trailing options struct, because
-`rmw_publisher_options_t` / `rmw_subscription_options_t` had already solved it
-for entities. Same answer here, with `rx_buffer_hint` as the first occupant and
-`sched_context` / `callback_group` / the `_with_info` split as the cleanup that
-comes free.
+   The field name comes from `nros_serdes::size::first_unbounded`, which is what
+   that function exists for.
 
-## Layer 3 is smaller than feared: the call site already names the type
-
-The C subscription is type-erased at the ABI, but the CALL SITE is not:
-
-```c
-nros_cpp_subscription_register(node, "/chatter",
-                               std_msgs_msg_int32_get_type_name(), "", ...);
-```
-
-The token `std_msgs_msg_int32` is right there. So the hint needs no new macro
-vocabulary — a sibling accessor in the family the header already emits
-(`_get_type_name`, `_get_type_hash`, `_get_type_support`) reads identically and
-cannot drift from the type name, because both come from one token:
-
-```c
-static inline uint32_t std_msgs_msg_int32_get_rx_buffer_hint(void);
-```
-
-The `#define` from layer 2 is what it returns. A macro form that expands to BOTH
-arguments at once remains an option, but it is no longer load-bearing.
-
-## Decided 2026-08-29
-
-**1. An unbounded type is a COMPILE ERROR at the call site.** No bound, no
-constant, no accessor — the call site naming that type fails to build. The
-alternative (return 0, fall back to the global knob) reproduces today's silent
-defect exactly: a subscription that quietly takes the small class and drops
-samples at runtime on a target with no console. The escape hatch is to bound the
-field, in the `.msg` or via `cap` (below); both are one line and both are the
-thing we actually want the user to do.
-
-**2. Size the RX hint from `max(XCDR1, XCDR2)`; size the TX buffer from XCDR1
-alone.** The wire question has a live-verified answer already in this repo —
-RFC-0055's 2026-07-26 correction:
-
-> A default Jazzy peer serializes FINAL/XCDR1 on the wire (verified live for
-> both fastrtps and cyclonedds; guard
-> `nros_serdes::cdr::tests::xcdr1_header_matches_live_jazzy_wire_bytes`).
-> "Modern ROS 2 defaults types to `@appendable`/XCDR2 so nano-ros must too" is
-> wrong — and DDS-XTypes REJECTS an appendable writer against a FINAL reader, so
-> emitting appendable-by-edition BREAKS default interop. Extensibility is a
-> per-type property, never an edition property.
-
-So XCDR1 is what the LTS editions put on the wire on the default path, and
-nano-ros writes XCDR1 exclusively (`CdrWriter`'s constructors hard-wire it;
-`EncodingVersion::default()` is `Xcdr1`). The TX buffer therefore needs XCDR1
-only.
-
-The RX side is not symmetric. `CdrReader` dispatches on the encapsulation id and
-accepts XCDR2, and RFC-0055's machinery is "built + tested but parked" pending
-per-type `@appendable` re-activation — so a peer's XCDR2 sample can arrive.
-Neither encoding dominates the other in size (XCDR2 adds a 4-byte DHEADER per
-struct, but aligns 8-byte primitives to 4 instead of 8), so the receive bound
-must be the max. This matches what the Rust path already computes
-(`subscription_rx_hint`, `rmw_type_registry.rs:168`).
-
-**Consequence: emit BOTH constants, not one pre-maxed value.** The two consumers
-want different numbers, and a single `MAX_SERIALIZED_SIZE` would be silently
-wrong for one of them — the same reason `pad_to` takes a version rather than a
-constant.
-
-**3. The out-of-band bound already exists: `nros-codegen.toml` `cap` (RFC-0033).**
-No new config file. Per-field `mode` + `cap`, deep-merged, `deny_unknown_fields`,
-and already resolved per-field for the struct rendering
-(`generator/common.rs:415-419`, `583-619`, `891-903`) — `cap = 64` on an
-unbounded `string` renders `heapless::String<64>`.
-
-The gap is one hop: the schema emit path
-(`build_nros_schema_for_struct_with_path`) walks the RAW rosidl AST and has no
-storage resolver in scope, so that same field still emits
-`::nros_serdes::FieldType::String` and the type's bound comes back `None`. The
-capacity is applied to the STORAGE and not to the SCHEMA. Threading the resolved
-`cap` into `render_field_type_expr` is the entire out-of-band mechanism.
-
-Semantics stay distinct, and this is why `cap` sizes a HINT rather than
-asserting a bound: an IDL `string<=64` constrains the publisher, whereas a `cap`
-is local to this image and a remote ROS node may still send 200 bytes. So a
-capped field bounds our buffer and creates a truncation contract — which is
-exactly what (4) handles.
-
-**4. Oversize is explicit and NEVER fatal.** An app that dies on an embedded
-target is worse for the user than one that drops a sample and says so — there is
-often no console, no debugger and no way to restart it.
-
-The receive path already has the right shape to copy, in
-`executor/arena.rs:386`: `#[cold]`, a `DROPPED_TAKES` counter, first-then-every-
-64th rate limiting (so one misconfigured subscription in a 40-participant graph
-cannot flood the log — issue 0371's shape), and `nros_log` rather than stdio,
-because a Rust `std` stdio call is FATAL inside Zephyr `native_sim` (issue 0589).
-No panic, no abort.
-
-The transmit path needs the same treatment plus a distinct status. There is no
-too-large code today — the closest is `NROS_RET_FULL` (-6), which means a full
-queue — so the generated publish helper returns a bare non-zero that callers
-cannot tell from a transport failure. Add one (cbindgen: `just regen-c-headers`),
-and report it once per site rather than per sample.
-
-## RawSubscription: decided 2026-08-29
-
-`RawSubscription<const RX_BUF: usize>` (`executor/handles.rs:1306`) holds its
-receive buffer INLINE, so `RX_BUF` is a monomorphisation, not a parameter — a
-runtime hint cannot select between `RawSubscription<1024>` and
-`RawSubscription<4096>`. Worse, the size is baked into the APPLICATION's own
-struct: `SUBSCRIPTION_OPAQUE_U64S` is
-`u64s_for::<RawSubscription<{ MESSAGE_BUFFER_SIZE }>>()`
-(`opaque_sizes.rs:29`), and a C caller declares
-`uint8_t sub[NROS_C_SUBSCRIPTION_STORAGE_SIZE]` at their own compile time.
-
-Three options were weighed:
-
-* **Size classes plus a compile-time storage macro** — a small ladder of
-  instantiations, dispatched at init against the caller's declared size.
-  REJECTED: pays code size for N monomorphisations of the whole subscription
-  path, gives a coarser answer than the exact bound, and leaves the arena
-  coupling untouched.
-* **Decouple the buffer (`&'a mut [u8]`)** — one type, no monomorphisation,
-  exact per-subscription bytes, `_opaque` shrinks. This is the real per-type
-  fix and matches the hint model directly. DEFERRED, not rejected: it adds a
-  lifetime contract across FFI, and C has TWO subscription paths (the L1
-  polling one here and the arena callback path at `nros-c/src/executor.rs:817`),
-  so both must move together or half the tree keeps the old sizing.
-* **Fix the arena instead** — TAKEN FIRST, and split out as **issue 0900**.
-  It turned out not to be part of this issue at all: every arena slot is
-  budgeted at the ActionClient worst case, so `ARENA_SIZE` is 74,240 bytes on
-  every image measured, a talker included, where a pub/sub-only image needs
-  ~16 KiB. It also explains why per-type receive sizing cannot help that
-  number: the slot is sized from the GLOBAL knob, amplified 3 x MAX_CBS = 12x,
-  regardless of what any individual subscription asks for.
-
-Order: **0900 first** (largest saving, no ABI change, independent of everything
-here), then the buffer decoupling as the per-type fix.
+6. **Thread the RFC-0033 `cap` into the schema emit** so a field bounded only in
+   `nros-codegen.toml` stops reading as unbounded. Same test, extended.
 
 ## Not to be confused with
 
