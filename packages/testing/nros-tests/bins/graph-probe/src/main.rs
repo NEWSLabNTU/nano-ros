@@ -78,13 +78,33 @@ fn main() {
         nodes.sort();
         nodes.dedup();
 
-        if !nodes.is_empty() && nodes == previous {
+        // Convergence is "stable AND contains what we are waiting for", not
+        // merely "stable and non-empty".
+        //
+        // Our OWN node is in the graph from the first poll, so a non-empty
+        // stable list is reached almost immediately and says nothing about
+        // whether a peer was discovered. Measured on Cyclone: the probe settled
+        // on `["/|graph_probe"]` after 4.1 s and reported the talker missing,
+        // against a talker that was up — a false, specific claim produced by
+        // the probe rather than by the slot, which is the failure this whole
+        // family is about. zenoh happened to hide it by discovering the peer
+        // before the loop could settle.
+        let have_expected = expect_node
+            .as_ref()
+            .map(|want| nodes.iter().any(|n| n.contains(want)))
+            .unwrap_or(true);
+        if !nodes.is_empty() && nodes == previous && have_expected {
             settled = nodes;
             break;
         }
         previous = nodes;
     }
 
+    // Budget exhausted without convergence: report what the LAST poll saw
+    // rather than an empty list, so the failure names what WAS visible.
+    if settled.is_empty() {
+        settled = previous.clone();
+    }
     for n in &settled {
         println!("GRAPH_NODE {n}");
     }
