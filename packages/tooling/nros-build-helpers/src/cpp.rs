@@ -233,6 +233,25 @@ fn generate_config(
         // Consumer code that #includes nros_cpp_config_generated.h
         // hits the stub `#error`, which is the desired behavior (no
         // RMW backend means no executor sizes to ship).
+        //
+        // Issue 0834 — but do not leave a stamp claiming a header that is not
+        // there. Declining to write is legitimate; leaving `<name>.h.stamp`
+        // beside no `<name>.h` is the absorbing state that no re-run, no stamp
+        // deletion and no direct target build could repair. Both generated
+        // trees are cleared, because this build script owns the C header too
+        // (see the `write_header_if_absent_or_verify` call below) and the C
+        // side's symptom — `SESSION_OPAQUE_U64S undeclared` — is the quieter
+        // of the two.
+        crate::shared::drop_stamp_without_header(&[
+            "nros-cpp-generated",
+            "nros",
+            "nros_cpp_config_generated.h",
+        ]);
+        crate::shared::drop_stamp_without_header(&[
+            "nros-c-generated",
+            "nros",
+            "nros_config_generated.h",
+        ]);
         return;
     }
 

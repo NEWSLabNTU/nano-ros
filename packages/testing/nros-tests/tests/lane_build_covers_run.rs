@@ -551,3 +551,71 @@ fn a_narrow_build_is_refused_when_the_run_is_not_narrowed() {
     let _ = std::fs::remove_file(&other);
     let _ = std::fs::remove_file(&full);
 }
+
+/// A row the RUN cannot skip must be in the lane's BUILD — issue 0828.
+///
+/// `--coords-from <lane>` narrows the build to a lane's cell cover, on the
+/// premise that the run skips anything outside it at fixture-resolution time.
+/// That premise holds only for rows the resolver can ATTRIBUTE: a row whose
+/// artifact root is shared by siblings is ambiguous, and `row_artifact_root`'s
+/// own contract is to treat an ambiguous match as "not attributable" — fail
+/// closed, never skip. Such a row runs at every lane.
+///
+/// Before the fix, `lane=tier2` built 114 rows and ran 142; the 28-row gap was
+/// invisible on any machine carrying `lane=all` residue — green there, ~190
+/// stale-fixture failures on a machine that had only ever run tier 2.
+///
+/// Checks MEMBERSHIP, not counts. The first version of this test asserted
+/// `built >= unskippable`, which is 114 >= 28 — true with the fix reverted, so
+/// it passed the mutation it existed to catch.
+#[test]
+fn every_unskippable_row_is_in_its_lane_build() {
+    let repo = nros_tests::project_root();
+    for lane in ["tier1", "tier2", "tier2-nightly"] {
+        let coords = lane_coords_file(lane);
+        // The whole comparison happens in the manifest's own module, so this
+        // test cannot drift from the predicate it checks.
+        let probe = Command::new("python3")
+            .arg("-c")
+            .arg(
+                r#"
+import importlib.util, sys, subprocess
+spec = importlib.util.spec_from_file_location("fm", "scripts/build/fixtures-manifest.py")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+rows = m.load("examples/fixtures.toml")
+built = subprocess.run(
+    [sys.executable, "scripts/build/fixtures-manifest.py", "list", "--coords-from", sys.argv[1]],
+    capture_output=True, text=True, check=True).stdout
+built_dirs = {l.split("\x1f")[0] for l in built.splitlines() if l.strip()}
+missing = [
+    (e.get("id") or e.get("dir"))
+    for e in rows
+    if not m.row_is_lane_skippable(e, rows) and (e.get("dir") or "").rstrip("/") not in built_dirs
+]
+print(len(missing))
+for x in missing[:8]:
+    print(x)
+"#,
+            )
+            .arg(&coords)
+            .current_dir(&repo)
+            .output()
+            .expect("probe the manifest");
+        assert!(
+            probe.status.success(),
+            "{lane}: probe failed:\n{}",
+            String::from_utf8_lossy(&probe.stderr)
+        );
+        let text = String::from_utf8_lossy(&probe.stdout);
+        let mut lines = text.lines();
+        let missing: usize = lines.next().unwrap_or("0").trim().parse().unwrap_or(0);
+        assert_eq!(
+            missing,
+            0,
+            "{lane}: {missing} row(s) cannot be skipped by any run yet are absent \
+             from this lane's build — each will fail on staleness the lane never \
+             promised (issue 0828). First few:\n  {}",
+            lines.collect::<Vec<_>>().join("\n  ")
+        );
+    }
+}

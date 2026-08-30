@@ -538,6 +538,56 @@ def workspace_record(entry):
 _COORDS_CACHE = {}
 
 
+# ── issue 0828 — a row the RUN cannot skip must be BUILT ────────────────────
+#
+# `--coords-from <lane>` narrows the build to a lane's cell cover, on the
+# premise (CLAUDE.md, phase-340 W3) that "the RUN narrows to the same
+# coordinates at fixture RESOLUTION time, so an out-of-lane fixture SKIPS
+# rather than failing".
+#
+# That premise holds only for rows the resolver can ATTRIBUTE. `row_artifact_root`
+# says so in its own docstring: a root shared by several rows is ambiguous, and
+# the consumer treats an ambiguous match as "not attributable" — fail closed,
+# NEVER skip. So an unattributable row is in every lane's run set regardless of
+# its coordinate, while a coordinate-narrowed build omitted it.
+#
+# Measured: `examples/workspaces/c/build-workspace-fixtures` is shared by 14
+# rows and that `build_subdir` name by 47 repo-wide. After a core-crate edit
+# staled everything, `lane=tier2` + `just ci-matrix` passed the lane gate and
+# then failed ~190 tests on stale fixtures — green only on a machine carrying
+# older `lane=all` residue, which is precisely the property a lane exists to
+# remove.
+#
+# So the filter below asks the resolver's question, not the cover's: skip a row
+# only if the run could have skipped it too.
+def _shared_artifact_roots(entries):
+    """Artifact roots claimed by more than one row — i.e. unattributable."""
+    seen, shared = {}, set()
+    for e in entries:
+        root = row_artifact_root(e)
+        if not root:
+            # West rows have no artifact root and are never path-attributed;
+            # their lane narrowing is by coordinate alone, which is sound
+            # because the resolver never tries to attribute them.
+            continue
+        if root in seen and seen[root] != id(e):
+            shared.add(root)
+        seen.setdefault(root, id(e))
+    return shared
+
+
+_SHARED_ROOTS_CACHE = {}
+
+
+def row_is_lane_skippable(entry, all_entries):
+    """Can a coordinate-scoped RUN skip this row? Only then may the build omit it."""
+    key = id(all_entries)
+    if key not in _SHARED_ROOTS_CACHE:
+        _SHARED_ROOTS_CACHE[key] = _shared_artifact_roots(all_entries)
+    root = row_artifact_root(entry)
+    return not root or root not in _SHARED_ROOTS_CACHE[key]
+
+
 def _coords_for(path):
     """Parse a lane-coords file into a set of (platform, lang, rmw) triples."""
     if path not in _COORDS_CACHE:
@@ -626,7 +676,7 @@ def row_coord(entry):
     )
 
 
-def matches_filters(entry, args, *, for_probe=False):
+def matches_filters(entry, args, *, for_probe=False, all_entries=None):
     # `skip_build` rows stay in the manifest for documentation/inventory but
     # are intentionally NOT built as fixtures (e.g. an incomplete example).
     # Exclude them from both the build list and the stale probe — a row that
@@ -661,7 +711,12 @@ def matches_filters(entry, args, *, for_probe=False):
     coords_from = getattr(args, "coords_from", None)
     if coords_from:
         if row_coord(entry) not in _coords_for(coords_from):
-            return False
+            # Issue 0828 — out of the cover, but only OMIT it if the run could
+            # have skipped it. An unattributable row (shared artifact root) is
+            # run at every lane, so omitting it builds a lane whose own tests
+            # then fail on staleness the lane never promised.
+            if all_entries is None or row_is_lane_skippable(entry, all_entries):
+                return False
     # Issue #29 — `--core-only` excludes the isolated-`target_dir` variant cells
     # (the RMW/feature rebuilds that duplicate the dep graph + overrun disk).
     if getattr(args, "core_only", False) and row_is_variant(entry):
@@ -1420,8 +1475,9 @@ def main():
 
     if a.command in ("list-workspaces", "validate-workspaces"):
         entries = []
-        for e in load_workspace_fixtures(a.manifest):
-            if not matches_filters(e, a):
+        ws_rows = load_workspace_fixtures(a.manifest)
+        for e in ws_rows:
+            if not matches_filters(e, a, all_entries=ws_rows):
                 continue
             if a.for_probe and e.get("skip_probe"):
                 continue
@@ -1440,8 +1496,9 @@ def main():
             sys.stdout.write(f"{workspace_record(e)}\n")
         return
 
-    for e in load(a.manifest):
-        if not matches_filters(e, a, for_probe=a.for_probe):
+    fixture_rows = load(a.manifest)
+    for e in fixture_rows:
+        if not matches_filters(e, a, for_probe=a.for_probe, all_entries=fixture_rows):
             continue
         if not is_cargo_row(e):
             # cmake record: <dir>\x1f<build-subdir>\x1f<cmake -D defs>\x1f<target>

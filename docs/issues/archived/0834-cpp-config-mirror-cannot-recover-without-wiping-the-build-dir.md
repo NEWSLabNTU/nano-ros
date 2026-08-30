@@ -2,7 +2,7 @@
 id: 834
 title: "The per-build `nros_cpp_config_generated.h` mirror can reach a state no
   re-run repairs — only wiping the west build dir recovers it"
-status: open
+status: resolved
 type: bug
 area: cmake
 related: [issue-0088, issue-0114, issue-0122, issue-0123, issue-0245, issue-0268, issue-0196]
@@ -181,6 +181,48 @@ and name the exact path; restoring it makes it pass. Its own negative control
 runs on every invocation and covers three cases — a healthy pair, the 0834
 state, and a header with no stamp, which is NOT this defect and must not trip
 it.
+
+## Fixed — direction 2, without needing the root cause
+
+The state is now unreachable, and getting there did not require knowing what
+deleted the header — which is what kept this issue open.
+
+`write_header_if_absent_or_verify` was already self-healing: its `Err(_)` arm
+(header unreadable) writes header AND stamp. The absorbing state only exists on
+the paths where that function is NOT REACHED — the early return in
+`nros-build-helpers/src/cpp.rs` when the executor probe yields 0, which is the
+legitimate `cargo check --no-default-features` case. Declining to write is
+right; leaving a stamp that claims a header which is not there is not.
+
+`shared::drop_stamp_without_header()` is called from that decline. A stamp
+asserts "the header beside me is current"; with no header the assertion is
+simply false, and the honest representation of "nothing was generated" is
+NEITHER file rather than one of them. Both generated trees are cleared, because
+that build script owns the C header too and the C symptom
+(`SESSION_OPAQUE_U64S undeclared`) is the quieter of the two.
+
+Reproduced and verified on the live tree:
+
+```console
+$ rm target/nros-cpp-generated/nros/nros_cpp_config_generated.h     # the 0834 state
+$ python3 scripts/check-orphan-generated-stamp.py
+check-orphan-generated-stamp: FAILED — generated header(s) lost, stamp left behind
+
+$ cargo check -p nros-cpp --no-default-features   # the decline path
+$ ls target/nros-cpp-generated/nros/              # empty — the stamp is gone
+
+$ cargo check -p nros-cpp                          # a real build
+check-orphan-generated-stamp: OK (no generated header lost its stamp)
+```
+
+The gate stays. It is now a backstop rather than the only defence: the repair is
+best-effort (a build script must not fail because a cleanup could not run), and
+if it ever cannot, the gate still names the directory.
+
+**Direction 1 (make the mirror a real edge, byproduct as declared input) is NOT
+done** and remains the stronger fix — it would stop the header going missing
+rather than repairing the aftermath. This closes the absorbing property, not the
+disappearance.
 
 ## Directions
 
