@@ -105,7 +105,7 @@ fast-serial: \
     infra-queryable-counts \
     rmw-force-link-anchor rmw-required-slots rmw-slot-table board-tiers tier-priority-plan \
     subtree-guard \
-    leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots host-platform-vocabulary orphan-generated-stamp generated-schema-coverage \
+    leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots host-platform-vocabulary posix-platform-purity orphan-generated-stamp generated-schema-coverage \
     cbindgen-pin cbindgen-headers nuttx-shared-tree-headers nuttx-libc-struct-sizes source-manifest \
     nested-workspace-excludes nuttx-links-snapshot \
     board-cargo-config-applied staleness-probe-exemptions \
@@ -3241,6 +3241,12 @@ no-tracked-workspace-roots:
 [private]
 host-platform-vocabulary:
     @python3 scripts/check-host-platform-vocabulary.py
+
+# `nros-platform-posix` is named for a standard — keep it holding to one, so
+# the board layer stays the only place that is Linux-only (phase-401 W4).
+[private]
+posix-platform-purity:
+    @python3 scripts/check-posix-platform-purity.py
 
 # issue 0834 — a per-build sizes header must never lose its `.stamp` twin.
 #

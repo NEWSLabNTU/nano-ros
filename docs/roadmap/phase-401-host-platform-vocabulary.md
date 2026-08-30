@@ -2,7 +2,8 @@
 
 **Status (2026-08-30). W1, W2 and W3 are landed — the rule, the host board, the
 gate, a 71-fix tree-wide audit across six scopes, and the renames it identified.
-W4 is proposed and unstarted, and is a product change nobody has asked for.** Implements the CLAUDE.md "Naming" rule; no RFC — this is a
+W4 was measured and REJECTED as scoped — its premise was false — and shipped a
+gate instead. The phase is complete.** Implements the CLAUDE.md "Naming" rule; no RFC — this is a
 vocabulary correction, not a design change.
 
 ## The rule
@@ -174,11 +175,58 @@ independent reason, one layer below the affinity call.
       `needs_scaffolded_nros_toml()` asks the KIND, with a test that the two
       spellings agree.
 
-- [ ] **W4 — make `posix` true, if anyone needs it.** `cfg(target_os)`-gate
-      `apply_tier_affinity` to a loud no-op off Linux, the way it already
-      handles a rejected pin. Then the host board's reach becomes `posix` and
-      the crate builds on macOS. Nobody has asked for this; it is recorded so
-      the option is not lost.
+- [x] **W4 — asked, measured, and REJECTED as scoped; a gate landed instead.**
+
+      W4 read: "`cfg(target_os)`-gate `apply_tier_affinity` to a loud no-op off
+      Linux. Then the host board's reach becomes `posix` and the crate builds on
+      macOS." **That premise is false**, and finding out cost one measurement.
+
+      Gating the affinity call changes nothing observable, because three more
+      blockers sit one layer BELOW it, in `nros-platform-posix`:
+
+      | call | apple | linux | freebsd |
+      | --- | --- | --- | --- |
+      | `timer_create` / `timer_settime` / `timer_delete` | absent | ✓ | ✓ |
+      | `sem_timedwait` | absent | ✓ | ✓ |
+      | `sem_init` | symbol present, unnamed semaphores return `ENOSYS` | ✓ | ✓ |
+
+      (Read from libc 0.2.189's own module tree, not assumed.)
+
+      **None of the three is gate-able.** A no-op timer means no timers; a no-op
+      semaphore means no wake path. Reaching macOS needs alternative
+      implementations — dispatch sources, named semaphores, a condvar emulation
+      of `sem_timedwait` — which is a PORT, not a `cfg`. And every line of it
+      would be un-runnable: no macOS CI runner, which is the exact reason
+      phase-260 gave for dropping macOS in the first place. W4 would have
+      re-created the shape that decision rejected.
+
+      **What the same measurement DID establish, and nobody had checked:
+      nothing blocks \*BSD.** The platform C port contains no `/proc`, `epoll`,
+      `prctl`, `accept4`, `pipe2`, `gettid` or bare `_NP`; its one
+      `MSG_NOSIGNAL` is `#else`-guarded. The board crate's entire libc surface
+      is `sched_setaffinity` / `cpu_set_t` / `CPU_SET` / `write`, and libc
+      defines the affinity family for freebsd and dragonfly. So AGENTS.md's
+      "Linux (primary) and \*BSD (POSIX path)" is defensible at source level.
+
+      **And that is why the board's reach stays `linux`, on a second footing.**
+      Strictly the reach is "POSIX minus macOS" — neither reach word is exactly
+      true. `linux` is the honest choice because it is the VERIFIED one: BSD is
+      plausible and unrun, and claiming it would ship exactly the un-exercised
+      path phase-260 refused. `linux` means "what CI proves", not "the only
+      thing that could work".
+
+      **Landed instead: `check-posix-platform-purity`** (fast lane). The
+      platform crate's name is the load-bearing one — it is what makes "the
+      platform layer names software-stack facts, the board layer names what we
+      support" true — and nothing was enforcing it. The audit found the crate
+      scrupulously clean, which is precisely the state worth protecting: the
+      next unguarded `epoll` here would compile and pass CI on the only host
+      anyone runs. Mutation-checked against the real file; guarded uses,
+      `_GNU_SOURCE` and comment mentions are all correctly excused.
+
+      **Reopen this wave only with a macOS runner in hand.** The cost is a port,
+      the risk is un-run code, and the naming question it was meant to settle is
+      already settled without it.
 
 ## What is deliberately NOT touched
 
