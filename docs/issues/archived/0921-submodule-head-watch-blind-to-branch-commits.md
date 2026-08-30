@@ -3,7 +3,7 @@ id: 921
 title: "Both build scripts watch the submodule's `HEAD` file, which does not move
   when you commit on a branch — so the stamped pin goes stale exactly while
   developing play_launch"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0409, issue-0419, issue-0427, issue-0897, issue-0915]
@@ -86,3 +86,38 @@ worse than both being stale.
 Worth a test: the shape is checkable without a build — construct a scratch repo
 with a submodule on a branch, commit in it, and assert the emitted
 `rerun-if-changed` set names the moved ref.
+
+## Fixed
+
+One shared helper, `packages/cli/build-support/submodule_watch.rs`,
+`include!`d by both build scripts — the repo's existing idiom for build-script
+sharing (`nros-cli-core/build.rs` already `include!`s `src/source_stamp.rs`).
+Both sites in one change, as the issue required: fixing one alone would leave
+the 0409 guard comparing a fresh pin against a stale one, which is worse than
+both being stale.
+
+It watches the gitlink, `<gitdir>/HEAD`, **the ref `HEAD` points at**,
+`packed-refs` (a packed ref has no loose file, so the loose watch alone would
+be inert) and `logs/HEAD` (appended on commit and checkout; a belt, since
+reflogs can be disabled). Paths are lexically normalised — `git submodule`
+writes a relative `gitdir:`, so every path otherwise carries `..` hops into
+the build log.
+
+Proven end-to-end, not just by the watch set. With the submodule on a branch:
+
+    git commit --allow-empty          # moves the ref and NOTHING else
+    just setup-launch-resolve
+    nros-launch-resolve --version  ->  play_launch 030f34a2…
+
+An empty commit touches no file, so it is exactly the case the old watch could
+not see; before this change the binary kept the previous sha. Rolling the
+branch back re-stamped it again.
+
+`tests/submodule_watch.rs` covers the four shapes: a branch (asserting the ref,
+`packed-refs` and the reflog are named), a detached HEAD (still watched, and no
+ref file invented), an uninitialised submodule (gitlink only, so
+`--init` re-stamps), and a plain non-submodule repo.
+
+Not addressed here, and worth its own look: `setup-launch-resolve` prints
+`built:` whether or not it rebuilt, which is why this took a `nros sync`
+failure two steps later to notice.
