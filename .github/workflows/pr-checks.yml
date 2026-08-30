@@ -329,6 +329,24 @@ jobs:
       - name: just check-fast
         run: just check-fast
 
+      # A pin naming a commit no remote can serve is a repo that builds only on
+      # the machine that made it: every clone and every CI run dies at
+      # `git submodule update` with `reference is not a tree`, and the
+      # superproject commit has to be rewritten because a pin cannot point at
+      # nothing. AGENTS.md has said "push the submodule commit FIRST" since
+      # forever and nothing enforced it.
+      #
+      # Not in `check-fast`: that tier is source-free AND network-free by
+      # contract, and this gate's whole job is to ask the REMOTE. Asking the
+      # local clone instead would pass on exactly the one host where the
+      # mistake is invisible.
+      #
+      # Every pin, not only the moved ones: a PR is where a reviewer's fresh
+      # clone gets its first chance, and 20 `--depth=1` existence probes cost
+      # seconds.
+      - name: just check-submodule-commits-reachable
+        run: just check-submodule-commits-reachable
+
       # ----- build tier (PR + nightly + dispatch, NOT per-push) -----
       # THE ARRANGEMENT, phase-395. This job is ONE required status context and
       # it deliberately does DIFFERENT WORK per event:
