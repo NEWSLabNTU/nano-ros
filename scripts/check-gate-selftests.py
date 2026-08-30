@@ -80,10 +80,37 @@ FLAG = re.compile(r"--self")
 HAS_SELFTEST = re.compile(r"self.?test", re.I)
 
 
+# `import "just/x.just"` MERGES that file's recipes into the root namespace —
+# unlike `mod`, which namespaces them. A gate that enumerates `check-*` recipes
+# therefore has to read the imported files too, or every moved recipe reads as
+# "backs no `check-*` recipe any more" while it is running on every push.
+#
+# Same latent hole `check-just-recipe-refs` carried: invisible while every gate
+# happened to live in one file, and surfacing as a flood — 117 at once — the
+# moment phase-399 moved 200 of them into `just/check.just`.
+IMPORT_DEF = re.compile(r'^import\s+[\'"]([^\'"]+)[\'"]', re.M)
+
+
+def _justfile_sources():
+    """The root justfile plus every file it `import`s (not `mod`s)."""
+    root = os.path.join(ROOT, "justfile")
+    with open(root, encoding="utf8") as fh:
+        text = fh.read()
+    files = [root]
+    for rel in IMPORT_DEF.findall(text):
+        f = os.path.join(ROOT, rel)
+        if os.path.exists(f):
+            files.append(f)
+    return files
+
+
 def gate_scripts():
-    """Scripts invoked by a `check-*` recipe in the justfile."""
-    with open(os.path.join(ROOT, "justfile"), encoding="utf8") as fh:
-        lines = fh.read().split("\n")
+    """Scripts invoked by a `check-*` recipe in the justfile (or an import)."""
+    lines = []
+    for f in _justfile_sources():
+        with open(f, encoding="utf8") as fh:
+            lines.extend(fh.read().split("\n"))
+        lines.append("# --- file boundary: a recipe never spans two files ---")
     found, in_recipe = set(), False
     for line in lines:
         if re.match(r"^check-[a-z0-9-]+[ :]", line):
