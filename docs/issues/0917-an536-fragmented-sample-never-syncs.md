@@ -134,7 +134,13 @@ lan9118 driver never calls the lwIP link-stat macros, so loss at exactly this
 layer is invisible to `lwip_stats`. Every pool below it reads clean while the
 NIC is dropping the tail of every burst.
 
-## Confirmed by intervention: widen the RX FIFO and it goes away
+## Diagnosis by intervention: widen the RX FIFO and it goes away
+
+**This is evidence, not a proposed change.** The lane keeps the stock FIFO —
+enlarging an emulated part past the silicon it models would hide a constraint
+the real board has, and the timing budget below shows the constraint is real.
+The experiment is recorded because it isolates the binding resource, which no
+amount of guest-side change could have told us.
 
 The FIFO was rebuilt from the pinned fork with the data FIFO at 16384 words
 (64 KiB, up from 2640 / 10 560 B) and the status FIFO at 1024 entries (up from
@@ -175,20 +181,63 @@ change):
 +    s->rx_status_fifo_size = 1024;
 ```
 
-**Landing it is a maintainer action, not an agent one.** It belongs on the
-qemu fork's patch branch, and the SDK ships qemu as a prebuilt dist
-(`nros-sdk-index.toml`), so it needs a fork push plus a new dist build before
-any consumer sees it. Until then the an536 lane cannot carry an Autoware-sized
-fragmented topic.
+The patch is kept beside this issue as `0917-lan9118-rx-fifo.patch` for
+anyone who needs to re-run the diagnosis. It should NOT be shipped: 2640 words
+is what the real LAN9118 has, and a lane that quietly gives the guest six times
+that stops being a test of the product on that part.
 
-One caveat to state plainly: this widens an emulated part beyond what the real
-LAN9118 has (the hardware FIFO is ~10 KiB shared, which is where 2640 words
-comes from). That is defensible for a lane whose purpose is to run real ROS 2
-traffic against a Cortex-R52 image whose actual silicon does DMA rather than a
-FIFO — but it is a deliberate divergence from the modelled part and should be
-recorded as one, not slipped in as a bug fix.
+## The hardware-honest budget, and what it says the defect is
 
-## Interrupt-driven RX was built and measured, and it is NOT the fix
+The LAN9118 is a 10/100 part and the driver advertises 100BASE-TX. At that line
+rate:
+
+```
+frame on wire        1440 B (1420 + preamble/IFG)  ->  115 us
+RX FIFO              10560 B, usable 9024 after the
+                     1536 B can_receive headroom    ->  holds 6 frames
+time to fill         6 x 115 us                     ->  691 us
+an 8-fragment burst  8 x 115 us                     ->  922 us
+```
+
+So on the modelled part the driver has **~0.7 ms** to start draining before the
+FIFO refuses frames. Against that:
+
+| drain latency | verdict |
+| --- | --- |
+| `poll_interval_ms = 5` (today) | 5000 us — **7x too slow** |
+| polling every 1 ms | 1000 us — still too slow |
+| RX interrupt (~50 us) | fits, with an order of magnitude to spare |
+
+**That is a real defect on real silicon, not an emulation artifact.** A 5 ms
+polled drain cannot service a 10.5 KB FIFO on a 100 Mbps link — any peer that
+sends more than six back-to-back frames loses the tail, and RTPS fragmentation
+of an ordinary ROS 2 topic does exactly that.
+
+## Correction: interrupt-driven RX IS the fix
+
+The section below measured interrupt-driven RX as no better than the 5 ms poll
+and concluded it was not the fix. **That conclusion was wrong, and the reason
+is instructive.** QEMU's tap backend delivers frames as fast as the host can
+write them — there is no pacing to the modelled 100 Mbps PHY. A burst that
+takes 922 us on the wire arrives in the emulator effectively instantaneously,
+so the guest is never scheduled inside it and NO drain latency, however small,
+can help. The lane is harsher than the hardware, not more faithful to it.
+
+The arithmetic above is what should be believed: at line rate an RX interrupt
+has ~0.7 ms of headroom and a 5 ms poll has none.
+
+**Verifying it on this lane needs link pacing**, which needs root, so it is an
+operator/CI step rather than something the rig can do:
+
+```
+sudo tc qdisc add dev tap1 root tbf rate 100mbit burst 32kbit latency 5ms
+```
+
+With the tap paced to the modelled link speed, the interrupt-driven prototype
+(recorded below) should deliver where the 5 ms poll does not. Without pacing,
+neither will, and the lane cannot distinguish them.
+
+## Interrupt-driven RX: what was built, and what the unpaced lane measured
 
 Worth recording in full, because it is the obvious next move and it does not
 work.
@@ -216,33 +265,34 @@ as active-LOW until the driver sets `IRQ_POL|IRQ_TYPE`, so between reset and
 immediately, against a netif that does not exist yet. Enable the GIC side only
 after the driver has configured the source.
 
-**It works, and it does not help.** The ISR fires (464 times in a 35 s run,
-zero spurious IDs), and delivery is **2 of 6** — the same as the unmodified
-build, while simply polling every 1 ms instead of every 5 ms measured 9 of 11.
+**It works. On this lane it does not help** — and see the correction above for
+why that is a statement about the lane, not about the design. The ISR fires
+(464 times in a 35 s run, zero spurious IDs), and delivery is **2 of 6**, the
+same as the unmodified build, while polling every 1 ms measured 9 of 11.
 
-The counter says why: 464 ISRs over 35 s is ~13/s against ~130 packets/s
-arriving. The FIFO rarely empties, so the mask stays on and the 5 ms timeout
-does the work anyway. Wake latency was never the binding constraint — **the
-FIFO is**. The guest cannot be scheduled between the frames of one burst at
-all, so nothing on the guest side changes how much of a burst fits.
+The counter says what is happening: 464 ISRs over 35 s is ~13/s against ~130
+packets/s arriving, so the FIFO rarely empties, the mask stays on, and the 5 ms
+timeout does the work anyway. On an emulator that delivers a 922 us burst
+instantaneously the guest is never scheduled inside it, so no wake latency can
+help and 1 ms polling wins only by keeping the FIFO emptier on average.
 
-That also explains why 1 ms polling beat it: it does not make the guest react
-faster to a burst, it keeps the FIFO emptier on average so more of the next
-burst fits.
+At the modelled 100 Mbps this reverses: the burst takes 922 us, the FIFO fills
+at 691 us, and a ~50 us ISR has room to spare where a 5 ms poll has none.
 
-## Directions that remain
+## What to do
 
-* **Keep the cheap half regardless.** Drain-first/wait-second with the poll
-  interval as a ceiling is strictly better than sleep-first, and costs nothing.
-* **Widen the FIFO.** nano-ros pins its own QEMU fork, so `rx_fifo_size` (2640
-  words) is ours to change for this lane. Note the lane currently runs the
-  SYSTEM qemu (9.0.2) — the fork is not built — so this needs the rig pointed
-  at the fork first.
-* **Accept the limit.** On real hardware the RX path is DMA to memory, not a
-  10.5 KB on-chip FIFO, so this specific ceiling is an artifact of the emulated
-  board rather than a product defect. Interrupt-driven RX is still the right
-  shape for real silicon and removes a fixed 5 ms latency floor — it just does
-  not close THIS gap.
+1. **Land interrupt-driven RX.** The budget says a 5 ms polled drain cannot
+   service this NIC at line rate, so this is a defect on the part, not a lane
+   quirk. The prototype below is complete and boots; it needs review, not
+   discovery.
+2. **Keep drain-first/wait-second** with `poll_interval_ms` as a ceiling
+   regardless — strictly better than sleeping before ever looking, and it costs
+   nothing on boards with no RX interrupt.
+3. **Do NOT widen the emulated FIFO.** It makes the lane pass by removing the
+   constraint the product has to satisfy.
+4. **Pace the tap to 100 Mbit in the lane** (operator/CI, needs root) so the
+   emulator stops being harsher than the hardware and the fix can be
+   demonstrated rather than argued from arithmetic.
 
 ## What the island's own trace shows
 
