@@ -45,8 +45,25 @@ pub fn config_root() -> Option<PathBuf> {
     let mut dir = PathBuf::from(start);
     loop {
         if dir.join("nros-sdk-index.toml").is_file() {
-            let cfg = dir.join("config");
-            return cfg.is_dir().then_some(cfg);
+            // phase-400 W1 — descriptors live beside their crates now, with
+            // `config/` kept for the platforms that have no package. Prefer the
+            // first root that actually holds one rather than assuming `config/`,
+            // which after the move can exist and be empty of descriptors.
+            for root in ["packages/platform", "config"] {
+                let cand = dir.join(root);
+                if cand.is_dir()
+                    && std::fs::read_dir(&cand).is_ok_and(|mut e| {
+                        e.any(|x| {
+                            x.is_ok_and(|x| {
+                                x.path().join("nros-platform.toml").is_file()
+                            })
+                        })
+                    })
+                {
+                    return Some(cand);
+                }
+            }
+            return None;
         }
         if !dir.pop() {
             return None;

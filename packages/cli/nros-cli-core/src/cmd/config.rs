@@ -80,15 +80,33 @@ pub struct ExplainArgs {
 fn explain(args: ExplainArgs) -> Result<()> {
     use nros_board_common::platform_config::{BoardKnobsFile, PlatformsTree};
 
-    let root = match args.platforms_dir {
-        Some(d) => d,
-        None => match std::env::var_os("NROS_PLATFORMS_DIR").filter(|v| !v.is_empty()) {
-            Some(d) => PathBuf::from(d),
-            None => find_platforms_root()?,
-        },
+    // phase-400 W1 — a search path. An explicit --platforms-dir still pins one
+    // root, because that is what it is for; otherwise the path is
+    // $NROS_PLATFORMS_DIR (if set), then packages/platform, then config/.
+    let search: Vec<PathBuf> = match args.platforms_dir {
+        Some(d) => vec![d],
+        None => {
+            let repo = find_repo_root()?;
+            PlatformsTree::default_search_path(
+                &repo,
+                std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
+            )
+        }
     };
-    let tree = PlatformsTree::load(&root)
-        .map_err(|e| eyre!("load platforms tree at {}: {e}", root.display()))?;
+    let root = search
+        .first()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("config"));
+    let tree = PlatformsTree::load_search_path(&search).map_err(|e| {
+        eyre!(
+            "load platforms from {}: {e}",
+            search
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(":")
+        )
+    })?;
 
     let board = match &args.board_toml {
         Some(p) => Some(BoardKnobsFile::load(p).map_err(|e| eyre!("{}: {e}", p.display()))?),
@@ -200,6 +218,24 @@ fn explain(args: ExplainArgs) -> Result<()> {
         println!("warning: {w}");
     }
     Ok(())
+}
+
+/// phase-400 W1 — the repo root itself, for building a platform SEARCH PATH.
+/// Separate from `find_platforms_root` because the path now has more than one
+/// entry and the caller assembles it.
+fn find_repo_root() -> Result<PathBuf> {
+    let mut dir = std::env::current_dir().wrap_err("resolve cwd")?;
+    loop {
+        if dir.join("nros-sdk-index.toml").exists() {
+            return Ok(dir);
+        }
+        if !dir.pop() {
+            return Err(eyre!(
+                "not inside a nano-ros checkout (no nros-sdk-index.toml sentinel) — \
+                 pass --platforms-dir or set NROS_PLATFORMS_DIR"
+            ));
+        }
+    }
 }
 
 /// Walk up from cwd to the repo root (marked by `nros-sdk-index.toml`, the

@@ -631,17 +631,23 @@ pub fn run() {
     let legacy_file = env::var_os("ZPICO_PLATFORMS_TOML")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from);
-    let platforms_root = env::var_os("NROS_PLATFORMS_DIR")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            // phase-321 W2.e — the platform manifests moved from
-            // `packages/platforms/` to the repo-root `config/`, so this walks
-            // FOUR levels (crate -> zenoh -> rmw -> packages -> repo root).
-            // A relative path built in Rust: no grep for `packages/platforms`
-            // finds it, and only a build catches it being wrong.
-            manifest_dir.join("../../../../config")
-        });
+    // phase-400 W1 — a SEARCH PATH, not one directory.
+    //
+    // This used to be `manifest_dir.join("../../../../config")`, a single
+    // hardcoded root. When the descriptors moved beside their crates
+    // (`packages/platform/nros-platform-<x>/`) that path still resolved — to a
+    // directory that no longer held them — so every platform silently fell back
+    // to builtins. A wrong image, no diagnostic: exactly the silent-fallback
+    // failure phase-400 W8 exists to prevent, and it would have shipped.
+    //
+    // `NROS_PLATFORMS_DIR` keeps working as an explicit single-root override by
+    // being placed FIRST in the path; it is no longer the only way in.
+    let repo_root = manifest_dir.join("../../../..");
+    let platform_search_path = platform_config::PlatformsTree::default_search_path(
+        &repo_root,
+        env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
+    );
+
     let (platform_manifest, platforms_tree) = match legacy_file {
         Some(path) => {
             println!("cargo:rerun-if-changed={}", path.display());
@@ -650,16 +656,31 @@ pub fn run() {
             (m, None)
         }
         None => {
-            let tree = platform_config::PlatformsTree::load(&platforms_root)
-                .unwrap_or_else(|e| panic!("{}: {e}", platforms_root.display()));
-            for name in tree.names() {
-                println!(
-                    "cargo:rerun-if-changed={}",
-                    platforms_root
-                        .join(name)
-                        .join(platform_config::PLATFORM_CONFIG_FILENAME)
-                        .display()
+            let tree = platform_config::PlatformsTree::load_search_path(&platform_search_path)
+                .unwrap_or_else(|e| panic!("platform search path: {e}"));
+            if tree.names().next().is_none() {
+                panic!(
+                    "no nros-platform.toml found on the platform search path: {}. \
+                     A silently empty tree resolves every knob to a builtin and produces a \
+                     wrong image with no diagnostic, so this is fatal rather than a warning.",
+                    platform_search_path
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(":")
                 );
+            }
+            // Watch every root, not just the one a descriptor happens to live
+            // in today: moving a file between roots must invalidate the build.
+            for root in &platform_search_path {
+                for name in tree.names() {
+                    println!(
+                        "cargo:rerun-if-changed={}",
+                        root.join(name)
+                            .join(platform_config::PLATFORM_CONFIG_FILENAME)
+                            .display()
+                    );
+                }
             }
             let m = tree.as_platform_manifest();
             (m, Some(tree))

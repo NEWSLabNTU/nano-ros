@@ -411,6 +411,60 @@ impl From<ManifestError> for ConfigError {
 impl PlatformsTree {
     /// Load every `<root>/*/nros-platform.toml`. Directories without the
     /// file are skipped (a platform package may predate its config file).
+    /// phase-400 W1 / RFC-0086 D3 — load platform descriptors from a SEARCH
+    /// PATH rather than one directory.
+    ///
+    /// RFC-0049 opens by rejecting a central file: an out-of-tree platform
+    /// *"cannot join `zenoh_platforms.toml` without forking the tree."* The rmw
+    /// and board axes honour that; the platform axis did not, because `load`
+    /// takes exactly one root. A third-party platform therefore had to fork
+    /// `config/` or repoint the whole root and lose the in-tree platforms with
+    /// it.
+    ///
+    /// Roots are searched in order and the FIRST definition of a name wins, so
+    /// a caller can shadow an in-tree platform by putting its own root first.
+    /// A later root re-defining a name is skipped silently rather than
+    /// erroring: that is what "shadow" means, and it is the same precedence
+    /// rule RFC-0071 D5 uses for backends.
+    ///
+    /// Missing roots are skipped, not fatal — a search path naturally contains
+    /// entries that do not exist on every machine.
+    pub fn load_search_path(roots: &[PathBuf]) -> Result<Self, ConfigError> {
+        let mut merged: Option<PlatformsTree> = None;
+        for root in roots {
+            if !root.is_dir() {
+                continue;
+            }
+            let tree = Self::load(root)?;
+            match merged.as_mut() {
+                None => merged = Some(tree),
+                Some(acc) => {
+                    for (name, file) in tree.files {
+                        acc.files.entry(name).or_insert(file);
+                    }
+                    for (k, v) in tree.arch {
+                        acc.arch.entry(k).or_insert(v);
+                    }
+                }
+            }
+        }
+        Ok(merged.unwrap_or_default())
+    }
+
+    /// The default search path: `$NROS_PLATFORM_PATH` entries first (colon
+    /// separated, so a porter can prepend their own tree), then the two in-tree
+    /// homes. `packages/platform` comes before `config` so a descriptor that
+    /// has moved beside its crate wins over a stale copy left behind.
+    pub fn default_search_path(repo_root: &Path, env_path: Option<&str>) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = Vec::new();
+        if let Some(p) = env_path {
+            out.extend(p.split(':').filter(|s| !s.is_empty()).map(PathBuf::from));
+        }
+        out.push(repo_root.join("packages/platform"));
+        out.push(repo_root.join("config"));
+        out
+    }
+
     pub fn load(root: &Path) -> Result<Self, ConfigError> {
         let mut tree = PlatformsTree {
             root: root.to_path_buf(),
@@ -465,7 +519,19 @@ impl PlatformsTree {
                     }
                 }
             }
-            tree.files.insert(name, parsed);
+            // phase-400 W1 — key by the descriptor's own canonical name when it
+            // declares one, falling back to the directory. A platform that has
+            // moved beside its crate lives in `nros-platform-<x>/`, so keying
+            // on the directory alone would make it resolve as
+            // `nros-platform-zephyr` and no longer answer to `zephyr`. The
+            // `names` field already exists for exactly this (phase-349 W1 /
+            // RFC-0072); this makes the loader honour it.
+            let key = parsed
+                .names
+                .first()
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            tree.files.insert(key, parsed);
         }
         Ok(tree)
     }
@@ -1076,16 +1142,21 @@ serial = true
     /// the claim; this is the check.
     #[test]
     fn real_config_tree_still_loads_zenoh_blocks() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
             .unwrap()
-            .join("config");
-        if !root.is_dir() {
+            .to_path_buf();
+        let path = PlatformsTree::default_search_path(&repo, None);
+        if !path.iter().any(|p| p.is_dir()) {
             return; // out-of-tree consumer; nothing to check
         }
-        let tree = PlatformsTree::load(&root).expect("the real config/ tree loads");
-        assert!(!tree.files.is_empty(), "config/ yielded no platform files");
+        let tree =
+            PlatformsTree::load_search_path(&path).expect("the real platform search path loads");
+        assert!(
+            !tree.files.is_empty(),
+            "platform search path yielded no platform files"
+        );
         let with_zenoh = tree
             .files
             .values()
@@ -1109,15 +1180,17 @@ serial = true
     /// key and Zephyr losing it are equally a regression.
     #[test]
     fn only_zephyr_delegates_its_c_build_to_the_platform() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
             .nth(3)
             .unwrap()
-            .join("config");
+            .to_path_buf();
+        let root_path = PlatformsTree::default_search_path(&repo, None);
+        let root = repo.join("config");
         if !root.is_dir() {
             return; // out-of-tree consumer; nothing to check
         }
-        let tree = PlatformsTree::load(&root).expect("the real config/ tree loads");
+        let tree = PlatformsTree::load_search_path(&root_path).expect("the real config/ tree loads");
         let manifest = tree.as_platform_manifest();
         let mut delegating: Vec<String> = Vec::new();
         let mut checked = 0usize;
