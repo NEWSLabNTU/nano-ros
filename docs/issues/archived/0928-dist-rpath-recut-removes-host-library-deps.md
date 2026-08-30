@@ -2,7 +2,7 @@
 id: 928
 title: "Re-cut the qemu and openocd dists with $ORIGIN rpath so their host
   library deps vanish instead of being declared"
-status: open
+status: resolved
 type: enhancement
 area: tooling
 related: [0926, 0368, phase-327, rfc-0062]
@@ -62,3 +62,44 @@ appeared to work for a year with a one-entry declaration.
 searched AFTER it. So a re-cut removes the need for a host package; it does not
 protect against a host that puts a conflicting library ahead of it. That is
 issue 0774's class and is not what this issue is about.
+
+## Resolution (2026-08-30)
+
+All three candidates addressed, in the ranked order.
+
+**qemu — no build needed.** `11.0.0-nros6` had been RELEASED on 2026-08-29 with
+the bundling and the index still pinned `-nros2` from May, so the fixed dist
+existed and nano-ros was not using it. Verified on the released tarball before
+bumping: 18 libs bundled, external closure **20 -> 2**, `qemu-system-arm
+--version` runs with `LD_LIBRARY_PATH` unset. The two that remain are
+deliberate — `libselinux` is on the bundler's host-only list and `libpcre2` is
+reachable only through it.
+
+**openocd -> 0.12.0-nros2.** External closure **4 -> 0**; the binary that died
+with `libftdi.so.1` now runs on the very host that could not start it.
+
+**arm-none-eabi-gcc -> 13.2-nros2.** ncurses 5 bundled on x86_64; gdb no longer
+dies at the loader. NOT fully fixed — its embedded Python still fails to
+initialise, which is issue 0929 and is not an rpath problem.
+
+**The bundler is now shared** (`scripts/lib/bundle.sh` in nano-ros-sdk). It had
+lived inside `build-qemu.sh`, which is the whole reason qemu shipped
+self-contained for months while every other dist linked the host. Three defects
+surfaced only once it was applied to something other than qemu:
+
+* every `ldd` now runs under `env -u LD_LIBRARY_PATH` — the function COPIES what
+  the loader resolved, so a stray path made it bundle ROS's `libddsc` instead of
+  the dist's own;
+* a library the dist already ships is no longer copied onto itself;
+* non-ELF arguments are filtered, so a caller may hand over a whole `bin/`
+  (ARM's has wrappers and symlinks among 31 binaries).
+
+**Net on the index: 19 of 0926's 26 prereq keys are gone**, and
+`nros setup --system --check` reports **0 missing** on a host that previously
+needed four packages installed. Declaring was never the goal — it was how the
+problem became visible; re-cutting removed the need.
+
+**The gate got sharper too.** It now measures the PINNED version rather than the
+whole tool directory: the store accumulates (issue 0500), and with 13.2-nros1
+and -nros2 both present, nros2's bundled ncurses masked nros1's missing one — a
+false negative in which a re-cut hides the release it replaced.
