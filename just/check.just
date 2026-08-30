@@ -113,7 +113,7 @@ fast-serial: \
     cargo-profile-mirror build-profile-literals \
     version-lockstep workspace-fmt example-fmt cli-fmt \
     readiness-marker-literals \
-    codegen-invocation string-conventions issue-ids knob-single-reader \
+    codegen-invocation string-conventions issue-ids knob-single-reader workflow-repo-env \
     std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
     absolute-paths \
     c-fmt cpp-fmt python \
@@ -741,6 +741,21 @@ issue-ids:
 [private]
 knob-single-reader:
     @python3 scripts/check/check-knob-single-reader.py
+
+# issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
+# environment. `activate.sh` is what exports `nano_ros_ROOT`, and that is how
+# `find_package(nano_ros)` resolves: the config lives at the checkout root and a
+# generated workspace root sets no prefix on purpose. `just doctor` enforces this
+# for a developer shell; nothing enforced it for a CI step, which is the one
+# place the shell is fresh every time.
+#
+# Pure YAML + regex over `.github/workflows/`, so it belongs in the source-free
+# tier. It skips comment prose AND heredoc bodies — both false positives were
+# live in the tree (a comment mentioning `nros sync`; a pull-request comment
+# whose TEXT tells the author to run `just queue-triage`).
+[private]
+workflow-repo-env:
+    @python3 scripts/check-workflow-repo-env.py
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens
