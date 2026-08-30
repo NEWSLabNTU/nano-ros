@@ -257,6 +257,48 @@ fn upstream_literal_defines(zenoh_pico_dir: &std::path::Path, already_defined: &
         }
         let _ = writeln!(out, "{t}");
     }
+
+    // The `@TOKEN@` lines skipped above are tunables, and upstream's CMake is
+    // what supplies their values. This build never runs that CMake, so without
+    // this pass the token is simply absent and the C build fails on a bare
+    // `'Z_RUNTIME_MAX_TASKS' undeclared` -- which is what zenoh-pico 1.10 did to
+    // the cargo path, since 1.10 added the runtime/executor constants.
+    //
+    // Take the defaults from where CMake takes them: the
+    // `set(NAME <value> CACHE STRING ...)` lines in upstream's CMakeLists.txt.
+    // Guarded, so anything this build sets on purpose still wins, and derived
+    // rather than transcribed, so a version bump does not leave us behind again.
+    let cmakelists = zenoh_pico_dir.join("CMakeLists.txt");
+    if let Ok(cmake) = std::fs::read_to_string(&cmakelists) {
+        let mut defaults: Vec<(String, String)> = Vec::new();
+        for line in cmake.lines() {
+            let t = line.trim();
+            let Some(rest) = t.strip_prefix("set(") else { continue };
+            if !rest.contains("CACHE") {
+                continue;
+            }
+            let mut it = rest.split_whitespace();
+            let Some(name) = it.next() else { continue };
+            let Some(value) = it.next() else { continue };
+            if !name.starts_with("Z_") || already_defined.contains(&name) {
+                continue;
+            }
+            defaults.push((name.to_string(), value.trim_matches('"').to_string()));
+        }
+        if !defaults.is_empty() {
+            let _ = writeln!(out, "/* Tunable defaults lifted from {}. */", cmakelists.display());
+        }
+        for (name, value) in defaults {
+            // Only tokens the template actually substitutes; a cache entry that
+            // is not in config.h.in is a CMake-side knob, not a C constant.
+            if !text.contains(&format!("@{name}@")) {
+                continue;
+            }
+            let _ = writeln!(out, "#ifndef {name}");
+            let _ = writeln!(out, "#define {name} {value}");
+            let _ = writeln!(out, "#endif");
+        }
+    }
     out
 }
 

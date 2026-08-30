@@ -36,7 +36,10 @@ extra_sources = [
   # calls `_z_open_tcp` etc. — now resolves against the
   # native unix impls instead of the wrong-shape aliases.
   { path = "{src}/system/unix/network.c" },
-  { path = "{src}/system/unix/tls.c" },
+  # zenoh-pico 1.10 (upstream #1188) deleted system/unix/tls.c; TLS now lives in
+  # src/link/{config,unicast}/tls.c and src/link/transport/upper/tls_stream.c,
+  # all of which the core source set already picks up. Naming a file that no
+  # longer exists is a hard build failure, not a no-op.
 ]
 system_libs = ["pthread", "rt"]
 mbedtls = "pkg-config"

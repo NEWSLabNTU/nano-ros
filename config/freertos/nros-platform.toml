@@ -47,7 +47,9 @@ extra_sources = [
   # path. build.rs skips the alias TU entirely on FreeRTOS via
   # `if !use_freertos { ... alias_build.compile(...) }`.
   { path = "{src}/system/freertos/system.c" },
-  { path = "{src}/system/freertos/lwip/network.c" },
+  # 1.10 moved the lwIP socket backend out of system/freertos/lwip/ and into
+  # the shared system/socket/ directory.
+  { path = "{src}/system/socket/lwip.c" },
   { path = "{nros}/c/zpico/zpico.c" },
 ]
 # RFC-0062 — list form (Phase 148): the first arch whose `target_match` matches

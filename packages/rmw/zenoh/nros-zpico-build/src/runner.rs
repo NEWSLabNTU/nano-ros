@@ -1286,11 +1286,28 @@ pub fn run() {
     // shadow the OUT_DIR-generated header on the bare-metal shim include path;
     // deleted in the #135 fix (every TU now consumes the generated config).
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
-    println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/system.c");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/lwip/network.c");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/net/primitives.c");
+    // Watch the TREES, not a list of files (issue 0902).
+    //
+    // This used to name five zenoh-pico sources out of the several hundred the
+    // build actually compiles. Everything else -- protocol, transport, codec,
+    // collections, the link implementations -- had no rebuild edge, so patching
+    // one of them changed nothing: cargo saw no watched input move, skipped the
+    // build script, and the test ran against a binary without the edit. That
+    // does not fail; it produces a green run whose conclusion is about code that
+    // was never compiled. It cost a full measure-fix-measure cycle in issue 0899
+    // and nearly produced a "the fix does not work" verdict about a fix that had
+    // never been built.
+    //
+    // One of those five made it worse: `src/system/freertos/lwip/network.c` was
+    // deleted upstream in zenoh-pico 1.10, and a rerun-if-changed on a path that
+    // does not exist is not a no-op.
+    //
+    // `cargo:rerun-if-changed` accepts a directory and cargo walks it, so two
+    // lines cover the compiled set with no list to maintain. The cost is that any
+    // touch under these trees re-runs the build script; for a vendored library
+    // that changes only when someone patches it, that is the right trade.
+    println!("cargo:rerun-if-changed=zenoh-pico/src");
+    println!("cargo:rerun-if-changed=zenoh-pico/include");
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
     println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
