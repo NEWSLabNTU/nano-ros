@@ -3350,7 +3350,15 @@ setup-launch-resolve:
     # (`node '/listener' is not placed`) looked like a code regression on main
     # rather than a museum binary. Same class as issue 0196: a build-side probe
     # that misses an input the build consumes.
-    if [ -x "$bin" ]; then
+    # The Python half is HALF THE TOOL, so "already built" has to mean both
+    # artifacts. Keyed on the binary alone, this recipe short-circuits on a tree
+    # that has the resolver and no `libplay_launch_parser_pyexec.so` beside it —
+    # which is precisely the state that left `host-tests` red: the recipe
+    # reported success, and every `$(eval …)` launch file failed at parse time
+    # with "this build has no Python backend" on hosts that have Python.
+    if [ -x "$bin" ] && [ ! -f "$(dirname "$bin")/libplay_launch_parser_pyexec.so" ]; then
+        echo "[setup-launch-resolve] the Python half is missing beside the binary; rebuilding."
+    elif [ -x "$bin" ]; then
         # `git ls-files` + mtime walk, not `find`. The resolver tree lives inside
         # the play_launch SUBMODULE, so `git ls-files` is run inside it (`-C`) —
         # from the superproject the index holds only the gitlink, which would
@@ -3402,6 +3410,43 @@ setup-launch-resolve:
     export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1
     # profile-literal-ok: host tool: builds nros-launch-resolve
     cargo build --release --manifest-path "$crate/Cargo.toml"
+    # The Python HALF, and it is not optional packaging — it is half the tool.
+    #
+    # 0897 W3 made the resolver load an interpreter at RUNTIME instead of linking
+    # one, which is what lets ONE binary serve any CPython and lets a host with
+    # none still resolve XML/YAML. The loader finds the Python half by looking
+    # beside the executable (`pyload::pyexec_beside_exe`), so a build that emits
+    # only the binary produces a resolver that is *correctly* version-agnostic
+    # and *cannot evaluate anything*: `$(eval …)` and `.launch.py` fail with "this
+    # build has no Python backend" on a host that has Python installed.
+    #
+    # That is exactly what happened. `host-tests` went red on main the moment the
+    # W2b pin removed the link, on
+    # `demo_bringup/launch/multihost.launch.xml`'s `$(eval "robot1" in (...))`,
+    # and stayed red — the artifact SHAPE was verified (`readelf -d` shows no
+    # `libpython`) while the capability was not.
+    #
+    # `--features extension-module` is the half that must NOT link libpython:
+    # its `Py_*` symbols stay undefined so they bind to whichever interpreter the
+    # loader `dlopen`s with RTLD_GLOBAL. Built from the parser's own workspace,
+    # which is where the crate lives and is deliberately NOT in the resolver's
+    # dependency graph — a normal dep would put the link back.
+    _pyexec_ws="$crate/../third-party/play_launch/src/ros-launch-resolve/parser"
+    echo "[setup-launch-resolve] building the Python half (dlopen'ed at runtime)…"
+    # profile-literal-ok: host tool: the resolver's own Python half
+    cargo build --release --manifest-path "$_pyexec_ws/Cargo.toml" \
+        -p play_launch_parser_pyexec --lib --features extension-module
+    _pyexec_so="$(dirname "$bin")/libplay_launch_parser_pyexec.so"
+    # profile-literal-ok: host tool: reads back where that build put it
+    _pyexec_built="${CARGO_TARGET_DIR:-$_pyexec_ws/target}/release/libplay_launch_parser_pyexec.so"
+    if [ ! -f "$_pyexec_built" ]; then
+        echo "[setup-launch-resolve] FAILED: the Python half was not produced at" >&2
+        echo "  $_pyexec_built" >&2
+        echo "  Without it the resolver cannot evaluate \`\$(eval …)\` or a" >&2
+        echo "  .launch.py, and says so at parse time rather than here." >&2
+        exit 1
+    fi
+    cp "$_pyexec_built" "$_pyexec_so"
     # Record WHAT it was built from. Without this the content check has nothing
     # to compare against and reports stale forever — issue 0596's shape, one
     # mechanism over.
