@@ -3,9 +3,12 @@
 **Status (2026-08-30). IN PROGRESS — W1 and W2a landed. W2's orchestration half
 was ATTEMPTED AND REVERTED: its 43-crate estimate measured as 6, because
 `nros-orchestration-ir` is needed by every arm of the macro and is itself what
-pulls the heavy tail. The lever moves to splitting that crate; see W2. W3
-measured and specified, not implemented. Waves are ordered by measured value,
-not by discovery order.**
+pulls the heavy tail. The lever moves to splitting that crate; see W2. **W3 is
+also RETRACTED**: its 20.6 s of bindgen belongs to upstream `zephyr-sys`, and the
+four `*-sys` crates the plan named are workspace-EXCLUDED with zero consumers, so
+they contribute nothing to any measured build. W4, the leaf-graph attribution, is
+the only item left with a defensible premise — and should have been first. Waves
+are ordered by measured value, not by discovery order.**
 
 **Read the W2 table with W2a's caveat**: the 50.4 s pair assumes BOTH halves
 ship, because the 27.4 s contested pool only frees when the last consumer of
@@ -221,7 +224,7 @@ lever lands and nothing else changes.
 | wave | lever | exclusive | share |
 | --- | --- | --- | --- |
 | W2 | gate orchestration **and** cbindgen, together | ~~**50.4 s**~~ see below | ~~42.6 %~~ |
-| W3 | `bindgen` -> committed output | 20.6 s | 17.4 % |
+| W3 | ~~`bindgen` -> committed output~~ RETRACTED | ~~20.6 s~~ 0 s | — |
 | W4 | attribute the contested pool inside the leaf's graph | (enabling) | — |
 | W1 | *landed* — unused dep removed | 1 crate | — |
 
@@ -396,24 +399,71 @@ feature states, `cargo +nightly fmt --check`, `check-cbindgen-pin`,
 `cargo metadata` on all 18 updated leaves. NOT run: `ci-l1`, any fixture build,
 any cross/QEMU lane.
 
-### W3 — build-time `bindgen` to committed output
+### W3 — RETRACTED 2026-08-30. The 20.6 s of bindgen is not ours, and the crates named were not in the build.
 
-**20.6 s, 17.4 %** — the largest single-lever number, and the hardest. The repo
-already solved this once: RFC-0054 commits bindgen output for the ABI crates
-(`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
-`check-abi-bindings`. Four `*-sys` driver crates still generate at build time:
-`zephyr-posix-sys`, `nuttx-sys`, `freertos-lwip-sys`, `threadx-netx-sys`.
+The plan was: commit the output of the four `*-sys` driver crates
+(`zephyr-posix-sys`, `nuttx-sys`, `freertos-lwip-sys`, `threadx-netx-sys`), the
+way RFC-0054 already commits bindgen output for the ABI crates. **Three measured
+facts kill it, and any one of them is sufficient.**
 
-**Not a straight copy of that pattern.** These bind the USER's RTOS headers
-(`ZEPHYR_BUILD_DIR` and friends), not in-tree ones, so committed output asserts
-which SDK produced it. Their allowlists are small — a handful of socket types —
-which makes hand-mirroring the structs tempting; that is issue 0160's hazard,
-where a mirror-only TU passes a shorter struct and the tail field is garbage. If
-taken, it should be commit + a regenerate-and-diff gate per supported SDK,
-mirroring `check-abi-bindings`.
+**1. The four crates are `exclude`d from the workspace.** They sit under
+`exclude = [` in the root `Cargo.toml` (line 173), not `members = [` (which ends
+at line 170) — deliberately, because each needs an external SDK env var
+(`ZEPHYR_BUILD_DIR`, `FREERTOS_DIR`, `NUTTX_DIR`, `THREADX_DIR`).
+`cargo metadata --no-deps` confirms: not members. So `cargo build --workspace`
+and `just check` never build them, and they cost **zero** in any measured build.
 
-*Acceptance:* a cold leaf build compiles no `bindgen`/`clang-sys` unit; the gate
-fails when a header moves without regeneration.
+**2. Nothing depends on them.** Repo-wide, across every tracked manifest, the only
+mentions are their own `Cargo.toml`s and the exclude list. Zero consumers. They
+are dead weight in a directory, not a lever.
+
+**3. The leaf's bindgen belongs to upstream Zephyr.** The profiled leaf
+(`examples/zephyr/rust/talker`) deps `zephyr = "0.1.0"`, which reaches
+`zephyr-sys` in the west-managed module tree — and that is where `bindgen 0.72.1`
+(with `experimental`) comes from. `zephyr-workspace/` is gitignored and
+west-managed: not our code.
+
+And its output is **not committable in principle**, independently of ownership.
+`zephyr-sys/build.rs` reads `DOTCONFIG`, `INCLUDE_DIRS` and `INCLUDE_DEFINES` from
+the specific Zephyr build tree — the bindings are a function of the IMAGE's
+Kconfig, so two images with different `prj.conf` need different bindings. There is
+no single committed artifact to produce. This is the opposite of RFC-0054's case,
+where the headers are in-tree and fixed.
+
+**What the 20.6 s actually is:** the cost of COMPILING `bindgen` and its
+`clang-sys` stack as a build-dependency of an upstream crate, in a cold
+single-leaf build. Not the cost of running it, and not something a committed
+artifact removes.
+
+*If anything is to be done here it is caching, not committing* — the compile is
+content-addressable, and phase-340's shared cargo group already amortises host
+build-deps across leaves sharing a target dir, so the 20.6 s should be a
+first-leaf cost rather than a per-leaf one. **Not re-measured**; whoever picks
+this up should measure the SECOND leaf in a group before assuming either way.
+
+*Separate, small, and real:* the four dead `*-sys` crates should be deleted or
+given a consumer. They are excluded and unreferenced, so removing them saves no
+build time — but a directory of crates nobody builds and nobody uses is a false
+statement about what the project needs, which is the same reason W1 was worth
+doing.
+
+### The pattern this phase keeps hitting, three times now
+
+W2's orchestration half, and now W3, failed the same way the 31.9 % figure did:
+**the removable set was computed from names and subtrees, then assumed to be what
+the leaf's resolved graph contains.** Every time, building it showed otherwise —
+and every time the error was optimistic:
+
+| estimate | claimed | measured | why it was wrong |
+| --- | --- | --- | --- |
+| orchestration share | 31.9 % | 12.6 % | overlapping groups summed independently |
+| W2 orchestration gate | 43 crates | 6 crates | `nros-orchestration-ir` needed by every arm |
+| W3 bindgen | 20.6 s | 0 s from our crates | crates excluded + unreferenced; bindgen is upstream's |
+
+**W4 — attribute the contested pool inside the LEAF's graph — should have been
+first, and is now the only remaining item with a defensible premise.** Its whole
+job is to answer "what does this build actually resolve?" from the build itself
+rather than from the workspace. Everything above is what guessing costs.
 
 ### W4 — attribute the contested pool inside the LEAF's graph
 
