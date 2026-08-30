@@ -341,9 +341,9 @@ Three earlier readings in this issue were wrong and are withdrawn:
 
 ## THE FIX, measured
 
-Committed on the zenoh-pico fork's patch line as `nano-ros-0899` (local — the
-agent does not push fork remotes, so the superproject pin still names
-`dac320e3` and must not be moved until the branch is pushed).
+Landed on the zenoh-pico fork's `nano-ros` patch line as `567c0c52`, pushed as a
+fast-forward so that line keeps its linear history, and the superproject pin
+moved to `ce206ec0b` to pick it up.
 
 **The lock cannot live in the transport** — the thing being freed cannot guard
 its own lifetime. `_z_session_t` gains `_mutex_transport`, a recursive mutex
