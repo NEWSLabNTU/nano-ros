@@ -70,6 +70,5 @@ fails if this block drifts.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
 - **#0903** (rmw) — `get_topic_names_and_types` returns EMPTY against a live rmw_zenoh_cpp node, while `get_node_names` on the same session returns the node See `0903-*`.
-- **#0904** (build) — `nros_variant_symbol.o` still embeds its absolute `OUT_DIR` on the NuttX cross build, so phase-340 W6's byte-identical-artifact fix does not hold there See `0904-*`.
 
 <!-- END GENERATED open-issue list -->
