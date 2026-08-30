@@ -18,6 +18,7 @@
 #include <zephyr/posix/pthread.h>
 
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <time.h>
@@ -213,7 +214,26 @@ z_result_t _z_mutex_rec_unlock(_z_mutex_rec_t *m) {
 }
 
 z_result_t _z_condvar_init(_z_condvar_t *cv) {
-    pthread_condattr_t attr;
+    /* MUST be zeroed. Zephyr's `pthread_condattr_init` refuses an attribute
+     * that already looks initialised:
+     *
+     *     if (attr->initialized) { return EINVAL; }
+     *
+     * `initialized` is a bit inside the caller's object, so on an
+     * uninitialised stack variable this is a read of whatever the previous
+     * frame left there. When that garbage happened to have the bit set, every
+     * condvar init failed, `_z_session_init` returned this platform's -1, and
+     * the session never opened:
+     *
+     *     ERROR ::_z_session_rc_init] _z_open failed: -1   (x10, then give up)
+     *
+     * Which way the bit fell depended on what had run before, so the failure
+     * tracked code layout: adding an unrelated `printk` elsewhere in this file
+     * was enough to make a dead board boot cleanly. zenoh-pico 1.10 is what
+     * made it bite -- its executor changed what sits in that stack slot -- but
+     * the bug was here all along. `pthread_mutexattr_init` has no equivalent
+     * check, which is why the recursive-mutex path never showed it. */
+    pthread_condattr_t attr = {0};
     if (pthread_condattr_init(&attr) != 0) return -1;
     (void)pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
     int rc = pthread_cond_init(cv, &attr);
@@ -253,7 +273,30 @@ z_clock_t z_clock_now(void) {
     return now;
 }
 
-static unsigned long elapsed_ns(const z_clock_t *start, const z_clock_t *now) {
+/* Nanoseconds must be accumulated in 64 bits.
+ *
+ * `unsigned long` is 32 bits on this target, so a nanosecond count wraps at
+ * 2^32 ns = 4.295 SECONDS. Every elapsed-time helper below is built on this
+ * one, so past that point they all returned garbage -- and because they wrap
+ * rather than saturate, the garbage looks like a small, plausible duration.
+ *
+ * What that broke: zenoh-pico's executor schedules a future's wake-up as
+ * "milliseconds since the executor epoch" and compares deadlines with these
+ * helpers. Once the epoch was more than ~4.29 s old the comparison inverted,
+ * the lease future fired early, and the lease task saw a peer that had not
+ * received anything since the last wake-up and closed the session:
+ *
+ *     [4.124000 INFO ::_zp_unicast_lease_task_fn] Closing session because it
+ *                                                 has expired after 10000ms
+ *
+ * -- a 10 s lease expiring at 4.1 s, on a link that was working. The board then
+ * reconnected and died again on the same clock, forever.
+ *
+ * The return type is fixed by zenoh-pico's platform ABI and stays `unsigned
+ * long`, so the caller-visible ranges are what they are (~71 min for the us
+ * variants, ~49 days for ms). The point is that the INTERMEDIATE must not be
+ * the thing that overflows. */
+static uint64_t elapsed_ns(const z_clock_t *start, const z_clock_t *now) {
     time_t sec = now->tv_sec - start->tv_sec;
     long nsec = now->tv_nsec - start->tv_nsec;
     if (nsec < 0) {
@@ -261,22 +304,22 @@ static unsigned long elapsed_ns(const z_clock_t *start, const z_clock_t *now) {
         nsec += 1000000000L;
     }
     if (sec < 0) return 0;
-    return (unsigned long)sec * 1000000000UL + (unsigned long)nsec;
+    return (uint64_t)sec * 1000000000ULL + (uint64_t)nsec;
 }
 
 unsigned long z_clock_elapsed_us(z_clock_t *instant) {
     z_clock_t now = z_clock_now();
-    return elapsed_ns(instant, &now) / 1000UL;
+    return (unsigned long)(elapsed_ns(instant, &now) / 1000ULL);
 }
 
 unsigned long z_clock_elapsed_ms(z_clock_t *instant) {
     z_clock_t now = z_clock_now();
-    return elapsed_ns(instant, &now) / 1000000UL;
+    return (unsigned long)(elapsed_ns(instant, &now) / 1000000ULL);
 }
 
 unsigned long z_clock_elapsed_s(z_clock_t *instant) {
     z_clock_t now = z_clock_now();
-    return elapsed_ns(instant, &now) / 1000000000UL;
+    return (unsigned long)(elapsed_ns(instant, &now) / 1000000000ULL);
 }
 
 void z_clock_advance_us(z_clock_t *clock, unsigned long duration) {
