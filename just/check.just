@@ -1100,6 +1100,44 @@ check-cpp-ffi-error-mapping:
 check-submodule-pins:
     @bash scripts/ci/submodule-pins-check.sh
 
+# The sibling of `check-submodule-pins`: that one asks whether a pin moved the
+# right DIRECTION, this one asks whether the commit it names exists anywhere a
+# CLONE can reach.
+#
+# AGENTS.md's first submodule rule is "push the submodule commit BEFORE the
+# superproject pins it", because nothing downstream recovers from getting it
+# wrong — every clone and every CI run dies at `git submodule update` with
+# `reference is not a tree`, and the offending commit has to be rewritten,
+# since a pin cannot point at nothing. The rule was written down and nothing
+# enforced it; `git push` will happily publish a gitlink naming a commit that
+# exists only in someone's working tree.
+#
+# NOT on the `check-fast` line, and that is deliberate rather than an
+# oversight: that tier is source-free and network-free by contract, while this
+# gate's entire job is to ask the REMOTE. A local `cat-file -e` would be free
+# and would pass on precisely the one host where the mistake is invisible.
+# It runs as its own step on pull requests, and the pre-push hook runs it over
+# the pins a push actually MOVES.
+#
+# Exit 2 (network unavailable) is reported, not swallowed and not treated as a
+# failure — "your submodule is unpushed" is a false and very specific
+# accusation to make at an offline laptop, and the remedy it implies is wrong.
+[group("check")]
+check-submodule-commits-reachable:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    source scripts/build/lane-skip.sh
+    bash scripts/ci/submodule-commits-reachable.sh
+    rc=$?
+    # `nros_lane_skip`, NOT `echo … ; exit 0`. A gate that cannot ask its
+    # question must report a THIRD verdict, or "nobody checked" is indexed as
+    # "nothing wrong" — issue 0658, and `check-lane-skip-protocol` caught
+    # exactly that spelling here on the first run.
+    if [ "$rc" -eq 2 ]; then
+        nros_lane_skip "no network: submodule pins were NOT verified against their remotes"
+    fi
+    exit "$rc"
+
 # Issue 0589 — `std::println!`/`eprintln!` from a crate Zephyr links does not
 # print on native_sim, it recurses in `zvfs_write` until the stack is gone. Go
 # through `cpp_diag!`, which uses std stdio only where that is safe.

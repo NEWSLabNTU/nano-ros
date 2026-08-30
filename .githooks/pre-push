@@ -111,6 +111,54 @@ if [ -x "$pins" ]; then
     done < "$hook_stdin"
 fi
 
+# A submodule pin must name a commit the REMOTE can serve.
+#
+# The push is the only moment this can still be fixed cheaply. Afterwards the
+# superproject commit is published naming a commit nobody else can obtain, and
+# the fix is a rewrite or a revert — a pin cannot point at nothing. AGENTS.md
+# has required "push the submodule commit FIRST" all along; this is the first
+# thing that checks.
+#
+# Scoped to pins this push MOVES, so the cost is proportional to what is being
+# published rather than to the number of submodules. An unchanged pin was
+# already reachable or the tree would not build today.
+reach="$repo_root/scripts/ci/submodule-commits-reachable.sh"
+if [ -x "$reach" ]; then
+    while IFS= read -r line; do
+        set -- $line
+        remote_ref="${3:-}"
+        remote_sha="${4:-}"
+        local_sha="${2:-}"
+        case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+        [ -n "$local_sha" ] || continue
+        # A NEW branch (all-zero remote sha) has no baseline to diff against,
+        # so check every pin rather than skipping — a new branch is exactly
+        # where a fresh, unpushed submodule commit tends to arrive.
+        case "$remote_sha" in
+            *[!0]*) out="$("$reach" --changed "$remote_sha" 2>&1)" ;;
+            *)      out="$("$reach" 2>&1)" ;;
+        esac
+        rc=$?
+        # 2 = could not ask the remotes. Say so and let the push through: a
+        # push is already a network operation, so if the network were truly
+        # gone this would not be running — and refusing on an unanswerable
+        # question is worse than reporting it.
+        if [ "$rc" -eq 2 ]; then
+            echo "pre-push: submodule reachability NOT verified (no network)." >&2
+            continue
+        fi
+        if [ "$rc" -ne 0 ]; then
+            printf '%s\n' "$out" >&2
+            echo "" >&2
+            echo "pre-push: REFUSING to push — a submodule pin names a commit no clone can get." >&2
+            echo "" >&2
+            echo "  Push the submodule branch first, then push this. Order matters:" >&2
+            echo "  the superproject may only pin what is already published." >&2
+            exit 1
+        fi
+    done < "$hook_stdin"
+fi
+
 # (c) The fast gate tier — issue 0840.
 #
 # On 2026-08-27 four independent reds landed on main in one day, across two
