@@ -1,6 +1,6 @@
 # Phase 405 — one configuration surface: name the SSoT, project the rest, delete the strays
 
-**Status (2026-08-31). Design + the enumerator landed; no cleanup executed.**
+**Status (2026-08-31). W1, W2, W4 and W5 landed; W3 and W6 open.**
 Opened from [issue 0934](../issues/0934-config-redundancy-map.md)'s survey and
 [issue 0931](../issues/0931-retire-model-and-default-launch.md)'s argument-surface
 count. `book/src/reference/configuration-surface.md` and its gate are in; every
@@ -94,6 +94,32 @@ drops entirely (all nine authored uses say `default`); `MODEL`/`LOCATOR`/`ARGS`/
 `DEPLOY`/`BOARD` because its gate at `NanoRosEntry.cmake:159` runs BEFORE the
 model is resolved around line 270. Deleting the arguments without moving the
 gate fails every non-native entry.
+
+**W4 LANDED — eleven keywords to six, and the ordering constraint held.**
+`MODEL` is gone: zero callers passed it, authored OR generated, and it named a
+resolved artifact directly while `BRINGUP`+`LAUNCH` name the INPUT that produces
+one. `_NRA_MODEL` is now written only by launch resolution — one way in.
+
+`LAUNCH` stays PARSED and stops being required. 18 generated CMakeLists pass a
+real launch file and a generator should be explicit; what changed is that a
+human need not write it. All nine authored entries said `LAUNCH default`, which
+is what `BRINGUP` alone now means, and all nine dropped the line.
+
+**The default is conditional on `BRINGUP`, deliberately.** Defaulting it
+unconditionally would turn an entry with nothing at all — a typo, a half-written
+CMakeLists — from the existing "LAUNCH or SOURCES required" error into a
+silently accepted launch-addressed entry. That is the caution issue 0931
+recorded, and it is why the condition exists.
+
+`DEPLOY` and `BOARD` are NOT removed. The ordering constraint below is real: the
+gate at `NanoRosEntry.cmake:159` runs before the model is resolved, so making
+them derivable needs the gate moved, which is its own change with its own
+failure mode on the embedded path. Six keywords, not five, and the last two are
+a separate decision.
+
+Verified by CONFIGURING six workspaces (c, cpp, mixed, features, realtime-c,
+realtime-cpp) rather than by grep — the fast tier never runs cmake, so a keyword
+change that passes it proves nothing.
 
 **W5 — execute the deprecations already declared.** RFC-0065 D6 opened a window
 on `[deploy.*]`'s build fields; `[system].features` supersedes the typed
