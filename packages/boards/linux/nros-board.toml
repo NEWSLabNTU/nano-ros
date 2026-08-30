@@ -1,15 +1,30 @@
-# Phase 195.C — board profile descriptor for the Linux host target.
+# Board profile descriptor for the HOST target.
 # Crate-less: the generated package depends on `nros-platform-cffi` (emitted by
 # the CLI's per-platform extra-deps path) rather than on the board crate.
 #
-# phase-337 W8.a / RFC-0064 R3 — the BOARD is `linux`; `native` and `posix` stay
-# as accepted INPUT spellings because ~200 example and fixture manifests carry
-# `deploy = "native"`. `platform = "posix"` is unchanged and deliberate: the
-# platform layer names software-stack facts, the board layer names what we
-# claim to support.
+# THE THREE WORDS ARE NOT SYNONYMS (see CLAUDE.md "Naming"):
+#
+#   native  the build runs on the HOST, whatever that is — Linux, macOS, BSD
+#   posix   the build works on any POSIX-compliant system
+#   linux   the build works ONLY on Linux
+#
+# This board was `names = ["linux", "native", "posix"]`, which asserted all
+# three of one thing. `linux` was the false member: nothing in
+# `nros-platform-posix` is Linux-only — the single `__linux__` in `net.c` picks
+# `MSG_NOSIGNAL` and has a portable `#else`, and `eventfd`/`signalfd` appear
+# only in TODO comments. Dropping it cost nothing measurable: `board = "linux"`
+# and `[image.linux]` had ZERO occurrences in the tree, against 77 and 75 for
+# `native`.
+#
+# `platform = "posix"` is unchanged and deliberate: the platform layer names
+# software-stack facts, the board layer names what we claim to support.
+#
+# STILL MISNAMED, and not renamed here: the crate is `nros-board-linux` (98
+# files reference it) and nothing in it is Linux-specific either. That rename
+# is mechanical and wants its own diff.
 
 [[board]]
-names = ["linux", "native", "posix"]
+names = ["native", "posix"]
 platform = "posix"
 toolchain = "stable"
 platform_feature = "platform-posix"

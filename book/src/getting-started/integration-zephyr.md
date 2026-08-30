@@ -319,7 +319,20 @@ may act.
 `nros build` is the convenience that applies an image's overlays for you; it
 never becomes a required layer between you and west.
 
-#### Starting from nothing: `nros new entry`
+#### Starting from nothing: `nros new node` and `nros new entry`
+
+A node package is board- and RMW-agnostic — it names no platform, which is what
+lets the same package be deployed to Linux and to a Cortex-M without an edit:
+
+```bash
+nros new node talker_pkg
+```
+
+It writes the package and adds the `[[component]]` row to your bringup. (Use
+`nros new <name> --platform native` only for a standalone *runnable project* —
+it pins a board crate, so an entry on another platform cannot link it.)
+
+#### The entry: `nros new entry`
 
 You do not have to write the entry package by hand:
 

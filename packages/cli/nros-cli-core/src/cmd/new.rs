@@ -167,6 +167,64 @@ pub fn run(args: Args) -> Result<()> {
         };
     }
 
+    // `nros new node <name>` — a NODE package. Board- and RMW-agnostic; see
+    // `new_node`'s module docs for why `--platform native` is not the way to
+    // make one.
+    if args
+        .name
+        .as_ref()
+        .and_then(|p| p.to_str())
+        .map(|s| s == "node")
+        .unwrap_or(false)
+    {
+        let node_name = args
+            .system_name
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .ok_or_else(|| eyre::eyre!("`nros new node <name>` requires a package name"))?
+            .to_string();
+        crate::cmd::new_entry::validate_entry_name(&node_name)?;
+
+        let cwd = std::env::current_dir()?;
+        let ws_root = args.workspace_root.clone().unwrap_or_else(|| cwd.clone());
+        let into = args.into.clone().unwrap_or_else(|| ws_root.join("src"));
+        // A bringup is optional here: a node package written before any system
+        // exists is a legitimate order to work in, and refusing it would make
+        // the scaffolds usable in exactly one sequence.
+        let bringup_dir = match args.bringup.as_deref() {
+            Some(b) => {
+                let p = PathBuf::from(b);
+                Some(if p.is_absolute() {
+                    p
+                } else if ws_root.join(b).join("system.toml").is_file() {
+                    ws_root.join(b)
+                } else {
+                    ws_root.join("src").join(b)
+                })
+            }
+            None => crate::cmd::new_entry::sole_bringup(&ws_root.join("src")).ok(),
+        };
+
+        let out = crate::cmd::new_node::scaffold_node(&crate::cmd::new_node::NodeScaffold {
+            node_dir: into.join(&node_name),
+            bringup_dir,
+        })?;
+
+        println!(
+            "nros new node: scaffolded {} ({} file(s))",
+            out.node_dir.display(),
+            out.files.len()
+        );
+        match &out.declared_in {
+            Some(p) => println!("  declared [[component]] in {}", p.display()),
+            None => println!(
+                "  no bringup found, so nothing declares it yet — add a \
+                 [[component]] row, or pass --bringup <dir>"
+            ),
+        }
+        return Ok(());
+    }
+
     // `nros new entry <name> --platform zephyr` — a framework ENTRY package,
     // which is not a standalone project (see `new_entry`'s module docs for why
     // it is a separate noun rather than a `--platform` value on the form
