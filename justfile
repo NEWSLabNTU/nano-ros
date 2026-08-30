@@ -445,6 +445,27 @@ profile dir="." flags="":
     # profile-literal-ok: unprofiled: the build PROFILER tool (phase-251), built by a plain `cargo build`
     @"{{justfile_directory()}}/target/debug/nros-build-profile" {{dir}} {{flags}}
 
+# phase-400 W4 — what did THIS build actually compile, and who required it?
+#
+# Reads `<target-dir>/**/.fingerprint/*/*.json`, which cargo writes for every
+# unit it built, and reports the crate -> requirers table from the edges of the
+# build that RAN. Passive: it never builds anything.
+#
+# It exists because three phase-400 estimates were computed from the WORKSPACE
+# graph (`cargo tree`, subtree differences) and then assumed to describe a leaf.
+# All three were wrong and all three were optimistic (31.9%->12.6%, 43 crates->6,
+# 20.6 s->0). A subtree difference bounds what COULD leave; only the build knows
+# what DOES — and the leaves that matter here often will not resolve standalone.
+#
+#   just leaf-graph <target-dir>                      # crate -> requirers
+#   just leaf-graph <target-dir> "--exclusive-to nros-macros"
+#
+# Host and target sides are reported separately on purpose: a cross build has two
+# graphs in one dir, and conflating them is how a host-only tool gets counted
+# against firmware.
+[group("main")]
+leaf-graph dir flags="":
+    @python3 "{{justfile_directory()}}/scripts/nros-leaf-graph.py" {{dir}} {{flags}}
 
 
 
