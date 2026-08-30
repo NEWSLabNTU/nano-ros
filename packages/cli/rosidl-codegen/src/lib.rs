@@ -14,6 +14,7 @@ pub use rosidl_resolve::rihs;
 // through the crate they already depend on (phase-335 W1.c).
 pub use rosidl_resolve::{ResolvedAction, ResolvedMessage, ResolvedService};
 pub mod render;
+pub mod schema_value;
 pub mod templates;
 pub mod types;
 pub mod utils;

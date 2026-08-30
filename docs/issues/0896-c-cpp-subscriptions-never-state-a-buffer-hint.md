@@ -318,68 +318,32 @@ and the `nros_subscription_options_t` break — stop being the delivery mechanis
 The raw path may gain a hint later for callers who need one, but it is no longer
 how the fix reaches anybody.
 
-## Layer 1's real constraint: on Humble the nested resolver resolves NOTHING
+## Correction: the real resolver already exists, on every edition
 
-Surveyed before writing the traversal, and it reshapes the layer.
+The previous version of this section claimed nested types cannot be resolved on
+Humble, and it was wrong. It read `no_cross_pkg_resolver`'s doc comment —
+"Humble (placeholder hash, resolver never consulted)" — as a statement about the
+RESOLVER's capability. It is a statement about the HASH consumer.
 
-Building a sizeable value needs nested types resolved in-process. The tree has
-exactly one mechanism for that — `rosidl_bindgen::MsgResolver`, a
-`dyn Fn(&str) -> Option<Message>` threaded into the RIHS hash path — and it
-lives in `rosidl-bindgen`, NOT in `rosidl-codegen`, which is the crate that
-emits the schema. So the resolver is not in scope at any
-`build_nros_schema_for_struct*` call site today; every one of them is inside
-`common.rs` with only field ASTs to hand.
+The real one is already built and already threaded:
 
-Worse, the resolver's own doc says what it does on the default edition:
+* `cargo-nano-ros/src/lib.rs:273` constructs a working cross-package closure off
+  the ament index (`index.packages().get(pkg)?.get_message_path(name)`), and
+  passes it to `generate_package` **unconditionally** — no edition gate;
+* `rosidl-bindgen/src/generator.rs:194` composes it with same-package resolution
+  from the package's own `share_dir` into `self_resolve`, which is a COMPLETE
+  recursive resolver.
 
-> A [`MsgResolver`] that resolves no cross-package types — for self-contained
-> packages … or **Humble (placeholder hash, resolver never consulted)**.
+The edition only decides whether the type-HASH path consults it. Nothing about
+it is Humble-specific.
 
-`no_cross_pkg_resolver` returns `None` for everything. On Humble — the edition
-the examples and fixtures use — a cross-package nested type such as
-`std_msgs/Header` or `builtin_interfaces/Time` **cannot be resolved at all**.
+So layer 1 is not blocked. What is actually missing is one hop: `self_resolve`
+reaches `compute_msg_type_hash` and the generators, and does not reach the
+schema emit in `rosidl-codegen`. Threading it there is the work.
 
-**Measured rather than asserted, because the first draft of this paragraph said
-"that is most real messages" and that is not supported.** Across the 10 `.msg`
-files in `examples/` and `packages/interfaces/`: 2 have any non-primitive field,
-and exactly 1 references another package (`std_msgs`). So on the IN-TREE corpus
-this blocks one message, not most.
-
-That cuts both ways and neither reading is safe on its own. It means layer 1 is
-not blocked for the fixtures — but it also means the fixtures cannot tell us
-whether it is blocked for USERS, and the messages this campaign exists for are
-the heavily-nested ones (an Autoware type reaches `std_msgs`,
-`builtin_interfaces` and `geometry_msgs` before it reaches a number). The
-in-tree corpus is too small to generalise from in either direction; a real
-measurement wants a user workspace.
-
-This collides head-on with the trap recorded above. Unresolvable is not
-unbounded, so an unresolved nested type must not silently produce "no
-constant" — but *failing the generate* would fail nearly every Humble message
-with a `Header`, which is plainly not shippable either. **Neither branch of the
-rule as written is acceptable, so the rule needs a third outcome before any code
-is written:**
-
-* `Bounded(n)` — emit the constant.
-* `Unbounded(field)` — emit the poisoned macro naming the field (layer 5).
-* `Unresolved(type_name)` — emit NEITHER, and say so in the generated header as
-  a comment naming the type that could not be reached, so a reader can tell "we
-  looked and it has no bound" from "we could not look".
-
-Sizing anything from an `Unresolved` is the defect this issue is about, so the
-third outcome must be distinguishable at every consumer, not folded into the
-second.
-
-**The better fix, if it is affordable:** give codegen a real resolver on Humble
-too. The bindgen path already owns the package's `share_dir` and resolves
-same-package nested types itself; the ament index that would answer the
-cross-package ones is available at `nros sync` time. That turns `Unresolved`
-into a rare error case instead of the common one. It is also a larger change
-than this issue has scoped, and it should be measured (how many types in
-`examples/` actually go unresolved on Humble today?) before being assumed.
-
-**Layer 1 is not started for this reason** — the plumbing would have to be
-redone once this is decided, and the decision is not mine to guess.
+`Unresolved` as a third outcome still earns its place — a dependency genuinely
+absent from the ament index must not read as "unbounded" — but it is the RARE
+case it was always supposed to be, not the common one.
 
 ## Layers, in order
 
