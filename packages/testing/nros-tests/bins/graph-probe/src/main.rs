@@ -132,6 +132,224 @@ fn main() {
     }
     println!("GRAPH_PROBE_TOPIC_COUNT {}", topics.len());
 
+    // ---------------------------------------------------------------------
+    // The other NINE slots — phase-381 W4/W5, and the reason this probe grew.
+    //
+    // Two slots were proven against a live peer (issue 0903) and nine were not.
+    // `check-rmw-slot-producers` calls all eleven `produced`, but that means
+    // something writes the slot and something reads it — NOT that either ever
+    // met a real ROS 2 node. Phase-393's closing note is exactly this trap, and
+    // phase-381 is where it bit: twelve slots produced, mutation-tested and
+    // parity-clean, and the feature did not work at all.
+    //
+    // So each call below is CHECKED, not printed. An `Err` fails the probe:
+    // `Unsupported` from a runtime that claims the slot is the 0903 defect
+    // recurring, and it is indistinguishable from an empty graph unless
+    // something says so.
+    // The node these checks are ABOUT, and a topic it publishes. Both come
+    // from the environment so the probe is not welded to `demo_nodes_cpp`;
+    // the defaults are what the interop cell starts.
+    let node = expect_node
+        .clone()
+        .unwrap_or_else(|| "talker".to_string());
+    let topic = std::env::var("GRAPH_PROBE_TOPIC").unwrap_or_else(|_| "/chatter".to_string());
+    let topic = topic.as_str();
+
+    let mut failures: Vec<String> = Vec::new();
+    // A backend may legitimately answer FEWER slots than zenoh — Cyclone's W5
+    // reader serves `get_node_names` and nothing else — and W6's whole point is
+    // that "cannot tell you" and "nothing is there" stay distinguishable. So an
+    // `Unsupported` is RECORDED, not failed; anything else is a failure. A slot
+    // that silently returned an empty answer instead would be invisible here,
+    // which is exactly what issue 0903 looked like.
+    let mut unsupported: Vec<&str> = Vec::new();
+    macro_rules! classify {
+        ($slot:expr, $e:expr) => {{
+            if matches!($e, nros::NodeError::Transport(nros::TransportError::Unsupported)) {
+                unsupported.push($slot);
+                false
+            } else {
+                failures.push(format!("{}: {:?}", $slot, $e));
+                true
+            }
+        }};
+    }
+
+    // Services. A stock talker declares six parameter services, so an empty
+    // answer here is a failure rather than a quiet pass.
+    let mut services: Vec<String> = Vec::new();
+    match executor.get_service_names_and_types(&mut |name, types| {
+        services.push(format!("{name} [{}]", types.join(",")));
+        true
+    }) {
+        Ok(()) => {
+            services.sort();
+            for x in &services {
+                println!("GRAPH_SERVICE {x}");
+            }
+            if !services.iter().any(|s| s.contains(&node)) {
+                failures.push(format!(
+                    "get_service_names_and_types saw no service of {node:?}: {services:?}"
+                ));
+            }
+        }
+        Err(e) => {
+            classify!("get_service_names_and_types", e);
+        }
+    }
+    println!("GRAPH_SERVICE_COUNT {}", services.len());
+
+    // Counts on a topic the talker publishes. `count_publishers` must be >= 1;
+    // `count_subscribers` legitimately may be 0, so it is checked for an ERROR
+    // only — asserting a number nobody guarantees is how a test becomes flaky.
+    match executor.count_publishers(topic) {
+        Ok(n) => {
+            println!("GRAPH_COUNT_PUB {n}");
+            if n == 0 {
+                failures.push(format!("count_publishers({topic}) == 0 with a talker running"));
+            }
+        }
+        Err(e) => {
+            classify!("count_publishers", e);
+        }
+    }
+    match executor.count_subscribers(topic) {
+        Ok(n) => println!("GRAPH_COUNT_SUB {n}"),
+        Err(e) => {
+            classify!("count_subscribers", e);
+        }
+    }
+
+    // The four by-node forms. Only the publisher one has a guaranteed answer
+    // (the talker publishes `/chatter`); the rest must simply not error, which
+    // is the assertion that catches an undispatched slot.
+    let mut pubs_by_node: Vec<String> = Vec::new();
+    match executor.get_publisher_names_and_types_by_node(&node, "/", &mut |name, types| {
+        pubs_by_node.push(format!("{name} [{}]", types.join(",")));
+        true
+    }) {
+        Ok(()) => {
+            pubs_by_node.sort();
+            for x in &pubs_by_node {
+                println!("GRAPH_PUB_BY_NODE {x}");
+            }
+            if !pubs_by_node.iter().any(|t| t.starts_with(topic)) {
+                failures.push(format!(
+                    "get_publisher_names_and_types_by_node({node}) missing {topic}: {pubs_by_node:?}"
+                ));
+            }
+        }
+        Err(e) => {
+            classify!("get_publisher_names_and_types_by_node", e);
+        }
+    }
+
+    let mut n_subs = 0usize;
+    if let Err(e) =
+        executor.get_subscription_names_and_types_by_node(&node, "/", &mut |name, types| {
+            println!("GRAPH_SUB_BY_NODE {name} [{}]", types.join(","));
+            n_subs += 1;
+            true
+        })
+    {
+        classify!("get_subscription_names_and_types_by_node", e);
+    }
+    println!("GRAPH_SUB_BY_NODE_COUNT {n_subs}");
+
+    let mut svc_by_node: Vec<String> = Vec::new();
+    match executor.get_service_names_and_types_by_node(&node, "/", &mut |name, types| {
+        svc_by_node.push(format!("{name} [{}]", types.join(",")));
+        true
+    }) {
+        Ok(()) => {
+            svc_by_node.sort();
+            for x in &svc_by_node {
+                println!("GRAPH_SVC_BY_NODE {x}");
+            }
+            // The talker's parameter services belong to the talker, so this one
+            // does have a guaranteed answer.
+            if svc_by_node.is_empty() {
+                failures.push(format!(
+                    "get_service_names_and_types_by_node({node}) is empty; a node with \
+                     parameters always serves some"
+                ));
+            }
+        }
+        Err(e) => {
+            classify!("get_service_names_and_types_by_node", e);
+        }
+    }
+
+    let mut n_clients = 0usize;
+    if let Err(e) = executor.get_client_names_and_types_by_node(&node, "/", &mut |name, types| {
+        println!("GRAPH_CLIENT_BY_NODE {name} [{}]", types.join(","));
+        n_clients += 1;
+        true
+    }) {
+        classify!("get_client_names_and_types_by_node", e);
+    }
+    println!("GRAPH_CLIENT_BY_NODE_COUNT {n_clients}");
+
+    // The two endpoint-info forms. The publisher side must name the talker —
+    // this is the slot that answers "who is publishing this, and what type".
+    let mut pub_info: Vec<String> = Vec::new();
+    match executor.get_publishers_info_by_topic(topic, &mut |info| {
+        pub_info.push(format!(
+            "{}|{} {} pub={}",
+            info.node_namespace, info.node_name, info.topic_type, info.is_publisher
+        ));
+        true
+    }) {
+        Ok(()) => {
+            pub_info.sort();
+            for x in &pub_info {
+                println!("GRAPH_PUB_INFO {x}");
+            }
+            if !pub_info.iter().any(|i| i.contains(&node)) {
+                failures.push(format!(
+                    "get_publishers_info_by_topic({topic}) does not name {node}: {pub_info:?}"
+                ));
+            }
+        }
+        Err(e) => {
+            classify!("get_publishers_info_by_topic", e);
+        }
+    }
+
+    let mut n_sub_info = 0usize;
+    if let Err(e) = executor.get_subscriptions_info_by_topic(topic, &mut |info| {
+        println!(
+            "GRAPH_SUB_INFO {}|{} {}",
+            info.node_namespace, info.node_name, info.topic_type
+        );
+        n_sub_info += 1;
+        true
+    }) {
+        classify!("get_subscriptions_info_by_topic", e);
+    }
+    println!("GRAPH_SUB_INFO_COUNT {n_sub_info}");
+
+    for slot in &unsupported {
+        println!("GRAPH_SLOT_UNSUPPORTED {slot}");
+    }
+    println!("GRAPH_PROBE_UNSUPPORTED_COUNT {}", unsupported.len());
+
+    if failures.is_empty() && unsupported.is_empty() {
+        println!("GRAPH_PROBE_ALL_SLOTS_OK");
+    } else if failures.is_empty() {
+        // Every failure was a declared "cannot tell you". Honest, and not this
+        // probe's business to judge — the CELL decides which backend owes which
+        // slots.
+        println!("GRAPH_PROBE_SLOTS_PARTIAL");
+    } else {
+        for f in &failures {
+            eprintln!("GRAPH_PROBE_SLOT_FAIL {f}");
+        }
+        eprintln!("GRAPH_PROBE_FAIL: {} of 11 graph slots failed", failures.len());
+        let _ = executor.close();
+        std::process::exit(5);
+    }
+
     if let Some(want) = expect_node {
         let hit = settled.iter().any(|n| n.contains(&want));
         if !hit {

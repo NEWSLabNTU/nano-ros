@@ -55,6 +55,71 @@ pub fn set_new_process_group(command: &mut Command) -> &mut Command {
     }
 }
 
+/// Issue 0923 — spawn a child that takes its whole process group down with it
+/// when the parent dies, instead of leaving the reaping to the next lane.
+///
+/// [`set_new_process_group`] sets `PR_SET_PDEATHSIG(SIGKILL)`, which reaps
+/// exactly one level: `bash` dies and `timeout`/`ros2`/the node reparent to
+/// init. That is not a fixable oversight — SIGKILL cannot be handled, so the
+/// dying process cannot pass the news on — and it is why the ledger sweep
+/// exists. But the sweep only runs at lane start, so between a SIGKILLed run
+/// and the next lane the peers are alive, holding DDS discovery ports.
+///
+/// So this variant asks for **SIGTERM**, which `bash` CAN trap, and pairs with
+/// [`group_suicide_wrapper`] on the command text: parent dies -> kernel SIGTERMs
+/// `bash` -> the trap kills the whole group -> `ros2` and the node die too, at
+/// that moment.
+///
+/// The trade is deliberate and bounded: a peer that IGNORES SIGTERM survives
+/// where SIGKILL would have reaped it, which is why the wrapper follows up with
+/// `SIGKILL` after a grace period and why the ledger sweep stays as the
+/// backstop. Use this for `bash -c` peers; direct children keep
+/// [`set_new_process_group`].
+#[cfg(unix)]
+pub fn set_orphan_group_suicide(command: &mut Command) -> &mut Command {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: setpgid, prctl, getppid and _exit are async-signal-safe and are
+    // called between fork and exec.
+    unsafe {
+        command.pre_exec(|| {
+            libc::setpgid(0, 0);
+            #[cfg(target_os = "linux")]
+            {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                // The race the flag cannot cover: if the parent died between
+                // fork and the prctl above, the signal was already delivered to
+                // nobody and never will be. Reparenting to init is the
+                // observable, so check for it and leave rather than run a peer
+                // nothing will ever reap.
+                if libc::getppid() == 1 {
+                    libc::_exit(0);
+                }
+            }
+            Ok(())
+        })
+    }
+}
+
+/// Wrap a `bash -c` command so it kills its own process group on the way out.
+///
+/// The other half of [`set_orphan_group_suicide`]. `kill -TERM -- -0` addresses
+/// the caller's whole process group, which `setpgid(0, 0)` has just made
+/// exclusively ours — so this reaps `timeout`, `ros2` and the node, the
+/// descendants `PR_SET_PDEATHSIG` cannot reach.
+///
+/// Traps EXIT as well as the signals: a peer whose command simply returns
+/// should not leave a straggler either.
+pub fn group_suicide_wrapper(cmd: &str) -> String {
+    // `kill 0` is the whole group. The KILL follow-up bounds a peer that
+    // ignores TERM; the `|| true` keeps a normal exit — where everything is
+    // already gone — from failing the script.
+    format!(
+        "_nros_reap() {{ trap - EXIT INT TERM; kill -TERM 0 2>/dev/null || true; \
+         sleep 0.3; kill -KILL 0 2>/dev/null || true; }}; \
+         trap _nros_reap EXIT INT TERM; {cmd}"
+    )
+}
+
 /// Issue 0659 — a durable record of the process groups this run spawned, so a
 /// LATER run can reap what a SIGKILL left behind.
 ///

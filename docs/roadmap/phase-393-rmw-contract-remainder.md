@@ -1,12 +1,35 @@
 # Phase 393 — what is left of the RMW contract, and what deliberately is not
 
-**Status (2026-08-27). NOT STARTED — this doc is the ledger phase-376 did not
-leave. W3's graph-query entry was CORRECTED the same day; see the strikethrough
-there and issue 0791.** Phase 376 made the vtable mirror upstream and made every deviation
-declared and checked. It did not say what remains, and the numbers it left
-overstate delivery in one specific way that issue 0800 then measured. This is
-the remainder, split into work that should proceed and reservations that should
-not.
+**Status (2026-08-30). W1, W2 and W2a DONE; W3 holds. The contract work this
+doc scoped is finished — what remains is VERIFICATION, which is a different
+thing and is called out below.** Measured with `just check-rmw-slot-producers`:
+produced 53, default 7, unimplemented 0, **inert 14**, and
+`check-rmw-api-parity` reports 0 gap / 0 unclassified.
+
+* **W1 — issue 0823, the QoS read-back.** RESOLVED. It was the one correctness
+  item here: six slots where the runtime did not merely lack the reading but
+  asserted the wrong answer, reporting the REQUESTED QoS as GRANTED.
+* **W2.** `publisher_count_matched_subscriptions`,
+  `subscription_count_matched_publishers` and `get_gid_for_publisher` are
+  `produced`.
+* **W2a.** Decided: the identity pair stays NULL, and `rmw_vtable.h` says so
+  rather than promising a fallback nobody wrote.
+* **W3.** The 14 inert slots are all deliberate reservations with recorded
+  reasons, held by `INERT_FAMILIES` in the gate.
+* The struck-through graph-query entry in W3 was answered by **phase-381**,
+  which shipped the twelve graph slots and proved two of them against a live
+  `rmw_zenoh_cpp` peer.
+
+**What is NOT finished, and it is this doc's own closing warning turned on
+itself.** "A slot's EXISTENCE reads as coverage" is the trap recorded at the
+bottom of this file, and `produced` is not immune to it: it means something
+writes the slot and something reads it, NOT that either was ever exercised
+against a real peer. Phase-381 is the demonstration — twelve slots `produced`,
+mutation-tested, parity-clean, and the feature did not work at all until issue
+0903 met a live talker. Ten of those twelve are still unproven live, Cyclone's
+graph reader has never run live, and `graph_interop.rs` — the committed form of
+the one comparison that matters — has never executed. That is the next work in
+this area, and it is verification rather than contract.
 
 **Implements.** RFC-0054 (the C headers are the ABI SSoT). Continues phase-376
 (archived) and issue 0800 (archived). Issue 0791 owns the graph-query family and

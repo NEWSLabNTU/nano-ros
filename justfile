@@ -528,7 +528,7 @@ check-fast-serial: _check-skip-reset \
     check-absolute-paths \
     check-c-fmt check-cpp-fmt check-python \
     check-nuttx-integration-makefile check-eyre-context-alias check-core-only-predicate check-workspace-build-output check-cc-build-policy check-ffi-struct-mirrors check-sizes-header-mirrors check-retired-submodule-refs check-no-absolute-model-paths \
-    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-emitter-just-spelling check-issue-index check-roadmap-status check-sysdep-remedies \
+    check-cpp-freestanding-includes check-fixtures-manifest check-fixture-id-guard check-generated-leaf-regenerable check-cargo-config-tracked check-doc-refs check-book-links check-book-no-just check-emitter-just-spelling check-issue-index check-roadmap-status check-peer-sweep-lanes check-sysdep-remedies \
     check-export-f-closure \
     check-activate-shells check-build-root check-fixture-groups check-rmw-descriptors check-artifact-identity-budget \
     check-cargo-target-spelling check-example-leaf-target-dirs check-example-leaf-build-dirs check-fixture-binary-names check-manifests-parse check-build-rs-rerun-paths \
@@ -1219,6 +1219,17 @@ test-zpico-multisession verbose="":
 [group("main")]
 test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multisession
     #!/usr/bin/env bash
+    # issue 0923 — sweep BEFORE nextest, for the same reason `test-all` does
+    # (issue 0659). This lane runs the same suites and spawns the same peers,
+    # and a SIGKILLed run leaves them: `PR_SET_PDEATHSIG` reaches `bash` only,
+    # so `timeout`/`ros2`/the node reparent to init and hold DDS discovery
+    # ports until something reaps them. Having the reaper on one of the two
+    # lanes that need it meant orphans survived until somebody happened to run
+    # the other one — 67 of them, oldest 3 h, measured 2026-08-30.
+    #
+    # Not mid-run: a concurrent test's peers are recorded and alive, so a sweep
+    # then would kill them.
+    cargo run -q -p nros-tests --bin nros-peer-sweep 2>/dev/null || true
     source scripts/build/cargo.sh
     source scripts/test/nextest-profile.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))

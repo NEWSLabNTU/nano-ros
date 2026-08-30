@@ -935,6 +935,16 @@ pub const ERRNO_ISOLATION_PASS: &str = "errno-isolation: verdict PASS per-thread
 /// this is not delivery: it is the fixture saying it saw the peer it was told
 /// to expect, which is the only thing a discovery workload can assert.
 pub const GRAPH_PROBE_SAW: &str = "GRAPH_PROBE_SAW";
+
+/// phase-381 verification — the probe exercised ALL ELEVEN graph slots against
+/// a live peer and every one answered.
+///
+/// Distinct from [`GRAPH_PROBE_SAW`], which reports only that the peer was
+/// enumerated. `check-rmw-slot-producers` calls all eleven `produced`, but that
+/// means something writes and reads the slot — NOT that either met a real ROS 2
+/// node. Issue 0903 was nine slots that had never been called at all sitting
+/// behind two that had.
+pub const GRAPH_PROBE_ALL_SLOTS_OK: &str = "GRAPH_PROBE_ALL_SLOTS_OK";
 pub const ERRNO_ISOLATION_FAIL: &str = "errno-isolation: verdict FAIL shared errno";
 pub const ERRNO_ISOLATION_SETUP: &str = "errno-isolation: verdict SETUP failed";
 
