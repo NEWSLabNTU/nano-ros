@@ -1,11 +1,12 @@
 {
+  "just/check.just": 1,
   "just/esp32.just": 2,
   "just/native.just": 1,
   "just/nuttx.just": 1,
   "just/qemu-baremetal.just": 1,
   "just/workspace.just": 4,
   "just/zephyr-setup.just": 1,
-  "justfile": 3,
+  "justfile": 2,
   "packages/cli/rosidl-codegen/scripts/check_parser_failures.sh": 3,
   "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/alloc_free_audit.sh": 1,
   "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_pubsub_e2e.sh": 2,
