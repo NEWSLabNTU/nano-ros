@@ -1,6 +1,6 @@
 ---
 id: 931
-title: "`MODEL` has no users and should be retired; `LAUNCH default` is ceremony on 26 entries"
+title: "`nano_ros_entry` has eleven arguments; four have no users and three restate the bringup"
 status: open
 area: build, api
 severity: low
@@ -25,17 +25,26 @@ grep -rn '^\s*MODEL ' --include=CMakeLists.txt --include='*.cmake' . | grep -v '
 returns nothing but the internal forward at `NanoRosEntry.cmake:348`. Not "few" —
 none. Every entry in the tree is launch-addressed.
 
-`LAUNCH` is a different story, and the first draft of this issue had it wrong.
-Counted across `examples/`:
+`LAUNCH` needed a second correction, and the fix goes the other way from the
+first. Counting `LAUNCH` values across `examples/` gave 26 `default` and 37
+naming a real launch file, which read as "LAUNCH carries real information for
+the majority". **Every one of those 37 is in a GENERATED CMakeLists under a
+`/build` directory** — tool output, not authored input. Filtering to files a
+human wrote:
 
-| value | entries |
-| --- | ---: |
-| `LAUNCH default` | 26 |
-| a NAMED launch file (`multihost.launch.xml`, `service_server.launch.xml`, …) | 37 |
+```
+for f in $(grep -rlE '^\s*LAUNCH\s' examples --include=CMakeLists.txt | grep -v /build); do
+    grep -hE '^\s*LAUNCH\s+\S+' "$f"
+done | sort | uniq -c
+      9 LAUNCH default
+```
 
-So `LAUNCH` is **not** ceremony in general — the majority carry real
-information, namely which launch file inside the bringup package this entry
-addresses. Only the 26 `default` cases are noise.
+Nine hand-written entries, all `default`, none naming a file. **No user in this
+repo has ever specified a launch file.** The first count conflated generated
+output with authored input by filtering on file extension instead of on who
+wrote the file.
+
+So `LAUNCH` is ceremony on the ENTIRE authored surface, not on a subset.
 
 ## Proposed
 
@@ -46,10 +55,54 @@ gets a `FATAL_ERROR` naming `LAUNCH` rather than "unknown argument". Delete
 `$ENV{NROS_MODEL_DIR}` / `${CMAKE_BINARY_DIR}/nros/` fallback chain — a second
 way of locating a generated artifact that exists only to serve `MODEL`.
 
-**2. Make `LAUNCH` optional, defaulting to `default`.** `BRINGUP` alone then
-means "the bringup's default launch", which is what 26 entries spell out today.
-The 37 that name a file keep naming it. This is the whole user-facing win:
-one fewer line on the simplest entry, and nothing lost on the complex one.
+**2. Drop `LAUNCH` from the authored surface.** `BRINGUP` alone means "this
+bringup's default launch", which is what all nine hand-written entries spell
+out. The generated CMakeLists can keep passing an explicit launch selection
+through a non-user-facing spelling — a generator SHOULD be explicit — but a
+human never writes it.
+
+## The whole argument surface, measured
+
+`nano_ros_entry` parses eleven keywords. Hand-written users in the tree
+(generated CMakeLists excluded):
+
+| arg | purpose | authored uses | already known elsewhere? |
+| --- | --- | ---: | --- |
+| `NAME` | CMake target name | 6 | no — local |
+| `SOURCES` | the entry's own TU(s) | 6 | no — local |
+| `BRINGUP` | bringup package dir (the SSoT) | 6 | — it IS the SSoT |
+| `PANIC` | panic policy | 6 | no — build policy |
+| `TYPED` | real-executor seam vs descriptor | 6 | no |
+| `BOARD` | board key; gates non-native DEPLOY | 6 | partly: model has `extra.target` |
+| `DEPLOY` | which deploy target(s) to build | 6 | YES: model has `extra.deploy_name` |
+| `LANG` | c / cpp / rust | 3 | YES: inferred from SOURCES at line 220 |
+| `LAUNCH` | which launch file | 9, all `default` | — see above |
+| `MODEL` | the resolved artifact | **0** | superseded by BRINGUP |
+| `LOCATOR` | transport locator | **0** | model has `rmw:` |
+| `ARGS` | k=v to the generated main | **0** | — |
+| `LAUNCH_ARGS` | k=v launch bindings | **0** | — |
+
+A resolved model already carries what `DEPLOY`, `BOARD` and `LOCATOR` restate:
+
+```yaml
+deploy:
+  /talker:
+    domain: 0
+    rmw: zenoh
+    extra:
+      deploy_name: robot1
+      target: x86_64-unknown-linux-gnu
+```
+
+**Why cmake asks anyway, and it is not an oversight.** The DEPLOY gate at
+`NanoRosEntry.cmake:159` runs BEFORE the model is resolved (~line 270), so it
+cannot consult it. That is an ORDERING constraint, not a missing fact —
+reordering the gate after resolution is what makes `DEPLOY`/`BOARD` derivable.
+Worth stating because "the model already knows" invites deleting the argument
+without moving the gate, which would fail on the embedded path.
+
+`LANG` is already inferred when omitted (line 220), so its three authored uses
+are redundant today, with no code change needed to drop them.
 
 ## What to be careful about
 
