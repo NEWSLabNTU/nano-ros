@@ -330,13 +330,41 @@ build_workspace() {
                     echo "     nros build --all --dry-run   (generate the root)"
                     "$nros_cli" build --all --dry-run >/dev/null
                 fi
+                # The ENTITY facts, the same way `NanoRosEntityFacts.cmake`
+                # delivers them on the CMake path (phase-392 W5). The process
+                # environment is the only carrier that reaches a build script
+                # inside this cargo invocation, and without it the zenoh backend
+                # falls back to its undeclared budget — 8 service servers on an
+                # embedded target, whether or not the entry has any.
+                #
+                # That is not a lost optimisation: `esp32_entry` declares NO
+                # services and overflowed DRAM by 8,804 B carrying buffers for
+                # eight. Soft on failure, like the CMake side: a model that
+                # cannot be read leaves the historical budget in place and says
+                # so, rather than failing a build over a sizing hint.
+                local entity_env=()
+                if [ -n "$bringup" ] && [ -d "$bringup" ]; then
+                    local facts
+                    if facts="$("$nros_cli" ws entity-facts --bringup-dir "$bringup" 2>/dev/null)"; then
+                        while IFS= read -r line; do
+                            [ -n "$line" ] && entity_env+=("$line")
+                        done <<<"$facts"
+                    else
+                        echo "     (entity facts unavailable for $bringup — backend keeps its undeclared table budget)"
+                    fi
+                fi
                 local cargo_args=(build "${profile_args[@]}" -p "$entry")
                 if [ -n "$target_dir" ]; then
                     cargo_args+=(--target-dir "$target_dir")
                 fi
                 cargo_args+=("${extra_args[@]}")
-                echo "     cargo ${cargo_args[*]}"
-                cargo "${cargo_args[@]}"
+                if [ "${#entity_env[@]}" -gt 0 ]; then
+                    echo "     ${entity_env[*]} cargo ${cargo_args[*]}"
+                    env "${entity_env[@]}" cargo "${cargo_args[@]}"
+                else
+                    echo "     cargo ${cargo_args[*]}"
+                    cargo "${cargo_args[@]}"
+                fi
             fi
 
             local out_root="${target_dir:-target}"

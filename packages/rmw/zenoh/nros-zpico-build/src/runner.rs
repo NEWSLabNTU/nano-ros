@@ -71,6 +71,18 @@ const UNDECLARED_HEADROOM: usize = 8;
 /// says nothing; W5.e turns that case into a build-time failure, which needs
 /// the hand-written-`main` question settled first (phase-392 W5, Open).
 fn resolve_queryable_default() -> QueryableSizing {
+    // WATCH what we READ. Both were consumed here and neither was declared, so
+    // cargo had no reason to re-run this script when a declaration changed: an
+    // entry that gained or lost a service server kept its previously-sized
+    // tables until something ELSE forced a rebuild. The sizing then reads as
+    // applied while being stale — the shape issue 0491 documents for path
+    // variables, here with no watch at all.
+    //
+    // It also makes the knob untestable by hand: setting either variable and
+    // rebuilding produces a byte-identical image, which is exactly how this was
+    // found.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_SERVERS");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
     let declared = std::env::var("NROS_DECLARED_SERVICE_SERVERS").ok();
     let infra = std::env::var("NROS_DECLARED_INFRA_QUERYABLES").ok();
     QueryableSizing {
