@@ -290,6 +290,7 @@ fast-serial: \
 build: \
     borrowed-e2e \
     c \
+    cli-fresh required-features-reachable host-triple-literals literal-domain-id launch-resolve-builds test-targets workspace-all workspace-features nros-log-riscv32 source-gates staticlib-symbols borrowed-e2e embedded-feature-unification c cpp rmw-cyclonedds rmw-xrce rmw-uorb cli-tests node-std-tests required-features-tests feature-set-ssot no-tracked-file-find pool-inventory config-surface mem-report claim-protocol flake-quarantine \
     ci-doc-workflow-refs \
     claim-protocol \
     cli-fresh \
@@ -2551,6 +2552,16 @@ rust-targets-covered:
 [private]
 pool-inventory:
     @python3 scripts/gen-pool-inventory.py --check
+
+# Issue 0934 — one fact, up to nine spellings. Most are CARRIERS (how a decision
+# crosses a layer), not decisions; nothing recorded which was which, so a reader
+# saw nine ways to set a locator. This enumerates every Kconfig symbol and
+# demands each be declared public, carrier or dead. RATCHETED rather than
+# absolute: 55 of 74 are unclassified today, and a gate that demanded zero would
+# be switched off on day one.
+[private]
+config-surface:
+    @python3 scripts/gen-config-surface.py --check
 
 # Phase 392 W1 — the declared arithmetic has to survive contact with a linker.
 # `check-pool-inventory` proves the FORMULA is present and evaluates; this proves
