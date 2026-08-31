@@ -35,3 +35,10 @@ workspace = true
 
 [build-dependencies]
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+
+# phase-400 W6 — the RFC-0049 knob ladder, so the five parameter bounds get
+# their platform and board rungs. Host-only (`build-helpers` gates serde/toml)
+# and build-only; no cycle, `nros-board-common` does not depend on this crate.
+nros-board-common = { path = "../../boards/nros-board-common", features = [
+    "build-helpers",
+], default-features = false }

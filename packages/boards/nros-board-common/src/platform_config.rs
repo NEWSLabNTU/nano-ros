@@ -162,6 +162,9 @@ pub struct Knobs {
     /// phase-400 W6 — the platform memory tenant (RTOS heap, app stack).
     #[serde(default)]
     pub memory: MemoryKnobs,
+    /// phase-400 W6 — the parameter-storage tenant.
+    #[serde(default)]
+    pub params: ParamKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -346,6 +349,30 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.params]` RUNGS for this build — platform merged with board,
+    /// board winning, no env rung. Same reason as [`Self::executor_rungs`]:
+    /// `nros-params`'s build script composes env → Kconfig → these → its own
+    /// builtin, and the Kconfig rung sits between the front-end and the
+    /// descriptors.
+    pub fn param_rungs(&self) -> ParamKnobs {
+        let plat = self
+            .tree
+            .platform_param_rungs(&self.platform)
+            .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={}: {e}", self.platform));
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.params.clone())
+            .unwrap_or_default();
+        ParamKnobs {
+            max_parameters: b.max_parameters.or(plat.max_parameters),
+            max_param_name_len: b.max_param_name_len.or(plat.max_param_name_len),
+            max_string_value_len: b.max_string_value_len.or(plat.max_string_value_len),
+            max_array_len: b.max_array_len.or(plat.max_array_len),
+            max_byte_array_len: b.max_byte_array_len.or(plat.max_byte_array_len),
+        }
+    }
+
     /// The memory tenant for this build, over the full ladder.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
         self.tree
@@ -399,6 +426,48 @@ pub fn executor_env_only(knob: &str, default: usize) -> usize {
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .unwrap_or(default)
+}
+
+/// `[knobs.params]` — phase-400 W6, the parameter-storage tenant.
+///
+/// Five bounds on what a parameter server can hold. They vary by BOARD in
+/// practice and the tree records a case: phase-292's ASI consumer needed
+/// `NROS_MAX_PARAMETERS=256` and set it in a `build.sh`, which is a board fact
+/// living in a shell script because there was nowhere to declare it.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParamKnobs {
+    #[serde(default)]
+    pub max_parameters: Option<usize>,
+    #[serde(default)]
+    pub max_param_name_len: Option<usize>,
+    #[serde(default)]
+    pub max_string_value_len: Option<usize>,
+    #[serde(default)]
+    pub max_array_len: Option<usize>,
+    #[serde(default)]
+    pub max_byte_array_len: Option<usize>,
+}
+
+/// Every parameter knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const PARAM_KNOBS: &[&str] = &[
+    "max_parameters",
+    "max_param_name_len",
+    "max_string_value_len",
+    "max_array_len",
+    "max_byte_array_len",
+];
+
+/// The env front-end for a parameter knob — the EXISTING names, verbatim.
+pub fn param_env_key(knob: &str) -> &'static str {
+    match knob {
+        "max_parameters" => "NROS_MAX_PARAMETERS",
+        "max_param_name_len" => "NROS_MAX_PARAM_NAME_LEN",
+        "max_string_value_len" => "NROS_MAX_STRING_VALUE_LEN",
+        "max_array_len" => "NROS_MAX_ARRAY_LEN",
+        "max_byte_array_len" => "NROS_MAX_BYTE_ARRAY_LEN",
+        other => panic!("unknown param knob `{other}`"),
+    }
 }
 
 /// The zenoh tx tenant with NO platform rung — the env front-end over the
@@ -1146,6 +1215,77 @@ impl PlatformsTree {
     ///
     /// Each knob keeps its existing env name, so migrating a knob changes no
     /// call site — it only adds the two rungs it never had.
+    /// The `[knobs.params]` a platform's chain declares, merged nearest-wins.
+    fn platform_param_knobs(&self, name: &str) -> Result<ParamKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = ParamKnobs::default();
+        for file in chain.iter().rev() {
+            let p = &file.knobs.params;
+            for (dst, src) in [
+                (&mut out.max_parameters, p.max_parameters),
+                (&mut out.max_param_name_len, p.max_param_name_len),
+                (&mut out.max_string_value_len, p.max_string_value_len),
+                (&mut out.max_array_len, p.max_array_len),
+                (&mut out.max_byte_array_len, p.max_byte_array_len),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.params]` rungs, without resolution — for a build script that
+    /// owns the defaults and its own env/Kconfig front-end.
+    pub fn platform_param_rungs(&self, platform: &str) -> Result<ParamKnobs, ConfigError> {
+        self.platform_param_knobs(platform)
+    }
+
+    /// phase-400 W6 — resolve the parameter tenant over the RFC-0049 ladder.
+    pub fn resolve_params(
+        &self,
+        platform: &str,
+        board: Option<&ParamKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_param_knobs(platform)?;
+        let pick = |k: &ParamKnobs, name: &str| match name {
+            "max_parameters" => k.max_parameters,
+            "max_param_name_len" => k.max_param_name_len,
+            "max_string_value_len" => k.max_string_value_len,
+            "max_array_len" => k.max_array_len,
+            "max_byte_array_len" => k.max_byte_array_len,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = param_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
     /// The `[knobs.memory]` a platform's chain declares, merged nearest-wins.
     fn platform_memory_knobs(&self, name: &str) -> Result<MemoryKnobs, ConfigError> {
         let chain = self.chain(name)?;

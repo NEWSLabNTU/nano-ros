@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 15
+LADDER_FLOOR = 20
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -83,11 +83,11 @@ KNOB_CLASS = {
     "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
     "ZPICO_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
     # --- sizing: the backlog ---
-    "NROS_MAX_ARRAY_LEN": ("sizing", "parameter value bound (nros-params)"),
-    "NROS_MAX_BYTE_ARRAY_LEN": ("sizing", "parameter value bound (nros-params)"),
-    "NROS_MAX_STRING_VALUE_LEN": ("sizing", "parameter value bound (nros-params)"),
-    "NROS_MAX_PARAM_NAME_LEN": ("sizing", "parameter bound"),
-    "NROS_MAX_PARAMETERS": ("sizing", "parameter cap"),
+    "NROS_MAX_ARRAY_LEN": ("ladder", "params tenant"),
+    "NROS_MAX_BYTE_ARRAY_LEN": ("ladder", "params tenant"),
+    "NROS_MAX_STRING_VALUE_LEN": ("ladder", "params tenant"),
+    "NROS_MAX_PARAM_NAME_LEN": ("ladder", "params tenant"),
+    "NROS_MAX_PARAMETERS": ("ladder", "params tenant"),
     "NROS_RUNTIME_COMPONENT_SLOT_BYTES": ("sizing", "component cap"),
     "NROS_RUNTIME_MAX_CELL_ENTITIES": ("sizing", "component cap"),
     "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("sizing", "component cap"),
@@ -152,6 +152,48 @@ KNOB_CLASS = {
     "NROS_ENTRY_SPIN_MS": ("sizing", "entry spin period; a duration, same ladder shape"),
     # --- infra: pointers, flags and orchestration inputs ---
     "NROS_BOARD_TOML": ("infra", "the ladder's own board rung pointer"),
+    # Surfaced when the reader matcher stopped enumerating helper names
+    # (READ_CALLEES). These are read through `req`/`list`/`env_get`/`flag`,
+    # which the old fixed list did not know, so the census had never counted
+    # them and the W6 backlog was measured 29 names short.
+    #
+    # The board descriptor's facts: identity and paths the CLI hands the build,
+    # which are what the ladder RESOLVES AGAINST rather than knobs it resolves.
+    "NROS_BOARD_ZEPHYR_ID": ("infra", "board descriptor fact"),
+    "NROS_BOARD_TOOLCHAIN": ("infra", "board descriptor fact"),
+    "NROS_BOARD_RUNNER": ("infra", "board descriptor fact"),
+    "NROS_BOARD_RUST_TARGETS": ("infra", "board descriptor fact"),
+    "NROS_BOARD_GATED_PKGS": ("infra", "board descriptor fact"),
+    "NROS_BOARD_PRJ_CONF": ("infra", "board descriptor path"),
+    "NROS_BOARD_BOARD_CONF": ("infra", "board descriptor path"),
+    "NROS_BOARD_BOARD_OVERLAY": ("infra", "board descriptor path"),
+    "NROS_BOARD_DEFAULT_RMW": ("infra", "board descriptor default, not a size"),
+    "NROS_BOARD_DEFAULT_TRANSPORT": ("infra", "board descriptor default, not a size"),
+    # Source and include directories.
+    "NROS_C_INCLUDE": ("infra", "include dir"),
+    "NROS_CPP_INCLUDE": ("infra", "include dir"),
+    "NROS_PLATFORM_CFFI_INCLUDE": ("infra", "include dir"),
+    "NROS_PLATFORM_POSIX_SRC": ("infra", "platform source dir"),
+    "NROS_PLATFORM_FREERTOS_SRC": ("infra", "platform source dir"),
+    "NROS_PLATFORM_THREADX_SRC": ("infra", "platform source dir"),
+    "NROS_LAN9118_LWIP_DIR": ("infra", "driver source dir"),
+    "NROS_VIRTIO_NET_NETX_DIR": ("infra", "driver source dir"),
+    # Sizes, and none of them owned by another campaign: the only live doc
+    # hits are usage records (phase-358 records `=8` as what recovered #271's
+    # overflow; the dependency-weight audit names the RMW cap as a knob cmake
+    # never resolves). Both are arguments FOR a board rung, the same shape the
+    # ASI consumer's `NROS_MAX_PARAMETERS=256` had.
+    "NROS_RMW_MAX_BACKENDS": ("sizing", "static pool; candidate rmw tenant"),
+    "NROS_RMW_MAX_NODES": ("sizing", "static pool; candidate rmw tenant"),
+    "NROS_RMW_SUBSCRIBER_SLOTS": ("sizing", "static pool; candidate rmw tenant"),
+    "NROS_RMW_MESSAGE_INFO_SLOTS": ("sizing", "static pool; candidate rmw tenant"),
+    "NROS_SMOLTCP_MAX_SOCKETS": ("sizing", "driver pool; candidate net tenant"),
+    "NROS_SMOLTCP_MAX_UDP_SOCKETS": ("sizing", "driver pool; candidate net tenant"),
+    "NROS_SMOLTCP_BUFFER_SIZE": ("sizing", "driver buffer; candidate net tenant"),
+    "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": ("sizing", "driver timeout; candidate net tenant"),
+    "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": ("sizing", "driver timeout; candidate net tenant"),
+    "NROS_XRCE_STREAM_HISTORY": ("sizing", "xrce stream depth; candidate rmw tenant"),
+    "ZPICO_SUBSCRIBER_RING_DEPTH": ("sizing", "SPSC ring depth (count, not a byte size)"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
     "NROS_HOME": ("infra", "path"),
     "NROS_MODEL_DIR": ("infra", "path"),
@@ -198,7 +240,13 @@ def ladder_knobs():
     """Fields on the typed `[knobs.*]` structs — the migrated knobs."""
     src = read(os.path.join(ROOT, "packages/boards/nros-board-common/src/platform_config.rs"))
     total = {}
-    for struct in ("TxKnobs", "ExecutorKnobs", "TransportKnobs", "MemoryKnobs"):
+    for struct in (
+        "TxKnobs",
+        "ExecutorKnobs",
+        "TransportKnobs",
+        "MemoryKnobs",
+        "ParamKnobs",
+    ):
         fields = _struct_fields(src, struct)
         if fields:
             total[struct] = fields
@@ -213,22 +261,70 @@ def kconfig_symbols():
     return syms
 
 
-def _env_names_in(txt, prefix):
-    """`<PREFIX>_*` names READ from the environment in one source string.
+# How a build script READS a knob, and how it does everything else with one.
+#
+# The census used to carry only the first list, and matching nothing else meant
+# a build script that introduced a helper of its own silently dropped its knobs
+# from the count: `nros-params/build.rs` wrapped its rungs in a local `knob()`
+# and five names vanished while `--check` still passed, because the gate only
+# fails on a name it SEES and cannot classify.
+#
+# Matching ANY call instead is the opposite error -- `.define("ZPICO_X", ..)`
+# emits a C macro and `.with_env("NROS_X", ..)` sets a CHILD's environment;
+# counting those as readers added 67 phantom names. So both lists are explicit
+# and a callee in neither is a FAILURE: the same "a new knob forces a decision"
+# rule this file already applies to knobs, applied to the idioms that read them.
+READ_CALLEES = {
+    "env", "env_get", "env_bool", "env_usize", "env_usize_min",
+    "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
+    "knob_usize", "knob_bool", "req", "list", "var", "var_os",
+}
+
+# Not reads. Named rather than ignored by default, so the failure below stays
+# meaningful.
+NON_READ_CALLEES = {
+    "define",          # emits a C preprocessor macro
+    "set_var", "remove_var", "with_env",  # WRITES an environment
+    "push", "insert",  # builds a list / a fact map
+    "get", "contains", "contains_key", "starts_with",  # inspects one
+}
+
+_CALL_RE = r'([A-Za-z_][A-Za-z0-9_:]*)\s*\(\s*&?"({prefix}_[A-Z0-9_]+)"'
+
+
+def _calls_in(txt, prefix):
+    """(callee, name) for every call taking a `<PREFIX>_*` literal first.
 
     Comments are stripped first: a knob named in a comment is documentation,
     not a reader, and counting it inflates the number this gate exists to
-    track. Factored out so the selftest drives it on synthetic input.
+    track. Macros are excluded by the absence of `!` from the callee pattern,
+    which keeps `panic!("NROS_X unset")` and friends out.
     """
     stripped = re.sub(r"(?m)^\s*(///|//).*$", "", txt)
-    return set(
-        m.group(1)
-        for m in re.finditer(
-            r'(?:env::var|env::var_os|env|env_usize|env_bool|knob_usize|knob_bool)'
-            r'\s*\(\s*&?"(' + prefix + r'_[A-Z0-9_]+)"',
-            stripped,
-        )
-    )
+    return [
+        (m.group(1).rsplit("::", 1)[-1], m.group(2))
+        for m in re.finditer(_CALL_RE.format(prefix=prefix), stripped)
+    ]
+
+
+def _env_names_in(txt, prefix):
+    """`<PREFIX>_*` names READ from the environment in one source string.
+
+    Factored out so the selftest drives it on synthetic input.
+    """
+    return {n for callee, n in _calls_in(txt, prefix) if callee in READ_CALLEES}
+
+
+def unknown_idioms(sources, prefixes):
+    """Callees that neither read nor demonstrably-don't. See READ_CALLEES."""
+    out = {}
+    for path in sources:
+        txt = read(path)
+        for prefix in prefixes:
+            for callee, name in _calls_in(txt, prefix):
+                if callee not in READ_CALLEES and callee not in NON_READ_CALLEES:
+                    out.setdefault(callee, set()).add(name)
+    return out
 
 
 def build_env_sources():
@@ -290,8 +386,21 @@ def self_test() -> None:
         '// NROS_EXECUTOR_MAX_CBS was read here once',
         'println!("set NROS_THING");',
         'let n = env_usize("ZPICO_TX_BATCH", 0);',
+        # ...including the shapes that TOUCH a knob without reading one.
+        'cfg.define("NROS_THING", "1");',
+        'cmd.with_env("NROS_THING", "");',
+        'flags.push("NROS_THING");',
     ):
         assert not _env_names_in(src, "NROS"), f"selftest: false positive on {src!r}"
+
+    # An idiom in NEITHER list must be reported rather than silently dropped:
+    # that silent drop is exactly what hid five knobs behind a local `knob()`.
+    assert _calls_in('let n = brand_new_helper("NROS_THING", 4);', "NROS") == [
+        ("brand_new_helper", "NROS_THING")
+    ], "selftest: the call matcher missed an unknown idiom"
+    assert not _env_names_in('let n = brand_new_helper("NROS_THING", 4);', "NROS"), (
+        "selftest: an unknown idiom was counted as a read"
+    )
 
     # The ladder counter reads STRUCT FIELDS, so it must not count a doc
     # comment, a non-`pub` field, or a field of a struct it was not asked for.
@@ -350,6 +459,25 @@ def main() -> int:
             print(f"  {cls}:")
             for n in by_class.get(cls, []):
                 print(f"    {n:<36} {KNOB_CLASS[n][1]}")
+
+    unknown = unknown_idioms(build_env_sources(), ("NROS", "ZPICO"))
+    if unknown:
+        sys.stderr.write(
+            "config-knob-census: FAILED — build script(s) touch a knob name "
+            "through an idiom this census does not know:\n"
+        )
+        for callee, names in sorted(unknown.items()):
+            sample = ", ".join(sorted(names)[:3])
+            sys.stderr.write(f"    {callee}(...)  e.g. {sample}\n")
+        sys.stderr.write(
+            "  Add it to READ_CALLEES if it READS the environment, or to\n"
+            "  NON_READ_CALLEES if it does something else with the name (emits\n"
+            "  a C macro, sets a child's env, builds a list). Neither list may\n"
+            "  be skipped: a helper in neither is counted as nothing, which is\n"
+            "  how a local `knob()` wrapper took five migrated knobs out of\n"
+            "  this census while the gate stayed green.\n"
+        )
+        return 1
 
     if unclassified:
         sys.stderr.write(

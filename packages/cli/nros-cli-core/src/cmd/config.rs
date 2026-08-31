@@ -264,6 +264,33 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
+    // phase-400 W6 — the parameter-storage tenant. Defaults mirror
+    // `nros-params/build.rs`, which stays the authority on them.
+    let param_defaults: &[(&str, usize)] = &[
+        ("max_parameters", 32),
+        ("max_param_name_len", 64),
+        ("max_string_value_len", 256),
+        ("max_array_len", 32),
+        ("max_byte_array_len", 256),
+    ];
+    for (name, r) in tree
+        .resolve_params(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.params),
+            &env_get,
+            param_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("params.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
     // phase-400 W6 — the platform memory tenant. Defaults mirror the board
     // crate that sizes each: FreeRTOS heap_4 `ucHeap` at the `rmw-zenoh` 2 MiB,
     // and the `nros_app` task stack. Both in BYTES, which is the ladder's unit;

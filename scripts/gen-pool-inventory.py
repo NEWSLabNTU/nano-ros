@@ -70,6 +70,20 @@ KNOB_PATTERNS = [
     # figures for BOTH payload pools -- the `SLOTS` regression this list already
     # records, one wrapper later.
     re.compile(r'\benv_usize_min\(\s*"([A-Z0-9_]+)"\s*,\s*([0-9_]+)\s*,\s*[0-9_]+\s*\)'),
+    # `knob("NAME", rung, 32)` — the LADDER shape (phase-400 W6): env, then
+    # Kconfig, then the platform/board rung, then the builtin LAST. So the
+    # figure this table wants is the third argument, where every other spelling
+    # puts it second.
+    #
+    # Third entry in this list added for the same reason as the two above it,
+    # which is the point: a crate that grows a resolution rule wraps its reads,
+    # and the wrapper is invisible here until someone notices a knob went
+    # missing. The params tenant's five knobs rendered as "computed — see
+    # build.rs:25" -- a line number in a generated table, churning on every
+    # edit, in place of the default it exists to publish.
+    re.compile(
+        r'\bknob\(\s*"([A-Z0-9_]+)"\s*,\s*[A-Za-z0-9_.]+\s*,\s*([0-9_]+)\s*\)'
+    ),
 ]
 
 # `// nros-pool: NAME = KNOB * KNOB * 4` — products of knobs and integers only.
@@ -240,6 +254,8 @@ def self_test():
         'let y = env_usize_min("NROS_PROBE_DEPTH", 3, 1);\n'
         '// nros-pool: P = NROS_PROBE_SLOTS * 8\n'
         '// nros-pool: Q = NROS_PROBE_DEPTH * NROS_PROBE_SLOTS\n'
+        'let z = knob("NROS_PROBE_LADDER", rungs.thing, 9);\n'
+        'let w = knob("NROS_PROBE_PLAIN", 7);\n'
     )
     tmp = os.path.join(ROOT, "tmp")
     os.makedirs(tmp, exist_ok=True)
@@ -252,6 +268,14 @@ def self_test():
     assert k.get("NROS_PROBE_DEPTH", (None,))[0] == 3, (
         "env_usize_min knob not scanned — its DEFAULT is the reported figure, "
         "not its floor (issue 0827)"
+    )
+    assert k.get("NROS_PROBE_LADDER", (None,))[0] == 9, (
+        "ladder knob not scanned — `knob(name, rung, builtin)` puts the "
+        "builtin THIRD, and reading the second argument yields a rung "
+        "expression, not a figure (phase-400 W6)"
+    )
+    assert k.get("NROS_PROBE_PLAIN", (None,))[0] == 7, (
+        "the two-argument `knob(name, default)` spelling must still scan"
     )
     by_name = {name: expr for name, expr, *_ in pl}
     assert "P" in by_name, "pool annotation not scanned"
