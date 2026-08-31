@@ -396,6 +396,104 @@ a real image. Per this phase's rule, W3 claims nothing until `just mem-report
 differently — and no example in the tree has one today, which is its own finding
 about the fixture corpus rather than about the wave.
 
+### W3 remainder — the goal is a buffer derived from the message size, everywhere
+
+W3a and W3b each derive a buffer from the type. Neither makes it the norm, and
+the gap between "possible" and "always" is where every remaining byte is.
+
+Stated as a target so the remaining waves can be judged against it: **no
+subscription and no publish helper in any image sizes a buffer from a global
+constant when the type has a bound.** Where a type genuinely has no bound, the
+fallback must be loud and must name the field that costs it.
+
+Four things stand between here and that, and they are not the same kind of
+problem.
+
+**1. Rust is opt-in.** `rx_buffer_for!(Msg)` is correct and tested, and it is
+only used where a consumer writes it. A consumer who does not know the macro
+exists gets the default, silently, which is the same failure the macro was
+written to prevent — the sample is received, ACKed and dropped. Making the
+derived size the DEFAULT at a site that names the type, with the global as the
+explicit opt-out, is the whole of W3c.
+
+**2. C/C++ has no site that names the type — and this is the design fork.**
+RFC-0043 typed components subscribe RAW: the type reaches the runtime as a
+STRING. `add_arena_subscription_c_callback::<BUF>` therefore takes
+`BUF = DEFAULT_RX_BUF_SIZE`, a global, on all three register variants, and no
+per-call number can vary it because a const generic is fixed at the Rust call
+site — which is inside nros-cpp, not in user code.
+
+phase-402 already delivered the runtime half: `nros_cpp_subscription_options_t
+.rx_buffer_hint` is read and passed to the backend (issue 0896 is stale on this
+point — it says the register has no slot, which was true when filed). But the
+hint is a `usize` routing a backend size CLASS. **The arena entry is still a
+const-generic array.** So the C/C++ path needs one of:
+
+  * **(a) monomorphise per type.** Codegen emits a Rust shim per message type
+    that instantiates the const generic. Exact, no runtime cost, and it puts a
+    generated Rust crate into a C-only image — which the 0896 survey found is
+    exactly what does not exist there today (`packages/api/nros-c` links no
+    message crate, and no `nros_ws_runtime` is generated for a C workspace).
+  * **(b) make the arena entry runtime-sized** within a bounded pool, so the
+    hint sizes it the way it already sizes the backend block. Removes the const
+    generic from the path entirely and serves both languages, at the cost of the
+    entry no longer being a plain `[u8; N]`.
+
+  (a) preserves the static shape and costs build machinery; (b) preserves the
+  build shape and costs the static guarantee this campaign is otherwise
+  defending. **Neither is obviously right and the choice should be made
+  deliberately, not by whichever is implemented first.**
+
+**3. The number has to exist in C at all.** Issue 0896 layers 1-2: one
+traversal in `rosidl-codegen` emitting both the field-expression string and the
+`nros_serdes::FieldType` value, then `<PREFIX>_RX_MAX_SERIALIZED_SIZE_XCDR{1,2}`
+from the C and C++ template packs, tested equal to the Rust const for the same
+type. This is a prerequisite for 2 under either option, and it independently
+fixes the publish side (layer 3): the generated helpers stack
+`NROS_PUB_BUFFER_SIZE` (global, default 256, checked against nothing).
+
+**4. Unbounded types are the residue, and two of them are ours.** A bound the
+`.msg` does not state cannot be invented — phase 380's rule. Two follow-ons,
+both already scoped in 0896: name the offending FIELD when the bound is `None`
+(`size::first_unbounded`), and thread RFC-0033 `cap` as a **transmit-only**
+bound, which forces `_TX_MAX_SERIALIZED_SIZE_*` and `_RX_MAX_SERIALIZED_SIZE_*`
+apart. A cap bounds our storage; a remote publisher is bound by the `.msg` and
+may send more, so sizing a RECEIVE buffer from a cap reintroduces the drop this
+whole lever exists to stop.
+
+### Waves
+
+**W3c — derived-by-default on the Rust path.** `rx_buffer_for!` becomes what a
+subscription gets without asking; the global becomes the opt-out. Acceptance:
+an example that subscribes to a bounded type over the small class shows the
+change in `mem-report --baseline` without its source being edited.
+
+**W3d — emit the constants, and retarget the publish helper.** 0896 layers 1-3.
+Acceptance: the emitted constant equals the Rust const for every type in the
+message corpus (one test, both encodings), and a C image's publish helpers stop
+referencing `NROS_PUB_BUFFER_SIZE`.
+
+**W3e — decide the C/C++ arena fork (a) or (b), then implement it.** Acceptance
+is the decision recorded in RFC-0002 with the rejected option and why, before
+any code. This is the wave that actually closes the C/C++ half; W3d is its
+prerequisite and does not substitute for it.
+
+**W3f — Cyclone consumes the hint, or records that it will not.** `grep
+rx_buffer_hint packages/rmw/cyclonedds/` returns nothing today, so a consumer on
+that backend gets no routing from any of the above. Either wire it or state in
+the RMW's own docs that the hint is zenoh-only, so a consumer stops looking for
+an effect that cannot occur. Cheap, and it is the difference between W3 helping
+one backend and helping the tree.
+
+**W3g — unbounded diagnostics and the TX/RX split.** 0896 layers 5-6, in that
+order: the diagnostic is cheap and immediately useful, the split is a naming
+change that must land before caps are honoured anywhere.
+
+**Ordering note.** W3d unblocks W3e, and W3f is independent of both — a
+consumer on Cyclone sees nothing from W3c/W3d/W3e until W3f exists. If the
+motivating consumer is a Cyclone image (the an536 lane is), W3f is not the
+last wave; it is the first one that makes any of the others observable there.
+
 **W4 — drop the network stack from serial images.** 27,760 B.
 
 **TRIAGE ANSWERED (2026-08-27): headers only.** zenoh-pico's Zephyr layer needs
