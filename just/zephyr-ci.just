@@ -125,11 +125,11 @@ build-fixtures:
     ccache_dir="${NROS_ZEPHYR_CCACHE_DIR:-$nros_root/build/zephyr-cache/ccache}"
     ccache_tmpdir="${NROS_ZEPHYR_CCACHE_TEMPDIR:-$nros_root/build/zephyr-cache/ccache-tmp}"
     mkdir -p "$ccache_dir" "$ccache_tmpdir"
-    make_bin="$nros_root/third-party/make/make"
+    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
-    tool_path="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    tool_path="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
     # Phase 178.J — fail/regenerate Zephyr Rust generated crates before
     # scheduling expensive west builds. Direct `just zephyr build-fixtures`
     # is allowed, so do not rely solely on the root `generate-bindings`

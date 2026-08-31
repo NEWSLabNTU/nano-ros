@@ -49,3 +49,17 @@ genromfs
 sccache
 espflash
 idlc
+# make + ninja — the two halves of the Phase 176 unified jobserver, and both
+# invoked by BARE NAME by things we do not control: cmake generators and RTOS
+# kernel makefiles call `make`/`gmake`, every cmake configure emits for `ninja`.
+#
+# They moved here from two hand-written PATH blocks in activate.sh pointing at
+# `third-party/{make,ninja}/`, which `just workspace install-{make,ninja}`
+# filled. Those recipes are gone: provisioning is `nros setup --tool {make,ninja}`
+# like every other tool, so the version pin lives in the index instead of a
+# `just` variable that could drift from it.
+#
+# Listing `make` is enough to put its bin dir on PATH — the `gmake` alias sits
+# beside it in the same directory, and this list gates the DIRECTORY.
+make
+ninja

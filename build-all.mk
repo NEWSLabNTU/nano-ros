@@ -1,7 +1,7 @@
 # Phase 176 — unified-jobserver build orchestration.
 #
 # Run via `just build-all-jobserver` (or directly:
-#   third-party/make/make -j$(nproc) --jobserver-style=fifo -f build-all.mk
+#   $(nros sdk-path make)/bin/make -j$(nproc) --jobserver-style=fifo -f build-all.mk
 # ). The pinned make >=4.4 hands out a fifo-based jobserver; every
 # `+`-prefixed recipe below shares it, and because fifo auth is a PATH
 # (not inherited fds) every descendant tool — cargo, its build-script
@@ -12,8 +12,8 @@
 # tokens flow to the long pole (zephyr) automatically.
 #
 # Requirements (checked by `just workspace doctor`):
-#   - make >=4.4   (third-party/make/make) — fifo jobserver provider
-#   - ninja >=1.13 (third-party/ninja/ninja) — fifo jobserver client
+#   - make >=4.4   (`nros setup --tool make`) — fifo jobserver provider
+#   - ninja >=1.13 (`nros setup --tool ninja`) — fifo jobserver client
 # Both must be first on PATH (direnv .envrc) so the sub-tools pick them
 # up. Tools must NOT be passed an explicit -j / --parallel (that detaches
 # them from the pool); the `just` recipes default their inner fan-out to

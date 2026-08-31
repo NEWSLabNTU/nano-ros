@@ -566,7 +566,7 @@ for dir in "${group_dirs[@]:-}"; do
     ( cd "$repo_root/$dir" && "$nros_cli" sync --no-provider-index >/dev/null )
 done
 
-pinned_make="$repo_root/third-party/make/make"
+pinned_make="$(nros sdk-path make)/bin/make"
 use_pool=0
 if [ "${NROS_JOBSERVER:-}" != "1" ] && [ "${#group_dirs[@]}" -gt 1 ] && \
    [ -x "$pinned_make" ] && "$pinned_make" --version | head -1 | grep -q "4.4"; then

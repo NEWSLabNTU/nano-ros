@@ -623,16 +623,57 @@ pub struct BoardEntry {
 pub struct DistArtifact {
     pub url: String,
     pub sha256: String,
+    /// How to turn the downloaded file into a populated prefix, when the
+    /// default cannot.
+    ///
+    /// Default (absent): `tar -xf <archive> -C <prefix>` — right for the
+    /// `.tar.zst` assets on the nano-ros-sdk mirror, which are built to unpack
+    /// prefix-rooted (`bin/…`).
+    ///
+    /// It is wrong for an UPSTREAM asset, and that is the case this exists for.
+    /// Policy is prebuilt-when-upstream-ships-one, source only as fallback, so
+    /// the index has to take assets shaped the way their projects publish them
+    /// rather than the way our mirror does. ninja's `ninja-linux.zip` is both
+    /// kinds of wrong at once: not a tar, and a bare binary with no `bin/`.
+    ///
+    /// Free-form shell, like `[tool.*.source].install` — the same reason, that
+    /// the unpack step genuinely varies per project and a fixed vocabulary of
+    /// archive types would just be a smaller ad-hoc recipe. `{archive}` is the
+    /// downloaded file, `{prefix}` the install prefix.
+    #[serde(default)]
+    pub install: Option<String>,
 }
 
 /// The source-build fallback recipe — installs into the same prefix as `dist`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ToolSource {
-    pub git: String,
+    /// Git remote to fetch from. Mutually exclusive with [`url`](Self::url);
+    /// exactly one of the two must be set (checked by `validate`).
+    #[serde(default)]
+    pub git: Option<String>,
     /// Git ref (tag/sha) — pinned in lockstep with the prebuilt `version`.
-    #[serde(rename = "ref")]
-    pub git_ref: String,
+    #[serde(rename = "ref", default)]
+    pub git_ref: Option<String>,
+    /// A source TARBALL to fetch instead of cloning.
+    ///
+    /// Exists because git is not always a way to get a buildable tree. GNU
+    /// make's git tree at `4.4.1` ships no `configure` at all — only
+    /// `bootstrap`, which wants autoconf/automake/gettext and pulls gnulib —
+    /// so the release tarball is the only sane input, and a git-only schema
+    /// pushed `make` out of the index into an ad-hoc `just` recipe.
+    ///
+    /// The archive is fetched, sha256-verified and unpacked into the build
+    /// directory with `--strip-components=1`, so `configure`/`install` see the
+    /// project root exactly as the git path leaves it. Everything after the
+    /// fetch is therefore identical between the two modes.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Checksum for [`url`](Self::url). Required with it — an unverified
+    /// download is a supply-chain hole, and the git path gets its integrity
+    /// from the pinned ref.
+    #[serde(default)]
+    pub sha256: Option<String>,
     /// Configure step; `{prefix}` is substituted with the install prefix.
     #[serde(default)]
     pub configure: Option<String>,
@@ -939,6 +980,34 @@ impl SdkIndex {
                     );
                 }
             }
+            // A source recipe fetches from EXACTLY ONE place. Both fields are
+            // `Option` so either mode parses, which means neither and both are
+            // now expressible states — and both fail late and confusingly
+            // (neither: an empty build dir and a configure that "cannot find
+            // ./configure"; both: whichever the executor happens to check
+            // first, silently). Reject them here, where the message can say
+            // which tool.
+            if let Some(src) = &tool.source {
+                match (&src.git, &src.url) {
+                    (Some(_), Some(_)) => bail!(
+                        "[tool.{name}.source] sets both `git` and `url` — a \
+                         recipe fetches from exactly one place"
+                    ),
+                    (None, None) => bail!(
+                        "[tool.{name}.source] sets neither `git` nor `url` — \
+                         nothing to fetch"
+                    ),
+                    _ => {}
+                }
+                if src.git.is_some() && src.git_ref.is_none() {
+                    bail!("[tool.{name}.source] has `git` but no `ref` to pin it to");
+                }
+                // Unverified download = supply-chain hole. The git path gets
+                // its integrity from the pinned ref; the url path has only this.
+                if src.url.is_some() && src.sha256.is_none() {
+                    bail!("[tool.{name}.source] has `url` but no `sha256` to verify it");
+                }
+            }
         }
         for (key, dep) in &self.system {
             if dep.apt.is_empty()
@@ -1077,11 +1146,62 @@ installer = "nvidia-sdk-manager"
         assert_eq!(qemu.dist_for("linux-x86_64").unwrap().sha256, "aa");
         assert!(qemu.dist_for("windows-x86_64").is_none());
         let src = qemu.source.as_ref().expect("qemu has a source recipe");
-        assert_eq!(src.git_ref, "v11.0-nros1"); // the `ref` key
+        assert_eq!(src.git_ref.as_deref(), Some("v11.0-nros1")); // the `ref` key
         assert!(src.configure.as_deref().unwrap().contains("{prefix}"));
 
         assert_eq!(idx.source["freertos-kernel"].version, "10.6.2");
         assert_eq!(idx.gated["nv-spe-fsp"].env, "NV_SPE_FSP_DIR");
+    }
+
+    /// A source recipe fetches from exactly one place. Both `git` and `url` are
+    /// `Option`, so "neither" and "both" became expressible the moment the
+    /// tarball mode landed — and both fail LATE and confusingly if they get
+    /// past here (neither: an empty build dir and a configure that cannot find
+    /// `./configure`; both: whichever the executor checks first, silently).
+    #[test]
+    fn tool_source_fetches_from_exactly_one_place() {
+        let both = SdkIndex::parse(
+            "[tool.t]\nversion=\"1\"\n[tool.t.source]\ngit=\"g\"\nref=\"r\"\n\
+             url=\"u\"\nsha256=\"s\"\n",
+        )
+        .expect("parses");
+        let err = both
+            .validate()
+            .expect_err("both git and url must be rejected");
+        assert!(format!("{err}").contains("exactly one place"), "{err}");
+
+        let neither =
+            SdkIndex::parse("[tool.t]\nversion=\"1\"\n[tool.t.source]\nconfigure=\"x\"\n")
+                .expect("parses");
+        let err = neither.validate().expect_err("neither must be rejected");
+        assert!(format!("{err}").contains("nothing to fetch"), "{err}");
+
+        // An unverified download is a supply-chain hole; the git path gets its
+        // integrity from the pinned ref, the url path has only the checksum.
+        let no_sum = SdkIndex::parse("[tool.t]\nversion=\"1\"\n[tool.t.source]\nurl=\"u\"\n")
+            .expect("parses");
+        let err = no_sum
+            .validate()
+            .expect_err("url without sha256 must be rejected");
+        assert!(format!("{err}").contains("sha256"), "{err}");
+
+        let no_ref = SdkIndex::parse("[tool.t]\nversion=\"1\"\n[tool.t.source]\ngit=\"g\"\n")
+            .expect("parses");
+        let err = no_ref
+            .validate()
+            .expect_err("git without ref must be rejected");
+        assert!(format!("{err}").contains("no `ref`"), "{err}");
+
+        // And the two legal shapes still pass.
+        for ok in [
+            "[tool.t]\nversion=\"1\"\n[tool.t.source]\ngit=\"g\"\nref=\"r\"\n",
+            "[tool.t]\nversion=\"1\"\n[tool.t.source]\nurl=\"u\"\nsha256=\"s\"\n",
+        ] {
+            SdkIndex::parse(ok)
+                .expect("parses")
+                .validate()
+                .expect("legal shape");
+        }
     }
 
     #[test]

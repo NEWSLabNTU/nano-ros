@@ -268,10 +268,11 @@ is the same checkout, so `NROS_REPO_DIR` matches the host either way.
   with `just doctor`, fix with `sudo apt-get install ros-<distro>-rmw-zenoh-cpp`
   inside the box.
 - **The vendored `make` and `nros-launch-resolve` are host binaries in a shared
-  tree**, exactly like the CLI. `third-party/make/make` used to link the build
-  host's guile and died here as `libguile-3.0.so.1: cannot open shared object
-  file` (fixed: the recipe configures `--without-guile`, so one binary serves
-  both sides — rebuild it once in the box with `just workspace install-make`).
+  tree**, exactly like the CLI. The pinned make used to link the build host's
+  guile and died here as `libguile-3.0.so.1: cannot open shared object file`
+  (fixed: the index's source recipe configures `--without-guile`, so one binary
+  serves both sides — rebuild it once in the box with
+  `nros setup --tool make`).
   `nros-launch-resolve` is per-environment by design (issue 0409): a stale one
   fails `nros sync` with a TOML `unknown field` error naming a field the current
   schema does have, which reads as a broken `system.toml` rather than a stale

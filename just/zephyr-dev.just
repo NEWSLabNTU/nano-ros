@@ -276,11 +276,11 @@ build-c-port:
         echo "$WORKSPACE/env.sh missing — run: just zephyr setup" >&2
         exit 2
     fi
-    make_bin="$(pwd)/third-party/make/make"
+    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
-    export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
+    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
     source "$WORKSPACE/env.sh"
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh

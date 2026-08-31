@@ -21,7 +21,7 @@ Options:
   --codegen-tool PATH       host codegen tool used in signatures
                             (default: resolved nros CLI, or build/host-codegen/nros-codegen
                             when nros is unavailable)
-  --make-bin PATH           make path used in signatures (default: third-party/make/make
+  --make-bin PATH           make path used in signatures (default: $(nros sdk-path make)/bin/make
                             when executable, else command -v make)
   --toolchain-cache-dir DIR Zephyr toolchain capability cache dir
                             (default: build/zephyr-cache/ToolchainCapabilityDatabase)
@@ -178,7 +178,7 @@ if [ -z "$toolchain_cache_dir" ]; then
     toolchain_cache_dir="$nros_root/build/zephyr-cache/ToolchainCapabilityDatabase"
 fi
 if [ -z "$make_bin" ]; then
-    make_bin="$nros_root/third-party/make/make"
+    make_bin="$(nros sdk-path make)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi

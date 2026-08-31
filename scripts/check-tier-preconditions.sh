@@ -252,24 +252,38 @@ fi
 #    system make on Ubuntu 22.04 is 4.3, whose pipe-FD jobserver a grandchild
 #    (cargo, or cmake's sub-make) cannot join. Without it every jobserver
 #    fan-out in the tree — example checks, fixture builds, the compile-check
-#    sweep — silently walks SERIALLY. `just install-make` builds it to
-#    `third-party/make/` and `.envrc` puts it first on PATH.
+#    sweep — silently walks SERIALLY.
 #
-#    Deliberately NOT a `[system.make]` entry in nros-sdk-index.toml: the apt
-#    package is 4.3 on the LTS we target, so provisioning it would satisfy a
-#    `check = { cmd = "make" }` probe while still not giving a usable jobserver.
-#    The index has no version predicate (cmd / sharedlib / pkg_config only), so
-#    an entry there would assert something false.
+#    It is now an ORDINARY store tool: `nros setup --tool make` builds 4.4.1
+#    from the release tarball, and `scripts/sdk-path-tools.txt` puts it on PATH.
+#    The path is resolved with `nros sdk-path` — CONSTRUCTED from the index pin,
+#    never searched (issue 0625) — so this cannot drift from what provisioning
+#    installed.
+#
+#    This block used to read `third-party/make/make`, filled by a bespoke
+#    `just workspace install-make`, and its comment justified that with "the
+#    index has no version predicate (cmd / sharedlib / pkg_config only), so an
+#    entry there would assert something false". That was true when written and
+#    is not any more: `check = { cmd = …, version = { min = … } }` exists (see
+#    `[prereq.openocd]`), which is exactly the predicate that was missing. So
+#    `[prereq.make]` now asserts `min = "4.4"` truthfully, and the apt-installs-4.3
+#    objection is answered by the version floor rather than by staying out of
+#    the index.
 #
 #    WARN, not fail: a serial walk is correct, only slow.
-if [ ! -x "third-party/make/make" ] ||
-    ! third-party/make/make --version 2>/dev/null | head -1 | grep -q "4\.4"; then
+_pre_make=""
+if command -v nros >/dev/null 2>&1; then
+    _pre_make="$(nros sdk-path make 2>/dev/null)/bin/make"
+fi
+if [ -z "$_pre_make" ] || [ ! -x "$_pre_make" ] ||
+    ! "$_pre_make" --version 2>/dev/null | head -1 | grep -q "4\.4"; then
     echo "check-tier-preconditions: WARNING — pinned GNU make 4.4 absent;" >&2
     echo "  every jobserver fan-out degrades to a SERIAL walk (the system make" >&2
     echo "  is 4.3 on Ubuntu LTS, and its pipe-FD jobserver cannot be joined by" >&2
     echo "  cargo or by cmake's sub-make)." >&2
-    echo "  Remedy: just install-make" >&2
+    echo "  Remedy: nros setup --tool make" >&2
 fi
+unset _pre_make
 
 # 9. A lane that silently DEGRADES is worse than one that fails: without GNU
 #    parallel the example check walks ~99 leaves serially and reads as a hung

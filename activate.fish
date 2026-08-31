@@ -110,13 +110,11 @@ if test -d $_nros_sdk
     end
 end
 
-# Pinned ninja + make (Phase 176 jobserver tooling)
-if test -x $_nros_root/third-party/ninja/ninja
-    set -gx PATH $_nros_root/third-party/ninja $PATH
-end
-if test -x $_nros_root/third-party/make/make
-    set -gx PATH $_nros_root/third-party/make $PATH
-end
+# Pinned ninja + make (Phase 176 jobserver tooling) — no block here any more:
+# both are ordinary SDK-store tools, so the generic store loop above puts them
+# on PATH via `scripts/sdk-path-tools.txt`. Keeping a hand-written block in each
+# shell is exactly the drift that file was created to end (issue 0663 —
+# `espflash` was in the bash one and not this one).
 
 # Project `.env` — fish doesn't natively `source` POSIX dotenv files;
 # parse KEY=value pairs manually. Lines with comments or empty are

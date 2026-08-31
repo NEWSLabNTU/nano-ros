@@ -3,8 +3,8 @@ set -euo pipefail
 
 source scripts/build/cargo.sh
 
-make_bin="third-party/make/make"
-ninja_bin="third-party/ninja/ninja"
+make_bin="$(nros sdk-path make)/bin/make"
+ninja_bin="$(nros sdk-path ninja)/bin/ninja"
 if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
     echo "jobserver build needs make >=4.4 — run: just workspace install-make" >&2
     exit 1
@@ -15,7 +15,7 @@ if [ ! -x "$ninja_bin" ]; then
 fi
 
 n="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
-export PATH="$(pwd)/third-party/make:$(pwd)/third-party/ninja:$PATH"
+export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
 echo "build-all (jobserver): $make_bin -j$n --jobserver-style=fifo -f build-all.mk"
 echo "  make=$(make --version | head -1), ninja=$(ninja --version)"
 echo "  cargo-profile=$(nros_cargo_profile_name), cargo-frontends=${NROS_CARGO_FRONTENDS:-auto}"

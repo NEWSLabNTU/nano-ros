@@ -50,9 +50,11 @@ Phase 176 fifo jobserver; Make was dropped from the staleness path because
 - Generator-mismatch wipe: a dir configured with the *other* generator is
   `rm -rf`'d and reconfigured (you can't switch generators in place).
 - Pinned tools: the unified jobserver needs `make ≥ 4.4` + `ninja ≥ 1.13`
-  (apt's 4.3/1.10 lack the fifo jobserver). `just workspace install-make` /
-  `install-ninja` build them into `third-party/{make,ninja}`; `.envrc` puts them
-  on `PATH` (incl. a `gmake` → make-4.4 alias).
+  (apt's 4.3/1.10 lack the fifo jobserver). Both are SDK-store tools —
+  `nros setup --tool make` (source tarball; upstream ships no binary) and
+  `nros setup --tool ninja` (upstream prebuilt zip) — and
+  `scripts/sdk-path-tools.txt` puts them on `PATH` (incl. a `gmake` → make-4.4
+  alias). Resolve an exact path with `nros sdk-path <tool>`.
 
 ## Per-RMW build dirs = cache isolation
 

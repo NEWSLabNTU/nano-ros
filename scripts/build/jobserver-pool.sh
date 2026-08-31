@@ -40,12 +40,25 @@
 #     a second pool would double-count them.
 #   * pinned make 4.4 is required for `--jobserver-style=fifo`; the system make
 #     may be 4.3, whose pipe-based jobserver child tools cannot join.
+# The pinned make's absolute path, or empty. CONSTRUCTED via `nros sdk-path`
+# (issue 0625) rather than searched, and deliberately NOT taken from PATH: a
+# system make 4.3 first on PATH would answer, and its pipe-FD jobserver is the
+# thing that does not work. `$repo_root` is unused now that the binary lives in
+# the store rather than `third-party/make/`.
+nros_pinned_make() {
+    command -v nros >/dev/null 2>&1 || return 1
+    local dir
+    dir="$(nros sdk-path make 2>/dev/null)" || return 1
+    [ -n "$dir" ] && [ -x "$dir/bin/make" ] || return 1
+    printf '%s\n' "$dir/bin/make"
+}
+
 nros_pool_available() {
-    local repo_root="$1" units="$2"
+    local units="$2"
     [ "${NROS_JOBSERVER:-}" = "1" ] && return 1
     [ "${units:-0}" -gt 1 ] || return 1
-    local pinned_make="$repo_root/third-party/make/make"
-    [ -x "$pinned_make" ] || return 1
+    local pinned_make
+    pinned_make="$(nros_pinned_make)" || return 1
     "$pinned_make" --version | head -1 | grep -q "4.4" || return 1
     return 0
 }
@@ -105,7 +118,7 @@ nros_pool_run() {
     source "$repo_root/scripts/build/subtree-guard.sh"
     nros_guard_exec "jobserver-pool" \
         env -u MAKEFLAGS -u CARGO_MAKEFLAGS \
-        "$repo_root/third-party/make/make" -j"$pool_jobs" --jobserver-style=fifo \
+        "$(nros_pinned_make)" -j"$pool_jobs" --jobserver-style=fifo \
         -f "$makefile" || rc=$?
     rm -f "$makefile"
     return $rc

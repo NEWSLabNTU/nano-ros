@@ -442,6 +442,92 @@ ref = "0.5.7"
 configure = "make genromfs"
 install = "install -D -m 0755 genromfs {prefix}/bin/genromfs"
 
+# ninja — the generator every cmake configure in this repo emits for, and the
+# JOBSERVER CLIENT half of the Phase 176 unified pool.
+#
+# WHY A VERSION FLOOR AND NOT "whatever the distro ships"
+#
+# Ninja gained GNU Make jobserver support in 1.13 ("Since version 1.13, Ninja
+# builds can follow the GNU Make jobserver client protocol"), and only the
+# FIFO flavour — the one make 4.4 speaks. Below 1.13 ninja simply ignores an
+# inherited `MAKEFLAGS` and takes `-j <nproc>` of its own, so a build nested
+# under a pool silently oversubscribes instead of sharing the budget. That is
+# the same shape as `[prereq.openocd]`: a system copy is fine WHEN it is new
+# enough, and `min` is what makes "new enough" decidable rather than a hope.
+# Ubuntu 22.04 ships 1.10.1, so on that distro the chain falls through to the
+# store and the user installs nothing by hand.
+#
+# Note the client/server split, because it decides what this buys: ninja is a
+# jobserver CLIENT ONLY — it never hands tokens to the cargo IT spawns. Pairing
+# it with pinned make 4.4 (the server) is what bounds a nested build; ninja
+# alone does not.
+#
+# Source-built rather than dist: upstream ships prebuilt zips, but this index's
+# `dist.*` rows are assets on the NEWSLabNTU/nano-ros-sdk mirror and none is
+# seeded for ninja yet. Per the header, leaving `dist.<host>` out makes
+# `nros setup` fall back to this recipe. Cheap and self-contained — cmake plus
+# a C++ compiler, both already prereqs, and no autotools.
+# Verified 2026-08-31: depth-1 fetch of v1.13.2 + this configure/install pair
+# produces a `ninja --version` of 1.13.2.
+[tool.ninja]
+version = "1.13.2"
+upstream = "v1.13.2" # = the ninja-build/ninja release tag
+# PREBUILT FIRST — upstream publishes these, so we take them rather than
+# rebuilding what they already built. The `[tool.ninja.source]` recipe below is
+# the FALLBACK for a host they ship no asset for; `dist_for(host)` is consulted
+# first, so it only runs where it has to.
+#
+# Each carries its own `install`, because the default unpack (`tar -xf` into the
+# prefix) cannot take these: they are zips, and they hold a BARE `ninja` with no
+# `bin/` directory. That is what an upstream asset looks like when it was not
+# built to our mirror's shape, and it is why `DistArtifact.install` exists.
+dist.linux-x86_64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip", sha256 = "5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja" }
+dist.linux-arm64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux-aarch64.zip", sha256 = "fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja" }
+dist.macos-arm64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip", sha256 = "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja" }
+system = ["unzip"]
+# Fallback only. Verified 2026-08-31 that it does produce a 1.13.2 binary, so a
+# host off the three asset arches is not stranded.
+[tool.ninja.source]
+git = "https://github.com/ninja-build/ninja"
+ref = "v1.13.2"
+# BUILD_TESTING=OFF — the test target fetches googletest, and a provisioning
+# step must not need the network mid-build.
+configure = "cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF"
+install = "cmake --build build -j$(nproc) && install -D -m 0755 build/ninja {prefix}/bin/ninja"
+
+# make — the jobserver SERVER half. Source-built because upstream ships NO
+# prebuilt binary: ftp.gnu.org carries release tarballs only, so the policy's
+# fallback arm is the only arm available here.
+#
+# A TARBALL and not `git`, because GNU make's git tree at 4.4.1 ships no
+# `configure` — only `bootstrap`, which wants autoconf/automake/gettext and
+# pulls gnulib. That is what `[tool.*.source].url` was added for.
+#
+# The install step carries what the retired `just workspace install-make`
+# recipe knew:
+#   --without-guile   make's configure AUTODETECTS a host guile and links it,
+#                     which made the binary unportable across the ROS
+#                     distrobox (one tree, two distros): an Arch build linked
+#                     libguile-3.0.so.1 that Ubuntu 22.04 could not satisfy and
+#                     every box-side build died in the loader. Nothing here
+#                     calls make's `$(guile ...)`.
+#   ./build.sh        make's own bootstrap build — you need a make to build
+#                     make, and this is how the project avoids that.
+#   the ldd refusal   an install that silently linked guile is the failure
+#                     above, deferred to someone else's machine.
+#   gmake             cmake generators and RTOS kernel makefiles invoke `gmake`;
+#                     without the alias a stray system make 4.3 answers and
+#                     chokes on the inherited `--jobserver-auth=fifo:`.
+[tool.make]
+version = "4.4.1"
+upstream = "4.4.1"
+system = ["curl"]
+[tool.make.source]
+url = "https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz"
+sha256 = "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
+configure = "./configure --without-guile"
+install = "./build.sh && if ldd make 2>/dev/null | grep -q guile; then echo 'refusing: built make links guile (see the index note)' >&2; exit 1; fi && install -D -m 0755 make {prefix}/bin/make && ln -sf make {prefix}/bin/gmake"
+
 # --- source packages (built with the app for the user's target) ---
 #
 # Phase 195.B — data-driven provisioning. Each source is a committed submodule,
@@ -821,6 +907,59 @@ dnf = ["cmake"]
 pacman = ["cmake"]
 brew = ["cmake"]
 check = { cmd = "cmake" }
+
+[prereq.unzip]
+why = "unpacks the upstream ninja release zips ([tool.ninja] dist install step); tar cannot read a zip"
+apt = ["unzip"]
+dnf = ["unzip"]
+pacman = ["unzip"]
+brew = ["unzip"]
+check = { cmd = "unzip" }
+
+[prereq.curl]
+why = "every dist download and the [tool.make] source tarball fetch shell out to it"
+apt = ["curl"]
+dnf = ["curl"]
+pacman = ["curl"]
+brew = ["curl"]
+check = { cmd = "curl" }
+
+[prereq.ninja]
+why = "the generator every cmake configure emits for; >=1.13 also speaks the make-4.4 fifo jobserver protocol, so a nested build shares one token budget instead of taking nproc of its own"
+# Same chain as `[prereq.openocd]`: a system copy is fine WHEN new enough.
+# Ubuntu 22.04 ships 1.10.1 and Ubuntu 24.04 1.11.1, both below the jobserver
+# floor, so on those distros this falls through to the store.
+providers = ["system", "sdk"]
+source = "ninja"
+apt = ["ninja-build"]
+dnf = ["ninja-build"]
+pacman = ["ninja"]
+brew = ["ninja"]
+check = { cmd = "ninja", version = { run = "ninja --version", min = "1.13" } }
+
+# make — the jobserver SERVER half, and the only half that hands out tokens.
+#
+# NOT `providers = ["system", "sdk"]` like ninja above, because there is no
+# `[tool.make]` to fall through TO yet. `ToolSource` is git-only, and GNU
+# make's git tree ships no `configure` — only `bootstrap`, which wants
+# autoconf/automake/gettext and pulls gnulib. The repo already solved this the
+# other way: `just workspace install-make` builds 4.4.1 from the RELEASE
+# TARBALL into `third-party/make/`, carrying two hard-won details (`--without-guile`,
+# and bootstrapping with a make that is not the one being replaced).
+#
+# So this entry is deliberately DIAGNOSIS ONLY: it makes `just doctor` say that
+# the system make is too old for `--jobserver-style=fifo`, instead of leaving a
+# silently-unbounded build. Provisioning it through `nros setup` needs tarball
+# support in `[tool.*.source]` (`url` + `sha256` beside `git` + `ref`); adding a
+# SECOND make provisioning path before then would be the drift this repo keeps
+# paying for.
+[prereq.make]
+why = "GNU make >=4.4 serves `--jobserver-style=fifo`, the only jobserver flavour ninja 1.13 can join; 4.3 and older serve a pipe-fd jobserver that ninja ignores. Until [tool.make] exists, install with `just workspace install-make`"
+apt = ["make"]
+dnf = ["make"]
+pacman = ["make"]
+brew = ["make"]
+check = { cmd = "make", version = { run = "make --version", min = "4.4" } }
 
 [prereq.genromfs]
 why = "NuttX riscv rv-virt etc/ ROMFS image (the [tool.genromfs] source recipe is the store alternative)"

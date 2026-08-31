@@ -136,10 +136,21 @@ exclusions=(
     #   make: error while loading shared libraries: libguile-3.0.so.1
     #
     # and it dies at the TOP of the fixture build, where it reads as a broken
-    # recipe rather than as a wrong-libc binary. Each tree builds its own; the
-    # box's absence of one is caught by `check-tier-preconditions.sh`, which
-    # warns that jobserver fan-outs degrade to a serial walk and names
-    # `just install-make`.
+    # recipe rather than as a wrong-libc binary.
+    #
+    # The two excludes below are now VESTIGIAL and kept only so a leftover
+    # directory from before the move is not mirrored: make and ninja are SDK
+    # store tools (`~/.nros/sdk/...`), which is outside this tree and so was
+    # never synced by this script anyway.
+    #
+    # Note what that changes, because it is not nothing: a distrobox shares
+    # $HOME, so host and box now see ONE make binary rather than one per tree.
+    # That is safe for exactly the reason the guile bug was fixed — the index's
+    # source recipe configures `--without-guile`, so the binary carries no
+    # distro-specific shared-library dependency and genuinely serves both
+    # sides. If a future recipe change reintroduces such a dependency, this
+    # becomes a two-distro breakage again, and `check-tier-preconditions.sh`
+    # (which names `nros setup --tool make`) is what reports it.
     --exclude '/third-party/make/'
     --exclude '/third-party/ninja/'
     --exclude '/tmp/'
