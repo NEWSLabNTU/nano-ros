@@ -121,7 +121,7 @@ fast-serial: \
     cpp-freestanding-includes fixtures-manifest fixture-id-guard generated-leaf-regenerable cargo-config-tracked doc-refs book-links book-no-just emitter-just-spelling issue-index roadmap-status prelude-tiers rmw-api-comparison sysdep-remedies \
     export-f-closure peer-sweep-lanes \
     activate-shells build-root fixture-groups rmw-descriptors artifact-identity-budget \
-    cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs fixture-binary-names manifests-parse build-rs-rerun-paths \
+    cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs example-leaf-workspace-roots fixture-binary-names manifests-parse build-rs-rerun-paths \
     lane-skip-protocol skip-marker-matching \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement site-config lane-scope-consumers \
@@ -3029,6 +3029,19 @@ fixture-groups:
 [private]
 example-leaf-target-dirs:
     @python3 scripts/check-example-leaf-target-dirs.py
+
+# issue 0948 (issue 0894, second occurrence) — a tracked `[package]` under
+# `examples/` must resolve to SOME workspace root. When an `nros build`
+# migration deletes `examples/workspaces/<ws>/Cargo.toml`, cargo's walk-up from
+# the leaves lands on the REPO root, which names them in neither `members` nor
+# `exclude` — and every cargo command in those leaves dies, `just format`
+# included, so the tree breaks for everyone. 0894 fixed `launch` and surveyed
+# the siblings as fine; the bridge roots were deleted afterwards. Self-tests its
+# array parser and its walk-up on every run.
+[private]
+example-leaf-workspace-roots:
+    @python3 scripts/check-example-leaf-workspace-roots.py --self-test >/dev/null
+    @python3 scripts/check-example-leaf-workspace-roots.py
 
 # issue 0718 — an example leaf builds in-tree (RFC-0026), so every build
 # directory a recipe gives it must be named in that leaf's own .gitignore.

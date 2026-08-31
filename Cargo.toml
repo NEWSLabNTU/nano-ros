@@ -206,6 +206,15 @@ exclude = [
     # a root, so these two are the only ones stranded. See issue 0894.
     "examples/workspaces/launch/src/listener_pkg",
     "examples/workspaces/launch/src/talker_pkg",
+    # issue 0948 — the SAME thing happened again to the two bridge workspaces.
+    # 0894 surveyed the siblings and recorded "bridge-cyclonedds: root EXISTS /
+    # bridge-xrce: root EXISTS"; a later migration deleted those roots too and
+    # their `talker_pkg` leaves stranded identically. `check::example-leaf-
+    # workspace-roots` now asks the question on every run instead of on the day
+    # someone surveys, because a deleted root strands leaves in a directory the
+    # deleter is not editing.
+    "examples/workspaces/bridge-cyclonedds/src/talker_pkg",
+    "examples/workspaces/bridge-xrce/src/talker_pkg",
     "examples/px4/rust/companion/offboard-companion",
     # Phase 233.4 — fake-PX4 stub publishing /fmu/out/vehicle_odometry so the
     # companion round-trip is CI-able without PX4 SITL. Standalone copy-out.
