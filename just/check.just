@@ -99,51 +99,168 @@ fast:
 # the right thing when you want fail-fast ordering or unshredded output.
 [group("main")]
 fast-serial: \
-    ci-image-python-deps kconfig-overridden-values \
-    platform-abi-mirror abi-bindings board-abi-mirror board-manifest-drift profile-board-mirror example-matrix \
-    no-direct-kernel-alloc no-allow-multiple-def no-board-init weak-symbols \
-    infra-queryable-counts entity-slot-costs \
-    rmw-force-link-anchor rmw-required-slots rmw-slot-table board-tiers tier-priority-plan \
-    subtree-guard \
-    leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots host-platform-vocabulary posix-platform-purity orphan-generated-stamp generated-schema-coverage \
-    cbindgen-pin cbindgen-headers nuttx-shared-tree-headers nuttx-libc-struct-sizes source-manifest \
-    nested-workspace-excludes nuttx-links-snapshot \
-    board-cargo-config-applied staleness-probe-exemptions \
-    capability-slot-counts kconfig-knob-forwarding \
-    cargo-profile-mirror build-profile-literals \
-    version-lockstep workspace-fmt example-fmt cli-fmt \
-    readiness-marker-literals \
-    codegen-invocation string-conventions issue-ids knob-single-reader config-knob-census \
-    workflow-repo-env doc-recipe-refs \
-    std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio cpp-no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed shared-cargo-dir-witness image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
+    abi-bindings \
     absolute-paths \
-    c-fmt cpp-fmt python \
-    nuttx-integration-makefile eyre-context-alias core-only-predicate workspace-build-output cc-build-policy ffi-struct-mirrors sizes-header-mirrors retired-submodule-refs no-absolute-model-paths \
-    cpp-freestanding-includes fixtures-manifest fixture-id-guard generated-leaf-regenerable cargo-config-tracked doc-refs book-links book-no-just emitter-just-spelling issue-index roadmap-status prelude-tiers rmw-api-comparison sysdep-remedies \
-    export-f-closure peer-sweep-lanes \
-    activate-shells build-root fixture-groups rmw-descriptors artifact-identity-budget \
-    cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs fixture-binary-names manifests-parse build-rs-rerun-paths \
-    lane-skip-protocol named-lane-fails skip-marker-matching scope-namespace \
-    package-xml-comments provider-announcements provider-index \
-    zephyr-knob-agreement site-config lane-scope-consumers \
-    interlock-visibility fixture-stamp-honesty ci-no-fixture-tolerance ci-no-verb-fallback sdk-guard-can-fire \
-    tier-has-ci-owner \
-    board-facts-delivery deploy-board-resolves \
-    opaque-storage-guards cpp-ffi-error-mapping submodule-pins \
-    rust-stdio-on-zephyr \
-    workspace-order \
+    action-client-arena-budget \
+    activate-shells \
+    api-parity-ledger \
+    artifact-identity-budget \
     atomic-sync-writes \
-    platform-provider-features \
-    sdk-store-not-enumerated \
+    board-abi-mirror \
+    board-cargo-config-applied \
+    board-facts-delivery \
+    board-manifest-drift \
+    board-tiers \
+    book-links \
+    book-no-just \
+    build-profile-literals \
+    build-root \
+    build-rs-rerun-paths \
+    c-fmt \
+    capability-flavour-guards \
+    capability-slot-counts \
+    cargo-config-tracked \
+    cargo-locked \
+    cargo-profile-mirror \
+    cargo-target-spelling \
+    cbindgen-headers \
+    cbindgen-pin \
+    cc-build-policy \
+    ci-image-python-deps \
+    ci-no-fixture-tolerance \
+    ci-no-verb-fallback \
+    cli-fmt \
+    cli-source-dirs \
+    cmake-find-program-shadowed \
+    cmake-image-policy \
+    cmake-support-library \
+    codegen-invocation \
+    config-knob-census \
+    core-only-predicate \
+    cpp-ffi-error-mapping \
+    cpp-fmt \
+    cpp-freestanding-includes \
+    cpp-no-std-stdio \
+    deploy-board-resolves \
+    doc-recipe-refs \
+    doc-refs \
+    emitter-just-spelling \
+    entity-inventory-knobs \
+    entity-slot-costs \
+    example-fmt \
+    example-leaf-build-dirs \
+    example-leaf-target-dirs \
+    example-matrix \
+    export-f-closure \
+    eyre-context-alias \
+    feature-contract \
+    ffi-struct-mirrors \
+    fixture-binary-names \
+    fixture-groups \
+    fixture-id-guard \
+    fixture-stamp-honesty \
+    fixtures-manifest \
+    flavour-lanes \
+    gate-lists \
+    generated-leaf-regenerable \
+    generated-schema-coverage \
     goal-cdr-stripped \
-    test-domain-assignment ros-env-spelling \
-    zenohd-spawn-sites zenohd-resolution-parity \
-    zenohd-flag-invocations \
+    host-platform-vocabulary \
+    image-panic-policy \
+    infra-queryable-counts \
     interface-glob-configure-depends \
+    interlock-visibility \
+    issue-ids \
+    issue-index \
+    just-recipe-refs \
+    kconfig-knob-forwarding \
+    kconfig-overridden-values \
+    knob-single-reader \
+    lane-scope-consumers \
+    lane-skip-protocol \
+    leaf-lockfiles \
+    manifests-parse \
+    message-bound-knobs \
+    msg-dep-is-path \
+    named-lane-fails \
+    nested-workspace-excludes \
+    nextest-binary-filters \
+    no-absolute-model-paths \
+    no-allow-multiple-def \
+    no-board-init \
+    no-direct-kernel-alloc \
+    no-std-stdio \
+    no-tracked-models \
+    no-tracked-workspace-roots \
+    no-vacuous-tests \
+    nuttx-integration-makefile \
+    nuttx-libc-struct-sizes \
+    nuttx-links-snapshot \
+    nuttx-shared-tree-headers \
+    opaque-storage-guards \
+    orphan-generated-stamp \
+    package-xml-comments \
+    path-env-fingerprints \
+    peer-sweep-lanes \
+    platform-abi-mirror \
+    platform-provider-features \
+    posix-platform-purity \
+    prelude-tiers \
+    profile-board-mirror \
+    provider-announcements \
+    provider-index \
+    python \
+    readiness-marker-literals \
+    retired-platform-clock-symbols \
+    retired-submodule-refs \
+    rmw-abi-shape \
+    rmw-alloc-sites \
+    rmw-api-comparison \
+    rmw-api-parity \
+    rmw-descriptors \
+    rmw-force-link-anchor \
+    rmw-required-slots \
+    rmw-ret-sign \
+    rmw-slot-producers \
+    rmw-slot-table \
+    rmw-vtable-order \
+    roadmap-status \
+    ros-env-spelling \
+    rust-stdio-on-zephyr \
+    rust-targets-covered \
+    scope-namespace \
+    sdk-guard-can-fire \
+    sdk-store-not-enumerated \
+    shared-cargo-dir-witness \
+    single-rust-staticlib \
+    site-config \
+    sizes-header-mirrors \
+    skip-marker-matching \
+    source-manifest \
+    staleness-probe-exemptions \
+    std-census \
+    string-conventions \
+    submodule-pinned-locks \
+    submodule-pins \
+    subtree-guard \
+    sysdep-remedies \
+    test-domain-assignment \
+    tests-can-fail \
+    tier-has-ci-owner \
+    tier-priority-plan \
+    tier-spin-gap \
+    version-lockstep \
     wait-evidence-discarded \
-    path-env-fingerprints retired-platform-clock-symbols \
-    cmake-support-library message-bound-knobs action-client-arena-budget entity-inventory-knobs \
-    tests-can-fail
+    weak-symbols \
+    workflow-repo-env \
+    workspace-build-output \
+    workspace-fmt \
+    workspace-order \
+    zenohd-flag-invocations \
+    zenohd-resolution-parity \
+    zenohd-router-skips \
+    zenohd-spawn-sites \
+    zephyr-knob-agreement
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
     # depend on a root recipe, so it is called rather than depended on. It must
@@ -168,33 +285,45 @@ fast-serial: \
 # (`default.yml` non-push), not on every direct push to main.
 [group("main")]
 build: \
-    cli-fresh required-features-reachable host-triple-literals \
-    literal-domain-id \
-    launch-resolve-builds \
-    test-targets \
-    workspace-all workspace-features nros-log-riscv32 \
-    source-gates staticlib-symbols borrowed-e2e \
-    embedded-feature-unification \
-    c cpp rmw-cyclonedds rmw-xrce rmw-uorb cli-tests node-std-tests \
-    required-features-tests \
-    feature-set-ssot \
-    no-tracked-file-find \
-    pool-inventory \
-    mem-report \
-    claim-protocol \
-    flake-quarantine \
+    borrowed-e2e \
+    c \
     ci-doc-workflow-refs \
-    ps-zombie-blind \
+    claim-protocol \
+    cli-fresh \
+    cli-tests \
+    cpp \
+    embedded-feature-unification \
+    feature-set-ssot \
+    flake-quarantine \
     gate-selftests \
-    lane-contracts \
-    workflow-runner-isolation \
-    skippable-tests-tolerant \
-    no-alloc-image \
-    lane-skip-class \
     grep-q-error-conflation \
+    host-triple-literals \
+    image-paths-apply-policy \
+    lane-contracts \
+    lane-skip-class \
+    launch-resolve-builds \
+    literal-domain-id \
+    mem-report \
+    no-alloc-image \
     no-silent-sample-drop \
+    no-tracked-file-find \
+    node-std-tests \
+    nros-log-riscv32 \
+    pool-inventory \
+    ps-zombie-blind \
+    required-features-reachable \
+    required-features-tests \
+    rmw-cyclonedds \
+    rmw-uorb \
+    rmw-xrce \
     sched-dim-arms \
-    image-paths-apply-policy
+    skippable-tests-tolerant \
+    source-gates \
+    staticlib-symbols \
+    test-targets \
+    workflow-runner-isolation \
+    workspace-all \
+    workspace-features
     # `native::check`, which was a DEPENDENCY at the root. A module cannot name
     # another module's recipe — from in here `native::` would mean a submodule
     # of `check` — so it becomes an explicit call. Same constraint the sibling
@@ -2119,6 +2248,20 @@ cmake-find-program-shadowed:
 # witnessing would be the defect it exists to prevent, one level up.
 shared-cargo-dir-witness:
     @bash scripts/check-shared-cargo-dir-used.sh --self-test
+
+# The gate REGISTRIES hold one name per line, sorted — phase-400 follow-up to
+# issues 0883/0884.
+#
+# `fast-serial` and `build` are the two lists every gate-adding PR must append
+# to, and they used to pack up to fifteen names per line with new gates going
+# on the tail. 22 of the last 31 commits touching this file edited such a line,
+# so unrelated gates collided and the merge queue ejected them. 0884's union
+# merge is not available for an authored file; one name per line, sorted, is
+# the fix that needs no merge driver.
+[group("hygiene")]
+gate-lists:
+    @python3 scripts/check/check-gate-lists.py
+
 
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Generate the OPEN-issues list in `docs/issues/README.md` — phase 395 W1.
+"""Generate the OPEN-issues list in `docs/issues/open.md` — phase 395 W1.
+
+(It lived in `docs/issues/README.md` until issue 0884 moved it out; the reason
+is the paragraph below, and the authored README must not grow a second copy —
+`check-issue-index` refuses one.)
 
 The list is derivable: every issue file already carries `id`, `title`, `type`,
 `area` and `status` in its frontmatter. Maintaining a second hand-written copy
