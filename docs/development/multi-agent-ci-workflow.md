@@ -598,14 +598,18 @@ scripts/ci/runner-register.sh nros-ros2                            # interop
 
 Four files, replacing the current five. Each job is a thin `just` caller.
 
-**`pr-checks.yml`** — hosted, every PR. This is the whole pre-merge gate.
-(Earlier drafts of this page called it pr.yml — no such file, which is why
-it is unbackticked here. Keeping the existing file's
-name is the cheaper choice: renaming a workflow renames its CHECKS, and a
-required check that changes name silently stops being required.)
+**`gate.yml`** — hosted, every PR. This is the whole pre-merge gate.
+(Earlier drafts of this page called it pr.yml — no such file. It was then
+pr-checks.yml for most of this page's life — unbackticked for the same
+reason, it is a name no file carries now — and this paragraph argued for
+keeping that name: renaming a workflow renames its CHECKS, and a required check
+that changes name silently stops being required. phase-410 W1 renamed it to
+`gate.yml` anyway — deliberately, probing first, which is how it found three
+silent breaks. The hazard was real; the answer was to land the rename with the
+required-set update rather than to avoid it forever.)
 
 ```yaml
-name: pr-checks
+name: gate
 on:
   pull_request:
 concurrency:
@@ -737,7 +741,7 @@ Three consequences worth stating.
 
 **Express is the pressure valve.** A docs-only change has an empty coordinate
 footprint, so it needs L0 and nothing else. Path filters already give this
-almost free (`pr-checks.yml` has a `changes` job today). Without it, ten
+almost free (`gate.yml` has a `changes` job today). Without it, ten
 doc-filing agents contend for the same expensive lane they never needed.
 
 **A phase wave lands as several PRs, not one.** Today's phase-392 W3 went out as
