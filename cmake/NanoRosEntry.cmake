@@ -61,6 +61,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosFeatureSet.cmake")
 # include_guard(GLOBAL)'d, and it defines only functions — no directory vars to
 # lose when this include's frame pops (the `_NROS_ENTRY_DIR` hazard).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSupportLibrary.cmake")
+# `_nros_resolve_entry_locator` — the ONE producer of the connect locator, shared
+# with `NanoRosNodeRegister.cmake`'s RTOS carriers (issue 0946). Its literals are
+# CACHE INTERNAL precisely so they survive being included from inside a function
+# frame, which is how the node-register side reaches it.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryLocator.cmake")
 
 # --------------------------------------------------------------------------
 # Platform-link wrappers (phase-287 W6). Defined HERE (not NanoRosBootstrap):
@@ -549,18 +554,13 @@ function(nano_ros_entry)
        AND NOT NANO_ROS_PLATFORM STREQUAL "posix"
        AND NOT _nra_is_zephyr
        AND _nra_board_active)
-        if(DEFINED NROS_ENTRY_LOCATOR)
-            set(_nra_locator "${NROS_ENTRY_LOCATOR}")
-        elseif(NANO_ROS_BOARD STREQUAL "threadx-linux")
-            set(_nra_locator "tcp/127.0.0.1:7447")
-        elseif(NANO_ROS_PLATFORM STREQUAL "freertos")
-            # Static lwIP net 192.0.3.0/24 — the gateway IS the slirp host
-            # (phase-263 C2b; default 10.0.2.0/24 slirp never answers the
-            # guest's gateway ARP for 192.0.3.1).
-            set(_nra_locator "tcp/192.0.3.1:7447")
-        else()
-            set(_nra_locator "tcp/10.0.2.2:7447")
-        endif()
+        # issue 0946 — ONE producer. This ladder used to be spelled out here AND
+        # again, with different values, in NanoRosNodeRegister.cmake's three RTOS
+        # carriers. Both are now rungs of `_nros_resolve_entry_locator()`, which
+        # preserves each lane's own answers rather than merging them (they cite
+        # different networks; see NanoRosEntryLocator.cmake).
+        _nros_resolve_entry_locator(entry
+            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" _nra_locator)
         target_compile_definitions(${_NRA_NAME} PRIVATE
             "NROS_ENTRY_LOCATOR=\"${_nra_locator}\"")
         # phase-287 W6 — bake the domain the same way (fixture pairs pass
@@ -624,9 +624,22 @@ function(nano_ros_entry)
             # FreeRTOS platform link does NOT, so the `nano_ros_node_register` carrier
             # generates it from `templates/freertos_app_config.c.in`. The LAUNCH path builds
             # the exe here, so generate + attach the same TU (only LOCATOR + DOMAIN vary; the
-            # network/scheduling fields are board defaults). Mirrors NanoRosNodeRegister.cmake
-            # freertos branch; keep in sync.
+            # network/scheduling fields are board defaults).
+            #
+            # issue 0946 — this block used to close with "Mirrors
+            # NanoRosNodeRegister.cmake freertos branch; keep in sync". That
+            # instruction is gone because the thing it asked a human to sync is
+            # gone: the locator now has ONE producer
+            # (`_nros_resolve_entry_locator`, gated by
+            # `check-entry-locator-ssot`), and the two lanes' values are
+            # DELIBERATELY different rungs of it rather than a duplication
+            # anyone has to keep equal. What remains shared with the carrier is
+            # the TEMPLATE, `templates/freertos_app_config.c.in`, which is one
+            # file both paths `configure_file()` — a shared file needs no sync
+            # note.
             if(NANO_ROS_PLATFORM STREQUAL "freertos")
+                # The `@NROS_ENTRY_LOCATOR@` substitution the template reads —
+                # an assignment FROM the resolved value, not a second producer.
                 set(NROS_ENTRY_LOCATOR "${_nra_locator}")
                 set(NROS_ENTRY_APP_DOMAIN_ID 0)
                 # Per-image IP last octet (default .10). Test pairs bake a
