@@ -118,7 +118,7 @@ build-fixture-extras:
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
     cmake_frontends="$(nros_cmake_frontend_jobs)"
-    if [ -z "${THREADX_DIR:-}" ] && [ ! -d third-party/threadx/kernel ]; then
+    if nros_sdk_missing THREADX_DIR common/inc; then
         nros_lane_skip_note threadx-linux "THREADX_DIR unset and third-party/threadx/kernel absent"; exit 0
     fi
     echo "Building ThreadX-Linux test fixtures..."
