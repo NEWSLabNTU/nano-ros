@@ -89,6 +89,5 @@ fails if this block drifts.
 - **#0950** (build) — `macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target See `0950-*`.
 - **#0955** (build) — Six lane guards can never fire — they test `-z` on a variable `sdk-env.just` always exports See `0955-*`.
 - **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
-- **#0961** (build) — `host-tests` red for 20 consecutive runs — workspace-fixture leaves are never fetched, and `--frozen` forbids fetching them See `0961-*`.
 
 <!-- END GENERATED open-issue list -->
