@@ -261,8 +261,7 @@ pub fn derive_execution_from_contracts(
         model,
         target_rtos,
         callback_groups,
-    )
-    .map_err(|e| eyre::eyre!("{e}"))?;
+    );
     // Issue 0259 — surface on stderr AND carry into the plan. stderr is for the
     // person watching this bake; the plan is for everyone who reads the system
     // afterwards, and a verdict that exists only in scrollback cannot be
@@ -997,29 +996,6 @@ mod tests {
             .expect("derivation succeeds");
         assert_eq!(n.0, 0);
         assert!(system.tiers.is_empty());
-    }
-
-    #[test]
-    fn conflicting_edf_knobs_fail_loud() {
-        use ros_launch_manifest_model::{Deploy, ExtraValue};
-        let mut system: SystemToml =
-            toml::from_str("[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n").unwrap();
-        let mut model = contract_model();
-        for (node, edf) in [("/ctrl", true), ("/telem", false)] {
-            let mut extra = BTreeMap::new();
-            extra.insert("edf".to_string(), ExtraValue::Bool(edf));
-            model.execution.deploy.insert(
-                node.to_string(),
-                Deploy {
-                    extra,
-                    ..Default::default()
-                },
-            );
-        }
-        let err = derive_execution_from_contracts(&mut system, &model, "zephyr", &ctrl_groups())
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("disagree on the `edf`"), "got: {err}");
     }
 
     /// phase-296 W5.15 — edf knobs on entries for DIFFERENT boards must NOT

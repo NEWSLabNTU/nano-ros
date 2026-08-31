@@ -20,7 +20,7 @@ use ros_launch_manifest_sched::chain_aware_rank;
 use crate::{
     CallbackGroupDecl, CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
     mapper_input::mapper_input_from_model,
-    rtos_realizer::{Degradation, realize_rtos, sched_caps_from_deploy},
+    rtos_realizer::{Degradation, realize_rtos, sched_caps_for},
 };
 
 /// The outcome of deriving a schedule from the contract layer.
@@ -39,45 +39,9 @@ pub struct DerivedSchedule {
     pub groupless_notes: Vec<String>,
 }
 
-/// The edf-knob disagreement is the only hard error (one image = one kernel).
-#[derive(Debug, thiserror::Error)]
-pub enum DeriveError {
-    #[error(
-        "SystemModel deploy entries disagree on the `edf` capability knob \
-         ('{prev}' vs '{node}') — one image has one kernel; make the knob unanimous"
-    )]
-    EdfDisagreement { prev: String, node: String },
-}
-
 /// Bare node name from a model FQN (`/ns/node` → `node`).
 fn bare(fqn: &str) -> &str {
     fqn.rsplit('/').next().unwrap_or(fqn)
-}
-
-/// Is this deploy entry relevant to the RTOS currently being baked? derive runs
-/// once per `target_rtos`, so the `edf` capability knob is sliced to the entries
-/// landing on THIS image's kernel (phase-296 W5.15). An unplaced deploy
-/// (`target: None`) is board-agnostic; `Target::Linux` is posix; an MCU target
-/// maps by the same substring rule the CLI's `board_to_rtos` / `derive_target_rtos`
-/// use.
-fn deploy_targets_rtos(d: &ros_launch_manifest_model::Deploy, target_rtos: &str) -> bool {
-    use ros_launch_manifest_model::Target;
-    match &d.target {
-        None => true,
-        Some(Target::Linux) => target_rtos == "posix",
-        Some(Target::Mcu { board }) => board_to_rtos(board) == target_rtos,
-    }
-}
-
-/// Canonical board→RTOS substring map (mirrors the CLI's `board_to_rtos` +
-/// `derive_target_rtos`; kept here so the shared derive has no CLI dep).
-fn board_to_rtos(board: &str) -> &'static str {
-    for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
-        if board.contains(rtos) {
-            return rtos;
-        }
-    }
-    "posix"
 }
 
 /// Derive a per-node RTOS schedule from the model's contract layer. Returns an
@@ -89,39 +53,35 @@ pub fn derive_tiers_from_contracts(
     model: &SystemModel,
     target_rtos: &str,
     callback_groups: &BTreeMap<String, Vec<CallbackGroupDecl>>,
-) -> Result<DerivedSchedule, DeriveError> {
+) -> DerivedSchedule {
     let input = mapper_input_from_model(model);
     let ranked = chain_aware_rank(&input);
     if ranked.items.is_empty() {
-        return Ok(DerivedSchedule::default());
+        return DerivedSchedule::default();
     }
 
-    // Per-deploy `edf` capability knob: unanimous-or-error across the entries
-    // RELEVANT to THIS bake's target_rtos (W5.15). A split-brain knob on the
-    // SAME image is rejected; entries for a DIFFERENT RTOS are another image's
-    // kernel and must not force this bake to agree.
-    let mut edf_deploy: Option<(&String, &ros_launch_manifest_model::Deploy)> = None;
-    for (node, d) in &model.execution.deploy {
-        if !deploy_targets_rtos(d, target_rtos) {
-            continue;
-        }
-        if let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf") {
-            if let Some((prev_node, prev)) = edf_deploy {
-                let prev_b = matches!(
-                    prev.extra.get("edf"),
-                    Some(ros_launch_manifest_model::ExtraValue::Bool(true))
-                );
-                if prev_b != *b {
-                    return Err(DeriveError::EdfDisagreement {
-                        prev: prev_node.clone(),
-                        node: node.clone(),
-                    });
-                }
-            }
-            edf_deploy = Some((node, d));
-        }
-    }
-    let caps = sched_caps_from_deploy(target_rtos, edf_deploy.map(|(_, d)| d));
+    // Issue 0951 — the per-deploy `edf` / `cores` knobs are GONE, because they
+    // were never reachable.
+    //
+    // They read `Deploy.extra`, and no AUTHORING path writes those keys. The
+    // resolver's placement branches write `host_name` on the host path and
+    // kind/target/framework/profile/optimize/features/deploy_name on the
+    // deprecated deploy one — never `edf` or `cores` — and upstream's
+    // `DeployBlock` is `deny_unknown_fields`, so a `system.toml` cannot carry
+    // them either.
+    //
+    // Precisely: the only way to reach the knob was to hand-edit a resolved
+    // model, and a model is a BUILD ARTIFACT that `check-no-tracked-models`
+    // forbids committing (issue 0380 was exactly four such hand-edits). So the
+    // knob was reachable, but only from a file nobody is allowed to keep — and
+    // the "unanimous-or-error" check guarding it therefore guarded an override
+    // that no supported input could request.
+    //
+    // Issue 0259 wants exactly this override to exist. Whoever builds it needs
+    // an AUTHORING path first (a real table with a real reader), not this
+    // plumbing — which is why deleting it is the honest move: keeping it made
+    // a knob that does nothing look supported.
+    let caps = sched_caps_for(target_rtos);
 
     let plan = realize_rtos(&ranked, &input, &caps);
     let mut out = DerivedSchedule {
@@ -193,7 +153,7 @@ pub fn derive_tiers_from_contracts(
                 .collect(),
         });
     }
-    Ok(out)
+    out
 }
 
 #[cfg(test)]
@@ -302,7 +262,7 @@ mod tests {
         groups.insert("control_node".into(), vec![cbg("ctrl", "high")]);
         groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
 
-        let derived = derive_tiers_from_contracts(&model, "posix", &groups).unwrap();
+        let derived = derive_tiers_from_contracts(&model, "posix", &groups);
         assert!(derived.tiers.contains_key("derived-control_node"));
         assert!(derived.tiers.contains_key("derived-telem_node"));
 
@@ -338,8 +298,7 @@ mod tests {
     #[test]
     fn no_contracts_derives_nothing() {
         let derived =
-            derive_tiers_from_contracts(&SystemModel::default(), "posix", &BTreeMap::new())
-                .unwrap();
+            derive_tiers_from_contracts(&SystemModel::default(), "posix", &BTreeMap::new());
         assert!(derived.tiers.is_empty());
         assert!(derived.overrides.is_empty());
     }

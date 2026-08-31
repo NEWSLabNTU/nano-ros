@@ -33,10 +33,12 @@ row's reach is `linux` while the platform layer beneath it stays
 `CONFIG_SCHED_DEADLINE`; NuttX's reservation is POSIX
 `SCHED_SPORADIC`; ThreadX's preemption threshold is native; the
 bare-metal row is NVIC hardware priorities with SRP ceilings (RTIC),
-single core. A deployment can override `edf` and `cores` per board
-(`[deploy.<board>] edf = <bool>` / `cores = <n>` —
-`sched_caps_from_deploy`), because the image being built is the
-authority, not the platform default.
+single core. These are PLATFORM DEFAULTS and there is no per-image
+override today: `[deploy.<board>] edf = <bool>` / `cores = <n>` was
+documented here but never authorable — the knob read an extras bag no
+table wrote, and upstream's `deny_unknown_fields` rejected the keys
+outright. Retired with issue 0951; issue 0259 wants the override to
+exist and needs an authoring path first.
 
 ## Portable executor classes (`SchedClass`)
 

@@ -628,9 +628,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 "nros::main!: empty bringup pkg name in `model = \"...\"`",
             ));
         }
-        let bringup_dir = pkg_index
-            .resolve_pkg(&bringup_name)
-            .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+        let bringup_dir = pkg_index.resolve_pkg(&bringup_name);
         let model_rel = file_override.unwrap_or_else(|| "config/system_model.yaml".to_string());
         // The model is a BUILD ARTIFACT (phase-330), so this asks for it by its
         // inputs: `ensure_model` returns a build-produced copy when one exists
@@ -945,8 +943,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 &model,
                 &rtos,
                 &node_groups,
-            )
-            .map_err(|e| syn::Error::new(model_lit.span(), format!("nros::main!: {e}")))?;
+            );
             if !derived.tiers.is_empty() {
                 // Fail-loud: surface every recorded weakening at expansion time
                 // (build stderr) — the macro has no runtime channel for these.
