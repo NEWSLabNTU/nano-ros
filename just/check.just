@@ -125,7 +125,7 @@ fast-serial: \
     lane-skip-protocol named-lane-fails skip-marker-matching scope-namespace \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement workspace-rmw-agreement site-config lane-scope-consumers \
-    interlock-visibility fixture-stamp-honesty \
+    interlock-visibility fixture-stamp-honesty ci-no-fixture-tolerance \
     board-facts-delivery deploy-board-resolves \
     opaque-storage-guards cpp-ffi-error-mapping submodule-pins \
     rust-stdio-on-zephyr \
@@ -1368,6 +1368,14 @@ cpp-ffi-error-mapping:
 # commit about issue-ID renumbering moved zenoh-pico BACK over a Zephyr
 # `socklen_t` build fix, and nothing noticed for seven hours.
 # Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
+# CI may not set NROS_FIXTURES_OPTIONAL. A lane names its scope, so a missing
+# fixture INSIDE that scope is a failure; the flag turned it into a skip and made
+# correctness depend on remembering to unset a variable (phase-407 W4). The
+# reader survives as a local opt-in — the rule is about WHERE it is set.
+[private]
+ci-no-fixture-tolerance:
+    @python3 scripts/check-ci-no-fixture-tolerance.py
+
 # A fixture stamp may not claim what the build did not achieve. The stamp used
 # to record the lane's NOMINAL coordinates, so a module that skipped a missing
 # prerequisite still read as covered and the run skipped its tests to a green
