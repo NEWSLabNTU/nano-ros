@@ -127,6 +127,22 @@ INERT_FAMILIES = {
         "reporting the transport's endpoints. Landed in W4 for shape parity; "
         "diagnostic only, and nothing diagnoses",
     ),
+    "rx-sizing": (
+        ("required_rx_bytes",),
+        "phase-403 W1 landed the ABI half of receive-buffer sizing ahead of "
+        "either end of it: no backend can answer better than the hint today "
+        "(zenoh-pico has two static size classes, cyclonedds and XRCE have "
+        "one), and the consumer is W3/W4, which cannot be written until the "
+        "take buffer stops being a const generic. Inert deliberately: the ABI "
+        "lands ahead of its consumer so that W3/W4 can ask for an exact size "
+        "instead of a class without a second ABI break mid-phase. It is "
+        "OPTIONAL rather than required for the same sequencing reason and NOT "
+        "for out-of-tree compatibility (nano-ros is unreleased) — a slot that "
+        "nothing dispatches cannot be in `first_missing_vtable_slot`'s "
+        "`require!()` without refusing working backends over a function no "
+        "caller reaches, which is issue 0349. W4 promotes it in the commit "
+        "that adds the dispatch site",
+    ),
 }
 
 

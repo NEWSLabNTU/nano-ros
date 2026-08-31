@@ -74,7 +74,7 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
      first_missing_vtable_slot's require!() list. Do not hand-edit:
      `just check rmw-slot-table` fails on drift (issue 0826). -->
 
-74 slots, 17 of them required.
+75 slots, 17 of them required.
 
 | # | slot | group | required |
 |---|------|-------|----------|
@@ -152,6 +152,7 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 72 | `create_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
 | 73 | `destroy_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
 | 74 | `set_log_severity` | Phase 376 W4 — graph node lifecycle (optional) | optional |
+| 75 | `required_rx_bytes` | Phase 403 W1 — receive-buffer sizing (optional) | optional |
 
 <!-- END GENERATED SLOT TABLE -->
 

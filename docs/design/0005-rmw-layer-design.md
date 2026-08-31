@@ -535,17 +535,61 @@ config — so a backend must not treat the hint as a promise about incoming samp
 size, and must not size a fixed structure from it in a way that makes a larger
 sample undeliverable without a diagnostic.
 
-**Reporting what you chose (phase-403 W1, not yet in the ABI).** The flow is
-currently one-directional: the runtime states a hint and cannot learn what the
-backend settled on, so it sizes the take buffer from a global constant rather
-than from what the type needs. The planned answer is an OPTIONAL, NULLable
-vtable slot — `required_rx_bytes(type_name, type_hash, hint)` — where NULL means
-"the hint is the answer", which is what every current backend would say.
-Optional because `check-rmw-abi-shape` treats a slot as a contract: a mandatory
-addition breaks every out-of-tree backend at once.
+**Saying what you need (phase-403 W1, IN the ABI since 2026-08-31).** The flow
+used to be one-directional: the runtime stated a hint and could not learn what
+the backend settled on, so it sized the take buffer from a global constant
+rather than from what the type needs. The answer is an OPTIONAL, NULLable vtable
+slot, the last one in `nros_rmw_vtable_t`:
 
-Until that lands, a backend author should assume the runtime's take buffer is
-sized from `NROS_SUBSCRIPTION_BUFFER_SIZE` and not from their type.
+```c
+rmw_ret_t (*required_rx_bytes)(const char *type_name,
+    const char *type_hash, size_t hint, size_t *out_bytes);
+```
+
+`NULL` means "the hint is the answer", which is what every in-tree backend says
+today, and so does `NROS_RMW_RET_UNSUPPORTED` for a type a backend cannot size.
+The shape is the header's own convention rather than the plain `size_t` return
+the plan named: every slot returns `rmw_ret_t` and every answer is an
+out-parameter, so no caller can test a status by its sign
+(`scripts/check-rmw-ret-sign.py`). It is a query about a TYPE, not an entity,
+because the runtime has to size the buffer in order to create the subscription
+that would carry it.
+
+**Why OPTIONAL, now that "it would break out-of-tree backends" is not a
+reason.** nano-ros is unreleased and this ABI may be broken, so that argument is
+retired and the decision stands on three others:
+
+* **A slot cannot be REQUIRED before something dispatches it.** Required means
+  `first_missing_vtable_slot` refuses to register a backend that leaves it NULL,
+  and `check-rmw-required-slots.sh` holds that set equal to the set the runtime
+  `.expect()`s. W1 lands the ABI ahead of its consumer on purpose, so requiring
+  it now would refuse working backends over a function nothing calls — issue
+  0349, which once cost three backends their registration.
+* **Mandatory does not delete the "no opinion" case, it relocates it.** Five
+  in-tree backends would each carry the same `*out_bytes = hint; return OK;`
+  body, and the Rust ones would inherit it from a defaulted `RustBackend`
+  method: the same special case, one layer up and harder to see.
+* **It is slot 75 and two backends initialise positionally.** uORB's C++14
+  initialiser stops at slot 17 and positional initialisation cannot skip, so a
+  mandatory slot 75 means 58 meaningless entries written to reach it.
+
+Promotion is cheap and stays open: requiring it is a change to the registration
+check, not to the struct, so W4 can require it in the same commit that adds the
+dispatch site. That is the recommended sequencing.
+
+**The hint's `0` under a bounded-types regime.** Every message type has a
+derived upper bound — bounded in the `.msg` or capped in `nros-codegen.toml`,
+with an unbounded type a build error rather than a fall-back to a configured
+default — so the runtime always has a number for `rx_buffer_hint`. `0` therefore
+means "this caller stated nothing" (`options == NULL`, or a zero-filled struct
+from a hand-rolled C caller), never "this type is unbounded", and a backend must
+not read it as the latter.
+
+W1 landed the ABI only. Nothing CALLS the slot yet — the runtime's take buffer
+is still `NROS_SUBSCRIPTION_BUFFER_SIZE`, because that buffer is a const generic
+and the C path cannot monomorphise on a type it only knows by name (phase-403
+W3). So a backend author should still assume the global constant, and answering
+here changes nothing until W3/W4 consume it.
 
 ## Reference Documents
 

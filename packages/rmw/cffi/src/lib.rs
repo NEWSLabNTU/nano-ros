@@ -291,6 +291,7 @@ pub const EMPTY_VTABLE: NrosRmwVtable = NrosRmwVtable {
     create_node: None,
     destroy_node: None,
     set_log_severity: None,
+    required_rx_bytes: None,
 };
 
 /// Compat alias for the generated `rmw_service_t`.
