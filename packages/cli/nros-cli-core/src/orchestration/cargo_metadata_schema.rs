@@ -551,7 +551,7 @@ pub struct SystemToml {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub deploy: BTreeMap<String, DeployTarget>,
     /// `[host.<name>]` — the machines, and the only thing that partitions
-    /// nodes (issue 0939).
+    /// nodes (issue 0951).
     ///
     /// The placement half of `[deploy.*]`, on its own terms. A host says WHERE
     /// a node runs; `[image.*]` says WHAT gets built. `[deploy.*]` conflated
@@ -587,6 +587,27 @@ pub struct SystemToml {
     /// back to [`SystemHeader`] as they always have.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image_defaults: Option<ImageBlock>,
+    /// `[board_config.<board>]` — the SITE half of a board (RFC-0072 §5,
+    /// issue 0951).
+    ///
+    /// Keyed by BOARD, not by image or deploy name, because that is what the
+    /// fact is about. It was authored as `[deploy.<name>.nros]` until the 30
+    /// blocks in this tree were measured: they held exactly THREE distinct
+    /// value-sets over five boards, and the 25 duplicates existed only because
+    /// the deploy key was sometimes the friendly name (`freertos`) and
+    /// sometimes the board spelling (`mps2-an385-freertos`) — two keys for one
+    /// board, which is two places for one fact to drift.
+    ///
+    /// Keying by board also makes "two blocks disagree about one board"
+    /// unrepresentable rather than merely detected: `board_facts` used to
+    /// compare candidates and refuse a conflict, and that check now has
+    /// nothing to catch.
+    ///
+    /// The key is matched through the same `BoardCatalog::resolve_deploy`
+    /// rule every other board spelling uses (issue 0606), so an alias resolves
+    /// here exactly as it does everywhere else.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub board_config: BTreeMap<String, toml::Value>,
     #[serde(default, rename = "domain", skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<SystemDomainEntry>,
     #[serde(default, rename = "bridge", skip_serializing_if = "Vec::is_empty")]
@@ -1139,7 +1160,7 @@ pub struct SystemComponentEntry {
 /// One schema now; `deny_unknown_fields` lives on it, so the next divergence
 /// is a parse error rather than a dropped key.
 pub use ros_launch_manifest_model::system_config::DeployBlock as DeployTarget;
-/// `[host.<name>]` — a machine (issue 0939). Re-exported for the same reason
+/// `[host.<name>]` — a machine (issue 0951). Re-exported for the same reason
 /// `DeployTarget` is: the schema has one definition, upstream.
 pub use ros_launch_manifest_model::system_config::HostBlock as HostTarget;
 

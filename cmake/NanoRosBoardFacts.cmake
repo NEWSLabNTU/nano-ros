@@ -2,7 +2,7 @@
 # cargo invocations this configure owns.
 #
 # RFC-0072 §5 splits board information into A (board facts, in the board
-# package) and B (site config, in the user's `[deploy.<name>.nros]`). W1–W4 gave
+# package) and B (site config, in the user's `[board_config.<board>]`). W1–W4 gave
 # both a home and a validity domain. Delivery is this file.
 #
 # WHY THE INVOKER. Cargo discovers config from the invocation CWD upward, and

@@ -172,7 +172,7 @@ fn per_host_resolves_partition_and_carry_their_binding() {
             );
         }
         // The placement SSOT still names this host — `[host.<host>]` since
-        // issue 0939, with an explicit `nodes = [..]` (with `machine=` gone
+        // issue 0951, with an explicit `nodes = [..]` (with `machine=` gone
         // there is no launch-derived placement fact). It was `[deploy.<host>]`
         // until the machine half moved out of that table.
         let system_toml = nros_tests::project_root().join(format!(

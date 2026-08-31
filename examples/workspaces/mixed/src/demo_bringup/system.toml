@@ -60,7 +60,7 @@ board = "threadx-linux"
 # `native_entry_robot{1,2}` consume those models via `nano_ros_entry(MODEL …)`.
 # The explicit `nodes = [..]` below places them — with `machine=` gone there is
 # no launch-derived placement fact, so every node needs a list entry.
-# Issue 0939 — MACHINES live in `[host.*]`. A host says WHERE a node runs;
+# Issue 0951 — MACHINES live in `[host.*]`. A host says WHERE a node runs;
 # what it is built as comes from `[image.*]`. The old blocks carried
 # `kind`/`target`, which are build facts: per-host models are board-agnostic
 # and each entry's own board supplies the target.
@@ -104,31 +104,6 @@ args   = { host = "robot1" }
 launch = "multihost.launch.xml"
 out    = "multihost_robot2_model.yaml"
 args   = { host = "robot2" }
-
-# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
-# checkout's SDKs live and which stack it uses. Generated from
-# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
-# `{env:…}` rather than a literal so the value survives a second checkout.
-[deploy.freertos.nros]
-netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
-
-# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
-# checkout's SDKs live and which stack it uses. Generated from
-# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
-# `{env:…}` rather than a literal so the value survives a second checkout.
-[deploy.threadx-linux.nros]
-netstack = "netxduo"
-sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }
-
-# phase-351 W2 — SITE config for this deploy (RFC-0072 §5): where THIS
-# checkout's SDKs live and which stack it uses. Generated from
-# `just/sdk-env.just`; `scripts/check-site-config.py` keeps them in step.
-# `{env:…}` rather than a literal so the value survives a second checkout.
-[deploy.mps2-an385-freertos.nros]
-netstack = "lwip"
-sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
-
 # --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
 # Derived from the entry packages that existed at migration time; each
 # entry's `deploy` token picked its board, and its `launch` its topology.
@@ -176,3 +151,17 @@ board = "threadx-linux"
 [image.zephyr]
 board = "native_sim/native/64"
 conf = ["prj-zenoh.conf"]
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951).
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
+sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951).
+[board_config."threadx-linux"]
+netstack = "netxduo"
+sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }

@@ -1,4 +1,10 @@
-//! phase-351 W1 — the SITE half of a deploy target.
+//! phase-351 W1 — the SITE half of a BOARD.
+//!
+//! It was the site half of a DEPLOY TARGET until issue 0951. Issue 0842 had
+//! already named that as a hazard in its title — "site config keys on deploy
+//! target, not board" — for a workspace with two FreeRTOS boards whose site
+//! block was reachable from the wrong one. Its root cause turned out to lie
+//! elsewhere, so the keying survived; this is the fix it described.
 //!
 //! [RFC-0072](../../../../../docs/design/0072-rtos-integration-nano-ros-is-a-guest.md)
 //! §5. Board information splits three ways:
@@ -10,8 +16,11 @@
 //!   network stack it chose, where its config headers are, how it flashes.
 //! * **C — test harness**: how *we* run a payload. Neither of the above.
 //!
-//! B lives in `[deploy.<name>.nros]` of the bringup's `system.toml` — the file
-//! that already carries `[deploy.<name>]`, 59 blocks across this tree. No new
+//! B lives in `[board_config.<board>]` of the bringup's `system.toml`. It is
+//! keyed by BOARD because that is what the fact is about: 30 authored blocks
+//! held exactly 3 distinct value-sets, and the 25 duplicates existed only
+//! because the old `[deploy.<name>.nros]` key was sometimes the friendly name
+//! and sometimes the board spelling (issue 0951). No new
 //! file: a second location would undercut the one-file debuggability the split
 //! exists to provide.
 //!
@@ -25,7 +34,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-/// `[deploy.<name>.nros]` — the site half of one deploy target.
+/// `[board_config.<board>]` — the site half of one board.
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SiteConfig {
@@ -88,8 +97,8 @@ pub struct SiteConfig {
 /// value came from only relocates the mystery. Mirrors RFC-0049's `KnobSource`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SiteSource {
-    /// A `[deploy.<name>.nros]` block.
-    Deploy,
+    /// An authored site block — `[board_config.<board>]`.
+    Config,
     /// Interpolated from the environment.
     Env,
 }
@@ -97,7 +106,7 @@ pub enum SiteSource {
 impl SiteSource {
     pub fn as_str(self) -> &'static str {
         match self {
-            SiteSource::Deploy => "deploy",
+            SiteSource::Config => "config",
             SiteSource::Env => "env",
         }
     }
@@ -114,10 +123,10 @@ pub struct Resolved {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SiteError {
-    #[error("{origin}: [deploy.{deploy}.nros] is not valid: {source}")]
+    #[error("{origin}: [{section}] is not valid: {source}")]
     Parse {
         origin: String,
-        deploy: String,
+        section: String,
         /// Boxed because `toml::de::Error` is ~144 bytes on its own, which made
         /// every `Result<_, SiteError>` in this module trip clippy's
         /// `result_large_err` under rust 1.96. The error path is cold; the Ok
@@ -125,29 +134,29 @@ pub enum SiteError {
         source: Box<toml::de::Error>,
     },
     #[error(
-        "{origin}: [deploy.{deploy}.nros] refers to {reference}, which is not set.\n  \
+        "{origin}: [{section}] refers to {reference}, which is not set.\n  \
          `{{env:VAR}}` reads the environment; `{{sdk.NAME}}` reads a key of the same \
          block's `sdk` table."
     )]
     Unresolved {
         origin: String,
-        deploy: String,
+        section: String,
         reference: String,
     },
 }
 
 impl SiteConfig {
-    /// Parse the opaque `[deploy.<name>.nros]` value with nano-ros's schema.
+    /// Parse an authored site block with nano-ros's schema.
     ///
     /// `origin` is the `system.toml` path, carried only so an error names the
     /// file rather than the value.
-    pub fn from_value(value: &toml::Value, deploy: &str, origin: &str) -> Result<Self, SiteError> {
+    pub fn from_value(value: &toml::Value, section: &str, origin: &str) -> Result<Self, SiteError> {
         value
             .clone()
             .try_into::<SiteConfig>()
             .map_err(|source| SiteError::Parse {
                 origin: origin.to_string(),
-                deploy: deploy.to_string(),
+                section: section.to_string(),
                 source: Box::new(source),
             })
     }
@@ -159,7 +168,7 @@ impl SiteConfig {
     pub fn interpolate(
         &self,
         raw: &str,
-        deploy: &str,
+        section: &str,
         origin: &str,
         env: &dyn Fn(&str) -> Option<String>,
     ) -> Result<Resolved, SiteError> {
@@ -187,11 +196,11 @@ impl SiteConfig {
                         let (resolved, hit_env) =
                             resolve_env_only(v, env).ok_or_else(|| SiteError::Unresolved {
                                 origin: origin.to_string(),
-                                deploy: deploy.to_string(),
+                                section: section.to_string(),
                                 reference: v.clone(),
                             })?;
                         // An sdk value that itself reads the environment makes
-                        // the RESULT env-derived. Reporting `deploy` here would
+                        // the RESULT env-derived. Reporting `config` here would
                         // tell the reader the value is committed when it varies
                         // per machine — the opposite of what explain is for.
                         used_env |= hit_env;
@@ -210,7 +219,7 @@ impl SiteConfig {
             let Some(replacement) = replacement else {
                 return Err(SiteError::Unresolved {
                     origin: origin.to_string(),
-                    deploy: deploy.to_string(),
+                    section: section.to_string(),
                     reference: format!("{{{token}}}"),
                 });
             };
@@ -224,9 +233,9 @@ impl SiteConfig {
             source: if used_env {
                 SiteSource::Env
             } else {
-                SiteSource::Deploy
+                SiteSource::Config
             },
-            origin: format!("{origin} [deploy.{deploy}.nros]"),
+            origin: format!("{origin} [{section}]"),
         })
     }
 }
@@ -285,23 +294,33 @@ mod tests {
         let c = parse(r#"sdk = { freertos = "{env:FREERTOS_DIR}" }"#);
         let env = env_of(&[("FREERTOS_DIR", "/opt/freertos")]);
         let r = c
-            .interpolate("{sdk.freertos}/include", "freertos", "system.toml", &env)
+            .interpolate(
+                "{sdk.freertos}/include",
+                "board_config.mps2-an385-freertos",
+                "system.toml",
+                &env,
+            )
             .unwrap();
         assert_eq!(r.value, "/opt/freertos/include");
         assert_eq!(r.source, SiteSource::Env);
-        assert!(r.origin.contains("[deploy.freertos.nros]"));
+        assert!(r.origin.contains("[board_config.mps2-an385-freertos]"));
     }
 
-    /// A literal value is `deploy`-sourced, so `explain` can distinguish a
+    /// A literal value is `config`-sourced, so `explain` can distinguish a
     /// committed decision from a machine-dependent one.
     #[test]
-    fn a_literal_is_deploy_sourced() {
+    fn a_literal_is_config_sourced() {
         let c = parse(r#"netstack = "lwip""#);
         let env = env_of(&[]);
         let r = c
-            .interpolate("boards/mps2/lwipopts.h", "freertos", "system.toml", &env)
+            .interpolate(
+                "boards/mps2/lwipopts.h",
+                "board_config.mps2-an385-freertos",
+                "system.toml",
+                &env,
+            )
             .unwrap();
-        assert_eq!(r.source, SiteSource::Deploy);
+        assert_eq!(r.source, SiteSource::Config);
     }
 
     /// An unset reference must NAME what is missing. The failure this design
@@ -311,7 +330,12 @@ mod tests {
         let c = parse(r#"sdk = { cube = "{env:CUBE_PROJECT}" }"#);
         let env = env_of(&[]);
         let e = c
-            .interpolate("{sdk.cube}/Core/Inc", "nucleo", "my/system.toml", &env)
+            .interpolate(
+                "{sdk.cube}/Core/Inc",
+                "board_config.nucleo",
+                "my/system.toml",
+                &env,
+            )
             .unwrap_err()
             .to_string();
         assert!(e.contains("CUBE_PROJECT"), "got: {e}");

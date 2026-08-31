@@ -2,7 +2,7 @@
 //!
 //! [RFC-0072](../../../../../docs/design/0072-rtos-integration-nano-ros-is-a-guest.md)
 //! §5 splits board information into A (board facts, in the board package), B
-//! (site config, in the user's `[deploy.<name>.nros]`) and C (test harness).
+//! (site config, in the user's `[board_config.<board>]`) and C (test harness).
 //! W1–W4 gave both halves a home and a validity domain. This is DELIVERY: the
 //! resolved pair, printed in one shape, for whoever is about to invoke cargo.
 //!
@@ -66,15 +66,15 @@ pub fn resolve(
     board: Option<&str>,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Result<BTreeMap<String, String>> {
-    // Several deploy blocks may name the SAME board — `examples/workspaces/mixed`
-    // has `[deploy.freertos]` and `[deploy.mps2-an385-freertos]`, both on
-    // `mps2-an385-freertos`. That is only ambiguous if they RESOLVE differently:
-    // the caller asked what this board builds with, and two blocks agreeing on
-    // the answer are one answer. Refuse only when they actually disagree.
-    let candidates = pick_deploys(ws, deploy, board)?;
+    // Several blocks may be in scope when the caller named neither a deploy
+    // nor a board. Two naming the SAME board can no longer disagree — the site
+    // table is keyed by board (issue 0951) — so what survives here is the
+    // genuinely ambiguous case: blocks on DIFFERENT boards, where answering
+    // with either one would hand the build another board's SDK roots.
+    let (candidates, site, origin) = pick_deploys(ws, deploy, board)?;
     let mut resolved: Vec<(String, BTreeMap<String, String>)> = Vec::new();
     for (name, target) in candidates {
-        let facts = resolve_one(ws, nano_ros_root, &name, &target, env)?;
+        let facts = resolve_one(&origin, nano_ros_root, &name, &target, &site, env)?;
         resolved.push((name, facts));
     }
     if let Some((first_name, first)) = resolved.first()
@@ -89,8 +89,8 @@ pub fn resolve(
             .cloned()
             .collect();
         return Err(eyre!(
-            "deploys `{first_name}` and `{other_name}` name the same board but resolve \
-                 DIFFERENTLY ({}); pass --deploy to say which one this build is",
+            "deploys `{first_name}` and `{other_name}` resolve DIFFERENTLY ({}); \
+             pass --deploy or --board to say which one this build is",
             differing.join(", ")
         ));
     }
@@ -101,11 +101,30 @@ pub fn resolve(
         .ok_or_else(|| eyre!("{}: no [deploy.*] blocks", ws.display()))
 }
 
+/// Find the `[board_config.<key>]` block that describes `descriptor`.
+///
+/// The key is matched by RESOLUTION, not by text: `resolve_board` is the same
+/// rule `[deploy.*].board` and `[image.*].board` go through (issue 0606), so
+/// every legal spelling of one board finds the same block. Two keys resolving
+/// to one descriptor is an authoring mistake — it is the duplicate-fact shape
+/// this table exists to remove — so it is refused rather than silently
+/// order-dependent.
+fn site_for_board<'a>(
+    table: &'a BTreeMap<String, toml::Value>,
+    catalog: &BoardCatalog,
+    descriptor: &BoardDescriptor,
+) -> Option<(&'a String, &'a toml::Value)> {
+    table
+        .iter()
+        .find(|(key, _)| resolve_board(catalog, key).is_some_and(|d| d.source == descriptor.source))
+}
+
 fn resolve_one(
-    ws: &Path,
+    origin: &str,
     nano_ros_root: &Path,
     deploy_name: &str,
     target: &crate::orchestration::cargo_metadata_schema::DeployTarget,
+    site_table: &BTreeMap<String, toml::Value>,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Result<BTreeMap<String, String>> {
     let deploy_name = deploy_name.to_string();
@@ -124,9 +143,21 @@ fn resolve_one(
         )
     })?;
 
-    let site = match target.nros.as_ref() {
-        Some(v) => SiteConfig::from_value(v, &deploy_name, "system.toml")?,
-        None => SiteConfig::default(),
+    // The site block is keyed by BOARD (issue 0951), and a board has several
+    // legal spellings — the descriptor's `names`, its directory, its
+    // downstream framework id. Matching the key TEXTUALLY would make
+    // `[board_config."qemu-armv7a-nsh"]` invisible to a build that spelled the
+    // same board `nuttx-qemu-arm`, which is issue 0606 one table over. So
+    // resolve both sides through the catalog and compare DESCRIPTORS.
+    let (site_section, site) = match site_for_board(site_table, &catalog, descriptor) {
+        Some((key, value)) => {
+            let section = format!("board_config.{key}");
+            (
+                section.clone(),
+                SiteConfig::from_value(value, &section, origin)?,
+            )
+        }
+        None => (format!("board_config.{board_name}"), SiteConfig::default()),
     };
 
     let mut out = BTreeMap::new();
@@ -152,19 +183,18 @@ fn resolve_one(
         out.insert("NROS_NETSTACK".into(), stack.to_string());
     }
 
-    let origin = format!("{}: [deploy.{deploy_name}.nros]", ws.display());
     for (name, raw) in &site.sdk {
-        let r = site.interpolate(raw, &deploy_name, &origin, env)?;
+        let r = site.interpolate(raw, &site_section, origin, env)?;
         out.insert(format!("NROS_SDK_{}", env_key(name)), r.value);
     }
     for (role, raw) in &site.config_files {
-        let r = site.interpolate(raw, &deploy_name, &origin, env)?;
+        let r = site.interpolate(raw, &site_section, origin, env)?;
         out.insert(format!("NROS_CONFIG_FILE_{}", env_key(role)), r.value);
     }
     if !site.include_dirs.is_empty() {
         let mut dirs = Vec::new();
         for raw in &site.include_dirs {
-            dirs.push(site.interpolate(raw, &deploy_name, &origin, env)?.value);
+            dirs.push(site.interpolate(raw, &site_section, origin, env)?.value);
         }
         out.insert("NROS_INCLUDE_DIRS".into(), dirs.join(";"));
     }
@@ -172,7 +202,7 @@ fn resolve_one(
         out.insert("NROS_DEFINES".into(), site.defines.join(";"));
     }
     for (key, raw) in &site.upload {
-        let r = site.interpolate(raw, &deploy_name, &origin, env)?;
+        let r = site.interpolate(raw, &site_section, origin, env)?;
         out.insert(format!("NROS_UPLOAD_{}", env_key(key)), r.value);
     }
     Ok(out)
@@ -256,14 +286,20 @@ fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
     Ok(Some(vec![(deploy_key, target)]))
 }
 
-fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<Vec<PickedDeploy>> {
+/// The picked deploys, the site table to resolve them against, and the file
+/// that supplied both (for error text).
+type Picked = (Vec<PickedDeploy>, BTreeMap<String, toml::Value>, String);
+
+fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<Picked> {
     // A standalone leaf first: it has a Cargo.toml and no bringup, and asking
     // for a system.toml there would fail naming a file that is not supposed to
-    // exist.
+    // exist. Such a leaf carries no site table — it gets the board rung only.
     if let Some(from_manifest) = deploys_from_manifest(ws)? {
-        return Ok(from_manifest);
+        return Ok((from_manifest, BTreeMap::new(), ws.display().to_string()));
     }
     let (path, system) = load_system_toml(ws)?;
+    let origin = path.display().to_string();
+    let site = system.board_config.clone();
     let mut candidates: Vec<(String, _)> = system.deploy.into_iter().collect();
     if let Some(want) = deploy {
         candidates.retain(|(k, _)| k == want);
@@ -282,7 +318,7 @@ fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<
     if candidates.is_empty() {
         return Err(eyre!("{}: no [deploy.*] blocks", path.display()));
     }
-    Ok(candidates)
+    Ok((candidates, site, origin))
 }
 
 fn load_system_toml(
@@ -384,7 +420,7 @@ domain_id = 0
 board = "mps2-an385-freertos"
 rmw = "zenoh"
 
-[deploy.freertos.nros]
+[board_config."mps2-an385-freertos"]
 netstack = "lwip"
 sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 "#;
@@ -442,16 +478,18 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
         assert!(format!("{err:#}").contains("FREERTOS_DIR"), "{err:#}");
     }
 
-    /// Two deploy blocks on the same board are ONE answer when they resolve the
-    /// same — `examples/workspaces/mixed` ships exactly that pair, and refusing
-    /// it would block every cmake build of that workspace over a distinction
-    /// with no consequence.
+    /// Two deploy blocks on the same board are ONE answer — `examples/workspaces/mixed`
+    /// ships exactly that pair, and refusing it would block every cmake build of
+    /// that workspace over a distinction with no consequence.
+    ///
+    /// Under a board-keyed site table they cannot even differ: both reach the
+    /// same `[board_config.*]` block. This used to need a per-block site table
+    /// on each deploy, which is the duplication issue 0951 removed.
     #[test]
     fn duplicate_deploys_that_agree_are_not_ambiguous() {
         let ws = ws_with(&format!(
             "{FREERTOS_WS}\n[deploy.mps2-an385-freertos]\nboard = \"mps2-an385-freertos\"\n\
-             rmw = \"zenoh\"\n\n[deploy.mps2-an385-freertos.nros]\nnetstack = \"lwip\"\n\
-             sdk = {{ freertos = \"{{env:FREERTOS_DIR}}\", lwip = \"{{env:LWIP_DIR}}\" }}\n"
+             rmw = \"zenoh\"\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
@@ -469,69 +507,101 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
         assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
     }
 
-    /// …and DISAGREEING duplicates are refused, naming the keys that differ —
-    /// that is the case where picking one silently would build the wrong thing.
+    /// …and DISAGREEING duplicates are no longer REFUSED — they are
+    /// UNREPRESENTABLE.
+    ///
+    /// Two deploy blocks naming one board used to carry a site table each, so
+    /// they could state different SDK roots for the same hardware; `resolve`
+    /// compared the resolutions and refused a conflict. Keying the table by
+    /// board deletes the shape instead of detecting it, which is why the
+    /// agree/disagree comparison in `resolve` now has nothing to catch. This
+    /// test is what says that is deliberate rather than a lost check.
     #[test]
-    fn duplicate_deploys_that_disagree_are_refused() {
+    fn two_deploys_on_one_board_cannot_disagree() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\n\
-             rmw = \"zenoh\"\n\n[deploy.other.nros]\nnetstack = \"lwip\"\n\
-             sdk = {{ freertos = \"/elsewhere\", lwip = \"{{env:LWIP_DIR}}\" }}\n"
+            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\nrmw = \"zenoh\"\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
             "LWIP_DIR" => Some("/opt/lwip".to_string()),
             _ => None,
         };
-        let err = resolve(
+        let by_board = resolve(
             ws.path(),
             &repo_root(),
             None,
             Some("mps2-an385-freertos"),
             &env,
         )
-        .expect_err("two different SDK roots for one board");
-        let msg = format!("{err:#}");
-        assert!(msg.contains("NROS_SDK_FREERTOS"), "{msg}");
-        assert!(msg.contains("--deploy"), "{msg}");
+        .expect("one board, one answer");
+        let by_name =
+            resolve(ws.path(), &repo_root(), Some("other"), None, &env).expect("named deploy");
+        assert_eq!(by_board, by_name, "the board decides, not the deploy key");
+        assert_eq!(
+            by_board.get("NROS_SDK_FREERTOS").map(String::as_str),
+            Some("/opt/freertos")
+        );
     }
 
-    /// issue 0755 — the ambiguity the previous test proves is REFUSABLE is
-    /// also RESOLVABLE, by naming the deploy. That is the whole point of
-    /// threading `--deploy` from the cmake wrapper: the entry knows which
-    /// deploy this build is, and without it a multi-deploy `system.toml`
-    /// (one bringup, deploys for posix + fvp + hardware) turns board facts
-    /// into a silent skip.
+    /// issue 0755 — `--deploy` still selects, but among DIFFERENT BOARDS.
+    ///
+    /// That is what threading it from the cmake wrapper buys: one bringup with
+    /// deploys for posix + fvp + hardware turns board facts into a silent skip
+    /// without it. What it no longer arbitrates is two spellings of ONE board —
+    /// see `two_deploys_on_one_board_cannot_disagree`.
     #[test]
-    fn naming_the_deploy_resolves_what_the_board_alone_cannot() {
+    fn naming_the_deploy_picks_among_boards() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.other]\nboard = \"mps2-an385-freertos\"\n\
-             rmw = \"zenoh\"\n\n[deploy.other.nros]\nnetstack = \"lwip\"\n\
-             sdk = {{ freertos = \"/elsewhere\", lwip = \"{{env:LWIP_DIR}}\" }}\n"
+            "{FREERTOS_WS}\n[deploy.nuttx]\nboard = \"nuttx-qemu-arm\"\nrmw = \"zenoh\"\n\n\
+             [board_config.\"nuttx-qemu-arm\"]\n\
+             sdk = {{ nuttx = \"{{env:NUTTX_DIR}}\" }}\n"
         ));
         let env = |k: &str| match k {
             "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
             "LWIP_DIR" => Some("/opt/lwip".to_string()),
+            "NUTTX_DIR" => Some("/opt/nuttx".to_string()),
             _ => None,
         };
-        // By board alone: refused (the previous test).
-        assert!(
-            resolve(
-                ws.path(),
-                &repo_root(),
-                None,
-                Some("mps2-an385-freertos"),
-                &env
-            )
-            .is_err()
-        );
-        // By deploy name: each one answers for itself.
-        let other = resolve(ws.path(), &repo_root(), Some("other"), None, &env)
+        let nuttx = resolve(ws.path(), &repo_root(), Some("nuttx"), None, &env)
             .expect("the named deploy resolves");
         assert_eq!(
-            other.get("NROS_SDK_FREERTOS").map(String::as_str),
-            Some("/elsewhere"),
-            "the named deploy's own SDK root, not the other one's"
+            nuttx.get("NROS_SDK_NUTTX").map(String::as_str),
+            Some("/opt/nuttx")
+        );
+        assert!(
+            nuttx.get("NROS_SDK_FREERTOS").is_none(),
+            "the other board's site block must not leak in: {nuttx:?}"
+        );
+    }
+
+    /// The site key is matched by RESOLUTION, not by text — a board has several
+    /// legal spellings and every one of them must find the same block. Keying
+    /// on the string is issue 0606 one table over: a block authored under the
+    /// descriptor's declared name would be invisible to a build spelling the
+    /// board by its directory.
+    #[test]
+    fn a_site_block_under_an_alias_spelling_still_resolves() {
+        let ws = ws_with(
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[deploy.freertos]
+board = "mps2-an385-freertos"
+
+[board_config.freertos]
+netstack = "lwip"
+sdk = { freertos = "/opt/freertos" }
+"#,
+        );
+        let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None)
+            .expect("the `freertos` key names the same board as the directory spelling");
+        assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
+        assert_eq!(
+            facts.get("NROS_SDK_FREERTOS").map(String::as_str),
+            Some("/opt/freertos")
         );
     }
 
