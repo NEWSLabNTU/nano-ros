@@ -116,6 +116,11 @@ about anything.
 
 ## Waves
 
+**All of the below are delivered by phase 403 W3/W5 except where noted. They are
+kept as written, because the acceptance criteria are the useful part and phase
+403's measurement should be readable against them.**
+
+
 **W1 — emit the constant.** Issue 0896 layers 1–2: one traversal in
 `rosidl-codegen` that builds the `nros_serdes::FieldType` value alongside the
 existing expression string, so a new variant handled by one output and forgotten
