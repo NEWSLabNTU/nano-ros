@@ -803,3 +803,49 @@ jobs:
 
       - name: Run bootstrap probe
         run: PROBE_BRANCH=probe-under-test ./scripts/probe/run-bootstrap-probe.sh
+
+  # phase-407 — tier 2 NIGHTLY, actually invoked.
+  #
+  # This file's header has said "the 07:00 cron is also where
+  # `just ci-matrix-nightly` lives" since RFC-0061, and three places echo that
+  # string into a summary — but nothing ran it. `check-tier-has-ci-owner`
+  # found the tier declared in the ladder and owned by no workflow. Prose is
+  # not an owner.
+  #
+  # Interlocked like post-submit's tier-2 job: the pairwise cover needs the
+  # RTOS toolchains, so it is self-hosted, so a job that cannot start must not
+  # look like one that passed. `coverage-matrix-nightly` reports the skip.
+  matrix-nightly:
+    name: tier 2 nightly (pairwise cover)
+    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
+      - name: just setup tier2-nightly
+        run: |
+          source ./activate.sh
+          just setup tier2-nightly
+      - name: just ci matrix-nightly
+        run: |
+          source ./activate.sh
+          just ci matrix-nightly
+      - name: Sweep orphans and disk
+        if: always()
+        run: ./scripts/ci/runner-sweep.sh || true
+
+  coverage-matrix-nightly:
+    name: coverage report (did tier 2 nightly run?)
+    needs: [matrix-nightly]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report whether the interlocked lane ran
+        run: ./scripts/ci/report-interlock-coverage.sh "tier 2 nightly (pairwise cover)" "${{ needs.matrix-nightly.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"

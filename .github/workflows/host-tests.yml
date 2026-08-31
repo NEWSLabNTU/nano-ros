@@ -265,30 +265,29 @@ jobs:
                  exit 1; }
           echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
 
-      - name: just test-integration
+      # phase-407 — run the TIER, not a hand-rolled approximation of it.
+      #
+      # This lane built `native build-fixture-rust-core` + `build-workspace-
+      # fixtures` and then `just test-integration`, which is roughly tier 1 —
+      # and "roughly" is the problem: `check-tier-has-ci-owner` found Tier1
+      # declared in the RFC-0061 ladder and invoked by NO workflow, so the
+      # tier's definition and this lane's behaviour could drift with nothing
+      # to notice. `just ci tier1` is preconditions + check +
+      # rust-rtos-link-check + test-all, narrowed to the tier-1 coordinates.
+      #
+      # The fixture builds above stay: the tier ASSERTS its preconditions, it
+      # does not provision them.
+      - name: just ci tier1
         env:
-          # phase-407 W4 — NROS_FIXTURES_OPTIONAL is GONE from CI. Its job was
-          # converting an absent fixture into a skip, i.e. tolerating a mismatch
-          # between what this lane asked for and what it got. Under phase-407
-          # the scope IS the specification: this lane names `native`, so a gap
-          # in native is a FAILURE and nothing else was expected. The flag made
-          # correctness depend on remembering to unset a variable — this file's
-          # own comment admitted the full tier "leaves the var unset and still
-          # hard-fails".
-          #
-          # The READER in nros-tests survives on purpose: it is a legitimate
-          # local opt-in for a developer who has provisioned one platform.
-          # Deleting it would remove a real affordance to fix a CI-only defect.
-          # `check-ci-no-fixture-tolerance` enforces the where, not the what.
           CARGO_BUILD_JOBS: "2"
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
           set +e
-          just test-integration > build/ci-logs/test-integration.log 2>&1
+          just ci tier1 > build/ci-logs/ci-tier1.log 2>&1
           rc=$?
           set -e
-          echo "::group::test-integration output (tail)"; tail -200 build/ci-logs/test-integration.log; echo "::endgroup::"
+          echo "::group::ci tier1 output (tail)"; tail -200 build/ci-logs/ci-tier1.log; echo "::endgroup::"
           exit $rc
 
       - name: Report skipped fixtures (post-run)

@@ -506,6 +506,8 @@ mod tests {
     /// fails here instead of in a sweep three hours later.
     #[test]
     fn build_fanout_names_every_module_the_matrix_can_select() {
+        // This one DOES read the root justfile: the fan-out loop lives there,
+        // not in a module.
         let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
         let Ok(text) = std::fs::read_to_string(justfile) else {
             return; // out-of-tree checkout; nothing to gate
@@ -556,19 +558,23 @@ mod tests {
     fn recipes_run_the_scope_their_lane_declares() {
         use crate::buckets::CiTier;
 
-        let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
-        let Ok(text) = std::fs::read_to_string(justfile) else {
-            return; // out-of-tree checkout; nothing to gate
-        };
+        // No root-justfile read: `justfile_source()` resolves the file per tier
+        // (module recipes live in `just/<mod>.just`) and returns None
+        // out-of-tree, which is the guard this used to do by hand.
 
         for lane in ALL {
-            let recipe = CiTier::of_lane(lane).just_recipe();
+            let tier = CiTier::of_lane(lane);
+            let recipe = tier.just_recipe();
+            // Same resolver as ci_tier_ladder_matches_justfile_recipes — the
+            // tiers are module recipes since phase-399 and this test used to
+            // look only at column 0 of the root justfile.
+            let Some((text, name)) = tier.justfile_source() else {
+                continue;
+            };
             // The recipe body: from the `<name>:`/`<name> <args>:` line to the
             // next line at column 0 that is not blank and not indented.
             let mut lines = text.lines().skip_while(|l| {
-                !(l.starts_with(recipe)
-                    && l[recipe.len()..].starts_with([':', ' '])
-                    && l.contains(':'))
+                !(l.starts_with(name) && l[name.len()..].starts_with([':', ' ']) && l.contains(':'))
             });
             let header = lines.next().unwrap_or_else(|| {
                 panic!("justfile has no `{recipe}` recipe (gated by ci_tier_ladder_matches_justfile_recipes)")

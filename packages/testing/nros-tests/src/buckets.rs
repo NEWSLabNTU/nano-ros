@@ -43,12 +43,38 @@ impl CiTier {
     /// The `just` recipe that runs this tier. This is the wiring point: the
     /// justfile tier recipes ARE the ladder the bucket map declares, and
     /// `ci_tier_ladder_matches_justfile_recipes` gates that they stay in step.
+    /// The justfile TEXT that defines this tier's recipe, plus the bare recipe
+    /// name inside it — `("just/ci.just" body, "matrix")`.
+    ///
+    /// phase-399 moved the tiers into `mod ci`, so a tier recipe is NOT at
+    /// column 0 of the root justfile any more. Two tests needed to know that
+    /// and only one was taught, so the other kept failing on a rung it could
+    /// not see. One resolver, used by both — a second spelling of this lookup
+    /// is what produced the split in the first place.
+    pub fn justfile_source(self) -> Option<(String, &'static str)> {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
+        match self.just_recipe().split_once(' ') {
+            Some((module, name)) => {
+                let path = format!("{}/../../../just/{module}.just", env!("CARGO_MANIFEST_DIR"));
+                std::fs::read_to_string(path).ok().map(|t| (t, name))
+            }
+            None => std::fs::read_to_string(root)
+                .ok()
+                .map(|t| (t, self.just_recipe())),
+        }
+    }
+
     pub fn just_recipe(self) -> &'static str {
         match self {
-            CiTier::Tier1 => "ci",
-            CiTier::Tier2 => "ci-matrix",
-            CiTier::Tier2Nightly => "ci-matrix-nightly",
-            CiTier::Tier3 => "ci-full",
+            // phase-399 moved the tiers into `mod ci`, so the canonical
+            // spelling is `just ci <tier>`. The flat `ci-matrix` forwarders
+            // still resolve, but naming a deprecated spelling in the SSoT is
+            // how the ladder drifts from the surface — which is exactly what
+            // this ladder exists to prevent, one level up.
+            CiTier::Tier1 => "ci tier1",
+            CiTier::Tier2 => "ci matrix",
+            CiTier::Tier2Nightly => "ci matrix-nightly",
+            CiTier::Tier3 => "ci full",
         }
     }
 
@@ -247,21 +273,27 @@ mod tests {
     /// justfile is a checked consumer of the Rust-side ladder.
     #[test]
     fn ci_tier_ladder_matches_justfile_recipes() {
-        let justfile = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../justfile");
-        let Ok(text) = std::fs::read_to_string(justfile) else {
-            return; // out-of-tree checkout; nothing to gate
-        };
+        // No root-justfile read here: `justfile_source()` resolves the file
+        // per tier (module recipes live in `just/<mod>.just`) and returns None
+        // out-of-tree, which is the same guard this used to do by hand.
         for tier in CiTier::ALL {
             let recipe = tier.just_recipe();
+            // `just <mod> <recipe>` since phase-399: the tiers live in
+            // `just/<mod>.just`, not at column 0 of the root justfile. The
+            // previous version of this check only knew the flat form, so it
+            // could not see ANY module recipe and failed on `Tier1` for as
+            // long as the tiers had been modules — a red that carried no
+            // signal because it never went green.
+            let Some((body, name)) = tier.justfile_source() else {
+                continue; // out-of-tree checkout; nothing to gate
+            };
             // A recipe line is `<name>:` or `<name> <args>:` at column 0.
-            let found = text.lines().any(|l| {
-                l.starts_with(recipe)
-                    && l[recipe.len()..].starts_with([':', ' '])
-                    && l.contains(':')
+            let found = body.lines().any(|l| {
+                l.starts_with(name) && l[name.len()..].starts_with([':', ' ']) && l.contains(':')
             });
             assert!(
                 found,
-                "CiTier::{tier:?} declares `just {recipe}` but the justfile has no such \
+                "CiTier::{tier:?} declares `just {recipe}` but its justfile has no `{name}` \
                  recipe — the tier ladder and the justfile drifted (rename one to match)"
             );
         }
