@@ -103,6 +103,52 @@ Rules, all of them:
    VM, never as the account holding other work.
 4. Ephemeral runners (`--ephemeral`) so one job cannot leave state for the next.
 
+#### Why a container is enough *here* — and where that stops being true
+
+Rule 3 says "ideally in a container", which understates it in one direction and
+overstates it in the other. The standard advice is that a container does NOT
+isolate an untrusted job, and that advice is correct — but it is aimed at the
+escapes people add to make CI work. Mounting the host Docker socket, or
+`--privileged` / docker-in-docker, both hand a job root on the host. Guidance
+saying "containers are insufficient" is describing jobs that build images or
+start containers.
+
+Ours do neither, and that was **measured**, not assumed. Across all four
+self-hosted lanes (`build-wide`, `run-matrix`, the `queue` L3 job, and the
+`nightly` matrix): zero references to Docker, zero to KVM, zero device mounts.
+QEMU runs in pure emulation under `-icount shift=auto`, which is deterministic
+and *incompatible* with KVM, so not even `/dev/kvm` is wanted.
+
+So the escapes are not needed, and `scripts/ci/runner-container.sh` **refuses**
+to add them — `--privileged` and a socket mount both exit 2 with the reason.
+That refusal is the whole security argument. It stops being valid the moment a
+job needs to build an image, and at that point the honest answer is a microVM
+(or GitHub's hosted runners), not a flag.
+
+Two things this does *not* buy, stated plainly:
+
+- It bounds what someone **with write access** can reach. It does not eliminate
+  it. Rule 1 is what keeps fork PRs out, and it is load-bearing — verified: every
+  self-hosted job triggers only on `push`, `merge_group`, `schedule` or
+  `workflow_dispatch`, and `check-workflow-runner-isolation` keeps it that way.
+- It is not a sandbox against a determined kernel exploit. It is a boundary
+  against the ordinary case: a job that misbehaves, leaks processes, or fills a
+  disk on a machine carrying unrelated research work.
+
+**`--read-only` is deliberately NOT used**, and the reason is recorded here so
+nobody re-derives it. The runner resolves its `_diag` log directory from its
+binary's REAL path, so an immutable install under `/opt` reached by symlink is
+still written to — and it does not fail cleanly: the process dies with rc=139,
+an unhandled `IOException` out of `HostTraceListener`. Making it work means
+copying the whole ~200 MB install into a tmpfs on every start, to buy a property
+`--ephemeral` already provides (the writable layer dies after ONE job). What IS
+applied, and tested end-to-end: `--cap-drop ALL`, `--security-opt
+no-new-privileges`, `--user runner` (uid 1001, never root), `--pids-limit`, no
+host bind mounts, no socket, caches as named volumes.
+
+Runner **v2.329.0 or later** is required to configure or re-register since
+GitHub's 2026-06-12 change; the image pins it.
+
 ## Scripts to own the procedure
 
 Registration should be one command, not a wiki page.
@@ -113,6 +159,7 @@ Registration should be one command, not a wiki page.
 | `scripts/ci/runner-provision.sh <labels…>` | make the labels true — install the Zephyr SDK, QEMU, ROS 2, toolchains — reusing `nros setup` so a runner and a contributor provision the same way |
 | `scripts/ci/runner-doctor.sh` | assert every label's claim actually holds; refuse to register a runner that lies about what it has |
 | `scripts/ci/runner-sweep.sh` | reap orphaned process groups and stale build dirs between jobs |
+| `scripts/ci/runner-container.sh <labels…>` | build and start the runner in an unprivileged container — the whole procedure in two steps, and it refuses `--privileged` / a Docker socket mount rather than trusting the operator to remember |
 
 `runner-doctor.sh` matters more than it looks: a runner labelled
 `nros-sdk-zephyr` without the SDK produces a red that looks like a code failure.

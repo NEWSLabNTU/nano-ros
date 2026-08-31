@@ -187,6 +187,7 @@ build: \
     ps-zombie-blind \
     gate-selftests \
     lane-contracts \
+    workflow-runner-isolation \
     skippable-tests-tolerant \
     no-alloc-image \
     lane-skip-class \
@@ -1869,6 +1870,14 @@ skippable-tests-tolerant:
 [private]
 lane-contracts:
     @python3 scripts/check-lane-contracts.py
+
+# nano-ros is PUBLIC and the self-hosted runners share machines with unrelated
+# research work. A self-hosted job reachable from a fork's `pull_request` runs
+# contributor code on that hardware. The property held by care alone until
+# phase-407 — this makes a `runs-on` typo fail loudly instead of silently.
+[private]
+workflow-runner-isolation:
+    @python3 scripts/check-workflow-runner-isolation.py
 
 # A gate must exercise its own failure path EVERY time it runs, not once behind
 # a flag on the day it was written. A baseline ratchet: the debt may only
