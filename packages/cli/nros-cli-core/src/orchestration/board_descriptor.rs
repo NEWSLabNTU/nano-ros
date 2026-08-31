@@ -301,7 +301,7 @@ pub struct BoardCmake {
     pub toolchain_file: String,
 }
 
-/// phase-351 W4 — why a `[deploy.<name>.nros].netstack` was refused.
+/// phase-351 W4 — why a `[board_config.<board>].netstack` was refused.
 ///
 /// Both arms name what IS available, because the whole point of declaring the
 /// domain is that a user who picked outside it can see the edge.
@@ -363,7 +363,7 @@ impl BoardDescriptor {
     /// phase-351 W4 — the netstack this deploy will build with, or an error
     /// naming what the board actually supports.
     ///
-    /// `requested` is `[deploy.<name>.nros].netstack`. `None` takes the board's
+    /// `requested` is `[board_config.<board>].netstack`. `None` takes the board's
     /// first declared stack, which is why the list is ordered. A board that
     /// declares NO stacks makes no choice: naming one there is an error too,
     /// because silently ignoring it is how a deploy ends up believing it

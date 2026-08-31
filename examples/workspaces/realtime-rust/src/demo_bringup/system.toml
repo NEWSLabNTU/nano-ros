@@ -178,3 +178,37 @@ board = "threadx-linux"
 [image.zephyr]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
+sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."nuttx-qemu-arm"]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."nuttx-qemu-riscv"]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."threadx-linux"]
+netstack = "netxduo"
+sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }

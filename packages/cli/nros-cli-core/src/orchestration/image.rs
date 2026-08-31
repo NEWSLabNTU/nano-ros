@@ -697,21 +697,63 @@ entry_kind = "board-run"
     }
 }
 
-/// Build fields on an upstream `[deploy.<id>]` that `[image.<id>]` now owns
-/// (phase-383 W1.f).
+/// Fields on an upstream `[deploy.<id>]` that a nano-ros table now owns, each
+/// paired with WHERE it went (phase-383 W1.f, issue 0951).
 ///
 /// `kind`, `nodes` and `launch` are absent by design: those are PLACEMENT, they
 /// stay upstream's, and they are not being retired.
-pub const DEPRECATED_DEPLOY_BUILD_FIELDS: &[&str] = &[
-    "board",
-    "target",
-    "rmw",
-    "domain_id",
-    "locator",
-    "profile",
-    "optimize",
-    "features",
+///
+/// The destination is part of the datum because it is not uniform, and a lint
+/// that guesses one destination for every field sends people to a table with no
+/// such key. `domain_id` and `locator` are RUNTIME facts about a machine and
+/// live on `[host.<name>]`; `nros` is SITE config about a BOARD and lives on
+/// `[board_config.<board>]`; only the rest are build description.
+pub const DEPRECATED_DEPLOY_FIELDS: &[(&str, DeployFieldHome)] = &[
+    ("board", DeployFieldHome::Image),
+    ("target", DeployFieldHome::Image),
+    ("rmw", DeployFieldHome::Image),
+    ("profile", DeployFieldHome::Image),
+    ("optimize", DeployFieldHome::Image),
+    ("features", DeployFieldHome::Image),
+    ("domain_id", DeployFieldHome::Host),
+    ("locator", DeployFieldHome::Host),
+    ("nros", DeployFieldHome::BoardConfig),
 ];
+
+/// Which table a retired `[deploy.*]` field moved to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeployFieldHome {
+    /// `[image.<id>]` — build description, keyed by the same id.
+    Image,
+    /// `[host.<name>]` — a machine's runtime facts.
+    Host,
+    /// `[board_config.<board>]` — site config, keyed by BOARD.
+    BoardConfig,
+}
+
+impl DeployFieldHome {
+    fn destination(self, id: &str) -> String {
+        match self {
+            DeployFieldHome::Image => format!("`[image.{id}]`"),
+            DeployFieldHome::Host => format!("`[host.{id}]`"),
+            DeployFieldHome::BoardConfig => {
+                "`[board_config.<board>]`, keyed by the BOARD rather than by \
+                 this block's name"
+                    .to_string()
+            }
+        }
+    }
+
+    /// Whether a same-named `[image.<id>]` means this field has already moved.
+    ///
+    /// Only true for fields whose home IS that image. A site block is keyed by
+    /// board, so an image of the same name says nothing about whether the site
+    /// config was migrated — skipping on it would silence the one warning that
+    /// most needs to fire.
+    fn satisfied_by_image(self) -> bool {
+        matches!(self, DeployFieldHome::Image)
+    }
+}
 
 /// One deprecation warning per `[deploy.<id>]` still carrying build fields with
 /// no `[image.<id>]` beside it.
@@ -739,25 +781,31 @@ pub fn deprecated_deploy_build_field_warnings(
     }
     let mut out = Vec::new();
     for (id, present) in deploy_blocks {
-        if images.contains_key(id) {
-            continue;
+        let has_image = images.contains_key(id);
+        // Group by destination so one block yields one warning per table it
+        // must migrate into, not one per field.
+        let mut grouped: BTreeMap<String, Vec<&str>> = BTreeMap::new();
+        for field in present.iter().map(String::as_str) {
+            let Some((_, home)) = DEPRECATED_DEPLOY_FIELDS.iter().find(|(f, _)| *f == field) else {
+                continue;
+            };
+            if has_image && home.satisfied_by_image() {
+                continue;
+            }
+            grouped.entry(home.destination(id)).or_default().push(field);
         }
-        let mut hits: Vec<&str> = present
-            .iter()
-            .map(String::as_str)
-            .filter(|f| DEPRECATED_DEPLOY_BUILD_FIELDS.contains(f))
-            .collect();
-        if hits.is_empty() {
-            continue;
+        for (destination, mut hits) in grouped {
+            hits.sort_unstable();
+            out.push(format!(
+                "[deploy.{id}] carries {} — {} now owns {}. `[deploy.*]` keeps \
+                 PLACEMENT (kind / nodes / launch) — that half is upstream's \
+                 schema and is not being retired. Set \
+                 NROS_SUPPRESS_DEPRECATION=1 to silence.",
+                hits.join(", "),
+                destination,
+                if hits.len() == 1 { "it" } else { "them" },
+            ));
         }
-        hits.sort_unstable();
-        out.push(format!(
-            "[deploy.{id}] carries build field(s) {} — these move to \
-             `[image.{id}]`. `[deploy.*]` keeps PLACEMENT (kind / nodes / \
-             launch) — that half is upstream's schema and has no `[image.*]` \
-             counterpart. Set NROS_SUPPRESS_DEPRECATION=1 to silence.",
-            hits.join(", ")
-        ));
     }
     out
 }
@@ -783,6 +831,43 @@ mod deprecation_tests {
                 )
             })
             .collect()
+    }
+
+    /// The site block is keyed by BOARD, so a same-named `[image.<id>]` says
+    /// NOTHING about whether it was migrated. Skipping on the image's presence
+    /// would silence exactly the workspaces furthest along — the ones that have
+    /// images for everything and an unmigrated site table underneath.
+    #[test]
+    fn a_site_block_still_warns_when_a_same_named_image_exists() {
+        let mut images = BTreeMap::new();
+        images.insert("freertos".to_string(), ImageBlock::default());
+        let w = deprecated_deploy_build_field_warnings(
+            &blocks(&[("freertos", &["board", "nros"])]),
+            &images,
+            false,
+        );
+        assert_eq!(w.len(), 1, "the image satisfies `board`, not `nros`: {w:?}");
+        assert!(w[0].contains("nros"), "{}", w[0]);
+        assert!(w[0].contains("board_config"), "{}", w[0]);
+        assert!(
+            !w[0].contains("[image.freertos]"),
+            "must not send the reader to a table with no such key: {}",
+            w[0]
+        );
+    }
+
+    /// `domain_id` / `locator` are a machine's RUNTIME facts and live on
+    /// `[host.*]`. The first version of this list called them build fields, so
+    /// the warning named `[image.*]` — a table that has no such key.
+    #[test]
+    fn runtime_fields_point_at_the_host_table() {
+        let w = deprecated_deploy_build_field_warnings(
+            &blocks(&[("robot1", &["domain_id", "locator"])]),
+            &BTreeMap::new(),
+            false,
+        );
+        assert_eq!(w.len(), 1, "one destination, one warning: {w:?}");
+        assert!(w[0].contains("[host.robot1]"), "{}", w[0]);
     }
 
     #[test]
@@ -837,10 +922,26 @@ mod deprecation_tests {
 
     #[test]
     fn target_is_a_build_field_and_kind_is_not() {
-        assert!(DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"target"));
-        assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"kind"));
-        assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"nodes"));
-        assert!(!DEPRECATED_DEPLOY_BUILD_FIELDS.contains(&"launch"));
+        let field = |n: &str| DEPRECATED_DEPLOY_FIELDS.iter().find(|(f, _)| *f == n);
+        assert_eq!(
+            field("target").map(|(_, h)| *h),
+            Some(DeployFieldHome::Image)
+        );
+        // Placement stays upstream's and is not being retired.
+        assert!(field("kind").is_none());
+        assert!(field("nodes").is_none());
+        assert!(field("launch").is_none());
+        // The two fields that do NOT move to the image — a warning naming
+        // `[image.*]` for these would send the reader to a table with no such
+        // key.
+        assert_eq!(
+            field("domain_id").map(|(_, h)| *h),
+            Some(DeployFieldHome::Host)
+        );
+        assert_eq!(
+            field("nros").map(|(_, h)| *h),
+            Some(DeployFieldHome::BoardConfig)
+        );
     }
     #[test]
     fn a_launch_that_names_no_file_is_refused_with_the_alternatives() {

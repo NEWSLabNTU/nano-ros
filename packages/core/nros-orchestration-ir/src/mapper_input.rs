@@ -92,7 +92,7 @@ fn node_paths_for(model: &SystemModel, fqn: &str, wcet: Option<&WcetProfile>) ->
             exec_ms: wcet.and_then(|w| w.exec_ms(path_ref)),
             inputs: pc.input.clone(),
             outputs: pc.output.clone(),
-            // Issue 0939's pin bump (rlm v0.1.11 -> v0.1.21) added these two.
+            // Issue 0951's pin bump (rlm v0.1.11 -> v0.1.21) added these two.
             // `None` is the correct value rather than a placeholder: nano-ros
             // authors neither a jitter budget nor a weakly-hard miss tolerance
             // today, and rlm treats `None` as UNDECLARED and says so — the same

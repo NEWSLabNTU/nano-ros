@@ -658,10 +658,11 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
     }
 
     let system = SystemToml {
+        board_config: Default::default(),
         system: system_header,
         components,
         deploy,
-        // Issue 0939 — a synthesised self-bringup declares no machines. It IS
+        // Issue 0951 — a synthesised self-bringup declares no machines. It IS
         // one machine by construction (the component package's own host), and
         // placement over a single implicit host is what the empty map already
         // means.
