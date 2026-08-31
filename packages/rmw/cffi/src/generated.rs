@@ -314,6 +314,18 @@ pub struct rmw_count_status_t {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct rmw_loan_token_t {
+    _unused: [u8; 0],
+}
+#[doc = " An event callback and the data it needs — phase-406 W2.\n\n  Same argument as the visitor one slot up: the function and its `user_data`\n  are meaningless apart, so they travel together. Upstream keeps them as two\n  parameters; upstream also has an allocator and a heap, and pays for a\n  mistake here with a wild pointer rather than a compile error.\n\n  `callback == NULL` is how a caller CLEARS the callback — that is upstream's\n  contract too, and unlike the visitor case it is not an error."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_event_callback_reg_t {
+    pub callback: rmw_event_callback_t,
+    pub user_data: *const core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct rmw_node_visitor_t {
     pub visit: rmw_node_visit_fn,
     pub ctx: *mut core::ffi::c_void,
@@ -530,14 +542,14 @@ pub struct nros_rmw_vtable_t {
             requested_len: usize,
             out_buf: *mut *mut u8,
             out_cap: *mut usize,
-            out_token: *mut *mut core::ffi::c_void,
+            out_token: *mut *mut rmw_loan_token_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.A — commit a previously loaned slot.\n\n  `token` MUST be a value returned from a prior `pub_loan` on the\n  same publisher. `actual_len` is the byte count actually\n  written into the slot (≤ the loan's `out_cap`). Triggers the\n  wire send.\n\n  NULL = paired NULL with `pub_loan`."]
     pub publish_loaned_message: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *const rmw_publisher_t,
-            token: *mut core::ffi::c_void,
+            token: *mut rmw_loan_token_t,
             actual_len: usize,
         ) -> rmw_ret_t,
     >,
@@ -545,7 +557,7 @@ pub struct nros_rmw_vtable_t {
     pub return_loaned_message_from_publisher: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *const rmw_publisher_t,
-            token: *mut core::ffi::c_void,
+            token: *mut rmw_loan_token_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.A — zero-copy subscription borrow.\n\n  Borrow a read-only view of the next available message in\n  place, without copying into a caller buffer. Returns:\n    * `>= 0` — message length; writes `*out_buf` / `*out_token`.\n    * `0` — no message ready (subscription empty).\n    * `< 0` — error (see `rmw_ret_t` codes negated).\n\n  The view is valid until the matching `sub_release` runs.\n  Only one borrow may be outstanding per subscription at a time —\n  callers MUST release before requesting another borrow.\n\n  NULL function pointer = backend doesn't natively borrow; the\n  runtime falls back to `try_recv_raw` into a staging buffer. */\n/** Upstream `rmw_take_loaned_message`. Phase 376 W3.b/W3.d step A.\n\n  `*taken` says whether a view was handed out; `*out_buf`,\n  `*out_len` and `*out_token` describe it and are meaningful\n  only when taken. All are written only on\n  `NROS_RMW_RET_OK`.\n\n  Before this, the length was returned AND written to\n  `*out_len`, and the runtime used the return — so a backend\n  that disagreed with itself had one of its two answers\n  silently ignored. There is now one length.\n\n  Deviation from upstream, declared: upstream loans a typed\n  `void **loaned_message`; ours is a byte view plus an opaque\n  token to release, because there is no typesupport on target\n  and the backend owns the buffer until `sub_release`.\n\n  **No backend fills this slot today** (Cyclone NULL, XRCE NULL, and the\n  Rust adapter leaves it at `EMPTY_VTABLE`), so every `try_borrow` through\n  the C ABI takes the copy fallback. The slot is carried, not deleted,\n  because it is the only shape that can hand a view to a caller which\n  outlives the call — `nros-c` / `nros-cpp` `try_borrow` — where\n  `process_raw_in_place`'s scoped callback cannot reach. Zenoh's native\n  zero-copy receive is live but arrives through Rust\n  `SlotBorrowing for ZenohSubscriber`, not through here. Recorded so\n  \"the slot exists\" is not read as \"the capability works\": issue 0781."]
@@ -554,7 +566,7 @@ pub struct nros_rmw_vtable_t {
             subscription: *const rmw_subscription_t,
             out_buf: *mut *const u8,
             out_len: *mut usize,
-            out_token: *mut *mut core::ffi::c_void,
+            out_token: *mut *mut rmw_loan_token_t,
             taken: *mut bool,
         ) -> rmw_ret_t,
     >,
@@ -562,7 +574,7 @@ pub struct nros_rmw_vtable_t {
     pub return_loaned_message_from_subscription: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            token: *mut core::ffi::c_void,
+            token: *mut rmw_loan_token_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Phase 124.C.1 — service-server availability probe.\n\n  Returns `1` if ≥ 1 matching server has been discovered on the\n  RMW graph, `0` if none yet, or a negative `rmw_ret_t`\n  constant on backend error. The runtime exposes this to user\n  code as `nros_client_server_available()` /\n  `Client<S>::server_available()` — clients use it to gate the\n  first request so a startup-ordering race doesn't surface as\n  a request-side timeout.\n\n  Implementation notes per backend:\n  - **Zenoh**: `z_session` tracks matched queryables via\n    interest declarations.\n  - **Cyclone DDS / dust-DDS**: built-in topic readers expose\n    matched-pub counts.\n  - **XRCE**: agent has no participant enumeration; return\n    `NROS_RMW_RET_UNSUPPORTED`.\n\n  NULL function pointer = backend cannot answer; the runtime\n  surfaces `NROS_RMW_RET_UNSUPPORTED` to the caller.\n\n  Phase 376 W3.d step A — upstream's shape: the STATUS is the\n  return value and the answer is an out-parameter. Previously\n  this slot multiplexed both through one `int32_t` (1 = yes,\n  0 = no, negative = error), which is what makes upstream's\n  positive `RMW_RET_ERROR = 1` unadoptable — `1` would mean\n  both \"available\" and \"failed\". Splitting them is what lets\n  step B renumber at all.\n\n  A backend writes `*out_available` only on\n  `NROS_RMW_RET_OK`; on any error the caller's value is\n  untouched. The old contract's tolerance for \"any positive\n  value other than 1 means available\" is gone with the int:\n  a `bool` has no non-spec value to be lenient about.\n\n  Deviation from upstream, declared: no `node` parameter.\n  `rmw_service_server_is_available` takes both a node and a\n  client; an image has no node object to pass — the client\n  reaches its session directly."]
@@ -713,24 +725,18 @@ pub struct nros_rmw_vtable_t {
     pub service_set_on_new_request_callback: ::core::option::Option<
         unsafe extern "C" fn(
             service: *mut rmw_service_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
+            cb: rmw_event_callback_reg_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_client_set_on_new_response_callback`. Exact parity."]
     pub client_set_on_new_response_callback: ::core::option::Option<
-        unsafe extern "C" fn(
-            client: *mut rmw_client_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
-        ) -> rmw_ret_t,
+        unsafe extern "C" fn(client: *mut rmw_client_t, cb: rmw_event_callback_reg_t) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.\n\n  The third of the family, added with the other two rather than left\n  recorded as \"covered by `set_wake_callback`\" — it never was: that slot\n  is session-scoped and serves subscriptions, services and clients\n  identically."]
     pub subscription_set_on_new_message_callback: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut rmw_subscription_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
+            cb: rmw_event_callback_reg_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.\n\n  One slot, two upstream names: upstream split them only because appending\n  to a fixed out-parameter list would have broken its ABI. A visitor has\n  no such list, so the enclave is simply a fourth argument, NULL where\n  untracked. Recorded in the checker's grouping table."]
@@ -864,8 +870,7 @@ pub struct nros_rmw_vtable_t {
     pub node_get_graph_guard_condition: ::core::option::Option<
         unsafe extern "C" fn(
             session: *mut rmw_session_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
+            cb: rmw_event_callback_reg_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_create_node`.\n\n  Declares a node on the graph. NULL slot is the expected implementation\n  in a static image: the runtime still tracks the node, the backend simply\n  has nothing to declare.\n\n  Deviations from upstream, declared: no `rmw_context_t *` (an image has\n  one session and reaches it directly), and the node is an OUT parameter\n  rather than a returned pointer — no runtime allocation, the caller owns\n  the storage, exactly as `create_publisher` does.\n\n  The runtime calls this once per distinct `(name, namespace_)`."]

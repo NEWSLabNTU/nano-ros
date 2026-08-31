@@ -2668,7 +2668,7 @@ pub struct CffiSlot<'a> {
     buf: *mut u8,
     cap: usize,
     cursor: usize,
-    token: *mut c_void,
+    token: *mut generated::rmw_loan_token_t,
     /// `None` after `commit_slot` consumes the slot — Drop skips the
     /// discard call in that case.
     publisher: Option<&'a CffiPublisher>,
@@ -2775,7 +2775,12 @@ impl nros_rmw::SlotLending for CffiPublisher {
                     buf: alloc::vec![0u8; len],
                 });
                 let buf_ptr = staging.buf.as_mut_ptr();
-                let token = alloc::boxed::Box::into_raw(staging) as *mut c_void;
+                // phase-406 W3 — the FALLBACK carries its own staging box in the token
+                // slot. It is not a backend loan handle, so the cast is the
+                // honest thing here: `fallback: true` below is what tells the
+                // return path to unbox rather than call the backend.
+                let token =
+                    alloc::boxed::Box::into_raw(staging) as *mut generated::rmw_loan_token_t;
                 return Ok(Some(CffiSlot {
                     buf: buf_ptr,
                     cap: len,
@@ -2801,7 +2806,7 @@ impl nros_rmw::SlotLending for CffiPublisher {
         };
         let mut out_buf: *mut u8 = core::ptr::null_mut();
         let mut out_cap: usize = 0;
-        let mut out_token: *mut c_void = core::ptr::null_mut();
+        let mut out_token: *mut generated::rmw_loan_token_t = core::ptr::null_mut();
         // SAFETY: vtable contract — slot pointers stay valid until
         // commit / discard.
         let ret = unsafe { loan(&view, len, &mut out_buf, &mut out_cap, &mut out_token) };
@@ -2931,7 +2936,11 @@ impl CffiPublisher {
     /// `token` must be the token of a loan that is still outstanding on
     /// `self`, and the returned slot must be committed or dropped exactly
     /// once.
-    unsafe fn slot_from_token(&self, token: *mut c_void, len: usize) -> CffiSlot<'_> {
+    unsafe fn slot_from_token(
+        &self,
+        token: *mut generated::rmw_loan_token_t,
+        len: usize,
+    ) -> CffiSlot<'_> {
         CffiSlot {
             buf: core::ptr::null_mut(),
             cap: len,
@@ -2955,7 +2964,7 @@ impl CffiPublisher {
     pub fn try_lend_raw(
         &self,
         len: usize,
-    ) -> Result<Option<(*mut u8, usize, *mut c_void)>, TransportError> {
+    ) -> Result<Option<(*mut u8, usize, *mut generated::rmw_loan_token_t)>, TransportError> {
         use nros_rmw::SlotLending as _;
         let Some(mut slot) = self.try_lend_slot(len)? else {
             return Ok(None);
@@ -2981,7 +2990,7 @@ impl CffiPublisher {
     /// still be outstanding, and must not be used again after this call.
     pub unsafe fn commit_raw(
         &self,
-        token: *mut c_void,
+        token: *mut generated::rmw_loan_token_t,
         actual_len: usize,
     ) -> Result<(), TransportError> {
         use nros_rmw::SlotLending as _;
@@ -2996,7 +3005,10 @@ impl CffiPublisher {
     /// # Safety
     /// `token` must come from a prior `try_lend_raw` on THIS publisher, must
     /// still be outstanding, and must not be used again after this call.
-    pub unsafe fn discard_raw(&self, token: *mut c_void) -> Result<(), TransportError> {
+    pub unsafe fn discard_raw(
+        &self,
+        token: *mut generated::rmw_loan_token_t,
+    ) -> Result<(), TransportError> {
         // SAFETY: forwarded from this function's own contract. Dropping the
         // rebuilt slot is what fires the backend's discard (or reclaims the
         // staging buffer).
@@ -3287,7 +3299,7 @@ impl CffiSubscription {
 pub struct CffiView<'a> {
     buf: *const u8,
     len: usize,
-    token: *mut c_void,
+    token: *mut generated::rmw_loan_token_t,
     subscriber: Option<&'a mut CffiSubscription>,
 }
 
@@ -3337,7 +3349,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
         let view = self.make_view();
         let mut out_buf: *const u8 = core::ptr::null();
         let mut out_len: usize = 0;
-        let mut out_token: *mut c_void = core::ptr::null_mut();
+        let mut out_token: *mut generated::rmw_loan_token_t = core::ptr::null_mut();
         // SAFETY: vtable contract — borrowed pointers stay valid
         // until `sub_release` runs.
         // Phase 376 W3.b/W3.d step A — status returned, `taken` out. The old

@@ -64,8 +64,8 @@ rmw must provide" than any reading of the headers.
 
 | | count |
 | --- | --- |
-| identical on both sides | 21 |
-| re-designed | 51 |
+| identical on both sides | 16 |
+| re-designed | 56 |
 | rejected or answered elsewhere | 16 |
 | …of the above, answered by an *inert* slot | 15 |
 | **contract total** | **88** |
@@ -107,7 +107,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <span class='fn'>rmw_borrow_loaned_message</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty del'>const rosidl_message_type_support_t *</span><span class=pu>,</span>
-  <span class='ty'>void * *</span>
+  <span class='ty del'>void * *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>borrow_loaned_message</span><span class=pu>)</span><span class=pu>(</span>
@@ -115,9 +115,9 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty add'>size_t requested_len</span><span class=pu>,</span>
   <span class='ty add'>uint8_t **out_buf</span><span class=pu>,</span>
   <span class='ty add'>size_t *out_cap</span><span class=pu>,</span>
-  <span class='ty'>void **out_token</span>
+  <span class='ty add'>rmw_loan_token_t **out_token</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.</td>
+<td class=why><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -149,16 +149,15 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_client_set_on_new_response_callback</span><span class=pu>(</span>
   <span class='ty'>rmw_client_t *</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
-  <span class='ty'>const void *</span>
+  <span class='ty del'>rmw_event_callback_t</span><span class=pu>,</span>
+  <span class='ty del'>const void *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>client_set_on_new_response_callback</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_client_t *client</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty'>const void *user_data</span>
+  <span class='ty add'>rmw_event_callback_reg_t cb</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>one wake callback per session</b> — Upstream installs a callback per entity. Ours is `set_wake_callback` on the session: one executor drives several backends, so the wake has to be attributable to a session rather than to whichever entity fired.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -703,8 +702,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>node_get_graph_guard_condition</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>rmw_session_t *session</span><span class=pu>,</span>
-  <span class='ty add'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty add'>const void *user_data</span>
+  <span class='ty add'>rmw_event_callback_reg_t cb</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
@@ -726,16 +724,16 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_publish_loaned_message</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
-  <span class='ty'>void *</span><span class=pu>,</span>
+  <span class='ty del'>void *</span><span class=pu>,</span>
   <span class='ty del'>rmw_publisher_allocation_t *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publish_loaned_message</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
-  <span class='ty'>void *token</span><span class=pu>,</span>
+  <span class='ty add'>rmw_loan_token_t *token</span><span class=pu>,</span>
   <span class='ty add'>size_t actual_len</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone and belongs to issue 0777, not to this parameter list.</td>
+<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone and belongs to issue 0777, not to this parameter list.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -852,27 +850,27 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_return_loaned_message_from_publisher</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
-  <span class='ty'>void *</span>
+  <span class='ty del'>void *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>return_loaned_message_from_publisher</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
-  <span class='ty'>void *token</span>
+  <span class='ty add'>rmw_loan_token_t *token</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_return_loaned_message_from_subscription</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
-  <span class='ty'>void *</span>
+  <span class='ty del'>void *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>return_loaned_message_from_subscription</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
-  <span class='ty'>void *token</span>
+  <span class='ty add'>rmw_loan_token_t *token</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -960,16 +958,15 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_service_set_on_new_request_callback</span><span class=pu>(</span>
   <span class='ty'>rmw_service_t *</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
-  <span class='ty'>const void *</span>
+  <span class='ty del'>rmw_event_callback_t</span><span class=pu>,</span>
+  <span class='ty del'>const void *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>service_set_on_new_request_callback</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_service_t *service</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty'>const void *user_data</span>
+  <span class='ty add'>rmw_event_callback_reg_t cb</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>one wake callback per session</b> — Upstream installs a callback per entity. Ours is `set_wake_callback` on the session: one executor drives several backends, so the wake has to be attributable to a session rather than to whichever entity fired.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1077,16 +1074,15 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_subscription_set_on_new_message_callback</span><span class=pu>(</span>
   <span class='ty'>rmw_subscription_t *</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
-  <span class='ty'>const void *</span>
+  <span class='ty del'>rmw_event_callback_t</span><span class=pu>,</span>
+  <span class='ty del'>const void *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_set_on_new_message_callback</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_subscription_t *subscription</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty'>const void *user_data</span>
+  <span class='ty add'>rmw_event_callback_reg_t cb</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>one wake callback per session</b> — Upstream installs a callback per entity. Ours is `set_wake_callback` on the session: one executor drives several backends, so the wake has to be attributable to a session rather than to whichever entity fired.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1124,7 +1120,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_take_loaned_message</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
-  <span class='ty'>void * *</span><span class=pu>,</span>
+  <span class='ty del'>void * *</span><span class=pu>,</span>
   <span class='ty'>bool *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
@@ -1133,10 +1129,10 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>const uint8_t **out_buf</span><span class=pu>,</span>
   <span class='ty add'>size_t *out_len</span><span class=pu>,</span>
-  <span class='ty'>void **out_token</span><span class=pu>,</span>
+  <span class='ty add'>rmw_loan_token_t **out_token</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone and belongs to issue 0777, not to this parameter list.</td>
+<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone and belongs to issue 0777, not to this parameter list.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

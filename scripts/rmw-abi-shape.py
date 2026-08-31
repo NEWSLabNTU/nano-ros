@@ -259,6 +259,42 @@ RET_DEVIATIONS = {
 
 # Parameter differences on slots that DO correspond to an upstream function.
 ARG_DEVIATIONS = {
+    # ---- phase-406: correlated arguments grouped into allocator-free PODs ----
+    # Each is the SAME defect as the type support: two or three arguments that
+    # are meaningless apart, where upstream passes one thing. Grouping them
+    # makes "pass one, forget the other" unrepresentable rather than merely
+    # discouraged, and costs nothing at the ABI — every one of these structs is
+    # a POD the caller builds on the stack.
+    "client_set_on_new_response_callback": (
+        "upstream passes (callback, user_data) as two parameters; ours is one "
+        "`rmw_event_callback_reg_t`. Upstream can afford the loose pair — it has an "
+        "allocator and a heap, and pays for a mismatched pair with a wild pointer at "
+        "run time. On target the same mistake is unrecoverable and undetectable, so "
+        "the pairing is made structural."
+    ),
+    "service_set_on_new_request_callback": (
+        "as client_set_on_new_response_callback — one `rmw_event_callback_reg_t`."
+    ),
+    "subscription_set_on_new_message_callback": (
+        "as client_set_on_new_response_callback — one `rmw_event_callback_reg_t`."
+    ),
+    "return_loaned_message_from_publisher": (
+        "upstream's loan handle is a bare `void *`; ours is an opaque "
+        "`rmw_loan_token_t *`. The bare pointer let a caller return a PUBLISHER's "
+        "token to a subscription, or a token from one backend to another — both "
+        "compile, and both are undefined behaviour discovered at run time on a target "
+        "with no allocator to notice. An incomplete type costs nothing at the ABI (it "
+        "is still a pointer) and makes both a compile error. Issue 0781 asked whether "
+        "these slots earn their place given nothing implements them; the answer taken "
+        "in phase-406 is KEEP AND TYPE, because a slot nobody can use SAFELY is worse "
+        "than one nobody uses."
+    ),
+    "return_loaned_message_from_subscription": (
+        "as return_loaned_message_from_publisher — opaque `rmw_loan_token_t *`."
+    ),
+    "publish_loaned_message": (
+        "as return_loaned_message_from_publisher — opaque `rmw_loan_token_t *`."
+    ),
     # Keyed by slot name. Each entry is a difference from upstream's parameter
     # list that a target constraint forces, and the reason must be about the
     # TARGET rather than about our convenience.
