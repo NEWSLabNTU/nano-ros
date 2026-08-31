@@ -261,11 +261,36 @@ the leaf's removable set. Nor are `ahash`, `hashbrown`, `serde_yaml_ng` or
 which is the third time this document has had to record that a subtree
 difference is an upper bound and not a measurement.
 
-**The bound is generous in the safe direction.** These durations come from a
-standalone `--release` build, not from the leaf's own host units, which compile
-under the build-override profile and are FASTER — the cold leaf report in the
-next section puts `nros-orchestration-ir` at 0.07 s where this one puts it at
-0.28 s, about 4x. So 3.96 s is a ceiling; the leaf figure is plausibly 1-2 s.
+**3.96 s is the number, not a ceiling — the profile objection was raised and
+then MEASURED AWAY.** The durations above come from a standalone `--release`
+build, while a leaf compiles host units under cargo's build-override defaults
+(`opt-level = 0`, `codegen-units = 256`; the workspace declares no
+`build-override`, so the documented defaults apply). That is a real difference
+and the first version of this section assumed it made 3.96 s a generous
+ceiling worth about 4x.
+
+It does not. Re-run cold with `CARGO_PROFILE_RELEASE_OPT_LEVEL=0
+CARGO_PROFILE_RELEASE_LTO=off CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256`:
+
+```
+                        O3+LTO     O0        graph total  18.3 s -> 14.1 s
+  removable set (17)     3.96 s   3.89 s     <- the lever, unchanged
+  nros-macros            3.62 s   0.48 s     <- the crate that STAYS
+```
+
+**Every crate in the removable set is within 0.02 s of itself across the two
+profiles.** They are small crates whose cost is frontend, not codegen, so
+optimisation level buys nothing. The 1.3x that the graph total does move is
+almost entirely `nros-macros` — 3.62 s to 0.48 s — and `nros-macros` is the
+crate the gate KEEPS. So the lever is ~3.9 s either way.
+
+One number is still unreconciled and is left that way rather than explained:
+the cold leaf report in the next section puts `nros-orchestration-ir` at
+0.07 s, where both runs here put it at ~0.27 s. `nros-macros` agrees across the
+two measurements (0.48 s here, 0.59 s there), so this is not a profile gap. It
+does not change the verdict — even at the leaf's figure the set is ~3.7 s — but
+it is not understood, and quoting the smaller number as if it were would be the
+optimism this phase keeps recording.
 
 **Against that, the cost is unchanged and it is not small:** split
 `nros-orchestration-ir` (the cut separates ITEMS, not files — `lib.rs` and
@@ -348,7 +373,7 @@ lever lands and nothing else changes.
 | wave | lever | exclusive | share |
 | --- | --- | --- | --- |
 | W2 | gate orchestration **and** cbindgen, together | ~~**50.4 s**~~ see below | ~~42.6 %~~ |
-| W2 | *orchestration half — DECLINED 2026-08-31 on measurement* | 3.96 s (ceiling) | 3.3 % |
+| W2 | *orchestration half — DECLINED 2026-08-31 on measurement* | 3.9 s | 3.3 % |
 | W3 | ~~`bindgen` -> committed output~~ RETRACTED | ~~20.6 s~~ 0 s | — |
 | W4 | *landed* — `just leaf-graph`: ask the build, not the workspace | (enabling) | — |
 | W1 | *landed* — unused dep removed | 1 crate | — |
@@ -1410,7 +1435,8 @@ One crate (67 -> 66): everything it brought is also reached through
 ## Directions, in measured order
 
 1. ~~**Gate the orchestration half of `nros-macros`**~~ — DECLINED 2026-08-31,
-   measured at 3.96 CPU-s (3.3 %, a ceiling). See "W2 orchestration half — the
+   measured at 3.9 CPU-s (3.3 %); the profile objection was tested and does not
+   move it. See "W2 orchestration half — the
    seconds arrived" above. It could only ever have paid WITH the cbindgen move,
    and W2a took that alone; the contested pool it would have unlocked is held
    by requirers this lever does not touch.
