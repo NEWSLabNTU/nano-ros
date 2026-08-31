@@ -89,15 +89,16 @@ board = "threadx-linux"
 kind = "embedded"
 board = "esp32-qemu"
 
-[deploy.robot1]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+# Issue 0939 — these are MACHINES, so they live in `[host.*]` now. A host says
+# WHERE a node runs; what it is built as comes from `[image.*]`. The old blocks
+# carried `target = "x86_64-unknown-linux-gnu"`, which is a build fact: the
+# per-host models are board-agnostic and each entry's own board supplies the
+# target.
+[host.robot1]
 launch = "multihost.launch.xml"
 nodes = ["/talker"]
 
-[deploy.robot2]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+[host.robot2]
 launch = "multihost.launch.xml"
 nodes = ["/listener"]
 

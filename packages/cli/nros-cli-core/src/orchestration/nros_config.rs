@@ -661,6 +661,11 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         system: system_header,
         components,
         deploy,
+        // Issue 0939 — a synthesised self-bringup declares no machines. It IS
+        // one machine by construction (the component package's own host), and
+        // placement over a single implicit host is what the empty map already
+        // means.
+        host: Default::default(),
         image: Default::default(),
         image_defaults: None,
         domains: Vec::new(),

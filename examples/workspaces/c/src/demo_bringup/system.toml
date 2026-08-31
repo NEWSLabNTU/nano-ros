@@ -108,15 +108,15 @@ board = "nuttx-qemu-arm"
 [deploy.zephyr]
 kind = "embedded"
 
-[deploy.robot1]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+# Issue 0939 — MACHINES live in `[host.*]`. A host says WHERE a node runs;
+# what it is built as comes from `[image.*]`. The old blocks carried
+# `kind`/`target`, which are build facts: per-host models are board-agnostic
+# and each entry's own board supplies the target.
+[host.robot1]
 launch = "multihost.launch.xml"
 nodes = ["/talker"]
 
-[deploy.robot2]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+[host.robot2]
 launch = "multihost.launch.xml"
 nodes = ["/listener"]
 

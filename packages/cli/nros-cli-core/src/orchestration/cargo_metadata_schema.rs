@@ -550,6 +550,19 @@ pub struct SystemToml {
     /// answers "which nodes run where". What to COMPILE lives in [`Self::image`].
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub deploy: BTreeMap<String, DeployTarget>,
+    /// `[host.<name>]` — the machines, and the only thing that partitions
+    /// nodes (issue 0939).
+    ///
+    /// The placement half of `[deploy.*]`, on its own terms. A host says WHERE
+    /// a node runs; `[image.*]` says WHAT gets built. `[deploy.*]` conflated
+    /// the two, which is why rlm's resolver had to filter `kind = "embedded"`
+    /// blocks out of placement to work at all.
+    ///
+    /// Re-exported from rlm like `DeployTarget`, so there is one definition of
+    /// the schema rather than a mirror that drifts — the lesson `DeployBlock`'s
+    /// own history records.
+    #[serde(default)]
+    pub host: BTreeMap<String, HostTarget>,
     /// `[image.<id>]` — the buildable images (RFC-0065 D6, phase-383 W1).
     ///
     /// A NEW nano-ros-owned table, not a rename of [`Self::deploy`]: that one
@@ -1126,6 +1139,9 @@ pub struct SystemComponentEntry {
 /// One schema now; `deny_unknown_fields` lives on it, so the next divergence
 /// is a parse error rather than a dropped key.
 pub use ros_launch_manifest_model::system_config::DeployBlock as DeployTarget;
+/// `[host.<name>]` — a machine (issue 0939). Re-exported for the same reason
+/// `DeployTarget` is: the schema has one definition, upstream.
+pub use ros_launch_manifest_model::system_config::HostBlock as HostTarget;
 
 pub use super::image::ImageBlock;
 

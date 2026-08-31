@@ -652,6 +652,11 @@ mod tests {
             exec_ms: exec,
             inputs: vec![],
             outputs: vec![],
+            // Undeclared, matching what `mapper_input` emits — these tests are
+            // about the deadline/budget dimensions, and a fabricated jitter or
+            // miss tolerance here would exercise a shape nano-ros never builds.
+            max_jitter_ms: None,
+            miss: None,
         }
     }
 
