@@ -45,6 +45,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh esp32 doctor "just doctor esp32"
     set +e
     fail=0
     if command -v qemu-system-riscv32 &>/dev/null \
@@ -211,6 +212,7 @@ build-logging-smoke:
 [group("full-matrix")]
 build-fixtures: build-qemu build-logging-smoke
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh esp32 build-fixtures "just build esp32"
     set -e
     # The ESP32-C3 QEMU workspace Entry (`esp32_entry`) that
     # `test_esp32_workspace_entry_e2e` consumes via
@@ -274,6 +276,7 @@ test-basic: build-qemu
 # build-then-test sequencing.
 [group("main")]
 test verbose="": build-fixtures
+    @bash scripts/dev/deprecated-scope-alias.sh esp32 test "just test esp32"
     # Delegate to the shared skip-tolerant runner: the esp32_emulator tests
     # `skip!` when the Espressif QEMU fork / espflash / riscv32 target are absent
     # (best-effort emulator), and _nextest-platform treats an all-[SKIPPED] run

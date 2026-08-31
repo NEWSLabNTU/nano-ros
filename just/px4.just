@@ -44,6 +44,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh px4 doctor "just doctor px4"
     set +e
     fail=0
     if [ -d "third-party/px4/px4-rs/crates" ]; then
@@ -242,6 +243,7 @@ build-examples: build-sitl-cpp
 [group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh px4 build-fixtures "just build px4"
     set -e
     source scripts/build/cargo.sh
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$(pwd)/third-party/px4/PX4-Autopilot}"

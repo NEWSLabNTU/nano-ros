@@ -32,6 +32,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh threadx_riscv64 doctor "just doctor threadx_riscv64"
     set +e
     fail=0
     if [ -d "$THREADX_DIR/common/inc" ]; then
@@ -170,6 +171,7 @@ build-examples:
 [group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh threadx_riscv64 build-fixtures "just build threadx_riscv64"
     set -e
     # issue 0650 — the ONE place this lane says it built its fixtures, and it
     # refuses to when a step was skipped. Before this the claim was an
@@ -420,6 +422,7 @@ build-all: build-fixtures
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh threadx_riscv64 test "just test threadx_riscv64"
     set -e
     if [ ! -d "$THREADX_DIR/common/inc" ]; then
         echo "ERROR: ThreadX not found at $THREADX_DIR. Run: just threadx-linux setup"

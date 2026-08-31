@@ -35,6 +35,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh freertos doctor "just doctor freertos"
     set +e
     fail=0
     if [ -d "$FREERTOS_DIR/include" ]; then
@@ -184,6 +185,7 @@ build-fixtures-posix:
 [group("full-matrix")]
 build-fixtures: build-examples build-fixture-extras build-fixtures-posix
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh freertos build-fixtures "just build freertos"
     set -e
     # issue 0650 — the ONE place this lane says it built its fixtures, and it
     # refuses to when a step was skipped. Before this the claim was an
@@ -308,6 +310,7 @@ build-all: build-fixtures
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh freertos test "just test freertos"
     set -e
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
