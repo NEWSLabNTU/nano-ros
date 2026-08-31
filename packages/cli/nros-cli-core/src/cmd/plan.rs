@@ -71,12 +71,22 @@ pub struct Args {
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
 
-    /// Phase 256 — select the `[image.<t>]` (or deprecated `[deploy.<t>]`) the
-    /// planner resolves per-target values against (RMW override, build tuning,
-    /// domain/locator). Omitted → `[system].default_target` → the sole
-    /// `[image.<t>]`, then the sole `[deploy.<t>]` → target-agnostic.
-    #[arg(long = "target")]
+    /// Phase 256 / issue 0951 — select the `[image.<id>]` the planner resolves
+    /// per-target values against (RMW override, build tuning, the rustc
+    /// triple). Omitted → the sole image `default_images` picks → the sole
+    /// deprecated `[deploy.<t>]` → target-agnostic.
+    ///
+    /// `--target` is kept as an ALIAS, not a second flag: it named the deploy
+    /// era's concept, and the value callers pass is now an image id.
+    #[arg(long = "image", alias = "target")]
     pub target: Option<String>,
+
+    /// nano-ros checkout holding `packages/boards`, used to derive the selected
+    /// image's rustc triple from its board descriptor. Defaults to
+    /// `NROS_REPO_DIR`, then an autodetect walk — the same ladder
+    /// `nros build` uses.
+    #[arg(long = "nano-ros-path")]
+    pub nano_ros_path: Option<std::path::PathBuf>,
 
     /// Launch arguments forwarded as name:=value or name=value
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
@@ -146,6 +156,7 @@ pub fn run(args: Args) -> Result<()> {
         let tmp = tempfile::NamedTempFile::new()?;
         std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
         let output = plan_system(PlanOptions {
+            nano_ros_path: args.nano_ros_path.clone(),
             system_pkg,
             workspace_root,
             launch_file: model_path.clone(),
@@ -194,6 +205,7 @@ pub fn run(args: Args) -> Result<()> {
         let tmp = tempfile::NamedTempFile::new()?;
         std::fs::write(tmp.path(), serde_json::to_string_pretty(&record)?)?;
         let output = plan_system(PlanOptions {
+            nano_ros_path: args.nano_ros_path.clone(),
             system_pkg,
             workspace_root,
             launch_file: launch_input_path.clone(),
@@ -234,6 +246,7 @@ pub fn run(args: Args) -> Result<()> {
     let resolved_path = launch_input_path.clone();
 
     let output = plan_system(PlanOptions {
+        nano_ros_path: args.nano_ros_path.clone(),
         system_pkg,
         workspace_root,
         launch_file: resolved_path,

@@ -2151,6 +2151,11 @@ fn generate_bridge_configs(
                 launch_args: Vec::new(),
                 rmw: None,
                 target: None,
+                // Issue 0951 — this bridge plan runs inside the user's
+                // workspace, not a nano-ros checkout, so the resolver's own
+                // ladder (NROS_REPO_DIR, then an autodetect walk) is the right
+                // answer rather than a path invented here.
+                nano_ros_path: None,
             },
         )
         .wrap_err_with(|| format!("sync: plan bridge bringup {}", pkg.name))?;
