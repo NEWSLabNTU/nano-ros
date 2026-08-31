@@ -48,7 +48,6 @@ default: tier1
 # `just ci l1` still works — see the forwarder below. The old spelling is in
 # CLAUDE.md, two workflows and ~180 doc references; phase-399's precedent is
 # that a rename keeps its forwarder.
-[group("main")]
 # The steps run in order and this lane STOPS at the first failure, which is the
 # right trade for feedback and the wrong one for coverage: everything after the
 # red step is withdrawn, and the old output did not say so. It ended
@@ -60,6 +59,7 @@ default: tier1
 # from phase-406 W1 to the end of the phase and `nros-rmw-uorb` was never
 # migrated at all, under runs that looked green enough to push on (issue 0952).
 # The lane now names what it withdrew.
+[group("main")]
 gate:
     #!/usr/bin/env bash
     set -uo pipefail
