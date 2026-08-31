@@ -496,7 +496,7 @@ void nros_zephyr_task_slot_release(pthread_t owner) {
  * its comment says a quietly-dropped scheduling attribute "must not be
  * reintroduced one layer down". It was, here. */
 int nros_zephyr_task_create_prio(pthread_t* thread, void* (*entry)(void*), void* arg,
-                                 int native_priority) {
+                                 int native_priority, const char* name) {
     int slot = nros_claim_thread_slot();
     if (slot < 0) {
         /* Say so. This used to return -1 silently, and the caller that loses
@@ -544,6 +544,19 @@ int nros_zephyr_task_create_prio(pthread_t* thread, void* (*entry)(void*), void*
         nros_free_thread_slot(slot);
         return ret;
     }
+
+    /* The name the caller asked for, applied to the kernel's own thread table.
+     *
+     * Best-effort for the same reason the priority above is: a kernel that
+     * declines the name leaves the thread anonymous, which is exactly what it
+     * was before this existed. A refusal must not turn into a spawn failure.
+     *
+     * `pthread_setname_np` self-gates on CONFIG_THREAD_NAME and returns 0 when
+     * it is off, so there is no caller-side #ifdef to keep in step. */
+    if (name != NULL) {
+        (void)pthread_setname_np(*thread, name);
+    }
+
     nros_set_thread_slot_owner(slot, *thread);
     return 0;
 }
@@ -551,7 +564,7 @@ int nros_zephyr_task_create_prio(pthread_t* thread, void* (*entry)(void*), void*
 /* The pre-issue-0852 spelling. Kept so callers that have no priority to state
  * do not have to invent one; "inherit" is what they always got. */
 int nros_zephyr_task_create(pthread_t* thread, void* (*entry)(void*), void* arg) {
-    return nros_zephyr_task_create_prio(thread, entry, arg, -1);
+    return nros_zephyr_task_create_prio(thread, entry, arg, -1, NULL);
 }
 
 #endif /* CONFIG_POSIX_API || CONFIG_PTHREAD */

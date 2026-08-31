@@ -487,7 +487,7 @@ static int nros_zephyr_native_priority(int32_t priority) {
 }
 
 int nros_zephyr_task_create_prio(pthread_t *thread, void *(*entry)(void *), void *arg,
-                                 int native_priority);
+                                 int native_priority, const char *name);
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
@@ -518,7 +518,24 @@ int8_t nros_platform_task_init(void *task, void *attr,
     int native = nros_zephyr_native_priority(a != NULL ? a->priority
                                                        : NROS_PLATFORM_PRIORITY_INHERIT);
 
-    return nros_zephyr_task_create_prio((pthread_t *) task, entry, arg, native) == 0
+    /* `name` IS honoured, for the same reason `priority` above is.
+     *
+     * This is issue 0852 one field over. The ABI defines `name` as "Task name
+     * for the kernel's own tables and crash dumps", every caller already
+     * supplies one -- `PlatformTask::spawn_with` fills `attr.name`, and the
+     * C++ tier spawn builds "nros-tier-<tier>" for it -- and the FreeRTOS port
+     * passes it straight to `xTaskCreate`. Only this port dropped it, and
+     * Zephyr is not a kernel with no name concept: CONFIG_THREAD_NAME and
+     * `k_thread_name_set` have been there all along.
+     *
+     * The cost was paid in diagnosis, not in behaviour. In a CTF capture from
+     * an FVP the nano-ros threads appear as `unknown (0x00281cc0)` and can
+     * only be told apart by stack base -- one of them holding 13.7% of the
+     * core with nothing to say what it was -- while the identical code on
+     * FreeRTOS traces as `nros_app` and `nros_tier@1`. */
+    const char *name = (a != NULL) ? a->name : NULL;
+
+    return nros_zephyr_task_create_prio((pthread_t *) task, entry, arg, native, name) == 0
                ? NROS_PLATFORM_RET_OK
                : NROS_PLATFORM_RET_NOMEM;
 }
@@ -862,7 +879,12 @@ static void nros_z_task_trampoline(void *p1, void *p2, void *p3) {
 
 int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
-    (void) attr;
+    /* Only `name` is read here. `priority` and `stack_bytes` remain unhandled
+     * on this path -- it hardcodes K_PRIO_PREEMPT(5) and
+     * NROS_ZEPHYR_TASK_STACK_SIZE -- which is a separate gap and is left
+     * alone rather than half-fixed. This path is the non-CONFIG_POSIX_API
+     * build and is not the one CI exercises. */
+    const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
     if (task == NULL || entry == NULL) return -1;
     struct nros_z_task *t = nros_platform_alloc(sizeof(struct nros_z_task));
     if (t == NULL) return -1;
@@ -876,6 +898,11 @@ int8_t nros_platform_task_init(void *task, void *attr,
     k_thread_create(&t->thread, t->stack, NROS_ZEPHYR_TASK_STACK_SIZE,
                     nros_z_task_trampoline, t, NULL, NULL,
                     K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
+    /* Best-effort, as on the POSIX path: an unnamed thread is what this did
+     * before, so a refusal must not fail the spawn. */
+    if (a != NULL && a->name != NULL) {
+        (void) k_thread_name_set(&t->thread, a->name);
+    }
     NROS_Z_HANDLE(task) = t;
     return 0;
 }
