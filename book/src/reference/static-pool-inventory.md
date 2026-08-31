@@ -62,9 +62,9 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:41` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
 | `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:259` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
-| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:482` | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:481` | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:480` | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:488` | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:487` | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:486` | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_GET_POLL_INTERVAL_MS` | 10 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_GET_REPLY_BUF_SIZE` | 4096 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_LEASE_TASK_PRIORITY` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
@@ -82,5 +82,3 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `ZPICO_SUBSCRIBER_LARGE_SIZE` | 16384 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_RING_DEPTH` | 4 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` | 2048 | `packages/rmw/zenoh/nros-rmw-zenoh` |
-| `ZPICO_TX_BATCH` | 0 | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_TX_BATCH_FLUSH_MS` | 50 | `packages/rmw/zenoh/nros-zpico-build` |

@@ -401,6 +401,50 @@ pub fn executor_env_only(knob: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
+/// The zenoh tx tenant with NO platform rung — the env front-end over the
+/// builtins, and honest about which one answered.
+///
+/// phase-400 W8. `nros-zpico-build` had its own copy of this for the case where
+/// no platform name resolves, which made three migrated knobs have two readers
+/// that could disagree — the shape `check-knob-single-reader` exists to catch,
+/// and the shape issues 0135 and 0316 both were.
+///
+/// That copy also reported `KnobSource::Env` for a value that came from a
+/// BUILTIN, so `nros config explain` would have named the wrong rung. Here the
+/// source is whichever actually answered.
+///
+/// Same role as [`executor_env_only`], and the same reasoning: a caller that
+/// cannot reach a platform tree still honours an operator's override, through
+/// one implementation rather than its own.
+#[must_use]
+pub fn tx_env_only(env: &dyn Fn(&str) -> Option<String>) -> ResolvedTxKnobs {
+    let flag =
+        |name: &str, builtin: bool| match env(name).and_then(|v| v.trim().parse::<u64>().ok()) {
+            Some(n) => Resolved {
+                value: n != 0,
+                source: KnobSource::Env,
+            },
+            None => Resolved {
+                value: builtin,
+                source: KnobSource::Builtin,
+            },
+        };
+    ResolvedTxKnobs {
+        batch: flag("ZPICO_TX_BATCH", BUILTIN_TX_BATCH),
+        split_lock: flag("ZPICO_TX_SPLIT_LOCK", BUILTIN_TX_SPLIT_LOCK),
+        flush_ms: match env("ZPICO_TX_BATCH_FLUSH_MS").and_then(|v| v.trim().parse::<u64>().ok()) {
+            Some(n) => Resolved {
+                value: n,
+                source: KnobSource::Env,
+            },
+            None => Resolved {
+                value: BUILTIN_TX_FLUSH_MS,
+                source: KnobSource::Builtin,
+            },
+        },
+    }
+}
+
 /// `[knobs.executor]` — phase-400 W6. All optional; `None` defers to the rung
 /// below, and the built-in defaults stay in `nros-node/build.rs` so an absent
 /// tree changes nothing.
