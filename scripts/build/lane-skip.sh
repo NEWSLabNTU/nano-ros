@@ -31,7 +31,7 @@ if ! command -v nros_build_dir >/dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# Named vs included — phase-407 W2
+# Named vs included — phase-411 W2
 #
 # Everything above is intact and stays: SKIPPED is still a third verdict, and
 # `nros_lane_skip` still exits 78 for a lane whose prerequisite is absent. What
@@ -49,7 +49,7 @@ fi
 #                                          the answer to what was asked, and
 #                                          exiting 78 makes the run green.
 #
-# The rule (phase-407): **named must work; unnamed may skip, and is reported.**
+# The rule (phase-411): **named must work; unnamed may skip, and is reported.**
 # Naming IS the specification, so no second declaration is kept in step with it.
 #
 # THE SIGNAL, AND WHY ITS DEFAULT POINTS THIS WAY
@@ -127,7 +127,7 @@ _nros_lane_named_fail() {
     echo "error: you named \`${lane}\`, so this is a FAILURE, not a skip." >&2
     echo "  ${reason}" >&2
     echo "" >&2
-    echo "  Naming a platform IS the specification (phase-407). The same platform" >&2
+    echo "  Naming a platform IS the specification (phase-411). The same platform" >&2
     echo "  reached by a preset or the broad default — \`just build-test-fixtures" >&2
     echo "  lane=<lane>\` — would SKIP here and say so in the summary." >&2
     exit "${NROS_LANE_NAMED_RC}"
@@ -141,7 +141,7 @@ _nros_lane_named_fail() {
 # summary. Keep the reason short and name the remedy — it is what the operator
 # sees instead of "OK".
 #
-# phase-407 W2: when the recipe declared `nros_lane_platform` and its platform was
+# phase-411 W2: when the recipe declared `nros_lane_platform` and its platform was
 # NAMED, this is a failure instead.
 nros_lane_skip() {
     local reason="$*"
@@ -220,7 +220,7 @@ nros_lane_skip_reset() {
 # nros_lane_skip_note <lane> <reason…>
 #
 # A STEP of <lane> cannot run because a PREREQUISITE is missing. Its lane
-# argument is already the named/included question's subject, so phase-407 W2
+# argument is already the named/included question's subject, so phase-411 W2
 # needed no edit at any of its call sites: when <lane> was NAMED, a missing
 # prerequisite is a failure and this does not return.
 nros_lane_skip_note() {
@@ -268,7 +268,7 @@ nros_lane_out_of_scope_note() {
 # minutes later from a missing artifact (0599's lesson, which is why the reasons
 # are repeated in full).
 #
-# phase-407 W2 leaves this unchanged, and that is the correct outcome rather than
+# phase-411 W2 leaves this unchanged, and that is the correct outcome rather than
 # an omission: under a NAMED platform a PREREQUISITE note never reaches the
 # ledger (it failed at the step), so anything the flush finds here got in through
 # `nros_lane_out_of_scope_note` — a lane narrowing, which is reportable and not a

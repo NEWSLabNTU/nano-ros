@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""phase-407 W2 — a platform you NAMED may not skip its way to green.
+"""phase-411 W2 — a platform you NAMED may not skip its way to green.
 
 # What came before, and is not being undone
 
@@ -181,7 +181,7 @@ def audit_file(rel, text):
                 name,
                 "uses the whole-recipe `nros_lane_skip` in a platform module but "
                 "declares no `nros_lane_platform <lane>` — a NAMED platform would "
-                "still skip here (phase-407 W2)",
+                "still skip here (phase-411 W2)",
             )
         )
     return bad
@@ -361,7 +361,7 @@ def self_test():
         sys.stderr.write(
             "\ncheck-named-lane-fails: the gate's OWN selftest failed — the "
             "protocol in scripts/build/lane-skip.sh no longer behaves as "
-            "phase-407 W2 specifies.\n"
+            "phase-411 W2 specifies.\n"
         )
         sys.exit(2)
 
@@ -402,7 +402,7 @@ def main():
             sys.stderr.write(f"  {rel}: recipe `{name}`:\n      {why}\n\n")
         sys.stderr.write(
             "  Named -> must work. Unnamed -> may skip, and is reported "
-            "(phase-407 W2).\n"
+            "(phase-411 W2).\n"
             "    nros_lane_platform <lane>       this recipe IS that platform lane\n"
             "    nros_lane_skip_note <lane>   a STEP's prerequisite is missing\n"
             "    nros_lane_out_of_scope_note <lane>  this run's LANE selected no such\n"

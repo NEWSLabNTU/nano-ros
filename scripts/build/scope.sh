@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The SCOPE vocabulary — phase-407 W3.
+# The SCOPE vocabulary — phase-411 W3.
 #
 # Sourced, not executed. One namespace for the thing every verb takes in its
 # first argument position:
@@ -222,7 +222,7 @@ nros_scope_expand() {
 
 # Reject the whole argument list before ANY of it runs. A typo in the third
 # token must not be discovered after the first two have built for ten minutes,
-# which is the same "fail at the point of decision" phase-407 asks of an
+# which is the same "fail at the point of decision" phase-411 asks of an
 # unprovisioned platform.
 nros_scope_validate_all() {
     local tok rc=0
@@ -278,7 +278,7 @@ nros_scope_require_module_verb() {
 # The dispatch layer is the one part of this surface whose whole job is to
 # choose a command, so "which command does `just build tier2` become?" must be
 # answerable without paying for the command. It is also how a CI author reads
-# the mapping (phase-407 W4) and how this layer gets verified at all: the
+# the mapping (phase-411 W4) and how this layer gets verified at all: the
 # alternative is starting a multi-hour fixture build to watch the first line.
 nros_scope_exec() {
     if [ "${NROS_SCOPE_EXPLAIN:-0}" != "0" ]; then
@@ -323,7 +323,7 @@ nros_scope_provisioned() {
     done
 }
 
-# The coverage line every scoped verb prints — phase-407's acceptance item
+# The coverage line every scoped verb prints — phase-411's acceptance item
 # "scope, what ran, what did not, and how to provision the rest".
 #
 # `<verb>` only shapes the wording. With no scope tokens it PROBES and reports

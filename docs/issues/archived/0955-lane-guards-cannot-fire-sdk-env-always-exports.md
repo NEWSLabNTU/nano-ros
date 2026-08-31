@@ -5,7 +5,7 @@ status: resolved
 area: build
 severity: medium
 found: 2026-08-31
-related: [0599, 0650, phase-407]
+related: [0599, 0650, phase-411]
 ---
 
 # A guard predicate that cannot be true
@@ -44,7 +44,7 @@ build failure with a cmake-level message instead of
 
 That is the opposite of this repo's usual skip defect and worth stating plainly:
 these do not launder a failure into a pass, they turn an intended skip into a
-confusing red. phase-407 W2 (a NAMED platform must fail) does not fix it —
+confusing red. phase-411 W2 (a NAMED platform must fail) does not fix it —
 under W2 the failure is now *correct* when the platform was named, and still
 wrong when it was merely included.
 
@@ -75,7 +75,7 @@ the variable — and ideally through ONE helper rather than a third spelling.
 4. Verify on a host where the SDK is genuinely absent — env overrides exercise
    the code path but not the real condition.
 
-Found while implementing phase-407 W2, which is also why it is filed rather than
+Found while implementing phase-411 W2, which is also why it is filed rather than
 folded in: changing which lanes skip versus fail is exactly what W2 was
 scoped to do deliberately and narrowly, and this changes it for a different
 reason.

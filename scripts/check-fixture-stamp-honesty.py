@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A fixture stamp may not claim what the build did not achieve — phase-407 W1.
+"""A fixture stamp may not claim what the build did not achieve — phase-411 W1.
 
 THE DEFECT
 

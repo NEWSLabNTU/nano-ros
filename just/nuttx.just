@@ -83,7 +83,7 @@ build-integration-app:
 build-examples:
     #!/usr/bin/env bash
     set -e
-    # phase-407 W2 — this `source` was MISSING, and the gate that found it is
+    # phase-411 W2 — this `source` was MISSING, and the gate that found it is
     # `check-named-lane-fails`. The skip below therefore never ran: on a host
     # without NuttX the recipe died at `nros_lane_skip_note: command not found`
     # (rc 127, under `set -e`), naming nothing and reaching neither the ledger
@@ -334,7 +334,7 @@ build-fixtures-arm-smp:
     # the nuttx lane runs. That is the honest price of one shared tree and it is
     # bounded; the alternative is a row-level lane predicate, which does not
     # exist and should not be invented for one fixture.
-    # phase-407 W2 — `nros_lane_out_of_scope_note`, not `nros_lane_skip_note`: nothing
+    # phase-411 W2 — `nros_lane_out_of_scope_note`, not `nros_lane_skip_note`: nothing
     # is missing here. The run's LANE selected no nuttx coordinate, and naming
     # the platform cannot change that, so this stays a skip in both directions.
     if ! nros_lane_wants_platform nuttx; then
@@ -358,12 +358,12 @@ build-fixtures-arm-smp:
 build-fixtures-riscv:
     #!/usr/bin/env bash
     set -e
-    # phase-407 W2 — as in `build-examples`: this `source` was missing, so the
+    # phase-411 W2 — as in `build-examples`: this `source` was missing, so the
     # narrowing note below was `command not found` rather than a note.
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     source scripts/build/fixture-lane.sh
-    # phase-407 W2 — a lane narrowing, not a missing prerequisite; see
+    # phase-411 W2 — a lane narrowing, not a missing prerequisite; see
     # `build-fixtures-arm-smp` above and `nros_lane_out_of_scope_note`'s comment.
     if ! nros_lane_wants_platform nuttx-riscv; then
         nros_lane_out_of_scope_note nuttx "NuttX riscv: no nuttx-riscv coordinate in this run's lane — skipping"

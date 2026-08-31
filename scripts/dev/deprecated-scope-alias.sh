@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The `just <platform> <verb>` deprecation notice — phase-407 W3.
+# The `just <platform> <verb>` deprecation notice — phase-411 W3.
 #
 # The module recipes STAY: they are the implementation `just <verb> <scope>`
 # dispatches to, and deleting them would delete the work. What is deprecated is
@@ -78,5 +78,5 @@ case " $argv " in
     *) exit 0 ;;
 esac
 
-echo "note: \`just $module $verb\` is deprecated — use \`$replacement\` (phase-407; the module recipe stays as the implementation)." >&2
+echo "note: \`just $module $verb\` is deprecated — use \`$replacement\` (phase-411; the module recipe stays as the implementation)." >&2
 exit 0

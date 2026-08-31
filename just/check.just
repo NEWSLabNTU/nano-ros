@@ -1379,7 +1379,7 @@ cpp-ffi-error-mapping:
 # Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
 # Every tier RFC-0061 declares must be RUN by some workflow. Two of four were
 # invoked by nothing at all, and a tier nobody runs cannot go red to say so
-# (phase-407).
+# (phase-411).
 [private]
 tier-has-ci-owner:
     @python3 scripts/check-tier-has-ci-owner.py
@@ -1393,7 +1393,7 @@ sdk-guard-can-fire:
 
 # CI may not set NROS_FIXTURES_OPTIONAL. A lane names its scope, so a missing
 # fixture INSIDE that scope is a failure; the flag turned it into a skip and made
-# correctness depend on remembering to unset a variable (phase-407 W4). The
+# correctness depend on remembering to unset a variable (phase-411 W4). The
 # reader survives as a local opt-in — the rule is about WHERE it is set.
 [private]
 ci-no-fixture-tolerance:
@@ -1402,7 +1402,7 @@ ci-no-fixture-tolerance:
 # A fixture stamp may not claim what the build did not achieve. The stamp used
 # to record the lane's NOMINAL coordinates, so a module that skipped a missing
 # prerequisite still read as covered and the run skipped its tests to a green
-# sweep (phase-407 W1).
+# sweep (phase-411 W1).
 [private]
 fixture-stamp-honesty:
     @python3 scripts/check-fixture-stamp-honesty.py
@@ -3136,7 +3136,7 @@ fixture-binary-names:
 manifests-parse:
     @python3 scripts/check-manifests-parse.py
 
-# phase-407 W3 — `just <verb> <scope>` puts platform names and preset names in
+# phase-411 W3 — `just <verb> <scope>` puts platform names and preset names in
 # ONE argument position, so a name may not mean two things. `native` is both a
 # platform module and a fixture lane, which is legal only while they denote the
 # same scope; nothing checked that, and a preset that quietly means something
@@ -3155,7 +3155,7 @@ scope-namespace:
 lane-skip-protocol:
     @python3 scripts/check-lane-skip-protocol.py
 
-# phase-407 W2 — 0599/0650 gave a lane the SKIPPED verdict; this says WHO MAY
+# phase-411 W2 — 0599/0650 gave a lane the SKIPPED verdict; this says WHO MAY
 # HAVE IT. A platform reached by a preset or the broad default may skip and is
 # reported; a platform the operator NAMED (`just zephyr build-fixtures`) must
 # work, because naming it is the whole specification. Runs the protocol both

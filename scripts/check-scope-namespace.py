@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One namespace for `just <verb> <scope>` — phase-407 W3.
+"""One namespace for `just <verb> <scope>` — phase-411 W3.
 
 Scope is the specification: `just test zephyr`, `just build tier2`,
 `just doctor native`. Platform names and preset names share ONE argument
@@ -13,7 +13,7 @@ legal only because they denote the SAME scope: the `native` lane is every row
 of the `native` module. Nothing enforced it. A preset added tomorrow that
 happens to share a platform's name — or a lane whose module set quietly grows
 past the platform it is named after — would silently re-scope somebody's run,
-and the failure mode is the one phase-407 exists to remove: a run that reports
+and the failure mode is the one phase-411 exists to remove: a run that reports
 success for coverage it did not have.
 
 Three things are checked, all buildlessly (this is on the fast line):

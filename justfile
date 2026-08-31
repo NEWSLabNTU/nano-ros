@@ -149,7 +149,7 @@ default:
         "    just ci matrix             tier 2 — 1-wise platform cover" \
         "    just ci full               tier 3 — the whole matrix" \
         "" \
-        "  A SCOPE  (phase-407 — one word, one position, every verb)" \
+        "  A SCOPE  (phase-411 — one word, one position, every verb)" \
         "    just setup  <scope>        provision it" \
         "    just doctor <scope>        is it ready? (no scope: probe them all)" \
         "    just build  <scope>        build its test fixtures" \
@@ -214,7 +214,7 @@ list-all:
 # is the only supported C/C++ consumption shape. CMake-driven crates
 # build in-tree via Corrosion when an example invokes them.
 #
-# phase-407 W3 — `just build [<scope>…]`. A scope in the first argument
+# phase-411 W3 — `just build [<scope>…]`. A scope in the first argument
 # position, the same word `setup`, `doctor` and `test` take:
 #
 #   just build tier2       the tier-2 fixture cover (was: build-test-fixtures lane=tier2)
@@ -1186,7 +1186,7 @@ test-zpico-multisession verbose="":
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
 #
-# phase-407 W3 — `just test [<scope>…]`, one vocabulary in one position:
+# phase-411 W3 — `just test [<scope>…]`, one vocabulary in one position:
 #
 #   just test              this host, best effort: what is provisioned runs,
 #                          what is not SKIPS — and the scope line says which
@@ -1194,7 +1194,7 @@ test-zpico-multisession verbose="":
 #   just test tier2        the lane's run, narrowed to the lane's coordinates
 #
 # The first positional used to be `verbose`, so `just test 1` no longer means
-# what it did — the incompatibility phase-407 accepts. `verbose` / `-v` /
+# what it did — the incompatibility phase-411 accepts. `verbose` / `-v` /
 # `--verbose` are still recognised, as FLAGS anywhere in the argument list, so
 # the spelling people actually type keeps working.
 #
@@ -1222,7 +1222,7 @@ test *scope:
         exit "$rc"
     fi
     # The DEFAULT scope: derived by probing, reported before anything runs.
-    # phase-407's "best-effort" meaning lives here and nowhere else — a NAMED
+    # phase-411's "best-effort" meaning lives here and nowhere else — a NAMED
     # platform must work (W2), an unnamed one may skip and is always reported.
     nros_scope_report test
     echo ""
@@ -1233,7 +1233,7 @@ test *scope:
     # `|| exit` is load-bearing: this body has no `set -e` (the nextest tallying
     # below manages its own exit codes), and a dependency that used to ABORT the
     # recipe must not degrade into a warning the run continues past. That would
-    # be exactly the defect phase-407 is about — a preflight that reports and is
+    # be exactly the defect phase-411 is about — a preflight that reports and is
     # then ignored.
     just _require-build-sources _require-fixtures-ready test-zpico-multisession || exit 1
     # issue 0923 — sweep BEFORE nextest, for the same reason `test-all` does
@@ -1543,7 +1543,7 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
         # the module is filtered OUT (a false compound command is a failure), so
         # the skip is an explicit `if`.
         #
-        # phase-407 W2 — `NROS_LANE_INCLUDED` is what makes a skip legitimate
+        # phase-411 W2 — `NROS_LANE_INCLUDED` is what makes a skip legitimate
         # here: the operator asked for a LANE, not for these platforms by name,
         # so an unprovisioned one is reported (78 -> SKIPPED) rather than failed.
         # It is set per stage rather than exported once, so it names the platform
@@ -1672,7 +1672,7 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
             # until `_lane-gate` failed on artifacts twenty minutes later. The
             # reason comes back through the lane log's `NROS_LANE_SKIP:` marker.
             #
-            # phase-407 W2 — `NROS_LANE_INCLUDED=<platform>` is what ENTITLES
+            # phase-411 W2 — `NROS_LANE_INCLUDED=<platform>` is what ENTITLES
             # this stage to that third verdict. These platforms were selected by
             # a lane, not typed by the operator, so an absent SDK is reported and
             # not failed. A direct `just <plat> build-fixtures` leaves the
@@ -3631,7 +3631,7 @@ setup target="" tier="":
           "  just setup <scope>           # focused setup, e.g. zephyr, freertos, nuttx" \
           "  just setup all               # full contributor/test-all setup; fetches all SDKs" \
           "" \
-          "SCOPE is one word in one position, for every verb (phase-407):" \
+          "SCOPE is one word in one position, for every verb (phase-411):" \
           "" \
           "  just setup zephyr            # provision it" \
           "  just doctor zephyr           # is it ready?" \
@@ -3673,7 +3673,7 @@ setup target="" tier="":
             base|quickstart|minimal|default|all|everything|contributor|extended)
                 chosen_tier="$target"
                 ;;
-            # phase-407 W3 — the platform arm is now the SCOPE predicate, not a
+            # phase-411 W3 — the platform arm is now the SCOPE predicate, not a
             # second hand-written list of platform names. The list had already
             # drifted (`native` was missing, `rmw_zenoh` names no module), and a
             # scope that resolves for `doctor`/`build`/`test` and silently falls
@@ -3697,7 +3697,7 @@ setup target="" tier="":
                     just setup-cli
                     exec just "$target" setup
                 fi
-                # phase-407 W4 — a PRESET provisions the set it names.
+                # phase-411 W4 — a PRESET provisions the set it names.
                 #
                 # The menu above has advertised "Preset scopes … all native
                 # tier1 tier2 tier2-nightly" since W3, while the dispatch fell
@@ -3772,7 +3772,7 @@ setup-platform platform:
 
 # Diagnose install status (read-only) — `just doctor [<scope>…]`.
 #
-# phase-407 W3. The scope is the SPECIFICATION, in the same argument position
+# phase-411 W3. The scope is the SPECIFICATION, in the same argument position
 # every other verb takes it:
 #
 #   just doctor              this host: the shared tooling, then a PROBE of
@@ -3867,7 +3867,7 @@ _doctor-scope tok:
     nros_scope_reject "$tok"
 
 # The host's shared tooling — the CLI, python, clang-format, sccache, the ROS
-# router. Extracted from `doctor` by phase-407 W3 so `just doctor native` and
+# router. Extracted from `doctor` by phase-411 W3 so `just doctor native` and
 # the default scope reach the SAME block rather than a second copy of it.
 [private]
 _doctor-host:

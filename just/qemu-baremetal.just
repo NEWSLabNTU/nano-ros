@@ -179,7 +179,7 @@ build-fixtures:
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     source scripts/build/lane-skip.sh   # issue 0599 — SKIPPED, not OK
-    nros_lane_platform qemu                # phase-407 W2 — named `qemu` must work
+    nros_lane_platform qemu                # phase-411 W2 — named `qemu` must work
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         nros_lane_skip "arm-none-eabi-gcc not found — install the ARM bare-metal toolchain"
     fi

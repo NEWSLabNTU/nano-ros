@@ -50,7 +50,7 @@ jobs:
       # A lane answers two questions with different answers: which fixtures must
       # be FRESH (its cell cover) and which must EXIST (a property of the run).
       # `lane=tier2` is the build tier 2's run requires — see #482 / phase-340 W3.
-      # phase-407 W4 — a CI job is `just setup <scope>` then `just test <scope>`.
+      # phase-411 W4 — a CI job is `just setup <scope>` then `just test <scope>`.
       # Only the SCOPE differs between lanes, so this file reads as a transcript
       # of a user session and "does CI do what I do?" is answerable by looking.
       #
@@ -62,7 +62,7 @@ jobs:
         run: |
           source ./activate.sh
           just setup tier2
-      # `just ci matrix`, NOT `just test tier2`. phase-407 W4 briefly used the
+      # `just ci matrix`, NOT `just test tier2`. phase-411 W4 briefly used the
       # latter and that was a COVERAGE REGRESSION caught by
       # check-tier-has-ci-owner: the tier recipe is `_lane-gate` + `check` +
       # `rust-rtos-link-check` + `test-all`, and `just test tier2` is only the

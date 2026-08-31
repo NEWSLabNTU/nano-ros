@@ -265,7 +265,7 @@ jobs:
                  exit 1; }
           echo "after workspace ($(wc -l < build/ci-logs/workspace.log) lines suppressed):"; df -h / | tail -1
 
-      # phase-407 — run the TIER, not a hand-rolled approximation of it.
+      # phase-411 — run the TIER, not a hand-rolled approximation of it.
       #
       # This lane built `native build-fixture-rust-core` + `build-workspace-
       # fixtures` and then `just test-integration`, which is roughly tier 1 —
