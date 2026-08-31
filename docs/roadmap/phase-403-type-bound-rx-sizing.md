@@ -1163,24 +1163,121 @@ confident wrong number this campaign keeps removing.
 The two are NOT equally blocked, and the difference is worth stating because it
 sets the order.
 
-### Step 1 -- payload classes. Ready; no new input.
+### Step 1 LANDED 2026-09-01 -- the payload classes are derived over the JOIN
 
-A payload class is about ONE sample's size, so it needs only "which types are
-RECEIVED" times "their bound". W9 supplies the first by filtering its entity
-list to the receiving kinds; W6/W8 supply the second. Nothing else is required.
+A payload class is about ONE sample's size, so it needs "which types are
+RECEIVED" times "their bound". W9 supplies the first; W6/W8 supply the second.
+`nros_derive_message_bound_knobs()` now takes an `ENTITY_INVENTORY` argument
+and `nros_find_interfaces()` passes W9's fragment, so the three payload-class
+knobs derive over the image's SUBSCRIPTIONS.
 
-The payoff is already measured on the island entry:
+**Measured on the reference island** -- the mr-canhubk344 entry, over the 84
+bounded types in the 11 `nros_message_bounds.cmake` fragments its own board
+configure wrote, joined against an entity declaration built from the island's
+published `docs/topic-contract.md`. Priced in `.bss` at that image's own
+`MAX_SUBSCRIBERS = 12` and `RING_DEPTH = 4`:
 
-| basis | SMALL | LARGE | total |
-| --- | ---: | ---: | ---: |
-| hand-set today | 49152 | 20480 | 69632 |
-| derived over the LINKED closure | 71808 | 0 | 71808 |
-| derived over the SUBSCRIBED set | 42240 | 0 | 42240 |
+| basis | small class | SMALL | LARGE | total |
+| --- | ---: | ---: | ---: | ---: |
+| hand-set today | 1024 | 49152 | 20480 | 69632 |
+| derived over the LINKED closure | 1496 | 71808 | 0 | 71808 |
+| derived over the SUBSCRIBED set | **880** | **42240** | 0 | **42240** |
 
-W8 derives the middle row, which COSTS 2176 bytes: one
-`std_msgs/Float64MultiArray`, linked and never received, sets the small class
-for every subscription in the image. The join is exactly the difference between
-that row and the last one -- 27392 bytes.
+**Which type sets the small class, before and after.** Before:
+`std_msgs/msg/Float64MultiArray` at 1496 B, which the island links and never
+receives. After: `nav_msgs/msg/Odometry` at 880 B, the largest of the ten
+topics the contract says it subscribes to. That is the whole finding, and it is
+worth 29,568 B against the middle row and 27,392 B against the hand-set one.
+
+Residual, stated: W9's declaration for this image reads `sub*7` on
+`mrm_handler` and the published topic contract names six of those seven, so the
+measurement above is over TEN subscriptions and not eleven. A missing
+subscription can only ADD a type, never remove one, so the answer can only move
+UP -- and only if that seventh type exceeds 880 B, which no type in the
+island's own closure does except the four `std_msgs` multi-arrays it links from
+`geometry_msgs`. Not measured on hardware; the board is the owner's.
+
+**Which kinds count as RECEIVING, and why it is two predicates.**
+`EntityKind::receives()` is the semantic set, read off the arena entry types
+rather than off the names, which mislead in both directions: a service SERVER
+receives requests (`SrvRawEntry` carries a `req_buffer`), a service CLIENT
+receives replies (`ServiceClientRawArenaEntry<REPLY_BUF>`), and an action
+server and an action client EACH carry three receive buffers
+(`GOAL_BUF`/`RESULT_BUF`/`FEEDBACK_BUF`). A publisher is not in it: it
+serialises into a per-call stack array, which is a transmit buffer.
+
+`EntityKind::receives_topic_sample()` is narrower -- subscriptions only -- and
+it is what the payload classes join on. That is MEASURED, not assumed: the
+pools `SMALL_PAYLOADS`/`LARGE_PAYLOADS` are reached through exactly one
+allocation, `alloc_payload_block(rx_buffer_hint)`, with exactly one caller, the
+`declare_subscriber` path. Including the other receiving kinds would not make
+the number safer; it would make it describe a pool those entities never
+allocate from. Both sets are published, because the arena (step 3) needs the
+wider one and a second derivation of it is how two green tools come to
+disagree.
+
+**The take buffer deliberately does NOT join.**
+`NROS_SUBSCRIPTION_BUFFER_SIZE` is not subscription-only whatever its name
+says: `nros-node/build.rs` turns it into `DEFAULT_RX_BUF_SIZE`, the default
+const generic for `RawSubscription`, `RawServiceServer`, `RawServiceClient`,
+`ActionServerCore` and `ActionClientCore`, and `executor/types.rs` then defines
+`DEFAULT_TX_BUF = DEFAULT_RX_BUF_SIZE`. A type this image only PUBLISHES still
+has to fit. Narrowing it to the subscribed set would size a buffer too small,
+which is the failure this campaign exists to remove, so it keeps the closure
+basis. `NROS_MESSAGE_BOUNDS_BASIS` records which set each number used.
+
+**The type-name spellings DO join, for messages, and cannot for anything
+else.** W9 records `pkg/msg/Name`, which is exactly what
+`TypeBoundEntry::type_name` is keyed on, so a subscription joins by string
+equality with no normalisation. Services and actions do NOT join and the
+reason is structural rather than a spelling problem:
+`BoundInventory::record_message` is called for `.msg` files and for nothing
+else in all four producers, so no `pkg/srv/Name_Request` and no
+`pkg/action/Name_Result` has an entry to join against, however well-formed the
+declaration is. That is why the join REFUSES on an unpriced type and names it,
+and why the refusal message says which of the two causes is likelier. Pricing
+the service and action sub-messages is its own work; nothing in step 1 needs
+them, because none of those entities allocates from the payload pools.
+
+**Refusal, and the one case that is not one.** With the entity fragment's own
+status `derived`, the payload classes are derived from the declaration or not
+at all: a subscribed set that did not resolve (a component declared no
+`ENTITIES`, or a subscription states no type), or a named type the bound
+inventory cannot price, REFUSES all three knobs and each keeps its configured
+value. No fall-back to the closure -- that publishes the middle row of the
+table above while every status still reads `derived`.
+
+The case that is NOT a refusal is the image that declared NOTHING: no fragment,
+or a fragment whose own status is `refused`. That is every image built before
+W9, and it keeps W8's closure answer byte for byte with
+`NROS_MESSAGE_BOUNDS_BASIS = closure`, a status line saying so, and a paragraph
+in the generated file saying what a declaration would buy. Refusing there would
+take those images from a derived over-approximation back to the hand-set
+numbers W8 exists to replace, which is a regression and not a safety property.
+A fragment from a STALE CLI is the same case with a warning, and deliberately
+not a `FATAL_ERROR`: the fragment's producer (`nano_ros_entry()`) runs LATER in
+the same configure than the reader does, so a fatal would abort before the
+stale fragment could ever be rewritten.
+
+**Schema.** `ENTITY_INVENTORY_SCHEMA_VERSION` 1 -> 2. Nothing moved; the
+fragment gained `NROS_ENTITY_SUBSCRIBED_TYPES` / `NROS_ENTITY_RECEIVED_TYPES`,
+each with its own status, and it still bumps -- a reader that took their
+absence for "this image receives nothing" would derive a payload class over an
+EMPTY set. Absence has to be distinguishable from zero here for the same reason
+`ENTITIES NONE` exists.
+
+**Ordering, same lag as W8's.** The entity fragment is composed by
+`nano_ros_entry()`, which runs later in a configure than `nros_find_interfaces()`
+does, so the fragment read is the one the PREVIOUS configure wrote. Closed the
+same way: `CMAKE_CONFIGURE_DEPENDS` on the fragment plus a write-if-changed
+producer, so ninja re-runs cmake by itself. An image whose declaration has just
+changed builds once at its old payload classes and again at the derived ones,
+never silently -- the status line names the basis.
+
+Gates: `just check message-bound-knobs` (80 assertions, up from 38 -- cases L,
+M and N are the join, its refusals and the back-compat), `just check
+entity-inventory-knobs` (27, up from 24) and 26 unit tests in
+`nros_cli_core::entity_inventory`.
 
 ### Step 2 -- QoS depth in the declaration. Blocks the arena.
 

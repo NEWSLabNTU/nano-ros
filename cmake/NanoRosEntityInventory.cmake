@@ -38,14 +38,24 @@
 #   DERIVABLE HERE:
 #     NROS_EXECUTOR_MAX_CBS      the executor's callback-entry slot demand
 #
+#   SUPPLIED HERE, derived NEXT DOOR (phase-403 step 1):
+#     the zenoh payload classes  `NROS_ENTITY_SUBSCRIBED_TYPES` is the JOIN KEY
+#                                `nros_derive_message_bound_knobs` reads through
+#                                its `ENTITY_INVENTORY` argument. This module
+#                                says WHICH types are received; that one prices
+#                                them. Neither half derives a class alone.
+#     the arena                  `NROS_ENTITY_RECEIVED_TYPES` is the wider set
+#                                it needs -- a service server, a service client
+#                                and both action roles all carry receive
+#                                buffers that no payload class covers.
+#
 #   NOT YET, and deliberately left alone:
-#     NROS_EXECUTOR_ARENA_SIZE   needs the slot count TIMES the per-entity
-#                                receive-buffer cost, which is the bound
-#                                inventory joined to this one PER SUBSCRIPTION.
-#                                The join is what phase-403 W5 wants; a total
-#                                derived from only one half would be the
-#                                confident wrong number this campaign removes.
-#     the zenoh payload classes  same join, narrowed to the SUBSCRIBED types.
+#     NROS_EXECUTOR_ARENA_SIZE   the type set above is necessary and not
+#                                sufficient: the per-subscription cost is
+#                                `(depth + 1) * bound + (depth + 1) * 8`, and an
+#                                entity record carries no QoS DEPTH. Defaulting
+#                                it is wrong by up to 10x in either direction,
+#                                so depth must be declared first (step 2).
 #
 # =============================================================================
 # A PUBLISHER CLAIMS NO SLOT
@@ -130,7 +140,14 @@ include_guard(GLOBAL)
 # `NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED` gives at length: this file is reachable
 # from inside a function frame, and with `include_guard(GLOBAL)` a file-scope
 # `set()` that lands in such a frame is gone when it pops and never comes back.
-set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 1 CACHE INTERNAL
+#
+# **2** (phase-403 step 1) added the join key -- `NROS_ENTITY_SUBSCRIBED_TYPES`
+# and `NROS_ENTITY_RECEIVED_TYPES`, each with its own status. Nothing MOVED, and
+# it still bumps: a version-1 fragment carries neither, and a reader that took
+# their absence for "this image receives nothing" would derive a payload class
+# over an EMPTY set. Absence has to be distinguishable from zero here for the
+# same reason `ENTITIES NONE` exists.
+set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 2 CACHE INTERNAL
     "phase-403 W9: the nros_entity_inventory fragment schema this tree reads")
 
 # nros_entity_inventory_knobs_file(<out_var>)
@@ -280,7 +297,8 @@ function(nros_derive_entity_inventory_knobs)
         message(FATAL_ERROR
             "nros: ${_output} sets no NROS_ENTITY_INVENTORY_SCHEMA_VERSION.\n"
             "  Either it is not an entity-inventory fragment, or it predates the "
-            "schema. Rebuild the `nros` CLI (`just setup-cli`).")
+            "schema. Rebuild the `nros` CLI: `./scripts/bootstrap.sh` "
+            "(contributors: `just setup-cli`).")
     endif()
     if(NOT NROS_ENTITY_INVENTORY_SCHEMA_VERSION EQUAL
        NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED)
@@ -290,7 +308,8 @@ function(nros_derive_entity_inventory_knobs)
             "${NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED}.\n"
             "  Refusing rather than reading fields that may have moved.\n"
             "  Rebuild the `nros` CLI so the producer and the reader come from "
-            "one tree: `just setup-cli`.")
+            "one tree: `./scripts/bootstrap.sh` (contributors: "
+            "`just setup-cli`).")
     endif()
 
     # Republish everything the fragment set. `include()` inside a function keeps
@@ -313,6 +332,19 @@ function(nros_derive_entity_inventory_knobs)
             _nros_entity_publish(NROS_ENTITY_COUNT_${_kind}
                 "${NROS_ENTITY_COUNT_${_kind}}")
         endif()
+    endforeach()
+    # phase-403 step 1 -- the JOIN KEY. `nros_derive_message_bound_knobs`
+    # includes the fragment itself rather than reading these, so republishing
+    # them buys a caller that wants to inspect the set, not the join. Both views
+    # travel: SUBSCRIBED is the payload-class population, RECEIVED is the wider
+    # set the arena needs.
+    foreach(_view SUBSCRIBED RECEIVED)
+        foreach(_field TYPES_STATUS TYPES_REASON TYPES TYPE_COUNTS ENTITY_COUNT)
+            if(DEFINED NROS_ENTITY_${_view}_${_field})
+                _nros_entity_publish(NROS_ENTITY_${_view}_${_field}
+                    "${NROS_ENTITY_${_view}_${_field}}")
+            endif()
+        endforeach()
     endforeach()
 
     if(_E_QUIET)
@@ -377,7 +409,15 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_COUNT_SERVICE_CLIENT
         NROS_ENTITY_COUNT_ACTION_SERVER
         NROS_ENTITY_COUNT_ACTION_CLIENT
-        NROS_ENTITY_COUNT_GUARD_CONDITION)
+        NROS_ENTITY_COUNT_GUARD_CONDITION
+        NROS_ENTITY_SUBSCRIBED_TYPES_STATUS
+        NROS_ENTITY_SUBSCRIBED_TYPES
+        NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS
+        NROS_ENTITY_SUBSCRIBED_ENTITY_COUNT
+        NROS_ENTITY_RECEIVED_TYPES_STATUS
+        NROS_ENTITY_RECEIVED_TYPES
+        NROS_ENTITY_RECEIVED_TYPE_COUNTS
+        NROS_ENTITY_RECEIVED_ENTITY_COUNT)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()

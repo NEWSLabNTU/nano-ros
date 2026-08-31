@@ -52,6 +52,12 @@
 #      the whole point: "you have not declared" and "what you declared is
 #      wrong" license different actions.
 #
+#   A2. The JOIN KEY crosses the same boundary (phase-403 step 1). The
+#      subscribed-type set and the wider received set are what
+#      `nros_derive_message_bound_knobs` narrows the payload classes with, so
+#      an absent list is not "nothing published" -- it reads as "this image
+#      receives nothing" and derives a class over an empty set.
+#
 #   H. SEEDING. A refusal writes a placeholder fragment, because the consumer
 #      registers the path with CMAKE_CONFIGURE_DEPENDS and a ninja input with
 #      no producing rule is `missing and no known rule to make it` at LOAD,
@@ -127,7 +133,7 @@ chmod +x "$STUB"
 
 DERIVED_BODY="$TEST_TMPDIR/derived.cmake"
 cat > "$DERIVED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 1)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)
 set(NROS_ENTITY_INVENTORY_SOURCE "meta.json")
 set(NROS_ENTITY_INVENTORY_STATUS "derived")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
@@ -138,18 +144,34 @@ set(NROS_ENTITY_COUNT_TIMER 4)
 set(NROS_ENTITY_COUNT_SERVICE_SERVER 2)
 set(NROS_ENTITY_COUNT_SERVICE_CLIENT 2)
 set(NROS_DERIVED_EXECUTOR_MAX_CBS 19)
+set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "resolved")
+set(NROS_ENTITY_SUBSCRIBED_TYPES "nav_msgs/msg/Odometry;std_msgs/msg/Int32")
+set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS "nav_msgs/msg/Odometry=1;std_msgs/msg/Int32=2")
+set(NROS_ENTITY_SUBSCRIBED_ENTITY_COUNT 3)
+set(NROS_ENTITY_RECEIVED_TYPES_STATUS "resolved")
+set(NROS_ENTITY_RECEIVED_TYPES "demo/srv/Op_Request;nav_msgs/msg/Odometry;std_msgs/msg/Int32")
+set(NROS_ENTITY_RECEIVED_TYPE_COUNTS "demo/srv/Op_Request=1;nav_msgs/msg/Odometry=1;std_msgs/msg/Int32=2")
+set(NROS_ENTITY_RECEIVED_ENTITY_COUNT 4)
 EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
 cat > "$REFUSED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 1)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)
 set(NROS_ENTITY_INVENTORY_STATUS "refused")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
 set(NROS_ENTITY_INVENTORY_REASON "1 of 4 components in this image declare no entities:\n    demo::legacy (demo::Legacy)")
+set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "refused")
+set(NROS_ENTITY_SUBSCRIBED_TYPES_REASON "the entity inventory itself did not compose")
+set(NROS_ENTITY_RECEIVED_TYPES_STATUS "refused")
+set(NROS_ENTITY_RECEIVED_TYPES_REASON "the entity inventory itself did not compose")
 EOF
 
+# A schema this reader does NOT understand. Written as "one past supported"
+# rather than a literal, because the literal was `2` until phase-403 step 1
+# made 2 the supported version -- at which point the case silently stopped
+# testing anything it claimed to.
 BAD_SCHEMA_BODY="$TEST_TMPDIR/bad-schema.cmake"
-sed 's/SCHEMA_VERSION 1/SCHEMA_VERSION 2/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
+sed 's/SCHEMA_VERSION 2/SCHEMA_VERSION 3/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
 
 NO_SCHEMA_BODY="$TEST_TMPDIR/no-schema.cmake"
 grep -v SCHEMA_VERSION "$DERIVED_BODY" > "$NO_SCHEMA_BODY"
@@ -194,6 +216,24 @@ fi
 check
 if ! grep -q "publishers, which claim no callback slot" <<<"$OUT"; then
     fail "A: the status line does not say publishers claim no slot -- $OUT"
+fi
+# phase-403 step 1. The JOIN KEY has to cross the same function boundary the
+# counts do; it is the input `nros_derive_message_bound_knobs` narrows the
+# payload classes with, and an absent list there reads as "receives nothing".
+check
+if ! grep -q "NROS_ENTITY_SUBSCRIBED_TYPES_STATUS=resolved" <<<"$OUT"; then
+    fail "A: the subscribed-type status did not reach the caller's scope -- $OUT"
+fi
+check
+if ! grep -q "NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS=nav_msgs/msg/Odometry=1;std_msgs/msg/Int32=2" <<<"$OUT"; then
+    fail "A: the per-type ENTITY counts did not reach the caller's scope -- $OUT"
+fi
+# The two views are different sets and both travel. Collapsing them would
+# either price a service request against a pool it never allocates from, or
+# leave the arena blind to four receiving kinds.
+check
+if ! grep -q "NROS_ENTITY_RECEIVED_TYPES=demo/srv/Op_Request;" <<<"$OUT"; then
+    fail "A: the wider RECEIVED set did not reach the caller's scope -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -249,7 +289,7 @@ log_info "D. an unrecognised schema refuses to be read"
 flat() { tr '\n' ' ' | tr -s ' '; }
 OUT="$(derive "$BAD_SCHEMA_BODY" 0 "$META" "$TEST_TMPDIR/d1.cmake" | flat)"
 check
-if ! grep -q "states entity-inventory schema version 2" <<<"$OUT"; then
+if ! grep -q "states entity-inventory schema version 3" <<<"$OUT"; then
     fail "D: a future schema was read rather than refused -- $OUT"
 fi
 check

@@ -58,6 +58,29 @@
 #      called with none. Every other case passes fragments explicitly and would
 #      keep passing with the registry broken.
 #
+#   L. THE JOIN (phase-403 step 1). The three payload-class knobs derive over
+#      the types the image RECEIVES, not over everything it links. Asserted as
+#      a BEFORE/AFTER on one closure so the difference is the entity
+#      declaration and nothing else -- the island's own shape, where the small
+#      class is set by a `Float64MultiArray` that is linked and never received.
+#      Includes the take buffer NOT moving: it is also DEFAULT_TX_BUF and every
+#      raw entity's default buffer, so narrowing it would size a buffer too
+#      small, which is the failure this campaign exists to remove.
+#
+#   M. THE JOIN REFUSES rather than widening. Three shapes, all of them "the
+#      image DID declare and the join still cannot answer": the subscribed set
+#      itself refused, a named type the bound inventory does not price (which
+#      is every `pkg/srv/*` and `pkg/action/*` today -- the inventory records
+#      MESSAGES only), and a fragment that states the schema and not the field.
+#      None may fall back to the closure: that publishes a number derived over
+#      types the image never receives while the status still reads `derived`.
+#
+#   N. BACK-COMPAT. An image that declares nothing -- no fragment, or a
+#      fragment whose own status is `refused` -- keeps W8's closure answer
+#      byte for byte, labelled `basis = closure`. Refusing there would take
+#      every pre-W9 image from a derived number back to the hand-set ones.
+#      A fragment from a STALE CLI is the same case with a warning.
+#
 #   H. The OUTPUT FILE carries the answer AND the provenance, and is
 #      write-if-changed. The second is load-bearing rather than tidy: the
 #      consumer registers the file with CMAKE_CONFIGURE_DEPENDS, so rewriting
@@ -139,6 +162,34 @@ frag() {
 derive() {
     local frags="$1"; shift
     cmake -DNROS_BOUNDS_FRAGMENTS="$frags" "$@" -P "$MODULE" 2>&1
+}
+
+# phase-403 step 1. An ENTITY-inventory fragment, byte-for-byte the shape
+# `nros_cli_core::entity_inventory::EntityInventory::to_cmake` emits -- the same
+# contract-by-hand-written-fixture the `frag()` helper above is, and for the
+# same reason: a case like "the fragment is a schema behind" cannot exist if the
+# producer writes it.
+#
+#   entity_frag <path> <inventory-status> <subscribed-status> [<type>=<count>...]
+entity_frag() {
+    local path="$1" inv_status="$2" sub_status="$3"; shift 3
+    {
+        echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)"
+        echo "set(NROS_ENTITY_INVENTORY_STATUS \"$inv_status\")"
+        echo "set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 1)"
+        echo "set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"$sub_status\")"
+        if [ "$sub_status" = "resolved" ]; then
+            local names="" pairs=""
+            for e in "$@"; do
+                names="${names:+$names;}${e%=*}"
+                pairs="${pairs:+$pairs;}$e"
+            done
+            echo "set(NROS_ENTITY_SUBSCRIBED_TYPES \"$names\")"
+            echo "set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"$pairs\")"
+        else
+            echo "set(NROS_ENTITY_SUBSCRIBED_TYPES_REASON \"a component declared no ENTITIES\")"
+        fi
+    } > "$path"
 }
 
 T="$TEST_TMPDIR"
@@ -483,18 +534,29 @@ function(first_include_from_a_frame)
 endfunction()
 first_include_from_a_frame()
 include("$MODULE")   # a no-op: the guard has already fired
-nros_derive_message_bound_knobs(FRAGMENTS "$T/a1.cmake" "$T/a2.cmake" QUIET)
+# The JOIN is the second consumer of a module-scope constant that a function
+# frame can eat: it resolves its sibling NanoRosEntityInventory.cmake through
+# \`_NROS_MESSAGE_BOUNDS_DIR\` to read that module's schema number, rather than
+# restating the number and drifting from it. An empty dir would make the
+# include silently fail and every joined image fall back to the closure.
+nros_derive_message_bound_knobs(
+    FRAGMENTS "$T/a1.cmake" "$T/a2.cmake"
+    ENTITY_INVENTORY "$T/k-ents.cmake" QUIET)
 file(WRITE "\${CMAKE_BINARY_DIR}/observed.txt"
-     "\${NROS_MESSAGE_BOUNDS_STATUS}|\${NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE}")
+     "\${NROS_MESSAGE_BOUNDS_STATUS}|\${NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE}|\${NROS_MESSAGE_BOUNDS_BASIS}|\${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE}")
 CMAKEEOF
+    # a1/a2's closure tops out at Odometry 880; subscribe only to the 114 B
+    # Control, so the joined small class must differ from the closure's.
+    entity_frag "$T/k-ents.cmake" derived resolved \
+        "autoware_control_msgs/msg/Control=1"
     KB="$T/kfn-build"
     check
     if ! cmake -G Ninja -S "$K" -B "$KB" > "$T/k.log" 2>&1; then
         fail "K: configure failed -- the module's constants did not survive a first include from a function frame:"; cat "$T/k.log"
     fi
     check
-    if [ "$(cat "$KB/observed.txt" 2>/dev/null)" != "derived|880" ]; then
-        fail "K: expected derived|880, got: $(cat "$KB/observed.txt" 2>/dev/null)"
+    if [ "$(cat "$KB/observed.txt" 2>/dev/null)" != "derived|880|subscribed|114" ]; then
+        fail "K: expected derived|880|subscribed|114 -- the take buffer on the closure, the small class on the join, both after a first include from a function frame. Got: $(cat "$KB/observed.txt" 2>/dev/null)"
     fi
 fi
 
@@ -547,6 +609,237 @@ CMAKEEOF
     if grep -q "set(NROS_DERIVED_" "$RB/knobs2.cmake"; then
         fail "J: the refusal file carries a value from the previous call:"; cat "$RB/knobs2.cmake"
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# L. THE JOIN -- the reference island's shape, before and after.
+#
+# One closure, two runs, and the ONLY difference is whether an entity
+# declaration is present. `std_msgs/msg/Float64MultiArray` at 1496 B is linked
+# and never received; `nav_msgs/msg/Odometry` at 880 B is the largest that is.
+# These are the island's own derived bounds, and 1496 -> 880 is the measured
+# 71,808 -> 42,240 bytes of `SMALL_PAYLOADS` at its 12 subscribers x 4 ring
+# depth.
+# ---------------------------------------------------------------------------
+log_header "L -- the payload classes derive over what the image RECEIVES"
+frag "$T/l1.cmake" "island" <<'ROWS'
+std_msgs/msg/Float64MultiArray|bounded|1488|1496|
+nav_msgs/msg/Odometry|bounded|836|880|
+autoware_control_msgs/msg/Control|bounded|78|114|
+autoware_vehicle_msgs/msg/GearCommand|bounded|13|21|
+ROWS
+# The island subscribes to Odometry and Control; it PUBLISHES GearCommand and
+# neither publishes nor subscribes Float64MultiArray (a linked sibling type).
+entity_frag "$T/l-ents.cmake" derived resolved \
+    "nav_msgs/msg/Odometry=1" "autoware_control_msgs/msg/Control=1"
+
+OUT_BEFORE="$(derive "$T/l1.cmake")"
+OUT_AFTER="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/l-ents.cmake")"
+
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=1496" <<< "$OUT_BEFORE"; then
+    fail "L: without a declaration the small class must still be the closure's 1496:"; echo "$OUT_BEFORE"
+fi
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_BASIS=closure" <<< "$OUT_BEFORE"; then
+    fail "L: the closure answer must be LABELLED as such:"; echo "$OUT_BEFORE"
+fi
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=880" <<< "$OUT_AFTER"; then
+    fail "L: with a declaration the small class must be the largest SUBSCRIBED type (880, Odometry) -- a type the image links and never receives cannot set it:"; echo "$OUT_AFTER"
+fi
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_BASIS=subscribed" <<< "$OUT_AFTER"; then
+    fail "L: the joined answer must be labelled subscribed:"; echo "$OUT_AFTER"
+fi
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT=2" <<< "$OUT_AFTER"; then
+    fail "L: the joined answer must record how many subscriptions it saw:"; echo "$OUT_AFTER"
+fi
+# The take buffer does NOT narrow. It is also DEFAULT_TX_BUF and the default
+# buffer of every raw service/client/action entity, so a type this image only
+# publishes still has to fit. Narrowing it is the under-derivation.
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE=1496" <<< "$OUT_AFTER"; then
+    fail "L: the take buffer must stay on the CLOSURE basis (1496) -- it is DEFAULT_TX_BUF too:"; echo "$OUT_AFTER"
+fi
+
+# And the entity count, not the type count, drives the large class: two
+# subscriptions on one large type need two BLOCKS.
+log_header "L -- MAX_LARGE_SUBSCRIBERS counts blocks, so it counts ENTITIES"
+frag "$T/l2.cmake" "big" <<'ROWS'
+sensor_msgs/msg/JointState|bounded|4204|4208|
+std_msgs/msg/Int32|bounded|4|8|
+ROWS
+entity_frag "$T/l2-ents.cmake" derived resolved \
+    "sensor_msgs/msg/JointState=3" "std_msgs/msg/Int32=1"
+OUT="$(derive "$T/l2.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/l2-ents.cmake")"
+check
+if ! grep -q "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS=3" <<< "$OUT"; then
+    fail "L: three subscriptions on one large type need three blocks, not one:"; echo "$OUT"
+fi
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIBER_LARGE_SIZE=4208" <<< "$OUT"; then
+    fail "L: the large class size is the largest RECEIVED type over the split:"; echo "$OUT"
+fi
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=8" <<< "$OUT"; then
+    fail "L: the small class is the largest received type UNDER the split:"; echo "$OUT"
+fi
+
+# An image that declares entities and subscribes to nothing is an ANSWER, not
+# a refusal: its payload pools are genuinely unused, so zero blocks is right
+# and the small size is not derivable from an empty set.
+log_header "L -- an image that receives nothing answers ZERO blocks"
+entity_frag "$T/l3-ents.cmake" derived resolved
+OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/l3-ents.cmake")"
+check
+if ! grep -q "NROS_DERIVED_MAX_LARGE_SUBSCRIBERS=0" <<< "$OUT"; then
+    fail "L: an image with no subscriptions reserves no large blocks:"; echo "$OUT"
+fi
+check
+if grep -q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=" <<< "$OUT"; then
+    fail "L: nothing is received, so the small class size is not derivable -- naming one would invent a number:"; echo "$OUT"
+fi
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS=derived" <<< "$OUT"; then
+    fail "L: an empty received set is an ANSWER, not a refusal:"; echo "$OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# M. THE JOIN REFUSES -- and never widens to the closure.
+# ---------------------------------------------------------------------------
+log_header "M -- a type the bound inventory cannot price REFUSES the classes"
+# Today this is structural rather than a typo: `BoundInventory::record_message`
+# is called for `.msg` files and for nothing else, so no `pkg/srv/*` or
+# `pkg/action/*` has an entry however well-formed the declaration is.
+entity_frag "$T/m1-ents.cmake" derived resolved \
+    "nav_msgs/msg/Odometry=1" "tier4_system_msgs/srv/OperateMrm_Request=1"
+OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/m1-ents.cmake")"
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS=refused" <<< "$OUT"; then
+    fail "M: an unpriced received type must refuse the payload classes:"; echo "$OUT"
+fi
+check
+if grep -qE "NROS_DERIVED_(SUBSCRIBER_BUFFER_SIZE|MAX_LARGE_SUBSCRIBERS|SUBSCRIBER_LARGE_SIZE)=" <<< "$OUT"; then
+    fail "M: a refusal published a payload-class number:"; echo "$OUT"
+fi
+check
+if grep -q "NROS_MESSAGE_BOUNDS_BASIS=" <<< "$OUT"; then
+    fail "M: a refusal must NOT widen to the closure -- that is the wrong row wearing a derived status:"; echo "$OUT"
+fi
+check
+if ! grep -q "OperateMrm_Request" <<< "$OUT"; then
+    fail "M: the refusal does not name the type it could not price:"; echo "$OUT"
+fi
+# The take buffer is a different question with a different basis, so it still
+# derives. A reader that collapsed the two statuses would lose it.
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE=1496" <<< "$OUT"; then
+    fail "M: the take buffer derives over the closure and must survive a payload-class refusal:"; echo "$OUT"
+fi
+
+log_header "M -- an unresolved subscribed set REFUSES the classes"
+entity_frag "$T/m2-ents.cmake" derived refused
+OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/m2-ents.cmake")"
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS=refused" <<< "$OUT"; then
+    fail "M: an unresolved subscribed set must refuse:"; echo "$OUT"
+fi
+check
+if grep -q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=" <<< "$OUT"; then
+    fail "M: an unresolved subscribed set published a small class anyway:"; echo "$OUT"
+fi
+
+log_header "M -- a current schema that states no subscribed set REFUSES"
+{
+    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)"
+    echo "set(NROS_ENTITY_INVENTORY_STATUS \"derived\")"
+} > "$T/m3-ents.cmake"
+OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/m3-ents.cmake")"
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS=refused" <<< "$OUT"; then
+    fail "M: a fragment claiming the current schema with no subscribed set must refuse, not read an absent list as an empty one:"; echo "$OUT"
+fi
+check
+if ! grep -q "malformed" <<< "$OUT"; then
+    fail "M: the refusal does not say the fragment is malformed:"; echo "$OUT"
+fi
+
+# ---------------------------------------------------------------------------
+# N. BACK-COMPAT -- an image that declares nothing does not move.
+#
+# This is the requirement the join is easiest to get wrong on in the OTHER
+# direction: refusing here would take every image built before phase-403 W9
+# from a derived (over-approximate, safe) number back to the hand-set numbers
+# W8 exists to replace, which is a regression rather than a safety property.
+# ---------------------------------------------------------------------------
+log_header "N -- an image that declares nothing keeps W8's closure answer"
+# A fragment whose own status is `refused` -- the shape W9 writes when any
+# component in the image states no ENTITIES, which is every pre-W9 image.
+entity_frag "$T/n1-ents.cmake" refused refused
+OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/n1-ents.cmake")"
+check
+if [ "$OUT_BEFORE" != "$OUT" ]; then
+    fail "N: an image whose entity inventory refused must derive EXACTLY what it derives with no fragment at all. Diff:"
+    diff <(echo "$OUT_BEFORE") <(echo "$OUT") || true
+fi
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_BASIS=closure" <<< "$OUT"; then
+    fail "N: the unchanged answer must still be labelled closure:"; echo "$OUT"
+fi
+
+log_header "N -- a fragment from a STALE CLI warns and keeps the closure answer"
+# NOT a FATAL_ERROR, deliberately: the fragment's producer (`nano_ros_entry()`)
+# runs LATER in the same configure than this reader, so a fatal aborts before
+# the stale fragment can ever be rewritten and the build dir is stuck until
+# someone deletes the file by hand.
+{
+    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 1)"
+    echo "set(NROS_ENTITY_INVENTORY_STATUS \"derived\")"
+} > "$T/n2-ents.cmake"
+OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/n2-ents.cmake")"
+check
+if grep -qi "CMake Error" <<< "$OUT"; then
+    fail "N: a stale-schema fragment must not abort the configure -- its producer runs later in it:"; echo "$OUT"
+fi
+check
+if ! grep -q "IGNORED" <<< "$OUT"; then
+    fail "N: a stale-schema fragment must say loudly that it was not read:"; echo "$OUT"
+fi
+check
+if ! grep -q "NROS_MESSAGE_BOUNDS_BASIS=closure" <<< "$OUT"; then
+    fail "N: a stale-schema fragment must leave the closure answer standing:"; echo "$OUT"
+fi
+check
+if ! grep -q "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE=1496" <<< "$OUT"; then
+    fail "N: a stale-schema fragment must not change any number:"; echo "$OUT"
+fi
+
+log_header "N -- the OUTPUT FILE records which basis each number used"
+derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/l-ents.cmake" \
+    -DNROS_BOUNDS_OUTPUT="$T/n3-knobs.cmake" >/dev/null
+check
+if ! grep -q 'set(NROS_MESSAGE_BOUNDS_BASIS "subscribed")' "$T/n3-knobs.cmake"; then
+    fail "N: the written answer does not record its basis:"; cat "$T/n3-knobs.cmake"
+fi
+check
+if ! grep -q "2 SUBSCRIPTIONS this image declares" "$T/n3-knobs.cmake"; then
+    fail "N: the written answer does not say what it was derived over:"; cat "$T/n3-knobs.cmake"
+fi
+derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/m1-ents.cmake" \
+    -DNROS_BOUNDS_OUTPUT="$T/n4-knobs.cmake" >/dev/null 2>&1
+check
+if grep -q "set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE" "$T/n4-knobs.cmake"; then
+    fail "N: a payload-class refusal wrote a class size into the answer file:"; cat "$T/n4-knobs.cmake"
+fi
+check
+if ! grep -q 'set(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS "refused")' "$T/n4-knobs.cmake"; then
+    fail "N: the answer file does not record the payload-class refusal:"; cat "$T/n4-knobs.cmake"
+fi
+check
+if ! grep -q "set(NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE 1496)" "$T/n4-knobs.cmake"; then
+    fail "N: the take buffer must still be written on a payload-class refusal:"; cat "$T/n4-knobs.cmake"
 fi
 
 # ---------------------------------------------------------------------------
