@@ -501,10 +501,22 @@ Acceptance: the emitted constant equals the Rust const for every type in the
 message corpus (one test, both encodings), and a C image's publish helpers stop
 referencing `NROS_PUB_BUFFER_SIZE`.
 
-**W3e — decide the C/C++ arena fork (a) or (b), then implement it.** Acceptance
-is the decision recorded in RFC-0002 with the rejected option and why, before
-any code. This is the wave that actually closes the C/C++ half; W3d is its
-prerequisite and does not substitute for it.
+**W3e — SUPERSEDED by [phase 408](phase-408-cpp-message-derived-buffers.md);
+the fork it described does not exist.** W3e asked for a decision between
+monomorphising the const generic per type and making the arena entry
+runtime-sized. Surveying the code for phase 408 found the second is **already
+built on the path C/C++ actually takes**: `add_arena_subscription_c_callback`
+stores no `[u8; RX_BUF]`, it calls `arena_alloc_with_trailing` with
+`buffered_region_size(qos.depth, RX_BUF)` and initialises a `TripleBuffer` /
+`SpscRing` over those trailing bytes. `RX_BUF` is consumed only as a VALUE, so
+it is a runtime parameter that has not been spelled as one.
+
+The distinction the fork was reaching for is still real, and worth stating in
+the form that survives: the TYPED Rust entries (`SubInfoEntry`,
+`SubSafetyEntry`) do hold `buffer: [u8; RX_BUF]`, so for them the const generic
+is load-bearing and `rx_buffer_for!` is the right answer. The BUFFERED entries
+are trailing-allocated. Two entry shapes in one tree — a claim about "the arena
+buffer" that does not say which is not a claim about anything.
 
 **W3f — Cyclone consumes the hint, or records that it will not.** `grep
 rx_buffer_hint packages/rmw/cyclonedds/` returns nothing today, so a consumer on
