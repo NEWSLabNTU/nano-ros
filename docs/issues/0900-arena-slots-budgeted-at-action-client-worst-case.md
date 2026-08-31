@@ -326,3 +326,64 @@ whether the entity justifying its size was linked in.
 
 Recorded rather than acted on: choosing between these is a design decision, and
 this issue's original remedy assumed information the tree does not carry.
+
+## Option 1 explored — cheaper than stated, and unsafe alone (2026-09-01)
+
+Two objections raised against option 1 above were WRONG, and the correction
+matters because it made option 1 look more expensive than it is:
+
+* **"Costs a migration for every existing model"** — no. `SourceMetadata` is a
+  DERIVED sidecar, content-addressed by `inputs_digest` and stamped with a
+  generator version. It is regenerated, not hand-maintained. A new field needs
+  `#[serde(default)]` (the struct is `deny_unknown_fields`) and nothing else.
+* **"Asks users to declare what they construct"** — no. Users declare nothing.
+  `metadata_mode::record_entity` already captures the client when the node
+  builds it, and `EntityKind` ALREADY HAS `ActionClient` and `ServiceClient`.
+
+The gap is one place. `node_metadata.rs:782-784` writes arrays for publishers,
+subscribers, timers, `services` (`ServiceServer`) and `actions`
+(`ActionServer`) — and never writes one for the client kinds. The data is
+recorded and then dropped on the way out.
+
+So the change is small: two more `write_entity_array` calls, two small structs
+(clients register no callbacks, so they are simpler than their server
+counterparts), a sum in `entity-facts`, and one more key through the cmake seam
+that already delivers the queryable figures. `build.rs` needs no change.
+
+### The hazard that stops it being sufficient
+
+**A cross-compiled component is UNPROBEABLE by construction.** Metadata mode
+runs the component to capture entities and needs a host build;
+`metadata_build.rs`'s own test is named
+`build_std_with_a_foreign_target_is_unprobeable`, and the probe comments record
+that "ONE unprobeable component degrades to the sidecar-less path". Four
+embedded example leaves carry `.unprobeable.` markers today — including
+`examples/qemu-arm-freertos/rust/action-client`, which is an action client.
+
+If the derivation sums clients from a sidecar-less component it gets **0**, and
+sizes the arena DOWN for an image that may well have an action client. That is
+option 2's registration failure arriving silently, on the targets least able to
+report it.
+
+So the count must be a TRI-STATE, not a number: `known(n)` versus `unknown`,
+with `unknown` falling back to today's worst-case default. Absence of evidence
+is not evidence of absence, and this is the shape where that distinction is
+load-bearing.
+
+### And that limits what option 1 can buy
+
+With the tri-state, the tight arena reaches PROBED components — host and native
+— and never reaches the unprobeable cross builds. The 56.5 KiB is a stack cost,
+so it matters most exactly where option 1 cannot help.
+
+**Option 3 covers that half.** `nm` works fine on a cross ELF: an image that
+never references `ActionClientCore::new` cannot have an action client, so the
+knob can be CHECKED against the linked reality precisely where it cannot be
+derived.
+
+So the two are complements, not alternatives:
+
+* **1** — automatic and tight where the component can be probed;
+* **3** — a checked manual knob where it cannot.
+
+Neither alone is both safe and useful across the tree.
