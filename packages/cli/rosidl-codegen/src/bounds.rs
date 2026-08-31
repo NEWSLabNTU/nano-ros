@@ -580,7 +580,15 @@ fn main() {{
     // The payload is a Rust STRING LITERAL, not a format string: the document
     // is full of `"` and `{{`/`}}`, and putting it in the format position emits
     // a file that does not parse.
-    println!("cargo:bounds_json={{}}", "{json}");
+    //
+    // BOUND TO A NAME first, rather than passed as an argument. Identical
+    // output either way, and `clippy::print_literal` fires on the argument
+    // form -- it suggests inlining the literal, which for this document means
+    // doubling every brace in it. A generated file that warns is a file every
+    // consumer of a message crate has to look at, so the shape that does not
+    // warn is the one to emit; an interpolated NAME is not a literal.
+    let bounds_json = "{json}";
+    println!("cargo:bounds_json={{bounds_json}}");
 }}
 "#,
             schema = INVENTORY_SCHEMA_VERSION,
@@ -741,7 +749,10 @@ mod tests {
     /// and the file was read. So this asserts the escaping, not just that the
     /// bytes are somewhere in the file:
     ///
-    /// * the literal is in ARGUMENT position, so `{`/`}` need no doubling;
+    /// * the document is a `let`-bound STRING LITERAL, so `{`/`}` need no
+    ///   doubling AND `clippy::print_literal` does not fire (phase-403 W8: the
+    ///   argument-position form this used to emit warned in every generated
+    ///   message crate, which a `-D warnings` lane turns into a build failure);
     /// * every `"` inside it is backslash-escaped, so the literal does not end
     ///   early;
     /// * un-escaping the literal body gives back the exact document.
@@ -751,13 +762,22 @@ mod tests {
         let build_rs = i.to_build_rs();
         let line = build_rs
             .lines()
-            .find(|l| l.contains("cargo:bounds_json="))
-            .expect("build.rs emits the inventory");
+            .find(|l| l.contains("let bounds_json = "))
+            .expect("build.rs binds the inventory to a name");
 
-        // Argument position, never format position.
+        // Bound to a name, never interpolated into the format string, and
+        // never passed as a literal ARGUMENT (`clippy::print_literal`).
         assert!(
-            line.contains(r#"println!("cargo:bounds_json={}", ""#),
-            "the document must be an argument, not the format string: {line}"
+            line.trim_start().starts_with(r#"let bounds_json = ""#),
+            "the document must be a let-bound literal: {line}"
+        );
+        assert!(
+            build_rs.contains(r#"println!("cargo:bounds_json={bounds_json}");"#),
+            "the emitted println must interpolate the NAME: {build_rs}"
+        );
+        assert!(
+            !build_rs.contains(r#"println!("cargo:bounds_json={}", ""#),
+            "argument-position literal is back; clippy::print_literal warns on it"
         );
         // A raw, unescaped document would show a bare `{"` here.
         assert!(
@@ -766,11 +786,11 @@ mod tests {
         );
 
         let body = line
-            .split_once(r#"cargo:bounds_json={}", ""#)
+            .split_once(r#"let bounds_json = ""#)
             .unwrap()
             .1
             .trim_end()
-            .trim_end_matches(");")
+            .trim_end_matches(';')
             .trim_end_matches('"');
         let unescaped = body.replace("\\\"", "\"").replace("\\\\", "\\");
         assert_eq!(unescaped, i.to_json_compact());
