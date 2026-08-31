@@ -776,7 +776,12 @@ unsafe extern "C" fn subscription_supports_in_place_trampoline<R: RustBackend>(
 unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
     subscriber: *mut NrosRmwSubscription,
     ctx: *mut core::ffi::c_void,
-    cb: Option<unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize)>,
+    cb: Option<
+        unsafe extern "C" fn(
+            ctx: *mut core::ffi::c_void,
+            message: crate::generated::rmw_byte_span_t,
+        ),
+    >,
     out_processed: *mut bool,
 ) -> NrosRmwRet {
     // Phase 376 W3.d step A — "did it process one" is the out-parameter, and
@@ -790,7 +795,15 @@ unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
     let Some(cb) = cb else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    match Subscription::process_raw_in_place(s, |raw| unsafe { cb(ctx, raw.as_ptr(), raw.len()) }) {
+    match Subscription::process_raw_in_place(s, |raw| unsafe {
+        cb(
+            ctx,
+            crate::generated::rmw_byte_span_t {
+                data: raw.as_ptr(),
+                len: raw.len(),
+            },
+        )
+    }) {
         Ok(processed) => {
             // SAFETY: checked non-null above.
             unsafe { *out_processed = processed };
@@ -868,19 +881,20 @@ unsafe extern "C" fn destroy_service_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
     server: *const NrosRmwService,
-    buf: *mut u8,
-    buf_len: usize,
+    request: *mut crate::generated::rmw_mut_byte_span_t,
     seq_out: *mut i64,
-    out_len: *mut usize,
     taken: *mut bool,
 ) -> NrosRmwRet {
-    // Phase 376 W3.b/W3.d step A — upstream `rmw_take_request`'s shape.
-    if out_len.is_null() || taken.is_null() {
+    // Phase 376 W3.b/W3.d step A — upstream `rmw_take_request`'s shape;
+    // phase-406 W2 — the byte range is one span, and `written` lands in it.
+    if request.is_null() || taken.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let Some(s) = (unsafe { service_mut::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let (buf, buf_len) = unsafe { ((*request).data, (*request).capacity) };
+    let out_len = unsafe { &raw mut (*request).len };
     if (buf.is_null() && buf_len != 0) || seq_out.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -941,12 +955,12 @@ unsafe extern "C" fn has_request_trampoline<R: RustBackend>(
 unsafe extern "C" fn send_response_trampoline<R: RustBackend>(
     server: *const NrosRmwService,
     seq: i64,
-    data: *const u8,
-    len: usize,
+    response: crate::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     let Some(s) = (unsafe { service_mut::<R::Service>(server) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let (data, len) = (response.data, response.len);
     if data.is_null() && len != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1027,13 +1041,13 @@ unsafe extern "C" fn destroy_client_trampoline<R: RustBackend>(
 // (phase-301: the blocking `call_raw` slot is deleted).
 unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
     client: *const NrosRmwClient,
-    request: *const u8,
-    req_len: usize,
+    request: crate::generated::rmw_byte_span_t,
     sequence_id: *mut i64,
 ) -> NrosRmwRet {
     let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let (request, req_len) = (request.data, request.len);
     if request.is_null() && req_len != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1054,19 +1068,20 @@ unsafe extern "C" fn send_request_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
     client: *const NrosRmwClient,
-    reply_buf: *mut u8,
-    reply_buf_len: usize,
+    reply: *mut crate::generated::rmw_mut_byte_span_t,
     seq_out: *mut i64,
-    out_len: *mut usize,
     taken: *mut bool,
 ) -> NrosRmwRet {
-    // Phase 376 W3.b/W3.d step A — upstream `rmw_take_response`'s shape.
-    if out_len.is_null() || taken.is_null() {
+    // Phase 376 W3.b/W3.d step A — upstream `rmw_take_response`'s shape;
+    // phase-406 W2 — one span in place of the buf/len/out_len triple.
+    if reply.is_null() || taken.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
+    let (reply_buf, reply_buf_len) = unsafe { ((*reply).data, (*reply).capacity) };
+    let out_len = unsafe { &raw mut (*reply).len };
     if reply_buf.is_null() && reply_buf_len != 0 {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

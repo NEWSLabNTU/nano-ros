@@ -14,6 +14,7 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_cyclonedds.h"
+#include "nros_test_domain.h"
 
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
@@ -53,8 +54,8 @@ int main() {
     sub.topic_name = "chatter";
     sub.type_name  = "std_msgs::msg::dds_::String_";
     sub.qos        = qos;
-    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "",
-                                0, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
+    const rmw_message_type_support_t ts_1{sub.type_name, ""};
+    if (g_vt->create_subscription(&node, &ts_1, sub.topic_name, 0, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         return 3;
     }
@@ -69,7 +70,7 @@ int main() {
             size_t n = 0;
             bool took = false;
             /* Phase 376 W3.b/W3.d step A. */
-            if (g_vt->take(&sub, buf, sizeof(buf), &n, &took) == NROS_RMW_RET_OK && took &&
+            if (nros_test_take(g_vt, &sub, buf, sizeof(buf), &n, &took) == NROS_RMW_RET_OK && took &&
                 n > 0) {
                 // CDR-LE std_msgs/msg/String:
                 //   [0..4)  encap

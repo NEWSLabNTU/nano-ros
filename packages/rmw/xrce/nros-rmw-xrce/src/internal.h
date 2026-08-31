@@ -426,8 +426,8 @@ rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber,
 rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t* subscriber,
                                                    bool* out_supports);
 rmw_ret_t xrce_subscription_process_raw_in_place(rmw_subscription_t* subscriber, void* ctx,
-                                                      void (*cb)(void* ctx, const uint8_t* ptr,
-                                                                 size_t len),
+                                                      void (*cb)(void* ctx,
+                                                                 rmw_byte_span_t message),
                                                       bool* out_processed);
 
 /* Topic data callback — single instance per session, registered at
@@ -442,11 +442,12 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node, const rmw_service_type_sup
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_service_t* out);
 rmw_ret_t xrce_service_destroy(rmw_service_t* server);
-rmw_ret_t xrce_service_take_request(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
-                                         int64_t* seq_out, size_t* out_len, bool* taken);
+rmw_ret_t xrce_service_take_request(const rmw_service_t* server,
+                                         rmw_mut_byte_span_t* request, int64_t* seq_out,
+                                         bool* taken);
 rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request);
 rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
-                                       const uint8_t* data, size_t len);
+                                       rmw_byte_span_t response);
 
 rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
                                           const char* service_name,
@@ -457,11 +458,11 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client);
  * `call_raw` slot was deleted from the vtable; this pair is the one
  * request/reply path). */
 rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
-                                             const uint8_t* request, size_t req_len,
+                                             rmw_byte_span_t request_span,
                                              int64_t* sequence_id);
-rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
-                                          size_t reply_buf_len, int64_t* seq_out,
-                                          size_t* out_len, bool* taken);
+rmw_ret_t xrce_service_take_response(const rmw_client_t* client,
+                                          rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                          bool* taken);
 
 void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
                            SampleIdentity* sample_id, struct ucdrBuffer* ub, uint16_t length,

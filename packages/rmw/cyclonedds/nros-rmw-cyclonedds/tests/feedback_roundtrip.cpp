@@ -147,7 +147,8 @@ int main() {
     sub.topic_name = "rt/feedback_roundtrip";
     sub.type_name = desc->m_typename;
     sub.qos = qos;
-    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "", 88, &qos, nullptr, &sub) !=
+    const rmw_message_type_support_t sub_ts{sub.type_name, ""};
+    if (g_vt->create_subscription(&node, &sub_ts, sub.topic_name, 88, &qos, nullptr, &sub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         return 3;
@@ -157,7 +158,8 @@ int main() {
     pub.topic_name = "rt/feedback_roundtrip";
     pub.type_name = desc->m_typename;
     pub.qos = qos;
-    if (g_vt->create_publisher(&node, pub.topic_name, pub.type_name, "", 88, &qos, nullptr, &pub) !=
+    const rmw_message_type_support_t pub_ts{pub.type_name, ""};
+    if (g_vt->create_publisher(&node, &pub_ts, pub.topic_name, 88, &qos, nullptr, &pub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 4;
@@ -190,7 +192,7 @@ int main() {
     // Brief stabilisation so writer-↔-reader match completes.
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    rmw_ret_t pr = g_vt->publish(&pub, wire, wire_len);
+    rmw_ret_t pr = g_vt->publish(&pub, rmw_byte_span_t{wire, wire_len});
     EXPECT(pr == NROS_RMW_RET_OK, "publish_raw returned %d", static_cast<int>(pr));
 
     bool got = false;
@@ -208,7 +210,9 @@ int main() {
     uint8_t recv[256] = {};
     size_t n = 0;
     bool took = false;
-    EXPECT(g_vt->take(&sub, recv, sizeof(recv), &n, &took) == NROS_RMW_RET_OK && took && n > 0,
+    rmw_mut_byte_span_t recv_span{recv, sizeof(recv), 0};
+    EXPECT(g_vt->take(&sub, &recv_span, &took) == NROS_RMW_RET_OK && took &&
+               (n = recv_span.len) > 0,
            "take returned nothing (%zu bytes, taken=%d)", n, (int)took);
 
     // 233.6 — the goal_id is a fixed `octet[16]` on both wire and IDL, so the

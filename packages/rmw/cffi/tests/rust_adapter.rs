@@ -456,9 +456,11 @@ fn rust_backend_adapter_routes_every_slot() {
     let rc = unsafe {
         (vt.create_publisher.expect("vtable slot"))(
             &node,
+            &nros_rmw_cffi::generated::rmw_message_type_support_t {
+                type_name: b"std_msgs/String\0".as_ptr().cast(),
+                type_hash: b"abc123\0".as_ptr().cast(),
+            },
             b"/chatter\0".as_ptr().cast(),
-            b"std_msgs/String\0".as_ptr().cast(),
-            b"abc123\0".as_ptr().cast(),
             0,
             &qos,
             core::ptr::null(),
@@ -468,8 +470,15 @@ fn rust_backend_adapter_routes_every_slot() {
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_eq!(CREATE_PUB_HITS.load(Ordering::SeqCst), 1);
     let payload = b"hello";
-    let rc =
-        unsafe { (vt.publish.expect("vtable slot"))(&mut pubr, payload.as_ptr(), payload.len()) };
+    let rc = unsafe {
+        (vt.publish.expect("vtable slot"))(
+            &mut pubr,
+            nros_rmw_cffi::generated::rmw_byte_span_t {
+                data: payload.as_ptr(),
+                len: payload.len(),
+            },
+        )
+    };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_eq!(PUBLISH_HITS.load(Ordering::SeqCst), 1);
     unsafe { (vt.destroy_publisher.expect("vtable slot"))(&mut pubr) };
@@ -487,9 +496,11 @@ fn rust_backend_adapter_routes_every_slot() {
     let rc = unsafe {
         (vt.create_subscription.expect("vtable slot"))(
             &node,
+            &nros_rmw_cffi::generated::rmw_message_type_support_t {
+                type_name: b"std_msgs/String\0".as_ptr().cast(),
+                type_hash: b"abc123\0".as_ptr().cast(),
+            },
             b"/chatter\0".as_ptr().cast(),
-            b"std_msgs/String\0".as_ptr().cast(),
-            b"abc123\0".as_ptr().cast(),
             0,
             &qos,
             core::ptr::null(),
@@ -511,17 +522,13 @@ fn rust_backend_adapter_routes_every_slot() {
     // not a negative sentinel. The old assertion (`n < 0`) accepted ANY error
     // as the expected answer, so a backend failing for an unrelated reason
     // passed this line.
-    let mut recv_len = 0usize;
-    let mut recv_taken = true;
-    let rc = unsafe {
-        (vt.take.expect("vtable slot"))(
-            &mut subr,
-            recv_buf.as_mut_ptr(),
-            recv_buf.len(),
-            &mut recv_len,
-            &mut recv_taken,
-        )
+    let mut recv_span = nros_rmw_cffi::generated::rmw_mut_byte_span_t {
+        data: recv_buf.as_mut_ptr(),
+        capacity: recv_buf.len(),
+        len: 0,
     };
+    let mut recv_taken = true;
+    let rc = unsafe { (vt.take.expect("vtable slot"))(&mut subr, &mut recv_span, &mut recv_taken) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert!(!recv_taken, "an empty subscription takes nothing");
     assert_eq!(TRY_RECV_HITS.load(Ordering::SeqCst), 1);
@@ -597,9 +604,11 @@ fn rust_backend_adapter_preserves_session_identity() {
         unsafe {
             (vt.create_publisher.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_message_type_support_t {
+                    type_name: b"std_msgs/String\0".as_ptr().cast(),
+                    type_hash: b"abc123\0".as_ptr().cast(),
+                },
                 b"/chatter\0".as_ptr().cast(),
-                b"std_msgs/String\0".as_ptr().cast(),
-                b"abc123\0".as_ptr().cast(),
                 7,
                 &qos,
                 core::ptr::null(),
@@ -621,9 +630,11 @@ fn rust_backend_adapter_preserves_session_identity() {
         unsafe {
             (vt.create_subscription.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_message_type_support_t {
+                    type_name: b"std_msgs/String\0".as_ptr().cast(),
+                    type_hash: b"abc123\0".as_ptr().cast(),
+                },
                 b"/chatter\0".as_ptr().cast(),
-                b"std_msgs/String\0".as_ptr().cast(),
-                b"abc123\0".as_ptr().cast(),
                 7,
                 &qos,
                 core::ptr::null(),
@@ -643,9 +654,11 @@ fn rust_backend_adapter_preserves_session_identity() {
         unsafe {
             (vt.create_service.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_service_type_support_t {
+                    type_name: b"example/AddTwoInts\0".as_ptr().cast(),
+                    type_hash: b"def456\0".as_ptr().cast(),
+                },
                 b"/add_two_ints\0".as_ptr().cast(),
-                b"example/AddTwoInts\0".as_ptr().cast(),
-                b"def456\0".as_ptr().cast(),
                 7,
                 &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut srv,
@@ -664,9 +677,11 @@ fn rust_backend_adapter_preserves_session_identity() {
         unsafe {
             (vt.create_client.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_service_type_support_t {
+                    type_name: b"example/AddTwoInts\0".as_ptr().cast(),
+                    type_hash: b"def456\0".as_ptr().cast(),
+                },
                 b"/add_two_ints\0".as_ptr().cast(),
-                b"example/AddTwoInts\0".as_ptr().cast(),
-                b"def456\0".as_ptr().cast(),
                 7,
                 &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut cli,
@@ -787,9 +802,11 @@ fn rust_backend_adapter_routes_events_and_services() {
         unsafe {
             (vt.create_service.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_service_type_support_t {
+                    type_name: b"T\0".as_ptr().cast(),
+                    type_hash: b"H\0".as_ptr().cast(),
+                },
                 b"/svc\0".as_ptr().cast(),
-                b"T\0".as_ptr().cast(),
-                b"H\0".as_ptr().cast(),
                 0,
                 &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut srv,
@@ -808,18 +825,16 @@ fn rust_backend_adapter_routes_events_and_services() {
     let mut rbuf = [0u8; 64];
     let mut seq: i64 = 0;
     // Phase 376 W3.b/W3.d step A — status returned, length and `taken` out.
-    let mut req_len = 0usize;
+    let mut req_span = nros_rmw_cffi::generated::rmw_mut_byte_span_t {
+        data: rbuf.as_mut_ptr(),
+        capacity: rbuf.len(),
+        len: 0,
+    };
     let mut req_taken = false;
     let rc = unsafe {
-        (vt.take_request.expect("vtable slot"))(
-            &mut srv,
-            rbuf.as_mut_ptr(),
-            rbuf.len(),
-            &mut seq,
-            &mut req_len,
-            &mut req_taken,
-        )
+        (vt.take_request.expect("vtable slot"))(&mut srv, &mut req_span, &mut seq, &mut req_taken)
     };
+    let req_len = req_span.len;
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert!(req_taken, "the scripted backend has a request pending");
     assert_eq!(req_len, 4, "expected 4-byte payload, got {req_len}");
@@ -829,7 +844,14 @@ fn rust_backend_adapter_routes_events_and_services() {
     let reply = b"ok";
     assert_eq!(
         unsafe {
-            (vt.send_response.expect("vtable slot"))(&mut srv, seq, reply.as_ptr(), reply.len())
+            (vt.send_response.expect("vtable slot"))(
+                &mut srv,
+                seq,
+                nros_rmw_cffi::generated::rmw_byte_span_t {
+                    data: reply.as_ptr(),
+                    len: reply.len(),
+                },
+            )
         },
         NROS_RMW_RET_OK
     );
@@ -847,9 +869,11 @@ fn rust_backend_adapter_routes_events_and_services() {
         unsafe {
             (vt.create_client.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_service_type_support_t {
+                    type_name: b"T\0".as_ptr().cast(),
+                    type_hash: b"H\0".as_ptr().cast(),
+                },
                 b"/svc\0".as_ptr().cast(),
-                b"T\0".as_ptr().cast(),
-                b"H\0".as_ptr().cast(),
                 0,
                 &NrosRmwQos::try_from(QoSProfile::services_default()).unwrap(),
                 &mut cli,
@@ -888,9 +912,11 @@ fn rust_backend_adapter_routes_events_and_services() {
         unsafe {
             (vt.create_publisher.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_message_type_support_t {
+                    type_name: b"T\0".as_ptr().cast(),
+                    type_hash: b"H\0".as_ptr().cast(),
+                },
                 b"/t\0".as_ptr().cast(),
-                b"T\0".as_ptr().cast(),
-                b"H\0".as_ptr().cast(),
                 0,
                 &qos,
                 core::ptr::null(),
@@ -911,9 +937,11 @@ fn rust_backend_adapter_routes_events_and_services() {
         unsafe {
             (vt.create_subscription.expect("vtable slot"))(
                 &node,
+                &nros_rmw_cffi::generated::rmw_message_type_support_t {
+                    type_name: b"T\0".as_ptr().cast(),
+                    type_hash: b"H\0".as_ptr().cast(),
+                },
                 b"/t\0".as_ptr().cast(),
-                b"T\0".as_ptr().cast(),
-                b"H\0".as_ptr().cast(),
                 0,
                 &qos,
                 core::ptr::null(),

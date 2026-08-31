@@ -50,7 +50,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
                         size_t rep_cap, size_t *out_len) {
     if (out_len == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
-    rmw_ret_t sr = g_vt->send_request(cli, req, req_len, nullptr);
+    rmw_ret_t sr = g_vt->send_request(cli, rmw_byte_span_t{req, req_len}, nullptr);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -58,7 +58,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
     while (std::chrono::steady_clock::now() < deadline) {
         size_t n = 0;
         bool took = false;
-        rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, nullptr, &n, &took);
+        rmw_ret_t rc = nros_test_take_response(g_vt, cli, rep, rep_cap, nullptr, &n, &took);
         if (rc != NROS_RMW_RET_OK) {
             return rc;
         }
@@ -112,16 +112,16 @@ int main() {
     rmw_service_t srv{};
     srv.service_name = "svc_roundtrip";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "",
-                                    99, &qos, &srv) != NROS_RMW_RET_OK) {
+    const rmw_service_type_support_t ts_1{srv.type_name, ""};
+    if (g_vt->create_service(&node, &ts_1, srv.service_name, 99, &qos, &srv) != NROS_RMW_RET_OK) {
         return 3;
     }
 
     rmw_client_t cli{};
     cli.service_name = "svc_roundtrip";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_client(&node, cli.service_name, cli.type_name, "",
-                                    99, &qos, &cli) != NROS_RMW_RET_OK) {
+    const rmw_service_type_support_t ts_2{cli.type_name, ""};
+    if (g_vt->create_client(&node, &ts_2, cli.service_name, 99, &qos, &cli) != NROS_RMW_RET_OK) {
         g_vt->destroy_service(&srv);
         (void) g_vt->destroy_session(&s);
         return 4;
@@ -149,14 +149,14 @@ int main() {
                 size_t r = 0;
                 bool rtook = false;
                 /* Phase 376 W3.b/W3.d step A. */
-                if (g_vt->take_request(&srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
+                if (nros_test_take_request(g_vt, &srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
                         NROS_RMW_RET_OK &&
                     rtook && r > 0) {
                     int64_t a = get_le64(rbuf + 4);
                     int64_t b = get_le64(rbuf + 12);
                     uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
                     put_le64(reply + 4, a + b);
-                    (void) g_vt->send_response(&srv, seq, reply, sizeof(reply));
+                    (void) g_vt->send_response(&srv, seq, rmw_byte_span_t{reply, sizeof(reply)});
                     return;
                 }
             }

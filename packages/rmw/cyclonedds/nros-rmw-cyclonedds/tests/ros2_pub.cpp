@@ -55,7 +55,8 @@ int main() {
     pub.topic_name = "chatter";
     pub.type_name  = "std_msgs::msg::dds_::String_";
     pub.qos        = qos;
-    if (g_vt->create_publisher(&node, pub.topic_name, pub.type_name, "",
+    const rmw_message_type_support_t pub_ts{pub.type_name, ""};
+    if (g_vt->create_publisher(&node, &pub_ts, pub.topic_name,
                                0, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 3;
@@ -82,7 +83,7 @@ int main() {
     size_t cdr_len = 8 + mlen;
 
     for (int i = 0; i < 50; ++i) {
-        rmw_ret_t r = g_vt->publish(&pub, cdr, cdr_len);
+        rmw_ret_t r = g_vt->publish(&pub, rmw_byte_span_t{cdr, cdr_len});
         if (r != NROS_RMW_RET_OK) {
             std::fprintf(stderr, "publish_raw[%d] = %d\n", i,
                          static_cast<int>(r));

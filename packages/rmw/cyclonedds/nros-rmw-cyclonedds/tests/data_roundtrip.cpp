@@ -78,8 +78,8 @@ int main() {
     sub.topic_name = "rt/data_roundtrip";
     sub.type_name  = "nros_test::msg::TestString";
     sub.qos        = qos;
-    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "",
-                                99, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
+    const rmw_message_type_support_t ts_1{sub.type_name, ""};
+    if (g_vt->create_subscription(&node, &ts_1, sub.topic_name, 99, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         return 3;
     }
@@ -88,8 +88,8 @@ int main() {
     pub.topic_name = "rt/data_roundtrip";
     pub.type_name  = "nros_test::msg::TestString";
     pub.qos        = qos;
-    if (g_vt->create_publisher(&node, pub.topic_name, pub.type_name, "",
-                               99, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
+    const rmw_message_type_support_t ts_2{pub.type_name, ""};
+    if (g_vt->create_publisher(&node, &ts_2, pub.topic_name, 99, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 4;
     }
@@ -99,7 +99,7 @@ int main() {
     // pre-empt subscription matching.
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    rmw_ret_t pr = g_vt->publish(&pub, cdr, cdr_len);
+    rmw_ret_t pr = g_vt->publish(&pub, rmw_byte_span_t{cdr, cdr_len});
     if (pr != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw returned %d\n", static_cast<int>(pr));
         return 5;
@@ -125,7 +125,7 @@ int main() {
     size_t n = 0;
     bool took = false;
     /* Phase 376 W3.b/W3.d step A — status returned, bytes + taken out. */
-    if (g_vt->take(&sub, buf, sizeof(buf), &n, &took) != NROS_RMW_RET_OK || !took || n == 0) {
+    if (nros_test_take(g_vt, &sub, buf, sizeof(buf), &n, &took) != NROS_RMW_RET_OK || !took || n == 0) {
         std::fprintf(stderr, "take returned %zu bytes, taken=%d\n", n, (int)took);
         return 7;
     }

@@ -65,7 +65,8 @@ int main() {
     rmw_service_t srv{};
     srv.service_name = "svc_two_outstanding";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "", 99, nullptr, &srv) !=
+    const rmw_service_type_support_t ts_1{srv.type_name, ""};
+    if (g_vt->create_service(&node, &ts_1, srv.service_name, 99, nullptr, &srv) !=
         NROS_RMW_RET_OK) {
         (void) g_vt->destroy_session(&s);
         return 3;
@@ -74,7 +75,8 @@ int main() {
     rmw_client_t cli{};
     cli.service_name = "svc_two_outstanding";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_client(&node, cli.service_name, cli.type_name, "", 99, nullptr, &cli) !=
+    const rmw_service_type_support_t ts_2{cli.type_name, ""};
+    if (g_vt->create_client(&node, &ts_2, cli.service_name, 99, nullptr, &cli) !=
         NROS_RMW_RET_OK) {
         g_vt->destroy_service(&srv);
         (void) g_vt->destroy_session(&s);
@@ -93,14 +95,14 @@ int main() {
                 int64_t seq = -1;
                 size_t r    = 0;
                 bool rtook  = false;
-                if (g_vt->take_request(&srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
+                if (nros_test_take_request(g_vt, &srv, rbuf, sizeof(rbuf), &seq, &r, &rtook) ==
                         NROS_RMW_RET_OK &&
                     rtook && r > 0) {
                     int64_t a = get_le64(rbuf + 4);
                     int64_t b = get_le64(rbuf + 12);
                     uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
                     put_le64(reply + 4, a + b);
-                    (void) g_vt->send_response(&srv, seq, reply, sizeof(reply));
+                    (void) g_vt->send_response(&srv, seq, rmw_byte_span_t{reply, sizeof(reply)});
                     ++answered;
                     continue;
                 }
@@ -119,12 +121,12 @@ int main() {
 
     int64_t seq_a = -1;
     int64_t seq_b = -1;
-    rmw_ret_t sa  = g_vt->send_request(&cli, req_a, sizeof(req_a), &seq_a);
+    rmw_ret_t sa  = g_vt->send_request(&cli, rmw_byte_span_t{req_a, sizeof(req_a)}, &seq_a);
     rmw_ret_t sb  = NROS_RMW_RET_OK;
     // The pre-match staging window can legitimately refuse the second send with
     // WOULD_BLOCK; retry briefly rather than treating that as a failure.
     for (int i = 0; i < 200; ++i) {
-        sb = g_vt->send_request(&cli, req_b, sizeof(req_b), &seq_b);
+        sb = g_vt->send_request(&cli, rmw_byte_span_t{req_b, sizeof(req_b)}, &seq_b);
         if (sb != NROS_RMW_RET_WOULD_BLOCK) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -148,7 +150,7 @@ int main() {
         int64_t seq     = -1;
         size_t n        = 0;
         bool took       = false;
-        rmw_ret_t tr    = g_vt->take_response(&cli, rep, sizeof(rep), &seq, &n, &took);
+        rmw_ret_t tr    = nros_test_take_response(g_vt, &cli, rep, sizeof(rep), &seq, &n, &took);
         if (tr != NROS_RMW_RET_OK) {
             std::fprintf(stderr, "take_response rc=%d\n", (int) tr);
             rc = 7;

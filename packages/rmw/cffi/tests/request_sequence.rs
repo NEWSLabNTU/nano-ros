@@ -23,10 +23,10 @@ mod backend {
 
     pub unsafe extern "C" fn send_request(
         _c: *const rmw_client_t,
-        _d: *const u8,
-        _n: usize,
+        _d: nros_rmw_cffi::generated::rmw_byte_span_t,
         sequence_id: *mut i64,
     ) -> rmw_ret_t {
+        let (_d, _n) = (_d.data, _d.len);
         let seq = NEXT.fetch_add(1, Ordering::SeqCst);
         unsafe { *sequence_id = seq };
         NROS_RMW_RET_OK
@@ -34,12 +34,12 @@ mod backend {
 
     pub unsafe extern "C" fn take_response(
         _c: *const rmw_client_t,
-        buf: *mut u8,
-        cap: usize,
+        buf: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
         seq_out: *mut i64,
-        out_len: *mut usize,
         taken: *mut bool,
     ) -> rmw_ret_t {
+        let out_len = unsafe { &raw mut (*buf).len };
+        let (buf, cap) = unsafe { ((*buf).data, (*buf).capacity) };
         let answer = ANSWER.swap(-1, Ordering::SeqCst);
         if answer < 0 {
             unsafe { *taken = false };
@@ -75,9 +75,27 @@ fn a_reply_names_the_request_it_answers() {
 
     let mut first: i64 = -1;
     let mut second: i64 = -1;
-    let rc = unsafe { send(&client, [0u8; 4].as_ptr(), 4, &mut first) };
+    let rc = unsafe {
+        send(
+            &client,
+            nros_rmw_cffi::generated::rmw_byte_span_t {
+                data: [0u8; 4].as_ptr(),
+                len: 4,
+            },
+            &mut first,
+        )
+    };
     assert_eq!(rc, NROS_RMW_RET_OK);
-    let rc = unsafe { send(&client, [0u8; 4].as_ptr(), 4, &mut second) };
+    let rc = unsafe {
+        send(
+            &client,
+            nros_rmw_cffi::generated::rmw_byte_span_t {
+                data: [0u8; 4].as_ptr(),
+                len: 4,
+            },
+            &mut second,
+        )
+    };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert_ne!(
         first, second,
@@ -89,18 +107,13 @@ fn a_reply_names_the_request_it_answers() {
     backend::ANSWER.store(second, Ordering::SeqCst);
     let mut buf = [0u8; 64];
     let mut got_seq: i64 = -1;
-    let mut len = 0usize;
-    let mut taken = false;
-    let rc = unsafe {
-        take(
-            &client,
-            buf.as_mut_ptr(),
-            buf.len(),
-            &mut got_seq,
-            &mut len,
-            &mut taken,
-        )
+    let mut reply = nros_rmw_cffi::generated::rmw_mut_byte_span_t {
+        data: buf.as_mut_ptr(),
+        capacity: buf.len(),
+        len: 0,
     };
+    let mut taken = false;
+    let rc = unsafe { take(&client, &mut reply, &mut got_seq, &mut taken) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert!(taken);
     assert_eq!(
@@ -110,16 +123,7 @@ fn a_reply_names_the_request_it_answers() {
     assert_ne!(got_seq, first);
 
     // Nothing outstanding: taken = false with OK, not an error.
-    let rc = unsafe {
-        take(
-            &client,
-            buf.as_mut_ptr(),
-            buf.len(),
-            &mut got_seq,
-            &mut len,
-            &mut taken,
-        )
-    };
+    let rc = unsafe { take(&client, &mut reply, &mut got_seq, &mut taken) };
     assert_eq!(rc, NROS_RMW_RET_OK);
     assert!(!taken);
 }

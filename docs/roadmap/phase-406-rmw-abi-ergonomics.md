@@ -1,11 +1,19 @@
 # Phase 406 — the RMW ABI's ergonomics, in one break
 
-**Status (2026-08-31). NOT STARTED — this is the survey, and the ABI break it
-argues for is deliberately held until the list is complete.** Every item below
-is a UX divergence from upstream `rmw` that has NO platform reason, or a reason
-that has since become false. They are collected rather than fixed one at a time
-because each is an ABI change touching every backend and the codegen packs, and
-five separate breaks is four more than the tree should absorb.
+**Status (2026-08-31). LANDED — W1-W4, one break.** Every item below is a UX
+divergence from upstream `rmw` that has NO platform reason, or a reason that has
+since become false. They were collected rather than fixed one at a time because
+each is an ABI change touching every backend and the codegen packs, and five
+separate breaks is four more than the tree should absorb.
+
+The break reached further than the vtable header: the four XRCE C entry points
+bind `type_support`'s fields as locals, and ~60 vtable stubs plus 12 call sites
+across ten `packages/rmw/cffi/tests/` files carry the new shapes. Migrating
+those by text regex raised the error count three times running — the files vary
+in parameter naming, `c_char` spelling and module scope. Matching on the
+parameter TYPE SEQUENCE instead worked first try, because that is what does not
+vary. Worth remembering for the next ABI break: the stubs are uniform in the
+dimension a parser sees and irregular in the one a regex sees.
 
 **Implements.** Continues phase-379 (the user API) and phase-393 (the contract),
 one layer down. The evidence is
@@ -86,8 +94,21 @@ where upstream has one — and the same fix applies, with no allocator anywhere:
   plain span carries none, so this is available to us and the objection does not
   transfer.
 * **`rmw_visitor_t { fn; void *ctx; }`** — 13 slots currently spend two
-  arguments on this.
+  arguments on this. Landed as five per-payload structs (node,
+  names_and_types, topic_endpoint_info, content_filter,
+  network_flow_endpoint), because the callback signature differs per payload
+  and one struct cannot carry all five.
 * **`rmw_callback_t { fn; void *user_data; }`** — same shape, 3 slots.
+  **Landed, then REVERTED, and the measurement is why.** Upstream passes
+  `(rmw_event_callback_t, const void *)` as a loose pair on the three
+  `*_set_on_new_*_callback` slots. Grouping them changed nothing semantically —
+  same two values, one struct — and cost exactly 3 rows out of the comparison
+  doc's "identical on both sides" column, on 3 slots that are inert. The
+  visitor grouping earns its keep because it replaces an owning OUT-PARAMETER
+  across 13 slots; a callback pair is an IN-pair passed once, so there is
+  nothing to earn. Consistency with a standard we mirror beats internal
+  uniformity: `rmw_event_callback_reg_t` is gone, and the identical count went
+  16 -> 19.
 
 ## W3 — `void *` that could be typed
 
@@ -106,20 +127,82 @@ The campaign's own recurring failure: a reason argued once, and true then.
   issue for a decision the closure already made.
 * **`rmw_take_loaned_message`** cites **issue 0781**, RESOLVED, whose Fix says
   plainly: decide whether the subscription-side loan pair *"earns its two slots
-  given nothing implements them"*. Five loan slots are still inert. The decision
-  0781 asked for was never taken.
+  given nothing implements them"*. Five loan slots are still inert.
+
+  **This bullet was itself wrong, and the correction is the point of W4.** The
+  survey said "the decision 0781 asked for was never taken"; reading 0781 to the
+  end shows its item 2 *was* decided — the pair is KEPT, because
+  `process_raw_in_place`'s scoped callback ends the borrow when it returns and
+  so cannot serve `nros-c` / `nros-cpp` `try_borrow`, whose view outlives the
+  call. What was never done is carry that reason into the map: the row read
+  `"slot carried, no backend fills it — issue 0781"`, a citation standing in for
+  an argument. So the defect was real and its diagnosis was not, which is the
+  same failure mode W4 exists to catch, one level up. The row now states the
+  reason and marks the decision DECIDED rather than pointing at a closed issue.
 * Four more reasons cite non-open issues (0785, 0800, 0776) and need the same
   read: a citation is not a reason once the issue is closed.
 
 **These are the highest-value items here.** A wrong deviation reason is worse
 than a missing one, because it looks settled.
 
-## Acceptance
+## Acceptance — met, with one criterion CORRECTED
 
-* Argument-count inflation drops to the items with a NAMED platform reason
-  (`session`, `domain_id`, `out`); everything else is a grouped struct.
-* No reason in `docs/reference/rmw-api-map.toml` cites a closed issue as if it
-  were an open question.
-* `just check rmw-api-comparison` regenerates with no unexplained argument drop,
-  and the identical-row count RISES.
+* **Argument-count inflation drops to the items with a NAMED platform reason.**
+  Met, and by more than the target: **+27 -> -1**, measured off the generated
+  doc (upstream 180 argument slots, ours 179). The residual is `session` (16, a
+  swap for `node`/`context`), `visitor` (10), `out` (9), `domain_id` (5) and
+  `type_support` (4) — every one of them a named reason.
+* **No reason in `docs/reference/rmw-api-map.toml` cites a closed issue as if it
+  were an open question.** Met — and see W4 above: the survey's own reading of
+  0781 was wrong, which is the failure mode W4 exists to catch, one level up.
+* ~~the identical-row count RISES~~ — **this criterion was WRONG and is
+  withdrawn.** It went 21 -> 19. Three of the five losses were the callback
+  grouping and are reverted. The other two are
+  `return_loaned_message_from_{publisher,subscription}`, and they are a
+  CORRECTION, not a regression: upstream's second parameter there is
+  `void *loaned_message` — the message — while ours is a release TOKEN. Both
+  spelled `void *` before W3, so the generator called them identical *by type
+  erasure while the semantics differed*. Typing the token made a real,
+  pre-existing divergence visible. The generator's own header warns about
+  exactly this class of false "identical" row.
+
+  The criterion could never have been met anyway, and it is worth saying why:
+  W1's whole move is to take one type-identity argument like upstream does, but
+  upstream's type is `rosidl_message_type_support_t *` and rosidl types are
+  declined ABI-wide. Converging on upstream's SHAPE cannot converge on its
+  SPELLING. Argument-count inflation is the measure that actually tracks the
+  goal; identical-row count tracks something else.
 * One ABI break, one release.
+
+## What the break cost outside the header
+
+Recorded because the next ABI break will pay it again:
+
+* Four XRCE C entry points, ~60 vtable stubs and 12 call sites across ten
+  `packages/rmw/cffi/tests/` files, 33 call sites across 11 cyclonedds C++
+  tests, and three `nros_test_take*` adapters for take-family calls whose
+  `out_len` is read inside an `if` condition.
+* Migrating stubs by text regex raised the error count three times running —
+  the files vary in parameter naming, `c_char` spelling and module scope.
+  Matching on the parameter TYPE SEQUENCE worked first try, because that is
+  what does not vary. It is not collision-free: the matcher rewrote a
+  TRANSPORT write callback `(ctx, *const u8, usize)`, which is shape-identical
+  to a publish slot, and the rule needed narrowing to a publisher-typed
+  receiver.
+* **`just ci l1` does not build the C/C++ backends** (issue 0952). The
+  cyclonedds lane was red from W1's commit until the end of the phase, across
+  every green tier-1 run. An ABI break must run `just check rmw-cyclonedds`,
+  `just check c` and `just check cpp` explicitly; the affordable tier cannot
+  see them.
+
+## Deliberately NOT spanned
+
+Two byte-range slots keep their flat arguments, and the reason is that they are
+not byte ranges:
+
+* **`take_sequence`** — `buf` / `per_msg_cap` / `max_msgs` / `out_lens` is a
+  2-D buffer with a per-message length array. A span describes one contiguous
+  range; this is N of them.
+* **`publish_streamed`** — `size_cb` / `chunk_cb`'s `(out_buf, cap,
+  out_written)` is a chunk PROTOCOL between the runtime and the backend, not a
+  message payload handed across once.

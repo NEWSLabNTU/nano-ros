@@ -64,7 +64,8 @@ int main() {
     rmw_publisher_t pubr{};
     pubr.topic_name = "rt/status_events";
     pubr.type_name  = "nros_test::msg::TestString";
-    if (g_vt->create_publisher(&node, pubr.topic_name, pubr.type_name, "", 99, &qos, nullptr,
+    const rmw_message_type_support_t pub_ts{pubr.type_name, ""};
+    if (g_vt->create_publisher(&node, &pub_ts, pubr.topic_name, 99, &qos, nullptr,
                                &pubr) != NROS_RMW_RET_OK) {
         (void) g_vt->destroy_session(&s);
         return 4;
@@ -73,7 +74,8 @@ int main() {
     rmw_subscription_t sub{};
     sub.topic_name = "rt/status_events";
     sub.type_name  = "nros_test::msg::TestString";
-    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "", 99, &qos, nullptr,
+    const rmw_message_type_support_t sub_ts{sub.type_name, ""};
+    if (g_vt->create_subscription(&node, &sub_ts, sub.topic_name, 99, &qos, nullptr,
                                   &sub) != NROS_RMW_RET_OK) {
         g_vt->destroy_publisher(&pubr);
         (void) g_vt->destroy_session(&s);
@@ -100,7 +102,8 @@ int main() {
     // One sample, then silence — the deadline must lapse.
     // CDR-LE TestString: encap + u32 length(3) + "hi\0".
     uint8_t msg[12] = {0x00, 0x01, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 'h', 'i', 0x00, 0x00};
-    if (rc == 0 && g_vt->publish(&pubr, msg, sizeof(msg)) != NROS_RMW_RET_OK) {
+    if (rc == 0 &&
+        g_vt->publish(&pubr, rmw_byte_span_t{msg, sizeof(msg)}) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "FAIL: publish\n");
         rc = 7;
     }

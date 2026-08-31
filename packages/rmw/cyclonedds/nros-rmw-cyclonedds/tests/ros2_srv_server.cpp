@@ -14,6 +14,7 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_cyclonedds.h"
+#include "nros_test_domain.h"
 
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
@@ -65,8 +66,8 @@ int main() {
     rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "",
-                                    domain, nullptr, &srv) != NROS_RMW_RET_OK) {
+    const rmw_service_type_support_t ts_1{srv.type_name, ""};
+    if (g_vt->create_service(&node, &ts_1, srv.service_name, domain, nullptr, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service failed\n");
         return 3;
     }
@@ -82,14 +83,14 @@ int main() {
             size_t n = 0;
             bool took = false;
             /* Phase 376 W3.b/W3.d step A. */
-            if (g_vt->take_request(&srv, rbuf, sizeof(rbuf), &seq, &n, &took) ==
+            if (nros_test_take_request(g_vt, &srv, rbuf, sizeof(rbuf), &seq, &n, &took) ==
                     NROS_RMW_RET_OK &&
                 took && n > 0) {
                 int64_t a = get_le64(rbuf + 4);
                 int64_t b = get_le64(rbuf + 12);
                 uint8_t reply[12] = {0x00, 0x01, 0x00, 0x00};
                 put_le64(reply + 4, a + b);
-                if (g_vt->send_response(&srv, seq, reply, sizeof(reply))
+                if (g_vt->send_response(&srv, seq, rmw_byte_span_t{reply, sizeof(reply)})
                     != NROS_RMW_RET_OK) {
                     std::fprintf(stderr, "send_response failed\n");
                     return 4;

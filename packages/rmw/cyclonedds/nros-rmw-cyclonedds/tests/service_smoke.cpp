@@ -48,8 +48,8 @@ int main() {
     rmw_service_t srv{};
     srv.service_name = "add_two_ints";
     srv.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_service(&node, srv.service_name, srv.type_name, "",
-                                    99, nullptr, &srv) != NROS_RMW_RET_OK) {
+    const rmw_service_type_support_t ts_1{srv.type_name, ""};
+    if (g_vt->create_service(&node, &ts_1, srv.service_name, 99, nullptr, &srv) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_service failed\n");
         (void) g_vt->destroy_session(&s);
         return 3;
@@ -62,8 +62,8 @@ int main() {
     rmw_client_t cli{};
     cli.service_name = "add_two_ints";
     cli.type_name    = "nros_test::srv::dds_::AddTwoInts";
-    if (g_vt->create_client(&node, cli.service_name, cli.type_name, "",
-                                    99, nullptr, &cli) != NROS_RMW_RET_OK) {
+    const rmw_service_type_support_t ts_2{cli.type_name, ""};
+    if (g_vt->create_client(&node, &ts_2, cli.service_name, 99, nullptr, &cli) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_client failed\n");
         g_vt->destroy_service(&srv);
         (void) g_vt->destroy_session(&s);
@@ -77,8 +77,7 @@ int main() {
         return 6;
     }
     // send_request_raw with too-short request → invalid arg.
-    if (g_vt->send_request(&cli,
-            reinterpret_cast<const uint8_t *>("x"), 1, nullptr)
+    if (g_vt->send_request(&cli, rmw_byte_span_t{reinterpret_cast<const uint8_t *>("x"), 1}, nullptr)
         != NROS_RMW_RET_INVALID_ARGUMENT) {
         std::fprintf(stderr, "send_request_raw too-short should be INVALID_ARGUMENT\n");
         return 7;
@@ -89,8 +88,8 @@ int main() {
     // so consumers get a clear error if they forgot to call the
     // codegen helper.
     rmw_service_t any{};
-    if (g_vt->create_service(&node, "missing", "no::such::Svc", "",
-                                    99, nullptr, &any) != NROS_RMW_RET_UNSUPPORTED) {
+    const rmw_service_type_support_t ts_3{"no::such::Svc", ""};
+    if (g_vt->create_service(&node, &ts_3, "missing", 99, nullptr, &any) != NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr,
             "missing type_name should report UNSUPPORTED\n");
         return 8;

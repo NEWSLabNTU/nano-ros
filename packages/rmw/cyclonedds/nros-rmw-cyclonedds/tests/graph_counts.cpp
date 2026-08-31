@@ -67,8 +67,8 @@ int main() {
     rmw_publisher_t pubr{};
     pubr.topic_name = "rt/graph_counts";
     pubr.type_name  = "nros_test::msg::TestString";
-    if (g_vt->create_publisher(&node, pubr.topic_name, pubr.type_name, "", 97, &qos, nullptr,
-                               &pubr) != NROS_RMW_RET_OK) {
+    const rmw_message_type_support_t ts_1{pubr.type_name, ""};
+    if (g_vt->create_publisher(&node, &ts_1, pubr.topic_name, 97, &qos, nullptr, &pubr) != NROS_RMW_RET_OK) {
         (void) g_vt->destroy_session(&s);
         return 4;
     }
@@ -83,8 +83,8 @@ int main() {
     rmw_subscription_t sub{};
     sub.topic_name = "rt/graph_counts";
     sub.type_name  = "nros_test::msg::TestString";
-    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "", 97, &qos, nullptr,
-                                  &sub) != NROS_RMW_RET_OK) {
+    const rmw_message_type_support_t ts_2{sub.type_name, ""};
+    if (g_vt->create_subscription(&node, &ts_2, sub.topic_name, 97, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
         g_vt->destroy_publisher(&pubr);
         (void) g_vt->destroy_session(&s);
         return 5;

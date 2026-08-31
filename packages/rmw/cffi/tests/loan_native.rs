@@ -55,8 +55,7 @@ unsafe extern "C" fn noop_drive(_: *mut NrosRmwSession, _: i32) -> NrosRmwRet {
 }
 unsafe extern "C" fn ln_create_publisher(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -74,8 +73,7 @@ unsafe extern "C" fn noop_destroy_pub(_: *mut NrosRmwPublisher) -> NrosRmwRet {
 }
 unsafe extern "C" fn ln_publish_raw(
     _: *const NrosRmwPublisher,
-    _: *const u8,
-    _: usize,
+    _: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     FALLBACK_PUBLISH_CALLS.fetch_add(1, Ordering::SeqCst);
     NROS_RMW_RET_OK
@@ -84,9 +82,8 @@ unsafe extern "C" fn ln_publish_raw(
 unsafe extern "C" fn ln_pub_loan(
     _: *const NrosRmwPublisher,
     requested_len: usize,
-    out_buf: *mut *mut u8,
-    out_cap: *mut usize,
-    out_token: *mut *mut c_void,
+    out_slot: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
+    out_token: *mut *mut nros_rmw_cffi::generated::rmw_loan_token_t,
 ) -> NrosRmwRet {
     LOAN_CALLS.fetch_add(1, Ordering::SeqCst);
     if requested_len > 256 {
@@ -94,18 +91,20 @@ unsafe extern "C" fn ln_pub_loan(
     }
     unsafe {
         let buf = LOAN_BUF.0.get();
-        *out_buf = (*buf).as_mut_ptr();
-        *out_cap = (*buf).len();
+        (*out_slot).data = (*buf).as_mut_ptr();
+        (*out_slot).capacity = (*buf).len();
+        (*out_slot).len = 0;
         // Encode the requested length in the token for the commit-side
         // assertion. Any non-null sentinel works for the test.
-        *out_token = (requested_len | 0x4242_0000) as *mut c_void;
+        *out_token =
+            (requested_len | 0x4242_0000) as *mut nros_rmw_cffi::generated::rmw_loan_token_t;
     }
     NROS_RMW_RET_OK
 }
 
 unsafe extern "C" fn ln_pub_commit(
     _: *const NrosRmwPublisher,
-    token: *mut c_void,
+    token: *mut nros_rmw_cffi::generated::rmw_loan_token_t,
     actual_len: usize,
 ) -> NrosRmwRet {
     COMMIT_CALLS.fetch_add(1, Ordering::SeqCst);
@@ -120,7 +119,10 @@ unsafe extern "C" fn ln_pub_commit(
     NROS_RMW_RET_OK
 }
 
-unsafe extern "C" fn ln_pub_discard(_: *const NrosRmwPublisher, token: *mut c_void) -> NrosRmwRet {
+unsafe extern "C" fn ln_pub_discard(
+    _: *const NrosRmwPublisher,
+    token: *mut nros_rmw_cffi::generated::rmw_loan_token_t,
+) -> NrosRmwRet {
     DISCARD_CALLS.fetch_add(1, Ordering::SeqCst);
     assert_eq!(
         (token as usize) & 0xFFFF_0000,
@@ -134,8 +136,7 @@ unsafe extern "C" fn ln_pub_discard(_: *const NrosRmwPublisher, token: *mut c_vo
 // Shared no-op stubs for the unused vtable slots.
 unsafe extern "C" fn noop_csub(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -149,9 +150,7 @@ unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscription) -> NrosRmwRet {
 }
 unsafe extern "C" fn noop_recv(
     _: *const NrosRmwSubscription,
-    _: *mut u8,
-    _: usize,
-    _: *mut usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut bool,
 ) -> NrosRmwRet {
     NROS_RMW_RET_ERROR
@@ -162,8 +161,7 @@ unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscription, has: *mut bool) -> N
 }
 unsafe extern "C" fn noop_csrv(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -176,10 +174,8 @@ unsafe extern "C" fn noop_dsrv(_: *mut NrosRmwService) -> NrosRmwRet {
 }
 unsafe extern "C" fn noop_recvreq(
     _: *const NrosRmwService,
-    _: *mut u8,
-    _: usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut i64,
-    _: *mut usize,
     _: *mut bool,
 ) -> NrosRmwRet {
     // Phase 376 W3.d step A — this stub always FAILED; still does, named.
@@ -192,15 +188,13 @@ unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwService, has: *mut bool) -> Nros
 unsafe extern "C" fn noop_reply(
     _: *const NrosRmwService,
     _: i64,
-    _: *const u8,
-    _: usize,
+    _: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_ccli(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,

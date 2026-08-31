@@ -317,13 +317,6 @@ pub struct rmw_count_status_t {
 pub struct rmw_loan_token_t {
     _unused: [u8; 0],
 }
-#[doc = " An event callback and the data it needs — phase-406 W2.\n\n  Same argument as the visitor one slot up: the function and its `user_data`\n  are meaningless apart, so they travel together. Upstream keeps them as two\n  parameters; upstream also has an allocator and a heap, and pays for a\n  mistake here with a wild pointer rather than a compile error.\n\n  `callback == NULL` is how a caller CLEARS the callback — that is upstream's\n  contract too, and unlike the visitor case it is not an error."]
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rmw_event_callback_reg_t {
-    pub callback: rmw_event_callback_t,
-    pub user_data: *const core::ffi::c_void,
-}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_node_visitor_t {
@@ -340,6 +333,18 @@ pub struct rmw_names_and_types_visitor_t {
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_topic_endpoint_info_visitor_t {
     pub visit: rmw_topic_endpoint_info_visit_fn,
+    pub ctx: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_content_filter_visitor_t {
+    pub visit: rmw_content_filter_visit_fn,
+    pub ctx: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_network_flow_endpoint_visitor_t {
+    pub visit: rmw_network_flow_endpoint_visit_fn,
     pub ctx: *mut core::ffi::c_void,
 }
 #[repr(C)]
@@ -427,10 +432,8 @@ pub struct nros_rmw_vtable_t {
     pub take_request: ::core::option::Option<
         unsafe extern "C" fn(
             server: *const rmw_service_t,
-            buf: *mut u8,
-            buf_len: usize,
+            request: *mut rmw_mut_byte_span_t,
             seq_out: *mut i64,
-            out_len: *mut usize,
             taken: *mut bool,
         ) -> rmw_ret_t,
     >,
@@ -442,8 +445,7 @@ pub struct nros_rmw_vtable_t {
         unsafe extern "C" fn(
             server: *const rmw_service_t,
             seq: i64,
-            data: *const u8,
-            len: usize,
+            response: rmw_byte_span_t,
         ) -> rmw_ret_t,
     >,
     pub create_client: ::core::option::Option<
@@ -462,8 +464,7 @@ pub struct nros_rmw_vtable_t {
     pub send_request: ::core::option::Option<
         unsafe extern "C" fn(
             client: *const rmw_client_t,
-            request: *const u8,
-            req_len: usize,
+            request: rmw_byte_span_t,
             sequence_id: *mut i64,
         ) -> rmw_ret_t,
     >,
@@ -471,10 +472,8 @@ pub struct nros_rmw_vtable_t {
     pub take_response: ::core::option::Option<
         unsafe extern "C" fn(
             client: *const rmw_client_t,
-            reply_buf: *mut u8,
-            reply_buf_len: usize,
+            reply: *mut rmw_mut_byte_span_t,
             seq_out: *mut i64,
-            out_len: *mut usize,
             taken: *mut bool,
         ) -> rmw_ret_t,
     >,
@@ -540,8 +539,7 @@ pub struct nros_rmw_vtable_t {
         unsafe extern "C" fn(
             publisher: *const rmw_publisher_t,
             requested_len: usize,
-            out_buf: *mut *mut u8,
-            out_cap: *mut usize,
+            out_slot: *mut rmw_mut_byte_span_t,
             out_token: *mut *mut rmw_loan_token_t,
         ) -> rmw_ret_t,
     >,
@@ -564,8 +562,7 @@ pub struct nros_rmw_vtable_t {
     pub take_loaned_message: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            out_buf: *mut *const u8,
-            out_len: *mut usize,
+            out_view: *mut rmw_byte_span_t,
             out_token: *mut *mut rmw_loan_token_t,
             taken: *mut bool,
         ) -> rmw_ret_t,
@@ -627,7 +624,7 @@ pub struct nros_rmw_vtable_t {
             subscription: *mut rmw_subscription_t,
             ctx: *mut core::ffi::c_void,
             cb: ::core::option::Option<
-                unsafe extern "C" fn(ctx: *mut core::ffi::c_void, ptr: *const u8, len: usize),
+                unsafe extern "C" fn(ctx: *mut core::ffi::c_void, message: rmw_byte_span_t),
             >,
             out_processed: *mut bool,
         ) -> rmw_ret_t,
@@ -703,9 +700,7 @@ pub struct nros_rmw_vtable_t {
     pub take_with_info: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            buf: *mut u8,
-            buf_len: usize,
-            out_len: *mut usize,
+            message: *mut rmw_mut_byte_span_t,
             taken: *mut bool,
             message_info: *mut rmw_message_info_t,
         ) -> rmw_ret_t,
@@ -714,9 +709,8 @@ pub struct nros_rmw_vtable_t {
     pub take_loaned_message_with_info: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            out_buf: *mut *const u8,
-            out_len: *mut usize,
-            out_token: *mut *mut core::ffi::c_void,
+            out_view: *mut rmw_byte_span_t,
+            out_token: *mut *mut rmw_loan_token_t,
             taken: *mut bool,
             message_info: *mut rmw_message_info_t,
         ) -> rmw_ret_t,
@@ -725,18 +719,24 @@ pub struct nros_rmw_vtable_t {
     pub service_set_on_new_request_callback: ::core::option::Option<
         unsafe extern "C" fn(
             service: *mut rmw_service_t,
-            cb: rmw_event_callback_reg_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_client_set_on_new_response_callback`. Exact parity."]
     pub client_set_on_new_response_callback: ::core::option::Option<
-        unsafe extern "C" fn(client: *mut rmw_client_t, cb: rmw_event_callback_reg_t) -> rmw_ret_t,
+        unsafe extern "C" fn(
+            client: *mut rmw_client_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
+        ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.\n\n  The third of the family, added with the other two rather than left\n  recorded as \"covered by `set_wake_callback`\" — it never was: that slot\n  is session-scoped and serves subscriptions, services and clients\n  identically."]
     pub subscription_set_on_new_message_callback: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *mut rmw_subscription_t,
-            cb: rmw_event_callback_reg_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.\n\n  One slot, two upstream names: upstream split them only because appending\n  to a fixed out-parameter list would have broken its ABI. A visitor has\n  no such list, so the enclave is simply a fourth argument, NULL where\n  untracked. Recorded in the checker's grouping table."]
@@ -830,24 +830,21 @@ pub struct nros_rmw_vtable_t {
     pub subscription_get_content_filter: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            visit: rmw_content_filter_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_content_filter_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_publisher_get_network_flow_endpoints`.\n\n  Phase 376 W5. The old decline said \"zenoh-pico/XRCE have no such\n  notion\", which is true of those two and says nothing about Cyclone —\n  the reason was scoped to the ABI when it belonged on a backend. NULL\n  there, present here.\n\n  Deviation, declared: a visitor instead of the allocating\n  `rmw_network_flow_endpoint_array_t` + `rcutils_allocator_t *`."]
     pub publisher_get_network_flow_endpoints: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *const rmw_publisher_t,
-            visit: rmw_network_flow_endpoint_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_network_flow_endpoint_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_subscription_get_network_flow_endpoints`."]
     pub subscription_get_network_flow_endpoints: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            visit: rmw_network_flow_endpoint_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_network_flow_endpoint_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_count_publishers`."]
@@ -870,7 +867,8 @@ pub struct nros_rmw_vtable_t {
     pub node_get_graph_guard_condition: ::core::option::Option<
         unsafe extern "C" fn(
             session: *mut rmw_session_t,
-            cb: rmw_event_callback_reg_t,
+            callback: rmw_event_callback_t,
+            user_data: *const core::ffi::c_void,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_create_node`.\n\n  Declares a node on the graph. NULL slot is the expected implementation\n  in a static image: the runtime still tracks the node, the backend simply\n  has nothing to declare.\n\n  Deviations from upstream, declared: no `rmw_context_t *` (an image has\n  one session and reaches it directly), and the node is an OUT parameter\n  rather than a returned pointer — no runtime allocation, the caller owns\n  the storage, exactly as `create_publisher` does.\n\n  The runtime calls this once per distinct `(name, namespace_)`."]

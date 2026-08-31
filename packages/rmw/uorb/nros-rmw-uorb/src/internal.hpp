@@ -45,12 +45,11 @@ rmw_ret_t service_create(const rmw_node_t* node, const char* service_name,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      rmw_service_t* out);
 rmw_ret_t service_destroy(rmw_service_t* server);
-rmw_ret_t service_take_request(const rmw_service_t* server, uint8_t* buf,
-                                    size_t buf_len, int64_t* seq_out, size_t* out_len,
-                                    bool* taken);
+rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
+                                    int64_t* seq_out, bool* taken);
 rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request);
 rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
-                                  const uint8_t* data, size_t len);
+                                  rmw_byte_span_t response);
 
 rmw_ret_t client_create(const rmw_node_t* node, const char* service_name,
                                      const char* type_name, const char* type_hash,

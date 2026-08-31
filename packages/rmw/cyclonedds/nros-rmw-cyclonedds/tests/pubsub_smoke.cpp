@@ -56,7 +56,8 @@ int main() {
     pub.topic_name = "rt/pubsub_smoke";
     pub.type_name = "nros_test::msg::TestString";
     pub.qos = qos;
-    if (g_vt->create_publisher(&node, pub.topic_name, pub.type_name, "", 99, &qos, nullptr, &pub) !=
+    const rmw_message_type_support_t ts_1{pub.type_name, ""};
+    if (g_vt->create_publisher(&node, &ts_1, pub.topic_name, 99, &qos, nullptr, &pub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         (void)g_vt->destroy_session(&s);
@@ -71,7 +72,8 @@ int main() {
     sub.topic_name = "rt/pubsub_smoke";
     sub.type_name = "nros_test::msg::TestString";
     sub.qos = qos;
-    if (g_vt->create_subscription(&node, sub.topic_name, sub.type_name, "", 99, &qos, nullptr, &sub) !=
+    const rmw_message_type_support_t ts_2{sub.type_name, ""};
+    if (g_vt->create_subscription(&node, &ts_2, sub.topic_name, 99, &qos, nullptr, &sub) !=
         NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         g_vt->destroy_publisher(&pub);
@@ -94,7 +96,7 @@ int main() {
     uint8_t rxbuf[64];
     size_t rxn = 0;
     bool rxtook = true;
-    if (g_vt->take(&sub, rxbuf, sizeof(rxbuf), &rxn, &rxtook) != NROS_RMW_RET_OK || rxtook) {
+    if (nros_test_take(g_vt, &sub, rxbuf, sizeof(rxbuf), &rxn, &rxtook) != NROS_RMW_RET_OK || rxtook) {
         std::fprintf(stderr, "take should yield nothing with no published data\n");
         g_vt->destroy_subscription(&sub);
         g_vt->destroy_publisher(&pub);
@@ -103,7 +105,7 @@ int main() {
     }
 
     // publish_raw with too-short input (< 4-byte CDR header) → invalid arg.
-    if (g_vt->publish(&pub, reinterpret_cast<const uint8_t*>("x"), 1) !=
+    if (g_vt->publish(&pub, rmw_byte_span_t{reinterpret_cast<const uint8_t*>("x"), 1}) !=
         NROS_RMW_RET_INVALID_ARGUMENT) {
         std::fprintf(stderr, "publish_raw too-short should report INVALID_ARGUMENT\n");
         return 8;
@@ -112,7 +114,8 @@ int main() {
     // Unknown type: create_publisher must report UNSUPPORTED, not
     // ERROR.
     rmw_publisher_t bad{};
-    if (g_vt->create_publisher(&node, "rt/unknown", "no::such::Type", "", 99, &qos, nullptr, &bad) !=
+    const rmw_message_type_support_t ts_3{"no::such::Type", ""};
+    if (g_vt->create_publisher(&node, &ts_3, "rt/unknown", 99, &qos, nullptr, &bad) !=
         NROS_RMW_RET_UNSUPPORTED) {
         std::fprintf(stderr, "create_publisher unknown-type should be UNSUPPORTED\n");
         return 9;
