@@ -1,6 +1,6 @@
 # Phase 405 — one configuration surface: name the SSoT, project the rest, delete the strays
 
-**Status (2026-08-31). W1, W2, W4 and W5 landed; W3 and W6 open.**
+**Status (2026-08-31). W1, W2, W4, W5 and W6 landed; W3 open.**
 Opened from [issue 0934](../issues/0934-config-redundancy-map.md)'s survey and
 [issue 0931](../issues/0931-retire-model-and-default-launch.md)'s argument-surface
 count. `book/src/reference/configuration-surface.md` and its gate are in; every
@@ -171,13 +171,60 @@ of the model" work — and D6's *"become deletable once their `[image.*]` lands"
 should be read as "once the RESOLVER reads the image", not "once the image is
 written".
 
-**W6 — the gated duplications.** SDK roots exist four times and the zenoh tx
-trio three; both are asserted-equal by a gate rather than merged.
-`scripts/check-zephyr-knob-agreement.py` states the case against itself better
-than this doc can: *"Two spellings of one fact is the drift this repo keeps
-paying for … **Not a substitute for merging the sources.**"* Decide per pair
-whether the gate IS the end state — for SDK roots it may be, since the TOML
-indirects to the env rather than restating it.
+**W6 LANDED — one pair was already finished, the other had two checkers.**
+
+The framing this doc opened with was wrong on both halves, and measuring it is
+what produced the work.
+
+*"SDK roots exist four times"* — no. The VALUE lives once, in
+`just/sdk-env.just`. `activate.sh` deliberately sets none (activate.fish:152
+says so), `.env.example`'s entries are commented placeholders. The other
+mentions are a board→var binding table, its rendered output, and the cmake
+readers. That is a generator with committed output plus a staleness gate —
+the `check-abi-bindings` shape this repo already treats as an end state. Closed
+as correct, no file changed.
+
+*"the zenoh tx trio … asserted-equal by a gate rather than merged"* — the
+direction was already DECLARED, in the descriptor's own comment since
+phase-290, and it points the other way from where a naive reading lands: the
+TOML is the authority and Kconfig's `default` lines mirror it. Worse, the pair
+had **two** checkers —
+`nros-tests/tests/kconfig_platform_default_drift.rs` (80 lines, declares the
+direction) and `scripts/check-zephyr-knob-agreement.py` (140 lines, declared
+none and called itself *"not a substitute for merging the sources"*). Same two
+files, same three pairs, contradictory prose, for two phases.
+
+So W6 was not a merge. It was: declare the direction in the one surviving
+checker, give it `--write` so the mirror is GENERATED rather than asserted,
+mark the three Kconfig lines as derived, and delete the duplicate checker. The
+gate keeps the python one because it runs on `check fast` — the pre-push hook —
+where the Rust test ran only in `test-unit`, and because a generator belongs
+beside the gate that enforces it.
+
+**Issue 0940 was 12 blocks, not 1.** The sweep found unreachable
+`[deploy.<t>.nros]` site config in 7 bringups across 6 workspaces, not only in
+`mixed`. Ten of the twelve carried content byte-identical to a live
+board-named sibling in the same file, which is the only reason it had cost
+nothing; `rust`'s two had no sibling but that workspace has zero
+`nano_ros_entry` DEPLOY tokens, so nothing reached them either.
+
+The generator was NOT the source — `check-site-config.py` keys on `board` and
+`continue`s past a boardless target, so it never emitted these and never
+checked them. That blind spot is the defect: S4 now reports a site block whose
+target names no `board`, since board-facts resolution requires one by both of
+its paths. The 12 blocks are deleted (-91 lines).
+
+Both scripts gained a selftest on the normal path and left
+`.config/gate-selftest-baseline.txt` (173 gates, 58 now self-testing).
+
+`--write` was verified by round-trip, not by reading it: perturb a Kconfig
+default, confirm the gate reddens, `--write`, confirm green and the file
+byte-identical to the original.
+
+Issue 0941 carries the remaining half — `nros_resolve_board_facts` still fails
+SOFT, so the next unreachable block is still silent. Split deliberately: that
+needs an enumeration of which configures legitimately resolve nothing, and
+should not hold up the mechanical fix.
 
 ## Not settled — do not act without more evidence
 
