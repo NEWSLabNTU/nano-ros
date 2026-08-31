@@ -100,6 +100,7 @@ fast:
 [group("main")]
 fast-serial: \
     abi-bindings \
+    cyclone-domain-not-pinned \
     absolute-paths \
     action-client-arena-budget \
     activate-shells \
@@ -2221,6 +2222,16 @@ feature-contract:
 [group("ci")]
 no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
+
+# issue 0974 — `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to `NROS_DOMAIN_ID` so
+# the two knobs cannot split; pinning a literal breaks that link silently, which
+# is phase-180's split-brain (issue 0161). Both `nros new`'s template and the
+# Zephyr getting-started page were emitting the pin, so every generated
+# cyclonedds project started split-brained and the book taught the pattern.
+[group("check")]
+cyclone-domain-not-pinned:
+    @python3 scripts/check-cyclone-domain-not-pinned.py --self-test
+    @python3 scripts/check-cyclone-domain-not-pinned.py
 
 # issue 0942 — the C++ twin of the rule above. `std::fprintf` in a TU that is
 # cross-compiled for a board's own toolchain depends on a guarantee freestanding
