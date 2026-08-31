@@ -19,6 +19,23 @@ in this campaign covered:
 | The libc arena regresses because only the symbol is gated, not the config | phase-391 W1b | gate item added |
 | Flash is 4 MiB at 8.3 % and is NOT fungible with RAM | phase-392 amendment D | scoped: post-mortem log, config storage, ITCM |
 
+## Amendment 2026-08-31 — the arena has no symbol, so the instrument cannot price it
+
+A design review of the subscription buffer, from the ASI consumer side, found
+that the campaign's largest single consumer is invisible to the campaign's own
+instrument. `Executor` holds its arena inline, so it lands on whichever task
+calls `spin` rather than in `.bss` — and W1 prices pools by reading symbols.
+
+| item | where it landed | status |
+| --- | --- | --- |
+| The executor arena is stack-resident, so `mem-report` cannot see it and task stacks carry a term proportional to the subscription graph | [RFC-0002 § 4.4b](../design/0002-rt-execution-model.md) decision; phase-392 lever 1b + wave W6 | opened |
+
+Two things it does NOT change, recorded so they are not re-litigated from this
+amendment: it does not decide whether payload buffers become heap-backed (that
+is amendment B's wave, and a `.bss` arena only makes it measurable), and it does
+not size subscriptions to their type (that is phase-392 W3a). The three
+compound; none depends on another.
+
 One correction is recorded rather than a gap: *field storage mode does not
 shrink wire buffers.* Phase-392 lever 2 already said so; it has since been
 proposed twice in the opposite direction, so the amendment restates it as a
