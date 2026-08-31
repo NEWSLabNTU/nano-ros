@@ -11,7 +11,7 @@ related: [issue-0196, issue-0917]
 
 `nros_tests::qemu::qemu_system_arm_path()` prefers `build/qemu/bin/qemu-system-arm`
 — the patched build — over anything on `$PATH`. That binary is produced once by
-`just qemu::build` and then simply reused. Nothing re-checks it against the
+`just qemu build` and then simply reused. Nothing re-checks it against the
 commit the superproject pins.
 
 Found while re-verifying [[issue-0906]]:
@@ -46,7 +46,7 @@ one layer that currently has no gate:
 
 Same one the CLI and fixtures already use: record what the artifact was built
 from, and compare. A stamp beside the binary holding the submodule commit, and
-a precondition entry that reads it, with the remedy `just qemu::build`. The
+a precondition entry that reads it, with the remedy `just qemu build`. The
 existing text already gets the ordering right — submodules, then CLI, then
 fixtures — and QEMU belongs immediately after submodules, since a pin bump is
 what invalidates it.
@@ -54,7 +54,7 @@ what invalidates it.
 ## Acceptance
 
 * Bumping the `third-party/qemu/qemu` pointer makes `check::tier-preconditions`
-  report the built QEMU as stale, naming `just qemu::build` as the remedy.
+  report the built QEMU as stale, naming `just qemu build` as the remedy.
 * A test run cannot silently use a QEMU older than the pin.
-* The check is a stamp comparison, not a rebuild: `just qemu::build` is
+* The check is a stamp comparison, not a rebuild: `just qemu build` is
   expensive and must stay opt-in.
