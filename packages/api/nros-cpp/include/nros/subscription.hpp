@@ -16,6 +16,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 #include "nros/stream.hpp"
 
 #include "nros_cpp_ffi.h"
@@ -122,9 +123,19 @@ template <typename M> class Subscription {
     ///         ErrorCode::TryAgain if no data is available right now;
     ///         ErrorCode::NotInitialized if the subscription is not initialized;
     ///         ErrorCode::Error if deserialization failed.
-    Result try_recv(M& msg) {
+    Result try_recv(M& msg) { return try_recv_sized<::nros::rx_buffer_capacity<M>::value>(msg); }
+
+    /// @ref try_recv with the receive buffer sized by the CALLER.
+    ///
+    /// The escape hatch for a type with no derived bound, and the way to
+    /// deliberately override a bounded type's own number. Mirrors how
+    /// `bind_subscription_sized` relates to `bind_subscription` (issue 0964).
+    ///
+    /// @tparam Cap  Stack bytes to receive into. A sample larger than this is
+    ///              refused by the backend, so under-sizing DROPS messages.
+    template <size_t Cap> Result try_recv_sized(M& msg) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[M::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(storage_, buf, sizeof(buf), &len);
         if (ret != 0) return Result(ret);
@@ -149,8 +160,15 @@ template <typename M> class Subscription {
     /// @return Result::success() on a received+deserialized message; TryAgain if
     ///         none available; NotInitialized / Error otherwise.
     Result try_recv_validated(M& msg, nros_cpp_integrity_status_t& status) {
+        return try_recv_validated_sized<::nros::rx_buffer_capacity<M>::value>(msg, status);
+    }
+
+    /// @ref try_recv_validated with the receive buffer sized by the CALLER.
+    /// See @ref try_recv_sized (issue 0964).
+    template <size_t Cap>
+    Result try_recv_validated_sized(M& msg, nros_cpp_integrity_status_t& status) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[M::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_subscription_try_recv_validated(storage_, buf, sizeof(buf), &len, &status);

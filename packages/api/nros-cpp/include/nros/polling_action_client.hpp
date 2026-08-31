@@ -23,6 +23,7 @@
 #include "nros/node.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
@@ -106,8 +107,16 @@ template <typename A> class PollingActionClient {
     /// The reply has wire layout: CDR header (4B) + status byte (1B) +
     /// result payload — deserializes the trailing payload into `out`.
     Result try_recv_result(ResultType& out) {
+        return try_recv_result_sized<::nros::rx_buffer_capacity<ResultType>::value>(out);
+    }
+
+    /// @ref try_recv_result with the RESULT PAYLOAD capacity chosen by the
+    /// caller. `Cap` is the payload, not the buffer: the wire reply carries a
+    /// 5-byte prefix (CDR header + status), which this adds (issue 0964).
+    /// See @ref Subscription::try_recv_sized.
+    template <size_t Cap> Result try_recv_result_sized(ResultType& out) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[ResultType::SERIALIZED_SIZE_MAX + 5];
+        uint8_t buf[Cap + 5];
         int32_t rc = nros_cpp_action_client_try_recv_result_raw(storage_, buf, sizeof(buf));
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));
         if (rc == 0) return Result(ErrorCode::TryAgain);
@@ -144,8 +153,16 @@ template <typename A> class PollingActionClient {
     /// Try to receive a feedback message. Writes the source `goal_id`
     /// (16 bytes) and deserializes the payload into `out_fb`.
     Result try_recv_feedback(uint8_t goal_id_out[16], FeedbackType& out_fb) {
+        return try_recv_feedback_sized<::nros::rx_buffer_capacity<FeedbackType>::value>(goal_id_out,
+                                                                                        out_fb);
+    }
+
+    /// @ref try_recv_feedback with the receive buffer sized by the CALLER.
+    /// See @ref Subscription::try_recv_sized (issue 0964).
+    template <size_t Cap>
+    Result try_recv_feedback_sized(uint8_t goal_id_out[16], FeedbackType& out_fb) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         int32_t rc = nros_cpp_action_client_try_recv_feedback_raw(
             storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id_out));
         if (rc < 0) return Result(static_cast<nros_cpp_ret_t>(rc));

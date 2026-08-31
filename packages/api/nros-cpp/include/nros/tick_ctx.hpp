@@ -50,6 +50,7 @@
 #include <string.h>
 
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 // Phase 118.D — cbindgen output is the canonical FFI surface.
 // `nros_cpp_tick_ctx_call_raw` / `_send_goal_raw` are declared in
 // nros_cpp_ffi.h; we just pull them in here. No hand-written
@@ -116,13 +117,22 @@ class TickCtx {
     /// `nros::Client<S>`).
     template <typename Req, typename Resp>
     Result call(const char* service_entity, const Req& request, Resp& response) {
+        return call_sized<Req, Resp, ::nros::rx_buffer_capacity<Resp>::value>(service_entity,
+                                                                              request, response);
+    }
+
+    /// @ref call with the REPLY buffer sized by the caller (issue 0964). The
+    /// request buffer stays on the estimate: it is transmit scratch, where an
+    /// over-estimate only wastes stack.
+    template <typename Req, typename Resp, size_t RespCap>
+    Result call_sized(const char* service_entity, const Req& request, Resp& response) {
         uint8_t req_buf[Req::SERIALIZED_SIZE_MAX];
         size_t req_len = 0;
         if (Req::ffi_serialize(&request, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(ErrorCode::Error);
         }
 
-        uint8_t resp_buf[Resp::SERIALIZED_SIZE_MAX];
+        uint8_t resp_buf[RespCap];
         size_t resp_len = 0;
         Result r =
             call_raw(service_entity, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len);

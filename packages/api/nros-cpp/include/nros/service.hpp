@@ -15,6 +15,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
@@ -77,8 +78,18 @@ template <typename S> class Service {
     ///         ErrorCode::NotInitialized or the FFI error code otherwise;
     ///         ErrorCode::Error if deserialization failed.
     Result try_recv_request(RequestType& req, int64_t& seq_id) {
+        return try_recv_request_sized<::nros::rx_buffer_capacity<RequestType>::value>(req, seq_id);
+    }
+
+    /// @ref try_recv_request with the receive buffer sized by the CALLER.
+    ///
+    /// This IS a receive buffer — issue 0964's survey listed the service
+    /// request under "transmit", which is true of `Client<S>`'s request and
+    /// false here: the server deserializes out of it, so an under-estimate
+    /// truncates. See @ref Subscription::try_recv_sized.
+    template <size_t Cap> Result try_recv_request_sized(RequestType& req, int64_t& seq_id) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[RequestType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         int64_t seq = 0;
         nros_cpp_ret_t ret =

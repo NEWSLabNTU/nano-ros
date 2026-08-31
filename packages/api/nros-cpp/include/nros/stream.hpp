@@ -14,6 +14,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<T> — the receive-buffer size
 
 // FFI declarations
 extern "C" {
@@ -49,9 +50,13 @@ template <typename T> class Stream {
     ///         ErrorCode::NotInitialized if the stream is unbound;
     ///         ErrorCode::Error if deserialization failed; otherwise the
     ///         FFI error code.
-    Result try_next(T& out) {
+    Result try_next(T& out) { return try_next_sized<::nros::rx_buffer_capacity<T>::value>(out); }
+
+    /// @ref try_next with the receive buffer sized by the CALLER.
+    /// See @ref Subscription::try_recv_sized (issue 0964).
+    template <size_t Cap> Result try_next_sized(T& out) {
         if (!try_recv_fn_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[T::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret = try_recv_fn_(storage_, buf, sizeof(buf), &len);
         if (ret != 0) return Result(ret);
@@ -71,6 +76,15 @@ template <typename T> class Stream {
     ///                         frequency.
     /// @return Result::success(), ErrorCode::Timeout, or error.
     Result wait_next(void* executor_handle, uint32_t timeout_ms, T& out, uint32_t poll_ms = 10) {
+        return wait_next_sized<::nros::rx_buffer_capacity<T>::value>(executor_handle, timeout_ms,
+                                                                     out, poll_ms);
+    }
+
+    /// @ref wait_next with the receive buffer sized by the CALLER.
+    /// See @ref Subscription::try_recv_sized (issue 0964).
+    template <size_t Cap>
+    Result wait_next_sized(void* executor_handle, uint32_t timeout_ms, T& out,
+                           uint32_t poll_ms = 10) {
         if (!try_recv_fn_) return Result(ErrorCode::NotInitialized);
         if (poll_ms == 0) poll_ms = 1;
         // Phase 118.C: budget by wall-clock. Accumulating `step` per
@@ -88,7 +102,7 @@ template <typename T> class Stream {
                 ret != static_cast<nros_cpp_ret_t>(ErrorCode::TryAgain)) {
                 return Result(ret);
             }
-            Result rn = try_next(out);
+            Result rn = try_next_sized<Cap>(out);
             if (rn.ok()) return Result::success();
             // TryAgain / NotInitialized / Error from try_next: keep polling
             // unless we've hit a hard error that's not "no data yet".

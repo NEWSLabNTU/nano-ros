@@ -16,6 +16,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 #include "nros/future.hpp"
 #include "nros/stream.hpp"
 // Issue 0796 — `CancelReturnCode` (the `action_msgs/srv/CancelGoal` RPC status
@@ -142,9 +143,15 @@ template <typename A> class ActionClient {
     /// @param result   Output result struct (filled on success).
     /// @return Result indicating success, timeout, or failure.
     Result get_result(const uint8_t goal_id[16], ResultType& result) {
+        return get_result_sized<::nros::rx_buffer_capacity<ResultType>::value>(goal_id, result);
+    }
+
+    /// @ref get_result with the receive buffer sized by the CALLER.
+    /// See @ref Subscription::try_recv_sized (issue 0964).
+    template <size_t Cap> Result get_result_sized(const uint8_t goal_id[16], ResultType& result) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
-        uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret = nros_cpp_action_client_get_result(
             storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, sizeof(buf),
@@ -213,14 +220,25 @@ template <typename A> class ActionClient {
     /// @return Future that resolves to ResultType. Returns a consumed
     ///         (empty) future on send failure.
     Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
-        if (!initialized_) return Future<ResultType>();
+        return get_result_future_sized<::nros::rx_buffer_capacity<ResultType>::value>(goal_id);
+    }
+
+    /// @ref get_result_future with the RESULT buffer sized by the caller.
+    ///
+    /// A `Future<T>` holds its receive buffer as a member, so the capacity is a
+    /// class template argument: this returns `Future<ResultType, Cap>`
+    /// (issue 0964).
+    template <size_t Cap>
+    Future<ResultType, Cap> get_result_future_sized(const uint8_t goal_id[16]) {
+        using Fut = Future<ResultType, Cap>;
+        if (!initialized_) return Fut();
 
         nros_cpp_ret_t ret = nros_cpp_action_client_get_result_async(
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id));
-        if (ret != 0) return Future<ResultType>();
+        if (ret != 0) return Fut();
 
-        return Future<ResultType>(storage_, &nros_cpp_action_client_try_recv_result,
-                                  0 // slot 0 (single outstanding result request)
+        return Fut(storage_, &nros_cpp_action_client_try_recv_result,
+                   0 // slot 0 (single outstanding result request)
         );
     }
 
@@ -233,9 +251,15 @@ template <typename A> class ActionClient {
     ///         ErrorCode::Error if deserialization failed; otherwise the
     ///         FFI error code.
     Result try_recv_feedback(FeedbackType& feedback) {
+        return try_recv_feedback_sized<::nros::rx_buffer_capacity<FeedbackType>::value>(feedback);
+    }
+
+    /// @ref try_recv_feedback with the receive buffer sized by the CALLER.
+    /// See @ref Subscription::try_recv_sized (issue 0964).
+    template <size_t Cap> Result try_recv_feedback_sized(FeedbackType& feedback) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
-        uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_action_client_try_recv_feedback(storage_, buf, sizeof(buf), &len);

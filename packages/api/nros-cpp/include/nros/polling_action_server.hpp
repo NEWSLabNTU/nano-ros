@@ -26,6 +26,7 @@
 #include "nros/node.hpp"
 #include "nros/nros_cpp_config_generated.h"
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 
 #include "nros_cpp_ffi.h"
 
@@ -78,8 +79,17 @@ template <typename A> class PollingActionServer {
     /// the matching `out_sequence_number`.
     Result try_recv_goal_request(uint8_t goal_id[16], GoalType& out_goal,
                                  int64_t& out_sequence_number) {
+        return try_recv_goal_request_sized<::nros::rx_buffer_capacity<GoalType>::value>(
+            goal_id, out_goal, out_sequence_number);
+    }
+
+    /// @ref try_recv_goal_request with the receive buffer sized by the CALLER.
+    /// See @ref Subscription::try_recv_sized (issue 0964).
+    template <size_t Cap>
+    Result try_recv_goal_request_sized(uint8_t goal_id[16], GoalType& out_goal,
+                                       int64_t& out_sequence_number) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         int32_t rc = nros_cpp_action_server_try_recv_goal_request_raw(
             storage_, buf, sizeof(buf), reinterpret_cast<uint8_t(*)[16]>(goal_id),
             &out_sequence_number);
