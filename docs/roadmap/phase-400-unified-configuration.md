@@ -1,6 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
-**Status (2026-08-30): W2-W5 and W7 done; W1, W6, W8 outstanding.** Design is
+**Status (2026-08-31): W2-W5 and W7 done; W6's first and largest tenant
+(`NROS_EXECUTOR_*`) done, its remaining tenants and W1 / W8 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
 new mechanism — the ladder and `nros config explain` already exist and work.
@@ -15,6 +16,27 @@ This phase gives them reach and deletes what they replace.
 | `NROS_*` env read in build scripts | 21 |
 | `ZPICO_*` env | 9 |
 | **knobs in the RFC-0049 ladder** | **3** |
+
+**That table had no METHOD, so no wave could show it moved.** Every gate here
+is stated as "measured the same way as the table at the top", and there was no
+same way — two people counting by hand get two numbers. The method now exists:
+`just check config-knob-census` (`scripts/check/config-knob-census.py`),
+buildless, and it is on the fast line. Re-measured 2026-08-31:
+
+| where configuration lives | count |
+| --- | --- |
+| **knobs in the RFC-0049 ladder** | **13** (8 executor · 3 zenoh.tx · 2 transport) |
+| Kconfig `CONFIG_NROS_*` declarations | 85 |
+| `NROS_*` env read by a `build.rs` | 31 |
+| `ZPICO_*` env read by a `build.rs` | 5 |
+
+Do NOT read `3 → 13` as this phase's delta: the 3 was counted by an unknown
+method and the rows are not comparable term-for-term. What is now true is that
+the number is REPRODUCIBLE, and the ladder count is ratcheted — it may rise,
+never fall, because a knob leaving the ladder is a knob losing its platform and
+board rung and its `nros config explain` row. The env rows are REPORTED and not
+gated, deliberately: a migrated knob keeps its env name as the front-end, so
+"the env count falls to zero" was never the goal.
 
 Descriptors: 4 rmw · 7 platform · 11 board, across 12 package kinds. Only three
 kinds have one.
@@ -160,9 +182,50 @@ front-end so nothing breaks at the call site.
 Order by blast radius, largest first: `NROS_EXECUTOR_*` (8 read by
 `nros-node/build.rs`), then the zenoh pools, then the per-entity caps.
 
-**Gate.** Ladder knob count rises and the env/Kconfig count falls, measured the
-same way as the table at the top. A tenant is migrated when
-`nros config explain` prints it and the front-end still overrides it.
+**Gate.** Ladder knob count rises, measured by
+`just check config-knob-census`. A tenant is migrated when `nros config
+explain` prints it and the front-end still overrides it.
+
+### `NROS_EXECUTOR_*` — DONE
+
+All eight resolve over the ladder (`PlatformTree::resolve_executor`), both
+production readers call it (`cmd/config.rs`, `orchestration/model_ingest.rs`),
+and `nros config explain` prints all eight with the env name that is still
+their front-end:
+
+```
+executor.max_cbs                   4          builtin  [NROS_EXECUTOR_MAX_CBS]
+executor.arena_size                derived    builtin  [NROS_EXECUTOR_ARENA_SIZE]
+$ NROS_EXECUTOR_MAX_CBS=17 nros config explain --platform posix
+executor.max_cbs                   17         env      [NROS_EXECUTOR_MAX_CBS]
+```
+
+Two of the eight were invisible until 2026-08-31, and the reason is worth
+keeping: their defaults are DERIVED, not constant, so they did not fit the
+`&[(&str, usize)]` table the other six were listed in and were simply left out
+— in a report whose entire job is to say where a value came from. Neither
+derivation is duplicated to fix it: `action_clients` defaults to the RESOLVED
+`max_cbs` (build.rs then clamps to it, so the default is the clamp), and
+`arena_size` defaults to `0`, the documented Kconfig sentinel for "derive it",
+printed as `derived`. `nros-node/build.rs` stays the one place that knows the
+arena formula.
+
+**What this tenant does NOT yet have: the platform/board rungs do not reach a
+bare `cargo build`.** `nros-node/build.rs` resolves env → Kconfig → default via
+`nros_zephyr_build::knob_usize`; it never opens the platform or board TOML. So
+the rungs exist and are reported, and a build outside cmake still compiles at
+crate defaults — which is the failure the `ExecutorKnobs` doc comment describes.
+Closing it needs a decision, because `nros-node`'s build-dependencies are
+deliberately "build-only, dependency-free" while the ladder lives in
+`nros-board-common` (which `nros-zpico-build` does depend on, with
+`features = ["build-helpers"]`). Either core's build script takes that
+dependency, or the lane resolves the ladder and exports the values as env the
+way `board-facts` already exports `NROS_SDK_*`. The first reaches a bare cargo
+build; the second keeps one ladder implementation. Not decided here.
+
+### Remaining tenants
+
+The zenoh pools, then the per-entity caps.
 
 ---
 

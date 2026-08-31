@@ -113,7 +113,8 @@ fast-serial: \
     cargo-profile-mirror build-profile-literals \
     version-lockstep workspace-fmt example-fmt cli-fmt \
     readiness-marker-literals \
-    codegen-invocation string-conventions issue-ids knob-single-reader workflow-repo-env doc-recipe-refs \
+    codegen-invocation string-conventions issue-ids knob-single-reader config-knob-census \
+    workflow-repo-env doc-recipe-refs \
     std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio cpp-no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed shared-cargo-dir-witness image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
     absolute-paths \
     c-fmt cpp-fmt python \
@@ -743,6 +744,12 @@ issue-ids:
 [private]
 knob-single-reader:
     @python3 scripts/check/check-knob-single-reader.py
+
+# phase-400 — the config census, and the ratchet on it. The ladder knob count
+# is the number every wave gate is stated against; it was unmeasurable until
+# this existed, because the phase doc recorded a table and no method.
+config-knob-census:
+    @python3 scripts/check/config-knob-census.py --check
 
 # issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
 # environment. `activate.sh` is what exports `nano_ros_ROOT`, and that is how

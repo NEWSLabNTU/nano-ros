@@ -216,19 +216,49 @@ fn explain(args: ExplainArgs) -> Result<()> {
         ("subscription_buffer_size", 1024),
         ("param_service_buffer_size", 4096),
     ];
-    for (name, r) in tree
+    let resolved = tree
         .resolve_executor(
             &args.platform,
             board.as_ref().map(|b| &b.knobs.executor),
             &env_get,
             exec_defaults,
         )
-        .map_err(|e| eyre!("{e}"))?
-    {
+        .map_err(|e| eyre!("{e}"))?;
+
+    // The two knobs whose defaults are DERIVED, not constant — which is why
+    // they were missing from the table above and therefore invisible to
+    // `explain`, in a report whose whole job is to say where a value came from.
+    //
+    // Neither derivation is duplicated here. `action_clients` defaults to the
+    // resolved `max_cbs` (build.rs then clamps to it, so the default IS the
+    // clamp), and `arena_size` defaults to `0`, which is the documented Kconfig
+    // sentinel for "derive it" — build.rs stays the one place that knows the
+    // formula, and this prints `derived` rather than a number it did not
+    // compute.
+    let max_cbs = resolved
+        .iter()
+        .find(|(n, _)| *n == "max_cbs")
+        .map_or(4, |(_, r)| r.value);
+    let derived_defaults: &[(&str, usize)] = &[("action_clients", max_cbs), ("arena_size", 0)];
+    let derived = tree
+        .resolve_executor(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.executor),
+            &env_get,
+            derived_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?;
+
+    for (name, r) in resolved.iter().chain(derived.iter()) {
+        let shown = if *name == "arena_size" && r.value == 0 {
+            "derived".to_string()
+        } else {
+            r.value.to_string()
+        };
         println!(
-            "{:<24} {:<10} {}  [{}]",
+            "{:<34} {:<10} {}  [{}]",
             format!("executor.{name}"),
-            r.value,
+            shown,
             r.source.as_str(),
             r.env_key
         );
