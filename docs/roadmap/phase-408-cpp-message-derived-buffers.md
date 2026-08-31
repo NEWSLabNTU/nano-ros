@@ -216,3 +216,75 @@ its arena regardless — that is the executor's own allocation, not the backend'
 — but the backend-class routing W1/W4 also feed will show no effect there until
 phase-392 W3f exists. Measure the arena, not the backend, when validating this
 phase on that lane.
+
+## The C++ half of W1 + W4 LANDED 2026-09-01
+
+The C pack already emitted `<PREFIX>_TX/RX_MAX_SERIALIZED_SIZE`, poisoned them
+for an unbounded type, and delivered the RX number through a generated
+`{Msg}_subscribe` macro (phase-403 W6/W7). The C++ pack emitted none of it, and
+`bind_subscription<M, C, Method>` — the one place a C++ subscription still has
+`M` in hand — spent `M::SERIALIZED_SIZE_MAX` on the hint. That constant is
+`compute_serialized_size_max`, an ESTIMATE (issue 0964): over 120 stock Humble
+types it matched the derived bound **zero** times, and its flat 512-per-nested
+charge makes it UNDER-estimate exactly the large types whose receive buffer
+matters.
+
+**One derivation, two languages.** `generator::common::derive_message_bound` is
+now the only place the classification happens; `generator/msg.rs` (C) and
+`generator/cpp.rs` (C++) both call it. Copying the C emitter's inline block into
+the C++ one would have been a second implementation of "how big can this type
+get" along the LANGUAGE axis — the sizes-header mirror class wearing a new hat —
+so the block moved instead of being duplicated. The poison token is built from
+the same flat C-style name in both, so one type has ONE token in C and C++.
+
+`generate_cpp_message_package_with_lookup` is the sibling of the C entry point;
+the two real call sites (`cargo-nano-ros`, `rosidl-bindgen`) pass the resolver
+they already had for the inventory and the type hash, so a cross-package nested
+field now gets a real bound in the C++ header instead of `Unresolved`.
+
+**The poison is a class template, not a constant, because C++ evaluates a
+`static constexpr` member initializer when the class is DEFINED.** A poisoned
+initializer would break every TU that merely includes the header — including one
+that only publishes — so an unbounded type states no `TX/RX_MAX_SERIALIZED_SIZE`
+at all and carries `tx_size_bound<>` / `rx_size_bound<>` templates whose
+`static_assert` fires on INSTANTIATION. Measured output:
+
+```
+error: static assertion failed: NROS_UNBOUNDED__p_msg_unbounded__field_data:
+       p/Unbounded states no serialized-size bound -- unbounded member: data (string).
+note: required from 'constexpr const size_t nros::rx_size_bound<...Unbounded>::value'
+```
+
+Type and member, at the point a number was asked for.
+
+**Delivery.** `nros::rx_size_bound<M>::value` (new header `nros/size_bound.hpp`)
+is the one spelling every C++ subscribe path uses, and `bind_subscription` now
+passes it. It has three arms, and the third is why it is a trait rather than a
+direct member read: a generated type WITH a bound gives the derived number; a
+generated type WITHOUT one gives the poison; a type with no
+`nros_derived_size_bounds` marker at all — an older codegen, or a hand-written
+message-shaped struct — keeps the estimate, so out-of-tree stubs still compile.
+`bind_subscription_sized<M, C, Method>(node, topic, self, rx_bytes, qos)` is the
+escape hatch, the C++ sibling of the generated `{Msg}_subscribe_sized` macro.
+
+**Deliberately NOT done.** `SERIALIZED_SIZE_MAX` stays: `Subscription<M>`,
+`Client<Svc>`, `Future<T>`, `Stream<T>`, the four action tiers, `tick_ctx.hpp`
+and two example workspaces stack buffers on it, and retiring it is issue 0964's
+own decision, not a side effect of this one. It is now documented in the emitted
+header as an estimate, and the only path where it still reaches a receive-buffer
+hint is the no-marker fallback above. The publish side is untouched (the C
+`{Msg}_publish` already stacks the TX bound; the C++ publish path serializes in
+Rust, where the exports pack still uses the estimate).
+
+Verified: `cargo test -p rosidl-codegen --test message_size_bound_parity` (the
+new gate — every corpus type, both resolvers, both encodings, C++ == C ==
+`max_serialized_size`, with a both-arms-reached control), the regenerated
+`codegen_golden` corpus, `just check cpp` (including the new
+`rx_size_bound / bind_subscription hint` instantiation TU), `just check c`,
+`just check cli-tests`, `just check fast`.
+
+**Not measured here.** No `mem-report --baseline` was taken: W3's runtime
+`rx_buf` plumbing landed in phase-403 W3/W5, so the bytes this changes are the
+DIFFERENCE between the estimate and the derived bound on a real image, and this
+worktree has no built image to compare. W4's acceptance ("a smaller arena
+without editing the source") is therefore still owed a number.

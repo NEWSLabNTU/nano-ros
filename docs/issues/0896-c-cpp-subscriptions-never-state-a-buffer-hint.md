@@ -567,3 +567,31 @@ these three findings is **phase-392, "W3 remainder"**.
 Issue 0841, fixed: a hint landing between the small block size and the size
 threshold got a block that could not hold it. That is about routing a hint that
 exists. This is about there being no hint at all.
+
+## The C++ pack caught up 2026-09-01 (phase-408)
+
+Layers 1, 2 and 4 now hold for C++ as well as C. `packs/cpp/message.hpp.jinja`
+emits `Msg::TX_MAX_SERIALIZED_SIZE` / `Msg::RX_MAX_SERIALIZED_SIZE` from the same
+`generator::common::derive_message_bound` the C pack calls — the derivation moved
+out of `generator/msg.rs` into a shared helper rather than being copied, because
+a second copy along the LANGUAGE axis is this issue's own defect — and
+`nros::bind_subscription<M, C, Method>` fills `rx_buffer_hint` from
+`nros::rx_size_bound<M>::value` where it read `M::SERIALIZED_SIZE_MAX`, the
+estimate (issue 0964).
+
+Two notes for whoever reads the layers above as a plan:
+
+* **Layer 5's poison is a class template in C++, not a constant.** A
+  `static constexpr` member initializer is evaluated when the class is DEFINED,
+  so a poisoned one would break every TU that merely INCLUDES the header,
+  including one that only publishes. An unbounded type therefore states no
+  `TX/RX_MAX_SERIALIZED_SIZE` at all and carries `tx_size_bound<>`/`rx_size_bound<>`
+  templates whose `static_assert` fires on instantiation, naming the type and the
+  member. The C `#define` is lazy for free; C++ has to buy it.
+* **The C++ delivery is the existing `bind_subscription`, not a generated
+  `_subscribe`.** `NROS_SUBSCRIBE` → `ComponentNode::create_subscription` →
+  `bind_subscription` keeps `M` as a template parameter to the last call, so the
+  type is never erased on the C++ side and no macro is needed. That is the
+  asymmetry with C recorded in phase-403's "one correction to carry across".
+
+Full record: `docs/roadmap/phase-408-cpp-message-derived-buffers.md`.

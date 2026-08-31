@@ -1877,6 +1877,149 @@ fn upper_ident(s: &str) -> String {
     s.trim_end_matches('_').to_ascii_uppercase()
 }
 
+/// issue 0896 layer 2 / phase-408 W1 — one type's serialized-size bound,
+/// derived ONCE and handed to every emitter that states it.
+///
+/// The number comes from `nros_serdes::size::max_serialized_size` over a schema
+/// built by [`crate::schema_value`] — THE size rule, the same function the Rust
+/// runtime's `M::MAX_SERIALIZED_SIZE_XCDR*` consts use. It is deliberately NOT
+/// [`crate::types::compute_serialized_size_max`], the C++ pack's older in-header
+/// `SERIALIZED_SIZE_MAX`: that one ESTIMATES (a flat 512 bytes per nested
+/// message, a flat default capacity per string) and always returns a value, so
+/// it can neither report "unbounded" nor be relied on to err upwards — a nested
+/// type whose own bound exceeds 512 is charged 512, which UNDER-sizes a receive
+/// buffer (issue 0964).
+///
+/// Living here rather than in one emitter is the point. The C header had this
+/// derivation inline; giving the C++ pack its own copy would have been a second
+/// implementation of "how big can this type get" along the LANGUAGE axis, which
+/// is the sizes-header mirror class (0088 → 0114 → 0122 → 0123 → 0245 → 0268)
+/// with a new hat. Both packs now call this, so a C header and a C++ header for
+/// the same type cannot state different numbers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DerivedBound {
+    /// XCDR1 — what this stack WRITES, so a transmit buffer wants exactly it.
+    pub tx: Option<usize>,
+    /// `max(XCDR1, XCDR2)` — a receive buffer must hold whatever encoding a
+    /// peer negotiated (RFC-0055), so it takes the larger of the two.
+    pub rx: Option<usize>,
+    /// Prose reason, `Some` exactly when there is no bound. Says WHICH of the
+    /// two no-bound outcomes happened: "unbounded member" (we looked and no
+    /// bound exists — bound the field) versus "could not be resolved" (we could
+    /// not look — fix the search path). Collapsing those is the confusion issue
+    /// 0896 exists to remove.
+    pub reason: Option<String>,
+    /// A C identifier naming the type AND the member that costs it the bound,
+    /// `Some` exactly when there is no bound. Emitters POISON the size constant
+    /// with it, so naming the constant is an error that says what is wrong
+    /// rather than "undeclared identifier".
+    pub token: Option<String>,
+}
+
+/// Derive [`DerivedBound`] for one parsed message.
+///
+/// `ident_prefix` is the C-style flat type name (`std_msgs_msg_string`) the
+/// poison token is built from. The C and the C++ pack pass the SAME prefix, so
+/// one type has one poison token in both languages.
+///
+/// `lookup` resolves nested types. A caller that has no resolver passes
+/// `&|_| None` and gets `Unresolved` — never a guessed bound.
+pub fn derive_message_bound(
+    package_name: &str,
+    message_name: &str,
+    message: &rosidl_parser::Message,
+    ident_prefix: &str,
+    caps: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
+) -> Result<DerivedBound, GeneratorError> {
+    use crate::schema_value::{TypeBound, bound_message};
+    use nros_serdes::cdr::EncodingVersion;
+
+    let fqn = format!("{package_name}/{message_name}");
+    let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, caps, lookup);
+    let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, caps, lookup);
+
+    // phase-403 W7b (issue 0961) — a stated `max_serialized` budget is checked
+    // HERE, against the same classification the emitted constants come from, so
+    // the number in the diagnostic is the number in the header.
+    crate::bounds::check_budget(
+        &fqn,
+        &crate::bounds::BoundState::classify(&x1, &x2),
+        &crate::schema_value::chains_for(&fqn, message, caps, lookup),
+        caps.max_serialized(package_name, message_name),
+    )
+    .map_err(|e| GeneratorError::BoundExceedsBudget {
+        details: e.to_string(),
+    })?;
+
+    // issue 0896 Q2 — the compiler error must name the TYPE and the FIELD, not
+    // just say "no bound". A C identifier cannot hold `.` or `(`, so the path is
+    // flattened; the prose reason travels beside it for the parts an identifier
+    // cannot carry.
+    let flatten = |what: &str| -> String {
+        what.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect()
+    };
+    let unbounded_token = |what: &str| {
+        let member = what.split(" (").next().unwrap_or(what);
+        format!("NROS_UNBOUNDED__{ident_prefix}__field_{}", flatten(member))
+    };
+    let unresolved_token = |t: &str| {
+        format!(
+            "NROS_UNRESOLVED__{ident_prefix}__nested_type_{}",
+            flatten(t)
+        )
+    };
+
+    // phase-403 W6 — the TX/RX classification lives in `bounds::BoundState` so
+    // the emitted constants and the exported inventory cannot drift into
+    // disagreeing about which encoding feeds which direction. The poison TOKENS
+    // stay here: they are identifiers, which only the emitters need.
+    Ok(match crate::bounds::BoundState::classify(&x1, &x2) {
+        // TX writes XCDR1; RX must hold either encoding, so it takes the max.
+        crate::bounds::BoundState::Bounded { tx, rx } => DerivedBound {
+            tx: Some(tx),
+            rx: Some(rx),
+            reason: None,
+            token: None,
+        },
+        crate::bounds::BoundState::Unbounded { reason } => {
+            // The prose reason names EVERY offending member (phase-403 W0); the
+            // poison TOKEN can only name one, because it is an identifier. The
+            // FIRST is the one it names, matching the order the reason lists
+            // them in, so the identifier the compiler prints is the first line
+            // of the reason beside it.
+            let members = match (&x1, &x2) {
+                (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => w.clone(),
+                _ => unreachable!("classify only reports Unbounded from an Unbounded input"),
+            };
+            let first = members
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            DerivedBound {
+                tx: None,
+                rx: None,
+                reason: Some(reason),
+                token: Some(unbounded_token(&first)),
+            }
+        }
+        crate::bounds::BoundState::Unresolved { reason } => {
+            let nested = match (&x1, &x2) {
+                (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => t.clone(),
+                _ => unreachable!("classify only reports Unresolved from an Unresolved input"),
+            };
+            DerivedBound {
+                tx: None,
+                rx: None,
+                reason: Some(reason),
+                token: Some(unresolved_token(&nested)),
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod schema_tests {
     use super::*;

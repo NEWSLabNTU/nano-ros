@@ -39,6 +39,7 @@
 #include "nros/node.hpp"
 #include "nros/result.hpp"
 #include "nros/service.hpp"      // nros_cpp_service_server_register (raw callback)
+#include "nros/size_bound.hpp"   // nros::rx_size_bound<M> — the derived receive bound
 #include "nros/subscription.hpp" // nros_cpp_subscription_register (raw callback)
 
 namespace nros {
@@ -109,6 +110,17 @@ inline Result bind_subscription(Node& node, const char* topic, C* self,
     // phase-403 W3 -- `M` is still in scope here, so the type's own bound can be
     // spent on the arena slot. This is the point the type is erased: everything
     // below takes a type NAME, and the bound cannot be recovered from a string.
+    //
+    // phase-408 W1/W4 -- the number is `nros::rx_size_bound<M>`, the DERIVED
+    // bound the C++ pack now emits (`M::RX_MAX_SERIALIZED_SIZE`, from
+    // `nros_serdes::size::max_serialized_size`), and NOT `M::SERIALIZED_SIZE_MAX`
+    // as this line read until now. That one ESTIMATES -- flat 512 per nested
+    // message, flat default capacity per string -- and is wrong in BOTH
+    // directions: `geometry_msgs/Twist` reads 1028 against a derived 64, while a
+    // nested type larger than 512 comes out SMALLER than its real bound, which
+    // under-sizes the receive buffer and drops samples silently (issues
+    // 0896/0964). Over 120 stock Humble types the estimate matched the derived
+    // bound zero times.
     return create_subscription_raw(
         node, topic, M::TYPE_NAME,
         [](const uint8_t* data, size_t len, void* ctx) {
@@ -116,7 +128,31 @@ inline Result bind_subscription(Node& node, const char* topic, C* self,
             if (M::ffi_deserialize(data, len, &msg) != 0) return;
             (static_cast<C*>(ctx)->*Method)(msg);
         },
-        self, qos, M::SERIALIZED_SIZE_MAX);
+        self, qos, ::nros::rx_size_bound<M>::value);
+}
+
+/// `bind_subscription` with the receive-buffer hint supplied by the CALLER.
+///
+/// The escape hatch for a type with no derived bound (an unbounded `string` or
+/// sequence in the `.msg`), where `bind_subscription` is a deliberate compile
+/// error naming the offending member: there is no number the generated header
+/// could pass, and choosing one is a decision only the caller can make. Also
+/// the way to deliberately override a bounded type's own number.
+///
+/// `rx_bytes` is a HINT (0 = the image-wide default), never a promise that
+/// larger samples are refused. The C sibling of this is the generated
+/// `{Msg}_subscribe_sized` macro.
+template <typename M, class C, void (C::*Method)(const M& msg)>
+inline Result bind_subscription_sized(Node& node, const char* topic, C* self, size_t rx_bytes,
+                                      const QoS& qos = QoS::default_profile()) {
+    return create_subscription_raw(
+        node, topic, M::TYPE_NAME,
+        [](const uint8_t* data, size_t len, void* ctx) {
+            M msg;
+            if (M::ffi_deserialize(data, len, &msg) != 0) return;
+            (static_cast<C*>(ctx)->*Method)(msg);
+        },
+        self, qos, rx_bytes);
 }
 
 /// Bind a component **member** `void C::on_tick()` as a timer callback. Same

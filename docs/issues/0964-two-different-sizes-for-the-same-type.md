@@ -63,3 +63,40 @@ estimate, so the receive buffer, arena and payload classes were all budgeted for
 (1) matches what the C pack does today and what phase-380 requires. It is a
 behaviour change with a blast radius across every C++ consumer, which is why it
 is filed rather than done.
+
+## Partly addressed 2026-09-01 (phase-408) — the derived number is now IN the header
+
+Option 2, minus the rename. The C++ pack emits `Msg::TX_MAX_SERIALIZED_SIZE` /
+`Msg::RX_MAX_SERIALIZED_SIZE` from the derived bound beside the estimate, and an
+unbounded type states neither — it carries the poison templates instead, so
+"this type has no bound" is now expressible in a C++ header, which it was not
+when this issue was filed.
+
+**One consumer moved: `nros::bind_subscription<M, C, Method>`.** It passed
+`M::SERIALIZED_SIZE_MAX` as the subscription's `rx_buffer_hint`; it now passes
+`nros::rx_size_bound<M>::value`, the derived RX bound.
+
+**What is still open, stated precisely, because the survey behind this issue
+undercounted the risk.** Thirty call sites still stack
+`uint8_t buf[...::SERIALIZED_SIZE_MAX]` — 28 in `nros-cpp` headers, 2 in the
+example workspaces — and they are NOT all transmit scratch:
+
+* **RECEIVE buffers — the dangerous direction, an under-estimate TRUNCATES.**
+  `Subscription<M>::try_recv` / `try_recv_validated` (`subscription.hpp:127,153`),
+  `Client<Svc>::call`'s response buffer (`client.hpp:131`),
+  `Future<T>`/`Stream<T>` (`future.hpp:46,166`, `stream.hpp:54`), the action
+  client's result/feedback buffers (`action_client.hpp:147,238`,
+  `polling_action_client.hpp:110,148`), the polling action server's goal buffer
+  (`polling_action_server.hpp:82`), and `tick_ctx.hpp:125`.
+* **TRANSMIT buffers — an over-estimate only wastes stack.** the request
+  buffers in `client.hpp` / `service.hpp` / `tick_ctx.hpp`, the action goal and
+  result/feedback serialize buffers, and two example workspaces.
+
+`bind_subscription` was fixed here because it feeds a `rx_buffer_hint`, which is
+a HINT — the change cannot break anyone. Retargeting the list above cannot make
+that claim: the buffer IS the capacity, so switching an unbounded type from the
+estimate to the derived bound turns a working (if arbitrarily-sized) call into a
+compile error, and none of these has a `_sized` escape hatch the way
+`bind_subscription_sized` does. That is the blast radius this issue was filed
+for, and it is unchanged. `nros::rx_size_bound<M>` / `nros::tx_size_bound<M>`
+are the spellings whoever takes it should use.

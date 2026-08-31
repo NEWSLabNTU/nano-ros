@@ -37,9 +37,10 @@ pub use generator::{
     GeneratedPackage, GeneratedServicePackage, GeneratorError, generate_action_package,
     generate_c_action_package, generate_c_message_package, generate_c_message_package_with_lookup,
     generate_c_service_package, generate_cpp_action_package, generate_cpp_message_package,
-    generate_cpp_service_package, generate_message_package, generate_nros_action_package,
-    generate_nros_inline_action, generate_nros_inline_message, generate_nros_inline_service,
-    generate_nros_message_package, generate_nros_service_package, generate_service_package,
+    generate_cpp_message_package_with_lookup, generate_cpp_service_package,
+    generate_message_package, generate_nros_action_package, generate_nros_inline_action,
+    generate_nros_inline_message, generate_nros_inline_service, generate_nros_message_package,
+    generate_nros_service_package, generate_service_package,
 };
 pub use idl_generator::{GeneratedIdlCode, extract_annotations, generate_idl_file};
 pub use types::{
