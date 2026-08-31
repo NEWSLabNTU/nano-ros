@@ -1,7 +1,7 @@
 ---
 id: 950
 title: "`macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target"
-status: open
+status: resolved
 area: build
 severity: medium
 found: 2026-08-31
@@ -51,3 +51,36 @@ between two selectors is how a wrong answer becomes an invisible one, which is
 the whole subject of 0941.
 
 Found while implementing 0941.
+
+## Resolved — SUPERSEDED by #0951 (2026-08-31)
+
+The dangerous half is gone, structurally.
+
+This issue's sharpest finding was that 54 of 335 both-selector probes returned a
+DIFFERENT BOARD's facts: `--board mps2-an385-freertos --deploy threadx-linux`
+answered `NROS_BOARD=threadx-linux`, silently, because `pick_deploys` used an
+`else if` so `--deploy` replaced the question rather than breaking a tie.
+
+Under #0951 `--deploy` resolves against `[image.*]`, and the same probe now
+**errors**:
+
+```
+$ nros ws board-facts --board mps2-an385-freertos --deploy threadx-linux <bringup>
+Error: .../system.toml: no [image.threadx-linux]
+```
+
+while the agreeing case still answers correctly:
+
+```
+$ nros ws board-facts --board mps2-an385-freertos --deploy freertos <bringup>
+NROS_BOARD=mps2-an385-freertos
+```
+
+So a wrong answer became an error rather than a quieter wrong answer. The `else
+if` shape remains in the source, but its consequence does not: a deploy token
+that names no image cannot resolve to some other board's facts.
+
+The phase-405 fix (a `board-facts-note[...]` announced fallback with the board
+authoritative) was dropped rather than rebased. It solved the same problem by
+ANNOUNCING the mismatch; #0951 solved it by making the mismatch unrepresentable,
+which is the better shape and the one this repo prefers (issue 0380).
