@@ -1295,11 +1295,25 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_subscription_options_t.rx_buffer_hint`, and carries the same
      *  meaning, including that `0` says the CALLER stated nothing rather than
      *  that the type is unbounded — every message type has a derived bound or
-     *  the build fails. On `NROS_RMW_RET_OK`, `*out_bytes` is a take-buffer
-     *  length that is SUFFICIENT for this type at this hint: a `take` given
-     *  that many bytes must not fail for want of room. It may exceed `hint` —
-     *  a backend that frames or pads says so here rather than discovering it
-     *  at `take` time — and it may be smaller.
+     *  the build fails. On `NROS_RMW_RET_OK`, `*out_bytes` is the MINIMUM
+     *  take-buffer length that is sufficient for this type at this hint: a
+     *  `take` given that many bytes must not fail for want of room, and no
+     *  smaller number has that property. It may exceed `hint` — a backend that
+     *  frames or pads says so here rather than discovering it at `take` time —
+     *  and it may be smaller.
+     *
+     *  MINIMUM, tightened in phase-403 W4, and the word carries the whole
+     *  value of the slot. A backend that keeps size CLASSES may not answer with
+     *  the class it would round this type up to. Doing so is arithmetically
+     *  safe and useless: a 68-byte type and a 1000-byte type sharing a class
+     *  come back with one number, which is the global-constant answer the
+     *  runtime already had without asking, and the runtime would spend the
+     *  difference on every subscription in the image. Report what the type
+     *  needs; the rounding is the backend's own business and stays there.
+     *  If a backend genuinely cannot separate the two — its framing really
+     *  does make the class size the floor — then the class size IS the
+     *  minimum and answering it is correct; what is forbidden is reporting a
+     *  rounding as though it were a requirement.
      *
      *  This is a QUERY about a type, not about an entity: it is answerable
      *  before any subscription exists, which is the point — the runtime has to
@@ -1322,9 +1336,12 @@ typedef struct nros_rmw_vtable_t {
      *    here means `first_missing_vtable_slot` REFUSES to register a backend
      *    that leaves it NULL, and `check-rmw-required-slots.sh` holds that set
      *    equal to the set the runtime `.expect()`s. Nothing calls this yet —
-     *    phase-403 W3/W4 are the consumers — so requiring it now would refuse
-     *    working backends over a function no caller reaches. That is issue
-     *    0349 exactly, and it cost three backends their registration once.
+     *    phase-403 W3/W5 own the dispatch site — so requiring it now would
+     *    refuse working backends over a function no caller reaches. That is
+     *    issue 0349 exactly, and it cost three backends their registration
+     *    once. (W4 filled the slot for zenoh-pico, which makes the slot
+     *    PRODUCED; it is the CONSUMER that decides whether required is
+     *    reachable, and there is still none.)
      *  - "NO OPINION" IS A REAL ANSWER, and mandatory does not delete it, only
      *    relocates it: five in-tree backends would each carry the same
      *    `*out_bytes = hint; return OK;` body, and the Rust ones would get it
@@ -1336,8 +1353,17 @@ typedef struct nros_rmw_vtable_t {
      *    meaningless entries to get there.
      *
      *  Promotion stays cheap and stays open: making this required later is a
-     *  change to the registration check, not to the struct, so W4 can require
-     *  it in the same commit that adds the dispatch site.
+     *  change to the registration check, not to the struct.
+     *
+     *  Phase-403 W4 recommends AGAINST ever promoting it, having filled it.
+     *  The first argument above dissolves once a dispatch site exists, but the
+     *  other two do not, and they are the load-bearing ones: cyclonedds and
+     *  XRCE keep ONE receive buffer, so "no opinion" is their true answer and
+     *  requiring the slot only relocates it into identical bodies; and slot 75
+     *  is out of reach of uORB's positional C++14 initialiser whatever the
+     *  registration check says. A slot that most backends must fill with a
+     *  restatement of the default is worse than a NULL whose meaning the
+     *  header pins down, which this one does.
      *
      *  It does not weaken `take`'s obligation. The runtime may pass a `buf_len`
      *  smaller than what this returned — it has its own memory to answer to —

@@ -111,15 +111,80 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 // other's trait surface. So the register fn lives next to the trait
 // impl, and the legacy `*-cffi` two-crate split goes away.
 
+/// Phase 403 W4 — the slots zenoh-pico answers that the generic
+/// `RustBackendAdapter` cannot.
+///
+/// Unconditional, unlike [`loan_trampolines`]: before W4 the only zenoh-owned
+/// vtable was the `lending` one, so a build without that feature registered the
+/// generic adapter table verbatim and had nowhere to put a backend-specific
+/// slot. `ZENOH_VTABLE_BASE` is that place, and both register paths go through
+/// it.
+///
+/// Only zenoh gets `required_rx_bytes`. Putting it on `RustBackend` as a
+/// defaulted trait method would hand every Rust backend a non-NULL slot whose
+/// body is "no opinion" — the relocation `rmw_vtable.h` argues against for
+/// making the slot mandatory, arrived at from the other direction. cyclonedds
+/// and XRCE have one receive buffer and nothing to say beyond the hint, so they
+/// stay NULL and the runtime's NULL-slot fallback is their (correct) answer.
+mod rx_sizing_trampolines {
+    use nros_rmw_cffi::{
+        NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwRet,
+        NrosRmwVtable, RustBackendAdapter,
+    };
+
+    use crate::ZenohRmw;
+
+    /// `nros_rmw_vtable_t::required_rx_bytes` for zenoh-pico.
+    ///
+    /// `type_name` / `type_hash` are unread, and that is the finding rather
+    /// than an omission: across this ABI a type is a STRING and the backend
+    /// holds no schema, so the only thing zenoh-pico can size from is the
+    /// `hint` the runtime computed from the type's own bound. A backend that
+    /// carried a type registry would use them; this one has nothing to look up.
+    ///
+    /// The arithmetic, and why the answer is minimal rather than the class
+    /// stride, is [`crate::shim::required_rx_bytes`].
+    unsafe extern "C" fn zenoh_required_rx_bytes(
+        _type_name: *const core::ffi::c_char,
+        _type_hash: *const core::ffi::c_char,
+        hint: usize,
+        out_bytes: *mut usize,
+    ) -> NrosRmwRet {
+        if out_bytes.is_null() {
+            return NROS_RMW_RET_INVALID_ARGUMENT;
+        }
+        match crate::shim::required_rx_bytes(hint) {
+            Some(bytes) => {
+                // SAFETY: checked non-NULL above; the caller owns a `size_t`.
+                unsafe { *out_bytes = bytes };
+                NROS_RMW_RET_OK
+            }
+            // Per-type inability, which NULLing the whole slot cannot express:
+            // no size class in this image can hold a sample this big, so there
+            // is no take-buffer length that makes the subscription work.
+            // `*out_bytes` is left untouched, and the runtime falls back to the
+            // hint exactly as for a NULL slot.
+            None => NROS_RMW_RET_UNSUPPORTED,
+        }
+    }
+
+    /// The generic adapter table plus the slots zenoh-pico fills itself.
+    /// A `const`, not a `static`, because a `static` initializer may not read
+    /// another `static` and the `lending` table spreads this one.
+    pub(super) const ZENOH_VTABLE_BASE: NrosRmwVtable = NrosRmwVtable {
+        required_rx_bytes: Some(zenoh_required_rx_bytes),
+        ..RustBackendAdapter::<ZenohRmw>::VTABLE
+    };
+
+    /// The table a build without `lending` registers.
+    #[cfg(not(feature = "lending"))]
+    pub(super) static ZENOH_VTABLE: NrosRmwVtable = ZENOH_VTABLE_BASE;
+}
+
 mod cffi_register {
     use core::ffi::c_int;
 
-    #[cfg(not(feature = "lending"))]
-    use nros_rmw_cffi::RustBackendAdapter;
     use nros_rmw_cffi::{NROS_RMW_RET_OK, NrosRmwRet};
-
-    #[cfg(not(feature = "lending"))]
-    use crate::ZenohRmw;
 
     /// C entry — installs the zenoh-pico vtable into the cffi
     /// runtime under the canonical name `"zenoh"`. Returns
@@ -129,12 +194,22 @@ mod cffi_register {
     /// Phase 124.A.4.b — when the `lending` feature is on, install
     /// a vtable that overrides `pub_loan/_commit/_discard` with
     /// zenoh-pico-specific trampolines (zero-copy aliased publish).
-    /// Without `lending`, fall back to the generic adapter vtable
-    /// whose loan slots are NULL — runtime arena fallback applies.
+    /// Without `lending`, the loan slots stay NULL and the runtime
+    /// arena fallback applies.
+    ///
+    /// Phase 403 W4 — neither path registers the generic adapter table
+    /// verbatim any more. Both go through `rx_sizing_trampolines`, which
+    /// fills `required_rx_bytes`; that slot is answerable on every zenoh
+    /// build, `lending` or not.
     #[cfg(not(feature = "lending"))]
     #[unsafe(no_mangle)]
     pub extern "C" fn nros_rmw_zenoh_register() -> NrosRmwRet {
-        unsafe { RustBackendAdapter::<ZenohRmw>::register_named(c"zenoh".as_ptr()) }
+        unsafe {
+            nros_rmw_cffi::nros_rmw_cffi_register_named(
+                c"zenoh".as_ptr(),
+                &super::rx_sizing_trampolines::ZENOH_VTABLE,
+            )
+        }
     }
 
     #[cfg(feature = "lending")]
@@ -208,7 +283,7 @@ mod loan_trampolines {
     use nros_rmw::SlotLending;
     use nros_rmw_cffi::{
         NROS_RMW_RET_ERROR, NROS_RMW_RET_OK, NROS_RMW_RET_WOULD_BLOCK, NrosRmwPublisher,
-        NrosRmwRet, NrosRmwVtable, RustBackendAdapter,
+        NrosRmwRet, NrosRmwVtable,
     };
 
     use crate::{ZenohRmw, shim::publisher::ZenohSlot};
@@ -345,10 +420,14 @@ mod loan_trampolines {
     /// Customised zenoh vtable: base = generic `RustBackendAdapter`
     /// trampolines for all standard slots; loan slots overridden to
     /// route through zenoh-pico's aliased-publish path.
+    /// Phase 403 W4 — the base is `rx_sizing_trampolines::ZENOH_VTABLE_BASE`,
+    /// not the bare adapter table, so a `lending` build answers
+    /// `required_rx_bytes` too. Spreading the adapter table here instead would
+    /// have made the slot's presence depend on a publisher-side feature.
     pub(super) static ZENOH_VTABLE: NrosRmwVtable = NrosRmwVtable {
         borrow_loaned_message: Some(zenoh_pub_loan),
         publish_loaned_message: Some(zenoh_pub_commit),
         return_loaned_message_from_publisher: Some(zenoh_pub_discard),
-        ..RustBackendAdapter::<ZenohRmw>::VTABLE
+        ..super::rx_sizing_trampolines::ZENOH_VTABLE_BASE
     };
 }

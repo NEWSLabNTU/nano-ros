@@ -42,7 +42,23 @@ fn main() {
     // so the big slots don't multiply across every subscriber.
     let large_size: usize = env_usize("ZPICO_SUBSCRIBER_LARGE_SIZE", 16384);
     let size_threshold: usize = env_usize("ZPICO_SUBSCRIBER_SIZE_THRESHOLD", 2048);
-    let max_large: usize = env_usize_min("ZPICO_MAX_LARGE_SUBSCRIBERS", 2, 1);
+    // Phase 403 W4 — the count of LARGE-class blocks, and 0 is legal.
+    //
+    // This carried issue 0827's floor of 1 until W4, on the stated ground that
+    // "the lookup path indexes the pool unconditionally". That is true of the
+    // other two floored knobs and it is NOT true here: `alloc_payload_block`
+    // tests `idx >= MAX_LARGE_SUBSCRIBERS` BEFORE it indexes `LARGE_PAYLOADS`,
+    // so a zero-length pool returns `None` and is never subscripted. The floor
+    // was therefore charging every image `RING_DEPTH * LARGE_SIZE` bytes
+    // (65,536 at the defaults) for a class it may never route a single
+    // subscription into -- which is the shape of the waste 0827 exists to
+    // remove, kept alive by 0827's own guard.
+    //
+    // Zero is a claim, not a shrug: it says this image's types all fit the
+    // small class. `alloc_payload_block` refuses a hint that no class can hold,
+    // so getting it wrong fails at `create_subscription` rather than dropping
+    // every sample at the transport.
+    let max_large: usize = env_usize("ZPICO_MAX_LARGE_SUBSCRIBERS", 2);
     // Phase 268 — per-session per-node NN liveliness token cap. One zenoh
     // session hosts at most the executor's node cap of graph nodes, so this
     // tracks `nros-node`'s `NROS_EXECUTOR_MAX_NODES` (default 4); keep them in
@@ -120,12 +136,19 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
 /// issue 0827 — a floored knob must REFUSE a value below its floor, never
 /// round it up.
 ///
-/// These three pools cannot be zero-length: the lookup paths index them
+/// These pools cannot be zero-length: the lookup paths index them
 /// unconditionally, which is what the `.max(1)` this replaces was protecting.
-/// But `.max(1)` protected it by SILENTLY substituting 1, so
-/// `ZPICO_MAX_LARGE_SUBSCRIBERS=0` built a 65,536-byte pool and reported
-/// nothing — measured on `examples/native/rust/talker`, knob 0 and knob 1
-/// produce byte-identical `LARGE_PAYLOADS`.
+/// But `.max(1)` protected it by SILENTLY substituting 1, so a knob of 0 built
+/// a pool and reported nothing.
+///
+/// Phase 403 W4 — `ZPICO_MAX_LARGE_SUBSCRIBERS` was the third member and is no
+/// longer floored. It never met the premise: `alloc_payload_block` bounds-checks
+/// the class index BEFORE subscripting `LARGE_PAYLOADS`, so a zero-length large
+/// pool returns `None` rather than indexing out of range. Its floor was
+/// reserving 65,536 bytes at the defaults for a class an image whose types all
+/// fit the small class never routes into. Read that as the rule this doc
+/// already states, applied to itself: a floor is only honest where the lookup
+/// really cannot refuse the entity kind first, and here it can.
 ///
 /// That matters now because 0827's fix derives these knobs from the resolved
 /// model: an image with no subscriptions would ask for 0, get 1, and reserve

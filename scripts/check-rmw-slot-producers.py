@@ -60,6 +60,15 @@ PRODUCER_GLOBS = (
     "packages/rmw/*/*/src/vtable.c",
     "packages/rmw/*/*/src/vtable.cpp",
     "packages/rmw/cffi/src/rust_adapter.rs",
+    # phase-403 W4 — a Rust backend's OWN table, which spreads the adapter's
+    # and overrides the slots only it can answer. The three globs above missed
+    # this shape entirely: zenoh has filled the publisher-loan trio from
+    # `nros-rmw-zenoh/src/lib.rs` since phase 124.A.4.b and all three still read
+    # here as "no producer", i.e. the exact "the slot exists and nothing fills
+    # it" confusion issue 0781 wrote this tool to end, inverted. Adding
+    # `required_rx_bytes` to that same table without widening the scan would
+    # have left its inert-family reason true-looking and false.
+    "packages/rmw/*/*/src/lib.rs",
 )
 
 NULL_VALUES = {"nullptr", "NULL", "None", "0"}
@@ -126,22 +135,6 @@ INERT_FAMILIES = {
         ("publisher_get_network_flow_endpoints", "subscription_get_network_flow_endpoints"),
         "reporting the transport's endpoints. Landed in W4 for shape parity; "
         "diagnostic only, and nothing diagnoses",
-    ),
-    "rx-sizing": (
-        ("required_rx_bytes",),
-        "phase-403 W1 landed the ABI half of receive-buffer sizing ahead of "
-        "either end of it: no backend can answer better than the hint today "
-        "(zenoh-pico has two static size classes, cyclonedds and XRCE have "
-        "one), and the consumer is W3/W4, which cannot be written until the "
-        "take buffer stops being a const generic. Inert deliberately: the ABI "
-        "lands ahead of its consumer so that W3/W4 can ask for an exact size "
-        "instead of a class without a second ABI break mid-phase. It is "
-        "OPTIONAL rather than required for the same sequencing reason and NOT "
-        "for out-of-tree compatibility (nano-ros is unreleased) — a slot that "
-        "nothing dispatches cannot be in `first_missing_vtable_slot`'s "
-        "`require!()` without refusing working backends over a function no "
-        "caller reaches, which is issue 0349. W4 promotes it in the commit "
-        "that adds the dispatch site",
     ),
 }
 

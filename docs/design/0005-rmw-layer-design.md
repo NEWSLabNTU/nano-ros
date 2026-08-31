@@ -546,8 +546,10 @@ rmw_ret_t (*required_rx_bytes)(const char *type_name,
     const char *type_hash, size_t hint, size_t *out_bytes);
 ```
 
-`NULL` means "the hint is the answer", which is what every in-tree backend says
-today, and so does `NROS_RMW_RET_UNSUPPORTED` for a type a backend cannot size.
+`NULL` means "the hint is the answer", and so does `NROS_RMW_RET_UNSUPPORTED`
+for a type a backend cannot size. `NULL` is what cyclonedds, XRCE, uORB, cffi
+and metadata say — correctly, since each has one receive buffer and no class to
+report. zenoh-pico fills it (phase-403 W4, below).
 The shape is the header's own convention rather than the plain `size_t` return
 the plan named: every slot returns `rmw_ret_t` and every answer is an
 out-parameter, so no caller can test a status by its sign
@@ -574,8 +576,50 @@ retired and the decision stands on three others:
   mandatory slot 75 means 58 meaningless entries written to reach it.
 
 Promotion is cheap and stays open: requiring it is a change to the registration
-check, not to the struct, so W4 can require it in the same commit that adds the
-dispatch site. That is the recommended sequencing.
+check, not to the struct.
+
+**W4's answer: do not promote it, and it is not W4's to promote anyway.**
+Requiring a slot means the runtime `.expect()`s it, and the dispatch site lives
+in the executor and `nros`'s node API, which W3/W5 own — W4 filled the slot for
+one backend and added no caller, so there was nothing to require against. On the
+merits, the first bullet above dissolves once a consumer exists and the other
+two do not. cyclonedds and XRCE keep one receive buffer, so `*out_bytes = hint`
+is genuinely all they have to say, and making them say it moves the special case
+from a documented NULL into five identical function bodies; slot 75 stays out of
+reach of a positional C++14 initialiser however the registration check is
+written. The recommendation is therefore that it stays OPTIONAL permanently, and
+that W3/W5 dispatch it through the NULL-slot fallback the header already pins
+down.
+
+**Answer the MINIMUM, never the class you rounded to (phase-403 W4).** A
+size-classing backend has two numbers for a type: what the type needs and what
+its class provides. Reporting the class is arithmetically safe and destroys the
+slot's value — a 68-byte type and a 1000-byte type in one class come back
+identical, which is the global constant the runtime already had, and the
+difference is spent on every subscription in the image. So `*out_bytes` is the
+minimum sufficient length. Where a backend's framing genuinely makes the class
+size the floor, the class size IS the minimum and is the right answer; what is
+forbidden is reporting a rounding as a requirement.
+
+**zenoh-pico's answer (phase-403 W4).** Three cases, in
+`nros_rmw_zenoh::shim::required_rx_bytes`:
+
+| `hint` | answer | why |
+| --- | --- | --- |
+| `0` | the small class stride | The caller stated nothing and a type is a STRING across this ABI, so there is no schema to consult. What zenoh-pico CAN say exactly is about the subscription it would create: hint `0` routes to the small class, and that stride is the most `take` will ever hand back. A ceiling, not a guess. |
+| `0 < hint <=` the largest class | `hint` | Nothing is added on top of the payload: `try_recv_raw` copies `ring_len[slot]` bytes and the attachment rides a parallel ring. The class the hint routes to is guaranteed to hold it (issue 0841), and the rounding stays inside the backend. |
+| `hint >` the largest class | `NROS_RMW_RET_UNSUPPORTED` | No class in this image can hold a sample that big, so no take-buffer length makes the subscription work. `alloc_payload_block` refuses the same hint, which makes this the create-time failure asked in advance. |
+
+The third row is the answer to "is `NROS_RMW_RET_UNSUPPORTED` dead weight now
+that every type is bounded?" — no. Bounded says a NUMBER exists, not that this
+backend can serve it, and per-type inability is exactly what NULLing the whole
+slot cannot express.
+
+`type_name` and `type_hash` go unread by zenoh-pico, which is a fact about the
+ABI rather than an omission: a backend is handed a type as a string with no
+schema descriptor, so the only sizing input it has is the `hint` the runtime
+already derived from the type's own bound. A backend carrying a type registry
+would use them.
 
 **The hint's `0` under a bounded-types regime.** Every message type has a
 derived upper bound — bounded in the `.msg` or capped in `nros-codegen.toml`,
@@ -585,11 +629,16 @@ means "this caller stated nothing" (`options == NULL`, or a zero-filled struct
 from a hand-rolled C caller), never "this type is unbounded", and a backend must
 not read it as the latter.
 
-W1 landed the ABI only. Nothing CALLS the slot yet — the runtime's take buffer
-is still `NROS_SUBSCRIPTION_BUFFER_SIZE`, because that buffer is a const generic
-and the C path cannot monomorphise on a type it only knows by name (phase-403
-W3). So a backend author should still assume the global constant, and answering
-here changes nothing until W3/W4 consume it.
+W1 landed the ABI and W4 gave it one producer. Nothing CALLS the slot yet — the
+runtime's take buffer is still `NROS_SUBSCRIPTION_BUFFER_SIZE`, because that
+buffer is a const generic and the C path cannot monomorphise on a type it only
+knows by name (phase-403 W3). So a backend author should still assume the global
+constant, and answering here changes nothing until W3/W5 consume it. The
+dispatch site W3/W5 need is `Executor::create_subscription_raw`'s sizing
+decision: look the active backend's vtable up, call `required_rx_bytes` with the
+type name, type hash and the hint the caller supplied, and use `*out_bytes` on
+`NROS_RMW_RET_OK` — treating `NULL` and `NROS_RMW_RET_UNSUPPORTED` identically,
+as the hint, falling back to the configured default only when the hint is `0`.
 
 ## Reference Documents
 
