@@ -706,7 +706,18 @@ lock-update crate="" version="" dir=".":
     else
         # No crate named: refresh only what the manifests now REQUIRE, without
         # bumping anything already satisfied.
-        cargo update --workspace 2>/dev/null || cargo update
+        #
+        # NO `|| cargo update` FALLBACK. `--workspace` is supported by the
+        # pinned cargo (1.97.1), so the fallback could only fire when the
+        # NARROW refresh failed — and a bare `cargo update` is a whole-graph
+        # re-resolve, the operation issue 0359 records as having moved 5388
+        # lines in one "cleanup". Escalating from the safe form to the
+        # dangerous one, silently, is the opposite of what this recipe is for:
+        # `lock-update` exists so a lock moves only when someone means it.
+        #
+        # `2>/dev/null` went with it. It hid the reason the narrow refresh
+        # failed, which is the one thing the caller needs in order to decide.
+        cargo update --workspace
     fi
     echo ""
     echo "[lock-update] REVIEW THE DIFF before committing:"
