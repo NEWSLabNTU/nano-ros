@@ -1440,7 +1440,14 @@ One crate (67 -> 66): everything it brought is also reached through
    seconds arrived" above. It could only ever have paid WITH the cbindgen move,
    and W2a took that alone; the contested pool it would have unlocked is held
    by requirers this lever does not touch.
-2. **`bindgen` at build time — 18.4 %.** The repo ALREADY has the alternative and
+2. ~~**`bindgen` at build time — 18.4 %.**~~ **THE 18.4 % IS THE WRONG TARGET —
+   measured 2026-08-31, see "Where the Zephyr leaf's critical path actually is"
+   below.** The bindgen CHAIN (compiling bindgen + clang-sys) is 0.64 s on a
+   cold leaf. The cost is one build script RUNNING bindgen, in a crate this
+   item does not name. Read that section before acting on the text below, which
+   is kept for its committed-output argument, not for its number.
+
+   **`bindgen` at build time — 18.4 %.** The repo ALREADY has the alternative and
    proved it: RFC-0054 commits bindgen output for the ABI crates
    (`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
    `check-abi-bindings`. Four `*-sys` driver crates still generate at build time
@@ -1455,6 +1462,55 @@ One crate (67 -> 66): everything it brought is also reached through
 3. **`cbindgen` — 6.8 %**, same shape one size down (`nros-zpico-build`,
    `nros-build-helpers`), and it drags the whole `clap` CLI stack into a build
    dependency.
+
+## Where the Zephyr leaf's critical path actually is — `zephyr-sys`, 2026-08-31
+
+Measured while asking a different question, and it relocates the phase's last
+open lever.
+
+**Cold `rust/talker`, sccache off, cargo alone: 209 units, 34.9 CPU-s, 8.73 s
+wall.** The tail:
+
+```
+6.35 +2.18 ->  8.53   zephyr-sys  run-custom-build   <- the bindgen pass
+8.53 +0.08 ->  8.61   zephyr-sys
+8.60 +0.06 ->  8.66   zephyr
+8.67 +0.06 ->  8.73   nros_zephyr_talker             <- last unit
+```
+
+**One build script is 2.18 s of an 8.73 s wall — 25 % — and everything after it
+is 0.20 s of trivial units.** The entry crate starts the instant it lands, so
+this is the binding constraint, not a large item that happens to sit late.
+
+**It is NOT waiting on the bindgen chain, which is what direction 2 blames.**
+`bindgen` compiles in 0.42 s finishing at 5.87, `clang-sys` 0.22 s finishing at
+4.92 — and the script does not start until 6.35, gated by `zephyr-build`. So the
+2.18 s is genuine bindgen WORK over the Zephyr headers, driven by
+`zephyr-sys/build.rs`'s very broad allowlists (`E.*`, `K_.*`, `Z_.*`, `LOG_.*`,
+`k_.*`, `sys_.*`, `device_.*`, `SEGGER.*`, plus CONFIG_BT/GPIO/FLASH arms).
+
+This settles two things the document currently disagrees with itself about. The
+W3 retraction was right that the crates it named were not the cost; it just did
+not find where the cost was. And direction 2's 18.4 % attributed it to
+compiling the bindgen stack — 0.64 s here — when the cost is one script running
+it, in `zephyr-sys`, which is not among the four `*-sys` crates that item lists.
+
+**Lever quality: poor, and the reason is ownership.** `zephyr-sys` is upstream
+zephyr-lang-rust, a west module. Narrowing those allowlists is an upstream
+change or a patch line to carry; caching the output meets direction 2's own
+objection, that these bind the USER's SDK headers so committed output asserts
+which SDK produced it.
+
+**Caveat on the seconds.** Wall time on this host varies about 2x between
+nominally identical cold builds — an earlier run of the same leaf measured
+4.52 s wall / 45.6 CPU-s. Treat the RATIO (a 2.18 s script against a 0.20 s
+tail) as the result; it held across both runs. The absolute seconds did not.
+
+**Consequence for the campaign.** With W2 declined and cbindgen banked, the
+largest single remaining item on a single leaf is 2.18 s of upstream bindgen.
+The campaign is at its floor for one leaf; the unexamined ground that is still
+ours is MULTI-LEAF concurrency, which is what the jobserver exists for and what
+no measurement in this phase has touched.
 
 ## Not yet examined
 
