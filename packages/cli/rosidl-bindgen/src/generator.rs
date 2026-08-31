@@ -1001,12 +1001,15 @@ fn emit_px4_cpp_headers(
         let fqn = format!("{}/msg/{}", package.name, msg_name);
         let type_hash = compute_msg_type_hash(edition, &fqn, &parsed, &self_resolve)?;
 
-        let generated = rosidl_codegen::generate_cpp_message_package(
+        // phase-408 W1 — the same `self_resolve` the type hash is computed
+        // through, so the header's derived size bound sees the nested types.
+        let generated = rosidl_codegen::generate_cpp_message_package_with_lookup(
             &package.name,
             &msg_name,
             &parsed,
             &type_hash,
             resolver,
+            &self_resolve,
         )
         .map_err(|e| eyre::eyre!("generate C++ message {msg_name}: {e}"))?;
 

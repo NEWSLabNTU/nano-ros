@@ -323,13 +323,67 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
     })
 }
 
-/// Generate C++ code for a message type
+/// Escape `text` for use INSIDE a C++ double-quoted string literal.
+///
+/// The `static_assert` text interpolates a reason built from `.msg` member
+/// names and nested type names — data, not a literal an emitter author wrote —
+/// so it goes through here rather than straight into the template. Same
+/// reasoning as `BoundInventory::to_cmake`'s quoting, which
+/// `bounds::tests::a_reason_cannot_break_out_of_the_cmake_string` pins.
+fn cpp_string_literal_body(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    // The message is authored as a wrapped Rust literal, so its line
+    // continuations arrive as runs of spaces. Collapse them — a diagnostic is
+    // read as one line by whoever hits it.
+    for ch in text
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+    {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Generate C++ code for a message type.
+///
+/// See [`generate_cpp_message_package_with_lookup`]; this variant resolves no
+/// nested types, so a message with a nested field reports `Unresolved` and
+/// states NO size bound — the honest answer for a caller that cannot supply a
+/// resolver, never a guessed one.
 pub fn generate_cpp_message_package(
     package_name: &str,
     message_name: &str,
     message: &Message,
     type_hash: &str,
     resolver: &CapacityResolver,
+) -> Result<GeneratedCppPackage, GeneratorError> {
+    generate_cpp_message_package_with_lookup(
+        package_name,
+        message_name,
+        message,
+        type_hash,
+        resolver,
+        &|_| None,
+    )
+}
+
+/// Emit the C++ header + split FFI glue for one message, resolving nested types
+/// through `lookup` so the header can carry the type's DERIVED serialized-size
+/// bound (issue 0896 layer 2, phase-408 W1) — the sibling of
+/// [`crate::generate_c_message_package_with_lookup`], and the same derivation.
+pub fn generate_cpp_message_package_with_lookup(
+    package_name: &str,
+    message_name: &str,
+    message: &Message,
+    type_hash: &str,
+    resolver: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
 ) -> Result<GeneratedCppPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let msg_snake = to_snake_case(message_name);
@@ -363,6 +417,24 @@ pub fn generate_cpp_message_package(
     let has_borrowed = cpp_fields.iter().any(|f| f.is_borrowed);
     let serialized_size_max = compute_serialized_size_max(&ffi_fields);
 
+    // phase-408 W1 — the DERIVED bound, from the same
+    // `generator::common::derive_message_bound` the C pack calls. The poison
+    // token is built from the C-style flat name (no `_t`), so one type has ONE
+    // poison token across both languages.
+    let bound = super::common::derive_message_bound(
+        package_name,
+        message_name,
+        message,
+        &format!("{c_pkg_name}_msg_{msg_snake}"),
+        resolver,
+        lookup,
+    )?;
+    let unbounded_message = bound.reason.as_ref().map(|reason| {
+        cpp_string_literal_body(&format!(
+            "{package_name}/{message_name} states no serialized-size bound -- {reason}.              A bound must EXIST before a buffer can be sized from it: bound the field in              the .msg (`string<=64`, `int32[<=8]`), or give it an INLINE `cap` in              nros-codegen.toml. To size this subscription by hand instead, pass an              explicit byte count: nros::bind_subscription_sized<M, C, Method>(node, topic,              self, qos, rx_bytes). If the reason says a nested type could NOT BE RESOLVED,              that is a search-path problem and not a property of the message."
+        ))
+    });
+
     // Render C++ header
     let header_template = MessageCppHeaderTemplate {
         package_name,
@@ -381,6 +453,11 @@ pub fn generate_cpp_message_package(
         serialized_size_max,
         has_borrowed,
         ffi_deserialize_view_fn: format!("{}_borrowed", ffi_deserialize_fn),
+        tx_max_serialized_size: bound.tx,
+        rx_max_serialized_size: bound.rx,
+        unbounded_reason: bound.reason,
+        unbounded_token: bound.token,
+        unbounded_message,
     };
     let header = crate::render::render("message_cpp.hpp", &header_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;

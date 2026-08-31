@@ -750,6 +750,30 @@ pub struct MessageCppHeaderTemplate<'a> {
     pub has_borrowed: bool,
     /// FFI symbol for the borrowed deserializer (`{Msg}_ffi_deserialize_view`).
     pub ffi_deserialize_view_fn: String,
+    /// phase-408 W1 — the DERIVED transmit bound, XCDR1. Same field, same
+    /// meaning and the same producer as
+    /// [`MessageCHeaderTemplate::tx_max_serialized_size`]: both come from
+    /// `generator::common::derive_message_bound`, so the C header and the C++
+    /// header cannot state different numbers for one type.
+    ///
+    /// Distinct from `serialized_size_max` above, which is the OLDER
+    /// `compute_serialized_size_max` ESTIMATE (issue 0964) — kept because
+    /// `Subscription<M>`, `Client<Svc>`, the action tiers and two example
+    /// workspaces all name it, and retiring it is a separate change.
+    pub tx_max_serialized_size: Option<usize>,
+    /// phase-408 W1 — the DERIVED receive bound, `max(XCDR1, XCDR2)`. See
+    /// [`MessageCHeaderTemplate::rx_max_serialized_size`] for why the max.
+    pub rx_max_serialized_size: Option<usize>,
+    /// Prose reason a bound could not be stated, `Some` exactly when the two
+    /// above are `None`.
+    pub unbounded_reason: Option<String>,
+    /// The same fact as an identifier — the C++ pack names its poison template
+    /// after it, so one type has ONE poison token in C and C++ alike.
+    pub unbounded_token: Option<String>,
+    /// The `static_assert` text the poison template carries, pre-escaped as a
+    /// C++ string literal. Built in Rust rather than in the template because it
+    /// interpolates the reason, which is arbitrary text.
+    pub unbounded_message: Option<String>,
 }
 
 /// TYPES half of the split C++ FFI glue (phase-306 W1, issue 0253): the

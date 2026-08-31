@@ -2945,6 +2945,22 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/polling_subscription.cpp
+    # phase-408 W1/W4 (issue 0896) — the receive-buffer hint a typed C++
+    # subscription supplies is `nros::rx_size_bound<M>`, the type's own DERIVED
+    # bound, and no longer `M::SERIALIZED_SIZE_MAX` (an estimate that
+    # under-sizes a nested type over 512 B — issue 0964). That is a template
+    # BODY, so the header parse loop above never type-checks it; this TU
+    # instantiates `bind_subscription` and pins the three shapes the trait
+    # distinguishes: derived-and-bounded, no-derivation (legacy fallback), and
+    # derived-but-poisoned (which must be INCLUDABLE without error).
+    echo "  - rx_size_bound / bind_subscription hint (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/rx_size_bound.cpp
     # issue 0278 Half B — Client<Svc>::call_polling (callback-safe bounded
     # service call, no executor spin) instantiation: the method body
     # (serialize -> nros_cpp_service_client_call_raw(..., timeout_ms) ->

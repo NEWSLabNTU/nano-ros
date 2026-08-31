@@ -1669,12 +1669,18 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 let parsed = rosidl_parser::parse_message(&content)
                     .wrap_err_with(|| format!("Failed to parse message: {}", file_name))?;
 
-                let generated = rosidl_codegen::generate_cpp_message_package(
+                // phase-408 W1 — the SAME `nested_lookup` the inventory below
+                // uses, so the header's `RX_MAX_SERIALIZED_SIZE` and the
+                // exported bound resolve the same nested types. Without it a
+                // cross-package nested field reads `Unresolved` and the header
+                // states no bound at all.
+                let generated = rosidl_codegen::generate_cpp_message_package_with_lookup(
                     &args.package_name,
                     file_name,
                     &parsed,
                     type_hash,
                     &resolver,
+                    &nested_lookup,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for message: {}", file_name)
