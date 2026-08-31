@@ -64,11 +64,25 @@ def deploy_values():
                     doc = tomllib.load(fh)
             except Exception:
                 continue
-            for name, blk in (doc.get("deploy") or {}).items():
-                if isinstance(blk, dict) and blk.get("board"):
-                    out.setdefault(blk["board"], []).append(
-                        f"{os.path.relpath(path, ROOT)} [deploy.{name}]"
-                    )
+            # `[image.*]` as well as `[deploy.*]` (issue 0951). Images are the
+            # buildable unit, so most authored board strings live there now —
+            # two in this tree (`nuttx-riscv`, `s32z270-freertos`) are named
+            # ONLY on an image, and were therefore never verified by the gate
+            # whose whole promise is that an unresolvable board fails HERE,
+            # named, instead of becoming a silent skip three layers down.
+            # `[image_defaults]` counts too: a board declared there is inherited
+            # by every image that omits one.
+            for table in ("deploy", "image"):
+                for name, blk in (doc.get(table) or {}).items():
+                    if isinstance(blk, dict) and blk.get("board"):
+                        out.setdefault(blk["board"], []).append(
+                            f"{os.path.relpath(path, ROOT)} [{table}.{name}]"
+                        )
+            defaults = doc.get("image_defaults")
+            if isinstance(defaults, dict) and defaults.get("board"):
+                out.setdefault(defaults["board"], []).append(
+                    f"{os.path.relpath(path, ROOT)} [image_defaults]"
+                )
     # Standalone leaves: the deploy KEY is the board (no `board =` there).
     # issue 0721 / 0726 — the INDEX, not a walk. `examples/` holds build output
     # (measured 5769 Cargo.toml on disk against 237 git tracks), and a recursive
@@ -100,7 +114,10 @@ def main():
     known = descriptors()
     values = deploy_values()
     if not values:
-        sys.exit("check-deploy-board-resolves: found no [deploy.*] values — wrong root?")
+        sys.exit(
+            "check-deploy-board-resolves: found no [deploy.*] / [image.*] board "
+            "values — wrong root?"
+        )
 
     unknown, ambiguous = [], []
     for value, wheres in sorted(values.items()):

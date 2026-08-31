@@ -71,10 +71,10 @@ pub fn resolve(
     // table is keyed by board (issue 0951) — so what survives here is the
     // genuinely ambiguous case: blocks on DIFFERENT boards, where answering
     // with either one would hand the build another board's SDK roots.
-    let (candidates, site, origin) = pick_deploys(ws, deploy, board)?;
+    let (candidates, site, origin) = pick_deploys(ws, nano_ros_root, deploy, board)?;
     let mut resolved: Vec<(String, BTreeMap<String, String>)> = Vec::new();
-    for (name, target) in candidates {
-        let facts = resolve_one(&origin, nano_ros_root, &name, &target, &site, env)?;
+    for (name, board) in candidates {
+        let facts = resolve_one(&origin, nano_ros_root, &name, &board, &site, env)?;
         resolved.push((name, facts));
     }
     if let Some((first_name, first)) = resolved.first()
@@ -101,6 +101,19 @@ pub fn resolve(
         .ok_or_else(|| eyre!("{}: no [deploy.*] blocks", ws.display()))
 }
 
+/// Do two spellings name the SAME board?
+///
+/// Compared by `names`, which is per-ENTRY, and NOT by `source`, which is the
+/// descriptor FILE. `packages/boards/nros-board-nuttx/nros-board.toml` declares
+/// two distinct boards — `nuttx-qemu-arm` and `nuttx-qemu-riscv` — so a
+/// file-level compare answers "yes" for two boards that differ in ISA, and
+/// `--board nuttx-qemu-riscv` silently resolves the arm board's facts. That is
+/// the same collapse `check-site-config.py`'s alias map has to avoid, and it is
+/// worth stating in both places: a directory is not a board.
+fn same_board(a: &BoardDescriptor, b: &BoardDescriptor) -> bool {
+    a.names == b.names
+}
+
 /// Find the `[board_config.<key>]` block that describes `descriptor`.
 ///
 /// The key is matched by RESOLUTION, not by text: `resolve_board` is the same
@@ -116,22 +129,19 @@ fn site_for_board<'a>(
 ) -> Option<(&'a String, &'a toml::Value)> {
     table
         .iter()
-        .find(|(key, _)| resolve_board(catalog, key).is_some_and(|d| d.source == descriptor.source))
+        .find(|(key, _)| resolve_board(catalog, key).is_some_and(|d| same_board(d, descriptor)))
 }
 
 fn resolve_one(
     origin: &str,
     nano_ros_root: &Path,
     deploy_name: &str,
-    target: &crate::orchestration::cargo_metadata_schema::DeployTarget,
+    board_name: &str,
     site_table: &BTreeMap<String, toml::Value>,
     env: &dyn Fn(&str) -> Option<String>,
 ) -> Result<BTreeMap<String, String>> {
     let deploy_name = deploy_name.to_string();
-    let board_name = target
-        .board
-        .clone()
-        .ok_or_else(|| eyre!("[deploy.{deploy_name}] names no `board`"))?;
+    let board_name = board_name.to_string();
 
     let catalog = BoardCatalog::load(nano_ros_root)
         .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
@@ -229,10 +239,14 @@ pub fn resolve_board<'a>(catalog: &'a BoardCatalog, board: &str) -> Option<&'a B
     }
 }
 
-type PickedDeploy = (
-    String,
-    crate::orchestration::cargo_metadata_schema::DeployTarget,
-);
+/// One candidate: the name it was selected by, and the board it resolves to.
+///
+/// A BOARD, not the whole block: since the site table became board-keyed
+/// (issue 0951) the board is the only thing `resolve_one` needs, and carrying
+/// the deploy block instead is what kept images invisible here — the board can
+/// come from `[image.<id>]` just as well, and in a migrated workspace that is
+/// the ONLY place it comes from.
+type PickedDeploy = (String, String);
 
 /// A STANDALONE leaf's deploy, from its `Cargo.toml`.
 ///
@@ -277,20 +291,25 @@ fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
             _ => return Ok(None),
         },
     };
-    let block = nros.get("deploy").and_then(|d| d.get(&deploy_key));
-    let target = crate::orchestration::cargo_metadata_schema::DeployTarget {
-        board: Some(deploy_key.to_string()),
-        nros: block.and_then(|b| b.get("nros")).cloned(),
-        ..Default::default()
-    };
-    Ok(Some(vec![(deploy_key, target)]))
+    // The deploy KEY is the board here, so the candidate is (key, key). The
+    // per-block `nros` sub-table this used to read is gone with issue 0951 —
+    // and it was already unreachable: `DeployTargetMetadata` is
+    // `deny_unknown_fields` and declares no such field, and no leaf manifest in
+    // the tree carries one.
+    let board = deploy_key.clone();
+    Ok(Some(vec![(deploy_key, board)]))
 }
 
 /// The picked deploys, the site table to resolve them against, and the file
 /// that supplied both (for error text).
 type Picked = (Vec<PickedDeploy>, BTreeMap<String, toml::Value>, String);
 
-fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<Picked> {
+fn pick_deploys(
+    ws: &Path,
+    nano_ros_root: &Path,
+    deploy: Option<&str>,
+    board: Option<&str>,
+) -> Result<Picked> {
     // A standalone leaf first: it has a Cargo.toml and no bringup, and asking
     // for a system.toml there would fail naming a file that is not supposed to
     // exist. Such a leaf carries no site table — it gets the board rung only.
@@ -300,23 +319,68 @@ fn pick_deploys(ws: &Path, deploy: Option<&str>, board: Option<&str>) -> Result<
     let (path, system) = load_system_toml(ws)?;
     let origin = path.display().to_string();
     let site = system.board_config.clone();
-    let mut candidates: Vec<(String, _)> = system.deploy.into_iter().collect();
+    // Candidates come from `[image.*]` AND `[deploy.*]`, because either can
+    // name the board and a migrated workspace has only the first. Reading
+    // deploys alone is what made `examples/workspaces/realtime-rust` — seven
+    // images, zero deploy blocks — unresolvable while its site table demanded
+    // SDK roots: the gate and this resolver disagreeing about which boards a
+    // workspace builds for.
+    //
+    // A name present in both tables is ONE candidate, with the image's board
+    // winning: mid-migration the two can disagree, and the image is the half
+    // that survives.
+    let mut boards: BTreeMap<String, String> = BTreeMap::new();
+    for (name, dt) in &system.deploy {
+        if let Some(b) = &dt.board {
+            boards.insert(name.clone(), b.clone());
+        }
+    }
+    for name in system.image.keys() {
+        if let Some(b) = system.image_for(name).and_then(|i| i.board) {
+            boards.insert(name.clone(), b);
+        }
+    }
+
+    let mut candidates: Vec<PickedDeploy> = boards.into_iter().collect();
     if let Some(want) = deploy {
         candidates.retain(|(k, _)| k == want);
         if candidates.is_empty() {
-            return Err(eyre!("{}: no [deploy.{want}]", path.display()));
+            return Err(eyre!(
+                "{}: no [image.{want}] or [deploy.{want}] naming a board",
+                path.display()
+            ));
         }
     } else if let Some(want) = board {
-        candidates.retain(|(_, t)| t.board.as_deref() == Some(want));
+        // Match by RESOLUTION, not by text. A board has several legal
+        // spellings, and which one an author used is not a fact about the
+        // build: `examples/workspaces/realtime-rust` writes `board =
+        // "freertos"` on its image while cmake passes the directory spelling
+        // `mps2-an385-freertos`, and `check-site-config` canonicalises both to
+        // the same block. A textual compare here makes the gate and the
+        // resolver disagree about which boards a workspace builds for — issue
+        // 0606's failure, one table over.
+        let catalog = BoardCatalog::load(nano_ros_root)
+            .map_err(|e| eyre!("board catalog under {}: {e}", nano_ros_root.display()))?;
+        let wanted = resolve_board(&catalog, want).map(|d| d.names.clone());
+        candidates.retain(|(_, b)| {
+            b == want
+                || (wanted.is_some()
+                    && resolve_board(&catalog, b).map(|d| d.names.clone()) == wanted)
+        });
         if candidates.is_empty() {
             return Err(eyre!(
-                "{}: no [deploy.*] with board = \"{want}\"",
+                "{}: no [image.*] or [deploy.*] with board = \"{want}\" \
+                 (matched through the board catalog, so every spelling of one \
+                 board is tried)",
                 path.display()
             ));
         }
     }
     if candidates.is_empty() {
-        return Err(eyre!("{}: no [deploy.*] blocks", path.display()));
+        return Err(eyre!(
+            "{}: no [image.*] or [deploy.*] names a board",
+            path.display()
+        ));
     }
     Ok((candidates, site, origin))
 }
@@ -571,6 +635,131 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
         assert!(
             nuttx.get("NROS_SDK_FREERTOS").is_none(),
             "the other board's site block must not leak in: {nuttx:?}"
+        );
+    }
+
+    /// The regression this file's own gate demanded and this resolver could
+    /// not serve: `examples/workspaces/realtime-rust` has SEVEN images and ZERO
+    /// deploy blocks, so selecting candidates from `[deploy.*]` alone made its
+    /// site table — which `check-site-config` requires — unreachable.
+    #[test]
+    fn an_image_only_workspace_resolves() {
+        let ws = ws_with(
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[image.fw]
+board = "mps2-an385-freertos"
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
+sdk = { freertos = "/opt/freertos", lwip = "/opt/lwip" }
+"#,
+        );
+        let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None)
+            .expect("an image names the board just as a deploy does");
+        assert_eq!(
+            facts.get("NROS_BOARD").map(String::as_str),
+            Some("mps2-an385-freertos")
+        );
+        assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
+        // And both selectors reach it.
+        assert!(resolve(ws.path(), &repo_root(), Some("fw"), None, &|_| None).is_ok());
+        assert!(
+            resolve(
+                ws.path(),
+                &repo_root(),
+                None,
+                Some("mps2-an385-freertos"),
+                &|_| None
+            )
+            .is_ok()
+        );
+    }
+
+    /// Two boards share `packages/boards/nros-board-nuttx/nros-board.toml`, so
+    /// a descriptor compared by its FILE answers "same board" for an arm and a
+    /// riscv target. `--board nuttx-qemu-riscv` would then hand the build the
+    /// arm board's facts — a wrong answer that reports success.
+    #[test]
+    fn two_boards_in_one_descriptor_file_stay_distinct() {
+        let ws = ws_with(
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[image.arm]
+board = "nuttx-qemu-arm"
+
+[image.riscv]
+board = "nuttx-riscv"
+
+[board_config."nuttx-qemu-arm"]
+sdk = { nuttx = "/opt/arm", nuttx_apps = "/opt/arm-apps" }
+
+[board_config."nuttx-qemu-riscv"]
+sdk = { nuttx = "/opt/riscv", nuttx_apps = "/opt/riscv-apps" }
+"#,
+        );
+        let arm = resolve(
+            ws.path(),
+            &repo_root(),
+            None,
+            Some("nuttx-qemu-arm"),
+            &|_| None,
+        )
+        .expect("arm resolves");
+        assert_eq!(
+            arm.get("NROS_SDK_NUTTX").map(String::as_str),
+            Some("/opt/arm")
+        );
+        // `nuttx-riscv` is the descriptor's declared name; `nuttx-qemu-riscv`
+        // is another spelling of the SAME entry, so both must find the riscv
+        // block and neither may find the arm one.
+        for spelling in ["nuttx-riscv", "nuttx-qemu-riscv"] {
+            let r = resolve(ws.path(), &repo_root(), None, Some(spelling), &|_| None)
+                .unwrap_or_else(|e| panic!("{spelling} resolves: {e}"));
+            assert_eq!(
+                r.get("NROS_SDK_NUTTX").map(String::as_str),
+                Some("/opt/riscv"),
+                "{spelling} must not resolve the arm board"
+            );
+        }
+    }
+
+    /// A name in BOTH tables is one candidate, and the image's board wins —
+    /// mid-migration they can disagree, and the image is the half that
+    /// survives. Two candidates here would instead be reported as an ambiguity.
+    #[test]
+    fn an_image_outranks_a_deploy_of_the_same_name() {
+        let ws = ws_with(
+            r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[image.fw]
+board = "mps2-an385-freertos"
+
+[deploy.fw]
+kind = "embedded"
+board = "threadx-linux"
+
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
+sdk = { freertos = "/opt/freertos", lwip = "/opt/lwip" }
+"#,
+        );
+        let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None).expect("one answer");
+        assert_eq!(
+            facts.get("NROS_BOARD").map(String::as_str),
+            Some("mps2-an385-freertos")
         );
     }
 
