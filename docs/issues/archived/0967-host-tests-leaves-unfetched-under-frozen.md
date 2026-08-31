@@ -1,5 +1,5 @@
 ---
-id: 961
+id: 967
 title: "`host-tests` red for 20 consecutive runs — workspace-fixture leaves are never fetched, and `--frozen` forbids fetching them"
 status: resolved
 area: build
