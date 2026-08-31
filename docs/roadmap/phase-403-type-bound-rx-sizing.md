@@ -1005,6 +1005,13 @@ should treat that doc as the specification and these commits as its delivery --
 or close phase-408 as delivered, citing this. The two should not both land as
 open work.
 
+**Closed as delivered 2026-08-31**, by phase-408's author, citing this
+section. That doc now carries a DELIVERED status pointing here, keeps its
+waves as the acceptance criteria this phase's measurement can be read
+against, and records the premise it got wrong: "C/C++ has no site that names
+the type" is true of the hand-written C API and not of C++, where
+`bind_subscription<M, C, Method>` keeps `M` to the last call.
+
 One correction to carry across: phase-408 scopes itself to "the C and C++ path",
 and the C++ path turned out NOT to need the ABI work the phase anticipated.
 `NROS_SUBSCRIBE` -> `create_subscription<M, C, Method>` -> `bind_subscription`
