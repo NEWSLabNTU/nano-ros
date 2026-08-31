@@ -67,7 +67,29 @@ config NROS_ROS_HUMBLE
 config NROS_ROS_IRON
     bool "Iron"
 
+config NROS_ROS_JAZZY
+    bool "Jazzy"
+
 endchoice
+
+# issue 0947 — the ONE spelling both NuttX lanes consume.
+#
+# Before this, NuttX declared the choice above and nothing else, while
+# `integrations/nuttx/CMakeLists.txt` read `CONFIG_NROS_ROS_EDITION` — a string
+# symbol no NuttX Kconfig declared. So the CMake lane was permanently `humble`
+# (its else() branch was unreachable) and the Make lane read the bools directly
+# and mapped them by hand, which is why `jazzy` did not exist on either: adding
+# it needed an edit in two vocabularies and got neither.
+#
+# A derived string is the idiom this tree already uses one symbol over, for
+# NROS_RMW in the ESP-IDF Kconfig. The choice keeps the menu typo-proof; the
+# string gives both lanes one thing to read, and a new edition is one stanza
+# here rather than an ifneq chain per lane.
+config NROS_ROS_EDITION
+    string
+    default "humble" if NROS_ROS_HUMBLE
+    default "iron"   if NROS_ROS_IRON
+    default "jazzy"  if NROS_ROS_JAZZY
 
 # Phase 157 — language API selectors. The C surface always builds
 # (cargo features `rmw-cffi` already pulls nros-c), but the C++

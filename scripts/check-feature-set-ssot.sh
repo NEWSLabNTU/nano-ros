@@ -22,6 +22,14 @@ note() { printf '  %s\n' "$1"; }
 # nothing about the regex that ships.
 NROS_EDITION_RE='\b(humble|iron|jazzy)\b'
 
+# The ONE shape allowed to spell an edition outside cmake/NanoRosRosEdition.cmake:
+# a Kconfig derived-string mapping, `default "<ed>" if NROS_ROS_<ED>`. Kconfig
+# cannot call a cmake function, so each integration needs its own two-line
+# mapping from the menu choice to the string both of its lanes read. Anything
+# else in integrations/ — a bare fallback, a hand-written cargo feature — is the
+# defect this gate exists for.
+NROS_EDITION_KCONFIG_MAP='default[[:space:]]+"(humble|iron|jazzy)"[[:space:]]+if[[:space:]]+NROS_ROS_'
+
 # Exercise the failure path on EVERY run (phase-395). This gate in particular
 # earned it: it spent its whole life reporting OK against a pattern that
 # matched none of the six sites it existed to catch, and a negative control
@@ -41,6 +49,21 @@ nros_edition_selftest() {
         | grep -E "$NROS_EDITION_RE" || true)
     if [ -z "$caught" ]; then
         echo "FAIL: check-feature-set-ssot selftest — the regex no longer matches ros-humble" >&2
+        exit 1
+    fi
+    # ...a Kconfig derived-string mapping must NOT be, or the one legitimate
+    # spelling in each integration becomes an unfixable red (issue 0947).
+    caught=$(printf '%s\n' 'integrations/nuttx/Kconfig:90:    default "jazzy"  if NROS_ROS_JAZZY' \
+        | grep -E "$NROS_EDITION_RE" | grep -vE "$NROS_EDITION_KCONFIG_MAP" || true)
+    if [ -n "$caught" ]; then
+        echo "FAIL: check-feature-set-ssot selftest — a Kconfig mapping was treated as a literal" >&2
+        exit 1
+    fi
+    # ...but a bare fallback in the same file must still be.
+    caught=$(printf '%s\n' 'integrations/nuttx/Makefile:88:NROS_ROS_EDITION := humble' \
+        | grep -E "$NROS_EDITION_RE" | grep -vE "$NROS_EDITION_KCONFIG_MAP" || true)
+    if [ -z "$caught" ]; then
+        echo "FAIL: check-feature-set-ssot selftest — a bare integrations/ fallback slipped through" >&2
         exit 1
     fi
     # ...and a comment must NOT be, or every explanatory note becomes a red.
@@ -74,19 +97,22 @@ nros_edition_selftest
 #    and nothing else. An allowlist of one is checkable in a way that "keep
 #    these in sync" is not.
 #
-#    SCOPE: cmake/ + the root CMakeLists + the two api CMakeLists. `integrations/**`
-#    is deliberately OUT, and that is a known gap, not an oversight —
-#    integrations/nuttx carries `ros-humble` literals in a Makefile lane whose
-#    edition vocabulary cannot even express jazzy. Widening this glob before
-#    that is fixed would land a red nobody can turn green, which is how a gate
-#    gets switched off. Tracked as issue 0947; widen the glob when it closes.
+#    SCOPE: cmake/ + the root CMakeLists + the two api CMakeLists + integrations/.
+#    `integrations/` was OUT until issue 0947 closed: NuttX carried `ros-humble`
+#    literals in a Makefile lane whose edition vocabulary could not express
+#    jazzy at all, so widening the glob first would have landed a red nobody
+#    could turn green — which is how a gate gets switched off. Both integrations
+#    now derive one `CONFIG_NROS_ROS_EDITION` string from a Kconfig choice and
+#    both lanes read it, so the glob covers them.
 # Comment lines are excluded: the conversion sites legitimately REFERENCE the
 # old hardcode when explaining why they no longer do it.
 edition_hits=$(git grep -nE "$NROS_EDITION_RE" -- \
     'cmake/*.cmake' 'cmake/*/*.cmake' 'CMakeLists.txt' \
     'packages/api/nros-c/CMakeLists.txt' \
-    'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
+    'packages/api/nros-cpp/CMakeLists.txt' \
+    'integrations/' 2>/dev/null \
     | grep -v '^cmake/NanoRosRosEdition.cmake:' \
+    | grep -vE "$NROS_EDITION_KCONFIG_MAP" \
     | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
 if [ -n "$edition_hits" ]; then
     echo "FAIL: a ROS edition literal outside cmake/NanoRosRosEdition.cmake:"

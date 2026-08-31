@@ -132,7 +132,9 @@ would break whichever lane loses. Filed as **0946** with the measured table.
 `NROS_SYSTEM_LOCATOR` has no consumers but is kept and now documented as
 app-informational, matching the intent already stated for the edition defines.
 
-Issue **0947** carries the NuttX edition vocabulary — a string symbol the CMake
+Issue **0947** (since CLOSED — one Kconfig choice plus a derived string per
+integration, and the gate's glob widened to `integrations/`) carried the NuttX
+edition vocabulary — a string symbol the CMake
 lane reads and NuttX's Kconfig never declares, versus a bool choice the Make lane
 reads, with `jazzy` unreachable on both. That is why the gate's glob stops short
 of `integrations/**`: widening it now lands a red nobody can turn green.
