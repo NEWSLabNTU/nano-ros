@@ -657,6 +657,24 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         );
     }
 
+    // Issue 0951 — project the same rows as images. `resolve_target`'s image
+    // rung and every `image_for` reader see a synthesised bringup exactly as
+    // they see an authored one.
+    let image: BTreeMap<String, crate::orchestration::image::ImageBlock> = nros
+        .deploy
+        .iter()
+        .map(|(target_name, dt)| {
+            (
+                target_name.clone(),
+                crate::orchestration::image::ImageBlock {
+                    board: dt.board.clone(),
+                    rmw: dt.rmw.clone(),
+                    ..Default::default()
+                },
+            )
+        })
+        .collect();
+
     let system = SystemToml {
         board_config: Default::default(),
         system: system_header,
@@ -667,7 +685,20 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         // placement over a single implicit host is what the empty map already
         // means.
         host: Default::default(),
-        image: Default::default(),
+        // Issue 0951 — the same `[package.metadata.nros.deploy.<t>]` rows, ALSO
+        // projected as images.
+        //
+        // Not "as well as, for tidiness": every consumer migrating from
+        // `[deploy.*]` to `[image.*]` would otherwise read an empty map here
+        // and silently lose its values for self-bringup packages — a component
+        // package with deploy metadata and no sibling bringup. That is the
+        // quiet half of the migration, because a self-bringup is synthesised
+        // rather than authored, so no file in the tree shows the gap.
+        //
+        // Only the fields an image OWNS cross over: `board` and `rmw`. `kind`
+        // and `target` are placement and stay on the deploy side; nothing here
+        // sets profile/features, so they stay absent rather than defaulted.
+        image,
         image_defaults: None,
         domains: Vec::new(),
         bridges: Vec::new(),
@@ -1009,6 +1040,22 @@ locator = "tcp/127.0.0.1:7447"
             .expect("native deploy block synthesised");
         assert_eq!(native.kind.as_deref(), Some("self"));
         assert_eq!(native.board.as_deref(), Some("native_sim/native/64"));
+
+        // Issue 0951 — the SAME row, also projected as an image. A synthesised
+        // bringup is not authored anywhere, so nothing in the tree would show
+        // this gap: a consumer switched to `[image.*]` would just read an empty
+        // map and lose the value.
+        let img = entry
+            .system
+            .image_for("native")
+            .expect("native image projected");
+        assert_eq!(img.board.as_deref(), Some("native_sim/native/64"));
+        // Placement stays on the deploy side — an image has no `kind`.
+        assert_eq!(
+            entry.system.resolve_target(None).as_deref(),
+            Some("native"),
+            "the sole image resolves the target"
+        );
     }
 
     #[test]
