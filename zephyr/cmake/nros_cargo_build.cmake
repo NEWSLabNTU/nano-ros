@@ -701,11 +701,18 @@ function(nros_cargo_build)
         list(APPEND CARGO_ARGS -Z "build-std=core,alloc,compiler_builtins")
     endif()
 
+    # phase-400 W5.c — the headers are declared where the CONSUMERS look, which
+    # is the per-image dir, not inside cargo's target dir. `cargo-out-dir-headers.py`
+    # places them there from `$OUT_DIR` (cargo's own location for build-script
+    # output, reported on the stable JSON stream even on a cache hit). Under a
+    # SHARED target dir the old spelling named a file this image would never
+    # write — image B gets a cargo cache hit and its build script never runs.
+    set(_nros_hdr_root "${NROS_GENERATED_HEADER_DIR}")
     set(_cargo_byproducts ${LIB_PATH})
     if(ARG_PACKAGE STREQUAL "nros-c")
         list(APPEND _cargo_byproducts
-            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
-            ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_generated.h
+            ${_nros_hdr_root}/nros-c-generated/nros/nros_config_generated.h
+            ${_nros_hdr_root}/nros-c-generated/nros/nros_generated.h
         )
     elseif(ARG_PACKAGE STREQUAL "nros-cpp")
         # nros-cpp's Cargo dep on nros-c transitively runs nros-c's
@@ -716,7 +723,7 @@ function(nros_cargo_build)
         # target instead of failing with "No such file or directory"
         # when only CONFIG_NROS_CPP_API=y (no separate nros-c build).
         list(APPEND _cargo_byproducts
-            ${CARGO_TARGET_DIR}/nros-cpp-generated/nros/nros_cpp_config_generated.h
+            ${_nros_hdr_root}/nros-cpp-generated/nros/nros_cpp_config_generated.h
         )
         # Phase 168.X gap 1 — when nros-c is built separately
         # (CPP_API path now builds it alongside nros-cpp for the log
@@ -726,8 +733,8 @@ function(nros_cargo_build)
         # Only claim it for nros-cpp when nros-c is NOT being built.
         if(NOT TARGET nros_c_cargo_build)
             list(APPEND _cargo_byproducts
-                ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_config_generated.h
-                ${CARGO_TARGET_DIR}/nros-c-generated/nros/nros_generated.h
+                ${_nros_hdr_root}/nros-c-generated/nros/nros_config_generated.h
+                ${_nros_hdr_root}/nros-c-generated/nros/nros_generated.h
             )
         endif()
     endif()
@@ -810,7 +817,15 @@ function(nros_cargo_build)
             ${_nros_facts_env}
             ${NROS_CARGO_PROFILE_ENV}
             NROS_PLATFORM_CFFI_INCLUDE=$ENV{NROS_PLATFORM_CFFI_INCLUDE}
-            cargo ${CARGO_ARGS}
+            # phase-400 W5.c — cargo runs UNDER the placer, not piped into it:
+            # `add_custom_target(COMMAND …)` has no shell, so there is no pipe.
+            # One process tree, one exit code, and stderr untouched —
+            # `json-render-diagnostics` keeps diagnostics human on stderr and
+            # leaves stdout pure JSON for the placer to read `out_dir` from.
+            python3 ${NROS_REPO_DIR}/scripts/build/cargo-out-dir-headers.py
+                --package ${ARG_PACKAGE}
+                --dest ${_nros_hdr_root}
+                -- cargo ${CARGO_ARGS} --message-format=json-render-diagnostics
         BYPRODUCTS ${_cargo_byproducts}
         COMMENT "Building ${ARG_PACKAGE} via Cargo"
         VERBATIM
