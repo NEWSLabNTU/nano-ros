@@ -22,11 +22,12 @@ if(NOT DEFINED CONFIG_NROS_RMW OR CONFIG_NROS_RMW STREQUAL "")
 else()
     set(_nros_rmw "${CONFIG_NROS_RMW}")
 endif()
-if(NOT DEFINED CONFIG_NROS_ROS_EDITION OR CONFIG_NROS_ROS_EDITION STREQUAL "")
-    set(_nros_ros_edition "humble")
-else()
-    set(_nros_ros_edition "${CONFIG_NROS_ROS_EDITION}")
-endif()
+# issue 0947 — one resolver, and it VALIDATES. This used to default to the
+# literal `humble`, so a typo in `sdkconfig` passed straight through as a
+# cargo feature that does not exist, rather than failing here with the
+# value that caused it.
+include("${_nros_root}/cmake/NanoRosRosEdition.cmake")
+_nros_resolve_ros_edition("${CONFIG_NROS_ROS_EDITION}" _nros_ros_edition)
 if(NOT DEFINED CONFIG_NROS_BRINGUP_NAME OR CONFIG_NROS_BRINGUP_NAME STREQUAL "")
     set(_nros_bringup_name "demo_bringup")
 else()
