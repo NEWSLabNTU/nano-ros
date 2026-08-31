@@ -672,14 +672,36 @@ pub fn run() {
             }
             // Watch every root, not just the one a descriptor happens to live
             // in today: moving a file between roots must invalidate the build.
+            // issue 0966 — emit only the manifests that EXIST.
+            //
+            // This is a cross product of (search roots) x (platform names), and
+            // a given platform's manifest lives under exactly ONE root: with
+            // `packages/platform` and `config` both on the path, `bare-metal`
+            // (which lives in `config/`) also produced
+            // `packages/platform/bare-metal/nros-platform.toml`, which does not
+            // exist. Cargo treats a MISSING `rerun-if-changed` input as
+            // permanently dirty, so that one path recompiled `zpico-sys` and
+            // everything above it on EVERY invocation — silently, because the
+            // build always succeeded, it was just never fresh
+            // (`stale: missing .../packages/platform/bare-metal/nros-platform.toml`
+            // under `CARGO_LOG=cargo::core::compiler::fingerprint=info`).
+            // Same class as issue 0490.
+            //
+            // The trade in filtering: a manifest CREATED later under a
+            // higher-priority root does not by itself trigger a rebuild. Cargo
+            // cannot watch a nonexistent path without being permanently dirty,
+            // so watching what exists is the only stable option, and authoring a
+            // new platform descriptor is a deliberate act that comes with other
+            // edits. `PlatformsTree` does not record which root each name was
+            // loaded from; if it ever does, watch exactly those instead.
             for root in &platform_search_path {
                 for name in tree.names() {
-                    println!(
-                        "cargo:rerun-if-changed={}",
-                        root.join(name)
-                            .join(platform_config::PLATFORM_CONFIG_FILENAME)
-                            .display()
-                    );
+                    let manifest = root
+                        .join(name)
+                        .join(platform_config::PLATFORM_CONFIG_FILENAME);
+                    if manifest.is_file() {
+                        println!("cargo:rerun-if-changed={}", manifest.display());
+                    }
                 }
             }
             let m = tree.as_platform_manifest();
@@ -1349,11 +1371,24 @@ pub fn run() {
     // shadow the OUT_DIR-generated header on the bare-metal shim include path;
     // deleted in the #135 fix (every TU now consumes the generated config).
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
-    println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/system.c");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/lwip/network.c");
-    println!("cargo:rerun-if-changed=zenoh-pico/src/net/primitives.c");
+    // Watch the TREES, not a list of files (issue 0911).
+    //
+    // This used to name five zenoh-pico sources out of the several hundred the
+    // build actually compiles. Everything else — protocol, transport, codec,
+    // collections, the link implementations — had no rebuild edge, so patching
+    // one of them changed nothing: cargo saw no watched input move, skipped the
+    // build script, and the test ran against a binary without the edit. That
+    // does not fail; it produces a green run whose conclusion is about code that
+    // was never compiled. It cost a full measure-fix-measure cycle in issue 0899
+    // and nearly produced a "the fix does not work" verdict about a fix that had
+    // never been built.
+    //
+    // `cargo:rerun-if-changed` accepts a directory and cargo walks it, so two
+    // lines cover the compiled set with no list to maintain. The cost is that any
+    // touch under these trees re-runs the build script; for a vendored library
+    // that changes only when someone patches it, that is the right trade.
+    println!("cargo:rerun-if-changed=zenoh-pico/src");
+    println!("cargo:rerun-if-changed=zenoh-pico/include");
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
     println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
