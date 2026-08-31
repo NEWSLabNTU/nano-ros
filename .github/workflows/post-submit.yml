@@ -13,6 +13,18 @@
 # runs once per landed change and its job is to bound how far a regression can
 # travel before anyone notices.
 #
+# phase-410 — TIER 2 MOVED OUT, to `run-matrix.yml` on a clock.
+#
+# It ran here on `push(main)` with `cancel-in-progress: true`. That setting is
+# right for "is main good NOW", and fatal for a lane this long: measured
+# 2026-08-31, tier 2 is an 11 min warm fixture rebuild plus a 9.5 min run. With
+# ten agents landing through a merge queue that batches four, merges arrive
+# faster than that, so every run is cancelled by the next merge and the tier
+# COMPLETES NEVER — a lane that always cancels looks busy while reporting
+# nothing, which is worse than the skipped job phase-407 made visible.
+#
+# What stays here is `dep-chain`: hosted, 158 s, genuinely per-merge.
+#
 # WHAT THIS DOES NOT DO YET
 #
 # The plan names `ci-l4-tier1` — the tier-1 boards' cross-RUN coverage. That
@@ -85,71 +97,12 @@ jobs:
           source ./activate.sh
           just check dep-chain
 
-  matrix:
-    name: tier 2 (1-wise matrix)
-    # Gated for the same reason as queue.yml's L3: this needs the RTOS
-    # toolchains, and a job that cannot start is not a signal.
-    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
-    runs-on: [self-hosted, linux, nros-qemu, nros-sdk-zephyr, nros-big]
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-      - name: Verify this runner's labels are true
-        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
-      # A lane answers two questions with different answers: which fixtures must
-      # be FRESH (its cell cover) and which must EXIST (a property of the run).
-      # `lane=tier2` is the build tier 2's run requires — see #482 / phase-340 W3.
-      # phase-407 W4 — a CI job is `just setup <scope>` then `just test <scope>`.
-      # Only the SCOPE differs between lanes, so this file reads as a transcript
-      # of a user session and "does CI do what I do?" is answerable by looking.
-      #
-      # What these two lines replaced: a `build-test-fixtures lane=tier2` step
-      # plus a `ci matrix` step, i.e. the lane vocabulary spelled twice with the
-      # reader left to know they must agree. `just test tier2` builds what that
-      # scope needs and runs exactly it.
-      - name: just setup tier2
-        run: |
-          source ./activate.sh
-          just setup tier2
-      # `just ci matrix`, NOT `just test tier2`. phase-407 W4 briefly used the
-      # latter and that was a COVERAGE REGRESSION caught by
-      # check-tier-has-ci-owner: the tier recipe is `_lane-gate` + `check` +
-      # `rust-rtos-link-check` + `test-all`, and `just test tier2` is only the
-      # last of those. Provisioning by scope + running the TIER keeps the
-      # transcript shape without quietly narrowing what runs.
-      - name: just ci matrix
-        run: |
-          source ./activate.sh
-          just ci matrix
-      - name: Upload junit and logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: post-submit-junit
-          path: |
-            target/nextest/**/junit*.xml
-            build/**/*.log
-          if-no-files-found: ignore
-          retention-days: 14
-      - name: Sweep orphans and disk
-        if: always()
-        run: ./scripts/ci/runner-sweep.sh || true
-
-  # phase-405 — make the interlocked job's SKIP visible in the run that skipped
-  # it. See scripts/ci/report-interlock-coverage.sh for why this warns rather
-  # than fails when no runner is registered, and fails when one supposedly is.
-  #
-  # `if: always()` so it reports on a skip; `needs` so it sees the result.
   coverage:
-    name: coverage report (did tier 2 run?)
-    needs: [dep-chain, matrix]
+    name: coverage report (did dep-chain run?)
+    needs: [dep-chain]
     if: always()
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran
-        run: ./scripts/ci/report-interlock-coverage.sh "tier 2 (1-wise matrix)" "${{ needs.matrix.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"
+        run: ./scripts/ci/report-interlock-coverage.sh "dep-chain" "${{ needs.dep-chain.result }}" "true"

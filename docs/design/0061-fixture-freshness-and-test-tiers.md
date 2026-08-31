@@ -1,6 +1,6 @@
 # RFC-0061 — Fixture freshness by tool OUTPUT, and a tiered test ladder
 
-**Status:** Draft (2026-07-28)
+**Status:** Draft (2026-07-28; amended 2026-08-31 — see the breadth/depth amendment)
 **Supersedes nothing. Amends:** the fixture-freshness contract established by
 issue #182 (tool in the signature) and phase-300 W2.1 (git-index enumeration).
 **Motivated by:** a `just ci` run on 2026-07-28 that passed every code stage and
@@ -351,6 +351,43 @@ over the cartesian product:
 Greedy is adequate (within a `ln n` factor; the input is tiny). The cover must be
 **recomputed from `matrix::CELLS`**, never stored as a hand-edited list — adding a
 platform must extend tier 2 without touching a second file.
+
+## Amendment (2026-08-31, phase-410) — tiers are BREADTH; DEPTH is a second axis
+
+Proposal 2 defines the tiers as a ladder of COVERAGE: which coordinates a run
+visits. That is one axis, and the expensive one is the other.
+
+| axis | values | cost |
+| --- | --- | --- |
+| **breadth** — which coordinates | tier1, tier2, nightly, full | low |
+| **depth** — what we do with each | build+link, build+run | **high** |
+
+Measured 2026-08-31 on one host: `just ci l3` (cross build + link + ELF symbol
+interrogation, no QEMU, no tests) is **46 s**. The tier-2 run over the same tree
+is **9.5 min** on top of an **11 min** warm fixture rebuild. Depth is roughly
+**25x** breadth.
+
+This ladder already contained the second axis without naming it: the LANE
+vocabulary (`just ci l1`, `just ci l3`) is depth, while `just ci <tier>` is
+breadth-with-depth-fixed-at-build+run. Two ladders sharing the `ci` namespace is
+why `ci l3` and `ci full` read as siblings and are not.
+
+**The operational rule that follows:**
+
+> Build+link is MANDATORY and WIDE. Build+run is SCHEDULED and NARROW.
+
+"It compiles and links for every target" is the regression that hurts most and
+costs least to catch, so it can afford to gate every merge. Running cannot.
+
+**And a constraint the original ladder could not have known**, because it
+predates the merge queue: a run-depth tier on `push(main)` with
+`cancel-in-progress: true` STARVES once merges arrive faster than the tier
+completes. With ten agents landing through a queue that batches four, a 20-minute
+tier is cancelled before it finishes, every time — and a lane that always cancels
+looks busy while reporting nothing. Run-depth belongs on a clock.
+
+phase-410 restructures the workflows accordingly. This RFC keeps the ladder; it
+gains the axis the ladder was missing.
 
 ## Operational corollaries
 

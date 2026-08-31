@@ -1,0 +1,81 @@
+# BUILD + LINK, wide — the mandatory promise (phase-410 W2).
+#
+# CI is BREADTH x DEPTH, and only DEPTH is expensive:
+#
+#   breadth  which coordinates a run visits   tier1 tier2 nightly full   low cost
+#   depth    what it does with each           build+link | build+run     HIGH cost
+#
+# MEASURED 2026-08-31: `just ci l3` — cross build + link plus ELF symbol
+# interrogation, no QEMU and no tests — is 46 s. The tier-2 RUN over the same
+# tree is 9.5 min on top of an 11 min warm fixture rebuild. Depth is ~25x
+# breadth, so build depth can afford to gate every merge and run depth cannot.
+#
+# "It compiles and links for every target" is the regression that hurts most and
+# costs least to catch. That is this lane.
+#
+# WHY push(main) AND NOT the merge queue
+#
+# The queue's budget is the required `CI` context, deliberately cheap so ten
+# agents can land (phase-395). This runs AFTER a merge, where its job is to
+# bound how far a link regression travels — one commit, not one nightly.
+#
+# WHY cancel-in-progress IS correct here and is NOT correct for run-depth
+#
+# A newer commit's answer subsumes an older one's, and at 46 s this run
+# FINISHES before the next merge arrives. A 20-minute run-depth lane under the
+# same setting starves: with ten agents landing through a queue that batches
+# four, each merge cancels the last and the tier completes never — a lane that
+# always cancels looks busy while reporting nothing. Run depth is on a clock,
+# in the `run-*` workflows.
+name: build-wide
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-wide-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  l3:
+    name: build + link (cross ELFs, no boot)
+    # Gated for the same reason as post-submit's tier-2 job: this needs the RTOS
+    # cross toolchains, and a job that cannot start is not a signal.
+    if: ${{ vars.NROS_SELF_HOSTED_READY == 'true' }}
+    runs-on: [self-hosted, linux, nros-sdk-zephyr, nros-big]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-sdk-zephyr,nros-big
+      # phase-407: a CI job is `just setup <scope>` then one command a developer
+      # can type. Nothing here is CI-only orchestration.
+      - name: just setup tier2
+        run: |
+          source ./activate.sh
+          just setup tier2
+      - name: just ci l3
+        run: |
+          source ./activate.sh
+          just ci l3
+      - name: Sweep orphans and disk
+        if: always()
+        run: ./scripts/ci/runner-sweep.sh || true
+
+  coverage:
+    name: coverage report (did build-wide run?)
+    needs: [l3]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report whether the interlocked lane ran
+        run: ./scripts/ci/report-interlock-coverage.sh "build + link (cross ELFs, no boot)" "${{ needs.l3.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"
