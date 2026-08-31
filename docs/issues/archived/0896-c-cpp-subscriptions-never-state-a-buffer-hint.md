@@ -1,11 +1,11 @@
 ---
 id: 896
 title: "Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint`"
-status: open
+status: resolved
 area: rmw, api
 severity: medium
 found: 2026-08-29
-related: [0841, phase-392, phase-380, RFC-0038]
+related: [0841, 0964, phase-392, phase-380, phase-402, phase-403, phase-408, RFC-0038]
 ---
 
 # The receive-buffer hint reaches the backend from Rust and from nowhere else
@@ -595,3 +595,48 @@ Two notes for whoever reads the layers above as a plan:
   asymmetry with C recorded in phase-403's "one correction to carry across".
 
 Full record: `docs/roadmap/phase-408-cpp-message-derived-buffers.md`.
+
+## Resolution, 2026-09-01 — both languages now state a hint, and it is the REAL bound
+
+The title's claim ("nothing fills `rx_buffer_hint`") is false in both languages,
+and the fix arrived in three pieces across three phases.
+
+**C** — phase-403/408. `packs/c/message.h.jinja` emits
+`<PREFIX>_RX_MAX_SERIALIZED_SIZE` from the derived bound, and the generated
+`<Type>_subscribe` passes it. An UNBOUNDED type gets the constant POISONED, so
+naming it is a compile error that names the type and the member costing the
+bound — rather than "undeclared identifier", which named neither.
+
+**C++** — phase-408. `bind_subscription` passes
+`nros::rx_size_bound<M>::value`, and `NROS_SUBSCRIBE` routes through it. No
+generated `_subscribe` helper was needed: `NROS_SUBSCRIBE` →
+`create_subscription` → `bind_subscription` keeps `M` a template parameter to
+the last call, so the type is never erased. C needs the macro because it is.
+
+**The info and validated variants** — phase-408 W5a/W5b. Those two destructured
+the hint into `_rx_buffer_hint` and dropped it. They now route it to the backend
+(W5a) and size their arena slot from it (W5b).
+
+## The part of this issue that was WORSE than it said
+
+This issue is written as "nothing fills the hint". By the time it was closed the
+more dangerous finding was that C++ filled it with the WRONG NUMBER:
+`bind_subscription` passed `M::SERIALIZED_SIZE_MAX`, an ESTIMATE from
+`types::compute_serialized_size_max` that charges a flat 512 B per nested
+message. Measured over 120 stock Humble types it matched the derived bound ZERO
+times — 38 over, 1 under, `geometry_msgs/Twist` reading 1028 against a derived
+64.
+
+A hint that is present and wrong is worse than one that is absent: absent routes
+small and is at least consistent with itself, while an under-estimate sizes a
+buffer that truncates. That distinction is now [issue 0964](0964-two-different-sizes-for-the-same-type.md)'s
+subject, which carries the 13 remaining RECEIVE sites where the estimate is
+load-bearing CAPACITY rather than an advisory hint.
+
+## Not claimed
+
+No `mem-report` delta. The hint changes payload-class ROUTING and arena
+trailing-region size; the C++ receive buffers 0964 covers are STACK, which
+`mem-report` (static RAM by symbol) cannot see at all. Whoever wants the bytes
+needs two different instruments, and this issue closes on the mechanism being
+correct, not on a measured saving.
