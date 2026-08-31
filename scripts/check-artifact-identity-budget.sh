@@ -173,11 +173,38 @@ if [ "${1:-}" = "--self-test" ]; then
         _st_fails=$((_st_fails + 1))
     fi
 
+    # (c) NO stamp, but the SIDECAR survives — a build that started and died.
+    #
+    # This is the wedge: `nros_fixtures_stamp_clear()` removes the stamp and
+    # writes `<stamp>.started`; only SUCCESS folds it in. A failed build leaves
+    # exactly this state, and the gate used to count the whole tree — an
+    # unattributable number — while `build-test-fixtures` lists `check::fast` as
+    # a dependency, so the gate then blocked the rebuild that would fix it.
+    #
+    # Both halves are asserted: the bound is USED (not the whole-tree path), and
+    # the reading SAYS the build was partial. A filtered count under wording that
+    # implies a completed build is issue 0661's defect wearing a new hat.
+    _st_stamp_c="$_st_tmp/stamp_c"
+    rm -f "$_st_stamp_c"
+    touch -d '2020-01-01 00:00:00' "$_st_deps"/libnros_core-*.rlib
+    printf '2010-01-01T00:00:00Z\n' > "$_st_stamp_c.started"
+    _st_out="$(NROS_IDENTITY_BUDGET_TREE="$_st_tmp/tree" NROS_FIXTURE_STAMP="$_st_stamp_c" \
+        bash "$0" 2>&1 || true)"
+    if nros_grep_q 'NO started_at' <<<"$_st_out"; then
+        echo "  FAIL (c): the sidecar bound was ignored and the whole tree counted" >&2
+        _st_fails=$((_st_fails + 1))
+    elif ! nros_grep_q 'PARTIAL build' <<<"$_st_out"; then
+        echo "  FAIL (c): filtered on the sidecar without saying the build was partial" >&2
+        _st_fails=$((_st_fails + 1))
+    else
+        echo "  ok   (c) a sidecar bound is used, and says the build did not finish"
+    fi
+
     if [ "$_st_fails" -ne 0 ]; then
         echo "check-artifact-identity-budget --self-test: $_st_fails case(s) FAILED" >&2
         exit 1
     fi
-    echo "check-artifact-identity-budget --self-test: 2 case(s) OK"
+    echo "check-artifact-identity-budget --self-test: 3 case(s) OK"
     exit 0
 fi
 
@@ -387,7 +414,46 @@ _all="$(find "$TREE" \
     -path '*/deps/*' -name 'lib*-*.rlib' -print 2>/dev/null | sort)"
 
 _started=""
+_started_from_sidecar=0
 [ -r "$STAMP" ] && _started="$(sed -n 's/^started_at=//p' "$STAMP" | head -1)"
+# issue 0499 follow-up — the lower bound also lives OUTSIDE the stamp, and when
+# the stamp is absent that is the only place it lives.
+#
+# `nros_fixtures_stamp_clear()` deletes the stamp and writes the build's start
+# time to `<stamp>.started`; `nros_fixtures_stamp_write()` folds it in and
+# removes it — ON SUCCESS. So a build that FAILS leaves no stamp and a surviving
+# sidecar, and this gate then had no lower bound and counted the whole tree.
+#
+# That is not merely a worse number, it is an UNATTRIBUTABLE one, which is the
+# thing this gate exists to avoid (see `era_verdict` and issue 0661): the count
+# stops distinguishing "this build produced N identities" from "this tree
+# collected N since June", and the advice flips between "find the axis" and
+# "delete the tree".
+#
+# Worse, it WEDGES recovery. `build-test-fixtures` lists `check::fast` as a
+# dependency, so this gate runs before the build that would write a good stamp —
+# a single failed fixture build leaves every subsequent one blocked by a
+# whole-tree count of history it did not create. Observed 2026-08-31 after a
+# `lane=all` build failed on an unrelated compile error.
+#
+# The sidecar is a genuine lower bound: the pipeline wrote it, at the moment the
+# build began. Reading it is strictly more correct than counting everything, and
+# it is NOT the same as trusting a stamp — no `built_at`, no `lane=`, so nothing
+# here claims a build SUCCEEDED. Only "the most recent attempt started then".
+if [ -z "$_started" ] && [ -r "${STAMP}.started" ]; then
+    _started="$(head -1 "${STAMP}.started")"
+    [ -n "$_started" ] && _started_from_sidecar=1
+fi
+# The suffix goes into every message that quotes the bound. A reader who sees a
+# filtered count must be able to tell WHICH build it is filtered against: a
+# sidecar bound means the last attempt FAILED, so the artifacts inside the window
+# are a partial set and "this build" means "what that attempt got through before
+# it died". Silently identical wording for the two cases would be the issue-0661
+# defect again — a correct number under advice that does not fit it.
+_started_src=""
+if [ "$_started_from_sidecar" = "1" ]; then
+    _started_src=" (from ${STAMP}.started — the last build did NOT finish, so this window covers a PARTIAL build)"
+fi
 _ref=""
 if [ -n "$_started" ]; then
     _ref="$(mktemp)"
@@ -406,11 +472,11 @@ if [ -n "$_ref" ] && [ -n "$_all" ]; then
         # Nothing newer than the build's own start: the tree predates the stamp
         # entirely. Say so instead of reporting a count about the past.
         echo "[SKIP] artifact-identity budget: all $_n_all rlib(s) in $TREE predate"
-        echo "       started_at=$_started — this tree is history, not that build."
+        echo "       started_at=$_started$_started_src — this tree is history, not that build."
         echo "       Rebuild to measure:  $BUILD_HINT"
         exit 0
     fi
-    IDENTITY_ERA_NOTE="  counted $_n_cur of $_n_all rlib(s) — those written since started_at=$_started (issue 0499)."
+    IDENTITY_ERA_NOTE="  counted $_n_cur of $_n_all rlib(s) — those written since started_at=$_started$_started_src (issue 0499)."
     # issue 0521-adjacent, filed under 0499: an INCREMENTAL build legitimately
     # rewrites nothing for a crate whose inputs did not change. The filter then
     # leaves artifacts for OTHER crates but none for the budget crate, and the
@@ -452,7 +518,7 @@ if [ -n "$_ref" ] && [ -n "$_all" ]; then
     fi
 else
     rlibs="$_all"
-    IDENTITY_ERA_NOTE="  NO started_at in $STAMP — counting all rlib(s); an accumulated tree inflates this (issue 0499)."
+    IDENTITY_ERA_NOTE="  NO started_at in $STAMP and no ${STAMP}.started — counting all rlib(s); an accumulated tree inflates this (issue 0499)."
 fi
 
 if [ -z "$rlibs" ]; then
