@@ -174,6 +174,7 @@ build:
 [group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh qemu build-fixtures "just build qemu"
     set -e
     source scripts/build/cargo.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
@@ -229,6 +230,7 @@ build-examples: build-fixtures
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh qemu test "just test qemu"
     set +e
     failed=0
     just init-test-logs
@@ -462,6 +464,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh qemu doctor "just doctor qemu"
     set +e
     # phase-334 W2.b step 2 — path from the ONE derivation (RFC-0070 R3).
     # NOTE: `QEMU_PREFIX` at the top of this file stays a literal on purpose —

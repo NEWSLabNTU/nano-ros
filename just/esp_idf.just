@@ -20,6 +20,7 @@ setup *args:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh esp_idf doctor "just doctor esp_idf"
     set +e
     fail=0
     if [ -f "{{ESP_IDF_WORKSPACE}}/export.sh" ]; then
@@ -73,6 +74,7 @@ build-examples:
 # Build ESP-IDF test fixtures.
 [group("full-matrix")]
 build-fixtures target='esp32c3': (build-c-port target)
+    @bash scripts/dev/deprecated-scope-alias.sh esp_idf build-fixtures "just build esp_idf"
     @echo "ESP-IDF fixtures built."
 
 # Build every ESP-IDF tier: core artifacts, examples, and test fixtures.

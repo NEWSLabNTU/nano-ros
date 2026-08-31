@@ -149,9 +149,20 @@ default:
         "    just ci matrix             tier 2 — 1-wise platform cover" \
         "    just ci full               tier 3 — the whole matrix" \
         "" \
-        "  A PLATFORM" \
-        "    just native build|test     also: zephyr freertos nuttx esp32 qemu" \
-        "    just <plat> setup          provision its toolchain/SDK" \
+        "  A SCOPE  (phase-407 — one word, one position, every verb)" \
+        "    just setup  <scope>        provision it" \
+        "    just doctor <scope>        is it ready? (no scope: probe them all)" \
+        "    just build  <scope>        build its test fixtures" \
+        "    just test   <scope>        run its tests" \
+        "" \
+        "    scope = a platform   native zephyr freertos nuttx threadx_linux" \
+        "                         threadx_riscv64 esp32 esp_idf qemu px4 xrce" \
+        "                         cyclonedds" \
+        "         or a preset     all native tier1 tier2 tier2-nightly" \
+        "" \
+        "    Naming a scope IS the specification: it is what you asked to be" \
+        "    covered. Unnamed = best effort over what is provisioned, reported." \
+        "    (\`just <plat> <verb>\` still works, deprecated for one release.)" \
         "" \
         "  SETUP" \
         "    source ./activate.sh       REQUIRED once per shell" \
@@ -202,12 +213,75 @@ list-all:
 # Phase 140 — `install-local` removed; `add_subdirectory(<repo-root>)`
 # is the only supported C/C++ consumption shape. CMake-driven crates
 # build in-tree via Corrosion when an example invokes them.
+#
+# phase-407 W3 — `just build [<scope>…]`. A scope in the first argument
+# position, the same word `setup`, `doctor` and `test` take:
+#
+#   just build tier2       the tier-2 fixture cover (was: build-test-fixtures lane=tier2)
+#   just build native      every native fixture row     (was: lane=native)
+#   just build zephyr      one platform's fixtures      (was: just zephyr build-fixtures)
+#
+# A LANE token routes through `build-test-fixtures`, because that is what
+# writes the coverage stamp `_require-fixtures` reads; a PLATFORM token routes
+# to `just <plat> build-fixtures`, which is the same call that recipe's own
+# fan-out makes. Same scope, the machinery each already has.
+#
+# WITH NO SCOPE this stays the workspace build — deliberately NOT "the fixtures
+# for everything provisioned". `just build` is the documented fast inner loop
+# (book/src/internals/build-system.md), minutes not hours, and silently
+# promoting it to a fixture sweep would be the most expensive surprise in the
+# tree. What it gains instead is the derived default scope PRINTED, so the
+# question "what would `just build <scope>` cover here?" is answered without
+# anyone recording an answer.
+#
+# Workspace + transports; with a scope, that scope's test fixtures.
 [group("main")]
-build: \
-    generate-bindings \
-    build-workspace build-workspace-embedded \
-    qemu::build-zenoh-pico
-    @echo 'Workspace + transports built. Run "just build-examples" for example crates, "just build-test-fixtures" for `test-all` staging, or "just build-all" for everything.'
+build *scope:
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/build/scope.sh
+    source scripts/build/scope.sh
+    scoped=({{scope}})
+    if [ "${#scoped[@]}" -gt 0 ]; then
+        nros_scope_validate_all "${scoped[@]}" || exit 2
+        nros_scope_report build "${scoped[@]}"
+        for tok in "${scoped[@]}"; do
+            just _build-scope "$tok"
+        done
+        exit 0
+    fi
+    # The pre-407 dependency list, called rather than depended on: a recipe
+    # with a variadic parameter still runs its dependencies unconditionally,
+    # and a scoped `just build zephyr` must not first rebuild the workspace.
+    just generate-bindings build-workspace build-workspace-embedded
+    just qemu build-zenoh-pico
+    echo 'Workspace + transports built. Run "just build-examples" for example crates, "just build <scope>" for `test-all` fixture staging, or "just build-all" for everything.'
+    echo ""
+    nros_scope_report build
+
+# One scope token's fixture build.
+[private]
+_build-scope tok:
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/build/scope.sh
+    source scripts/build/scope.sh
+    tok="$(nros_scope_normalize "{{tok}}")"
+    # LANE first, unlike `_test-scope`: a lane build stamps its coverage
+    # (`nros_fixtures_stamp_write`), and `native` is a lane, so the stamped
+    # path is the better answer for the one token that is both.
+    if nros_scope_is_lane "$tok"; then
+        nros_scope_exec just build-test-fixtures "lane=$tok"
+        exit 0
+    fi
+    if nros_scope_is_platform "$tok"; then
+        nros_scope_require_module_verb "$tok" build-fixtures
+        echo "note: a single-platform build writes no fixture stamp; \`just test\` still" >&2
+        echo "      wants a lane build (\`just build native|tier1|tier2|all\`)." >&2
+        nros_scope_exec just "$tok" build-fixtures
+        exit 0
+    fi
+    nros_scope_reject "$tok"
 
 # `build` + every example crate + per-RTOS example builds (native,
 # freertos, threadx_linux, threadx_riscv64). Use to verify the
@@ -1111,9 +1185,57 @@ test-zpico-multisession verbose="":
 # `.config/nextest.toml`. `group(...)` is a CLI-only predicate
 # (nextest 0.9.133+), so the list lives here rather than under a
 # `[profile.fast]` default-filter.
+#
+# phase-407 W3 — `just test [<scope>…]`, one vocabulary in one position:
+#
+#   just test              this host, best effort: what is provisioned runs,
+#                          what is not SKIPS — and the scope line says which
+#   just test zephyr       one platform, NAMED, so it must work rather than skip
+#   just test tier2        the lane's run, narrowed to the lane's coordinates
+#
+# The first positional used to be `verbose`, so `just test 1` no longer means
+# what it did — the incompatibility phase-407 accepts. `verbose` / `-v` /
+# `--verbose` are still recognised, as FLAGS anywhere in the argument list, so
+# the spelling people actually type keeps working.
+#
+# Run the tests for a scope; with no scope, this host, best effort.
 [group("main")]
-test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multisession
+test *scope:
     #!/usr/bin/env bash
+    # shellcheck source=scripts/build/scope.sh
+    source scripts/build/scope.sh
+    verbose=""
+    scoped=()
+    for tok in {{scope}}; do
+        case "$tok" in
+            -v | --verbose | verbose) verbose="verbose" ;;
+            *) scoped+=("$tok") ;;
+        esac
+    done
+    if [ "${#scoped[@]}" -gt 0 ]; then
+        nros_scope_validate_all "${scoped[@]}" || exit 2
+        nros_scope_report test "${scoped[@]}"
+        rc=0
+        for tok in "${scoped[@]}"; do
+            just _test-scope "$tok" "$verbose" || rc=1
+        done
+        exit "$rc"
+    fi
+    # The DEFAULT scope: derived by probing, reported before anything runs.
+    # phase-407's "best-effort" meaning lives here and nowhere else — a NAMED
+    # platform must work (W2), an unnamed one may skip and is always reported.
+    nros_scope_report test
+    echo ""
+    # Pre-407 these were recipe DEPENDENCIES. A dependency runs whatever the
+    # arguments say, so a scoped `just test zephyr` would have paid for the
+    # host fixture preflight it does not use.
+    #
+    # `|| exit` is load-bearing: this body has no `set -e` (the nextest tallying
+    # below manages its own exit codes), and a dependency that used to ABORT the
+    # recipe must not degrade into a warning the run continues past. That would
+    # be exactly the defect phase-407 is about — a preflight that reports and is
+    # then ignored.
+    just _require-build-sources _require-fixtures-ready test-zpico-multisession || exit 1
     # issue 0923 — sweep BEFORE nextest, for the same reason `test-all` does
     # (issue 0659). This lane runs the same suites and spawns the same peers,
     # and a SIGKILLed run leaves them: `PR_SET_PDEATHSIG` reaches `bash` only,
@@ -1140,7 +1262,9 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
     # instead of skipping. All three binaries are entirely QEMU/Zephyr e2e.
     exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or binary(esp32_emulator) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr))'
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}" -E "$exclude")
-    if [ -z "{{verbose}}" ]; then
+    # A shell variable, not a recipe parameter: the first positional is SCOPE
+    # now, and verbosity is a flag parsed out of it at the top of this body.
+    if [ -z "$verbose" ]; then
         args+=(--success-output never --failure-output never)
     fi
     nros_nextest_record_begin test
@@ -1177,6 +1301,46 @@ test verbose="": _require-build-sources _require-fixtures-ready test-zpico-multi
     else
         echo "All standard tests passed! (Miri skipped — run \`just test-miri\` or \`just test-all\`.)"
     fi
+
+# One scope token's test run.
+#
+# PLATFORM first, unlike `_build-scope`: `native` is both a platform module and
+# a lane, and for a RUN the module is the right machinery — `just native test`
+# is that platform's suite, whereas the `native` LANE narrows nothing (it is
+# module-level) and would hand `test-all` the whole tree. Both readings are the
+# same SCOPE, which is what `check-scope-namespace` asserts; only the machinery
+# differs, and each verb picks the one that exists for it.
+[private]
+_test-scope tok verbose="":
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/build/scope.sh
+    source scripts/build/scope.sh
+    tok="$(nros_scope_normalize "{{tok}}")"
+    if nros_scope_is_platform "$tok"; then
+        nros_scope_require_module_verb "$tok" test
+        nros_scope_exec just "$tok" test {{verbose}}
+        exit 0
+    fi
+    if nros_scope_is_preset "$tok"; then
+        # shellcheck source=scripts/build/fixture-lane.sh
+        source scripts/build/fixture-lane.sh
+        if [ "$tok" = "all" ]; then
+            nros_scope_exec env NROS_FIXTURE_LANE=all just test-all {{verbose}}
+            exit 0
+        fi
+        # The lane's own coordinate file reaching BOTH the preflight and the
+        # run — the same two-variable pairing `ci::matrix` uses, and for the
+        # same reason (issue 0482: a lane-scoped build accepted for an
+        # unnarrowed run fails ~231 fixtures later).
+        coords="$(nros_lane_coords_file "$tok")"
+        coords="$(cd "$(dirname "$coords")" && pwd)/$(basename "$coords")"
+        nros_scope_exec env "NROS_FIXTURE_LANE=$tok" "NROS_TEST_COORDS=$coords" \
+            just test-all {{verbose}}
+        exit 0
+    fi
+    nros_scope_reject "$tok"
+
 # Build ONLY the compile-check fixtures (issue 0034 / issue 0871).
 #
 # `check::source-gates` runs three `cargo test`s that ASSERT a prebuilt
@@ -3464,24 +3628,30 @@ setup target="" tier="":
           "nano-ros setup choices:" \
           "" \
           "  just setup base              # first-time native/ROS/zenoh quick start" \
-          "  just setup <platform>        # focused platform setup, e.g. zephyr, freertos, nuttx" \
+          "  just setup <scope>           # focused setup, e.g. zephyr, freertos, nuttx" \
           "  just setup all               # full contributor/test-all setup; fetches all SDKs" \
           "" \
-          "Common platform setup commands:" \
+          "SCOPE is one word in one position, for every verb (phase-407):" \
           "" \
-          "  just setup zephyr" \
-          "  just setup freertos" \
-          "  just setup nuttx" \
-          "  just setup threadx_linux" \
-          "  just setup threadx_riscv64" \
-          "  just setup esp32" \
-          "  just setup esp_idf" \
-          "  just setup px4" \
+          "  just setup zephyr            # provision it" \
+          "  just doctor zephyr           # is it ready?" \
+          "  just build zephyr            # build its test fixtures" \
+          "  just test zephyr             # run its tests" \
+          "" \
+          "Platform scopes:" \
+          "" \
+          "  native zephyr freertos nuttx threadx_linux threadx_riscv64" \
+          "  esp32 esp_idf qemu px4 xrce cyclonedds" \
+          "" \
+          "Preset scopes (a named set of platforms — the fixture lanes):" \
+          "" \
+          "  all native tier1 tier2 tier2-nightly" \
           "" \
           "Readiness checks:" \
           "" \
-          "  just doctor                  # base readiness" \
-          "  just doctor tier=all         # full contributor readiness" \
+          "  just doctor                  # host tooling + a PROBE of every platform" \
+          "  just doctor <scope>          # one platform, or a preset's set" \
+          "  just doctor tier=all         # the pre-407 tier walk (adds workspace/verification)" \
           "" \
           "Fresh checkout without just:" \
           "" \
@@ -3503,13 +3673,30 @@ setup target="" tier="":
             base|quickstart|minimal|default|all|everything|contributor|extended)
                 chosen_tier="$target"
                 ;;
-            workspace|verification|qemu|freertos|nuttx|threadx_linux|threadx_riscv64|esp32|zephyr|xrce|rmw_zenoh|cyclonedds|esp_idf|px4)
-                # Focused platform setup may still shell `nros setup …`;
-                # build the CLI first so the binary is on disk.
+            # phase-407 W3 — the platform arm is now the SCOPE predicate, not a
+            # second hand-written list of platform names. The list had already
+            # drifted (`native` was missing, `rmw_zenoh` names no module), and a
+            # scope that resolves for `doctor`/`build`/`test` and silently falls
+            # through here is exactly the two-vocabularies defect this phase
+            # exists to remove.
+            #
+            # `workspace` and `verification` stay spelled out: they are
+            # deliberately NOT scope tokens (see scripts/build/scope.sh) but
+            # they do have `setup`, and `just setup workspace` predates 407.
+            workspace | verification | rmw_zenoh)
                 just setup-cli
                 exec just "$target" setup
                 ;;
             *)
+                # shellcheck source=scripts/build/scope.sh
+                source scripts/build/scope.sh
+                if nros_scope_is_platform "$target" \
+                   && nros_scope_module_has_verb "$target" setup; then
+                    # Focused platform setup may still shell `nros setup …`;
+                    # build the CLI first so the binary is on disk.
+                    just setup-cli
+                    exec just "$target" setup
+                fi
                 exec "$(pwd)/tools/setup.sh" --target="$target"
                 ;;
         esac
@@ -3542,18 +3729,109 @@ setup target="" tier="":
 setup-platform platform:
     @just "{{platform}}" setup
 
-# Diagnose install status (read-only). Tier matches `just setup`.
+# Diagnose install status (read-only) — `just doctor [<scope>…]`.
+#
+# phase-407 W3. The scope is the SPECIFICATION, in the same argument position
+# every other verb takes it:
+#
+#   just doctor              this host: the shared tooling, then a PROBE of
+#                            every platform, so the answer to "what am I
+#                            covered for?" is derived rather than remembered
+#   just doctor zephyr       one platform's readiness, with its remedies
+#   just doctor tier2        every platform that lane covers
+#   just doctor tier=all     the pre-407 tier spelling, still honoured
+#
+# The tier form stays because it is in the book, in `scripts/bootstrap.sh` and
+# in muscle memory, and because the tier fan-out reaches modules that are not
+# scopes (`workspace`, `verification`) — see `scripts/build/scope.sh` for why
+# those are deliberately outside the scope namespace.
+#
+# Readiness for a scope; with no scope, the host plus a probe of every platform.
 [group("setup")]
-doctor tier="":
+doctor *scope:
     #!/usr/bin/env bash
     set -e
-    chosen_tier="{{tier}}"
-    if [[ "$chosen_tier" == tier=* ]]; then
-        chosen_tier="${chosen_tier#tier=}"
+    # shellcheck source=scripts/build/scope.sh
+    source scripts/build/scope.sh
+    chosen_tier=""
+    scoped=()
+    for tok in {{scope}}; do
+        case "$tok" in
+            # The TIER vocabulary (`_orchestrate`), which is not the scope
+            # vocabulary: it walks tooling modules too. Kept verbatim.
+            tier=*) chosen_tier="${tok#tier=}" ;;
+            # `all` takes the TIER reading here, so `just setup all` and
+            # `just doctor all` mirror each other and `scripts/bootstrap.sh
+            # doctor all` keeps working. The tier is a strict superset of the
+            # `all` PRESET (it adds `workspace` and `verification`), so nothing
+            # a scope reading would have reported is lost.
+            all|base|quickstart|minimal|default|everything|contributor|extended)
+                chosen_tier="$tok" ;;
+            *) scoped+=("$tok") ;;
+        esac
+    done
+    if [ "${#scoped[@]}" -gt 0 ]; then
+        if [ -n "$chosen_tier" ]; then
+            echo "doctor: 'tier=$chosen_tier' and a scope name together — pick one." >&2
+            echo "        The scope namespace replaces the tier one:  just doctor ${scoped[*]}" >&2
+            exit 2
+        fi
+        nros_scope_validate_all "${scoped[@]}" || exit 2
+        nros_scope_report doctor "${scoped[@]}"
+        rc=0
+        for tok in "${scoped[@]}"; do
+            just _doctor-scope "$tok" || rc=1
+        done
+        exit "$rc"
     fi
     if [[ -z "$chosen_tier" ]]; then
         chosen_tier="${NROS_SETUP_TIER:-base}"
     fi
+    just _doctor-host
+    just _orchestrate doctor "$chosen_tier"
+    # The DERIVED default scope — every platform probed, nothing recorded.
+    # This is the line that makes an absent platform visible at the moment a
+    # person is asking about readiness, instead of as a skip inside a green run.
+    echo ""
+    nros_scope_report doctor
+
+# One scope token's readiness. `native` is the host, so its readiness IS the
+# shared-tooling block — there is no `native` module `doctor` to call and there
+# should not be one, since a second host probe is a second answer.
+[private]
+_doctor-scope tok:
+    #!/usr/bin/env bash
+    set -e
+    # shellcheck source=scripts/build/scope.sh
+    source scripts/build/scope.sh
+    tok="$(nros_scope_normalize "{{tok}}")"
+    if nros_scope_is_platform "$tok"; then
+        echo ""
+        echo "=== $tok ==="
+        if [ "$tok" = "native" ]; then
+            nros_scope_exec just _doctor-host
+            exit 0
+        fi
+        nros_scope_require_module_verb "$tok" doctor
+        nros_scope_exec just "$tok" doctor
+        exit 0
+    fi
+    if nros_scope_is_preset "$tok"; then
+        rc=0
+        for p in $(nros_scope_preset_expand "$tok"); do
+            just _doctor-scope "$p" || rc=1
+        done
+        exit "$rc"
+    fi
+    nros_scope_reject "$tok"
+
+# The host's shared tooling — the CLI, python, clang-format, sccache, the ROS
+# router. Extracted from `doctor` by phase-407 W3 so `just doctor native` and
+# the default scope reach the SAME block rather than a second copy of it.
+[private]
+_doctor-host:
+    #!/usr/bin/env bash
+    set -e
     # Phase 218.D.4 — CLI binary + version on a single line. Read-only;
     # uses the same resolver as every recipe that shells `nros …`, so a
     # skew between resolver and what doctor reports is impossible.
@@ -3713,7 +3991,6 @@ doctor tier="":
         echo "         than as absent coverage."
         echo "         Install:  nros setup --system    (declared in nros-sdk-index.toml)"
     fi
-    just _orchestrate doctor "$chosen_tier"
 
 # Internal: walk every module in `tier` calling the requested recipe
 # (setup or doctor). `base` is the safe quick-start tier; `all` is the

@@ -122,7 +122,7 @@ fast-serial: \
     export-f-closure peer-sweep-lanes \
     activate-shells build-root fixture-groups rmw-descriptors artifact-identity-budget \
     cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs fixture-binary-names manifests-parse build-rs-rerun-paths \
-    lane-skip-protocol named-lane-fails skip-marker-matching \
+    lane-skip-protocol named-lane-fails skip-marker-matching scope-namespace \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement site-config lane-scope-consumers \
     interlock-visibility fixture-stamp-honesty \
@@ -3112,6 +3112,17 @@ fixture-binary-names:
 [private]
 manifests-parse:
     @python3 scripts/check-manifests-parse.py
+
+# phase-407 W3 — `just <verb> <scope>` puts platform names and preset names in
+# ONE argument position, so a name may not mean two things. `native` is both a
+# platform module and a fixture lane, which is legal only while they denote the
+# same scope; nothing checked that, and a preset that quietly means something
+# else re-scopes a run without changing a single command anyone types. Buildless
+# (NROS_SCOPE_NO_BUILD=1) — a collision whose expansion needs a compiled
+# selector is itself the failure. Self-tests its own rule on every run.
+[private]
+scope-namespace:
+    @python3 scripts/check-scope-namespace.py
 
 # issue 0650 — a fixture lane that cannot run must report SKIPPED (rc 78), never
 # build nothing and print "<platform> test fixtures built." with exit 0. That

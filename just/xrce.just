@@ -21,6 +21,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh xrce doctor "just doctor xrce"
     set +e
     source scripts/build/build-root.sh
     adir="$(nros_build_dir "$NROS_KIND_XRCE_AGENT")"
@@ -54,6 +55,7 @@ clean-agent:
 [group("main")]
 test verbose="":
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh xrce test "just test xrce"
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))

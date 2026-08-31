@@ -159,6 +159,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
 # Build all example binaries used as test fixtures (Rust + C + C++ + workspaces).
 [group("full-matrix")]
 build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
+    @bash scripts/dev/deprecated-scope-alias.sh native build-fixtures "just build native"
     @echo "Native test fixtures built."
 
 # Build native workspace fixtures from examples/fixtures.toml.
@@ -665,6 +666,7 @@ clean-cpp:
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh native test "just test native"
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))

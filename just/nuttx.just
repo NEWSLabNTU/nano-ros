@@ -162,6 +162,7 @@ build-examples:
 [group("full-matrix")]
 build-fixtures: build-fixtures-arm build-fixtures-riscv
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh nuttx build-fixtures "just build nuttx"
     set -e
     # issue 0650 — this lane had NO body at all, so it inherited `just`'s exit 0
     # from its two steps and reported success whether or not either built
@@ -505,6 +506,7 @@ build-all: build build-examples build-fixtures
 [group("main")]
 test verbose="": build-fixtures-arm
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh nuttx test "just test nuttx"
     set -e
     if [ ! -d "$NUTTX_DIR/include" ]; then
         echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just nuttx setup"
@@ -583,6 +585,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh nuttx doctor "just doctor nuttx"
     set +e
     fail=0
     if [ -d "$NUTTX_DIR/arch" ]; then
