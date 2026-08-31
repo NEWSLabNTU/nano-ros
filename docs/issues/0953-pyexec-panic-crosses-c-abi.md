@@ -8,7 +8,30 @@ area: tooling
 related: [0897, 0915, 0914]
 ---
 
-## What happens
+## CORRECTION — the reproduction below was against a STALE checkout
+
+The `No LaunchContext set` panic that produced the core dump is **already
+fixed** at the commit nano-ros pins (`7ecdee1f`, via issue 0935 — "exec_file
+carries its context BOTH ways across the dlopen boundary"). My checkout was at
+`caab6fbc`, one pin behind, and I read a crash from it as current behaviour.
+Re-tested at the pin with NO guard: the same file resolves cleanly.
+
+That is the stale-tree trap this repository documents at length ("a test result
+is only about the tree its FIXTURES were built from"), and it is the reason the
+transcript below is kept rather than deleted — a filing whose evidence turned
+out to be an artefact should say so.
+
+**What survives, and it survives on its own:** the boundary is unguarded.
+`grep -c catch_unwind c_abi.rs` at the pin is **0**, so ANY panic in the Python
+half still aborts the process. It is now a latent robustness gap rather than an
+observed crash, and it is worth closing because the abort is unconditional when
+it happens and carries no diagnostic.
+
+Fixed in `play_launch` on `fix/0953-catch-unwind-at-c-abi`, proved by a
+mutation check: with the guard deleted the pyexec suite does not fail, it dies
+with `SIGABRT` / "thread caused non-unwinding panic. aborting".
+
+## What happens (against `caab6fbc` — see the correction above)
 
 Resolving a `.launch.py` with the shipped `nros-launch-resolve` does not fail —
 it **aborts and dumps core**:
