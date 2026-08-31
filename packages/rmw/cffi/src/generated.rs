@@ -64,7 +64,24 @@ pub type rmw_topic_endpoint_info_visit_fn = ::core::option::Option<
 >;
 #[doc = " Runtime-pluggable custom transport. The runtime never\n dereferences `user_data`; it's the caller's per-transport\n context, threaded back into every callback's first argument.\n\n THIS declaration is the ABI single source of truth (RFC-0054): Rust\n consumes the committed bindgen output of this header, and\n `nros_rmw::NrosTransportOps` is the hand-written Rust-side view kept in\n lockstep with it — not the other way round. The previous wording had that\n backwards (issue 0331). Layout equivalence is asserted on both sides: see\n `nros_transport_ops_t` in `nros-rmw-cffi/tests/c_stubs/abi_layout_check.c`\n and the `const _` size/align block beside\n `nros_rmw_cffi_set_custom_transport` in `nros-rmw-cffi/src/lib.rs`. Same\n layout, same threading contract, same return codes."]
 pub type nros_transport_ops_t = nros_transport_ops_s;
-#[doc = " Global identifier for a publisher — upstream `rmw_gid_t`, field for field.\n\n  Phase 376 W4. Mirrors upstream exactly, including the 24-byte width and the\n  `implementation_identifier`. The identifier matters MORE here than upstream:\n  `nros_rmw_cffi_register_named` admits several backends in one image, so two\n  gids are comparable only when it matches.\n\n  Comparison is over the whole array, so a producer MUST zero-pad an\n  identifier shorter than 24 bytes rather than leave the tail undefined —\n  otherwise two gids naming the same entity compare unequal on stack garbage.\n\n  **24, not 16, and that is a discrepancy worth knowing about.** Our own\n  `MessageInfo::publisher_gid` (`nros-core`, `PUBLISHER_GID_SIZE`) is 16 bytes,\n  while the Cyclone backend already computes 24-byte gids for the DDS graph\n  (`entity_gid_24` in `graph.cpp`). Under upstream semantics those are the SAME\n  identifier, so a gid obtained from a take cannot today be compared with one\n  from `get_gid_for_publisher` without a documented mapping — and the narrower\n  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is\n  its own change and is NOT done here. */\n/** A message type's identity — phase-406 W1.\n\n  Upstream passes `const rosidl_message_type_support_t *`: a runtime-dispatch\n  handle carrying `{typesupport_identifier, data, func}`, where `func` walks a\n  type description at run time. This ABI resolves types at BUILD time, so\n  there is nothing for `func` to do and the handle's contents do not cross.\n\n  What DOES cross is the identity, and it was crossing as two loose\n  `const char *` wedged between `topic_name` and `qos` — so the argument order\n  did not even line up with upstream's, and every create slot took two\n  arguments where ROS 2 takes one. Grouping them costs nothing: codegen emits\n  one `static const rmw_message_type_support_t` per type, exactly as\n  `ROSIDL_GET_MSG_TYPE_SUPPORT(...)` already hands back a pointer to a static.\n\n  NAMED `rmw_`, NOT `rosidl_`, and not `nros_`. This ABI is a standard\n  interface, so a vendor prefix would say the interface is ours — but\n  `rosidl_message_type_support_t` belongs to `rosidl_runtime_c`, a package we\n  do not implement, and redefining it would collide with a host build that\n  legitimately has it in scope. Reusing `rmw_publisher_t` is safe because we\n  ARE the rmw implementation and own that name; `rmw_` is ours to spend and\n  neutral to a reader.\n\n  Future type-carried data (a serialize/deserialize pair, a bounded-size hint)\n  lands here without changing any slot's arity again — which matters, because\n  appending to a hand-mirrored FFI struct is what `check-ffi-struct-mirrors`\n  exists for."]
+#[doc = " Global identifier for a publisher — upstream `rmw_gid_t`, field for field.\n\n  Phase 376 W4. Mirrors upstream exactly, including the 24-byte width and the\n  `implementation_identifier`. The identifier matters MORE here than upstream:\n  `nros_rmw_cffi_register_named` admits several backends in one image, so two\n  gids are comparable only when it matches.\n\n  Comparison is over the whole array, so a producer MUST zero-pad an\n  identifier shorter than 24 bytes rather than leave the tail undefined —\n  otherwise two gids naming the same entity compare unequal on stack garbage.\n\n  **24, not 16, and that is a discrepancy worth knowing about.** Our own\n  `MessageInfo::publisher_gid` (`nros-core`, `PUBLISHER_GID_SIZE`) is 16 bytes,\n  while the Cyclone backend already computes 24-byte gids for the DDS graph\n  (`entity_gid_24` in `graph.cpp`). Under upstream semantics those are the SAME\n  identifier, so a gid obtained from a take cannot today be compared with one\n  from `get_gid_for_publisher` without a documented mapping — and the narrower\n  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is\n  its own change and is NOT done here. */\n/** Bytes to READ — phase-406 W2.\n\n  `len` is a FACT: how many bytes exist. Nothing is written through this, and\n  `const` says so — `publish` handing a backend a mutable pointer is an\n  invitation.\n\n  PASSED BY VALUE. Two words, and there is nothing to report back."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_byte_span_t {
+    pub data: *const u8,
+    pub len: usize,
+}
+#[doc = " Room to WRITE — phase-406 W2.\n\n  This is upstream's `rmw_serialized_message_t` MINUS THE ALLOCATOR. That is\n  not a coincidence and it is the whole argument: upstream's is an\n  `rcutils_uint8_array_t`, `{buffer, buffer_length, buffer_capacity,\n  allocator}`, and this ABI declined it because of the last field. Drop that\n  field and the remaining three are exactly what a caller-owned destination\n  needs, so the \"carries an allocator\" objection does not transfer to this.\n\n  `capacity` is a LIMIT (in) and `len` is a RESULT (out). They are separate\n  fields rather than one overloaded `len` because \"capacity on the way in,\n  length on the way out\" is the `snprintf` ambiguity, and it is a bug\n  generator.\n\n  PASSED BY POINTER, always. The callee must set `len`, and a by-value copy\n  would discard it — code that compiles, runs, and yields zero-length\n  messages."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_mut_byte_span_t {
+    pub data: *mut u8,
+    #[doc = " In: bytes available at `data`."]
+    pub capacity: usize,
+    #[doc = " Out: bytes actually written. Undefined on failure."]
+    pub len: usize,
+}
+#[doc = " A message type's identity — phase-406 W1.\n\n  Upstream passes `const rosidl_message_type_support_t *`: a runtime-dispatch\n  handle carrying `{typesupport_identifier, data, func}`, where `func` walks a\n  type description at run time. This ABI resolves types at BUILD time, so\n  there is nothing for `func` to do and the handle's contents do not cross.\n\n  What DOES cross is the identity, and it was crossing as two loose\n  `const char *` wedged between `topic_name` and `qos` — so the argument order\n  did not even line up with upstream's, and every create slot took two\n  arguments where ROS 2 takes one. Grouping them costs nothing: codegen emits\n  one `static const rmw_message_type_support_t` per type, exactly as\n  `ROSIDL_GET_MSG_TYPE_SUPPORT(...)` already hands back a pointer to a static.\n\n  NAMED `rmw_`, NOT `rosidl_`, and not `nros_`. This ABI is a standard\n  interface, so a vendor prefix would say the interface is ours — but\n  `rosidl_message_type_support_t` belongs to `rosidl_runtime_c`, a package we\n  do not implement, and redefining it would collide with a host build that\n  legitimately has it in scope. Reusing `rmw_publisher_t` is safe because we\n  ARE the rmw implementation and own that name; `rmw_` is ours to spend and\n  neutral to a reader.\n\n  Future type-carried data (a serialize/deserialize pair, a bounded-size hint)\n  lands here without changing any slot's arity again — which matters, because\n  appending to a hand-mirrored FFI struct is what `check-ffi-struct-mirrors`\n  exists for."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_message_type_support_t {
@@ -331,8 +348,7 @@ pub struct nros_rmw_vtable_t {
     pub publish: ::core::option::Option<
         unsafe extern "C" fn(
             publisher: *const rmw_publisher_t,
-            data: *const u8,
-            len: usize,
+            payload: rmw_byte_span_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
@@ -354,9 +370,7 @@ pub struct nros_rmw_vtable_t {
     pub take: ::core::option::Option<
         unsafe extern "C" fn(
             subscription: *const rmw_subscription_t,
-            buf: *mut u8,
-            buf_len: usize,
-            out_len: *mut usize,
+            out: *mut rmw_mut_byte_span_t,
             taken: *mut bool,
         ) -> rmw_ret_t,
     >,

@@ -560,9 +560,10 @@ unsafe extern "C" fn destroy_publisher_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn publish_trampoline<R: RustBackend>(
     publisher: *const NrosRmwPublisher,
-    data: *const u8,
-    len: usize,
+    // phase-406 W2 — by VALUE; unpacked so the body is unchanged.
+    payload: crate::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
+    let (data, len) = (payload.data, payload.len);
     let Some(p) = (unsafe { publisher_ref::<R::Publisher>(publisher) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -674,11 +675,15 @@ unsafe extern "C" fn destroy_subscription_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn take_trampoline<R: RustBackend>(
     subscriber: *const NrosRmwSubscription,
-    buf: *mut u8,
-    buf_len: usize,
-    out_len: *mut usize,
+    // phase-406 W2 — by POINTER; `capacity` in, `len` out.
+    out: *mut crate::generated::rmw_mut_byte_span_t,
     taken: *mut bool,
 ) -> NrosRmwRet {
+    let Some(span) = (unsafe { out.as_mut() }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (buf, buf_len) = (span.data, span.capacity);
+    let out_len: *mut usize = &mut span.len;
     // Phase 376 W3.b/W3.d step A — upstream's `rmw_take` shape: status in the
     // return, `taken` and the byte count in out-parameters. `Ok(None)` is no
     // longer the NO_DATA sentinel.

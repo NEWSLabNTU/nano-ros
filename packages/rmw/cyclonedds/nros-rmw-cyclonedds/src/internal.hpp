@@ -173,7 +173,7 @@ rmw_ret_t publisher_create(const rmw_node_t* node,
                                 rmw_publisher_t *out);
 rmw_ret_t           publisher_destroy(rmw_publisher_t *publisher);
 rmw_ret_t publisher_publish_raw(const rmw_publisher_t *publisher,
-                                     const uint8_t *data, size_t len);
+                                     rmw_byte_span_t payload);
 
 /* ---- subscriber.cpp ---- */
 rmw_ret_t subscription_create(const rmw_node_t* node,
@@ -183,8 +183,8 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
                                  const rmw_subscription_options_t *options,
                                  rmw_subscription_t *out);
 rmw_ret_t           subscription_destroy(rmw_subscription_t *subscriber);
-rmw_ret_t subscription_take(const rmw_subscription_t *subscriber, uint8_t *buf,
-                                 size_t buf_len, size_t *out_len, bool *taken);
+rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
+                                 rmw_mut_byte_span_t *out, bool *taken);
 rmw_ret_t subscription_take_sequence(const rmw_subscription_t *subscriber, uint8_t *buf,
                                           size_t per_msg_cap, size_t max_msgs, size_t *out_lens,
                                           size_t *taken);

@@ -250,8 +250,11 @@ rmw_ret_t publisher_take_event(const rmw_publisher_t* publisher, rmw_event_type_
     }
 }
 
-rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
-                                     size_t len) {
+rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher,
+                                     rmw_byte_span_t payload) {
+    /* phase-406 W2 — by value; unpacked so the body is unchanged. */
+    const uint8_t* data = payload.data;
+    const size_t len = payload.len;
     if (publisher == nullptr || data == nullptr || len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

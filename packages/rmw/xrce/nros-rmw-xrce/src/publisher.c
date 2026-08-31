@@ -125,7 +125,10 @@ rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
 }
 
 rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t *publisher,
-                                          const uint8_t *data, size_t len) {
+                                          rmw_byte_span_t payload) {
+    /* phase-406 W2 — by value; unpacked so the body is unchanged. */
+    const uint8_t *data = payload.data;
+    const size_t len = payload.len;
     if (publisher == NULL || publisher->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
