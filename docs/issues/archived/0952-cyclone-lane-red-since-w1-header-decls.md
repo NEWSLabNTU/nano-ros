@@ -102,16 +102,39 @@ passes 1/1.
 
 Verified: `just check rmw-cyclonedds` builds and `100% tests passed out of 22`.
 
-## Not fixed here
+## The masking order — FIXED 2026-08-31, by the first option
 
-The masking order. `check::fast` before `check::build` is the right order for
-FEEDBACK — cheap gates first — and the wrong one for COVERAGE, because a
-one-gate red silently withdraws every expensive lane behind it. Worth a separate
-decision, not a drive-by change to the tier everyone runs:
+`check::fast` before `check::build` is the right order for FEEDBACK and the
+wrong one for COVERAGE: a one-gate red silently withdrew every expensive lane
+behind it, and the run ended `1 of 149 gate(s) FAILED`, which reads as one small
+problem rather than "and four steps never ran".
 
-* report which steps did not run when a step fails, so `1 of 146 FAILED` stops
-  reading like the whole story; or
-* let `check::build` run even when `check::fast` failed, and report both.
+Of the two options, the first: **the lane now names what it withdrew.** Stopping
+at the first failure is kept — running a ten-minute backend build after a
+one-second gate has already gone red wastes the run you are about to redo
+anyway. What was wrong was never the stopping; it was the silence.
 
-Until then, an ABI break must run the backend lanes explicitly rather than
-trusting a red tier-1 to have reached them. Phase-406's doc now says so.
+`just ci l1` and `just ci full` now run their steps as a list and report:
+
+    CI L1 FAILED at step 2 of 6.
+
+      ok       check::cli-fresh
+      FAILED   check::fast
+      NOT RUN  check::build
+      NOT RUN  check::api-parity
+      NOT RUN  test-unit
+      NOT RUN  test-lane-contracts
+
+      4 step(s) did NOT run. This lane stops at the first failure, so a
+      red step WITHDRAWS every step after it — `check::build` among them,
+      which is the only place the C/C++ backends compile.
+
+Verified by injecting a bogus `status` into `rmw-api-map.toml` and running the
+lane, not by reading the code: the output above is that run.
+
+`full` gets the same treatment, where it matters most — `just check` alone is
+~200 gates in front of `test-all` and the Zephyr cell.
+
+Still true, and still worth doing during an ABI break: run the backend lanes
+explicitly rather than waiting for a green tier 1 to reach them. The difference
+is that a red tier 1 no longer looks like it did.
