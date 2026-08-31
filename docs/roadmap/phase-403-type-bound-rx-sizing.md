@@ -355,6 +355,50 @@ that the Zephyr lane reads. With the inventory available:
 It also answers this phase's standing open question about where an entity
 inventory comes from: it is codegen's output, currently discarded.
 
+## What a `cap` may and may not claim (2026-08-31, owner's direction: follow ROS 2)
+
+W0 found that the `cap` in `nros-codegen.toml` reaches the STORAGE container and
+not the bound, so the C header's advice ("bound it in the `.msg`, or give it a
+`cap`") currently names a knob that does not help. The question was whether to
+wire `cap` into the bound. The owner's ruling is to follow ROS 2, for interop.
+
+**What ROS 2 does**, read from the Humble installation rather than from memory:
+
+```c
+/* rosidl_typesupport_introspection_c/message_introspection.h */
+uint8_t type_id_;             /* ROS_TYPE_STRING (16), bounded or not */
+size_t  string_upper_bound_;  /* the bound, carried separately */
+bool    is_upper_bound_;      /* same shape for arrays and sequences */
+```
+
+There is no `BOUNDED_STRING` type id: a bound is an ATTRIBUTE of the field, not a
+different type. And the bound is not on the wire -- a bounded and an unbounded
+string serialize to identical CDR (length, bytes, terminator). Our own generated
+`Odometry` shows it: `child_frame_id` is `[u8; 256]` in storage and goes out
+through `write_string(fixed_str(..))`, the same encoding an unbounded field uses.
+
+**What follows.** A cap changes our storage and our derived bound. It changes
+nothing a remote participant can observe -- not the type name, not the encoding,
+not endpoint matching. But that is exactly why it cannot silently become the
+bound we size a RECEIVE buffer from:
+
+| | where it lives | may a receive buffer be sized from it? |
+| --- | --- | --- |
+| `.msg` bound (`string<=64`) | the interface, shared by every participant | YES -- contractual |
+| `cap` in our codegen config | our build only | NO -- unilateral |
+
+A `.msg` bound is part of the contract every participant compiled against. A
+config cap is a claim only we made; a conforming remote publisher never agreed to
+it and may legitimately send more, and we would then take the sample and discard
+it. That is the silent-shortfall failure this phase exists to remove, so
+promoting `cap` to a bound would reintroduce it through the config file.
+
+**Therefore:** codegen enforces "every type must be bounded" against `.msg`
+bounds. `cap` stays storage-only. Where an image needs a bound that the `.msg`
+does not give, the honest fix is to bound the interface -- which is also the fix
+ROS 2 would require, and keeps the two stacks describing the same type the same
+way.
+
 ## Measurement, first not last
 
 Every wave here claims bytes, and this campaign has twice published a number
