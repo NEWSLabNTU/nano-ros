@@ -104,7 +104,7 @@ ALLOWLIST = {
         "distro is the image pin, not a test's choice",
     ".github/workflows/nightly.yml":
         "CI job bootstrap, as host-tests.yml",
-    ".github/workflows/pr-checks.yml":
+    ".github/workflows/gate.yml":
         "CI job bootstrap, as host-tests.yml",
 
     # --- developer environment SSoT ------------------------------------------
