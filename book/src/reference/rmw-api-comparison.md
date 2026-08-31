@@ -83,9 +83,9 @@ rmw must provide" than any reading of the headers.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | same | 12 | 1 |  |  |  |  |  |  | **13** |
 | re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
-| re-mapped | 18 |  | 4 | 1 | 3 | 3 | 2 |  | **31** |
+| re-mapped | 15 |  | 4 | 1 | 3 | 3 | 2 |  | **28** |
 | not supported — *by decision* |  |  |  |  |  |  |  | 6 | **6** |
-| not implemented — *tracked* | 4 |  |  |  |  |  |  |  | **4** |
+| not implemented — *tracked* | 7 |  |  |  |  |  |  |  | **7** |
 | **total** | **67** | **2** | **4** | **1** | **3** | **3** | **2** | **6** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
@@ -212,7 +212,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void *user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0960</div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1020,7 +1020,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void *user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0960</div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1135,7 +1135,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void *user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0960</div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

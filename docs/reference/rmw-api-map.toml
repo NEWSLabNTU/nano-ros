@@ -45,8 +45,8 @@ reason = "client_response_subscription_get_actual_qos — as above"
 [rmw_client_set_on_new_response_callback]
 where = "vtable"
 nano = "client_set_on_new_response_callback"
-status = "re-mapped"
-answers = ["set_wake_callback (per SESSION, not per entity)"]
+status = "not-implemented"
+issue = 960
 
 [rmw_compare_gids_equal]
 where = "global"
@@ -356,8 +356,8 @@ nano = "service_server_is_available"
 [rmw_service_set_on_new_request_callback]
 where = "vtable"
 nano = "service_set_on_new_request_callback"
-status = "re-mapped"
-answers = ["set_wake_callback (per SESSION, not per entity)"]
+status = "not-implemented"
+issue = 960
 
 [rmw_set_log_severity]
 where = "vtable"
@@ -405,8 +405,8 @@ reason = "subscription_set_content_filter — W5. \"DDS-only, would bloat every 
 [rmw_subscription_set_on_new_message_callback]
 where = "vtable"
 nano = "subscription_set_on_new_message_callback"
-status = "re-mapped"
-answers = ["set_wake_callback (per SESSION, not per entity)"]
+status = "not-implemented"
+issue = 960
 
 [rmw_take]
 where = "vtable"
