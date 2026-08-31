@@ -18,6 +18,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-rtos-hel
 # reason, and here rather than via NanoRosCodegenCore.cmake because
 # `nros_resolve_knobs()` runs long before the interface generator is included.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosMessageBounds.cmake")
+# phase-403 W9 (issue 0965) -- `nros_entity_inventory_knobs_file`, the same one
+# path for the ENTITY inventory beside it. Two inventories, two files, one
+# ladder: a bound inventory prices a TYPE and this one counts the ENTITIES, and
+# `NROS_EXECUTOR_MAX_CBS` is a question only the second can answer.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosEntityInventory.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -223,12 +228,59 @@ function(_nros_load_derived_message_bounds)
     endforeach()
 endfunction()
 
-# _nros_resolve_derivable_knob(<env_name> <kconfig_value> <derived_var>)
+# _nros_load_derived_entity_inventory()
+#
+# phase-403 W9 (issue 0965) -- the sibling of the loader above, for the ENTITY
+# inventory: WHICH entities the image creates, which is the half the bound
+# inventory cannot answer and `NROS_EXECUTOR_MAX_CBS` has always needed.
+#
+# Same ordering, same lag, same reason it is not silent. The producer here is
+# `nano_ros_entry()` rather than `nros_find_interfaces()` -- an entity count is
+# a property of the registered COMPONENTS, so it is composed at the point every
+# `nano_ros_node_register()` has run -- but from this module's seat both are
+# "later in this configure than I am", and the `CMAKE_CONFIGURE_DEPENDS` +
+# write-if-changed pair is what closes that.
+function(_nros_load_derived_entity_inventory)
+    nros_entity_inventory_knobs_file(_knobs)
+    if(NOT EXISTS "${_knobs}")
+        nros_entity_inventory_seed_knobs_file("${_knobs}")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
+    include("${_knobs}")
+    foreach(_v
+        NROS_ENTITY_INVENTORY_STATUS
+        NROS_ENTITY_INVENTORY_REASON
+        NROS_ENTITY_INVENTORY_ENTITY_TOTAL
+        NROS_DERIVED_EXECUTOR_MAX_CBS)
+        if(DEFINED ${_v})
+            set(${_v} "${${_v}}" PARENT_SCOPE)
+        endif()
+    endforeach()
+endfunction()
+
+# _nros_resolve_derivable_knob(<env_name> <kconfig_value> <derived_var>
+#                              [<source-name> <reason-file>])
 #
 # `_nros_resolve_knob` plus rungs 3 and 4 of the ladder above. Use it for a knob
 # whose Kconfig option documents `-1` as "derive"; a plain knob keeps
 # `_nros_resolve_knob`.
+#
+# The two optional trailing arguments name WHICH inventory derived the value and
+# where its refusal reason is written. They default to the message-bound
+# inventory, which was the only one when this function was written; phase-403 W9
+# added the ENTITY inventory as a second producer on the same ladder. Naming the
+# source in the status line is not cosmetic -- "no value stated and none
+# derivable" pointing at the wrong file is a user reading a REASON that explains
+# a different refusal.
 function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
+    set(_src "message-bound inventory")
+    set(_reason_file "${CMAKE_BINARY_DIR}/nros/message_bound_knobs.cmake")
+    if(ARGC GREATER 3)
+        set(_src "${ARGV3}")
+    endif()
+    if(ARGC GREATER 4)
+        set(_reason_file "${ARGV4}")
+    endif()
     if(NOT "${kconfig_value}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
         # Someone stated a number. It wins over the derivation, in both
         # directions and without comment: that is what "a derived value is a
@@ -246,8 +298,7 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
     if(DEFINED ${derived_var} AND NOT "${${derived_var}}" STREQUAL "")
         message(STATUS
             "nros: ${env_name}=${${derived_var}} DERIVED from this image's "
-            "message-bound inventory (nothing in Kconfig or the environment "
-            "states one)")
+            "${_src} (nothing in Kconfig or the environment states one)")
         _nros_resolve_knob(${env_name} "${${derived_var}}")
         return()
     endif()
@@ -256,8 +307,7 @@ function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
     # literal is written.
     message(STATUS
         "nros: ${env_name} left to its crate default -- no value stated and "
-        "none derivable (see NROS_MESSAGE_BOUNDS_REASON in "
-        "${CMAKE_BINARY_DIR}/nros/message_bound_knobs.cmake)")
+        "none derivable (see the refusal reason in ${_reason_file})")
 endfunction()
 
 # =============================================================================
@@ -280,6 +330,17 @@ function(nros_resolve_knobs)
         message(STATUS
             "nros: size knobs may derive from this image's message-bound "
             "inventory; a Kconfig or environment value still wins")
+    endif()
+
+    # phase-403 W9 (issue 0965) -- the COUNT knobs' rung-3 value, from the
+    # entity inventory. Same shape, same lag, different question.
+    _nros_load_derived_entity_inventory()
+    if(NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived")
+        message(STATUS
+            "nros: NROS_EXECUTOR_MAX_CBS may derive from this image's entity "
+            "inventory (${NROS_ENTITY_INVENTORY_ENTITY_TOTAL} entities declared, "
+            "${NROS_DERIVED_EXECUTOR_MAX_CBS} of them claim a callback slot); "
+            "a Kconfig or environment value still wins")
     endif()
 
     # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines)
@@ -434,7 +495,15 @@ function(nros_resolve_knobs)
 
     # Executor limits (nros-node build.rs, shared by both Rust and C APIs)
     # C API limits are derived from MAX_CBS via Cargo `links` metadata.
-    _nros_resolve_knob(NROS_EXECUTOR_MAX_CBS "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
+    # phase-403 W9 (issue 0965) -- MAX_CBS moved from the plain resolver to the
+    # DERIVABLE one. Its Kconfig default is now the `-1` sentinel, so an image
+    # that states nothing gets the entity inventory's answer, and an image whose
+    # inventory refuses (any component that declared no ENTITIES -- which is
+    # every image built before this wave) falls through to rung 4 and the crate
+    # default of 4, exactly as it did before.
+    _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_CBS
+        "${CONFIG_NROS_EXECUTOR_MAX_CBS}" NROS_DERIVED_EXECUTOR_MAX_CBS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # Issue 0316's fix listed ONE of nros-node's six build.rs knobs; the other
     # five stayed unreachable on Zephyr (the curated cargo environment drops
     # any knob not resolved here, and shell exports do not survive it), so a

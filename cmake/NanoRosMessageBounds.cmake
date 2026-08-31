@@ -36,6 +36,15 @@
 #   this inventory would produce exactly the plausible-wrong-number this
 #   campaign exists to remove.
 #
+#   THAT SECOND SOURCE NOW EXISTS: `cmake/NanoRosEntityInventory.cmake`
+#   (phase-403 W9, issue 0965), composed from every
+#   `nano_ros_node_register(... ENTITIES ...)` in the image. It derives
+#   NROS_EXECUTOR_MAX_CBS. The other three still are not derived, and that is
+#   deliberate rather than unfinished: the arena and the payload classes need
+#   the two inventories JOINED per subscription -- this one's per-type size
+#   against that one's per-entity list -- and a total taken from either half
+#   alone is the same confident wrong number.
+#
 # =============================================================================
 # The derived numbers are an UPPER BOUND on what the image needs
 # =============================================================================
@@ -51,6 +60,10 @@
 # number a user cannot account for is a number they will eventually "fix".
 #
 # Narrowing it needs the same entity inventory the out-of-scope knobs need.
+# That inventory landed in W9 and this reader does NOT yet consult it: narrowing
+# means intersecting the closure with the SUBSCRIBED type names, which is a join
+# of two artifacts and a change to what these numbers mean. Left for the wave
+# that does it deliberately rather than bolted on here.
 #
 # =============================================================================
 # An unbounded type is not silently dropped

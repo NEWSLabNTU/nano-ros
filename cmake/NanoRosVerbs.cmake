@@ -373,7 +373,7 @@ endfunction()
 # have; the legacy `configure(Node&)` shape is the explicit opt-in.
 # ---------------------------------------------------------------------------
 function(nros_components_register_node target)
-    cmake_parse_arguments(_NCR "TYPED" "PLUGIN;EXECUTABLE;HEADER;SHAPE" "DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NCR "TYPED" "PLUGIN;EXECUTABLE;HEADER;SHAPE" "DEPLOY;CALLBACK_GROUPS;ENTITIES" ${ARGN})
     foreach(_req PLUGIN EXECUTABLE)
         if(NOT _NCR_${_req})
             message(FATAL_ERROR
@@ -417,6 +417,21 @@ function(nros_components_register_node target)
     endif()
     if(_NCR_CALLBACK_GROUPS)
         list(APPEND _extra CALLBACK_GROUPS ${_NCR_CALLBACK_GROUPS})
+    endif()
+    # phase-403 W9 (issue 0965) — forward the ENTITY declaration.
+    #
+    # `DEFINED` and not truthiness, unlike every sibling above. A `list(APPEND)`
+    # gated on the VALUE cannot express "the caller declared something", only
+    # "the caller declared something cmake reads as true" — and cmake reads
+    # `0`, `OFF`, `NO`, `N`, `IGNORE`, `NOTFOUND` and anything `*-NOTFOUND` as
+    # false. None of those is a legal entity spec today, so the difference is
+    # currently invisible; it stops being invisible the first time the grammar
+    # grows a spelling that collides, and what it would cost then is exactly
+    # the under-report this wave exists to make impossible. Forwarding the
+    # keyword-missing case too is deliberate: `nano_ros_node_register` raises
+    # the error, so a bare `ENTITIES` fails identically through either spelling.
+    if(DEFINED _NCR_ENTITIES OR "ENTITIES" IN_LIST _NCR_KEYWORDS_MISSING_VALUES)
+        list(APPEND _extra ENTITIES ${_NCR_ENTITIES})
     endif()
     nano_ros_node_register(
         NAME ${_NCR_EXECUTABLE}

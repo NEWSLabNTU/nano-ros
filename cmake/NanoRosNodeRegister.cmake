@@ -11,6 +11,31 @@
 #         link glue. CLASS is any namespace-qualified name (RFC-0057; the
 #         L.4 prefix rule is retired — pkg is explicit metadata).
 #
+#     phase-403 W9 (issue 0965) adds the optional
+#       `ENTITIES <spec>...`  |  `ENTITIES NONE`
+#     argument — WHICH entities this component's constructor creates. Each
+#     spec is `<kind>[:<type>[:<name>]]`, with an optional `*N` repeat on the
+#     kind:
+#
+#         ENTITIES sub:nav_msgs/msg/Odometry:/localization/kinematic_state
+#                  pub*5 timer service_client*2
+#
+#     Kinds: publisher, subscription, timer, service_server, service_client,
+#     action_server, action_client, guard_condition (short forms pub / sub /
+#     srv / client are accepted). `nros ws entity-inventory` owns the grammar.
+#
+#     WHY THE AUTHOR STATES IT. RFC-0043/0044 components wire themselves in
+#     CONSTRUCTORS, at runtime; the macros know the kind and the type `M`, but
+#     anything they emit is a link-section fact and exists only after linking,
+#     while `NROS_EXECUTOR_MAX_CBS` and the arena are `const` sizes compiled
+#     INTO nros-node before a component TU is compiled. Emitted evidence can
+#     VERIFY a count; it can never SUPPLY one.
+#
+#     ABSENT IS NOT ZERO. Omitting `ENTITIES` writes no `entities` key at all,
+#     and one such component makes the whole image REFUSE to derive rather than
+#     derive a total that is short. `ENTITIES NONE` is how a component that
+#     really creates nothing says so.
+#
 #   * `nano_ros_entry(NAME <name> SOURCES <files...> [BOARD <board>]
 #       DEPLOY <target1> [<target2> ...])`
 #       — declares an Entry pkg entity. Renamed from
@@ -145,7 +170,7 @@ function(_nros_json_strlist out_var)
 endfunction()
 
 function(nano_ros_node_register)
-    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS;ENTITIES" ${ARGN})
     # RFC-0057 (phase-305 W1.1) — EXISTING_TARGET mode: the component library
     # was created separately (`nano_ros_auto_add_library`); attach
     # registration (class define, metadata row, carrier glue) to it instead
@@ -972,6 +997,43 @@ function(nano_ros_node_register)
     _nros_json_strlist(_sources_json ${_NRC_SOURCES})
     _nros_json_strlist(_deploy_json  ${_NRC_DEPLOY})
     _nros_json_strlist(_cbgs_json    ${_NRC_CALLBACK_GROUPS})
+
+    # phase-403 W9 (issue 0965) — the ENTITY declaration.
+    #
+    # `"entities"` is EMITTED ONLY WHEN THE KEYWORD WAS GIVEN, and that is the
+    # whole design rather than a nicety. `nros ws entity-inventory` must be able
+    # to tell "this component creates nothing" from "this component said
+    # nothing": the first is an answer it can compose, the second makes the
+    # WHOLE image refuse to derive. An always-present `"entities": []` collapses
+    # exactly those two, and the collapse is an under-report — a `MAX_CBS`
+    # smaller than the image needs, which fails entity creation at boot.
+    #
+    # So: keyword absent  -> no key at all -> "did not say".
+    #     ENTITIES NONE   -> ["none"]      -> "creates none", derivable.
+    #     ENTITIES <spec>… -> the specs.
+    #
+    # `KEYWORDS_MISSING_VALUES` catches the third shape, `ENTITIES` with nothing
+    # after it, which cmake would otherwise leave indistinguishable from absent.
+    # It is a typo rather than a claim, so it is a hard error here — the one
+    # validation this side does, because it is the one the CLI cannot see.
+    set(_entities_field "")
+    if("ENTITIES" IN_LIST _NRC_KEYWORDS_MISSING_VALUES)
+        message(FATAL_ERROR
+            "nano_ros_node_register(${_NRC_NAME}): ENTITIES was given with no values.\n"
+            "  Write `ENTITIES NONE` if this component creates no entities, or list them:\n"
+            "    ENTITIES sub:nav_msgs/msg/Odometry:/odom pub*2 timer\n"
+            "  Omitting ENTITIES entirely is also legal and means \"not declared\" — the\n"
+            "  image then keeps its configured NROS_EXECUTOR_MAX_CBS instead of a derived one.")
+    endif()
+    if(DEFINED _NRC_ENTITIES)
+        # The specs are NOT parsed here. `nros ws entity-inventory` owns the
+        # grammar and the kind vocabulary; a second parser in cmake is how the
+        # two spellings drift, and its error would name a token rather than a
+        # component.
+        _nros_json_strlist(_entities_json ${_NRC_ENTITIES})
+        set(_entities_field ", \"entities\": [${_entities_json}]")
+    endif()
+
     get_property(_acc GLOBAL PROPERTY NROS_COMPONENTS_JSON)
     if(_acc)
         set(_sep ",")
@@ -983,7 +1045,7 @@ function(nano_ros_node_register)
 \"class_header\": \"${_nrc_header}\", \"shape\": \"${_nrc_shape}\", \
 \"sources\": [${_sources_json}], \"deploy\": [${_deploy_json}], \
 \"pkg_dir\": \"${CMAKE_CURRENT_SOURCE_DIR}\", \"lang\": \"${_nrc_lang_lc}\", \
-\"callback_groups\": [${_cbgs_json}]}")
+\"callback_groups\": [${_cbgs_json}]${_entities_field}}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
 endfunction()

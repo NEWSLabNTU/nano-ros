@@ -71,3 +71,102 @@ Two plausible producers, neither chosen:
 what codegen can see, and have the executor's first-spin advisory report any
 delta -- is likely the honest answer, and issue 0900 W1 already landed the
 reporting half.
+
+## Partly fixed 2026-08-31 (phase-403 W9): the inventory exists and has a consumer
+
+Still `open`, and the remaining half is named below rather than implied.
+
+### The fork, decided
+
+The HYBRID, with the halves assigned by what each can actually do rather than
+by preference.
+
+Candidate 1 (emit a descriptor from the registration macros) cannot be the
+producer, and the reason is the timing the issue already suspected, sharpened:
+`NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE` are `const` sizes
+compiled INTO `nros-node`, which is built before a single component TU is
+compiled, let alone linked. A link-section manifest can VERIFY a count; it can
+never SUPPLY one. That is the direction of the build graph, not a gap.
+
+So the declaration supplies and the running image verifies:
+
+* **Supply.** `nano_ros_node_register(... ENTITIES <spec>...)`, stated beside
+  `CLASS` / `SHAPE` / `CALLBACK_GROUPS` and travelling the channel that
+  declaration already travels, `nros-metadata.json`.
+* **Verify.** The derived value carries NO headroom, so it is exactly the
+  declared demand. One entity more than declared and registration returns
+  `NodeError::ExecutorFull`, which names the knob; `ComponentNode`'s `ok()`
+  flag then halts boot naming the failing node.
+
+### What landed
+
+* `nros_cli_core::entity_inventory` -- ONE data model, three transports (JSON,
+  an `include()`able CMake fragment, `KEY=VALUE` env lines), shaped after
+  `rosidl_codegen::bounds` rather than as a second mechanism. The env line is
+  the cargo transport, because the knob is read from the environment by
+  `nros-node/build.rs`.
+* `nros ws entity-inventory` -- the verb, sibling of `ws entity-facts`.
+* `cmake/NanoRosEntityInventory.cmake` -- the reader, sibling of
+  `NanoRosMessageBounds.cmake`, invoked from `nano_ros_entry()` (the first
+  point in a configure guaranteed to be after every registration).
+* `NROS_EXECUTOR_MAX_CBS` moved onto the derivable ladder with `-1` as its
+  Kconfig sentinel. Environment > Kconfig / board `.conf` > derived > crate
+  default, unchanged from W8.
+
+### The number the bring-up got wrong
+
+A PUBLISHER CLAIMS NO CALLBACK SLOT. Every registration that claims one calls
+`Executor::next_entry_slot()` -- 24 sites, all subscriptions, timers, services,
+service clients, action servers, action clients and guard conditions.
+`create_publisher` is not among them: on the C++ path it writes an
+`RmwPublisher` into caller-owned storage, and on the C path there is no
+`nros_executor_add_publisher` to increment `handle_count`.
+
+So the "33 handles" this issue quotes is the ENTITY count, and 14 of those 33
+are publishers. Measured over the island's own `build-board/nros-metadata.json`:
+
+| | value |
+| --- | ---: |
+| hand-set in `mr_canhubk3_s32k344.conf` | 36 |
+| entities declared | 33 |
+| **executor callback slots** | **19** |
+
+The bring-up table's per-node columns are mis-attributed too -- it reads 6
+timers and 2 services where the source has 4 timers, 2 service servers and 2
+service clients. The total comes out right by coincidence, which is the best
+argument in this issue for not counting by hand.
+
+`EntityKind::callback_slots()` is a MIRROR (the CLI cannot depend on the
+`no_std` target crate) and is held to those 24 sites by
+`just check entity-slot-costs`, the same way `ACTION_SERVER_QUERYABLES` is held
+to its creation sites.
+
+### An under-report cannot be silent
+
+1. Composition REFUSES for the whole image if ANY component declared no
+   entities -- W8's rule for an unbounded type, applied to an undeclared
+   component. `ENTITIES NONE` is the explicit "creates nothing", so absence
+   always means "nobody said".
+2. The derived value has no headroom, which makes the image check its own
+   declaration.
+3. A short declaration is a named, boot-fatal `ExecutorFull`, not a silent
+   mis-size. This is exactly why `MAX_CBS` was the right first consumer and the
+   arena was not: an under-sized arena halts DURING entity creation, before the
+   first spin, so issue 0900 W1's advisory never prints.
+
+### What is still uncovered
+
+* **The arena** and **the zenoh payload classes** need the two inventories
+  JOINED per subscription -- this one's per-entity list against W8's per-type
+  size. Either half alone yields the confident wrong number. Named as its own
+  work rather than bolted onto either reader.
+* **`NROS_MAX_SUBSCRIBERS` / `NROS_MAX_PUBLISHERS`** are a straight read of
+  `NROS_ENTITY_COUNT_SUBSCRIPTION` / `_PUBLISHER`. Left out for scope
+  discipline, not for a reason.
+* **No image in this tree declares `ENTITIES` yet**, so nothing derives today;
+  every existing image refuses and keeps its configured value. The island's own
+  declaration is four `nros_components_register_node(... ENTITIES ...)` edits
+  in the consumer repo.
+* **Not measured on hardware.** The island was not flashed. The code claim (a
+  publisher claims no slot) is verified by reading all 24 registration sites
+  and by the gate; the byte saving is not.

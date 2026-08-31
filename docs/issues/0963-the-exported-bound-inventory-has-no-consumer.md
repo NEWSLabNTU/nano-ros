@@ -115,3 +115,24 @@ A knob nobody can enumerate is a knob nobody sets, which is the 0271 / 0739
 shape this repo keeps rediscovering. The difference here is that the number is
 no longer unknowable: it is computed, written to disk in three formats, and
 then ignored.
+
+## Update 2026-08-31 (phase-403 W9, issue 0965): item 1 has its source
+
+The "second source" this issue named -- per image, the number of subscriptions,
+publishers, timers and service entities, each bound to a type NAME the bound
+inventory can price -- now exists: `nros_cli_core::entity_inventory`, composed
+from `nano_ros_node_register(... ENTITIES ...)` and read by
+`cmake/NanoRosEntityInventory.cmake`. Item **1** of "What would resolve it" is
+done: `NROS_EXECUTOR_MAX_CBS` derives.
+
+It also corrects a number this issue repeats. "`MAX_CBS` counts total HANDLES"
+is right; "the answer was 33" is not. 33 is the island's ENTITY count and 14 of
+those are publishers, which claim no callback slot -- `create_publisher` never
+reaches `Executor::next_entry_slot()`. The slot demand is **19** against a
+hand-set 36.
+
+Items **2** (the arena) and **3** (the payload classes) are still open, and now
+for a different reason than "no entity inventory exists": both need the two
+inventories JOINED per subscription -- W8's per-type size against W9's
+per-entity list. A total from either half alone is the same plausible wrong
+number, so the join is its own work.

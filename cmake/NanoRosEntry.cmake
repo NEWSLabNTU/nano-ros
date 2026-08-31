@@ -857,6 +857,24 @@ function(_nros_entry_invoke_codegen)
             "  stderr: ${_stderr}")
     endif()
 
+    # phase-403 W9 (issue 0965) — compose this image's ENTITY inventory.
+    #
+    # HERE and not in `nano_ros_node_register()` because the answer is a
+    # property of the whole IMAGE: `NROS_EXECUTOR_MAX_CBS` sizes ONE executor
+    # and an image has one. Same reason `nros_derive_message_bound_knobs` runs
+    # at the end of `nros_find_interfaces()` rather than per package.
+    #
+    # And here specifically because this is the first point in a configure that
+    # is guaranteed to be AFTER every `nano_ros_node_register()`: the entry is
+    # declared last, which is exactly what the `--metadata` argument two blocks
+    # up already relies on.
+    #
+    # Never fatal on absence. The knobs file is a promise on a clean tree, and
+    # every image built before this wave has no `ENTITIES` at all — those keep
+    # their configured `MAX_CBS` and are unaffected.
+    include("${_NROS_ENTRY_DIR}/NanoRosEntityInventory.cmake")
+    nros_derive_entity_inventory_knobs(CLI "${_nros_bin}")
+
     # #182 — the generated TU is a function of the CODEGEN TOOL too, not just
     # its inputs: a `nros` rebuild that changes the emitter (e.g. the fd32a0f75
     # group-split fallback, the phase-281 tier seams) must re-run this

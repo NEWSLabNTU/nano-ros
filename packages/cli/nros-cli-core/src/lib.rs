@@ -19,6 +19,11 @@ pub mod builder;
 pub mod atomic_file;
 pub mod build_output;
 pub mod cmd;
+// phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image
+// creates, the half the BOUND inventory (which prices a TYPE) cannot answer.
+// Shaped like `rosidl_codegen::bounds` — one data model, three transports —
+// rather than as a second inventory mechanism.
+pub mod entity_inventory;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
