@@ -141,6 +141,30 @@ embedded no-alloc backend**:
 Not portable: the true zero-copy variant needs shared memory (iceoryx) /
 data-sharing QoS — desktop-only.
 
+**Amendment (2026-08-31), from reading the implementation rather than the API.**
+"desktop-only" understates it: over network transport `rmw_cyclonedds_cpp` does not
+implement the loan API at all. Without shared-memory support compiled in, its
+`rmw_take_loan_int` is
+
+```cpp
+RMW_SET_ERROR_MSG("rmw_take_loaned_message not implemented for rmw_cyclonedds_cpp");
+return RMW_RET_UNSUPPORTED;
+```
+
+(`rmw_cyclonedds_cpp/src/rmw_node.cpp:3785`), and even the shared-memory fast path
+ends in a copy — `rmw_take_ser_int_from_shm` finishes with
+`std::memcpy(serialized_message->buffer, d->loan->sample_ptr, size)` (`:3523`).
+The loan model's premise is that the payload already sits in a buffer with a
+lifetime the middleware controls; iceoryx provides that, a socket does not. This
+is the same premise our borrow slot rests on, which is why the slot is right for
+zenoh-pico and wrong for a network DDS backend — see the per-backend table below.
+
+The buffered path is where a DDS backend has something to gain, and for Cyclone
+that gain is large but unrelated to loans: upstream's serialized take is
+`dds_takecdr` → `ddsi_serdata_to_ser` into the caller's buffer, one `memcpy`
+(`rmw_node.cpp:3572`), where ours decodes to a typed struct and re-encodes. See
+[#0969](../issues/0969-cyclone-take-cdr-round-trip.md).
+
 ### micro-XRCE-DDS (the production MCU peer — most relevant)
 
 Keeps **two copies** on purpose: transport stream → a **shared static buffer
@@ -459,7 +483,7 @@ backend calls.
 | zenoh-pico C backend | n/a | **populate** the slot → call the Rust `ZenohSubscriber` leaf |
 | zpico `ZenohSubscriber` (Rust leaf) | implemented (subscriber.rs:1043) | the leaf the slot invokes; gains size-class pools (D1) |
 | xrce (C backend) | no slot | populate the slot over its shared static pool, or leave NULL (buffered) |
-| cyclonedds (C backend) | no slot | leave NULL (buffered) first; native loan path a later follow-up |
+| cyclonedds (C backend) | no slot | leave NULL (buffered) — **permanently**, not "first". Upstream returns `RMW_RET_UNSUPPORTED` for the loan take without shared memory, and its SHM path copies anyway (see the survey amendment). The win for this backend is on the buffered path: [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) |
 | mock (Rust, test-only) | falls back | buffered fallback permanently |
 
 Land the executor scaffold first (done, behind the fallback), then the CFFI vtable

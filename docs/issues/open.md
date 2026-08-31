@@ -75,5 +75,7 @@ fails if this block drifts.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
 - **#0968** (testing) — Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time See `0968-*`.
 - **#0975** (ci) — `--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue See `0975-*`.
+- **#0969** ([rmw, memory]) — The Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a decode, an encode and two heap allocations per take See `0969-*`.
+- **#0970** ([rmw]) — The Cyclone backend borrows Cyclone's generated sertype instead of registering its own, and that — not an upstream gap — is what forces the CDR round trip on publish See `0970-*`.
 
 <!-- END GENERATED open-issue list -->
