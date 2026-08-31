@@ -2527,6 +2527,7 @@ fn test_raw_subscription_info_callback() {
             QoSProfile::default().keep_last(1),
             info_cb,
             core::ptr::null_mut(),
+            0, // phase-408 W5a — no hint stated
         )
         .unwrap();
 
