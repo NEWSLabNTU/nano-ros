@@ -119,7 +119,7 @@ self-hosted lanes (`build-wide`, `run-matrix`, the `queue` L3 job, and the
 QEMU runs in pure emulation under `-icount shift=auto`, which is deterministic
 and *incompatible* with KVM, so not even `/dev/kvm` is wanted.
 
-So the escapes are not needed, and `scripts/ci/runner-container.sh` **refuses**
+So the escapes are not needed, and `just runner-container` **refuses**
 to add them — `--privileged` and a socket mount both exit 2 with the reason.
 That refusal is the whole security argument. It stops being valid the moment a
 job needs to build an image, and at that point the honest answer is a microVM
@@ -159,7 +159,7 @@ Registration should be one command, not a wiki page.
 | `scripts/ci/runner-provision.sh <labels…>` | make the labels true — install the Zephyr SDK, QEMU, ROS 2, toolchains — reusing `nros setup` so a runner and a contributor provision the same way |
 | `scripts/ci/runner-doctor.sh` | assert every label's claim actually holds; refuse to register a runner that lies about what it has |
 | `scripts/ci/runner-sweep.sh` | reap orphaned process groups and stale build dirs between jobs |
-| `scripts/ci/runner-container.sh <labels…>` | build and start the runner in an unprivileged container — the whole procedure in two steps, and it refuses `--privileged` / a Docker socket mount rather than trusting the operator to remember |
+| `just runner-container <labels…>` | build and start the runner in an unprivileged container — the whole procedure in two steps, and it refuses `--privileged` / a Docker socket mount rather than trusting the operator to remember |
 
 `runner-doctor.sh` matters more than it looks: a runner labelled
 `nros-sdk-zephyr` without the SDK produces a red that looks like a code failure.

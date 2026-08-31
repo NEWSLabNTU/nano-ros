@@ -2315,6 +2315,21 @@ runner-provision labels *ARGS:
 runner-register labels *ARGS:
     @scripts/ci/runner-register.sh {{labels}} {{ARGS}}
 
+# Prefer this to `runner-register` when the machine carries unrelated work —
+# which every machine here does. It refuses `--privileged` and a Docker-socket
+# mount rather than trusting the operator to remember, and that refusal IS the
+# security argument: it holds only because our self-hosted lanes need neither
+# (measured — no Docker, no KVM, no device access in any of the four; QEMU runs
+# `-icount`, which is incompatible with KVM anyway). A job that must BUILD an
+# image breaks the premise, and then the answer is a microVM, not a flag.
+#
+# Needs GH_REPO and a short-lived RUNNER_TOKEN in the environment.
+#
+# Build the image and start an EPHEMERAL runner in an unprivileged container.
+[group("setup")]
+runner-container labels *ARGS:
+    @scripts/ci/runner-container.sh {{labels}} {{ARGS}}
+
 # Between jobs: reap orphaned process groups and run budgeted disk GC.
 # On a shared runner one leaked peer is every later job's flake. Takes --check.
 [group("setup")]
