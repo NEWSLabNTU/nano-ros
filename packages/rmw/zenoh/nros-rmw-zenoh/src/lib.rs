@@ -204,7 +204,6 @@ pub use cffi_register::{RegisterError, nros_rmw_zenoh_register, register};
 //     `ZenohSlot::from_outstanding_loan` rebuilds the slot from it.
 #[cfg(feature = "lending")]
 mod loan_trampolines {
-    use core::ffi::c_void;
 
     use nros_rmw::SlotLending;
     use nros_rmw_cffi::{
