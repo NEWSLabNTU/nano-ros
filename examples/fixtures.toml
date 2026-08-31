@@ -3181,6 +3181,17 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/talker"
 skip_probe = true
+# ZPICO_MAX_QUERYABLES: same cause as `workspace-rust-esp32` above, one row
+# over. These are talker/listener images — the listener says so itself ("no
+# publishers/services/actions") — so the undeclared embedded budget of 8 buys
+# SERVICE_BUFFERS (`ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`) for services
+# the image does not have, and that is what overflows DRAM.
+#
+# The first fix set this on the workspace row ONLY, because that was the row the
+# failure named. These three build through `just esp32 build-qemu` and kept
+# overflowing — by 8,644 B in `esp32_qemu_talker` — which is the "fix the CLASS,
+# not the reported site" rule applied a row too narrowly the first time.
+env = { ZPICO_MAX_QUERYABLES = "2" }
 
 [[fixture]]
 id = "qemu-esp32-baremetal-listener"
@@ -3188,6 +3199,7 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/listener"
 skip_probe = true
+env = { ZPICO_MAX_QUERYABLES = "2" }  # see the talker row above
 
 [[fixture]]
 id = "qemu-esp32-baremetal-logging-smoke"
@@ -3195,6 +3207,7 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu"
 skip_probe = true
+env = { ZPICO_MAX_QUERYABLES = "2" }  # see the talker row above
 
 # =============================================================================
 # Compile-check lane (phase-319 W2, issue 0351) — built by
