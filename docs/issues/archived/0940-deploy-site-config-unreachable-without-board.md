@@ -1,11 +1,11 @@
 ---
 id: 940
 title: "`[deploy.freertos.nros]` in the mixed workspace is unreachable — the block names no `board`, so board-facts errors before reading it"
-status: open
+status: resolved
 area: build
 severity: medium
 found: 2026-08-31
-related: [0934, phase-405, RFC-0072]
+related: [0934, 0941, phase-405, RFC-0072]
 ---
 
 # A site-config block nothing can reach
@@ -65,3 +65,41 @@ Two candidates, and the choice belongs with phase-405 W6:
 Either way, the gate blindness is worth fixing independently:
 `check-site-config.py` should REPORT a `.nros` block whose deploy names no
 board, rather than skipping it.
+
+## Resolved — phase-405 W6 (2026-08-31)
+
+**It was twelve blocks, not one.** The sweep found the same shape in 7 bringups
+across 6 workspaces, not only in `mixed`:
+
+```
+c/demo_bringup            [deploy.freertos]  [deploy.nuttx]
+cpp/demo_bringup          [deploy.freertos]
+mixed/demo_bringup        [deploy.freertos]
+realtime-c/demo_bringup   [deploy.freertos]  [deploy.nuttx]
+realtime-c/smp_bringup    [deploy.freertos]  [deploy.nuttx]
+realtime-cpp/demo_bringup [deploy.freertos]  [deploy.nuttx]
+rust/demo_bringup         [deploy.freertos]  [deploy.nuttx]
+```
+
+Ten of the twelve carried content byte-identical to a live board-named sibling
+in the same file, which is why it had cost nothing. `rust`'s two had no sibling,
+but that workspace has zero `nano_ros_entry` DEPLOY tokens, so nothing reached
+them either.
+
+The generator was NOT the source. `scripts/check-site-config.py` keys on
+`board` and `continue`s past a boardless target, so it never emitted these
+blocks — and never checked them. That blind spot is the actual defect, and it is
+the class fix: **S4** now reports a `[deploy.<t>.nros]` whose target names no
+`board`. The twelve blocks are deleted (-91 lines), and the gate grew a selftest
+on the normal path, leaving `.config/gate-selftest-baseline.txt`.
+
+Verified by MEASUREMENT, not by configure: `nros ws board-facts` was run over
+every (bringup × board × --deploy/--board) pair — **192 probes** — against a
+worktree at the pre-change commit and against the fixed tree. Output identical.
+A deleted alias errors the same both sides (`[deploy.freertos] names no
+'board'`), which is the direct proof it was already unreachable; every live
+sibling resolves the same `NROS_BOARD` / `NROS_NETSTACK` / `NROS_SDK_*` it did
+before.
+
+Issue **0941** carries what this does not fix: `nros_resolve_board_facts` still
+fails SOFT, so the next unreachable block will be just as quiet.

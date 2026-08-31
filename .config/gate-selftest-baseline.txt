@@ -82,7 +82,6 @@ scripts/check-rust-targets-covered.py
 scripts/check-sched-dim-arms-compile.sh
 scripts/check-sdk-store-not-enumerated.py
 scripts/check-single-rust-staticlib.py
-scripts/check-site-config.py
 scripts/check-sizes-header-mirrors.sh
 scripts/check-source-manifest.sh
 scripts/check-staleness-probe-exemptions.sh
@@ -104,7 +103,6 @@ scripts/check-zenohd-flag-invocations.py
 scripts/check-zenohd-resolution-parity.sh
 scripts/check-zenohd-spawn-sites.sh
 scripts/check-zephyr-fixture-rows.py
-scripts/check-zephyr-knob-agreement.py
 scripts/ci/absolute-path-check.sh
 scripts/ci/codegen-invocation-check.sh
 scripts/ci/dep-chain-check.sh
