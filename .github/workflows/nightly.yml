@@ -476,6 +476,10 @@ jobs:
           - rust/action-server
     env:
       NROS_ZEPHYR_VERSION: ${{ matrix.line }}
+      # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to create
+      # on a host it does not own. A CI container IS owned: this image ships `uv`
+      # for exactly this. Ignored by the 3.7 line.
+      NROS_ZEPHYR_CREATE_VENV: "1"
     steps:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
@@ -575,6 +579,11 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
     name: zephyr ci-both (3.7 + 4.4)
+    env:
+      # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
+      # create on a host it does not own. A CI container IS owned: the image
+      # ships `uv` for this. Issue 0933 follow-up.
+      NROS_ZEPHYR_CREATE_VENV: "1"
     runs-on: ubuntu-latest
     concurrency:
       group: nightly-zephyr-summary-${{ github.ref }}-${{ github.event_name }}
@@ -668,6 +677,11 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
     name: zephyr copy-out check (4.4)
+    env:
+      # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
+      # create on a host it does not own. A CI container IS owned: the image
+      # ships `uv` for this. Issue 0933 follow-up.
+      NROS_ZEPHYR_CREATE_VENV: "1"
     runs-on: ubuntu-latest
     concurrency:
       group: nightly-zephyr-copyout-${{ github.ref }}-${{ github.event_name }}
