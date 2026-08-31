@@ -508,6 +508,17 @@ phase-new slug="":
 bump-manifest tag="" flag="":
     @bash scripts/bump-manifest.sh {{tag}} {{flag}}
 
+# Query the issue ledger — area, id, status or free text over title and body.
+# Offline and ~20 ms, so it is the fast way to ask "has this been seen before?"
+# before filing. CLAUDE.md has named this verb since the ledger existed; the
+# recipe did not exist, so every reader who tried it got
+# `Justfile does not contain recipe `issues``. Issue 0936.
+#
+#   just issues --area rmw          just issues 0934        just issues zenoh router
+[group("docs")]
+issues *ARGS:
+    @python3 scripts/issues.py {{ARGS}}
+
 # Reserve the next free issue id ATOMICALLY across parallel sessions, and print
 # it. Use this instead of eyeballing the highest existing number: that is a
 # check-then-act race, and it has produced six id collisions (see

@@ -2,7 +2,7 @@
 id: 936
 title: "`check-just-recipe-refs` never reads a document, so 129 `just <recipe>`
   call sites in docs/ and book/ name recipes that do not exist"
-status: open
+status: resolved
 type: bug
 area: tooling
 related: [0660, 0196]
@@ -59,6 +59,42 @@ never existed (`format-build-tools`, `check-build-tools`, `format-user-libs`,
 `check-user-libs`) and one — `just check python` — that a phase-399 rename sweep
 had wrongly rewritten from `just check-python`, a spelling correct in the root
 namespace and meaningless in that one.
+
+## Resolved
+
+`check-doc-recipe-refs`, on the buildless fast line, with a **reviewed** ratchet
+baseline of 106 entries in `.config/doc-recipe-refs-baseline.txt`. The baseline
+may only SHRINK: the gate fails on a new dead reference AND on a baseline line
+that has stopped offending, so the debt can neither grow nor go stale.
+
+Reviewing it was the work. The first generated baseline had 154 entries and the
+count came down by fixing the EXTRACTOR, not by deleting lines:
+
+* **Flag arguments.** `just --group main --list` names no recipe — `main` is the
+  value of `--group`. The value-taking flags are enumerated from `just --help`.
+* **Terminal flags.** `just --list          215 lines, opening with a wall of
+  check-*` is a code block annotating output; `--list` acts, and `215` is not a
+  recipe.
+* **Enumerations and globs.** `just zephyr build-one/ci-both/check-copy-out`,
+  `just zephyr test*`, `just freertos|nuttx|threadx_linux setup` — a recipe name
+  contains none of `/ * , | < > { } [ ]`, so treating them as shapes cannot hide
+  a real dead reference.
+* **Sub-workspace namespace.** `packages/cli` documents resolve against the
+  UNION of that justfile and the root: `just setup-cli` in
+  `packages/cli/CLAUDE.md` is the root recipe, run from the root. Requiring the
+  sub-workspace alone reported every such line dead.
+
+Two real defects fell out, both in files read constantly:
+
+* **`just issues` did not exist.** CLAUDE.md has documented it as the way to
+  query the ledger — "~20 ms, offline" — and every reader who tried it got
+  `Justfile does not contain recipe `issues``. `scripts/issues.py` was there the
+  whole time with exactly the documented flags. The recipe now exists.
+* **`names_in` did not follow `import`.** A module file may import siblings —
+  `just/zephyr.just` pulls in `zephyr-setup`, `zephyr-ci`, `zephyr-dev` — so the
+  zephyr module parsed as `{default}`, 1 of its 41 recipes. That is a defect in
+  `check-just-recipe-refs` itself, which papered over it by accepting any
+  `just <mod> <anything>`. Fixed at the parser, where both gates read it.
 
 ## What would close this
 

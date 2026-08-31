@@ -113,7 +113,7 @@ fast-serial: \
     cargo-profile-mirror build-profile-literals \
     version-lockstep workspace-fmt example-fmt cli-fmt \
     readiness-marker-literals \
-    codegen-invocation string-conventions issue-ids knob-single-reader workflow-repo-env \
+    codegen-invocation string-conventions issue-ids knob-single-reader workflow-repo-env doc-recipe-refs \
     std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
     absolute-paths \
     c-fmt cpp-fmt python \
@@ -756,6 +756,20 @@ knob-single-reader:
 [private]
 workflow-repo-env:
     @python3 scripts/check-workflow-repo-env.py
+
+# issue 0936 — a `just <recipe>` printed in a DOCUMENT must name a recipe that
+# exists. `check-just-recipe-refs` covers justfiles and workflows and hands
+# documents to `check-doc-refs`, which checks links and paths, not recipe names —
+# so a document was the one place an invocation could rot unwatched, while being
+# exactly where a reader copies one from.
+#
+# A RATCHET over `.config/doc-recipe-refs-baseline.txt` (102 known dead
+# references), because fixing them is a research task per line and guessing
+# would replace a dead command with a wrong one. Buildless: markdown + the
+# justfile grammar.
+[private]
+doc-recipe-refs:
+    @python3 scripts/check-doc-recipe-refs.py
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens
