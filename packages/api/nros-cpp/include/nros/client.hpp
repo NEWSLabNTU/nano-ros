@@ -15,6 +15,7 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 #include "nros/future.hpp"
 
 #include "nros_cpp_ffi.h"
@@ -72,19 +73,34 @@ template <typename S> class Client {
     /// @return Future that resolves to the response. Returns a consumed
     ///         (empty) future on serialization or send failure.
     Future<ResponseType> send_request(const RequestType& req) {
-        if (!initialized_) return Future<ResponseType>();
+        return send_request_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req);
+    }
+
+    /// @ref send_request with the REPLY buffer sized by the caller.
+    ///
+    /// The receive buffer of a `Future<T>` is a member, so the capacity is a
+    /// class template argument rather than a function one: this returns a
+    /// `Future<ResponseType, RespCap>` (issue 0964). The request buffer is a
+    /// transmit scratch buffer and is deliberately left on the estimate --
+    /// over-sizing there only wastes stack.
+    ///
+    /// @tparam RespCap  Stack bytes the returned future holds for the reply.
+    template <size_t RespCap>
+    Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
+        using Fut = Future<ResponseType, RespCap>;
+        if (!initialized_) return Fut();
 
         uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Future<ResponseType>();
+            return Fut();
         }
 
         nros_cpp_ret_t ret = nros_cpp_service_client_send_request(storage_, req_buf, req_len);
-        if (ret != 0) return Future<ResponseType>();
+        if (ret != 0) return Fut();
 
-        return Future<ResponseType>(storage_, &nros_cpp_service_client_try_recv_reply,
-                                    0 // slot 0 (single outstanding request)
+        return Fut(storage_, &nros_cpp_service_client_try_recv_reply,
+                   0 // slot 0 (single outstanding request)
         );
     }
 
@@ -98,8 +114,14 @@ template <typename S> class Client {
     /// @param timeout_ms   Maximum wait time (default 5000ms).
     /// @return Result indicating success, timeout, or failure.
     Result call(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
+        return call_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req, resp, timeout_ms);
+    }
+
+    /// @ref call with the REPLY buffer sized by the caller (issue 0964).
+    template <size_t RespCap>
+    Result call_sized(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
         if (!initialized_ || !executor_) return Result(ErrorCode::NotInitialized);
-        auto fut = send_request(req);
+        auto fut = send_request_sized<RespCap>(req);
         return fut.wait(executor_, timeout_ms, resp);
     }
 
@@ -122,13 +144,23 @@ template <typename S> class Client {
     /// @return success on a received reply; ErrorCode::Timeout on no reply in
     ///         time; NotInitialized / Error otherwise.
     Result call_polling(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 100) {
+        return call_polling_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req, resp,
+                                                                                   timeout_ms);
+    }
+
+    /// @ref call_polling with the REPLY buffer sized by the caller (issue
+    /// 0964). The request buffer stays on the estimate: it is transmit
+    /// scratch, where an over-estimate only wastes stack.
+    template <size_t RespCap>
+    Result call_polling_sized(const RequestType& req, ResponseType& resp,
+                              uint32_t timeout_ms = 100) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(ErrorCode::Error);
         }
-        uint8_t resp_buf[ResponseType::SERIALIZED_SIZE_MAX];
+        uint8_t resp_buf[RespCap];
         size_t resp_len = 0;
         nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(
             storage_, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len, timeout_ms);

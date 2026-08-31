@@ -100,3 +100,69 @@ compile error, and none of these has a `_sized` escape hatch the way
 `bind_subscription_sized` does. That is the blast radius this issue was filed
 for, and it is unchanged. `nros::rx_size_bound<M>` / `nros::tx_size_bound<M>`
 are the spellings whoever takes it should use.
+
+## The receive half is done (2026-09-01) — bounded types, and an escape hatch for the rest
+
+The 30 sites re-counted from the tree: **28 in `nros-cpp` headers, 2 in the
+example workspaces**, which is what the survey above says. Their SPLIT is not:
+
+**13 are receive, not 12** — the survey put `service.hpp:81` under "transmit"
+with the other request buffers. It is `Service<S>::try_recv_request`, and the
+server deserializes out of it, so an under-estimate truncates a request exactly
+as it truncates a message. Whoever reads a call site's DIRECTION off the word
+in its name gets this one wrong; `Client<S>`'s request buffer really is
+transmit, and they sit two files apart.
+
+What landed:
+
+* **`nros::rx_buffer_capacity<M>` / `nros::tx_buffer_capacity<M>`**
+  (`size_bound.hpp`) — the derived bound where the type has one, the legacy
+  estimate where it does not. It shares `detail::shape_of<M>()` with
+  `rx_size_bound<M>`, so the two traits cannot disagree about which arm a type
+  is in; that predicate reads the emitted CONSTANTS, because a `static_assert`
+  failure is a hard error and never SFINAE, so the poison templates cannot be
+  probed. `nros::has_derived_size_bound<M>` exposes the predicate.
+* **All 13 receive sites size from it**, and each grew a `_sized` twin taking
+  the capacity explicitly: `try_recv_sized<N>`, `try_recv_validated_sized<N>`,
+  `try_recv_request_sized<N>`, `call_sized<N>`, `call_polling_sized<N>`,
+  `send_request_sized<N>`, `try_next_sized<N>`, `wait_next_sized<N>`,
+  `get_result_sized<N>`, `get_result_future_sized<N>`,
+  `try_recv_feedback_sized<N>`, `try_recv_result_sized<N>`,
+  `try_recv_goal_request_sized<N>`, `TickCtx::call_sized<Req, Resp, N>`.
+  `Future<T>` holds its buffer as a MEMBER, so its capacity is a class template
+  argument (`Future<T, Cap>`, defaulted) rather than a function one — which is
+  why `send_request`'s return TYPE is where the number is observable.
+* The 17 TRANSMIT sites are untouched, deliberately: an over-estimate there
+  only wastes stack, and mixing the two directions in one change makes the
+  risky half unreviewable.
+
+Coverage is in `packages/api/nros-cpp/tests/compile/rx_size_bound.cpp`
+(`just check cpp`), which instantiates every one of the 13 for a bounded type
+AND an unbounded one, and asserts `send_request`'s return type is
+`Future<Bounded, 137>` — the derived RX bound, against the 1170 the estimate
+would give.
+
+## What is still open: what flipping the unbounded arm would cost
+
+Option (1) — the unbounded arm poisons instead of falling back — would land on
+**all 13 receive sites**, and through `SvcOf`/action typedefs on every service,
+client and action tier over an unbounded payload. On the measured corpus that
+is **81 of 120 stock Humble types**, including `nav_msgs/Odometry`; a user's
+first symptom is that code which compiled yesterday no longer does.
+
+The migration per site is small but has to be made SOMEWHERE for each:
+
+1. **Give the type a bound** — bound the field in the `.msg` (`string<=64`), or
+   an INLINE `cap` in `nros-codegen.toml` (`[fields]` / `[types]` /
+   `[packages]` / `[defaults]`). One edit fixes every site for that type, and
+   it is the honest fix: the buffer then has a number somebody chose.
+   A `heap` or `view` cap does NOT bound (RFC-0033), so it does not help here.
+2. **Or call the `_sized` form** with a byte count, per call site. Cheap to
+   write, but it moves the number back into user code, which is what the
+   estimate was doing badly in the first place.
+
+Both are now available, which is the point of this change: before it, (2) did
+not exist, so a flip had exactly one remedy and it was a `.msg` edit. The flip
+itself stays a product decision — the `unbounded` arm of `detail::buffer_bounds`
+is the one line it turns on, and the compile test PINS today's answer so making
+it is a deliberate edit and not a drift.

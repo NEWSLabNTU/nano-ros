@@ -3287,7 +3287,12 @@ cpp: cpp-fmt
     # instantiates `bind_subscription` and pins the three shapes the trait
     # distinguishes: derived-and-bounded, no-derivation (legacy fallback), and
     # derived-but-poisoned (which must be INCLUDABLE without error).
-    echo "  - rx_size_bound / bind_subscription hint (c++14)"
+    # issue 0964 — the same TU also covers `nros::rx_buffer_capacity<M>`, which
+    # is what the 13 RECEIVE buffers inside these headers now stack, and
+    # instantiates every one of them for a BOUNDED and an UNBOUNDED type. The
+    # second column is the point: a blanket switch to `rx_size_bound<M>` would
+    # be a compile error for 81 of 120 stock Humble types.
+    echo "  - rx_size_bound / rx_buffer_capacity / receive sites (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \

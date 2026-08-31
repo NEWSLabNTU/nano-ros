@@ -14,6 +14,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
+#include "nros/size_bound.hpp" // nros::rx_buffer_capacity<T> — the receive-buffer size
 
 // FFI declarations
 extern "C" {
@@ -37,13 +38,21 @@ namespace nros {
 /// ResponseType resp;
 /// NROS_TRY(fut.wait(executor.handle(), 5000, resp));
 /// ```
-template <typename T> class Future {
+///
+/// @tparam Cap  Bytes the RECEIVE buffer holds. Defaults to `T`'s own derived
+///              bound where it has one, and to the legacy
+///              `T::SERIALIZED_SIZE_MAX` estimate where it does not. The
+///              `_sized` escape hatches are `Client::send_request_sized` and
+///              `ActionClient::get_result_future_sized`, which hand back a
+///              `Future<T, N>` (issue 0964). This buffer IS the capacity:
+///              under-sizing it truncates the reply.
+template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class Future {
   public:
     /// Check if the result has arrived (non-blocking).
     bool is_ready() {
         if (slot_ < 0 || !try_recv_fn_) return false;
         if (ready_) return true;
-        uint8_t buf[T::SERIALIZED_SIZE_MAX];
+        uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret = try_recv_fn_(client_storage_, buf, sizeof(buf), &len);
         if (ret == 0 && len > 0) {
@@ -163,7 +172,7 @@ template <typename T> class Future {
     int slot_;
     bool ready_;
     size_t cached_len_;
-    uint8_t cached_buf_[T::SERIALIZED_SIZE_MAX];
+    uint8_t cached_buf_[Cap];
 };
 
 } // namespace nros
