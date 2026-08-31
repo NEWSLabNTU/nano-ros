@@ -1,14 +1,33 @@
 # Phase 400 — Rust dependency weight audit
 
-**Status (2026-08-30). IN PROGRESS — W1 and W2a landed. W2's orchestration half
-was ATTEMPTED AND REVERTED: its 43-crate estimate measured as 6, because
-`nros-orchestration-ir` is needed by every arm of the macro and is itself what
-pulls the heavy tail. The lever moves to splitting that crate; see W2. **W3 is
-also RETRACTED**: its 20.6 s of bindgen belongs to upstream `zephyr-sys`, and the
-four `*-sys` crates the plan named are workspace-EXCLUDED with zero consumers, so
-they contribute nothing to any measured build. W4, the leaf-graph attribution, is
-the only item left with a defensible premise — and should have been first. Waves
-are ordered by measured value, not by discovery order.**
+**Status (2026-08-31). CLOSED — the single-leaf campaign is at its floor.**
+
+LANDED: W1 (an unused dep), W2a (cbindgen off by default, 8.1 s), W4 (`just
+leaf-graph` — ask the build, not the workspace), W5 (shared cargo dirs for
+Zephyr; a subsequent image costs about half).
+
+DECLINED ON MEASUREMENT, not deferred: W2's orchestration half (3.9 CPU-s,
+3.3 %) and W3's bindgen-to-committed-output (0 s from our crates).
+
+WHAT CLOSING IT MEANS. The largest single item left on one leaf is 2.18 s of
+bindgen inside upstream `zephyr-sys` — 25 % of that leaf's cargo wall, on its
+critical path, and owned by a west module we do not control. Everything cheaper
+has landed or been priced and refused. Reopening should need a NEW measurement,
+not a new estimate.
+
+THE ONE THING NEVER MEASURED, recorded so it is not mistaken for a dead end:
+every number in this phase is ONE leaf on an idle 32-core box. Multi-leaf
+concurrency — N leaves each taking `nproc` — is what `jobserver-pool.sh` exists
+for and what nothing here has touched. That is where a win could still be, and
+it is a measurement rather than a build.
+
+HOW TO READ THE NUMBERS BELOW. Three estimates in this document were computed
+from the WORKSPACE graph and then assumed to describe a leaf's build (31.9 %,
+43 crates, 20.6 s); all three were wrong and all three were optimistic. A
+subtree difference bounds what COULD leave and says nothing about what does.
+Wall time on the measuring host also varies about 2x between nominally
+identical cold builds, so ratios in this document survive re-measurement and
+absolute seconds do not.
 
 **Read the W2 table with W2a's caveat**: the 50.4 s pair assumes BOTH halves
 ship, because the 27.4 s contested pool only frees when the last consumer of
@@ -1489,11 +1508,14 @@ this is the binding constraint, not a large item that happens to sit late.
 `zephyr-sys/build.rs`'s very broad allowlists (`E.*`, `K_.*`, `Z_.*`, `LOG_.*`,
 `k_.*`, `sys_.*`, `device_.*`, `SEGGER.*`, plus CONFIG_BT/GPIO/FLASH arms).
 
-This settles two things the document currently disagrees with itself about. The
-W3 retraction was right that the crates it named were not the cost; it just did
-not find where the cost was. And direction 2's 18.4 % attributed it to
-compiling the bindgen stack — 0.64 s here — when the cost is one script running
-it, in `zephyr-sys`, which is not among the four `*-sys` crates that item lists.
+This CONFIRMS the W3 retraction and refutes direction 2. The retraction already
+named the right crate — "its 20.6 s of bindgen belongs to upstream
+`zephyr-sys`" — and what was missing was the number and the mechanism, which is
+what this section adds. Direction 2 is the part that was wrong: it attributed
+the cost to compiling the bindgen stack (0.64 s here) and listed four `*-sys`
+crates that do not include `zephyr-sys`. (An earlier draft of this section said
+the retraction "did not find where the cost was". It did; that sentence was
+mine and it was wrong.)
 
 **Lever quality: poor, and the reason is ownership.** `zephyr-sys` is upstream
 zephyr-lang-rust, a west module. Narrowing those allowlists is an upstream
