@@ -453,6 +453,20 @@ pub fn generate_c_message_package_with_lookup(
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, resolver, lookup);
         let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, resolver, lookup);
+        // phase-403 W7b (issue 0939) — a stated `max_serialized` budget is
+        // checked HERE, against the same classification the header's constants
+        // come from, so the number in the diagnostic is the number in the
+        // `#define`. A type with no budget is untouched: `check_budget` returns
+        // `Ok` and nothing about the derivation changes.
+        crate::bounds::check_budget(
+            &fqn,
+            &crate::bounds::BoundState::classify(&x1, &x2),
+            &crate::schema_value::chains_for(&fqn, message, resolver, lookup),
+            resolver.max_serialized(package_name, message_name),
+        )
+        .map_err(|e| GeneratorError::BoundExceedsBudget {
+            details: e.to_string(),
+        })?;
         // issue 0896 Q2 — the compiler error must name the TYPE and the FIELD,
         // not just say "no bound". A C identifier cannot hold `.` or `(`, so
         // the path is flattened; the prose reason sits above it in the header

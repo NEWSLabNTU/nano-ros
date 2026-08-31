@@ -297,6 +297,16 @@ struct LevelCaps {
     sequence: Option<CapEntry>,
     #[serde(default)]
     string: Option<CapEntry>,
+    /// phase-403 W7b (issue 0939) — a TOTAL, not a capacity.
+    ///
+    /// Legal only under `[types."pkg/Msg"]`, because it is an assertion about
+    /// ONE type's deployment: "whatever the caps add up to, this type must fit
+    /// in N bytes". `sequence` / `string` beside it are per-field CAPACITIES
+    /// and compose down the level chain; a budget does not compose, so a
+    /// `[defaults]` or `[packages.*]` one is rejected at parse time rather than
+    /// quietly meaning something different at each level.
+    #[serde(default)]
+    max_serialized: Option<usize>,
 }
 
 impl LevelCaps {
@@ -314,6 +324,9 @@ impl LevelCaps {
         }
         if over.string.is_some() {
             self.string = over.string;
+        }
+        if over.max_serialized.is_some() {
+            self.max_serialized = over.max_serialized;
         }
     }
 }
@@ -406,6 +419,20 @@ pub enum ConfigError {
          array/sequence field"
     )]
     ElementCapOnStringLevel { level: String },
+    /// phase-403 W7b (issue 0939) — `max_serialized` outside `[types.*]`.
+    ///
+    /// `sequence` / `string` at a level are per-field CAPACITIES: they compose,
+    /// and the closest one wins. A budget is a TOTAL for one type, and totals do
+    /// not compose -- a package-wide "every type must fit 8192" is a different
+    /// statement that this key does not make. Rejected rather than reinterpreted,
+    /// because the two kinds of number sit in the same table and the failure
+    /// would otherwise be silent.
+    #[error(
+        "`max_serialized` under `[{level}]` in codegen config: a serialized-size \
+         budget is a TOTAL for one type, not a per-field capacity, so it belongs \
+         under `[types.\"pkg/Msg\"]` and nowhere else"
+    )]
+    MaxSerializedOutsideTypes { level: String },
 }
 
 /// phase-403 W7 — an `element_cap` that names a field it cannot apply to.
@@ -466,6 +493,20 @@ impl CapacityResolver {
             if caps.string.and_then(|e| e.element_cap()).is_some() {
                 return Err(ConfigError::ElementCapOnStringLevel { level });
             }
+        }
+        if raw.defaults.max_serialized.is_some() {
+            return Err(ConfigError::MaxSerializedOutsideTypes {
+                level: "defaults".into(),
+            });
+        }
+        if let Some((pkg, _)) = raw
+            .packages
+            .iter()
+            .find(|(_, l)| l.max_serialized.is_some())
+        {
+            return Err(ConfigError::MaxSerializedOutsideTypes {
+                level: format!("packages.{pkg}"),
+            });
         }
         Ok(Self {
             raw,
@@ -749,6 +790,33 @@ impl CapacityResolver {
         }
         // 4 — the element level chain, walked separately from `cap`'s.
         self.configured_element_cap(package, message, field)
+    }
+
+    /// phase-403 W7b (issue 0939) — the total serialized size the config says
+    /// this type may reach, or `None`.
+    ///
+    /// # A ceiling to check against, NEVER a value to substitute
+    ///
+    /// If the derived bound comes in UNDER the budget, the DERIVED number
+    /// stands: a budget is the user asserting what their deployment can afford,
+    /// not stating what the type costs. Substituting it would be a bound nobody
+    /// derived, which is the one thing phase-380 forbids and the thing this
+    /// campaign keeps removing. If the derived bound comes in OVER, that is a
+    /// build error naming the type, both numbers, and the nesting chain that
+    /// produced the total -- because the useful question is WHICH LEVEL to cap,
+    /// and a bare "too big" does not answer it.
+    ///
+    /// A type with no budget is completely unaffected: nothing is checked,
+    /// nothing is emitted, and the derivation is byte-identical.
+    ///
+    /// `[types.*]` only, by construction -- see
+    /// [`ConfigError::MaxSerializedOutsideTypes`]. Keyed on `pkg/Msg`, the same
+    /// spelling the capacity entries beside it use.
+    pub fn max_serialized(&self, package: &str, message: &str) -> Option<usize> {
+        self.raw
+            .types
+            .get(&format!("{package}/{message}"))
+            .and_then(|l| l.max_serialized)
     }
 
     /// `field_type` with any configured element bound applied -- the ONE call an
@@ -1794,5 +1862,69 @@ mod tests {
                 std::borrow::Cow::Borrowed(_)
             ));
         }
+    }
+
+    // ========================================================================
+    // phase-403 W7b (issue 0939) -- the per-type serialized-size budget
+    // ========================================================================
+
+    /// `max_serialized` is read per TYPE, keyed the same way the capacity
+    /// entries beside it are.
+    #[test]
+    fn a_budget_is_read_from_the_type_that_states_it() {
+        let r = CapacityResolver::from_toml_str(
+            "[types.\"pkg/M\"]\n\
+             sequence = 8\n\
+             max_serialized = 8192\n",
+        )
+        .unwrap();
+        assert_eq!(r.max_serialized("pkg", "M"), Some(8192));
+        assert_eq!(r.max_serialized("pkg", "Other"), None);
+        assert_eq!(r.max_serialized("other", "M"), None);
+        // It sits beside the capacities without disturbing them: they are
+        // per-field numbers, it is a total, and the two must not be confused.
+        assert_eq!(r.declared_bound("pkg", "M", "f", SEQ), Some(8));
+    }
+
+    /// A budget outside `[types.*]` is rejected at parse rather than
+    /// reinterpreted. `sequence`/`string` at a level COMPOSE down the chain; a
+    /// total does not, so a `[defaults]` one would have to mean something the
+    /// key does not say.
+    #[test]
+    fn a_budget_outside_types_is_rejected_at_parse() {
+        for (body, want) in [
+            ("[defaults]\nmax_serialized = 8192\n", "defaults"),
+            ("[packages.pkg]\nmax_serialized = 8192\n", "packages.pkg"),
+        ] {
+            match CapacityResolver::from_toml_str(body) {
+                Err(ConfigError::MaxSerializedOutsideTypes { level }) => {
+                    assert_eq!(level, want)
+                }
+                other => panic!("expected MaxSerializedOutsideTypes for {body:?}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The overwhelmingly common case: no budget anywhere, and the resolver
+    /// answers `None` for every type. The feature has to be a no-op for a config
+    /// that does not use it.
+    #[test]
+    fn a_config_that_states_no_budget_answers_none() {
+        let r = CapacityResolver::from_toml_str(
+            "[defaults]\nstring = 64\n[types.\"pkg/M\"]\nsequence = 8\n",
+        )
+        .unwrap();
+        assert_eq!(r.max_serialized("pkg", "M"), None);
+    }
+
+    /// App-over-workspace merge reaches the budget too, so an application can
+    /// tighten (or relax) the ceiling a workspace config set.
+    #[test]
+    fn a_budget_merges_app_over_workspace() {
+        let ws =
+            CapacityResolver::from_toml_str("[types.\"pkg/M\"]\nmax_serialized = 8192\n").unwrap();
+        let app =
+            CapacityResolver::from_toml_str("[types.\"pkg/M\"]\nmax_serialized = 4096\n").unwrap();
+        assert_eq!(ws.merged_with(app).max_serialized("pkg", "M"), Some(4096));
     }
 }

@@ -68,6 +68,16 @@ pub enum GeneratorError {
     /// looking at the derivation instead of at their config.
     #[error("codegen config: {details}")]
     ElementCapShape { details: String },
+
+    /// phase-403 W7b (issue 0939) — the derived bound blew the type's stated
+    /// `max_serialized` budget.
+    ///
+    /// A build error and not a warning: the budget is the user saying what
+    /// their deployment can afford, and a type that does not fit will fail at
+    /// run time as a dropped take with no explanation. Failing here, with the
+    /// nesting chain and its factors, is the whole point of the key.
+    #[error("{details}")]
+    BoundExceedsBudget { details: String },
 }
 
 /// Resolve the borrowed-view field type + full `CdrReader` read expression for
