@@ -3697,6 +3697,47 @@ setup target="" tier="":
                     just setup-cli
                     exec just "$target" setup
                 fi
+                # phase-407 W4 — a PRESET provisions the set it names.
+                #
+                # The menu above has advertised "Preset scopes … all native
+                # tier1 tier2 tier2-nightly" since W3, while the dispatch fell
+                # through to the legacy `--target=<platform>-<rmw>` arm and
+                # died with "is not a <platform>-<rmw> tuple". A documented
+                # scope that does not resolve is the same two-vocabularies
+                # defect one verb over, and it is what stopped a CI job from
+                # being `just setup <scope>` + `just test <scope>`.
+                #
+                # Expansion comes from `nros_lane_modules`, the same function
+                # `build` uses, so setup and build cannot disagree about what a
+                # preset contains.
+                if nros_scope_is_preset "$target"; then
+                    source scripts/build/fixture-lane.sh
+                    mods="$(nros_lane_modules "$target")" || exit 1
+                    if [ -z "$(echo $mods)" ]; then
+                        # `all` means "no narrowing", so its module list is
+                        # EMPTY — and an empty loop below would provision
+                        # nothing and exit 0, which is the silent no-op this
+                        # whole phase exists to stop. `all` is caught by the
+                        # tier arm above and cannot reach here; any other
+                        # preset that expands to nothing is a bug in the lane
+                        # tables, not a reason to succeed.
+                        printf 'setup: preset %s expands to NO modules — refusing to\n' "$target" >&2
+                        printf '       report success for provisioning nothing. Use `just setup all`\n' >&2
+                        printf '       for the full contributor setup, or name platforms.\n' >&2
+                        exit 1
+                    fi
+                    printf 'setup: preset %s -> %s\n' "$target" "$(echo $mods)"
+                    just setup-cli
+                    for m in $mods; do
+                        if nros_scope_module_has_verb "$m" setup; then
+                            printf '\n=== just setup %s ===\n' "$m"
+                            just "$m" setup
+                        else
+                            printf 'setup: %s has no `setup` recipe — nothing to provision\n' "$m"
+                        fi
+                    done
+                    exit 0
+                fi
                 exec "$(pwd)/tools/setup.sh" --target="$target"
                 ;;
         esac
