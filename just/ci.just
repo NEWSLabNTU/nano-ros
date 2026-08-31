@@ -37,13 +37,29 @@ set working-directory := '..'
 default: tier1
 
 
-# L1 — compile, lint and unit tests. No fixtures, no platforms, no QEMU.
+# THE GATE — compile, lint and unit. Visits NO coordinates (phase-410 W4).
+#
+# Renamed from `l1`. It was never a rung on the breadth ladder: it builds no
+# fixture, selects no platform and boots no QEMU, so it has no coordinates at
+# all. Calling it `l1` put it in a ladder it is not on, next to `l3` (which DOES
+# have coordinates, at build depth) and next to `ci full` (breadth), so three
+# unrelated things read as siblings.
+#
+# `just ci l1` still works — see the forwarder below. The old spelling is in
+# CLAUDE.md, two workflows and ~180 doc references; phase-399's precedent is
+# that a rename keeps its forwarder.
 [group("main")]
-l1:
+gate:
     @just check cli-fresh check::fast check::build check::api-parity
     @just test-unit
     @just test-lane-contracts
-    @echo "CI L1 passed (compile + unit; no fixtures were built or needed)."
+    @echo "CI gate passed (compile + unit; no fixtures were built or needed)."
+
+# Deprecated spelling of `just ci gate`. Kept because it is what CLAUDE.md,
+# queue-notify.yml and the docs say today.
+[group("main")]
+l1: gate
+
 
 [group("ci")]
 tier1:
@@ -185,8 +201,33 @@ l3:
 # instead of missing. Build-set and run-set are then one computation — the same
 # `row_coord` against the same coordinate file — which is the invariant issue
 # 0482 exists to protect. See `nros_tests::fixtures::lane`.
+# `just ci matrix` runs at RUN depth; `just ci matrix build` at BUILD depth.
+#
+# CI is BREADTH x DEPTH (RFC-0061, amended by phase-410) and only depth is
+# expensive: measured 2026-08-31, build depth is 46 s against 20+ minutes for
+# run depth over the same tree. The argument is POSITIONAL because `just` does
+# not parse `name=value` for a MODULE recipe — `just ci matrix depth=build`
+# sets depth to the literal string `depth=build`, measured.
+#
+# Each depth dispatches to a FIXED inner recipe rather than branching inside
+# one body, so `check-lane-contracts` can walk each and prove its affordability
+# claim. A parameterised body with conditionals is exactly what that gate
+# cannot verify.
 [group("ci")]
-matrix:
+matrix depth="run":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ depth }}" in
+        run)   just ci::_matrix-run ;;
+        build) just ci::_matrix-build ;;
+        *) echo "just ci matrix: unknown depth '{{ depth }}' — expected 'run' or 'build'." >&2
+           echo "  run   = build + execute (the 1-wise cover)" >&2
+           echo "  build = build + link only, no boot" >&2
+           exit 2 ;;
+    esac
+
+[private]
+_matrix-run:
     #!/usr/bin/env bash
     set -euo pipefail
     just _lane-gate tier2
@@ -220,6 +261,17 @@ matrix:
 # platform matrix from it, and its `lane-coverage` job asserts every module in the
 # cover actually has a job. Change the lane here and CI follows, with no second
 # edit — that is the whole reason the selection is computed.
+# BUILD depth over the tier-2 breadth: cross build + link, no boot. This is
+# what `build-wide.yml` runs on every merge.
+#
+# It IS `l3` — build depth means build, link, AND verify the link, which is the
+# ELF symbol interrogation plus the heap-free gate that `l3` already does.
+# Defining it as `rust-rtos-link-check` alone would have been build-without-
+# verify, and would also have invalidated the 46 s measurement this lane's
+# per-merge placement rests on.
+[private]
+_matrix-build: l3
+
 [group("ci")]
 matrix-nightly:
     #!/usr/bin/env bash

@@ -1,6 +1,6 @@
 # phase-410 — CI is BREADTH × DEPTH, and only depth is expensive
 
-**Status (2026-08-31). W2 and W3 landed; W1 deferred with reasons; W4 open.**
+**Status (2026-08-31). W2, W3 and W4 landed; W1 deferred with reasons.**
 
 Restructures the CI workflows so a tier's file keeps the promise the tier makes.
 Consumes phase-407 (`just <verb> <scope>`) and phase-395 (the event design);
@@ -169,9 +169,50 @@ and not an oversight.
 
 Tier-2-nightly is already on a clock by construction.
 
-**W4 — the vocabulary.** Decide whether L1/L3 stay as a lane ladder or become
-`--depth` on the tier commands. This is a decision, not an implementation, and
-it touches `CiLane`, `check-lane-contracts` and the queue.
+**W4 LANDED — depth is a dimension, and "lane" was overloaded three ways.**
+
+The word named three things in one repo, meaning two:
+
+| name | where | means |
+| --- | --- | --- |
+| `CiTier` | `buckets.rs` | the ladder rung (4, incl. Tier3) |
+| `CiLane` | `ci_lane.rs` | the COMPUTED cell selection for a rung (3) |
+| `_NROS_LANES` | `fixture-lane.sh` | the fixture coordinate set — breadth |
+| `ci l1` / `ci l3` | `just/ci.just` | DEPTH — compile+unit / cross build+link |
+
+Tier-vs-lane is a real distinction (rung vs its computed selection) and is left
+alone: `CiLane` (71 refs) and `nros_lane_*` (222 refs) are BREADTH and this work
+does not touch them. The collision was narrow — `l1`/`l3` used "l" for depth.
+
+**`l1` is not a rung and never was.** It visits no coordinates: `check` +
+`test-unit`, no fixture, no platform, no QEMU. It is now `just ci gate`, with
+`l1` kept as a forwarder. Forcing it into (breadth, depth) is the error an
+earlier draft made.
+
+**`l3` becomes a depth on a breadth**: `just ci matrix build`. `l3` survives as
+the implementation.
+
+**MEASURED, and it changed the design twice:**
+
+* `just ci matrix depth=build` does NOT work. `just` does not parse `name=value`
+  for a MODULE recipe — it yields the literal `depth=build`. Positional
+  (`just ci matrix build`) does. The named-argument design was abandoned on this
+  measurement, not on taste.
+* `just ci matrix build` = **27 s** (`ci l3` measured 46 s earlier on a colder
+  tree). Build depth stays comfortably per-merge; `build-wide.yml` now names the
+  pair rather than a lane letter.
+
+**Each depth dispatches to a FIXED inner recipe** (`_matrix-run`,
+`_matrix-build`) rather than branching inside one parameterised body, because
+`check-lane-contracts` proves affordability by WALKING a recipe body and cannot
+verify a conditional one.
+
+**And that gate could not see private recipes at all.** Its `RECIPE` pattern
+required `^[a-z]`, so every `_`-prefixed recipe was invisible — including
+`_lane-gate`, which `ci matrix` calls. The closure silently stopped at each
+private boundary, which is the vacuous-pass shape the file's own header warns
+about. Widened; the larger closure still reports clean, now across 3
+affordability tiers instead of 2.
 
 ## Acceptance
 

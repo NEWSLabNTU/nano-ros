@@ -78,7 +78,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
 ## Practices
 - **Run the TIER your change earns, after every task** (RFC-0061 / phase-318).
   **Never `sudo`** — tell the user.
-  - `just ci l1` — **compile + unit, ~6 min, NO FIXTURES** (phase-395 W2).
+  - `just ci gate` (was `just ci l1`, still forwards) — **compile + unit, NO
+    FIXTURES** (phase-395 W2; renamed phase-410 W4 because it visits no
+    coordinates, so it was never a rung on the breadth ladder). Measured 230 s.
+    Depth is a positional arg on the tiers: `just ci matrix` runs, `just ci
+    matrix build` builds+links only (27 s) — `name=value` does NOT parse for a
+    module recipe.
     Run this before every push. It is `check` + `test-unit`, and it needs no
     fixture build, no SDK, no QEMU and no cross toolchain — only `test`/
     `test-all` depend on fixtures, and 74 of 163 test files never needed them.
