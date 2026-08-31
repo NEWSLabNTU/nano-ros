@@ -347,7 +347,7 @@ build-all:
         echo "build-all: unified jobserver path (make 4.4 + ninja 1.13; NROS_NO_JOBSERVER=1 to opt out)"
         exec just build-all-jobserver
     fi
-    echo "build-all: static split (install make>=4.4 + ninja>=1.13 — just workspace install-make/install-ninja — for the jobserver path)"
+    echo "build-all: static split (install make>=4.4 + ninja>=1.13 — nros setup --tool make / --tool ninja — for the jobserver path)"
     just build
     just build-example-extras
     just build-test-fixtures-leaves
@@ -361,8 +361,8 @@ build-all:
 # every stage (cargo + build-script cc + ninja-via-west + cmake), instead
 # of the static per-platform scheduler split. When the fast
 # platforms finish, their tokens flow to the long pole automatically.
-# Needs the pinned make >=4.4 + ninja >=1.13 (just workspace install-make
-# / install-ninja). NROS_BUILD_JOBS (default nproc) = the token budget.
+# Needs the pinned make >=4.4 + ninja >=1.13 (`nros setup --tool make` /
+# `--tool ninja`). NROS_BUILD_JOBS (default nproc) = the token budget.
 # Recipes detect the inherited jobserver (NROS_JOBSERVER=1) and skip their
 # own explicit -j so the tools draw from the shared pool.
 [group("full-matrix")]
