@@ -79,17 +79,24 @@ Landed so far:
 * **site config → `[board_config.<board>]`** — 30 blocks became 20, plus 4 the
   generator wrote for a workspace that had none.
 
-Still open — the build half:
+* **the 42 `kind = "embedded"` blocks are gone.** They were board BUILDS, which
+  is what `[image.*]` means, and never placement — rlm already excluded them
+  from partitioning. One (`examples/workspaces/c`'s `[deploy.an536]`) was
+  dangling: it named `mps3-an536-freertos`, a board that workspace has no
+  image, no entry package and no fixture row for.
+* **the readers resolve `[image.*]` first** — `resolve_target` (new image
+  rung), `derive_target_rtos`, `schema_build_json`, `codegen_system`'s launch
+  fallback, `doctor`, `board_facts`, and `synthesise_self_bringup` (which wrote
+  no images at all, silently losing every value for self-bringup packages).
 
-* 42 `kind = "embedded"` blocks whose build description moves to `[image.*]`;
-* the readers that still consult `[deploy.*]`: `tier_resolver::derive_target_rtos`,
-  `planner::schema_build_json`, `codegen_system`'s `.launch` fallback,
-  `doctor::check_deploy_targets`, `check.rs`'s counter;
-* `SystemToml::resolve_target` has no image rung, so a workspace that deletes
-  its deploy blocks silently falls back to the `x86_64` / `native` / `debug`
-  defaults;
-* `synthesise_self_bringup` writes `image: Default::default()`, so any consumer
-  switched to `[image.*]` loses its values for self-bringup packages;
+Still open — the build half:
+* **the last `[deploy.*]` block per bringup** — one `kind = "self"` each, the
+  implicit machine the system runs on. It is a machine, so it belongs in
+  `[host.*]`; moving it empties the table and gives `target = None` by
+  construction, which is the shape issue 0356 wanted. It stays for now because
+  it is the block that currently makes placement HAPPEN, and deleting the
+  embedded blocks around it already flipped every placed node to
+  `target: linux` (see below) — one measured change at a time.
 * `DEPRECATED_DEPLOY_FIELDS` now records a DESTINATION per field, because the
   destination is not uniform — the first version sent `domain_id` and `locator`
   to `[image.*]`, a table with no such keys.
