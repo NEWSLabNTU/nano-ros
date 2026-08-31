@@ -34,6 +34,7 @@ setup:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh cyclonedds doctor "just doctor cyclonedds"
     set +e
     missing=0
     # Phase 186.6.5 — Cyclone self-provisions from source; there is no host
@@ -131,6 +132,7 @@ build-rmw:
 # the POSIX E2E pub/sub interop harness against stock rmw_cyclonedds.
 [group("main")]
 test: build-rmw
+    @bash scripts/dev/deprecated-scope-alias.sh cyclonedds test "just test cyclonedds"
     ctest --test-dir packages/rmw/cyclonedds/nros-rmw-cyclonedds/build --output-on-failure
 
 # Composite: build RMW backend (self-provisions Cyclone) + run tests. Wired

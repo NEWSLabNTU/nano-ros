@@ -234,6 +234,7 @@ build-all: build build-examples build-fixtures
 [group("main")]
 test verbose="": build-fixtures
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh zephyr test "just test zephyr"
     set -e
     source scripts/build/cargo.sh
     cargo_nextest_args=($(nros_cargo_nextest_args))

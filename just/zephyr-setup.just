@@ -66,6 +66,7 @@ kconfig-trees *ARGS:
 [group("setup")]
 doctor:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh zephyr doctor "just doctor zephyr"
     set +e
     fail=0
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"

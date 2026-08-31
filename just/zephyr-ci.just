@@ -21,6 +21,7 @@
 [group("full-matrix")]
 build-fixtures:
     #!/usr/bin/env bash
+    bash scripts/dev/deprecated-scope-alias.sh zephyr build-fixtures "just build zephyr"
     set -e
     source scripts/build/cargo.sh
     # issue 0599 — SKIPPED is its own verdict. These two used to `exit 0`, so a

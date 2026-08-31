@@ -52,11 +52,34 @@ through.
 - `scripts/bootstrap.sh base`: first-time native/ROS/zenoh quick-start setup.
 - `scripts/bootstrap.sh all`: contributor/full-matrix setup; pulls and installs every supported SDK tier.
 - `scripts/bootstrap.sh platform <platform>`: first-time focused setup for one platform.
+**One verb, one scope, one position (phase-407 W3).** `setup`, `doctor`, `build`
+and `test` all take the same word in their first argument: a PLATFORM (`native
+zephyr freertos nuttx threadx_linux threadx_riscv64 esp32 esp_idf qemu px4 xrce
+cyclonedds`) or a PRESET, which today is exactly the fixture lanes (`all native
+tier1 tier2 tier2-nightly`). `just setup zephyr` was already this shape; the
+other three now follow it. The vocabulary is `scripts/build/scope.sh`, one
+namespace, gated by `check-scope-namespace` — a preset may share a platform's
+name only while it denotes the same scope, which is why `native` is legal as
+both. `NROS_SCOPE_EXPLAIN=1 just build tier2` prints the command a scope
+resolves to without running it.
+
+Naming a scope IS the specification of what you asked to be covered; a bare
+`just test` is best effort over what is provisioned, and prints the probed set
+rather than reading a recorded one. `just <platform> <verb>` still works and
+still is the implementation — it prints a deprecation for one release.
+
 - `just setup`: print setup choices; does not fetch/install.
 - `just setup base`: install the base quick-start SDK/tooling tier.
 - `just setup all` or `just setup tier=all`: install the full contributor/test-all tier.
-- `just <platform> setup`: install a focused platform SDK/tooling tier.
-- `just doctor` and `just doctor tier=all`: diagnose base or full setup readiness.
+- `just setup <scope>`: install a focused platform SDK/tooling tier.
+- `just doctor`: host tooling, then a PROBE of every platform (the derived default scope).
+- `just doctor <scope>` / `just doctor tier=all`: one scope's readiness, or the pre-407 tier walk.
+- `just build <scope>`: that scope's test fixtures — a lane routes through
+  `build-test-fixtures lane=<lane>` (which stamps coverage), a platform through
+  `just <platform> build-fixtures` (which does not).
+- `just test <scope>`: that scope's tests. Verbosity is a FLAG now (`verbose` /
+  `-v` / `--verbose`, anywhere in the arguments) — `just test 1` no longer means
+  verbose, which is the incompatibility phase-407 accepts.
 - `just build`: build the workspace plus generated bindings and transport artifacts.
 - `just build-examples`: build the workspace and example matrix.
 - `just build-test-fixtures`: prebuild binaries required by the full test matrix.
