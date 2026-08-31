@@ -625,6 +625,10 @@ CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
         // track.
         "cyclonedds" => r#"# Cyclone DDS backend.
 CONFIG_NROS_RMW_CYCLONEDDS=y
+# No CONFIG_NROS_CYCLONE_DOMAIN_ID here on purpose (phase-405 W3). It defaults
+# to NROS_DOMAIN_ID so the two knobs cannot split-brain; pinning it to a literal
+# is what silently ran every cyclone image on domain 0 in phase-180, and a
+# scaffold that emits the pin reproduces that bug in every new user project.
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
 "#
         .to_string(),

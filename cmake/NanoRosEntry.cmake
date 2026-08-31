@@ -500,7 +500,7 @@ function(nano_ros_entry)
     # (tcp/127.0.0.1:7447) and never connects to the host router. (FreeRTOS/ThreadX link at BUILD
     # time, so their order is immaterial — but setting it here is correct for them too; the later
     # block then only does the FreeRTOS app-config TU + header-mirror ordering.) Zephyr is exempt
-    # (Kconfig locator). Precedence: -DNROS_ENTRY_LOCATOR cache > LOCATOR arg > per-board default
+    # (Kconfig locator). Precedence: -DNROS_ENTRY_LOCATOR cache > per-board default
     # (threadx-linux dials host loopback; QEMU boards dial the slirp host 10.0.2.2).
     # Whether THIS entry targets the active board. Two spellings (phase-287 W5):
     #   * workspace system.toml deploy targets are NAMED BY BOARD — the active
@@ -597,7 +597,7 @@ function(nano_ros_entry)
     #      finds no router over the nsos POSIX-connect shim (threadx-linux host-sim) or
     #      QEMU slirp, so `nros::init` fails and `run_components` returns before the spin
     #      (no publish). Define the macro on the target. Precedence:
-    #      `-DNROS_ENTRY_LOCATOR=…` cache override > `LOCATOR` arg > per-board default
+    #      `-DNROS_ENTRY_LOCATOR=…` cache override > per-board default
     #      (threadx-linux dials the host loopback — nsos `connect()` reaches it with NO
     #      veth bridge / root; QEMU boards dial the slirp host 10.0.2.2). The C2a /
     #      rtos_e2e fixture threads the per-fixture port via the cache var, mirroring the

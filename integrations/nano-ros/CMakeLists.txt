@@ -32,11 +32,10 @@ if(NOT DEFINED CONFIG_NROS_BRINGUP_NAME OR CONFIG_NROS_BRINGUP_NAME STREQUAL "")
 else()
     set(_nros_bringup_name "${CONFIG_NROS_BRINGUP_NAME}")
 endif()
-if(NOT DEFINED CONFIG_NROS_DOMAIN_ID OR CONFIG_NROS_DOMAIN_ID STREQUAL "")
-    set(_nros_domain_id "0")
-else()
-    set(_nros_domain_id "${CONFIG_NROS_DOMAIN_ID}")
-endif()
+# phase-405 W3 — no `_nros_domain_id` local here. One used to be computed and
+# then read by nothing (the NANO_ROS_* block below forwards rmw and edition
+# only). It was never needed: ESP-IDF puts CONFIG_NROS_DOMAIN_ID in its own
+# generated sdkconfig.h, which is where nros/main.hpp reads it from.
 
 set(NANO_ROS_PLATFORM    "esp_idf"              CACHE STRING "" FORCE)
 set(NANO_ROS_RMW         "${_nros_rmw}"         CACHE STRING "" FORCE)

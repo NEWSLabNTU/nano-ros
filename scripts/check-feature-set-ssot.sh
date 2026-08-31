@@ -17,20 +17,82 @@ cd "$(dirname "$0")/.."
 fail=0
 note() { printf '  %s\n' "$1"; }
 
+# The edition pattern, named once so the selftest below exercises the SAME
+# regex the gate runs. A selftest against a re-typed copy of a regex proves
+# nothing about the regex that ships.
+NROS_EDITION_RE='\b(humble|iron|jazzy)\b'
+
+# Exercise the failure path on EVERY run (phase-395). This gate in particular
+# earned it: it spent its whole life reporting OK against a pattern that
+# matched none of the six sites it existed to catch, and a negative control
+# nobody runs would not have caught that either — only one that runs here.
+nros_edition_selftest() {
+    local caught
+    # A planted literal must be caught...
+    caught=$(printf '%s\n' 'cmake/Fake.cmake:12:    set(_e humble)' \
+        | grep -E "$NROS_EDITION_RE" | grep -v ':[0-9]*:[[:space:]]*#' || true)
+    if [ -z "$caught" ]; then
+        echo "FAIL: check-feature-set-ssot selftest — the edition regex misses a bare literal" >&2
+        exit 1
+    fi
+    # ...including the cargo-feature spelling, which the OLD pattern matched
+    # and the new one must not regress.
+    caught=$(printf '%s\n' 'cmake/Fake.cmake:3:  set(_f ros-humble)' \
+        | grep -E "$NROS_EDITION_RE" || true)
+    if [ -z "$caught" ]; then
+        echo "FAIL: check-feature-set-ssot selftest — the regex no longer matches ros-humble" >&2
+        exit 1
+    fi
+    # ...and a comment must NOT be, or every explanatory note becomes a red.
+    caught=$(printf '%s\n' 'cmake/Fake.cmake:9:    # we used to hardcode humble here' \
+        | grep -E "$NROS_EDITION_RE" | grep -v ':[0-9]*:[[:space:]]*#' || true)
+    if [ -n "$caught" ]; then
+        echo "FAIL: check-feature-set-ssot selftest — a comment was treated as a literal" >&2
+        exit 1
+    fi
+}
+nros_edition_selftest
+
 # 1. The ROS edition is chosen in exactly one place. A literal anywhere else is
 #    the defect that made a non-humble build a wire mismatch rather than an
 #    error (RFC-0056: the edition drives the keyexpr format that must match the
 #    codegen-baked type_hash).
+#
+#    phase-405 W3 — THIS CHECK USED TO MATCH NOTHING. It grepped for
+#    `ros-humble`, the CARGO FEATURE spelling, while every defaulting site in
+#    cmake writes the bare word `humble`. Six sites existed; the gate matched
+#    zero of them and printed OK, for as long as the check had existed. Worse,
+#    the six did not behave alike — two consulted NANO_ROS_ROS_EDITION first and
+#    four went straight to the literal, so `nros_find_interfaces` discarded a
+#    workspace's declared edition outright (measured: a `-DNANO_ROS_ROS_EDITION=
+#    jazzy` configure of examples/templates/cpp-port-minimal-publisher emitted
+#    `"ros_edition": "humble"` for std_msgs and builtin_interfaces).
+#
+#    So the pattern is now the bare word, which also covers `ros-humble`
+#    (the hyphen is a word boundary), and the allowlist is ONE FILE:
+#    cmake/NanoRosRosEdition.cmake, which holds the default and the valid list
+#    and nothing else. An allowlist of one is checkable in a way that "keep
+#    these in sync" is not.
+#
+#    SCOPE: cmake/ + the root CMakeLists + the two api CMakeLists. `integrations/**`
+#    is deliberately OUT, and that is a known gap, not an oversight —
+#    integrations/nuttx carries `ros-humble` literals in a Makefile lane whose
+#    edition vocabulary cannot even express jazzy. Widening this glob before
+#    that is fixed would land a red nobody can turn green, which is how a gate
+#    gets switched off. Tracked as issue 0947; widen the glob when it closes.
 # Comment lines are excluded: the conversion sites legitimately REFERENCE the
 # old hardcode when explaining why they no longer do it.
-edition_hits=$(git grep -n 'ros-humble' -- 'cmake/*.cmake' 'packages/api/nros-c/CMakeLists.txt' \
+edition_hits=$(git grep -nE "$NROS_EDITION_RE" -- \
+    'cmake/*.cmake' 'cmake/*/*.cmake' 'CMakeLists.txt' \
+    'packages/api/nros-c/CMakeLists.txt' \
     'packages/api/nros-cpp/CMakeLists.txt' 2>/dev/null \
-    | grep -v 'cmake/NanoRosFeatureSet.cmake' \
+    | grep -v '^cmake/NanoRosRosEdition.cmake:' \
     | grep -v ':[0-9]*:[[:space:]]*#' | cut -d: -f1 | sort -u || true)
 if [ -n "$edition_hits" ]; then
-    echo "FAIL: a ROS edition literal outside cmake/NanoRosFeatureSet.cmake:"
+    echo "FAIL: a ROS edition literal outside cmake/NanoRosRosEdition.cmake:"
     echo "$edition_hits" | while read -r f; do note "$f"; done
-    note "The edition must come from NANO_ROS_ROS_EDITION via nros_feature_set()."
+    note "Call _nros_resolve_ros_edition() instead; the only file allowed to"
+    note "spell an edition is cmake/NanoRosRosEdition.cmake."
     fail=1
 fi
 

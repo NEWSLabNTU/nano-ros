@@ -79,7 +79,7 @@ pub struct Args {
     pub rmw: Option<String>,
 
     /// ROS edition (drives the `ros-<edition>` cargo feature; RFC-0056)
-    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"], default_value = "humble")]
+    #[arg(long = "ros-edition", value_parser = ["humble", "iron", "jazzy"], default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
     /// Source language. Defaults per mode: `rust` for project/component
