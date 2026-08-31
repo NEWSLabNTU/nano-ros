@@ -322,6 +322,12 @@ def find_image_roots(roots):
     for root in roots:
         if not os.path.isdir(root):
             continue
+        # walk-ok: `roots` are BUILD directories, and what this looks for —
+        # a compiled binary beside the knob it was compiled against — is
+        # untracked by construction, so `git ls-files` cannot see it. That is
+        # the case the gate's own text carves out ("scanning for UNTRACKED
+        # artifacts is fine — scope it to a build dir"), and PRUNE keeps it
+        # off the vendored trees.
         for dirpath, dirnames, filenames in os.walk(root):
             base = os.path.basename(dirpath)
             if base in PRUNE:
