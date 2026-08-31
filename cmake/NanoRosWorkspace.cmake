@@ -64,6 +64,8 @@ set(_NROS_WORKSPACE_DIR "${CMAKE_CURRENT_LIST_DIR}"
 # discovered path to <out_var> (PARENT_SCOPE), or `_NROS_ROOT-NOTFOUND`
 # when nothing matches.
 # ---------------------------------------------------------------------------
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+
 function(_nros_find_root start out_var)
     set(_dir "${start}")
     set(_max_walk 16)            # bounded — never walk past `/`
@@ -274,9 +276,7 @@ function(nano_ros_workspace)
     # phase-304 W2b (RFC-0056) — the ROS edition axis. Drives BOTH the codegen
     # type-hash AND the runtime `ros-<edition>` keyexpr feature from one value,
     # so they can never disagree. Absent → humble (byte-identical to pre-W2b).
-    if(NOT _NRW_EDITION)
-        set(_NRW_EDITION humble)
-    endif()
+    _nros_resolve_ros_edition("${_NRW_EDITION}" _NRW_EDITION)
 
     # Resolve the nano-ros root (priority chain in _nros_resolve_root).
     _nros_resolve_root("${_NRW_NANO_ROS_ROOT}"

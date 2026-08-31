@@ -37,7 +37,7 @@ pub struct Args {
     pub output: PathBuf,
 
     /// ROS 2 edition (`humble` | `iron` | `jazzy`)
-    #[arg(long, default_value = "humble")]
+    #[arg(long, default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
     /// Explicit per-field capacity config (`nros-codegen.toml`, RFC-0033).
@@ -97,7 +97,7 @@ pub struct RustArgs {
     pub output: PathBuf,
 
     /// ROS 2 edition (`humble` | `iron` | `jazzy`)
-    #[arg(long, default_value = "humble")]
+    #[arg(long, default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
     /// Explicit per-field capacity config (`nros-codegen.toml`, RFC-0033).

@@ -701,6 +701,10 @@ fn render_system_config_h(sys: &SystemToml, target: Option<&str>, cli_rmw: Optio
             ros_edition.as_str().to_ascii_uppercase()
         ));
     }
+    // Informational for app source, like the edition defines above: nothing in
+    // nano-ros reads NROS_SYSTEM_LOCATOR, and phase-405 W3 nearly deleted it as
+    // dead because that intent was stated for the edition and not for this. It
+    // is emitted so an app can #ifdef on where its image dials.
     if let Some(loc) = &sys.resolved_locator(target) {
         out.push_str(&format!(
             "#define NROS_SYSTEM_LOCATOR \"{}\"\n",

@@ -34,6 +34,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # does not include() inside its own frame.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardFacts.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 
 # Map PLATFORM -> (nros-cpp platform feature ; std|alloc tier).
 #
@@ -165,9 +166,7 @@ endfunction()
 
 function(nros_synth_runtime_umbrella)
     cmake_parse_arguments(_NRR "" "BACKEND;PLATFORM;EDITION" "" ${ARGN})
-    if(NOT _NRR_EDITION)
-        set(_NRR_EDITION humble)
-    endif()
+    _nros_resolve_ros_edition("${_NRR_EDITION}" _NRR_EDITION)
     if(NOT _NRR_BACKEND)
         set(_NRR_BACKEND zenoh)
     endif()

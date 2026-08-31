@@ -35,6 +35,8 @@ include_guard(GLOBAL)
 # live in their OWN crate/archive — so every package builds its own FFI crate
 # and any combination of interface archives links without duplicate
 # `nros_cpp_*` definitions. OWN files keep both halves.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
+
 function(_nros_collect_rs_closure _out_var)
     cmake_parse_arguments(_C "" "" "DEPS;OWN" ${ARGN})
     set(_all "")
@@ -660,9 +662,11 @@ function(nros_find_interfaces)
     if(NOT DEFINED _ARG_LANGUAGE OR _ARG_LANGUAGE STREQUAL "")
         set(_ARG_LANGUAGE "CPP")
     endif()
-    if(NOT DEFINED _ARG_ROS_EDITION OR _ARG_ROS_EDITION STREQUAL "")
-        set(_ARG_ROS_EDITION "humble")
-    endif()
+    # phase-405 W3 — this used to default straight to the literal, skipping
+    # NANO_ROS_ROS_EDITION entirely, so `nros_find_interfaces` ignored a
+    # workspace's declared edition while its sibling nros_generate_interfaces
+    # honoured it. One workspace, two editions, one build.
+    _nros_resolve_ros_edition("${_ARG_ROS_EDITION}" _ARG_ROS_EDITION)
 
     # Codegen tool: each generator resolved it into its own cache var at include
     # time. Try the Zephyr var first, then the canonical — robust whichever

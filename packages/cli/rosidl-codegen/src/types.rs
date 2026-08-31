@@ -4,6 +4,14 @@ use rosidl_parser::{
     idl::{ast::ConstantValue as IdlConstantValue, types::IdlType},
 };
 
+/// The default ROS edition, as a string.
+///
+/// phase-405 W3 — clap needs a `&'static str` for `default_value`, and four
+/// verbs wrote `"humble"` inline. That made `RosEdition::default()` and the CLI
+/// surface two independent declarations of one fact, agreeing by coincidence.
+/// Keep this beside the `#[default]` below; they are the same decision.
+pub const DEFAULT_ROS_EDITION: &str = "humble";
+
 /// ROS 2 edition for type hash generation
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RosEdition {

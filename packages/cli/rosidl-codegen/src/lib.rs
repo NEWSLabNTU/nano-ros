@@ -37,7 +37,7 @@ pub use generator::{
 pub use idl_generator::{GeneratedIdlCode, extract_annotations, generate_idl_file};
 pub use types::{
     C_DEFAULT_SEQUENCE_CAPACITY, C_DEFAULT_STRING_CAPACITY, CPP_DEFAULT_SEQUENCE_CAPACITY,
-    CPP_DEFAULT_STRING_CAPACITY, CodegenBackend, FieldTypeExt, IdlTypeExt,
+    CPP_DEFAULT_STRING_CAPACITY, CodegenBackend, DEFAULT_ROS_EDITION, FieldTypeExt, IdlTypeExt,
     NROS_DEFAULT_SEQUENCE_CAPACITY, NROS_DEFAULT_STRING_CAPACITY, NrosCodegenMode, RosEdition,
     c_array_suffix_for_field, c_type_for_constant, c_type_for_field, compute_serialized_size_max,
     cpp_type_for_field, escape_keyword, idl_constant_value_to_rust, nros_type_for_constant,

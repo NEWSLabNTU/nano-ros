@@ -21,6 +21,7 @@ include_guard(GLOBAL)
 
 # phase-347 W3 — `NROS_RMW_KNOWN` / `nros_rmw_is_known()`, derived from the
 # per-backend `nros-rmw.toml` descriptors (RFC-0071).
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 
 # nros_feature_set(<out>
@@ -50,20 +51,10 @@ function(nros_feature_set out_var)
     # RFC-0056: the edition drives the runtime keyexpr format, which must match
     # the codegen-baked type_hash. Hardcoding it here is a WIRE mismatch, not a
     # build error, so an unknown value fails loudly instead of defaulting.
-    set(_edition "${_FS_EDITION}")
-    if(NOT _edition AND DEFINED NANO_ROS_ROS_EDITION AND NOT NANO_ROS_ROS_EDITION STREQUAL "")
-        set(_edition "${NANO_ROS_ROS_EDITION}")
-    endif()
-    if(NOT _edition)
-        set(_edition humble)
-    endif()
-    if(NOT (_edition STREQUAL "humble" OR _edition STREQUAL "iron"
-            OR _edition STREQUAL "jazzy"))
-        message(FATAL_ERROR
-            "nros_feature_set: unknown ROS edition '${_edition}' "
-            "(expected: humble, iron, jazzy). The edition selects a cargo "
-            "feature that must match the codegen-baked type_hash.")
-    endif()
+    # phase-405 W3 — resolution AND validation live in NanoRosRosEdition.cmake,
+    # which is now the one file allowed to spell an edition literal. This ladder
+    # was the model the other five sites were supposed to copy and four did not.
+    _nros_resolve_ros_edition("${_FS_EDITION}" _edition)
     set(_feats "ros-${_edition}")
 
     # ---- rmw ---------------------------------------------------------------
