@@ -967,22 +967,70 @@ impl SystemToml {
         ))
     }
 
-    /// Phase 256 Wave 8 — the ROS domain id for `target`: `[deploy.<target>].domain_id`
-    /// overrides `[system].domain_id`. The RFC-0004 §3.1 ladder for `domain_id`
-    /// (CLI flag is a future rung). Both codegen paths resolve through this.
+    /// The `[host.<name>]` an image runs on, if it names one.
+    ///
+    /// Issue 0951 — `domain_id` and `locator` are a MACHINE's runtime facts, so
+    /// they live on `[host.*]`. But the id a caller resolves is an IMAGE id, and
+    /// the two are not the same name: `examples/workspaces/rust` builds images
+    /// `native_robot1` / `native_robot2` for hosts `robot1` / `robot2`. The link
+    /// is the image's `args` — the launch-argument bindings that are already
+    /// "how an image selects a MACHINE" (see [`super::image::ImageBlock::args`]).
+    ///
+    /// Matched by VALUE, not by a hardcoded `host` argument name. Every in-tree
+    /// binding happens to spell it `host`, but the name belongs to the
+    /// workspace's launch file, and a workspace spelling it `machine` would
+    /// silently get no host — the silent-skip shape. An argument whose value
+    /// names a declared host IS the binding, whatever the argument is called.
+    ///
+    /// Ambiguity is refused rather than guessed: two arguments naming two
+    /// different hosts is not a question this can answer, and picking the first
+    /// would depend on map order.
+    #[must_use]
+    pub fn host_for_image(&self, image_id: &str) -> Option<&HostTarget> {
+        let img = self.image_for(image_id)?;
+        let mut named = img
+            .args
+            .values()
+            .filter_map(|v| self.host.get_key_value(v.as_str()));
+        match (named.next(), named.next()) {
+            (Some((_, h)), None) => Some(h),
+            _ => None,
+        }
+    }
+
+    /// Phase 256 Wave 8 / issue 0951 — the ROS domain id for `target`:
+    /// the bound `[host.<name>].domain_id`, then the DEPRECATED
+    /// `[deploy.<target>].domain_id`, then `[system].domain_id`. The RFC-0004
+    /// §3.1 ladder (a CLI flag is a future rung). Both codegen paths resolve
+    /// through this.
+    ///
+    /// The host rung is what makes the deprecation lint's own advice true: it
+    /// tells users to move `domain_id` to `[host.*]`, and before this nothing
+    /// read it there — `SystemToml::host` had no production reader at all, so
+    /// following the advice silently baked the `[system]` default into
+    /// firmware.
     pub fn resolved_domain_id(&self, target: Option<&str>) -> u32 {
         target
-            .and_then(|t| self.deploy.get(t))
-            .and_then(|dt| dt.domain_id)
+            .and_then(|t| self.host_for_image(t).and_then(|h| h.domain_id))
+            .or_else(|| {
+                target
+                    .and_then(|t| self.deploy.get(t))
+                    .and_then(|dt| dt.domain_id)
+            })
             .unwrap_or(self.system.domain_id)
     }
 
-    /// Phase 256 Wave 8 — the locator for `target`: `[deploy.<target>].locator`
-    /// overrides `[system].locator` (`None` when neither sets it).
+    /// Phase 256 Wave 8 / issue 0951 — the locator for `target`: the bound
+    /// `[host.<name>].locator`, then the DEPRECATED `[deploy.<target>].locator`,
+    /// then `[system].locator` (`None` when none set it).
     pub fn resolved_locator(&self, target: Option<&str>) -> Option<String> {
         target
-            .and_then(|t| self.deploy.get(t))
-            .and_then(|dt| dt.locator.clone())
+            .and_then(|t| self.host_for_image(t).and_then(|h| h.locator.clone()))
+            .or_else(|| {
+                target
+                    .and_then(|t| self.deploy.get(t))
+                    .and_then(|dt| dt.locator.clone())
+            })
             .or_else(|| self.system.locator.clone())
     }
 
@@ -1961,6 +2009,69 @@ board = "native"
         assert_eq!(b.profile.as_deref(), Some("debug"), "the block wins");
         assert_eq!(b.rmw.as_deref(), Some("cyclonedds"), "still inherited");
         assert!(sys.image_for("nope").is_none());
+    }
+
+    /// Issue 0951 — `domain_id` / `locator` come from the `[host.*]` the image
+    /// is bound to. The deprecation lint has told users to move them there
+    /// since the `[deploy.*]` retirement began, and nothing read them there:
+    /// following the advice silently baked the `[system]` default instead.
+    #[test]
+    fn runtime_values_resolve_through_the_bound_host() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\nlocator=\"tcp/sys:7447\"\n\
+             [host.robot1]\ndomain_id=7\nlocator=\"tcp/r1:7447\"\n\
+             [host.robot2]\n\
+             [image.native_robot1]\nboard=\"native\"\nargs={ host = \"robot1\" }\n\
+             [image.native_robot2]\nboard=\"native\"\nargs={ host = \"robot2\" }\n\
+             [image.plain]\nboard=\"native\"\n",
+        )
+        .unwrap();
+
+        // The image names its machine through `args`; the machine states the
+        // runtime facts.
+        assert_eq!(sys.resolved_domain_id(Some("native_robot1")), 7);
+        assert_eq!(
+            sys.resolved_locator(Some("native_robot1")).as_deref(),
+            Some("tcp/r1:7447")
+        );
+        // A host that overrides nothing falls to `[system]` — not to the other
+        // host's values.
+        assert_eq!(sys.resolved_domain_id(Some("native_robot2")), 1);
+        assert_eq!(
+            sys.resolved_locator(Some("native_robot2")).as_deref(),
+            Some("tcp/sys:7447")
+        );
+        // An image bound to no host is a system-level answer.
+        assert_eq!(sys.resolved_domain_id(Some("plain")), 1);
+        assert_eq!(sys.resolved_domain_id(None), 1);
+    }
+
+    /// The binding is matched by VALUE, so the launch argument may be called
+    /// anything. Hardcoding `host` would silently place nothing for a workspace
+    /// that spells it `machine`.
+    #[test]
+    fn the_binding_argument_may_be_named_anything() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\n\
+             [host.robot1]\ndomain_id=7\n\
+             [image.a]\nboard=\"native\"\nargs={ machine = \"robot1\" }\n",
+        )
+        .unwrap();
+        assert_eq!(sys.resolved_domain_id(Some("a")), 7);
+    }
+
+    /// Two arguments naming two different hosts is not a question this can
+    /// answer, and picking the first would depend on map order.
+    #[test]
+    fn two_bound_hosts_are_refused_rather_than_guessed() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=1\n\
+             [host.a]\ndomain_id=7\n[host.b]\ndomain_id=9\n\
+             [image.i]\nboard=\"native\"\nargs={ x = \"a\", y = \"b\" }\n",
+        )
+        .unwrap();
+        assert!(sys.host_for_image("i").is_none());
+        assert_eq!(sys.resolved_domain_id(Some("i")), 1, "falls to [system]");
     }
 
     /// Phase 256 Wave 8 — `[deploy.<t>].domain_id`/`.locator` override the
