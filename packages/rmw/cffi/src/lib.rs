@@ -2328,8 +2328,10 @@ impl Session for CffiSession {
         let rc = unsafe {
             f(
                 &view as *const NrosRmwSession,
-                Some(node_visit_trampoline),
-                &mut cb as *mut _ as *mut core::ffi::c_void,
+                generated::rmw_node_visitor_t {
+                    visit: Some(node_visit_trampoline),
+                    ctx: &mut cb as *mut _ as *mut core::ffi::c_void,
+                },
             )
         };
         if rc == NROS_RMW_RET_OK {
@@ -2364,8 +2366,10 @@ impl Session for CffiSession {
             f(
                 &view as *const NrosRmwSession,
                 false,
-                Some(names_and_types_visit_trampoline),
-                &mut cb as *mut _ as *mut core::ffi::c_void,
+                generated::rmw_names_and_types_visitor_t {
+                    visit: Some(names_and_types_visit_trampoline),
+                    ctx: &mut cb as *mut _ as *mut core::ffi::c_void,
+                },
             )
         };
         if rc == NROS_RMW_RET_OK {
@@ -2430,8 +2434,10 @@ impl Session for CffiSession {
                         name,
                         ns,
                         false,
-                        Some(names_and_types_visit_trampoline),
-                        ctx,
+                        generated::rmw_names_and_types_visitor_t {
+                            visit: Some(names_and_types_visit_trampoline),
+                            ctx,
+                        },
                     )
                 }
             }
@@ -2449,8 +2455,10 @@ impl Session for CffiSession {
                         &view as *const NrosRmwSession,
                         name,
                         ns,
-                        Some(names_and_types_visit_trampoline),
-                        ctx,
+                        generated::rmw_names_and_types_visitor_t {
+                            visit: Some(names_and_types_visit_trampoline),
+                            ctx,
+                        },
                     )
                 }
             }
@@ -2491,8 +2499,10 @@ impl Session for CffiSession {
                 &view as *const NrosRmwSession,
                 topic_buf.as_ptr() as *const core::ffi::c_char,
                 false,
-                Some(endpoint_info_visit_trampoline),
-                &mut cb as *mut _ as *mut core::ffi::c_void,
+                generated::rmw_topic_endpoint_info_visitor_t {
+                    visit: Some(endpoint_info_visit_trampoline),
+                    ctx: &mut cb as *mut _ as *mut core::ffi::c_void,
+                },
             )
         };
         if rc == NROS_RMW_RET_OK {
@@ -2514,8 +2524,10 @@ impl Session for CffiSession {
         let rc = unsafe {
             f(
                 &view as *const NrosRmwSession,
-                Some(names_and_types_visit_trampoline),
-                &mut cb as *mut _ as *mut core::ffi::c_void,
+                generated::rmw_names_and_types_visitor_t {
+                    visit: Some(names_and_types_visit_trampoline),
+                    ctx: &mut cb as *mut _ as *mut core::ffi::c_void,
+                },
             )
         };
         if rc == NROS_RMW_RET_OK {

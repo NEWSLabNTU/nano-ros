@@ -1336,11 +1336,11 @@ unsafe extern "C" fn ping_session_trampoline<R: RustBackend>(
 /// a truncated node name is a different, plausible node.
 unsafe extern "C" fn get_node_names_trampoline<R: RustBackend>(
     session: *const NrosRmwSession,
-    visit: Option<
-        unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, *const c_char) -> bool,
-    >,
-    ctx: *mut c_void,
+    // phase-406 W2 — the pair as one argument. The NODE visitor: its callback
+    // takes an enclave, which the names-and-types one does not.
+    visitor: crate::generated::rmw_node_visitor_t,
 ) -> NrosRmwRet {
+    let (visit, ctx) = (visitor.visit, visitor.ctx);
     let Some(visit) = visit else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
@@ -1436,15 +1436,8 @@ macro_rules! names_and_types_trampoline {
         unsafe extern "C" fn $name<R: RustBackend>(
             session: *const NrosRmwSession,
             no_demangle: bool,
-            visit: Option<
-                unsafe extern "C" fn(
-                    *mut c_void,
-                    *const c_char,
-                    *const *const c_char,
-                    usize,
-                ) -> bool,
-            >,
-            ctx: *mut c_void,
+            // phase-406 W2 — the pair as one argument.
+            visitor: crate::generated::rmw_names_and_types_visitor_t,
         ) -> NrosRmwRet {
             // `no_demangle` asks for the WIRE spelling. This backend reports ROS
             // names, so honouring it would mean re-mangling what was just
@@ -1453,23 +1446,16 @@ macro_rules! names_and_types_trampoline {
             if no_demangle {
                 return NROS_RMW_RET_UNSUPPORTED;
             }
-            $crate::names_and_types_body!(R, $method, session, visit, ctx)
+            $crate::names_and_types_body!(R, $method, session, visitor)
         }
     };
     ($name:ident, $method:ident) => {
         unsafe extern "C" fn $name<R: RustBackend>(
             session: *const NrosRmwSession,
-            visit: Option<
-                unsafe extern "C" fn(
-                    *mut c_void,
-                    *const c_char,
-                    *const *const c_char,
-                    usize,
-                ) -> bool,
-            >,
-            ctx: *mut c_void,
+            // phase-406 W2 — the pair as one argument.
+            visitor: crate::generated::rmw_names_and_types_visitor_t,
         ) -> NrosRmwRet {
-            $crate::names_and_types_body!(R, $method, session, visit, ctx)
+            $crate::names_and_types_body!(R, $method, session, visitor)
         }
     };
 }
@@ -1478,8 +1464,11 @@ macro_rules! names_and_types_trampoline {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! names_and_types_body {
-    ($R:ident, $method:ident, $session:ident, $visit:ident, $ctx:ident) => {{
-        let Some(visit) = $visit else {
+    ($R:ident, $method:ident, $session:ident, $visitor:ident) => {{
+        // phase-406 W2 — unpack HERE: a `let` in the caller's expansion is not
+        // visible in this one (macro hygiene), so the struct crosses instead.
+        let (visit_fn, ctx) = ($visitor.visit, $visitor.ctx);
+        let Some(visit) = visit_fn else {
             return NROS_RMW_RET_INVALID_ARGUMENT;
         };
         let Some(s) = (unsafe { session_mut::<$R::Session>($session.cast_mut()) }) else {
@@ -1507,7 +1496,7 @@ macro_rules! names_and_types_body {
                 ptrs[n] = type_bufs[n].as_ptr() as *const c_char;
                 n += 1;
             }
-            unsafe { visit($ctx, name_buf.as_ptr() as *const c_char, ptrs.as_ptr(), n) }
+            unsafe { visit(ctx, name_buf.as_ptr() as *const c_char, ptrs.as_ptr(), n) }
         };
 
         match Session::$method(s, &mut cb) {
@@ -1540,12 +1529,11 @@ unsafe fn by_node_impl<R: RustBackend>(
     node_name: *const c_char,
     node_namespace: *const c_char,
     no_demangle: bool,
-    visit: Option<
-        unsafe extern "C" fn(*mut c_void, *const c_char, *const *const c_char, usize) -> bool,
-    >,
-    ctx: *mut c_void,
+    // phase-406 W2 — the pair as one argument.
+    visitor: crate::generated::rmw_names_and_types_visitor_t,
     kind: nros_rmw::GraphEntityKind,
 ) -> NrosRmwRet {
+    let (visit, ctx) = (visitor.visit, visitor.ctx);
     // `no_demangle` asks for the WIRE spelling; we report ROS names, so
     // honouring it would mean re-mangling what was just demangled. Refused
     // rather than ignored — ignoring answers a different question than asked.
@@ -1613,15 +1601,8 @@ macro_rules! by_node_trampoline {
             node_name: *const c_char,
             node_namespace: *const c_char,
             no_demangle: bool,
-            visit: Option<
-                unsafe extern "C" fn(
-                    *mut c_void,
-                    *const c_char,
-                    *const *const c_char,
-                    usize,
-                ) -> bool,
-            >,
-            ctx: *mut c_void,
+            // phase-406 W2 — the pair as one argument.
+            visitor: crate::generated::rmw_names_and_types_visitor_t,
         ) -> NrosRmwRet {
             unsafe {
                 by_node_impl::<R>(
@@ -1629,8 +1610,7 @@ macro_rules! by_node_trampoline {
                     node_name,
                     node_namespace,
                     no_demangle,
-                    visit,
-                    ctx,
+                    visitor,
                     nros_rmw::GraphEntityKind::$kind,
                 )
             }
@@ -1642,15 +1622,8 @@ macro_rules! by_node_trampoline {
             session: *const NrosRmwSession,
             node_name: *const c_char,
             node_namespace: *const c_char,
-            visit: Option<
-                unsafe extern "C" fn(
-                    *mut c_void,
-                    *const c_char,
-                    *const *const c_char,
-                    usize,
-                ) -> bool,
-            >,
-            ctx: *mut c_void,
+            // phase-406 W2 — the pair as one argument.
+            visitor: crate::generated::rmw_names_and_types_visitor_t,
         ) -> NrosRmwRet {
             unsafe {
                 by_node_impl::<R>(
@@ -1658,8 +1631,7 @@ macro_rules! by_node_trampoline {
                     node_name,
                     node_namespace,
                     false,
-                    visit,
-                    ctx,
+                    visitor,
                     nros_rmw::GraphEntityKind::$kind,
                 )
             }
@@ -1688,10 +1660,11 @@ unsafe fn endpoint_info_impl<R: RustBackend>(
     session: *const NrosRmwSession,
     topic_name: *const c_char,
     no_mangle: bool,
-    visit: Option<unsafe extern "C" fn(*mut c_void, *const rmw_topic_endpoint_info_t) -> bool>,
-    ctx: *mut c_void,
+    // phase-406 W2 — the pair as one argument.
+    visitor: crate::generated::rmw_topic_endpoint_info_visitor_t,
     publishers: bool,
 ) -> NrosRmwRet {
+    let (visit, ctx) = (visitor.visit, visitor.ctx);
     if no_mangle {
         return NROS_RMW_RET_UNSUPPORTED;
     }
@@ -1767,14 +1740,10 @@ macro_rules! endpoint_info_trampoline {
             session: *const NrosRmwSession,
             topic_name: *const c_char,
             no_mangle: bool,
-            visit: Option<
-                unsafe extern "C" fn(*mut c_void, *const rmw_topic_endpoint_info_t) -> bool,
-            >,
-            ctx: *mut c_void,
+            // phase-406 W2 — the pair as one argument.
+            visitor: crate::generated::rmw_topic_endpoint_info_visitor_t,
         ) -> NrosRmwRet {
-            unsafe {
-                endpoint_info_impl::<R>(session, topic_name, no_mangle, visit, ctx, $publishers)
-            }
+            unsafe { endpoint_info_impl::<R>(session, topic_name, no_mangle, visitor, $publishers) }
         }
     };
 }

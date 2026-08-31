@@ -108,6 +108,54 @@ typedef bool (*rmw_names_and_types_visit_fn)(void *ctx, const char *name,
 typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
     const rmw_topic_endpoint_info_t *info);
 
+/** A visitor: the function and the context it needs — phase-406 W2.
+ *
+ *  Upstream fills a heap-owning out-parameter the caller must `fini`
+ *  (`rmw_names_and_types_t`, `rcutils_string_array_t`). We visit instead: one
+ *  call per entry, strings borrowed for the call, no allocation and nothing to
+ *  leak — which is what makes the graph family available on a target with no
+ *  allocator at all.
+ *
+ *  The pair was TWO arguments on twelve slots, and they are meaningless apart:
+ *  a `visit` without its `ctx` cannot find its state, and a `ctx` without its
+ *  `visit` goes nowhere. Grouping them is the same move as the type support,
+ *  and it makes "pass one, forget the other" unrepresentable rather than merely
+ *  discouraged.
+ *
+ *  `fn == NULL` is INVALID_ARGUMENT, never a silent no-op: a graph query that
+ *  visits nothing is indistinguishable from an empty graph, which is the exact
+ *  confusion issue 0903 cost days to.
+ *
+ *  Passed BY VALUE — two words, and nothing is written back through it. */
+#define NROS_RMW_VISITOR_DEFINED 1
+typedef struct rmw_node_visitor_t {
+    /* Named `visit`, not `fn`: `fn` is a Rust keyword, and this struct is
+       mirrored into Rust by bindgen (RFC-0054 — the C header is the SSoT,
+       so the C side is where a name has to be chosen that both languages
+       can spell). */
+    rmw_node_visit_fn visit;
+    void *ctx;
+} rmw_node_visitor_t;
+
+typedef struct rmw_names_and_types_visitor_t {
+    /* Named `visit`, not `fn`: `fn` is a Rust keyword, and this struct is
+       mirrored into Rust by bindgen (RFC-0054 — the C header is the SSoT,
+       so the C side is where a name has to be chosen that both languages
+       can spell). */
+    rmw_names_and_types_visit_fn visit;
+    void *ctx;
+} rmw_names_and_types_visitor_t;
+
+typedef struct rmw_topic_endpoint_info_visitor_t {
+    /* Named `visit`, not `fn`: `fn` is a Rust keyword, and this struct is
+       mirrored into Rust by bindgen (RFC-0054 — the C header is the SSoT,
+       so the C side is where a name has to be chosen that both languages
+       can spell). */
+    rmw_topic_endpoint_info_visit_fn visit;
+    void *ctx;
+} rmw_topic_endpoint_info_visitor_t;
+
+
 /* Phase 376 W5 — teardown and loan-return REPORT.
  *
  * These six returned `void`. That was never a target constraint: upstream
@@ -987,45 +1035,45 @@ typedef struct nros_rmw_vtable_t {
      *  no such list, so the enclave is simply a fourth argument, NULL where
      *  untracked. Recorded in the checker's grouping table. */
     rmw_ret_t (*get_node_names)(const rmw_session_t *session,
-        rmw_node_visit_fn visit, void *ctx);
+        rmw_node_visitor_t visitor);
 
     /** Upstream `rmw_get_topic_names_and_types`. */
     rmw_ret_t (*get_topic_names_and_types)(const rmw_session_t *session,
-        bool no_demangle, rmw_names_and_types_visit_fn visit, void *ctx);
+        bool no_demangle, rmw_names_and_types_visitor_t visitor);
 
     /** Upstream `rmw_get_service_names_and_types`. */
     rmw_ret_t (*get_service_names_and_types)(const rmw_session_t *session,
-        rmw_names_and_types_visit_fn visit, void *ctx);
+        rmw_names_and_types_visitor_t visitor);
 
     /** Upstream `rmw_get_publisher_names_and_types_by_node`. */
     rmw_ret_t (*get_publisher_names_and_types_by_node)(const rmw_session_t *session,
         const char *node_name, const char *node_namespace, bool no_demangle,
-        rmw_names_and_types_visit_fn visit, void *ctx);
+        rmw_names_and_types_visitor_t visitor);
 
     /** Upstream `rmw_get_subscriber_names_and_types_by_node`. */
     rmw_ret_t (*get_subscriber_names_and_types_by_node)(const rmw_session_t *session,
         const char *node_name, const char *node_namespace, bool no_demangle,
-        rmw_names_and_types_visit_fn visit, void *ctx);
+        rmw_names_and_types_visitor_t visitor);
 
     /** Upstream `rmw_get_service_names_and_types_by_node`. */
     rmw_ret_t (*get_service_names_and_types_by_node)(const rmw_session_t *session,
         const char *node_name, const char *node_namespace,
-        rmw_names_and_types_visit_fn visit, void *ctx);
+        rmw_names_and_types_visitor_t visitor);
 
     /** Upstream `rmw_get_client_names_and_types_by_node`. */
     rmw_ret_t (*get_client_names_and_types_by_node)(const rmw_session_t *session,
         const char *node_name, const char *node_namespace,
-        rmw_names_and_types_visit_fn visit, void *ctx);
+        rmw_names_and_types_visitor_t visitor);
 
     /** Upstream `rmw_get_publishers_info_by_topic`. */
     rmw_ret_t (*get_publishers_info_by_topic)(const rmw_session_t *session,
         const char *topic_name, bool no_mangle,
-        rmw_topic_endpoint_info_visit_fn visit, void *ctx);
+        rmw_topic_endpoint_info_visitor_t visitor);
 
     /** Upstream `rmw_get_subscriptions_info_by_topic`. */
     rmw_ret_t (*get_subscriptions_info_by_topic)(const rmw_session_t *session,
         const char *topic_name, bool no_mangle,
-        rmw_topic_endpoint_info_visit_fn visit, void *ctx);
+        rmw_topic_endpoint_info_visitor_t visitor);
 
     /* ---- Content filtering (RFC-0075-era DDS feature; NULL elsewhere) ---- */
     /** Upstream `rmw_subscription_set_content_filter`.
