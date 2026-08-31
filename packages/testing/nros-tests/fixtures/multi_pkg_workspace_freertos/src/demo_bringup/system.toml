@@ -19,7 +19,9 @@ rmw            = "zenoh"
 domain_id      = 0
 locator        = "tcp/10.0.2.2:7447"
 
-[deploy.qemu-mps2-an385]
-kind   = "freertos"
-target = "thumbv7m-none-eabi"
-board  = "qemu-mps2-an385"
+# Issue 0951 — a BOARD BUILD is an image, not a placement. `kind` here named a
+# platform family, which `[image.*]` reads off the board, and `target` restated
+# the rustc triple the board descriptor already states. `launch` loses its
+# `launch/` prefix: an image's value is resolved against that directory.
+[image.qemu-mps2-an385]
+board = "qemu-mps2-an385"
