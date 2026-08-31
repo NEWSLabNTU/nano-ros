@@ -123,7 +123,16 @@ fi
 # Still exit 0: these are missing tools and build products, not failures, and
 # `check-fast` must stay green on a bare worktree. What changes is only that
 # the sentence stops overstating what happened.
-skips="$(pwd)/build/check-skips/checks.skipped"
+# Derive the ledger path, do NOT spell it (RFC-0070). `nros_check_skip` writes
+# through `nros_build_dir`, which honours `NROS_BUILD_ROOT` and resolves against
+# the REPO rather than `$PWD` — so a literal `$(pwd)/build/...` reads a
+# different file in a git worktree or with the cache root moved, and every skip
+# is invisible exactly where it was recorded. Found while adding
+# `action-client-arena-budget`, which skips whenever nothing is built and
+# therefore skips in most CI runs.
+# shellcheck source=scripts/build/check-skip.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-skip.sh"
+skips="$(nros_build_dir "$NROS_KIND_CHECK_SKIPS")/checks.skipped"
 skipped=0
 if [ -s "$skips" ]; then
     skipped=$(wc -l <"$skips")

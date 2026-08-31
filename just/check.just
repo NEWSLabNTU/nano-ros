@@ -141,7 +141,7 @@ fast-serial: \
     interface-glob-configure-depends \
     wait-evidence-discarded \
     path-env-fingerprints retired-platform-clock-symbols \
-    cmake-support-library message-bound-knobs \
+    cmake-support-library message-bound-knobs action-client-arena-budget \
     tests-can-fail
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
@@ -856,6 +856,34 @@ message-bound-knobs:
         exit 0
     fi
     ./tests/cmake-message-bounds-tests.sh
+
+# Issue 0900 (option 3) -- does an image's NROS_EXECUTOR_ACTION_CLIENTS agree
+# with what it actually LINKS? The knob decides how many executor arena slots
+# are budgeted at the worst-case (ActionClient) size, and the arena is inline on
+# the TASK STACK, so `just mem-report` cannot see it: the checkable thing is the
+# ENTITY that justifies the size, and `nm` reads a cross ELF perfectly well.
+# This is the only half of 0900 that reaches embedded images -- the
+# sidecar/metadata half cannot, because a cross-compiled component is
+# unprobeable by construction.
+#
+# Cheap where it matters: instant on a tree with nothing built (it exits 78 and
+# records a SKIP rather than reporting a pass over zero images), ~18 s on a
+# fully built 100 GB dev tree, which is one `nm` per image and no compilation.
+action-client-arena-budget:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _rc=0
+    python3 scripts/check-action-client-arena-budget.py || _rc=$?
+    if [ "$_rc" -eq 78 ]; then
+        # 78 is `lane-skip.sh`'s "I did no work", reused so there is ONE
+        # spelling of it. A gate that examined nothing must not read as a pass.
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip action-client-arena-budget \
+            "no built image with an attributable nros_node_config.rs in this tree"
+        exit 0
+    fi
+    exit "$_rc"
 
 abi-bindings:
     #!/usr/bin/env bash
