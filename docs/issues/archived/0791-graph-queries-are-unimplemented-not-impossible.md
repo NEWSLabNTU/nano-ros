@@ -2,10 +2,10 @@
 id: 791
 title: "We are visible in the ROS graph and cannot read it — 12 rmw vtable graph
   slots exist, all `None`, while both backends already run the discovery machinery"
-status: open
+status: resolved
 type: bug
 area: api, rmw
-related: [rfc-0035, rfc-0036, phase-376, phase-379, phase-381]
+related: [rfc-0035, rfc-0036, phase-376, phase-379, phase-381, phase-407, 0903, 0927]
 ---
 
 ## Problem
@@ -125,3 +125,51 @@ What the stage established that a planner should start from:
 * **RFC-0036's "no dynamic discovery" line should be narrowed** to say what is
   actually true: no discovery-driven *entity matching* (peers are static), but
   the graph is observable and we do not yet observe it.
+
+## Resolution, 2026-08-31 — already done, and the issue text had gone stale
+
+Re-measured before picking this up as work, and all three of the "each
+checkable" facts are now false. The reading half was wired by phase-381 W3 and
+made to actually return data by issue 0903 (the `@ros2_lv` liveliness
+SUBSCRIBER with history, replacing the get that only ever saw a subset of the
+domain's tokens).
+
+**"Every one is `None`."** Eleven of the twelve are filled, by
+`RustBackendAdapter::<R>::VTABLE`. The claim was read off `EMPTY_VTABLE`, which
+is the DEFAULT a backend overrides — not what any live backend presents:
+
+    get_node_names                          Some
+    get_topic_names_and_types               Some
+    get_service_names_and_types             Some
+    get_publisher_names_and_types_by_node   Some
+    get_subscriber_names_and_types_by_node  Some
+    get_service_names_and_types_by_node     Some
+    get_client_names_and_types_by_node      Some
+    get_publishers_info_by_topic            Some
+    get_subscriptions_info_by_topic         Some
+    count_publishers                        Some
+    count_subscribers                       Some
+    node_get_graph_guard_condition          -- not filled, and DECIDED
+
+The twelfth is `not-supported` as of phase-407: guard conditions are a platform
+primitive the executor owns, not something a backend hands out, and nothing
+consumes graph-change events.
+
+**"No user-facing entry point exists in C, C++ or Rust."** All eleven have one
+in all three. The audit that suggested otherwise was searching for
+`get_subscriber_names_and_types_by_node`, which is the C spelling; Rust and C++
+say `get_subscription_...`. One name, three surfaces, and a grep that found two
+of them.
+
+**"We are visible in the graph and cannot read it."** No longer: issue 0903
+verified node and topic enumeration against a live `rmw_zenoh_cpp` node and got
+agreement with `ros2 node list` / `ros2 topic list`, and issue 0927 did the
+cyclonedds side once its probe was put on the right domain.
+
+## What this issue should be remembered for
+
+Not the gap, which closed, but how the gap was DESCRIBED. Two of the three
+checkable facts were read off the wrong artifact — `EMPTY_VTABLE` instead of the
+adapter's, and one language's spelling instead of three. Both are the same
+mistake in different clothes: measuring the thing that was easy to reach and
+reporting it as the thing that was asked about.
