@@ -179,10 +179,15 @@ pub fn run(args: Args) -> Result<()> {
             eprintln!("nros check: warning: {w}");
         }
         eprintln!(
-            "nros check: ok (system '{}', {} component(s), {} deploy target(s), {} overlay \
-             warning(s), {})",
+            // Issue 0951 — BOTH counts. `examples/workspaces/realtime-rust`
+            // has seven buildable images and zero deploy blocks, so the deploy
+            // count alone reported `0 deploy target(s)` for a workspace that
+            // builds seven things.
+            "nros check: ok (system '{}', {} component(s), {} image(s), {} deploy target(s), \
+             {} overlay warning(s), {})",
             sys.system.name,
             sys.components.len(),
+            sys.image.len(),
             sys.deploy.len(),
             overlay_warnings.len(),
             path.display()
