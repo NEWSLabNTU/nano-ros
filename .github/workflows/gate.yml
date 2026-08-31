@@ -15,7 +15,7 @@
 #
 # NOT folded here: the heavy test/build lanes (host-tests, nightly), release,
 # images, docs.
-name: pr-checks
+name: gate
 
 on:
   push:
@@ -36,7 +36,7 @@ on:
       - "rustfmt.toml"
       - "nros-sdk-index.toml"
       - ".gitmodules"
-      - ".github/workflows/pr-checks.yml"
+      - ".github/workflows/gate.yml"
   pull_request:
     # NO `branches:` filter and NO `paths:` filter. Both are load-bearing rather
     # than oversights, and they are the same trap on two different axes.
@@ -111,7 +111,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: pr-checks-${{ github.ref }}-${{ github.event_name }}
+  group: gate-${{ github.ref }}-${{ github.event_name }}
   # NEVER cancel a merge-queue run. Cancelling one makes the batch fail with no
   # verdict, and GitHub then ejects pull requests that were never actually
   # tested — the opposite of what the queue is for. Superseding is right
