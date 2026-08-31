@@ -354,6 +354,61 @@ fn an_unbounded_type_yields_no_receive_buffer_size() {
     );
 }
 
+/// A message whose bound is NOT a multiple of 4 — one `int8`, so 4 bytes of
+/// encapsulation plus 1.
+///
+/// `TestMsg` cannot test the framing allowance: a single `i32` bounds at 8,
+/// which is already aligned, so rounding is a no-op and the assertion passes
+/// whether or not the code rounds. This fixture exists so the test can fail.
+/// Only `schema::Message` — `subscription_rx_bytes` asks for nothing else, and
+/// the bound is a property of the schema rather than of the transport traits.
+struct OddBoundTestMsg;
+
+impl nros_serdes::schema::Message for OddBoundTestMsg {
+    const TYPE_NAME: &'static str = "test/msg/OddBoundTestMsg";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "data",
+        ty: nros_serdes::schema::FieldType::Int8,
+        offset: 0,
+    }];
+}
+
+/// The receive buffer carries the transport's framing allowance, so it is the
+/// bound rounded UP to 4 rather than the bound itself.
+///
+/// Measured, not assumed: a 25-byte message published by ROS 2 Humble over stock
+/// `rmw_cyclonedds` reaches the Cyclone backend as 28 bytes — the RTPS
+/// submessage's own alignment, applied by the sender. A buffer sized to the
+/// exact bound refuses it, correctly and with the message lost. See
+/// `rmw_type_registry::transport_framed`.
+#[test]
+fn the_receive_buffer_allows_for_transport_framing() {
+    let bound = nros_serdes::size::max_serialized_bound::<OddBoundTestMsg>().unwrap();
+    assert_ne!(
+        bound % 4,
+        0,
+        "this fixture only proves anything while its bound is misaligned"
+    );
+    assert_eq!(
+        crate::rmw_type_registry::subscription_rx_bytes::<OddBoundTestMsg>(
+            crate::config::DEFAULT_RX_BUF_SIZE
+        ),
+        Some(bound.next_multiple_of(4)),
+        "the receive buffer must hold what the transport delivers, not just what \
+         the message measures"
+    );
+
+    // An already-aligned type must not be inflated.
+    let aligned = nros_serdes::size::max_serialized_bound::<TestMsg>().unwrap();
+    assert_eq!(aligned % 4, 0, "TestMsg is the aligned control case");
+    assert_eq!(
+        crate::rmw_type_registry::subscription_rx_bytes::<TestMsg>(
+            crate::config::DEFAULT_RX_BUF_SIZE
+        ),
+        Some(aligned),
+    );
+}
+
 /// A type whose bound EXCEEDS the ceiling keeps the ceiling. Growing here would
 /// spend arena the caller never budgeted.
 #[test]

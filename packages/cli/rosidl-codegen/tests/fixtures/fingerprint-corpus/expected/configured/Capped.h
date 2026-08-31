@@ -85,7 +85,7 @@ const nros_message_type_t* fingerprint_corpus_msg_capped_get_type_support(void);
 /// publish helper below uses that one; a RECEIVE buffer must hold either, so a
 /// subscription wants the larger.
 #define FINGERPRINT_CORPUS_MSG_CAPPED_TX_MAX_SERIALIZED_SIZE 157
-#define FINGERPRINT_CORPUS_MSG_CAPPED_RX_MAX_SERIALIZED_SIZE 157
+#define FINGERPRINT_CORPUS_MSG_CAPPED_RX_MAX_SERIALIZED_SIZE 160
 
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the

@@ -64,8 +64,14 @@ pub const INVENTORY_CMAKE_NAME: &str = "nros_message_bounds.cmake";
 ///
 /// The two encodings are kept apart because they genuinely differ: XCDR2 adds a
 /// 4-byte DHEADER and aligns 8-byte primitives to 4 instead of 8. `tx` is the
-/// XCDR1 number because this stack WRITES XCDR1; `rx` is the larger of the two
-/// because a receive buffer must hold either.
+/// XCDR1 number because this stack WRITES XCDR1; `rx` is the larger of the two,
+/// because a receive buffer must hold either, rounded up by
+/// [`transport_framed`], because what a transport DELIVERS can exceed the
+/// message by its own framing alignment.
+///
+/// So `rx >= tx` always, and `rx` is not "the message under some encoding" — it
+/// is "what a buffer has to be able to accept". Anything sizing a receive buffer
+/// wants `rx`; anything reporting how big the message is wants `tx`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoundState {
     /// A bound exists. Bytes, encapsulation header included.
@@ -80,17 +86,61 @@ pub enum BoundState {
     Unresolved { reason: String },
 }
 
+/// Round a serialized size up to the 4-byte multiple a receive buffer must be
+/// able to hold.
+///
+/// The message is `n` bytes. What a transport DELIVERS can be up to three bytes
+/// more, and a receive buffer sized to `n` exactly will refuse those bytes
+/// rather than truncate them — correctly, and with the message lost.
+///
+/// Measured, not assumed. A 25-byte `std_msgs/String` published by ROS 2 Humble
+/// over stock `rmw_cyclonedds` arrives at the nano-ros Cyclone backend as:
+///
+/// ```text
+/// WIRE=len:28 hdr:00010000 cdr:25
+/// ```
+///
+/// The three extra bytes are the RTPS submessage's own 4-byte alignment, added
+/// by the SENDER; the encapsulation options read `0000` rather than `0003`, so
+/// the pad is not even discoverable from the header. The backend adds nothing —
+/// it hands back exactly what the wire gave it (issues 0969 / 0970) — which is
+/// precisely why the pad now reaches the buffer sizing instead of being absorbed
+/// by a re-encode.
+///
+/// This is deliberately NOT folded into the type's own bound. `MAX_SERIALIZED_SIZE`
+/// answers "how big is this message", and issue 0964 exists because that number
+/// had been fudged before; the answer stays exact. Framing is a property of the
+/// transport, so it is applied where a RECEIVE BUFFER is sized and nowhere else.
+/// TX keeps the exact figure: we write what we serialise.
+///
+/// Four is not a Cyclone number. RTPS aligns submessages to 4, and CDR itself
+/// aligns to at most 8 within a 4-aligned encapsulation, so 4 is the alignment
+/// any DDS peer can impose. A transport that framed more coarsely would need its
+/// own allowance, which is why this is a named function and not a `+ 3`.
+///
+/// The Rust runtime applies the same rounding in
+/// `nros_node::rmw_type_registry::subscription_rx_bytes`; both are cited from
+/// each other so the two cannot drift into disagreeing.
+pub const fn transport_framed(bound: usize) -> usize {
+    bound.next_multiple_of(4)
+}
+
 impl BoundState {
     /// The one place the two per-encoding answers become a TX/RX pair.
     ///
     /// The C header emitter (`generator::msg`) calls this too, so the constants
     /// in a generated header and the numbers in the inventory cannot drift into
     /// disagreeing about which encoding feeds which direction.
+    ///
+    /// RX takes the larger of the two encodings AND rounds it up to a 4-byte
+    /// multiple — see [`transport_framed`] for why that rounding is not padding
+    /// anyone chose. TX stays exact: we write what we serialise, and the framing
+    /// underneath is the transport's business.
     pub fn classify(xcdr1: &TypeBound, xcdr2: &TypeBound) -> Self {
         match (xcdr1, xcdr2) {
             (TypeBound::Bounded(a), TypeBound::Bounded(b)) => BoundState::Bounded {
                 tx: *a,
-                rx: *a.max(b),
+                rx: transport_framed(*a.max(b)),
             },
             // Unbounded wins over Unresolved when both appear: "there is no
             // bound" is a fact about the message, and it stays true however the
@@ -689,6 +739,44 @@ mod tests {
             .unwrap()
             .clone();
         assert_eq!(e.bound, BoundState::Bounded { tx: 12, rx: 16 });
+    }
+
+    /// RX carries the transport's framing allowance and TX does not.
+    ///
+    /// `classify` is a pure function of the two encoding bounds, so this pins
+    /// the rule directly rather than hunting a corpus type whose bound happens
+    /// to be misaligned. The numbers are chosen so every case is visible: 13
+    /// rounds to 16, 16 stays 16, and TX is 13 either way — we write what we
+    /// serialise.
+    #[test]
+    fn rx_allows_for_transport_framing_and_tx_does_not() {
+        assert_eq!(
+            BoundState::classify(&TypeBound::Bounded(13), &TypeBound::Bounded(13)),
+            BoundState::Bounded { tx: 13, rx: 16 },
+            "a 13-byte message can arrive as 16 — see `transport_framed`"
+        );
+        assert_eq!(
+            BoundState::classify(&TypeBound::Bounded(16), &TypeBound::Bounded(16)),
+            BoundState::Bounded { tx: 16, rx: 16 },
+            "an already-aligned bound must not be inflated"
+        );
+        // The larger encoding still wins, and THEN gets the allowance.
+        assert_eq!(
+            BoundState::classify(&TypeBound::Bounded(13), &TypeBound::Bounded(17)),
+            BoundState::Bounded { tx: 13, rx: 20 },
+            "RX is max(xcdr1, xcdr2) framed, not max(framed, framed) of one"
+        );
+    }
+
+    /// A 25-byte message is the one this was measured on: ROS 2 Humble over
+    /// stock `rmw_cyclonedds` delivers it as 28 bytes (`WIRE=len:28 cdr:25`),
+    /// and a buffer sized to 25 refuses it.
+    #[test]
+    fn the_measured_case_is_covered() {
+        assert_eq!(transport_framed(25), 28);
+        assert_eq!(transport_framed(28), 28);
+        assert_eq!(transport_framed(0), 0);
+        assert_eq!(transport_framed(1), 4);
     }
 
     /// The whole point of the wave: an unbounded type is a MARKER plus the
