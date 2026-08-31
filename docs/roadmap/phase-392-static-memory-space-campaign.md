@@ -518,7 +518,10 @@ is load-bearing and `rx_buffer_for!` is the right answer. The BUFFERED entries
 are trailing-allocated. Two entry shapes in one tree — a claim about "the arena
 buffer" that does not say which is not a claim about anything.
 
-**W3f — Cyclone consumes the hint, or records that it will not.** `grep
+**W3f — Cyclone consumes the hint, or records that it will not.** Filed as
+[issue 0958](../issues/0958-cyclonedds-ignores-rx-buffer-hint.md), which carries
+the evidence: `subscription_create` takes the options struct and names none of
+it, so the parameter is discarded at a comment. `grep
 rx_buffer_hint packages/rmw/cyclonedds/` returns nothing today, so a consumer on
 that backend gets no routing from any of the above. Either wire it or state in
 the RMW's own docs that the hint is zenoh-only, so a consumer stops looking for
