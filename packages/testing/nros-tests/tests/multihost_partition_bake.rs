@@ -171,17 +171,18 @@ fn per_host_resolves_partition_and_carry_their_binding() {
                  the per-host partition did not hold"
             );
         }
-        // The deploy SSOT still names this host: `[deploy.<host>]` with an
-        // explicit `nodes = [..]` placement (with `machine=` gone there is no
-        // launch-derived placement fact).
+        // The placement SSOT still names this host — `[host.<host>]` since
+        // issue 0939, with an explicit `nodes = [..]` (with `machine=` gone
+        // there is no launch-derived placement fact). It was `[deploy.<host>]`
+        // until the machine half moved out of that table.
         let system_toml = nros_tests::project_root().join(format!(
             "examples/workspaces/{ws}/src/demo_bringup/system.toml"
         ));
         let toml_raw = std::fs::read_to_string(&system_toml)
             .unwrap_or_else(|e| panic!("read {}: {e}", system_toml.display()));
         assert!(
-            toml_raw.contains(&format!("[deploy.{host}]")),
-            "[{ws}] system.toml lost `[deploy.{host}]`:\n{toml_raw}"
+            toml_raw.contains(&format!("[host.{host}]")),
+            "[{ws}] system.toml lost `[host.{host}]`:\n{toml_raw}"
         );
     }
 }

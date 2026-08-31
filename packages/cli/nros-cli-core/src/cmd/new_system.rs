@@ -377,6 +377,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
         },
         components: entries,
         deploy: Default::default(),
+        host: Default::default(),
         domains: Vec::new(),
         bridges: Vec::new(),
         models: Vec::new(),
