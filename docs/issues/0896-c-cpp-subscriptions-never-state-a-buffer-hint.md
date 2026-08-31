@@ -539,11 +539,21 @@ as BUF`. This issue noted the second buffer in passing ("a SECOND
 per-subscription buffer on the C path ... not addressed by `rx_buffer_hint` at
 all") but its layers are built around the hint, so nothing here closes it.
 
-It cannot be closed by passing a bigger number, either: `BUF` is a const generic
-fixed inside nros-cpp, and the C/C++ type is a string, so no call site names a
-type that could instantiate it. That is a design fork — monomorphise per type
-from codegen, or make the arena entry runtime-sized within a bounded pool — and
-it is scoped as **phase-392 W3e**, with the decision required before the code.
+**Corrected again, same day: there is no fork, and no monomorphisation is
+needed.** The paragraph above assumed `BUF` sizes an array. It does not.
+`add_arena_subscription_c_callback` computes
+`buffered_region_size(qos.depth, RX_BUF)` and calls `arena_alloc_with_trailing`;
+`SubBufferedRawCEntry` holds `buffer: BufferStrategy` over those trailing bytes,
+initialised at runtime. `RX_BUF` is consumed only as a value, so demoting it to
+a runtime argument is mechanical.
+
+What remains is the number itself — layers 1-2 emit it, layer 4 delivers it —
+and that has not changed. Scoped as
+[phase 408](../roadmap/phase-408-cpp-message-derived-buffers.md).
+
+The typed Rust entries (`SubInfoEntry`, `SubSafetyEntry`) DO hold
+`buffer: [u8; RX_BUF]`, which is why `rx_buffer_for!` exists for them and why
+this correction is about the buffered path specifically.
 
 **Third: the whole mechanism is zenoh-only today.** `grep rx_buffer_hint
 packages/rmw/cyclonedds/` returns nothing, so a Cyclone consumer sees no effect
