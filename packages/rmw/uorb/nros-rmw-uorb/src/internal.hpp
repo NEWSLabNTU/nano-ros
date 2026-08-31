@@ -19,29 +19,31 @@ rmw_ret_t session_destroy(rmw_session_t* session);
 rmw_ret_t session_drive_io(rmw_session_t* session, int32_t timeout_ms);
 
 /* ---- publisher.cpp ---- */
-rmw_ret_t publisher_create(const rmw_node_t* node, const char* topic_name,
-                                const char* type_name, const char* type_hash, uint32_t domain_id,
+rmw_ret_t publisher_create(const rmw_node_t* node,
+                                const rmw_message_type_support_t* type_support,
+                                const char* topic_name, uint32_t domain_id,
                                 const rmw_qos_profile_t* qos,
                                 const rmw_publisher_options_t* options,
                                 rmw_publisher_t* out);
 rmw_ret_t publisher_destroy(rmw_publisher_t* publisher);
-rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
-                                     size_t len);
+rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher, rmw_byte_span_t payload);
 
 /* ---- subscriber.cpp ---- */
-rmw_ret_t subscription_create(const rmw_node_t* node, const char* topic_name,
-                                 const char* type_name, const char* type_hash, uint32_t domain_id,
+rmw_ret_t subscription_create(const rmw_node_t* node,
+                                 const rmw_message_type_support_t* type_support,
+                                 const char* topic_name, uint32_t domain_id,
                                  const rmw_qos_profile_t* qos,
                                  const rmw_subscription_options_t* options,
                                  rmw_subscription_t* out);
 rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber);
-rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, uint8_t* buf,
-                                 size_t buf_len, size_t* out_len, bool* taken);
+rmw_ret_t subscription_take(const rmw_subscription_t* subscriber,
+                                 rmw_mut_byte_span_t* message, bool* taken);
 rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data);
 
 /* ---- service.cpp ---- */
-rmw_ret_t service_create(const rmw_node_t* node, const char* service_name,
-                                     const char* type_name, const char* type_hash,
+rmw_ret_t service_create(const rmw_node_t* node,
+                                     const rmw_service_type_support_t* type_support,
+                                     const char* service_name,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      rmw_service_t* out);
 rmw_ret_t service_destroy(rmw_service_t* server);
@@ -51,8 +53,9 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request);
 rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
                                   rmw_byte_span_t response);
 
-rmw_ret_t client_create(const rmw_node_t* node, const char* service_name,
-                                     const char* type_name, const char* type_hash,
+rmw_ret_t client_create(const rmw_node_t* node,
+                                     const rmw_service_type_support_t* type_support,
+                                     const char* service_name,
                                      uint32_t domain_id, const rmw_qos_profile_t* qos,
                                      rmw_client_t* out);
 rmw_ret_t client_destroy(rmw_client_t* client);

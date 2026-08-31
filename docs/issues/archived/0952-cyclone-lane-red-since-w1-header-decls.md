@@ -1,7 +1,7 @@
 ---
 id: 952
-title: "phase-406 W1 changed the cyclonedds DEFINITIONS and not the header
-  DECLARATIONS: C++ overloading made it silent, and the lane was red for days"
+title: "phase-406 W1 never reached the C++ backends: cyclonedds got new
+  definitions and stale declarations (silent, C++ overloads), uORB got neither"
 status: resolved
 type: bug
 area: rmw, build
@@ -41,21 +41,59 @@ other, which is harder to spot than an untouched file.
 
 ## Why nobody noticed for days
 
-`just ci l1` — the tier CLAUDE.md tells you to run before every push — does not
-build this backend. Neither does `check-fast`. The cyclone lane is
-`just check rmw-cyclonedds`, a cmake build nothing on the affordable tier
-invokes. So every phase-406 commit ran a green tier 1 over a backend that had
-not compiled since the first one.
+**The first draft of this issue said `just ci l1` does not build the C/C++
+backends. That is FALSE, and the correction is the useful part.** `check::build`
+lists them explicitly:
 
-This is the "a red lane answers one of two questions" entry in CLAUDE.md reached
-from the other side: not a lane that is red and therefore carries no signal, but
-a lane nobody RUNS and which therefore carries no signal either. The tier system
-is a deliberate affordability trade, and this is its cost — worth stating plainly
-rather than treating each instance as a surprise.
+    c cpp rmw-cyclonedds rmw-xrce rmw-uorb cli-tests node-std-tests
+
+and `l1` is `check cli-fresh check::fast check::build check::api-parity` +
+`test-unit` + `test-lane-contracts`. So tier 1 DOES cover this backend, and the
+tier is not at fault.
+
+What is true is the ORDERING. `just` runs that list in sequence and stops at the
+first failure, so `check::fast` — 146 gates — stands in front of `check::build`.
+**Any one fast-lane red masks every backend build behind it**, and the mask is
+silent: the run ends with `check-fast: 1 of 146 gate(s) FAILED`, which reads as
+one small problem, not as "and the other 200-odd lanes did not run".
+
+That is easy to hit precisely during an ABI break. `check-abi-bindings`
+regenerates and then runs `git diff --exit-code`, so it is RED for as long as
+regenerated bindings sit uncommitted — which is the normal working state while
+migrating an ABI. Every l1 run in that window dies before the backend builds.
+
+This issue does not establish which run, if any, was made during W1 — that is
+not recoverable from the tree, and guessing would be the same mistake as the
+first draft. What is established: the lane was red from `3084f7bd9`, tier 1
+covers it, and tier 1 has a failure mode that hides it exactly when an ABI
+change is in flight.
+
+`rmw-xrce` is the control: it is in the same `check::build` list, its smoke test
+broke the same way in this work, and tier 1 caught it — once the fast lane was
+green enough to reach `check::build`.
+
+## uORB had it too, and worse
+
+Found when tier 1 finally reached `check::build` after the cyclonedds fix.
+`nros-rmw-uorb` was not half-migrated — **W1 and W2 never touched it at all**.
+Its declarations AND definitions were both still the pre-W1 shape, so the crate
+itself compiled (both sides agreed) and only the vtable aggregate in
+`vtable.cpp` failed, with the same conversion error cyclonedds gave.
+
+That is the more dangerous version of this bug. Cyclonedds at least had a
+disagreement inside the backend; uORB was internally consistent and wrong, which
+no amount of reading one file can reveal. The only thing that catches it is
+building the slot table — which is exactly the step behind the masking order
+described above.
+
+Both backends are now migrated: 6 uORB declarations, 6 definitions, 7 call sites
+and one `uorb_test_take` adapter in `register_smoke.cpp`. `just check rmw-uorb`
+passes 1/1.
 
 ## Fix
 
-- The four `internal.hpp` declarations realigned with their definitions.
+- The four cyclonedds `internal.hpp` declarations realigned with their
+  definitions.
 - `cyclone_get_node_names` migrated to `rmw_node_visitor_t` (the same W2
   grouping its sibling slots got).
 - 33 call sites across 11 test files rewritten for the new create/publish/send
@@ -66,8 +104,14 @@ Verified: `just check rmw-cyclonedds` builds and `100% tests passed out of 22`.
 
 ## Not fixed here
 
-Nothing gates "every backend lane compiles" at a tier anyone runs per task. A
-`check-*` gate cannot fix it: the cost IS the build. The honest options are to
-put the backend compiles on a nightly that is triaged (`just nightly-triage`
-already classifies by step), or to accept that an ABI break must run the backend
-lanes explicitly and say so in the phase doc. Phase-406's doc now says so.
+The masking order. `check::fast` before `check::build` is the right order for
+FEEDBACK — cheap gates first — and the wrong one for COVERAGE, because a
+one-gate red silently withdraws every expensive lane behind it. Worth a separate
+decision, not a drive-by change to the tier everyone runs:
+
+* report which steps did not run when a step fails, so `1 of 146 FAILED` stops
+  reading like the whole story; or
+* let `check::build` run even when `check::fast` failed, and report both.
+
+Until then, an ABI break must run the backend lanes explicitly rather than
+trusting a red tier-1 to have reached them. Phase-406's doc now says so.

@@ -36,9 +36,8 @@ struct PublisherState {
 } // namespace
 
 rmw_ret_t publisher_create(const rmw_node_t* node,
+                                const rmw_message_type_support_t * /*type_support*/,
                                 const char *topic_name,
-                                const char * /*type_name*/,
-                                const char * /*type_hash*/,
                                 uint32_t /*domain_id*/,
                                 const rmw_qos_profile_t * /*qos*/,
                                 const rmw_publisher_options_t * /*options*/,
@@ -96,7 +95,10 @@ rmw_ret_t publisher_destroy(rmw_publisher_t *publisher) {
 }
 
 rmw_ret_t publisher_publish_raw(const rmw_publisher_t *publisher,
-                                     const uint8_t *data, size_t len) {
+                                     rmw_byte_span_t payload) {
+    /* phase-406 W2 — one span in, the old two names out. */
+    const uint8_t *data = payload.data;
+    size_t len = payload.len;
     if (publisher == nullptr || publisher->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

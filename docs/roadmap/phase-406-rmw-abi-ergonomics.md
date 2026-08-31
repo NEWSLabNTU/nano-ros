@@ -189,11 +189,14 @@ Recorded because the next ABI break will pay it again:
   TRANSPORT write callback `(ctx, *const u8, usize)`, which is shape-identical
   to a publish slot, and the rule needed narrowing to a publisher-typed
   receiver.
-* **`just ci l1` does not build the C/C++ backends** (issue 0952). The
-  cyclonedds lane was red from W1's commit until the end of the phase, across
-  every green tier-1 run. An ABI break must run `just check rmw-cyclonedds`,
-  `just check c` and `just check cpp` explicitly; the affordable tier cannot
-  see them.
+* **A red fast lane withdraws every backend build behind it** (issue 0952).
+  `check::build` DOES list `c cpp rmw-cyclonedds rmw-xrce rmw-uorb`, so tier 1
+  covers them — but `check::fast` runs first and `just` stops at the first
+  failure, and `check-abi-bindings` is red for as long as regenerated bindings
+  sit uncommitted, which is the normal state mid-break. The cyclonedds lane was
+  red from W1's commit to the end of the phase. During an ABI break, run
+  `just check rmw-cyclonedds` / `c` / `cpp` explicitly rather than trusting a
+  red tier 1 to have reached them.
 
 ## Deliberately NOT spanned
 
