@@ -55,7 +55,6 @@ fails if this block drifts.
 - **#0874** (ci, tooling) — sccache 0.8.2 speaks a GitHub cache API that no longer exists — and because it is the `RUSTC_WRAPPER`, that fails every `rustc` See `0874-*`.
 - **#0877** (testing, boards) — FreeRTOS pubsub delivers by hand and delivers NOTHING under the test harness — and the talker trips a FreeRTOS queue assert See `0877-*`.
 - **#0880** (platform, embedded) — 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted — the Zephyr images place nothing in ITCM or DTCM See `0880-*`.
-- **#0891** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0891-*`.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
 - **#0900** (core, memory) — Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use See `0900-*`.

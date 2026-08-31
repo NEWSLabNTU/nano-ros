@@ -295,6 +295,12 @@ pub fn config_header(
     writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT {}", socket_timeout).unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE {}", Z_TRANSPORT_LEASE_MS).unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();
+    // issue 0959 — the lease task sleeps in chunks of this many ms rather than
+    // for a whole keep-alive interval, so `stop_lease_task`'s join does not have
+    // to wait out the remainder. Bounds teardown latency at ~1 s instead of
+    // `lease / EXPIRE_FACTOR`, which #0906's 60 s lease made 20 s. Costs one
+    // wakeup per second on an idle task.
+    writeln!(header, "#define Z_TRANSPORT_LEASE_TASK_SLEEP_CHUNK_MS 1000").unwrap();
     writeln!(header, "#define ZP_PERIODIC_SCHEDULER_MAX_TASKS 8").unwrap();
     writeln!(header).unwrap();
     writeln!(header, "// Core Features").unwrap();

@@ -2,7 +2,7 @@
 id: 891
 title: "Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap
   was never measured, and a slow boot is reported as a dead image"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0838, issue-0445, issue-0196, phase-287]
@@ -123,6 +123,17 @@ looks like. **Un-excluding NuttX does not fix it** — measured, still 3/3 `-2`
 with a 20 s settle — so the contradiction is real but is not this bug's cause,
 and the change was reverted rather than landed for costing 20 s a test to fix
 nothing.
+
+## Closed
+
+Both acceptance items were already met when this was written — the fix is in the
+tree (`boot_budget(platform)` at `rtos_e2e.rs:598`, `[test-groups.qemu-nuttx]
+max-threads = 1`) and the measured result is recorded above. The issue simply
+was never closed.
+
+The one cell it explicitly did not cover, `test_rtos_action_e2e` /
+`Platform__Nuttx` / `Lang__C`, is [[issue-0867]] and stays open: it fails 3/3
+run entirely alone, so it is not concurrency and nothing here explains it.
 
 ## Acceptance
 
