@@ -284,6 +284,38 @@ impl BuildRungs {
         })
     }
 
+    /// The `[knobs.executor]` RUNGS for this build — platform merged with
+    /// board, board winning — with NO env rung and no defaults.
+    ///
+    /// Deliberately not the full ladder: `nros-node/build.rs` composes
+    /// env → Kconfig → these → its own builtin, and the Kconfig rung sits
+    /// between the front-end and the descriptors. What it needed shared was
+    /// the ENV-POINTER DANCE above, not the composition, and pretending
+    /// otherwise would have quietly dropped its Kconfig rung.
+    pub fn executor_rungs(&self) -> ExecutorKnobs {
+        let plat = self
+            .tree
+            .platform_executor_rungs(&self.platform)
+            .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={}: {e}", self.platform));
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.executor.clone())
+            .unwrap_or_default();
+        ExecutorKnobs {
+            max_cbs: b.max_cbs.or(plat.max_cbs),
+            max_sc: b.max_sc.or(plat.max_sc),
+            max_nodes: b.max_nodes.or(plat.max_nodes),
+            max_shutdown_cbs: b.max_shutdown_cbs.or(plat.max_shutdown_cbs),
+            action_clients: b.action_clients.or(plat.action_clients),
+            arena_size: b.arena_size.or(plat.arena_size),
+            subscription_buffer_size: b.subscription_buffer_size.or(plat.subscription_buffer_size),
+            param_service_buffer_size: b
+                .param_service_buffer_size
+                .or(plat.param_service_buffer_size),
+        }
+    }
+
     /// The memory tenant for this build, over the full ladder.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
         self.tree
@@ -388,17 +420,42 @@ pub const MEMORY_KNOBS: &[&str] = &["heap_bytes", "app_stack_bytes"];
 /// The FreeRTOS pair is the platform that sizes both today; Zephyr's heap has
 /// its own spelling and is resolved by `nros-platform`'s build script.
 pub fn memory_env_key(knob: &str) -> &'static str {
-    match knob {
-        "heap_bytes" => "NROS_FREERTOS_HEAP_KB",
-        "app_stack_bytes" => "NROS_FREERTOS_APP_STACK_KB",
-        other => panic!("unknown memory knob `{other}`"),
+    memory_env_key_for("freertos", knob)
+}
+
+/// The env front-end for a memory knob ON A GIVEN PLATFORM.
+///
+/// The same knob has different front-end spellings per platform — a heap is
+/// `NROS_FREERTOS_HEAP_KB` on FreeRTOS and `NROS_ZEPHYR_HEAP_SIZE` on Zephyr —
+/// because those names predate the ladder and migrating a knob must not change
+/// how anyone sets it. The RUNG is one knob; only its front-end differs, so
+/// this is where the difference lives rather than in two knob names.
+///
+/// Without this, `nros config explain --platform zephyr` would print the
+/// FreeRTOS variable beside the Zephyr heap — telling a reader to set something
+/// that does nothing, in the report whose whole job is to say where a value
+/// came from.
+pub fn memory_env_key_for(platform: &str, knob: &str) -> &'static str {
+    match (platform, knob) {
+        ("zephyr", "heap_bytes") => "NROS_ZEPHYR_HEAP_SIZE",
+        (_, "heap_bytes") => "NROS_FREERTOS_HEAP_KB",
+        (_, "app_stack_bytes") => "NROS_FREERTOS_APP_STACK_KB",
+        (_, other) => panic!("unknown memory knob `{other}`"),
     }
 }
 
 /// Whether a memory knob's env front-end is spelled in KiB rather than bytes.
 /// The ladder stores bytes; this is the one place the difference lives.
 pub fn memory_env_is_kib(knob: &str) -> bool {
-    matches!(knob, "heap_bytes" | "app_stack_bytes")
+    memory_env_is_kib_for("freertos", knob)
+}
+
+/// Whether a memory knob's front-end is KiB on this platform. The unit travels
+/// with the SPELLING, not with the knob: `NROS_FREERTOS_HEAP_KB` is KiB and
+/// `NROS_ZEPHYR_HEAP_SIZE` is bytes, for the same `heap_bytes` rung.
+pub fn memory_env_is_kib_for(platform: &str, knob: &str) -> bool {
+    !matches!((platform, knob), ("zephyr", "heap_bytes"))
+        && matches!(knob, "heap_bytes" | "app_stack_bytes")
 }
 
 /// One resolved executor knob: value, rung, and the env name that is still its
@@ -1030,14 +1087,18 @@ impl PlatformsTree {
                     (None, Some(v)) => (v, KnobSource::Platform),
                     (None, None) => (*builtin, KnobSource::Builtin),
                 };
-            let env_key = memory_env_key(name);
+            let env_key = memory_env_key_for(platform, name);
             if let Some(raw) = env(env_key)
                 && let Ok(n) = raw.trim().parse::<usize>()
             {
                 // The front-ends disagree about units and the ladder does not:
                 // a KiB spelling is multiplied here, once, beside the table
                 // that records which spelling each knob has.
-                value = if memory_env_is_kib(name) { n * 1024 } else { n };
+                value = if memory_env_is_kib_for(platform, name) {
+                    n * 1024
+                } else {
+                    n
+                };
                 source = KnobSource::Env;
             }
             out.push((

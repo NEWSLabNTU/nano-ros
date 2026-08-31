@@ -25,6 +25,21 @@
 const DEFAULT_HEAP_SIZE: usize = 64 * 1024;
 
 fn main() {
+    // phase-400 W6 — this knob does NOT get the `[knobs.memory]` platform and
+    // board rungs, and the reason is structural rather than a decision.
+    //
+    // `nros-board-common` owns the ladder and depends on THIS crate, so a
+    // build-dependency the other way is a cycle — cargo rejects it outright.
+    // That is the difference from `nros-node`, which board-common does not
+    // depend on and which therefore could take it.
+    //
+    // Nothing is lost in practice: on Zephyr the rung those tables would
+    // provide is already served by Kconfig, which `knob_usize` reads from
+    // `$DOTCONFIG` (issue 0460). The platform states the value where a Zephyr
+    // image already looks for it.
+    //
+    // Giving it the toml rungs would need the ladder types in a crate BELOW
+    // both — a real refactor, not a dependency line.
     let size = nros_zephyr_build::knob_usize(
         "NROS_ZEPHYR_HEAP_SIZE",
         "CONFIG_NROS_ZEPHYR_HEAP_SIZE",

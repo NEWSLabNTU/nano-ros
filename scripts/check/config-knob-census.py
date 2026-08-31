@@ -92,7 +92,7 @@ KNOB_CLASS = {
     "NROS_RUNTIME_MAX_CELL_ENTITIES": ("sizing", "component cap"),
     "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("sizing", "component cap"),
     "NROS_RUNTIME_MAX_COMPONENTS": ("sizing", "component cap"),
-    "NROS_ZEPHYR_HEAP_SIZE": ("sizing", "platform heap"),
+    "NROS_ZEPHYR_HEAP_SIZE": ("sizing", "BLOCKED: the ladder crate depends on nros-platform, so the rungs are a cycle away. Kconfig already serves the rung on Zephyr"),
     "NROS_FREERTOS_HEAP_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_FREERTOS_APP_STACK_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_KEYEXPR_STRING_SIZE": ("sizing", "keyexpr bound"),
@@ -141,6 +141,31 @@ KNOB_CLASS = {
     "NROS_ZPICO_DEBUG": ("infra", "debug flag"),
     "ZPICO_NO_SMOLTCP": ("infra", "link toggle"),
     "ZPICO_PLATFORMS_TOML": ("infra", "the ladder's own platform file pointer"),
+    # --- found once the scan followed the `build-helpers` feature ---
+    "NROS_CYCLONEDDS_MAX_TYPES": (
+        "derived",
+        "already DERIVED from the SystemModel (msg=1/srv=2/action=8+3, next_pow2) "
+        "and forwarded; the env is the override, not the source",
+    ),
+    "NROS_TRANSPORT_KIND": ("ladder", "transport tenant front-end"),
+    "NROS_TRANSPORT_ENDPOINT": ("ladder", "transport tenant front-end"),
+    "NROS_ENTRY_SPIN_MS": ("sizing", "entry spin period; a duration, same ladder shape"),
+    # --- infra: pointers, flags and orchestration inputs ---
+    "NROS_BOARD_TOML": ("infra", "the ladder's own board rung pointer"),
+    "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
+    "NROS_HOME": ("infra", "path"),
+    "NROS_MODEL_DIR": ("infra", "path"),
+    "NROS_WORKSPACE": ("infra", "path"),
+    "NROS_WORKSPACE_ROOT": ("infra", "path"),
+    "NROS_LAUNCH_RESOLVE": ("infra", "resolver binary path"),
+    "NROS_METADATA_PROBE_CACHE": ("infra", "cache path"),
+    "NROS_RMW": ("infra", "the selected backend, not a size"),
+    "NROS_OFFLINE": ("infra", "policy flag"),
+    "NROS_NO_AUTO_SETUP": ("infra", "policy flag"),
+    "NROS_SKIP_STALE_CHECK": ("infra", "policy flag"),
+    "NROS_SUPPRESS_DEPRECATION": ("infra", "policy flag"),
+    "NROS_DEBUG_BRINGUP_RESOLVER": ("infra", "debug flag"),
+    "NROS_TRACE_ABI_GUARD": ("infra", "debug flag"),
 }
 
 
@@ -215,12 +240,24 @@ def build_env_sources():
     reported six — so both this file's first number and the phase doc's
     original table undercounted the zenoh surface by a factor of four.
 
-    The convention is the crate NAME: `*-build` crates and everything under
-    `packages/tooling/` are build-time by construction.
+    Two conventions find them. The crate NAME (`*-build`, and everything under
+    `packages/tooling/`), and — because a crate can be a build helper without
+    saying so in its name — a declared `build-helpers` FEATURE. The second was
+    added after a refactor moved the env-pointer reads out of a `build.rs` and
+    into `nros-board-common`, whose name says "board" and whose
+    `build-helpers` feature says what it actually is: the census lost sight of
+    a knob because the code moved, which is the failure mode a name-based scan
+    always has.
     """
     out = list(tracked("*build.rs"))
     out += [p for p in tracked("packages/*/*-build/src/*.rs", "packages/*/*/*-build/src/*.rs")]
     out += list(tracked("packages/tooling/*/src/*.rs"))
+    for manifest in tracked("packages/*/*/Cargo.toml", "packages/*/Cargo.toml"):
+        if "build-helpers" not in read(manifest):
+            continue
+        crate = os.path.dirname(manifest)
+        rel = os.path.relpath(crate, ROOT)
+        out += [str(q) for q in tracked(f"{rel}/src/*.rs")]
     return sorted(set(out))
 
 
