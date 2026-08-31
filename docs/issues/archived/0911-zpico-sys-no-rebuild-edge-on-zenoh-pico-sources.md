@@ -77,6 +77,36 @@ This shared id 902 with "action goal completion is variable" -- two unrelated
 open issues under one number, which is exactly the confusion this ledger exists
 to prevent. Renumbered to 911; the action issue keeps 902.
 
+## Correction: the fix did not reach main until 2026-08-31
+
+This was archived as resolved on the strength of `73a14a0dd`, which lives only
+on `origin/feat/zenoh-pico-1.10` and has never been merged. Main kept the
+five-file watch, so the bug was LIVE for everyone reading this issue as closed —
+and it cost another wrong-binary cycle on 2026-08-31, in exactly the way the
+symptom section describes.
+
+The watch change is separable from the 1.10 upgrade it was committed alongside,
+so it has now been ported to main on its own: two `rerun-if-changed` lines for
+the `zenoh-pico/src` and `zenoh-pico/include` trees. The rest of `73a14a0dd`
+(the `@TOKEN@` defaults, and the platform manifests naming files 1.10 deleted)
+is 1.10-specific and stays on that branch.
+
+Re-verified on main against the acceptance below:
+
+* an edit to `src/protocol/iobuf.c` — absent from the old list — recompiles;
+* a no-op build after it recompiles nothing.
+
+The second one did NOT hold at first, for an unrelated reason that this issue's
+acceptance criterion is what surfaced: `zpico-sys` was recompiling on every
+invocation because of a `rerun-if-changed` on a path that does not exist. That
+is [[issue-0966]].
+
+**Lesson for the ledger, not for this bug:** an issue may only be archived
+against a commit reachable from `main`. Archiving against work on a feature
+branch produces a closed issue and a live defect, which is worse than leaving it
+open — the next person reads "resolved" and trusts a build that is lying to
+them.
+
 ## Resolved
 
 `nros-zpico-build` now watches `zenoh-pico/src` and `zenoh-pico/include` as
