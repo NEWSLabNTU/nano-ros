@@ -4075,7 +4075,13 @@ _orchestrate verb tier="everything":
             run esp32
             run zephyr
             run xrce
-            run rmw_zenoh
+            # No `run rmw_zenoh` — phase-362 / RFC-0075 retired the vendored
+            # router (`third-party/zenoh/zenoh/` and `build/zenohd/` are GONE);
+            # the router now comes from ROS as `rmw_zenoh_cpp`. The line
+            # survived the retirement and named a module that does not exist,
+            # so `just setup all` / `just doctor tier=all` reported a failure
+            # nobody could fix — measured 2026-08-31: "doctor finished with 3
+            # failure(s): workspace verification rmw_zenoh".
             run cyclonedds
             run esp_idf
             run px4

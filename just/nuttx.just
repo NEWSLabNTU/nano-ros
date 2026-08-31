@@ -202,8 +202,8 @@ build-fixtures-arm:
     if ! command -v arm-none-eabi-gcc >/dev/null 2>&1; then
         nros_lane_skip_note nuttx "arm-none-eabi-gcc not found"; exit 0
     fi
-    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    if nros_sdk_missing NUTTX_DIR include; then
+        nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
     fi
     # Issue 0583 — drop the build-std artifacts when the vendored NuttX libc
     # pin moves. `workspace-fixture-signature.sh` hashes the pin so the STAMP
@@ -341,8 +341,8 @@ build-fixtures-arm-smp:
         nros_lane_out_of_scope_note nuttx "NuttX arm-smp: no nuttx coordinate in this run's lane — skipping"
         exit 0
     fi
-    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    if nros_sdk_missing NUTTX_DIR include; then
+        nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     smp_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/arm-smp/defconfig"
@@ -401,8 +401,8 @@ build-riscv-c:
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
         nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
     fi
-    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    if nros_sdk_missing NUTTX_DIR include; then
+        nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
@@ -440,8 +440,8 @@ build-riscv-c-workspaces:
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
         nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
     fi
-    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    if nros_sdk_missing NUTTX_DIR include; then
+        nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
@@ -474,8 +474,8 @@ build-riscv-rust:
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
         nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
     fi
-    if [ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/nuttx/nuttx ]; then
-        nros_lane_skip_note nuttx "NUTTX_DIR unset and third-party/nuttx/nuttx absent"; exit 0
+    if nros_sdk_missing NUTTX_DIR include; then
+        nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
     fi
     nuttx_dir="${NUTTX_DIR:-$(pwd)/third-party/nuttx/nuttx}"
     rv_defconfig="$(pwd)/packages/boards/nros-board-nuttx-qemu/nuttx-config/riscv/defconfig"
