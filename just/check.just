@@ -313,6 +313,7 @@ build: \
     nros-log-riscv32 \
     pool-inventory \
     ps-zombie-blind \
+    required-contexts-reportable \
     required-features-reachable \
     required-features-tests \
     rmw-cyclonedds \
@@ -2061,6 +2062,15 @@ lane-contracts:
 [private]
 workflow-runner-isolation:
     @python3 scripts/check-workflow-runner-isolation.py
+
+# Issue 0975 — a REQUIRED check that cannot report on a pull request freezes the
+# repo, and it freezes it SILENTLY: no red check, no message, just PRs that never
+# merge. Requiring `L3` (a merge_group-only job) did exactly that to seven PRs.
+# Also rejects a required job gated on `vars.`/`secrets.`, which can be switched
+# off in Settings with nothing in any diff to show it.
+[private]
+required-contexts-reportable:
+    @python3 scripts/check-required-contexts-reportable.py
 
 # A gate must exercise its own failure path EVERY time it runs, not once behind
 # a flag on the day it was written. A baseline ratchet: the debt may only

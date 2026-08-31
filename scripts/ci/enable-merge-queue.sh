@@ -93,7 +93,10 @@ PR_ONLY_CHECKS=(
     "check (fast on push; full on PR/nightly)"
     "L3 (cross build + link)"
 )
-# Added to the required set only with --self-hosted-ready.
+# DESCRIPTIVE ONLY — never added to the required set (issue 0975). These are the
+# checks that only exist once a runner does; they gate through the `CI`
+# aggregator like every other job. Kept so the plan output can name what
+# --self-hosted-ready turns on.
 SELF_HOSTED_CHECKS=(
     "L3 (cross build + link)"
 )
@@ -411,17 +414,36 @@ if [ "$SELF_HOSTED" = 1 ]; then
         fi
     done
     echo "  ok — a runner advertises every needed label"
-    required+=("${SELF_HOSTED_CHECKS[@]}")
+    # Issue 0975 — NOT `required+=("${SELF_HOSTED_CHECKS[@]}")`.
+    #
+    # `queue.yml`'s `l3` triggers only on `merge_group`, so it never reports
+    # against a pull request. Requiring it means no PR can satisfy the required
+    # set, so no PR enters the queue, so the `merge_group` event that would run
+    # `l3` never fires. The deadlock sustains itself and shows up as nothing at
+    # all — no red check, no message, just PRs that never merge. Seven of them
+    # sat in it on 2026-09-01.
+    #
+    # Requiring it also bought nothing. `ci-ok` runs `if: always()` and inspects
+    # `needs.*.result`, so an L3 failure inside a merge group already turns `CI`
+    # red. Naming L3 separately added no enforcement and cost the ability to
+    # enqueue.
+    #
+    # What --self-hosted-ready DOES is set `vars.NROS_SELF_HOSTED_READY`, which
+    # is what makes the self-hosted jobs run at all. That is the whole flag.
+    echo "  self-hosted lanes will RUN (vars.NROS_SELF_HOSTED_READY=true);"
+    echo "  they gate through the CI aggregator, not as separate required checks."
 fi
 
 echo
 echo "== plan for $REPO:$BRANCH =="
 echo "required checks (strict: false — see the header for why that is not laxity):"
 printf '    %s\n' "${required[@]}"
+# Never required, whichever way the flag went (issue 0975). What changes with
+# --self-hosted-ready is whether they RUN, not whether they gate.
+echo "  self-hosted, never required (they gate through the CI aggregator):"
+printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}"
 if [ "$SELF_HOSTED" = 0 ]; then
-    echo "  NOT required (they still run, and their failures are still visible):"
-    printf '    %s\n' "${SELF_HOSTED_CHECKS[@]}"
-    echo "  Add them with --self-hosted-ready once a runner is online."
+    echo "  They will NOT run: pass --self-hosted-ready once a runner is online."
 fi
 if [ "$WITH_QUEUE" != 1 ]; then
     echo "merge queue: NOT added (pass --with-queue). Values it would use:"
