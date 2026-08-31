@@ -50,15 +50,24 @@ namespace nros {
 /// callback during `spin_once`. (Thin wrapper over `nros_cpp_subscription_register`.)
 inline Result create_subscription_raw(Node& node, const char* topic, const char* type_name,
                                       void (*callback)(const uint8_t* data, size_t len, void* ctx),
-                                      void* ctx, const QoS& qos = QoS::default_profile()) {
+                                      void* ctx, const QoS& qos = QoS::default_profile(),
+                                      size_t rx_bytes = 0) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     size_t handle = static_cast<size_t>(-1);
-    // phase-402: nullptr options = every field default (sched_context 0,
-    // default callback group), which is exactly the pre-phase-402 behaviour.
+    // phase-403 W3 -- `rx_bytes` is the subscribed type's own bound. It sizes the
+    // executor's arena slot for this subscription, so a publisher-heavy image
+    // stops charging every slot the largest subscription's buffer.
+    //
+    // 0 keeps the pre-phase-403 behaviour (the image-wide default), and is what
+    // a caller with no type in hand passes. Options are stack-local: the FFI
+    // reads the struct during the call and retains nothing.
+    nros_cpp_subscription_options_t opts = {};
+    opts.rx_buffer_hint = static_cast<uint32_t>(rx_bytes);
+    const nros_cpp_subscription_options_t* opts_p = (rx_bytes != 0) ? &opts : nullptr;
     nros_cpp_ret_t ret = nros_cpp_subscription_register(h, topic, type_name, "", ffi_qos, callback,
-                                                        ctx, &handle, /*options=*/nullptr);
+                                                        ctx, &handle, opts_p);
     return Result(ret);
 }
 
@@ -97,6 +106,9 @@ inline Result bind_subscription_raw(Node& node, const char* topic, const char* t
 template <typename M, class C, void (C::*Method)(const M& msg)>
 inline Result bind_subscription(Node& node, const char* topic, C* self,
                                 const QoS& qos = QoS::default_profile()) {
+    // phase-403 W3 -- `M` is still in scope here, so the type's own bound can be
+    // spent on the arena slot. This is the point the type is erased: everything
+    // below takes a type NAME, and the bound cannot be recovered from a string.
     return create_subscription_raw(
         node, topic, M::TYPE_NAME,
         [](const uint8_t* data, size_t len, void* ctx) {
@@ -104,7 +116,7 @@ inline Result bind_subscription(Node& node, const char* topic, C* self,
             if (M::ffi_deserialize(data, len, &msg) != 0) return;
             (static_cast<C*>(ctx)->*Method)(msg);
         },
-        self, qos);
+        self, qos, M::SERIALIZED_SIZE_MAX);
 }
 
 /// Bind a component **member** `void C::on_tick()` as a timer callback. Same

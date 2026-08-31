@@ -628,11 +628,19 @@ template <class T> struct strip_ref<T&> {
 
 /// Inside a `ComponentNode` ctor: subscribe `void Self::method(const Msg&)` to
 /// `topic`. Derives `Self` from `this` so only the message type, method, and
-/// topic are spelled.
-#define NROS_SUBSCRIBE(Msg, method, topic)                                                         \
+/// topic are spelled. An optional 4th argument is the QoS; omitted, it is
+/// `QoS::default_profile()`, whose depth is 10.
+///
+/// State the depth on a memory-constrained target. Since phase-403 a
+/// subscription's arena buffer is sized from its own type, so the cost of a
+/// subscription is `(depth + 1) * the type's bound` -- depth is a multiplier on
+/// the largest thing the topic carries, not a count of small slots. Measured on
+/// mr-canhubk344: nine subscriptions at the default depth 10 wanted 86108 bytes
+/// of arena, and the same nine at depth 1 want 24516.
+#define NROS_SUBSCRIBE(Msg, method, topic, ...)                                                    \
     this->template create_subscription<Msg, ::nros::detail::strip_ref<decltype(*this)>::type,      \
                                        &::nros::detail::strip_ref<decltype(*this)>::type::method>( \
-        (topic))
+        (topic), ##__VA_ARGS__)
 
 /// Inside a `ComponentNode` ctor: create a repeating timer calling
 /// `void Self::method()` every `period_ms`. Derives `Self` from `this`.

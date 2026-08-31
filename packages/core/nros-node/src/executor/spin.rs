@@ -4884,7 +4884,29 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)?
         };
 
-        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+        // phase-403 W3/W5 -- size the arena slot from the TYPE, not from the
+        // image-wide default. `rx_buffer_hint` already arrives here (phase-402
+        // routed it to the backend's payload class and stopped); spending it on
+        // the allocation as well is what makes the buffer per-type.
+        //
+        // This is the whole saving on the raw path. `RX_BUF` is
+        // DEFAULT_RX_BUF_SIZE, so every slot -- publishers and timers included --
+        // was charged the largest subscription's buffer. Measured on
+        // mr-canhubk344: 36 handles at the correct 2052-byte bound wanted a
+        // 242096-byte arena of a 77968-byte region; only 13 of those handles
+        // receive anything.
+        //
+        // 0 keeps the old behaviour, and it means "this CALLER stated nothing"
+        // rather than "this type is unbounded" -- an unbounded type is a build
+        // error now, so a zero here is a caller that did not ask, never a type
+        // that could not answer.
+        let rx_bytes = if rx_buffer_hint != 0 {
+            rx_buffer_hint
+        } else {
+            RX_BUF
+        };
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, rx_bytes);
 
         let (entry_offset, trailing_offset) =
             self.arena_alloc_with_trailing::<SubBufferedRawCEntry>(trailing_bytes)?;
@@ -4892,9 +4914,9 @@ impl<'s> Executor<'s> {
         let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
 
         let buffer = if qos.depth <= 1 {
-            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, rx_bytes) })
         } else {
-            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, rx_bytes, qos.depth as usize) })
         };
 
         unsafe {
