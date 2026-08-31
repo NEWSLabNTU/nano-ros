@@ -12,6 +12,21 @@
 #   global   — a plain exported ABI function, defined ONCE, not per-backend
 #   layer    — the capability ships, but somewhere other than the RMW seam
 #   declined — deliberately absent, and `reason` says what constraint decided it
+#
+# status: what we DID about the symbol. `where` answers "which surface", which
+# is a different question and was quietly doing both jobs — `declined` covered
+# `rmw_wait` (decomposed into five live slots) and `rmw_init_publisher_allocation`
+# (nothing crosses the seam) alike, and an INERT slot counted as answered.
+#   same            — identical signature and name. Derived, never authored.
+#   re-shaped       — one slot, one upstream symbol, different signature. Derived.
+#   re-mapped       — the capability is answered, but NOT 1:1: decomposed, merged,
+#                     or outside the RMW seam. `answers` names what provides it.
+#                     Derived when several upstream symbols share one slot;
+#                     authored otherwise, because prose is not queryable.
+#   not-supported   — a DECISION, permanent, `reason` says which constraint made it.
+#   not-implemented — a GAP, expected to close. MUST carry `issue`; the gate
+#                     rejects it otherwise, so silence cannot turn a gap into a
+#                     decision.
 
 [rmw_borrow_loaned_message]
 where = "vtable"
@@ -30,6 +45,8 @@ reason = "client_response_subscription_get_actual_qos — as above"
 [rmw_client_set_on_new_response_callback]
 where = "vtable"
 nano = "client_set_on_new_response_callback"
+status = "re-mapped"
+answers = ["set_wake_callback (per SESSION, not per entity)"]
 
 [rmw_compare_gids_equal]
 where = "global"
@@ -55,6 +72,8 @@ nano = "create_client"
 
 [rmw_create_guard_condition]
 where = "declined"
+status = "re-mapped"
+answers = ["executor: EntryKind::GuardCondition"]
 reason = "EntryKind::GuardCondition; no transport variation, and once `wait` is declined there is no backend consumer"
 
 [rmw_create_node]
@@ -75,10 +94,14 @@ nano = "create_subscription"
 
 [rmw_create_wait_set]
 where = "declined"
+status = "re-mapped"
+answers = ["executor: the arena entry table, allocated once"]
 reason = "the executor's arena entry table IS the set, allocated once; a per-wait set would be heap on the spin path"
 
 [rmw_deserialize]
 where = "layer"
+status = "re-mapped"
+answers = ["nros-serdes: Deserialize / DeserializeView", "codegen packs"]
 reason = "as rmw_serialize"
 
 [rmw_destroy_client]
@@ -87,6 +110,8 @@ nano = "destroy_client"
 
 [rmw_destroy_guard_condition]
 where = "declined"
+status = "re-mapped"
+answers = ["executor: EntryKind::GuardCondition"]
 reason = "as rmw_create_guard_condition"
 
 [rmw_destroy_node]
@@ -107,6 +132,8 @@ nano = "destroy_subscription"
 
 [rmw_destroy_wait_set]
 where = "declined"
+status = "re-mapped"
+answers = ["executor: the arena entry table, allocated once"]
 reason = "as rmw_create_wait_set"
 
 [rmw_event_set_callback]
@@ -117,14 +144,18 @@ reason = "publisher_event_init — grouped; `subscription_event_init` on the sub
 [rmw_feature_supported]
 where = "vtable"
 nano = "feature_supported"
+status = "re-mapped"
+answers = ["per-capability slots, answered by nullity or a dedicated probe"]
 reason = "feature_supported — a NULL slot is still the structural probe; this answers the named `rmw_feature_t` values"
 
 [rmw_fini_publisher_allocation]
 where = "declined"
+status = "not-supported"
 reason = "as above"
 
 [rmw_fini_subscription_allocation]
 where = "declined"
+status = "not-supported"
 reason = "as above"
 
 [rmw_get_client_names_and_types_by_node]
@@ -139,6 +170,8 @@ nano = "get_gid_for_publisher"
 [rmw_get_implementation_identifier]
 where = "vtable"
 nano = "get_implementation_identifier"
+status = "re-mapped"
+answers = ["runtime: the registry name"]
 reason = "get_implementation_identifier — also in `nros_rmw_descriptor_t` (check-rmw-descriptors)"
 
 [rmw_get_node_names]
@@ -164,10 +197,14 @@ reason = "get_publishers_info_by_topic — `rmw_topic_endpoint_info_visit_fn`"
 [rmw_get_serialization_format]
 where = "vtable"
 nano = "get_serialization_format"
+status = "re-mapped"
+answers = ["runtime: the constant cdr"]
 reason = "get_serialization_format — CDR today, but the ANSWER is the backend's"
 
 [rmw_get_serialized_message_size]
 where = "layer"
+status = "re-mapped"
+answers = ["nros-serdes: size.rs (size_bound / max_serialized_size)"]
 reason = "nros-serdes `size.rs` — `size_bound` / `max_serialized_size` / `buffer_fits` / `serialized_size`, per TYPE and `const` where the type is bounded (phase-380 W1, issue 0776, resolved). Not a vtable slot and never will be: upstream takes a `rosidl_message_type_support_t *`, declined ABI-wide since W3.c, so the symbol cannot cross this seam — but the CAPABILITY it provides is answered, which is what `layer` records. This read `gap` until 2026-08-27, after 0776 had closed"
 
 [rmw_get_service_names_and_types]
@@ -202,27 +239,36 @@ reason = "create_session — grouped"
 
 [rmw_init_options_copy]
 where = "declined"
+status = "re-mapped"
+answers = ["build time: `copy` is `=`"]
 reason = "as rmw_init_options_init — \"copy\" is `=`"
 
 [rmw_init_options_fini]
 where = "declined"
+status = "re-mapped"
+answers = ["build time: `fini` is nothing"]
 reason = "as rmw_init_options_init — \"fini\" is nothing"
 
 [rmw_init_options_init]
 where = "declined"
+status = "re-mapped"
+answers = ["build time: rmw_init_options_t is a POD"]
 reason = "upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have"
 
 [rmw_init_publisher_allocation]
 where = "declined"
+status = "not-supported"
 reason = "upstream's first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`. The sequence bound is declined ABI-wide (it is a rosidl runtime type), and the third parameter is an `rmw_publisher_allocation_t`, whose body is `{const char *implementation_identifier; void *data;}` — an opaque handle whose contents only the implementation that made it can read. Nothing crosses this seam usefully. THREE earlier reasons here were wrong, and the corrections are the record worth keeping: 'pools are baked' (false for four backends of five — issue 0777, now RESOLVED with the finding that every deviation reason built on that clause was false); 'upstream pre-sizes an rcutils_allocator_t the caller owns' (false — verified against Humble's rmw/types.h); and, until phase-406, a tail deferring the capability question to 0777 as though it were still open. It is not: 0777 closed, and the pre-sizing CAPABILITY for cyclonedds is a separate question that needs its own issue if anyone wants it, not a citation here."
 
 [rmw_init_subscription_allocation]
 where = "declined"
+status = "not-supported"
 reason = "as above"
 
 [rmw_node_get_graph_guard_condition]
 where = "vtable"
 nano = "node_get_graph_guard_condition"
+status = "not-supported"
 
 [rmw_publish]
 where = "vtable"
@@ -257,11 +303,14 @@ reason = "publisher_get_actual_qos — W4. PARTIAL ANSWERS ALLOWED since W5/B2: 
 [rmw_publisher_get_network_flow_endpoints]
 where = "vtable"
 nano = "publisher_get_network_flow_endpoints"
+status = "not-implemented"
+issue = 956
 reason = "publisher_get_network_flow_endpoints — W5. The decline read \"zenoh-pico/XRCE have no such notion\", which is true of those two and silent about Cyclone: the reason was scoped to the ABI when it belonged on a backend. NULL there, a visitor here"
 
 [rmw_publisher_wait_for_all_acked]
 where = "vtable"
 nano = "publisher_wait_for_all_acked"
+status = "not-supported"
 
 [rmw_qos_profile_check_compatible]
 where = "global"
@@ -286,6 +335,8 @@ nano = "send_response"
 
 [rmw_serialize]
 where = "layer"
+status = "re-mapped"
+answers = ["nros-serdes: Serialize", "codegen packs"]
 reason = "nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the per-language codegen packs; CDR for an IDL type is fixed by ROS interop, so a per-backend answer would be a DEFECT. Not a slot for the same reason it is not per-backend, and because upstream's parameters are two things this ABI declined anyway — a typesupport pointer and an `rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an ALLOCATOR, at a seam with no allocator"
 
 [rmw_service_request_subscription_get_actual_qos]
@@ -305,6 +356,8 @@ nano = "service_server_is_available"
 [rmw_service_set_on_new_request_callback]
 where = "vtable"
 nano = "service_set_on_new_request_callback"
+status = "re-mapped"
+answers = ["set_wake_callback (per SESSION, not per entity)"]
 
 [rmw_set_log_severity]
 where = "vtable"
@@ -331,21 +384,29 @@ reason = "subscription_get_actual_qos — as above"
 [rmw_subscription_get_content_filter]
 where = "vtable"
 nano = "subscription_get_content_filter"
+status = "not-implemented"
+issue = 956
 reason = "subscription_get_content_filter — as above"
 
 [rmw_subscription_get_network_flow_endpoints]
 where = "vtable"
 nano = "subscription_get_network_flow_endpoints"
+status = "not-implemented"
+issue = 956
 reason = "subscription_get_network_flow_endpoints — as above"
 
 [rmw_subscription_set_content_filter]
 where = "vtable"
 nano = "subscription_set_content_filter"
+status = "not-implemented"
+issue = 956
 reason = "subscription_set_content_filter — W5. \"DDS-only, would bloat every non-DDS backend\" argues for a NULL SLOT, not for absence: a declined symbol is missing from the ABI for the backend that CAN answer too, and one pointer is what the bloat actually costs"
 
 [rmw_subscription_set_on_new_message_callback]
 where = "vtable"
 nano = "subscription_set_on_new_message_callback"
+status = "re-mapped"
+answers = ["set_wake_callback (per SESSION, not per entity)"]
 
 [rmw_take]
 where = "vtable"
@@ -364,6 +425,8 @@ reason = "slot carried, and NO backend fills it — NULL in cyclonedds, NULL in 
 [rmw_take_loaned_message_with_info]
 where = "vtable"
 nano = "take_loaned_message_with_info"
+status = "re-mapped"
+answers = ["take_loaned_message", "the attachment on the message already taken"]
 
 [rmw_take_request]
 where = "vtable"
@@ -385,18 +448,26 @@ reason = "take — grouped; our payload IS CDR"
 [rmw_take_serialized_message_with_info]
 where = "vtable"
 nano = "take_with_info"
+status = "re-mapped"
+answers = ["take", "the attachment on the message already taken"]
 reason = "take_with_info — grouped"
 
 [rmw_take_with_info]
 where = "vtable"
 nano = "take_with_info"
+status = "re-mapped"
+answers = ["take", "the attachment on the message already taken"]
 
 [rmw_trigger_guard_condition]
 where = "declined"
+status = "re-mapped"
+answers = ["platform: the wake primitive, via GuardCondition::trigger"]
 reason = "GuardCondition::trigger -> the platform wake primitive; ISR-safety is a platform-ABI guarantee no backend makes"
 
 [rmw_wait]
 where = "declined"
+status = "re-mapped"
+answers = ["has_data", "has_request", "drive_io", "set_wake_callback", "next_deadline_ms"]
 reason = "has_data/has_request + drive_io + set_wake_callback + next_deadline_ms ARE this, decomposed. A vtable `wait` would add only the BLOCK, moved from the platform into a backend that can only block on its own handles — while one executor drives sessions from several backends, timers fire off the platform clock, and guard conditions fire from an ISR"
 
 

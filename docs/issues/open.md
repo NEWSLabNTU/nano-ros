@@ -69,5 +69,6 @@ fails if this block drifts.
 - **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
 - **#0945** (build) — The shared-cargo-dir campaign rests on five unsupported build-system internals — a Corrosion path formula, an unstable cargo flag, cargo's private `.fingerprint` format, a side channel inside cargo's target dir, and an undocumented depfile location See `0945-*`.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
+- **#0956** (rmw) — Four W4 parity slots are declared, unfilled, and undecided: content filtering and network flow endpoints See `0956-*`.
 
 <!-- END GENERATED open-issue list -->
