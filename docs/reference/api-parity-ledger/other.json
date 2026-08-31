@@ -353,7 +353,7 @@
   },
   "rust:DEFAULT_RX_BUF_SIZE": {
     "verdict": "extension",
-    "why": "phase-392 W3 -- the fallback subscription receive-buffer size when no `rx_buffer_for!`-derived bound is in play; named so the guess is one auditable const instead of scattered literals."
+    "why": "phase-392 W3 -- the subscription receive-buffer size for the paths that have no `M` to ask (`create_subscription_raw`, the RFC-0043 type-name-string subscriptions, the service/action/TX defaults, the arena derivation); named so the guess is one auditable const instead of scattered literals. Since phase-403 W0 it is NOT a fallback for a missing bound: `rx_buffer_for!` refuses to compile for an unbounded type rather than expanding to this."
   },
   "rust:DOMAIN_ID_EXPLICIT_ZERO_C_ABI": {
     "verdict": "extension",
@@ -1037,7 +1037,7 @@
   },
   "rust:rx_buffer_for": {
     "verdict": "extension",
-    "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run."
+    "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run. phase-403 W0: an UNBOUNDED type is now a build error rather than an expansion to `DEFAULT_RX_BUF_SIZE` -- every message type is required to carry a derived upper bound, and a buffer sized from a fallback is what phase 380 forbade."
   },
   "rust:zephyr_component_main": {
     "verdict": "extension",

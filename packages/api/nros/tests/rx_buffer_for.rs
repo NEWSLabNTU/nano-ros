@@ -52,15 +52,37 @@ fn a_bounded_type_sizes_itself() {
     );
 }
 
+/// Phase-403 W0 INVERTS this test. It was
+/// `an_unbounded_type_keeps_the_configured_default`, and it asserted the exact
+/// behaviour that is now refused.
+///
+/// The old rule read phase 380 as licensing the configured default: `None`
+/// means "no bound EXISTS", the macro must not invent a number, so hand back
+/// the number the subscription would have used anyway. The project owner has
+/// since ruled the other way, and the reasoning is the same rule read to its
+/// conclusion: a receive buffer sized from a fallback is a buffer that silently
+/// mismatches the wire, so substituting `DEFAULT_RX_BUF_SIZE` was itself the
+/// invention phase 380 forbade. Every message type must carry a derived upper
+/// bound -- in the `.msg` (`string<=64`) or as a `cap` in `nros-codegen.toml` --
+/// and a type with none is a BUILD ERROR.
+///
+/// This is a RENAME, not a deletion: the safety property the old test guarded
+/// (an unbounded type never silently gets a plausible-looking size) is stronger
+/// now, not dropped.
+///
+/// What can be asserted HERE is the value the macro branches on. The refusal
+/// itself cannot be: `nros::rx_buffer_for!(Unbounded)` no longer compiles, and
+/// this workspace has no compile-fail harness for integration tests. That half
+/// is gated by the `compile_fail` doctest on `rx_buffer_for!` in
+/// `packages/api/nros/src/lib.rs`, which carries a compiling positive control
+/// beside it so it cannot pass for the wrong reason.
 #[test]
-fn an_unbounded_type_keeps_the_configured_default() {
-    // Phase 380: `None` means "no bound EXISTS", never "unknown". The macro must
-    // not invent a number here — a buffer sized from a fallback is the failure
-    // that rule was written to prevent.
+fn an_unbounded_type_is_refused_rather_than_defaulted() {
     assert_eq!(
-        nros::rx_buffer_for!(Unbounded),
-        nros::DEFAULT_RX_BUF_SIZE,
-        "an unbounded type must fall back to the configured default"
+        nros_serdes::size::max_serialized_bound::<Unbounded>(),
+        None,
+        "the fixture must be unbounded, or the macro never reaches the arm \
+         that refuses"
     );
 }
 
@@ -87,7 +109,8 @@ fn the_bound_is_usable_as_a_const_generic_argument() {
          the position it exists for"
     );
 
-    // And the unbounded fallback is equally a constant.
-    let fallback = Buf::<{ nros::rx_buffer_for!(Unbounded) }>;
-    assert_eq!(fallback.capacity(), nros::DEFAULT_RX_BUF_SIZE);
+    // The unbounded case used to be exercised here as `Buf::<{
+    // rx_buffer_for!(Unbounded) }>`, asserting it expanded to
+    // `DEFAULT_RX_BUF_SIZE`. Under phase-403 W0 that no longer compiles, which
+    // is the point; see `an_unbounded_type_is_refused_rather_than_defaulted`.
 }
