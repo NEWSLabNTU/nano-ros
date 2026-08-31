@@ -1046,6 +1046,58 @@ cluster, then measure it.** A fingerprint directory is a historical record, not 
 statement about the present, and this phase has now spent two separate
 investigations on that distinction — issues 0859-0862 first, this second.
 
+### W5.c — use cargo's OUT_DIR, not a side channel in its target dir
+
+The three routes weighed earlier (fingerprint the destination / copy from the
+shared dir / include the shared dir) all preserve the same premise: that the
+headers live at `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/`, a path INSIDE
+cargo's tree that cargo does not manage. It works because nothing cleans it.
+
+That premise is the blocker. Share the target dir and image B takes a cache hit,
+the build script never re-runs, and the directory the consumers were pointed at
+is never written. Every route above is a way to route AROUND that; none removes
+it.
+
+`$OUT_DIR` removes it. It is where cargo says build-script output goes, it is
+per-unit and **hashed by cargo** — so two feature sets cannot collide without us
+keying anything — and its path is reported on the STABLE JSON stream:
+
+    {"reason":"build-script-executed", …, "out_dir": "…/build/nros-c-<hash>/out"}
+
+Both properties were measured rather than assumed:
+
+* cargo emits `build-script-executed` with `out_dir` on a FULLY CACHED run —
+  13 events with nothing to rebuild. That is exactly the case the side channel
+  cannot serve.
+* the same crate under different features lands in different `OUT_DIR`s
+  (`nros-c-f03b86696704b69c` for default, `nros-c-ff8a58bc63dfe8d4` for
+  `rmw-cffi,platform-posix,std,ros-humble`), with the header present at
+  `nros/nros_config_generated.h`.
+
+*Landed so far:* the headers are emitted to `$OUT_DIR` as well as the side
+channel (`write_header_to_out_dir`). Additive, so nothing changes for existing
+consumers, and it establishes the supported location.
+
+*Remaining:* have `nros_cargo_build` capture `--message-format=json`, read
+`out_dir` for nros-c and nros-cpp, and place the header at a predictable
+per-image path as an `add_custom_command(OUTPUT …)` — the canonical cmake
+generated-header mechanism — with consumers depending on that OUTPUT. In-tree
+precedent for the JSON parse: `nros-sizes-build::find_dep_rlib_isolated` already
+reads `compiler-artifact` the same way. Then the side channel can go.
+
+**One hypothesis tested and REFUTED before scoping:** that
+`compiler-artifact.filenames` reports a hashed `deps/` path for the staticlib,
+which would have let cmake link an unhashed-collision-free artifact, dropped
+features from the key and collapsed 70 dirs to 14 instead of 28. It does not —
+for `crate_types: [staticlib, cdylib, lib]` cargo reports only the uplifted
+`libnros_c.{a,so,rlib}`. Features stay in the key.
+
+**Exposure register: issue 0945.** The campaign depends on five things nobody has
+promised to keep working — the Corrosion path formula the 0805 symlink redirects,
+`--artifact-dir`'s unstable flag, cargo's private `.fingerprint` format that
+`just leaf-graph` / `just shared-dir-churn` parse, this side channel, and the
+undocumented depfile location. Read it before extending any of them.
+
 ### W5 design fork — D2, resolved by the per-PACKAGE call
 
 Two coherent designs exist and only one survives contact with `nros_cargo_build()`.
