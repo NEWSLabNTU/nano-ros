@@ -265,9 +265,15 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
     // and then tested `if (err < 0)`, which is never true — every
     // `nros_rmw_ret_t` is non-negative (`rmw_ret.h`), which is why the callers
     // negate. So the error was already unreachable and every caller has only
-    // ever seen the partial count. Changing that here would be a semantic
-    // change smuggled into a data-path rewrite; the silent drop deserves its
-    // own issue, not a side effect of this one.
+    // ever seen the partial count.
+    //
+    // Issue 0971 is where that is argued out, and it says more than "unfinished
+    // error handling": the count form is what the slot's contract REQUIRES of a
+    // partial drain, so making the dead branch reachable would have traded a
+    // silent drop for a contract violation. What is actually missing is a way to
+    // say WHY the drain stopped — and the runtime's loop fallback answers that
+    // question differently from this function today. Both need the contract to
+    // change, which is why nothing here does.
     size_t produced = 0;
     for (dds_return_t i = 0; i < taken; ++i) {
         if (!si[i].valid_data) {
