@@ -2,7 +2,7 @@
 id: 897
 title: "`nros-launch-resolve` hard-links one `libpython` soname, so one build serves
   one interpreter — and abi3, which issue 0400 recommends, does not apply to embedding"
-status: open
+status: resolved
 type: tech-debt
 area: tooling
 related: [issue-0400, issue-0285, issue-0409, rfc-0060]
@@ -427,6 +427,56 @@ launch stops requiring an interpreter that matches ours.
 - `docs/issues/archived/0400-*.md` carries a correction pointing here, so its
   abi3 recommendation stops reading as settled advice.
 
+
+## LANDED — the design above is shipped, not proposed (verified 2026-08-31)
+
+**Read this before the design sections.** Everything from "What actually would
+work" onwards is written in the future tense and describes work that is now
+DONE. Left as-is it reproduces exactly the failure this issue was filed about:
+0897 opens by observing that archived issue 0400 "points the next reader at a
+dead end" because its recommendation reads as settled. A resolved issue that
+still reads as a proposal is the same trap facing the other way.
+
+The shipped `nros-launch-resolve` has the specified shape:
+
+```
+$ readelf -d nros-launch-resolve | grep -ci python     # 0 — no DT_NEEDED
+$ nm -D  nros-launch-resolve | grep -c ' U dlopen'     # 1 — it dlopens
+$ ls libplay_launch_parser_pyexec.so                   # the Python half, beside it
+```
+
+and the loader machinery is in the binary — `strings` finds the `sysconfig`
+probe (`INSTSONAME`, `LIBDIR`, `Py_ENABLE_SHARED`), the `NROS_PYTHON` knob, and
+the two degraded-path messages this issue asked for:
+
+```
+no Python interpreter found (tried: …
+the Python half is not installed: `libplay_launch_parser_pyexec.so`
+is not beside this executable.
+```
+
+Which work item landed where, in `play_launch`:
+
+| item | crate | state |
+| --- | --- | --- |
+| split `pyo3` out of the parser | `parser/crates/pyexec` (W2b) | done |
+| Python half as a loadable cdylib | `--features extension-module` | done |
+| version-agnostic across CPython | `--features abi3` (issue 0915) | done |
+| discover + `dlopen` at runtime | `parser/crates/pyload` (W3) | done |
+| graceful XML/YAML with no Python | `Result`, never an abort | done |
+
+`just setup-launch-resolve` builds the half with
+`--features extension-module,abi3` (justfile:3302) and copies it beside the
+binary, which is open question 5.
+
+### What is NOT fixed, and is out of scope here
+
+`src/play_launch/Cargo.toml` still enables `auto-initialize`, so the layer-3
+play_launch RUNTIME still embeds an interpreter. nano-ros does not build it —
+only layer 2, the resolver — so this issue's subject is complete. The remaining
+`auto-initialize` in `pyexec` is deliberate: that crate ships BOTH an rlib (for
+a consumer with a known interpreter, which does want the link) and the cdylib,
+and cargo cannot vary features per crate-type, so they are two builds.
 
 ## Q4 measured (2026-08-31) — abi3 costs nothing detectable
 
