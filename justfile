@@ -2330,6 +2330,23 @@ runner-register labels *ARGS:
 runner-container labels *ARGS:
     @scripts/ci/runner-container.sh {{labels}} {{ARGS}}
 
+# The whole procedure in ONE verb, for the common case. Resolves the repo from
+# `gh repo view` (the origin remote — never a hardcoded default, which would
+# silently attach a fork's runner to the wrong repo) and mints a registration
+# token via `gh api`. Missing or non-admin `gh` is reported as what it is, with
+# the manual form to copy: `--repo OWNER/REPO`, `--token -` to read stdin.
+#
+# Prefer `RUNNER_TOKEN=… just runner-up …` or `--token -` over `--token <val>`:
+# an argv token is visible in `ps` and lands in shell history.
+#
+# Stops short of `just merge-queue --apply --self-hosted-ready` on purpose —
+# that changes repo-wide settings, so it stays a human's decision.
+#
+# Stand up a contained self-hosted runner in one command. Takes --check.
+[group("setup")]
+runner-up labels *ARGS:
+    @scripts/ci/runner-up.sh {{labels}} {{ARGS}}
+
 # Between jobs: reap orphaned process groups and run budgeted disk GC.
 # On a shared runner one leaked peer is every later job's flake. Takes --check.
 [group("setup")]
