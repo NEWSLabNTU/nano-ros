@@ -483,6 +483,8 @@ config NROS_ZENOH_LEASE_PRIORITY
 
 config NROS_ZENOH_TX_BATCH
     bool "zenoh-pico tx batching (one send per executor spin)"
+    # DERIVED from nros-platform-zephyr [knobs.zenoh.tx].batch —
+    # re-render with `scripts/check-zephyr-knob-agreement.py --write`.
     default y
     help
       phase-279 (#145) — tx batching (ZPICO_TX_BATCH). Publishes queue
@@ -503,6 +505,8 @@ config NROS_ZENOH_TX_BATCH
 
 config NROS_ZENOH_TX_SPLIT_LOCK
     bool "zenoh-pico split tx locking (append while sending)"
+    # DERIVED from nros-platform-zephyr [knobs.zenoh.tx].split_lock —
+    # re-render with `scripts/check-zephyr-knob-agreement.py --write`.
     default y
     depends on NROS_ZENOH_TX_BATCH
     help
@@ -516,6 +520,8 @@ config NROS_ZENOH_TX_SPLIT_LOCK
 
 config NROS_ZENOH_TX_BATCH_FLUSH_MS
     int "zenoh-pico tx batch flush cadence (ms)"
+    # DERIVED from nros-platform-zephyr [knobs.zenoh.tx].flush_ms —
+    # re-render with `scripts/check-zephyr-knob-agreement.py --write`.
     default 50
     depends on NROS_ZENOH_TX_BATCH
     help
