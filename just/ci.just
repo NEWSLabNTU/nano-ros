@@ -49,11 +49,46 @@ default: tier1
 # CLAUDE.md, two workflows and ~180 doc references; phase-399's precedent is
 # that a rename keeps its forwarder.
 [group("main")]
+# The steps run in order and this lane STOPS at the first failure, which is the
+# right trade for feedback and the wrong one for coverage: everything after the
+# red step is withdrawn, and the old output did not say so. It ended
+# `1 of 149 gate(s) FAILED`, which reads as one small problem rather than "and
+# the four steps behind it never ran" — among them `check::build`, the only
+# place the C/C++ backends compile.
+#
+# That is not hypothetical. It is how `nros-rmw-cyclonedds` stayed unbuildable
+# from phase-406 W1 to the end of the phase and `nros-rmw-uorb` was never
+# migrated at all, under runs that looked green enough to push on (issue 0952).
+# The lane now names what it withdrew.
 gate:
-    @just check cli-fresh check::fast check::build check::api-parity
-    @just test-unit
-    @just test-lane-contracts
-    @echo "CI gate passed (compile + unit; no fixtures were built or needed)."
+    #!/usr/bin/env bash
+    set -uo pipefail
+    steps=(check::cli-fresh check::fast check::build check::api-parity test-unit test-lane-contracts)
+    declare -a verdict=()
+    failed_at=-1
+    for i in "${!steps[@]}"; do
+        if [ "$failed_at" -ge 0 ]; then verdict[$i]="NOT RUN"; continue; fi
+        if just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
+    done
+    if [ "$failed_at" -lt 0 ]; then
+        echo "CI gate passed (compile + unit; no fixtures were built or needed)."
+        exit 0
+    fi
+    skipped=$(( ${#steps[@]} - failed_at - 1 ))
+    printf '\n'
+    printf 'CI GATE FAILED at step %d of %d.\n\n' "$(( failed_at + 1 ))" "${#steps[@]}"
+    for i in "${!steps[@]}"; do
+        printf '  %-8s %s\n' "${verdict[$i]}" "${steps[$i]}"
+    done
+    if [ "$skipped" -gt 0 ]; then
+        printf '\n'
+        printf '  %d step(s) did NOT run. This lane stops at the first failure, so a\n' "$skipped"
+        printf '  red step WITHDRAWS every step after it — `check::build` among them,\n'
+        printf '  which is the only place the C/C++ backends compile. A red count is\n'
+        printf '  not a coverage report: fix the failure and re-run before reading\n'
+        printf '  this lane as a verdict on anything below it (issue 0952).\n'
+    fi
+    exit 1
 
 # Deprecated spelling of `just ci gate`. Kept because it is what CLAUDE.md,
 # queue-notify.yml and the docs say today.
@@ -311,10 +346,36 @@ matrix-nightly:
 # runs tier 2, which never claimed to cover it.
 [group("ci")]
 full:
-    @just check
-    @just rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored
-    @just zephyr tier3-cell
-    @echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
+    #!/usr/bin/env bash
+    # Same stop-at-first-failure trade as `gate`, and the same reporting, for
+    # the same reason: `just check` alone is ~200 gates, and a red one used to
+    # withdraw `test-all` and the Zephyr cell without saying it had. On the
+    # longest lane in the ladder that is the most expensive place to misread a
+    # result (issue 0952).
+    set -uo pipefail
+    steps=(check rust-rtos-link-check check::zephyr-kconfig-symbols test-all test-ignored zephyr::tier3-cell)
+    declare -a verdict=()
+    failed_at=-1
+    for i in "${!steps[@]}"; do
+        if [ "$failed_at" -ge 0 ]; then verdict[$i]="NOT RUN"; continue; fi
+        if just "${steps[$i]}"; then verdict[$i]="ok"; else verdict[$i]="FAILED"; failed_at=$i; fi
+    done
+    if [ "$failed_at" -lt 0 ]; then
+        echo "CI passed (tier 3 — full matrix, both Zephyr lines)!"
+        exit 0
+    fi
+    skipped=$(( ${#steps[@]} - failed_at - 1 ))
+    printf '\n'
+    printf 'CI FULL FAILED at step %d of %d.\n\n' "$(( failed_at + 1 ))" "${#steps[@]}"
+    for i in "${!steps[@]}"; do
+        printf '  %-8s %s\n' "${verdict[$i]}" "${steps[$i]}"
+    done
+    if [ "$skipped" -gt 0 ]; then
+        printf '\n'
+        printf '  %d step(s) did NOT run — this lane stops at the first failure, so\n' "$skipped"
+        printf '  nothing below the red step was measured (issue 0952).\n'
+    fi
+    exit 1
 
 # Fast per-push CI gate: the dependency-free lint/check lane — no heavy builds,
 # fixtures, QEMU, network, or ROS install. Runs anywhere. The heavier per-job
