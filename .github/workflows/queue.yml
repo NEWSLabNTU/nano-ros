@@ -87,3 +87,18 @@ jobs:
       - name: Sweep orphans and disk
         if: always()
         run: ./scripts/ci/runner-sweep.sh || true
+
+  # phase-405 — make the interlocked job's SKIP visible in the run that skipped
+  # it. See scripts/ci/report-interlock-coverage.sh for why this warns rather
+  # than fails when no runner is registered, and fails when one supposedly is.
+  #
+  # `if: always()` so it reports on a skip; `needs` so it sees the result.
+  coverage:
+    name: coverage report (did L3 run?)
+    needs: [l3]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report whether the interlocked lane ran
+        run: ./scripts/ci/report-interlock-coverage.sh "L3 (cross build + link)" "${{ needs.l3.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"
