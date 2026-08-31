@@ -108,11 +108,27 @@ fn main() {
     //      below the cyclone DDS-discovery default; cyclone/xrce don't enable
     //      this feature on the base crate, so they keep the 3 MiB default; tune
     //      via the env (`xPortGetMinimumEverFreeHeapSize()` high-water).
-    let heap_kb = env::var("NROS_FREERTOS_HEAP_KB")
-        .ok()
-        .or_else(|| (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| "2048".to_string()));
+    // phase-400 W6 — the platform and board rungs sit UNDER the two overrides
+    // this already had, and the env front-end still wins over all of them.
+    //
+    // The knob keeps its KiB spelling at the front end and the ladder stores
+    // bytes, so the define is converted back here: FreeRTOSConfig.h reads KiB.
+    let zenoh_default_kb =
+        (env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()).then(|| 2048_usize);
+    let heap_kb = match nros_board_common::platform_config::BuildRungs::from_build_env() {
+        Some(rungs) => {
+            // No lane default means "leave FreeRTOSConfig.h's 3 MiB alone",
+            // which is not a number this can invent — so only ask the ladder
+            // when something below it has an opinion.
+            zenoh_default_kb.map(|kb| rungs.memory_value("heap_bytes", kb * 1024) / 1024)
+        }
+        None => env::var("NROS_FREERTOS_HEAP_KB")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .or(zenoh_default_kb),
+    };
     if let Some(kb) = heap_kb {
-        freertos.define("NROS_FREERTOS_HEAP_KB", kb.as_str());
+        freertos.define("NROS_FREERTOS_HEAP_KB", kb.to_string().as_str());
     }
     println!("cargo:rerun-if-env-changed=NROS_FREERTOS_HEAP_KB");
     for src in &[
