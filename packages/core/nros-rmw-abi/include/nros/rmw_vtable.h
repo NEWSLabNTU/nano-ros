@@ -1355,7 +1355,10 @@ typedef struct nros_rmw_vtable_t {
      *  Promotion stays cheap and stays open: making this required later is a
      *  change to the registration check, not to the struct.
      *
-     *  Phase-403 W4 recommends AGAINST ever promoting it, having filled it.
+     *  DECIDED 2026-08-31: this slot stays OPTIONAL permanently. Phase-403 W4
+     *  recommended it after filling the slot for zenoh-pico, and that is now a
+     *  ruling rather than a recommendation, so promotion is off the table
+     *  unless the reason below stops being true.
      *  The first argument above dissolves once a dispatch site exists, but the
      *  other two do not, and they are the load-bearing ones: cyclonedds and
      *  XRCE keep ONE receive buffer, so "no opinion" is their true answer and
