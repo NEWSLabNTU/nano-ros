@@ -3786,6 +3786,21 @@ impl<'s> Executor<'s> {
     /// Typed buffered subscription core (the `node_mut(id).subscription(t)
     /// .typed::<M>()` builder lowers here). Routes the typed subscription
     /// through the [`NodeId`]'s session + identity (rclcpp `add_node` pattern).
+    ///
+    /// Phase 403 W2 -- `rx_bytes` overrides how many bytes each buffer slot
+    /// claims from the arena. `None` means `RX_BUF`, which is what every caller
+    /// did before the knob existed and is what every caller that does not opt in
+    /// still does: the default derivation is byte-for-byte unchanged.
+    ///
+    /// It is a RUNTIME `usize` and not a second const generic because on THIS
+    /// path `RX_BUF` was never an array length -- it reaches
+    /// `buffered_region_size`, `TripleBuffer::init` and `SpscRing::init`, all of
+    /// which take a plain `usize`. That is the only reason W2's per-type sizing
+    /// is expressible here at all: `Sub<{ M::BOUND }>` is
+    /// `error: generic parameters may not be used in const operations` on stable
+    /// (rustc 1.97.1), so the sibling `register_subscription_with_info_sized_inner`
+    /// / `..._with_safety_sized_inner`, whose entries really do hold
+    /// `[u8; RX_BUF]`, still need `nros::rx_buffer_for!` at the call site.
     pub(crate) fn register_subscription_buffered_on<M, F, const RX_BUF: usize>(
         &mut self,
         node_id: super::node_record::NodeId,
@@ -3793,6 +3808,7 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: F,
         group: Option<&str>,
+        rx_bytes: Option<usize>,
     ) -> Result<HandleId, NodeError>
     where
         M: crate::rmw_type_registry::MessageForRmw + 'static,
@@ -3876,7 +3892,12 @@ impl<'s> Executor<'s> {
             }
         }
 
-        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+        // Phase 403 W2 -- one number for the whole allocation. The region size,
+        // the strategy's slot size and the pointer arithmetic must agree, so
+        // they read the same local rather than each spelling `RX_BUF`.
+        let slot_size = rx_bytes.unwrap_or(RX_BUF);
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, slot_size);
 
         let (entry_offset, trailing_offset) =
             self.arena_alloc_with_trailing::<Entry<M, F>>(trailing_bytes)?;
@@ -3884,9 +3905,9 @@ impl<'s> Executor<'s> {
         let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
 
         let buffer = if qos.depth <= 1 {
-            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, slot_size) })
         } else {
-            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, slot_size, qos.depth as usize) })
         };
 
         unsafe {
