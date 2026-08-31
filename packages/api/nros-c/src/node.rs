@@ -11,6 +11,31 @@ use crate::{
     support::{nros_support_state_t, nros_support_t},
 };
 
+/// issue 0972 — decode the C ABI `domain_id` byte, ONCE, for every caller.
+///
+/// `nros_support_t.domain_id` stores the byte exactly as the C caller passed
+/// it, and that byte is not a domain: it is an encoding.
+/// `nros_support_init` already decodes it correctly for the session
+/// (`support.rs`, via `baked_domain_from_c_abi`), but the two entity-resolution
+/// sites below read the RAW field and compared it against 0, which got both
+/// ends wrong:
+///
+/// * `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255, issue #227's "I really do mean domain
+///   0") is `!= 0`, so it was used AS the domain — 255, which is not even a
+///   legal ROS domain (they cap at 232). A caller asking for the default domain
+///   got an out-of-range one.
+/// * plain `0` means UNSET, and falling back to the session is right — that
+///   part was correct and is preserved.
+///
+/// Keeping the decode in one place is the point: this was the same mistake at
+/// two call sites, and a third would have made it three.
+fn resolve_domain_from_c_abi(raw: u8, session_domain: u32) -> u32 {
+    match nros_node::baked_domain_from_c_abi(raw) {
+        Some(explicit) => explicit,
+        None => session_domain,
+    }
+}
+
 /// Sentinel value for `domain_id_override`. When set, the support context's
 /// domain_id is used instead of the per-Node override.
 pub const NROS_DOMAIN_ID_INHERIT: u32 = u32::MAX;
@@ -717,7 +742,8 @@ pub(crate) unsafe fn resolve_session_and_domain(
         let domain_id = if node.domain_id_override != NROS_DOMAIN_ID_INHERIT {
             node.domain_id_override
         } else if !support_ptr.is_null() {
-            (*support_ptr).domain_id as u32
+            // issue 0972 — decode, do not read the raw byte.
+            resolve_domain_from_c_abi((*support_ptr).domain_id, session.domain_id())
         } else {
             session.domain_id()
         };
@@ -736,13 +762,10 @@ pub(crate) unsafe fn resolve_session_and_domain(
         // configured domain. Discovery then never matches and nothing reports an
         // error, because the domain is just the first element of the key
         // (issue 0801).
-        let support_domain = support_mut.domain_id as u32;
+        let raw_domain = support_mut.domain_id;
         let session = support_mut.get_session_mut()?;
-        let domain_id = if support_domain != 0 {
-            support_domain
-        } else {
-            session.domain_id()
-        };
+        // issue 0972 — decode, do not read the raw byte.
+        let domain_id = resolve_domain_from_c_abi(raw_domain, session.domain_id());
         Some((session, domain_id))
     }
 }
@@ -750,6 +773,51 @@ pub(crate) unsafe fn resolve_session_and_domain(
 #[cfg(test)]
 mod node_ref_tests {
     use super::*;
+
+    /// issue 0972 — the C ABI `domain_id` byte is an ENCODING, not a domain.
+    ///
+    /// Both entity-resolution sites used to read it raw and compare against 0.
+    /// The regression that matters is `NROS_DOMAIN_ID_EXPLICIT_ZERO`: it is 255,
+    /// so `!= 0` was true and 255 was used AS the domain — not merely the wrong
+    /// domain, but one outside the legal ROS range (0..=232). A caller asking
+    /// for the default domain got an impossible one, silently, because a domain
+    /// is just the first element of the discovery key (issue 0801).
+    #[test]
+    fn explicit_zero_resolves_to_domain_zero_not_255() {
+        // The session is on a different domain, so a fallback would be visible.
+        assert_eq!(
+            resolve_domain_from_c_abi(crate::support::NROS_DOMAIN_ID_EXPLICIT_ZERO, 7),
+            0,
+            "explicit-zero must mean domain 0, not the sentinel's own value"
+        );
+    }
+
+    /// Plain 0 is UNSET and must defer to the session. This half was already
+    /// correct; it is pinned so a future simplification cannot collapse the two
+    /// meanings back together.
+    #[test]
+    fn unset_defers_to_the_session_domain() {
+        assert_eq!(resolve_domain_from_c_abi(0, 7), 7);
+        assert_eq!(resolve_domain_from_c_abi(0, 0), 0);
+    }
+
+    /// An ordinary domain passes through unchanged.
+    #[test]
+    fn an_explicit_domain_wins_over_the_session() {
+        assert_eq!(resolve_domain_from_c_abi(5, 7), 5);
+        assert_eq!(resolve_domain_from_c_abi(232, 7), 232);
+    }
+
+    /// The two meanings of "zero" are distinguishable — which is the whole
+    /// point of the sentinel, and what reading the raw byte threw away.
+    #[test]
+    fn explicit_zero_and_unset_are_not_the_same_input() {
+        let session = 9;
+        assert_ne!(
+            resolve_domain_from_c_abi(crate::support::NROS_DOMAIN_ID_EXPLICIT_ZERO, session),
+            resolve_domain_from_c_abi(0, session),
+        );
+    }
 
     /// phase-379 W4 — a reference minted before `nros_node_fini` stops
     /// resolving after it.
