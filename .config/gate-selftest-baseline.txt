@@ -36,7 +36,6 @@ scripts/check-example-leaf-build-dirs.py
 scripts/check-example-matrix.sh
 scripts/check-eyre-context-alias.sh
 scripts/check-feature-contract.py
-scripts/check-feature-set-ssot.sh
 scripts/check-ffi-struct-mirrors.sh
 scripts/check-fixture-binary-names.py
 scripts/check-fixture-groups.py

@@ -1224,7 +1224,8 @@ impl SystemHeader {
     /// edition silently bakes the wrong type hash / keyexpr format.
     pub fn ros_edition(&self) -> eyre::Result<rosidl_codegen::RosEdition> {
         match &self.ros_edition {
-            None => Ok(rosidl_codegen::RosEdition::Humble),
+            // phase-405 W3 — derived, not a second literal.
+            None => Ok(rosidl_codegen::RosEdition::default()),
             Some(s) => rosidl_codegen::RosEdition::parse(s).ok_or_else(|| {
                 eyre::eyre!(
                     "[system].ros_edition = '{s}' is not a known ROS edition \

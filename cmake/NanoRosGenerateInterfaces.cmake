@@ -77,6 +77,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
 # (`nros profile`), so this file no longer carries a default literal or its own
 # `dev → debug` special case.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCargoProfile.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 nros_resolve_cargo_profile()
 set(NROS_CODEGEN_CARGO_PROFILE "${NROS_CARGO_PROFILE}" CACHE STRING
     "Cargo profile whose target directory is searched for nros-codegen" FORCE)
@@ -130,13 +131,7 @@ function(nros_generate_interfaces target)
   # the workspace edition baked by `nano_ros_workspace(EDITION …)`
   # (`NANO_ROS_ROS_EDITION`) so the codegen type-hash matches the runtime
   # `ros-<edition>` keyexpr feature. Neither set → humble (byte-identical).
-  if(NOT DEFINED _ARG_ROS_EDITION OR _ARG_ROS_EDITION STREQUAL "")
-    if(DEFINED NANO_ROS_ROS_EDITION AND NOT NANO_ROS_ROS_EDITION STREQUAL "")
-      set(_ARG_ROS_EDITION "${NANO_ROS_ROS_EDITION}")
-    else()
-      set(_ARG_ROS_EDITION "humble")
-    endif()
-  endif()
+  _nros_resolve_ros_edition("${_ARG_ROS_EDITION}" _ARG_ROS_EDITION)
 
   if(NOT DEFINED _ARG_LANGUAGE OR _ARG_LANGUAGE STREQUAL "")
     set(_ARG_LANGUAGE "C")

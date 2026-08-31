@@ -23,7 +23,7 @@ pub struct Args {
     pub output: PathBuf,
 
     /// ROS 2 edition (`humble` | `iron` | `jazzy`).
-    #[arg(long, default_value = "humble")]
+    #[arg(long, default_value = rosidl_codegen::DEFAULT_ROS_EDITION)]
     pub ros_edition: String,
 
     /// `px4_msgs` crate version (defaults to the pinned PX4 release).
