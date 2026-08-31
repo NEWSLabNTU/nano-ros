@@ -74,7 +74,7 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
      first_missing_vtable_slot's require!() list. Do not hand-edit:
      `just check rmw-slot-table` fails on drift (issue 0826). -->
 
-75 slots, 17 of them required.
+68 slots, 17 of them required.
 
 | # | slot | group | required |
 |---|------|-------|----------|
@@ -130,29 +130,22 @@ slot, and moved the transport hints (`tx_express`, `rx_buffer_hint`) out of
 | 50 | `publisher_wait_for_all_acked` | Phase 376 W4 — QoS read-back + clean shutdown (all optional) | optional |
 | 51 | `take_with_info` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
 | 52 | `take_loaned_message_with_info` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
-| 53 | `service_set_on_new_request_callback` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
-| 54 | `client_set_on_new_response_callback` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
-| 55 | `subscription_set_on_new_message_callback` | Phase 376 W4 — with-info takes + entity callbacks (optional) | optional |
-| 56 | `get_node_names` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 57 | `get_topic_names_and_types` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 58 | `get_service_names_and_types` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 59 | `get_publisher_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 60 | `get_subscriber_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 61 | `get_service_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 62 | `get_client_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 63 | `get_publishers_info_by_topic` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 64 | `get_subscriptions_info_by_topic` | Phase 376 W4 — graph introspection (all optional) | optional |
-| 65 | `subscription_set_content_filter` | Content filtering (RFC-0075-era DDS feature; NULL elsewhere) | optional |
-| 66 | `subscription_get_content_filter` | Content filtering (RFC-0075-era DDS feature; NULL elsewhere) | optional |
-| 67 | `publisher_get_network_flow_endpoints` | Network flow endpoints (OS-level; NULL where there is no notion) | optional |
-| 68 | `subscription_get_network_flow_endpoints` | Network flow endpoints (OS-level; NULL where there is no notion) | optional |
-| 69 | `count_publishers` | Network flow endpoints (OS-level; NULL where there is no notion) | optional |
-| 70 | `count_subscribers` | Network flow endpoints (OS-level; NULL where there is no notion) | optional |
-| 71 | `node_get_graph_guard_condition` | Network flow endpoints (OS-level; NULL where there is no notion) | optional |
-| 72 | `create_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 73 | `destroy_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 74 | `set_log_severity` | Phase 376 W4 — graph node lifecycle (optional) | optional |
-| 75 | `required_rx_bytes` | Phase 403 W1 — receive-buffer sizing (optional) | optional |
+| 53 | `get_node_names` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 54 | `get_topic_names_and_types` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 55 | `get_service_names_and_types` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 56 | `get_publisher_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 57 | `get_subscriber_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 58 | `get_service_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 59 | `get_client_names_and_types_by_node` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 60 | `get_publishers_info_by_topic` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 61 | `get_subscriptions_info_by_topic` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 62 | `count_publishers` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 63 | `count_subscribers` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 64 | `node_get_graph_guard_condition` | Phase 376 W4 — graph introspection (all optional) | optional |
+| 65 | `create_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
+| 66 | `destroy_node` | Phase 376 W4 — graph node lifecycle (optional) | optional |
+| 67 | `set_log_severity` | Phase 376 W4 — graph node lifecycle (optional) | optional |
+| 68 | `required_rx_bytes` | Phase 403 W1 — receive-buffer sizing (optional) | optional |
 
 <!-- END GENERATED SLOT TABLE -->
 
