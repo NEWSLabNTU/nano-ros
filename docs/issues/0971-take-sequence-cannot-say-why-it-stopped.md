@@ -1,10 +1,10 @@
 ---
 id: 971
-title: "`take_sequence` cannot say why a drain stopped, its two implementations disagree about it, and the message that stopped it is consumed and lost"
+title: "`take_sequence` cannot say why a drain stopped, and its two implementations disagree about it"
 status: open
 area: [rmw, api]
 severity: high
-related: [0969, 0773, phase-124, phase-376]
+related: [0969, 0773, phase-124, phase-376, phase-384]
 ---
 
 # A partial drain and an empty reader are the same answer
@@ -105,9 +105,10 @@ Note that the dead branch was ALSO the wrong fix: returning
 `BUFFER_TOO_SMALL` from a partial drain is what the contract forbids. Making it
 reachable would have traded a silent drop for a contract violation.
 
-## The same root, one level down
+## What `subscription_take` (single) does is CORRECT — a correction to this issue
 
-`subscription_take` (single) has the same consume-then-refuse ordering:
+This section originally claimed the single take had "the same root, one level
+down", on the grounds that it too destroys the message:
 
 ```cpp
 const uint32_t total = ddsi_serdata_size(d);
@@ -117,45 +118,88 @@ if (buf_len < total) {
 }
 ```
 
-The caller at least gets a distinct status here, so this is materially better
-than the sequence path — but the message is equally gone, and a caller that
-enlarges its buffer and retries receives the *next* message, not the one it was
-told about. Also pre-existing: the pre-0969 body freed its typed sample and
-returned the same status. Worth fixing with the same change rather than
-separately, because the ordering problem is identical: **the size is only
-knowable after the take consumes the sample.**
+That was wrong, and the tree says so twice.
 
-## Why this is not a one-line fix
+**Live zenoh does the identical thing, deliberately**
+(`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:1019`):
 
-Every obvious option loses something:
+```rust
+// Oversized for the caller's buffer — drop the slot so the
+// subscription isn't permanently stuck.
+buffer.consume_head();
+return Err(TransportError::BufferTooSmall);
+```
+
+**And it is formally verified.** `nros-verification/src/e2e.rs`'s
+`try_recv_post_fix` models the take path after the 31.6 fix, and its listed
+difference from the pre-fix version is exactly this:
+
+> 2. On `BufferTooSmall` (stored_len > rx_buf_len) → clears `has_data`
+>    (**FIXED: no longer stuck**)
+
+with proof `no_silent_truncation` establishing that the consumer "**never**
+receives truncated data" — it gets the complete message or an explicit error.
+
+So the invariant is **no stuck subscription and no silent truncation**, not
+"the message survives". Consume-then-refuse is the design, Cyclone's single take
+already implements it, and it needs no change. The defect in this issue is
+narrower than first written: it is the SEQUENCE path only, and only because that
+is the one place the explicit error has nowhere to go.
+
+## The fix
+
+Where the error cannot be returned inline, carry it to the next call. That is
+the same shape `try_recv_post_fix` already has — check a flag first, clear it,
+return the error, take nothing — applied one call later.
+
+**Cyclone.** `SubState` gains `pending_too_small`:
+
+* `subscription_take_sequence_count`, at the top: flag set → clear it, return
+  the negated `BUFFER_TOO_SMALL`, take nothing.
+* in the loop, on an oversized sample: set the flag, `break`, return the count.
+  Partial drains still use the count form, as the contract requires.
+* `subscription_take`, at the top: the same check, so a caller that mixes the
+  two entry points still hears about it. Its own oversize path keeps returning
+  the status inline, because it can.
+
+**Runtime fallback.** `CffiSubscriber` gains `pending: Option<TransportError>`:
+
+* loop hits `BufferTooSmall` with `count > 0` → stash it, return `Ok(count)`.
+* with `count == 0` → return the error directly, as it does now.
+* at the top, `pending.take()` → return it.
+
+Both paths then emit the identical *sequence* of answers, which is what makes
+`rmw_vtable.h`'s "identical observable behaviour" claim true rather than
+something to delete. No signature change, so no `abi_version` bump.
+
+The error arrives one call late. That is the price of a contract that forbids
+erroring out of a partial drain, and it is strictly better than never.
+
+## Rejected, and why
 
 1. **Return negated `BUFFER_TOO_SMALL` from the batch.** Contract-forbidden, and
    worse in practice — the caller loses the count for messages that were
    delivered fine.
 2. **Skip the oversized sample and keep draining.** Delivers more, still
-   destroys the message silently. Trades one silent loss for a quieter one.
-3. **Report the count AND an overflow signal.** Correct, and needs a signature
-   change: an out-parameter, or a documented convention that `out_lens[count]`
-   carries the length that did not fit. The ABI slot is already
-   `(…, size_t *out_lens, size_t *taken)` returning `rmw_ret_t`, so there is
-   room for a third out-parameter, at the cost of an `abi_version` bump.
-4. **Size before consuming.** `dds_readcdr` peeks without removing, so the
-   backend could size the head sample, refuse it while leaving it in the cache,
-   and let a caller with a bigger buffer actually retry. Two passes per sample
-   on the batch path, and only Cyclone can do it — the fallback cannot peek
-   through `try_recv_raw`.
-
-(3) and (4) are complementary rather than alternative: (3) tells the caller what
-happened, (4) makes the message survivable. Both change the contract, which is
-why this is filed rather than fixed.
+   destroys the message with no signal. Violates `no_silent_truncation`.
+3. **An overflow out-parameter plus an `abi_version` bump.** Works, and is
+   unnecessary: the pending flag carries the same fact with no ABI change.
+4. **`dds_readcdr` to size before consuming, leaving the sample in the cache so
+   a caller with a bigger buffer can retry.** This was offered here as the
+   option that "makes the message survivable". It is the bug that was already
+   fixed: a sample left in the cache that no caller can ever take is precisely
+   the stuck subscription `try_recv_post_fix` exists to rule out, and a caller
+   whose buffer is sized from the type bound will not come back with a bigger
+   one anyway.
 
 ## What a fix must satisfy
 
 * A caller can distinguish "reader drained" from "a message did not fit", on
   BOTH the native and the fallback path, with the same answer.
-* Whatever the doc claims about the fallback being observationally identical is
-  either made true or deleted.
+* The doc's claim that the fallback is observationally identical is made true.
 * Messages already written are never lost to the reporting of a later failure.
+* No subscription is left stuck, and nothing is truncated silently — the
+  invariants `no_silent_truncation` already fixes in place.
 * The behaviour is stated where the slot is declared, not inferred from two
   implementations that currently disagree.
 
