@@ -314,6 +314,24 @@ pub struct rmw_count_status_t {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct rmw_node_visitor_t {
+    pub visit: rmw_node_visit_fn,
+    pub ctx: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_names_and_types_visitor_t {
+    pub visit: rmw_names_and_types_visit_fn,
+    pub ctx: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_topic_endpoint_info_visitor_t {
+    pub visit: rmw_topic_endpoint_info_visit_fn,
+    pub ctx: *mut core::ffi::c_void,
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_vtable_t {
     #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`.\n\n  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`\n              rather than the enum to keep the slot's width fixed\n              across compilers. A backend with no peer/client\n              distinction must IGNORE it, not reject it.\n  @param options NULLable; NULL means every default. Issue 0808 — the\n              home for init-time context this flat list cannot grow\n              without another break. `mode` is NOT moved into it: doing\n              so would be a second break for no gain, and it is already\n              a named argument every backend reads. What moved in are the\n              two fields issue 0785 measured as GAPS, `localhost_only`\n              and `enclave`."]
     pub create_session: ::core::option::Option<
@@ -719,8 +737,7 @@ pub struct nros_rmw_vtable_t {
     pub get_node_names: ::core::option::Option<
         unsafe extern "C" fn(
             session: *const rmw_session_t,
-            visit: rmw_node_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_node_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_topic_names_and_types`."]
@@ -728,16 +745,14 @@ pub struct nros_rmw_vtable_t {
         unsafe extern "C" fn(
             session: *const rmw_session_t,
             no_demangle: bool,
-            visit: rmw_names_and_types_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_names_and_types_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_service_names_and_types`."]
     pub get_service_names_and_types: ::core::option::Option<
         unsafe extern "C" fn(
             session: *const rmw_session_t,
-            visit: rmw_names_and_types_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_names_and_types_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_publisher_names_and_types_by_node`."]
@@ -747,8 +762,7 @@ pub struct nros_rmw_vtable_t {
             node_name: *const core::ffi::c_char,
             node_namespace: *const core::ffi::c_char,
             no_demangle: bool,
-            visit: rmw_names_and_types_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_names_and_types_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_subscriber_names_and_types_by_node`."]
@@ -758,8 +772,7 @@ pub struct nros_rmw_vtable_t {
             node_name: *const core::ffi::c_char,
             node_namespace: *const core::ffi::c_char,
             no_demangle: bool,
-            visit: rmw_names_and_types_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_names_and_types_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_service_names_and_types_by_node`."]
@@ -768,8 +781,7 @@ pub struct nros_rmw_vtable_t {
             session: *const rmw_session_t,
             node_name: *const core::ffi::c_char,
             node_namespace: *const core::ffi::c_char,
-            visit: rmw_names_and_types_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_names_and_types_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_client_names_and_types_by_node`."]
@@ -778,8 +790,7 @@ pub struct nros_rmw_vtable_t {
             session: *const rmw_session_t,
             node_name: *const core::ffi::c_char,
             node_namespace: *const core::ffi::c_char,
-            visit: rmw_names_and_types_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_names_and_types_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_publishers_info_by_topic`."]
@@ -788,8 +799,7 @@ pub struct nros_rmw_vtable_t {
             session: *const rmw_session_t,
             topic_name: *const core::ffi::c_char,
             no_mangle: bool,
-            visit: rmw_topic_endpoint_info_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_topic_endpoint_info_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_get_subscriptions_info_by_topic`."]
@@ -798,8 +808,7 @@ pub struct nros_rmw_vtable_t {
             session: *const rmw_session_t,
             topic_name: *const core::ffi::c_char,
             no_mangle: bool,
-            visit: rmw_topic_endpoint_info_visit_fn,
-            ctx: *mut core::ffi::c_void,
+            visitor: rmw_topic_endpoint_info_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_subscription_set_content_filter`.\n\n  Phase 376 W5. Previously DECLINED as \"DDS-only, would bloat every\n  non-DDS backend\" — but a declined symbol is absent from the ABI for\n  EVERY backend, including the one that can answer. A NULL slot costs one\n  pointer, lets Cyclone answer, and is what the runtime already reads as\n  UNSUPPORTED everywhere else. Narrowest scope wins.\n\n  Deviation, declared: upstream passes an allocated\n  `rmw_subscription_content_filter_options_t` (a `char *` plus an\n  `rcutils_string_array_t`); ours passes the expression and its parameters\n  directly, because there is no allocator at this seam and the options\n  struct exists only to own that allocation. `expression == NULL` clears\n  the filter."]
@@ -946,6 +955,7 @@ pub const NROS_RMW_HISTORY_UNKNOWN: i32 = 3;
 pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
+pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]
 #[derive(Copy, Clone)]

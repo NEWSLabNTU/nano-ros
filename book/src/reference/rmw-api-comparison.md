@@ -442,8 +442,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
   <span class='ty'>const char *node_namespace</span><span class=pu>,</span>
-  <span class='ty add'>rmw_names_and_types_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
@@ -477,8 +476,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_node_names</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
-  <span class='ty add'>rmw_node_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_node_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>visitor, not an owning out-param</b> — As `rmw_names_and_types_t` — an owning array upstream, a visitor here.</td>
 </tr>
@@ -493,8 +491,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>get_node_names</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
-  <span class='ty add'>rmw_node_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_node_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>renamed</b> — the slot is <code>get_node_names</code>.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>visitor, not an owning out-param</b> — As `rmw_names_and_types_t` — an owning array upstream, a visitor here.</td>
 </tr>
@@ -514,8 +511,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
   <span class='ty'>const char *node_namespace</span><span class=pu>,</span>
   <span class='ty'>bool no_demangle</span><span class=pu>,</span>
-  <span class='ty add'>rmw_names_and_types_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
@@ -533,8 +529,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
   <span class='ty'>bool no_mangle</span><span class=pu>,</span>
-  <span class='ty add'>rmw_topic_endpoint_info_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_topic_endpoint_info_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
@@ -565,8 +560,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_service_names_and_types</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
-  <span class='ty add'>rmw_names_and_types_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
@@ -584,8 +578,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
   <span class='ty'>const char *node_namespace</span><span class=pu>,</span>
-  <span class='ty add'>rmw_names_and_types_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
@@ -605,8 +598,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
   <span class='ty'>const char *node_namespace</span><span class=pu>,</span>
   <span class='ty'>bool no_demangle</span><span class=pu>,</span>
-  <span class='ty add'>rmw_names_and_types_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
@@ -624,8 +616,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
   <span class='ty'>bool no_mangle</span><span class=pu>,</span>
-  <span class='ty add'>rmw_topic_endpoint_info_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_topic_endpoint_info_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
@@ -641,8 +632,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <span class=pu>(*</span><span class='fn'>get_topic_names_and_types</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>bool no_demangle</span><span class=pu>,</span>
-  <span class='ty add'>rmw_names_and_types_visit_fn visit</span><span class=pu>,</span>
-  <span class='ty add'>void *ctx</span>
+  <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
 <td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
