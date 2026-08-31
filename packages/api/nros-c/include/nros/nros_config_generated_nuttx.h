@@ -12,10 +12,16 @@
 #define NROS_SUBSCRIBER_SIZE 560
 #define NROS_SERVICE_CLIENT_SIZE 4632
 #define NROS_SERVICE_SERVER_SIZE 528
-#define NROS_SESSION_SIZE 528
+/* issue 0954 — was 528 / 66 u64s. `_z_session_t` grew 8 bytes when it gained
+ * `_mutex_transport` + `_reconnecting` (issues 0899 / 0924), and this file must
+ * be an UPPER BOUND over every per-build value: freshly built headers now read
+ * 536, so 66 * 8 = 528 left the opaque array eight bytes short of the struct it
+ * stores. Same shape as #167 and #464 above — a per-build size moved and this
+ * hand-maintained twin did not. */
+#define NROS_SESSION_SIZE 536
 #define NROS_LIFECYCLE_CTX_SIZE 64
 #define NROS_ACTION_SERVER_INTERNAL_SIZE 96
-#define SESSION_OPAQUE_U64S 66
+#define SESSION_OPAQUE_U64S 67 /* 67 * 8 = 536, issue 0954 */
 #define PUBLISHER_OPAQUE_U64S 70
 /* #464 — was 9912, i.e. 79296 bytes: the value #167 REPLACED in the two macros
  * above and missed here, even though this is the one that sizes the array
