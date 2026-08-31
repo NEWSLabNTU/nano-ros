@@ -60,7 +60,15 @@ TESTS_DIR = os.path.join(ROOT, "packages", "testing", "nros-tests", "tests")
 # lane that had simply moved, which is the same false-staleness it exists to
 # catch elsewhere.
 LANES = {
-    "ci::l1": "compile + unit, NO fixture build (CLAUDE.md)",
+    # phase-410 W4 — `ci::l1` is now `ci::gate`. It visits no coordinates, so it
+    # was never a rung on the breadth ladder; `l1` survives as a forwarder and
+    # the CLAIM belongs to the recipe that holds the body.
+    "ci::gate": "compile + unit, NO fixture build (CLAUDE.md)",
+    # BUILD depth over the tier-2 breadth. Same affordability shape as the gate
+    # — it must not resolve a fixture — for a different reason: it is the
+    # MANDATORY per-merge lane (build-wide.yml), so a fixture dependency here
+    # would make every merge pay a fixture build.
+    "ci::_matrix-build": "cross build + link, NO fixture build (phase-410)",
     "check::fast": "buildless and source-only",
 }
 
@@ -249,8 +257,15 @@ COMPILE_RESOLVERS = ("require_compile_check", "require_compile_check_bin")
 # is a real recipe header, and the old `[a-z_]+=\S*` matched neither the
 # name nor the `"75%"`. It therefore skipped `native::check`, which is the
 # one recipe whose missing precondition froze the merge queue (phase-396).
+# phase-410 W4 — a leading `_` is allowed. `[private]` recipes in this repo are
+# `_`-prefixed by convention (`_lane-gate`, `_require-fixtures`,
+# `_matrix-build`), and this pattern could not match ANY of them. So the closure
+# below silently stopped at every private boundary — `ci::matrix` calls
+# `just _lane-gate tier2` and the walk never followed it. A gate that cannot see
+# the preconditions it exists to check is the vacuous-pass shape this file's own
+# header describes.
 RECIPE = re.compile(
-    r"^([a-z][a-z0-9-]*)"
+    r"^(_?[a-z][a-z0-9-]*)"
     r"(?:\s+[A-Za-z_][A-Za-z0-9_]*(?:=(?:\"[^\"]*\"|'[^']*'|\S+))?)*"
     r"\s*:(.*)$"
 )
@@ -326,7 +341,7 @@ def _parse_one(lines, mod):
 # check-fast check-build check-api-parity` in its body, so a header-only walk
 # found a closure of size 1 and cheerfully reported "0 test target(s)" — a gate
 # that verified nothing while printing OK.
-JUST_CALL = re.compile(r"^\s*@?just\s+([a-z0-9-]+(?:\s+[a-z0-9-]+)*)\s*$")
+JUST_CALL = re.compile(r"^\s*@?just\s+((?:[a-z0-9_:-]+)(?:\s+[a-z0-9_:-]+)*)\s*$")
 
 
 def closure(recipes, root):

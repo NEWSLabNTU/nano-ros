@@ -386,6 +386,36 @@ completes. With ten agents landing through a queue that batches four, a 20-minut
 tier is cancelled before it finishes, every time — and a lane that always cancels
 looks busy while reporting nothing. Run-depth belongs on a clock.
 
+### The vocabulary (phase-410 W4)
+
+"Lane" named three things here, meaning two:
+
+| name | means |
+| --- | --- |
+| `CiTier` | the ladder rung |
+| `CiLane` | the COMPUTED cell selection for a rung |
+| `_NROS_LANES` | the fixture coordinate set — breadth |
+| `ci l1` / `ci l3` | DEPTH — compile+unit / cross build+link |
+
+Tier-vs-lane is a real distinction and stands: a rung is a name, a lane is the
+selection computed for it. What collided was `l1`/`l3` using "l" for DEPTH.
+
+Resolved as:
+
+```
+just ci gate                  compile + unit; visits NO coordinates
+just ci <tier>                build + run at that breadth        (default)
+just ci <tier> build          build + link only at that breadth
+```
+
+`l1` was never a rung — it selects no platform and boots no QEMU, so it has no
+breadth at all. It is the GATE. `l3` is a depth on a breadth, and survives as
+the implementation of `ci matrix build`.
+
+The argument is POSITIONAL, and that is forced rather than chosen: `just` does
+not parse `name=value` for a recipe inside a MODULE — `just ci matrix
+depth=build` yields the literal string. Measured 2026-08-31.
+
 phase-410 restructures the workflows accordingly. This RFC keeps the ladder; it
 gains the axis the ladder was missing.
 
