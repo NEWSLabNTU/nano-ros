@@ -236,6 +236,105 @@ first-spin advisory, set the knob, and be told plainly if it was set too low.
 a declared entity inventory is still the real fix, and still blocked on the
 inventory existing — see below.
 
+## Landed: the knob is now checked against the LINKED image (W3, option 3)
+
+`scripts/check-action-client-arena-budget.py`, on the fast line as
+`just check action-client-arena-budget`. An image that never links the
+action-client creation path cannot have an action client. That is a post-link
+fact, so it cannot SIZE a compile-time constant — but it can GATE one:
+
+* **knob > 0, nothing heavy linked** — the image carries arena it cannot use.
+  **ADVISORY.** It is the shipped state of nearly everything (the knob defaults
+  to `MAX_CBS`, and nothing has ever set it), so failing on it would produce a
+  uniformly red lane, which has no signal capacity at all: a regression landing
+  in it would look exactly like yesterday's red.
+* **knob == 0, an action entity IS linked** — registration fails at RUNTIME with
+  `NodeError::BufferTooSmall`, on a target where a return code is all you get.
+  **FAILS.**
+
+**This is the only half of the fix that reaches embedded images.** The
+sidecar/metadata half cannot: a cross-compiled component is unprobeable by
+construction (`metadata_build.rs`'s own test is named
+`build_std_with_a_foreign_target_is_unprobeable`). `nm` reads a cross ELF
+perfectly well, which is exactly where a 56.5 KiB stack frame decides whether an
+image boots.
+
+### The obvious symbol was the wrong one, and would have passed vacuously
+
+`ActionClientCore::new` fails twice over. It is **inlined away** — it appears in
+NO image in the tree, action clients included — and `ActionClientCore` as a TYPE
+appears in **every** image that links the executor: 6 symbols (drop glue + five
+methods) in `qemu-rtic-talker`, a pub/sub-only image, byte-identical in count to
+`qemu-rtic-action-client`. `spin.rs` names the default-sized monomorphisation
+directly, so the dispatch code is linked whether or not anything creates a
+client. A probe on the type name would have reported "has an action client" for
+the whole tree and never fired.
+
+The discriminator is the CREATION path. Measured over 58 built ELFs on
+2026-09-01 (20 Cortex-M `thumbv7m-none-eabi`, 38 x86_64), `create_action_client*`
+and `create_action_server*` matched exactly the four action clients and the three
+action servers and nothing else; `service-client` / `service-server` are the
+nearest misses and score 0:
+
+| image | client | server | `ActionClientCore` |
+| --- | ---: | ---: | ---: |
+| `qemu-rtic-action-client` | 1 | 0 | 6 |
+| `qemu-rtic-action-server` | 0 | 1 | 6 |
+| `qemu-rtic-talker` | 0 | 0 | 6 |
+| `qemu-rtic-service-client` | 0 | 0 | 6 |
+| `action-client` (x86_64) | 1 | 0 | 6 |
+| `action-server` (x86_64) | 0 | 1 | 6 |
+
+Over all 221 images the tool can reach on a fully built tree, the verdicts and
+the file NAMES agree exactly: 35 "matched", every one of them an
+`*action-client*` or `*action-server*` binary.
+
+### The action SERVER counts too, though the knob is named for clients
+
+The knob's real meaning is "how many slots are budgeted at the WORST-CASE entry
+size", and `build.rs` picked the action client as that worst case. It is not.
+Measured from `target/nros-cpp-generated/nros/nros_cpp_config_generated.h`
+(x86_64, default 1024-byte buffers):
+
+    NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S = 654  ->  5,232 B
+    NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S = 799  ->  6,392 B
+
+against a pub/sub entry budgeted at `3 x rx_buf + 512` = 3,584 B. So an action
+server needs a slot a pub/sub budget cannot hold either, and advising an
+action-server image to set `NROS_EXECUTOR_ACTION_CLIENTS=0` would have traded the
+advisory for the exact `BufferTooSmall` this gate exists to prevent. Both
+entities are "heavy" here. (A follow-up worth filing: the derivation's own
+comment still calls the action client the worst case, and it is 1,160 bytes
+short of one.)
+
+### What it cannot decide, and says so
+
+A C or C++ image links `nros-c` / `nros-cpp` with `--whole-archive` (the issue
+0475 shape), so the staticlib is in the image whether or not the app calls any
+of it. `NodeHandle::create_action_client_raw` is a GLOBAL in **every** C entry:
+`native_entry` (a talker) and `native_action_client_entry` are indistinguishable
+on this probe. Those are reported INDETERMINATE, never OK, detected by the FFI
+surface itself (`nros_cpp_action_client_create` / `nros_action_client_init`),
+which is absent from every pure-Rust image measured. CMake-built entries outside
+a cargo profile dir are unreachable for a second, independent reason — there is
+no `nros_node_config.rs` to attribute to them — so the knob half is missing for
+exactly the same population.
+
+A tree with nothing built exits 78 and records a **SKIP**, never a pass: a gate
+that examined zero images must not read like one that agreed.
+
+### What the tree looks like today
+
+Zero images are in the dangerous direction — nothing anywhere sets the knob to
+0, so there is no live `BufferTooSmall` to find. **181 of 221 images are
+over-budgeted, 28 of them cross-compiled** (`thumbv7m-none-eabi`,
+`riscv32imc-unknown-none-elf`), each carrying a 74,240-byte arena on a task
+stack for an entity it does not have. The gate does not fix that; it makes it
+enumerable, which is what `NROS_EXECUTOR_ACTION_CLIENTS` never was.
+
+**Still not done:** nothing sets the knob automatically. This gate reports the
+mismatch, it does not resolve it.
+
 ## This is phase-392 W2, found from the other end
 
 Filed from a measurement — `ARENA_SIZE` is 74,240 bytes on every generated
