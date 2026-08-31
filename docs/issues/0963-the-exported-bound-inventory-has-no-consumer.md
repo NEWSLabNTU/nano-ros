@@ -1,5 +1,5 @@
 ---
-id: 940
+id: 963
 title: "The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand"
 status: open
 area: codegen, memory, build

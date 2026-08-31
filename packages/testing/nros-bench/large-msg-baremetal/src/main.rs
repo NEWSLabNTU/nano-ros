@@ -20,7 +20,7 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
     cbs: 2,
     sc: 2,
     arena: nros::arena_size_for(2),
-    // phase-405 — the Node-scaled tables are carved from this backing now.
+    // phase-409 — the Node-scaled tables are carved from this backing now.
     // Held at the build-time default rather than trimmed to the one Node this
     // bench creates: those tables were sized by `MAX_NODES` when they were
     // INLINE, so keeping the count is what leaves the capacity unchanged. The

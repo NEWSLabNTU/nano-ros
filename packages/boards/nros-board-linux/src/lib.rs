@@ -332,7 +332,7 @@ impl LinuxBoard {
                         cbs,
                         sc,
                         arena: ::nros::arena_size_for(cbs),
-                        // phase-405 — the entry declares callbacks, not Nodes
+                        // phase-409 — the entry declares callbacks, not Nodes
                         // (`[package.metadata.nros.entry] max_callbacks`), so the
                         // Node-scaled tables keep the build-time default.
                         ..::nros::ExecutorSizing::DEFAULT

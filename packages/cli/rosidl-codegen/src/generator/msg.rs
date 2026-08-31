@@ -453,7 +453,7 @@ pub fn generate_c_message_package_with_lookup(
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, resolver, lookup);
         let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, resolver, lookup);
-        // phase-403 W7b (issue 0939) — a stated `max_serialized` budget is
+        // phase-403 W7b (issue 0961) — a stated `max_serialized` budget is
         // checked HERE, against the same classification the header's constants
         // come from, so the number in the diagnostic is the number in the
         // `#define`. A type with no budget is untouched: `check_budget` returns

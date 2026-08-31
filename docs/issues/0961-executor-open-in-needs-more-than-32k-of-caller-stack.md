@@ -1,11 +1,11 @@
 ---
-id: 938
+id: 961
 title: "Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so"
 status: open
 area: core, memory
 severity: high
 found: 2026-08-31
-related: [0900, 0271, 0563, 0739, phase-403, phase-405, phase-3]
+related: [0900, 0271, 0563, 0739, phase-403, phase-409, phase-3]
 ---
 
 # The init path costs more stack than a small part can give it
@@ -136,7 +136,7 @@ main-thread stack would have turned four bring-up sessions into one build error.
 than `open_in`. It is not on the boot path, so it did not cause this, but any
 image that calls graph introspection on a small part will hit the same wall.
 
-## phase-405 landed the fix (2026-08-31); still open on the board
+## phase-409 landed the fix (2026-08-31); still open on the board
 
 All nine members are carved now (`CarvedVec<'s, T>` in `executor/storage.rs`).
 Measured on the host, not inferred:

@@ -708,7 +708,7 @@ The five, derived (TX = XCDR1, RX = max of the two encodings):
 | `trajectory_msgs/MultiDOFJointTrajectory` | 40156 | 49320 |
 | `visualization_msgs/InteractiveMarkerUpdate` | 34158429 | 34234821 |
 
-The last row is issue 0939 made concrete rather than a W7 regression: its
+The last row is issue 0962 made concrete rather than a W7 regression: its
 `markers` chain is the five-deep `InteractiveMarker -> controls -> markers ->
 points` nesting, and `element_cap` contributes a few hundred bytes to `erases`.
 W7 cannot deepen such a chain -- a string is a leaf -- which is pinned by
@@ -729,10 +729,10 @@ the same header. Fixed in one shared `c_sequence_struct` helper rather than a
 fourth copy of the format string. Moves `expected/{inline,configured}/Shapes.h`
 and `Probe.srv.h`.
 
-### W7b LANDED 2026-08-31 -- issue 0939's options 2 and 4, chosen by the owner
+### W7b LANDED 2026-08-31 -- issue 0962's options 2 and 4, chosen by the owner
 
 W7 made deep bounded chains easy to BUILD from configuration, which is what made
-issue 0939 load-bearing rather than hypothetical. Two of its listed options were
+issue 0962 load-bearing rather than hypothetical. Two of its listed options were
 chosen; "cap the derived bound" was not, because capping the derived bound IS
 substituting a number nobody derived.
 
@@ -775,7 +775,7 @@ calls once per package so one build names every type that blew its budget.
 not terminate in any useful sense" now has a number behind it. The diagnostic the
 budget produces, and the evidence that a budget-free type is unaffected in every
 respect, are in
-[issue 0939](../issues/0939-nested-bounded-sequences-cost-the-product-of-their-caps.md).
+[issue 0962](../issues/0962-nested-bounded-sequences-cost-the-product-of-their-caps.md).
 
 This does NOT fix the multiplication. `size_bound` still walks a bounded sequence
 element by element; what changed is that the number is legible and that a user
@@ -865,10 +865,10 @@ unbounded type is a BUILD ERROR" has to decide whether a config cap
 participates in the derivation; until then, most real types are honestly
 unbounded and the inventory says so.
 
-### W8 LANDED 2026-08-31 (issue 0940) -- the inventory finally has a reader
+### W8 LANDED 2026-08-31 (issue 0963) -- the inventory finally has a reader
 
 W6 exported the bound over three transports and W7/W7b made the numbers real.
-Nothing read any of them, which is issue 0940: the build knew every size and
+Nothing read any of them, which is issue 0963: the build knew every size and
 could say none of them, so `NROS_MAX_LARGE_SUBSCRIBERS` and
 `NROS_SUBSCRIBER_LARGE_SIZE` were still produced by reading generated C++
 headers by eye -- headers W6 proved state an ESTIMATE.
@@ -974,6 +974,43 @@ Gate: `just check message-bound-knobs` (`tests/cmake-message-bounds-tests.sh`,
 codegen). It pins the derived VALUES, the composition across packages, the
 refusal and its negative control, the per-fragment schema check, and the
 write-if-changed.
+
+## Relationship to phase-408 (PR #130)
+
+phase-408, "a C/C++ subscription sizes its buffer from its own message type",
+was opened independently and reaches the same conclusion this phase's W3/W5
+implemented:
+
+> `RX_BUF` is consumed only as a VALUE [...] A const generic carrying a number
+> that is never used in a type is a runtime parameter that has not been spelled
+> as one. So this campaign is not "design a mechanism". It is: produce the
+> number, get it to the call site, and stop passing it as a const.
+
+That is W3/W5 exactly. `add_arena_subscription_c_callback` now spends
+`rx_buffer_hint` on the allocation instead of `RX_BUF`, and
+`bind_subscription<M, C, Method>` supplies `M::SERIALIZED_SIZE_MAX` at the point
+the type is erased. Verified on mr-canhubk344: all 33 entities across four
+RFC-0043 components register, where boot previously halted at the first
+`create_subscription`.
+
+phase-408's own distinction also holds and is worth keeping: the typed Rust
+entries (`SubInfoEntry`, `SubSafetyEntry`) really do hold `buffer: [u8; RX_BUF]`,
+so for those the const generic is load-bearing and `rx_buffer_for!` remains the
+answer. W2 covers that path; W3/W5 covers the buffered one.
+
+**This is not a competing implementation.** phase-408's document is the better
+statement of WHY, written from a design review rather than from a bring-up, and
+it names the phase-392 W3 remainder it deliberately excludes. Whoever merges
+should treat that doc as the specification and these commits as its delivery --
+or close phase-408 as delivered, citing this. The two should not both land as
+open work.
+
+One correction to carry across: phase-408 scopes itself to "the C and C++ path",
+and the C++ path turned out NOT to need the ABI work the phase anticipated.
+`NROS_SUBSCRIBE` -> `create_subscription<M, C, Method>` -> `bind_subscription`
+keeps `M` as a template parameter to the last call, in a header, and the arena
+owns the buffer there rather than the caller. The hand-written C API, which
+genuinely has no `M`, is the part that still needs a caller-supplied buffer.
 
 ## Measurement, first not last
 

@@ -242,7 +242,7 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 
 `-1` on the three rows above, and on `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE`,
 means the build derives the number from this image's message-bound inventory
-(phase-403 W8 / issue 0940) rather than a person choosing one. Anything you
+(phase-403 W8 / issue 0963) rather than a person choosing one. Anything you
 state wins; the derived number is an upper bound over the interface closure you
 LINK; and one unbounded type in that closure refuses the derivation outright and
 says which. Full explanation, and what to do when the type it names is not one

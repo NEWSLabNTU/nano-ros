@@ -69,7 +69,7 @@ pub enum GeneratorError {
     #[error("codegen config: {details}")]
     ElementCapShape { details: String },
 
-    /// phase-403 W7b (issue 0939) — the derived bound blew the type's stated
+    /// phase-403 W7b (issue 0961) — the derived bound blew the type's stated
     /// `max_serialized` budget.
     ///
     /// A build error and not a warning: the budget is the user saying what

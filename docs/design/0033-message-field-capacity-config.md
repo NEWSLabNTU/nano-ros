@@ -130,7 +130,7 @@ Rules:
   of `cap`, so a `[fields]` entry overriding a length does not delete a
   `[defaults]` element bound. Level entries carry it on `sequence`.
 
-#### `max_serialized` — a TOTAL, not a capacity (phase-403 W7b, issue 0939)
+#### `max_serialized` — a TOTAL, not a capacity (phase-403 W7b, issue 0962)
 
 Every other number in this file is a per-field CAPACITY. `max_serialized` is a
 per-type TOTAL: the serialized size the type may reach once all of its capacities
@@ -432,7 +432,7 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
   independently of `cap`; the `.msg` still wins per dimension; only a mode whose
   cap is enforced may bound. Naming a field with no element dimension is an
   error, not a silently ignored key. Corpus: 121 -> 126 of 126 bounded.
-- 2026-08 — **phase-403 W7b (issue 0939)**: added `max_serialized`, a per-type
+- 2026-08 — **phase-403 W7b (issue 0962)**: added `max_serialized`, a per-type
   TOTAL rather than a per-field capacity, legal only under `[types.*]`. It is a
   ceiling checked against the derived bound and never a value substituted for
   it; over budget is a build error naming the type, both numbers, and the

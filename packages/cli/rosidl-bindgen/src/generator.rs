@@ -579,7 +579,7 @@ fn write_bound_inventory(
     package_output: &Path,
     inventory: &rosidl_codegen::BoundInventory,
 ) -> Result<()> {
-    // phase-403 W7b (issue 0939) -- see the sibling in `cargo-nano-ros`. One
+    // phase-403 W7b (issue 0961) -- see the sibling in `cargo-nano-ros`. One
     // check per package, after every type is recorded, so one build names every
     // type that blew its stated budget.
     inventory.check_budgets().map_err(|e| eyre!("{e}"))?;

@@ -634,7 +634,7 @@ mod group_filter_tests {
         assert!(!group_filter_accepts(Some(&active[..]), "telem"));
     }
 
-    /// phase-405 — the wildcard and an EMPTY filter are different answers, and
+    /// phase-409 — the wildcard and an EMPTY filter are different answers, and
     /// the carved table cannot tell them apart on its own (the old
     /// `Option<Vec>` could). `Executor::active_groups_filtering` is what keeps
     /// them apart; this pins the distinction at the decision itself.
@@ -1134,7 +1134,7 @@ pub struct Executor<'s> {
     /// after that this tier's executor accepts only callbacks whose
     /// `.callback_group()` is in it, and skips the others at registration.
     ///
-    /// phase-405 — CARVED, and the wildcard is a separate flag rather than an
+    /// phase-409 — CARVED, and the wildcard is a separate flag rather than an
     /// `Option` around the table, because the table itself no longer lives in
     /// the value. "Filtering with an empty set" and "not filtering" stay
     /// distinguishable, which is the whole content of the old `Option`.
@@ -1150,7 +1150,7 @@ pub struct Executor<'s> {
     /// implicit "primary" Node (NodeId(0)) mirrors `node_name` +
     /// `namespace` above and is auto-populated on first use.
     ///
-    /// phase-405 — CARVED. `NodeId` IS an index into this table, so the
+    /// phase-409 — CARVED. `NodeId` IS an index into this table, so the
     /// carved vector must keep push order and never gain a `swap_remove`.
     pub(crate) nodes: super::storage::CarvedVec<'s, super::node_record::NodeRecord>,
     /// Phase 272 (RFC-0047) — config-seeded node → sched-context bindings, keyed by the node's
@@ -1159,7 +1159,7 @@ pub struct Executor<'s> {
     /// `SchedContextId(0)` (byte-identical to pre-272 behaviour). Sized by `MAX_NODES` (at most
     /// one tier per node — RFC-0047 OQ1).
     ///
-    /// phase-405 — CARVED.
+    /// phase-409 — CARVED.
     pub(crate) node_sched_table: super::storage::CarvedVec<'s, super::storage::NodeSchedEntry>,
     /// Phase 273 (RFC-0047) — config-seeded per-callback-group sched bindings, keyed by the node's
     /// fully-qualified `(name, namespace)` pair PLUS the callback-group name. Overrides the node
@@ -1167,7 +1167,7 @@ pub struct Executor<'s> {
     /// stands). Sized by `MAX_CBS` — an upper bound on distinct callback-group bindings (you can
     /// never have more distinct group bindings than max callbacks).
     ///
-    /// phase-405 (issue 0936) — CARVED, and it is the reason the phase exists:
+    /// phase-409 (issue 0961) — CARVED, and it is the reason the phase exists:
     /// at ~168 B per slot this was `MAX_CBS` * 168 bytes INSIDE the value, so
     /// raising the handle limit from 14 to 36 — a fix for an unrelated failure —
     /// added ~3.7 KiB to the stack frame of every function that moves an
@@ -1203,7 +1203,7 @@ pub struct Executor<'s> {
     /// The fallback shape avoids the `linkme` hazard on bare-metal
     /// Cortex-M / RISC-V (see `DispatchSlot` doc).
     ///
-    /// phase-405 — CARVED (sized by `ExecutorSizing::nodes`, which is what
+    /// phase-409 — CARVED (sized by `ExecutorSizing::nodes`, which is what
     /// `MAX_NODES` now seeds).
     pub(crate) dispatch_slots: super::storage::CarvedVec<'s, DispatchSlot>,
     /// Phase 258 (Track 2, 2a) — executor-owned component tick registry.
@@ -1214,7 +1214,7 @@ pub struct Executor<'s> {
     /// `nodes`). See [`ComponentSlot`] for why it's separate from
     /// `dispatch_slots`.
     ///
-    /// phase-405 — CARVED.
+    /// phase-409 — CARVED.
     pub(crate) component_slots: super::storage::CarvedVec<'s, ComponentSlot>,
     /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
     /// calls that named a backend different from the Executor's
@@ -1223,7 +1223,7 @@ pub struct Executor<'s> {
     /// `self.session`). Sized by `NROS_EXECUTOR_MAX_NODES` since one
     /// extra session per Node is the worst case.
     ///
-    /// phase-405 — CARVED, and the biggest single win: `ConcreteSession` is
+    /// phase-409 — CARVED, and the biggest single win: `ConcreteSession` is
     /// 524 B on the island, so this table alone was ~3.1 KiB of the value.
     /// Declared AFTER `session` so field-order drop still closes the primary
     /// session before the extras (`CarvedVec` owns its elements' drop).
@@ -1247,7 +1247,7 @@ pub struct Executor<'s> {
     /// there rather than blanket-allowing a field that must stay live in
     /// every configuration that can reach the reader.
     ///
-    /// phase-405 — CARVED.
+    /// phase-409 — CARVED.
     #[cfg_attr(not(feature = "rmw-cffi"), allow(dead_code))]
     pub(crate) extra_session_ids: super::storage::CarvedVec<'s, super::storage::ExtraSessionId>,
     /// Phase 156 — primary session's rmw name + locator, captured
@@ -1398,7 +1398,7 @@ pub struct Executor<'s> {
     /// [`Executor::drain_violations`] working unchanged for
     /// applications that report violations themselves.
     pub(crate) report_violations: bool,
-    /// phase-405 — CARVED, at the fixed `MAX_VIOLATIONS` count (the same
+    /// phase-409 — CARVED, at the fixed `MAX_VIOLATIONS` count (the same
     /// reasoning issue 0563 used for `remap_table`: the capability is unchanged,
     /// so it needs no new `ExecutorSizing` knob).
     pub(crate) monitor_violations: super::storage::CarvedVec<'s, super::monitor::Violation>,
@@ -1755,7 +1755,7 @@ impl<'s> Executor<'s> {
     /// An empty slice (or never calling it) leaves the wildcard — register all
     /// callbacks (the single-tier degenerate case + today's behaviour).
     pub fn set_active_groups(&mut self, groups: &[&str]) {
-        // phase-405 — the table is CARVED and reused, so clear before refilling;
+        // phase-409 — the table is CARVED and reused, so clear before refilling;
         // the old `Option<heapless::Vec>` got a fresh empty vector each call.
         self.active_groups.clear();
         if groups.is_empty() {

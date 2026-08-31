@@ -322,7 +322,7 @@ pub fn bound_message(
     }
 }
 
-/// phase-403 W7b (issue 0939) — one chain of nested repeated members, and the
+/// phase-403 W7b (issue 0961) — one chain of nested repeated members, and the
 /// counts it MULTIPLIES.
 ///
 /// `nros_serdes::size::size_bound` walks a bounded sequence and a fixed array
@@ -1322,7 +1322,7 @@ mod tests {
     }
 
     // ========================================================================
-    // phase-403 W7b (issue 0939) — the factor chain
+    // phase-403 W7b (issue 0961) — the factor chain
     // ========================================================================
 
     /// The chain names the DEEPEST path, with one factor per level.
