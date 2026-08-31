@@ -129,64 +129,37 @@ int main() {
         std::fprintf(stderr, "take returned %zu bytes, taken=%d\n", n, (int)took);
         return 7;
     }
-    // Issue 0969 — the take path now hands back the serdata's own bytes rather
-    // than a re-serialisation of a typed sample, so the length is the WIRE
-    // length: Cyclone pads the CDR payload to a 4-byte multiple. "hello" is a
-    // 10-byte payload, which arrives as 12 + the 4-byte header = 16, where the
-    // old re-encode produced 14.
+    // Issue 0970 — the bytes published are the bytes taken, exactly.
     //
-    // This is not slack in the test — the exact 14 was the artefact. The
-    // padding is what an `rmw_cyclonedds_cpp` subscriber sees too
-    // (`rmw_take_ser_int` returns `ddsi_serdata_size` verbatim), and it is a
-    // real constraint on receive-buffer sizing: a buffer cut to a type's exact
-    // `MAX_SERIALIZED_SIZE` can be up to 3 bytes short of what this backend
-    // delivers. Assert the padded length exactly, so a future change that
-    // starts trimming — or stops padding — is caught rather than absorbed.
-    const size_t payload_len = cdr_len - 4;
-    const size_t expected = 4 + ((payload_len + 3) & ~static_cast<size_t>(3));
-    if (n != expected) {
+    // Worth recording what this assertion has been through, because it is the
+    // clearest measure of what the two issues did. Originally it passed for the
+    // wrong reason: both directions round-tripped through a typed C struct, and
+    // the 14 bytes out were a RE-SERIALISATION that happened to match the 14
+    // bytes in. Issue 0969 made the take path return the serdata's own bytes,
+    // and this went to 16 with `options = 2` — Cyclone's OWN sertype had padded
+    // the payload to a 4-byte multiple on the way in and recorded the pad count
+    // in the encapsulation options. That 16 was the honest wire answer for a
+    // Cyclone-serialised sample, and an `rmw_cyclonedds_cpp` subscriber sees the
+    // same, since `rmw_take_ser_int` returns `ddsi_serdata_size` verbatim.
+    //
+    // Issue 0970 removed the other half: our sertype stores what the publisher
+    // handed it, so nothing pads and nothing rewrites the header. 14 in, 14 out,
+    // identical bytes. Assert that exactly — the point of the change is that
+    // this backend is now transparent to the CDR, and a length that drifted by
+    // even the alignment pad would mean something started re-encoding again.
+    if (n != cdr_len) {
         std::fprintf(stderr,
-                     "round-trip size mismatch: pub=%zu expected=%zu sub=%zu\n",
-                     cdr_len, expected, n);
+                     "round-trip size mismatch: pub=%zu sub=%zu\n",
+                     cdr_len, n);
         return 8;
     }
-    // The representation identifier survives unchanged...
-    if (buf[0] != cdr[0] || buf[1] != cdr[1]) {
-        std::fprintf(stderr, "encapsulation id changed: sent=%02x%02x got=%02x%02x\n",
-                     cdr[0], cdr[1], buf[0], buf[1]);
-        return 9;
-    }
-    // ...but the OPTIONS field does not, and that is correct rather than a
-    // mismatch. Cyclone records the number of padding bytes it added in the
-    // encapsulation options (big-endian u16, low bits), which this test sends
-    // as 0 and gets back as `n - cdr_len`. The old re-serialising take path
-    // always emitted 0 here because it synthesised the header itself; the wire
-    // carries the real value. `CdrReader::new_with_header` dispatches on
-    // `buf[1]` alone and ignores the options, so nothing downstream regresses —
-    // but a reader that DID consult them was previously being lied to.
-    const size_t pad = n - cdr_len;
-    const uint16_t opts = static_cast<uint16_t>((buf[2] << 8) | buf[3]);
-    if (opts != pad) {
-        std::fprintf(stderr, "encapsulation options %u do not state the pad %zu\n",
-                     static_cast<unsigned>(opts), pad);
-        return 9;
-    }
-    if (std::memcmp(buf + 4, cdr + 4, cdr_len - 4) != 0) {
-        std::fprintf(stderr, "round-trip payload mismatch\n");
-        for (size_t i = 4; i < cdr_len; ++i) {
+    if (std::memcmp(buf, cdr, cdr_len) != 0) {
+        std::fprintf(stderr, "round-trip bytes mismatch\n");
+        for (size_t i = 0; i < cdr_len; ++i) {
             std::fprintf(stderr, "  [%zu] sent=%02x got=%02x\n", i,
                          cdr[i], buf[i]);
         }
         return 9;
-    }
-    // The pad must be zero, not whatever the last sample left behind: these
-    // bytes reach a deserialiser, and non-deterministic trailing content would
-    // make an otherwise-identical message compare unequal downstream.
-    for (size_t i = cdr_len; i < n; ++i) {
-        if (buf[i] != 0x00) {
-            std::fprintf(stderr, "non-zero pad at [%zu] = %02x\n", i, buf[i]);
-            return 10;
-        }
     }
 
     g_vt->destroy_publisher(&pub);

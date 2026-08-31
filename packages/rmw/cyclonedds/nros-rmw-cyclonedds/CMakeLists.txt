@@ -130,6 +130,7 @@ add_library(nros_rmw_cyclonedds STATIC
     src/graph.cpp
     src/qos.cpp
     src/sertype_min.cpp
+    src/nros_sertype.cpp
     # Phase 212.K.7.4 — C++ bridge for the Rust DescriptorBuilder.
     # Currently a stub returning UnsupportedFieldType until the
     # Cyclone DDS pin advances to a release exposing the public
