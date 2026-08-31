@@ -44,6 +44,66 @@ there is no `M` to monomorphise on.
 
 That is the whole reason this phase exists rather than being a parameter change.
 
+## The C++ component path still has `M`, and that changes W3's scope (2026-08-31)
+
+"The C path cannot monomorphise" is true of `create_subscription_raw`, and it is
+NOT true of the path the embedded C++ images actually take. Traced on
+mr-canhubk344:
+
+```
+NROS_SUBSCRIBE(Msg, method, topic)                         component_node.hpp:632
+  -> ComponentNode::create_subscription<M, C, Method>      component_node.hpp:287
+    -> bind_subscription<M, C, Method>                     component.hpp:98
+      -> create_subscription_raw(node, topic, M::TYPE_NAME, trampoline, self, qos)
+```
+
+`M` is a template parameter the whole way down and is erased only in that last
+call, in a C++ header, where `M` is still in scope. The generated C++ type
+already carries the number:
+
+```cpp
+static constexpr const char* TYPE_NAME = "nav_msgs::msg::dds_::Odometry_";
+static constexpr size_t SERIALIZED_SIZE_MAX = 1804;
+```
+
+Two consequences for the wave plan:
+
+* **W3's lifetime contract is not needed for this path.** `bind_subscription`'s
+  own doc says it "registers a RAW subscription (so the executor arena owns it,
+  no C++ `Subscription<M>` storage object)". The ARENA owns the buffer, not the
+  caller, so there is nothing to hand across FFI and no `'a` to get wrong. The
+  change is a runtime `size_t` threaded from `bind_subscription` into
+  `create_subscription_raw` and on to the slot allocation. W3 as written -- the
+  caller supplies the bytes -- remains the answer for the hand-written C API,
+  which genuinely has no `M`.
+* **It collapses into W5.** Once a per-subscription byte count reaches the arena,
+  sizing the slot from it IS W5. For the C++ component path W3 and W5 are one
+  change, and it needs no ABI slot.
+
+### The measurement case, with numbers
+
+The island entry (4 RFC-0043 components, zenoh over serial). Subscribed bounds,
+read from the generated headers rather than from wire observation:
+
+| type | `SERIALIZED_SIZE_MAX` |
+| --- | ---: |
+| `Control` | 2052 |
+| `Odometry` | 1804 |
+| `OperationModeState` | 572 |
+| `VelocityReport` | 549 |
+| `SteeringReport` | 527 |
+| `RouteState` | 524 |
+| `GearCommand` | 524 |
+
+33 handles, 13 of which receive. Today every slot is charged the largest
+subscription's buffer, so the correct global value (2052, set by `Control`) gives
+`36 * (3 * 2052 + 512) + 2048 = 242096 B` against 77968 B of DTCM. Sizing each
+slot from its own type is roughly 47 KiB and fits with room.
+
+That is an 5x reduction on a real image, and it is the before/after this phase
+demands. The image is named: `src/zephyr_entry` on `mr_canhubk3/s32k344`, serial
+transport, in the simple-autoware-safety-island superproject.
+
 ## The third-party contract, which is the part with no answer today
 
 `rmw_subscription_options_t.rx_buffer_hint` is in the ABI and reaches every
