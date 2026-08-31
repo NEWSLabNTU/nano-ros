@@ -362,6 +362,8 @@ dependencies = [
  "atomic-waker",
  "heapless",
  "log",
+ "nros-board-common",
+ "nros-build-paths",
  "nros-core",
  "nros-log",
  "nros-params",

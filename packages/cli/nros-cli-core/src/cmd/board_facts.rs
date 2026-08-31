@@ -183,6 +183,23 @@ fn resolve_one(
     }
     out.insert("NROS_BOARD".into(), board_name.clone());
 
+    // phase-400 W6 — the board's PLATFORM, by name.
+    //
+    // `nros-node` deliberately has no `platform-*` cargo feature (phase-248 C2:
+    // the core executor is platform-agnostic and reaches the platform through
+    // the vtable), so its build script cannot know which platform it is
+    // compiling for — and without that it cannot resolve the platform rung of
+    // the RFC-0049 knob ladder. The descriptor knows; this is the seam that has
+    // already resolved it.
+    //
+    // A NAME, not a path: `NROS_PLATFORM_NAME`, not `NROS_PLATFORM`, because
+    // cmake's `-DNROS_PLATFORM=cffi` names the platform LAYER, a different
+    // axis, and one env var meaning two things is how they start disagreeing.
+    out.insert(
+        "NROS_PLATFORM_NAME".into(),
+        descriptor.platform.kebab().to_string(),
+    );
+
     // W4 — the netstack, validated against the board's declared domain. An
     // unsupported pair fails HERE, at the seam that knows both halves, rather
     // than as a link error inside a stack nobody selected.

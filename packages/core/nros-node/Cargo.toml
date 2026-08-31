@@ -227,6 +227,19 @@ libc = { version = "0.2", optional = true }
 # Kconfig said. Build-only, dependency-free, host-compiled like every build dep.
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
 
+# phase-400 W6 — the RFC-0049 knob ladder, so the eight `NROS_EXECUTOR_*`
+# sizing knobs get their platform and board rungs instead of env → Kconfig →
+# default. Host-only: `build-helpers` is what gates serde/toml, and this crate
+# is a BUILD dependency, compiled for the host like every other one. No cycle —
+# `nros-board-common` does not depend on `nros-node`. `nros-zpico-build`
+# already takes exactly this dependency for the zenoh tenant.
+nros-board-common = { path = "../../boards/nros-board-common", features = [
+    "build-helpers",
+], default-features = false }
+# issue 0491 — a PATH must be fingerprinted by its CONTENT, never by
+# `rerun-if-env-changed` on the variable naming it. This is the one spelling.
+nros-build-paths = { path = "../../tooling/nros-build-paths" }
+
 # Phase 214.F.2 — target-gate every dev-dep that pulls a `std` /
 # `platform-posix` feature path. The `--edges=features` audit at
 # F.1-landing time showed `nros-node` was the dominant residual

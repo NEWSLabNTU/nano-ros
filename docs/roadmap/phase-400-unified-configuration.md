@@ -210,18 +210,51 @@ derivation is duplicated to fix it: `action_clients` defaults to the RESOLVED
 printed as `derived`. `nros-node/build.rs` stays the one place that knows the
 arena formula.
 
-**What this tenant does NOT yet have: the platform/board rungs do not reach a
-bare `cargo build`.** `nros-node/build.rs` resolves env → Kconfig → default via
-`nros_zephyr_build::knob_usize`; it never opens the platform or board TOML. So
-the rungs exist and are reported, and a build outside cmake still compiles at
-crate defaults — which is the failure the `ExecutorKnobs` doc comment describes.
-Closing it needs a decision, because `nros-node`'s build-dependencies are
-deliberately "build-only, dependency-free" while the ladder lives in
-`nros-board-common` (which `nros-zpico-build` does depend on, with
-`features = ["build-helpers"]`). Either core's build script takes that
-dependency, or the lane resolves the ladder and exports the values as env the
-way `board-facts` already exports `NROS_SDK_*`. The first reaches a bare cargo
-build; the second keeps one ladder implementation. Not decided here.
+**The platform and board rungs reach a cargo build (2026-08-31).** They did
+not when the tenant first landed: `nros-node/build.rs` resolved env → Kconfig →
+default and never opened the platform or board TOML, so a build outside cmake
+compiled at crate defaults — the failure `ExecutorKnobs`'s own doc comment
+describes.
+
+The obstacle was not the ladder. `nros-node` deliberately has NO `platform-*`
+cargo feature (phase-248 C2: the core executor is platform-agnostic and reaches
+the platform through the vtable), so its build script could not know which
+platform it was compiling for — and reversing that to migrate a sizing knob
+would be the tail wagging the dog.
+
+Nor was "have the lane export the resolved values" available: that is issue
+0460 exactly, where cmake's `set(ENV{...})` reaches the C lane and not the
+cargo one.
+
+What resolves it is the idiom this repo already uses everywhere else — the
+lane exports a value and a POINTER, and the build script reads the file:
+
+* `nros ws board-facts` now emits `NROS_PLATFORM_NAME` beside `NROS_BOARD_TOML`.
+  The board descriptor already knew its platform; this is the seam that had
+  already resolved it. `NROS_PLATFORM_NAME`, not `NROS_PLATFORM`, because
+  cmake's `-DNROS_PLATFORM=cffi` names the platform LAYER — one variable
+  meaning two things is how they start disagreeing.
+* `corrosion_set_env_vars` already attaches those to the target's own build
+  command, which is what actually runs cargo. No new channel.
+* `nros-node/build.rs` resolves env → Kconfig → board → platform → builtin,
+  taking a host-only build-dep on `nros-board-common` (`build-helpers`), which
+  `nros-zpico-build` already takes for the zenoh tenant. No cycle.
+
+Cost, measured rather than estimated: 18 leaf locks moved, and **16 of them
+gained only the two path-dep lines** — they are board crates that already
+depend on `nros-board-common`. Only `nros-verification` pulls the serde/toml/cc
+chain fresh (182 lines), in a HOST build graph, never linked into firmware.
+
+Every failure on that path is FATAL, not a fall-through to defaults. The first
+version used `.ok()`, and a platform file with one rejected key compiled at the
+crate defaults while reporting success — which is the shape the whole ladder
+exists to remove. `nros-zpico-build` says the same thing about the same tree.
+
+Verified end to end, all four paths: a platform rung applies (`max_cbs = 11`),
+a board rung applies (`max_sc = 23`), the env front-end still wins over both
+(`99`), and a malformed platform file panics naming the bad key. With no
+`NROS_PLATFORM_NAME` — a bare `cargo build` with no lane — nothing changes:
+with no board named there IS no platform rung to resolve.
 
 ### Remaining tenants
 

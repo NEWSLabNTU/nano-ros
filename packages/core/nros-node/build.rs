@@ -218,6 +218,126 @@ fn main() {
 /// `$DOTCONFIG` fallback — the zenoh shim's knobs go through the same helper.
 /// This crate's env names are the Kconfig names minus `CONFIG_`, so the pair is
 /// derived rather than tabulated.
+/// The platform and board rungs of the RFC-0049 ladder for `[knobs.executor]`,
+/// resolved once.
+///
+/// phase-400 W6. This crate deliberately has NO `platform-*` cargo feature
+/// (phase-248 C2: the core executor is platform-agnostic and reaches the
+/// platform through the vtable), so the build script cannot know its platform
+/// from a `cfg`. It learns it the way every other build-script fact travels
+/// here: the lane exports a value, and a POINTER to the file that carries the
+/// rest. `nros ws board-facts` emits `NROS_PLATFORM_NAME` and
+/// `NROS_BOARD_TOML`, and `corrosion_set_env_vars` attaches them to the
+/// target's own build command — which is what actually runs cargo, unlike
+/// cmake's `set(ENV{...})` (issue 0460).
+///
+/// Absent pointer (a bare `cargo build` with no lane, an out-of-tree consumer)
+/// → every rung is `None` and the front-end below decides, exactly as before.
+/// With no board named there IS no platform rung to resolve, so that is the
+/// right answer rather than a degradation.
+fn executor_rungs() -> nros_board_common::platform_config::ExecutorKnobs {
+    use nros_board_common::platform_config as pc;
+
+    let empty = pc::ExecutorKnobs::default();
+    let Some(platform) = std::env::var("NROS_PLATFORM_NAME")
+        .ok()
+        .filter(|s| !s.is_empty())
+    else {
+        return empty;
+    };
+    println!("cargo:rerun-if-env-changed=NROS_PLATFORM_NAME");
+
+    // The board rung. `watch_path` fingerprints the file's CONTENT — issue
+    // 0491: `rerun-if-env-changed` on a variable naming a PATH compares the
+    // spelling, and one directory has three spellings here.
+    // Every failure below is FATAL, never a fall-through to defaults.
+    //
+    // A silently empty tree resolves every knob to a builtin and produces a
+    // wrong image with no diagnostic — `nros-zpico-build` says exactly this
+    // about the same tree, and it is not a hypothetical: the first version of
+    // this function used `.ok()`, and a platform file with one rejected key
+    // compiled at the crate defaults while reporting success. The lane named a
+    // platform; being unable to honour it is an error.
+    let board = nros_build_paths::env_path("NROS_BOARD_TOML").map(|p| {
+        nros_build_paths::watch_path(&p);
+        pc::BoardKnobsFile::load(&p)
+            .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={}: {e}", p.display()))
+            .knobs
+            .executor
+    });
+
+    let search = pc::PlatformsTree::default_search_path(
+        &nros_build_paths::repo_root(),
+        std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
+    );
+    for dir in &search {
+        nros_build_paths::watch_path(dir);
+    }
+    let tree = pc::PlatformsTree::load_search_path(&search)
+        .unwrap_or_else(|e| panic!("platform search path {search:?}: {e}"));
+    let plat = tree
+        .platform_executor_rungs(&platform)
+        .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={platform}: {e}"));
+
+    // Board over platform, per RFC-0049. `None` at both leaves the front-end
+    // and the built-in default in charge.
+    let b = board.unwrap_or_default();
+    pc::ExecutorKnobs {
+        max_cbs: b.max_cbs.or(plat.max_cbs),
+        max_sc: b.max_sc.or(plat.max_sc),
+        max_nodes: b.max_nodes.or(plat.max_nodes),
+        max_shutdown_cbs: b.max_shutdown_cbs.or(plat.max_shutdown_cbs),
+        action_clients: b.action_clients.or(plat.action_clients),
+        arena_size: b.arena_size.or(plat.arena_size),
+        subscription_buffer_size: b.subscription_buffer_size.or(plat.subscription_buffer_size),
+        param_service_buffer_size: b
+            .param_service_buffer_size
+            .or(plat.param_service_buffer_size),
+    }
+}
+
+/// The knob a front-end env name belongs to, derived from the one table that
+/// maps the other way rather than retyped.
+fn knob_for_env(name: &str) -> Option<&'static str> {
+    nros_board_common::platform_config::EXECUTOR_KNOBS
+        .iter()
+        .copied()
+        .find(|k| nros_board_common::platform_config::executor_env_key(k) == name)
+}
+
+fn rung_value(
+    rungs: &nros_board_common::platform_config::ExecutorKnobs,
+    knob: &str,
+) -> Option<usize> {
+    match knob {
+        "max_cbs" => rungs.max_cbs,
+        "max_sc" => rungs.max_sc,
+        "max_nodes" => rungs.max_nodes,
+        "max_shutdown_cbs" => rungs.max_shutdown_cbs,
+        "action_clients" => rungs.action_clients,
+        "arena_size" => rungs.arena_size,
+        "subscription_buffer_size" => rungs.subscription_buffer_size,
+        "param_service_buffer_size" => rungs.param_service_buffer_size,
+        _ => None,
+    }
+}
+
+/// One executor knob: env → Kconfig → board → platform → built-in default.
+///
+/// The front-end keeps winning. Migrating a knob into the ladder must not take
+/// an operator's override away, which is half of this wave's own gate.
 fn env_usize(name: &str, default: usize) -> usize {
-    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), default)
+    println!("cargo:rerun-if-env-changed={name}");
+    if let Some(v) = std::env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
+        return v;
+    }
+    if let Some(v) = nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}")) {
+        return v;
+    }
+    static RUNGS: std::sync::OnceLock<nros_board_common::platform_config::ExecutorKnobs> =
+        std::sync::OnceLock::new();
+    let rungs = RUNGS.get_or_init(executor_rungs);
+    knob_for_env(name)
+        .and_then(|k| rung_value(rungs, k))
+        .unwrap_or(default)
 }

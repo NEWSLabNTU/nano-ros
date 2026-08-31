@@ -205,6 +205,23 @@ impl Knobs {
     }
 }
 
+/// Every executor knob, in a stable order.
+///
+/// One list, so a caller that needs to go the other way (env name → knob) can
+/// derive it from [`executor_env_key`] instead of retyping the pairs. Two
+/// hand-maintained copies of "which knobs exist" is how one of them ends up
+/// missing the knob that was just added.
+pub const EXECUTOR_KNOBS: &[&str] = &[
+    "max_cbs",
+    "max_sc",
+    "max_nodes",
+    "max_shutdown_cbs",
+    "action_clients",
+    "arena_size",
+    "subscription_buffer_size",
+    "param_service_buffer_size",
+];
+
 /// The env front-end name for an executor knob. These are the EXISTING names
 /// `nros-node/build.rs` already reads, kept verbatim: migrating a knob into the
 /// ladder must not change how anyone sets it.
@@ -833,6 +850,16 @@ impl PlatformsTree {
     ///
     /// Each knob keeps its existing env name, so migrating a knob changes no
     /// call site — it only adds the two rungs it never had.
+    /// The `[knobs.executor]` a platform's chain declares, merged nearest-wins.
+    ///
+    /// Public because a BUILD SCRIPT needs the rungs without the resolution:
+    /// `nros-node/build.rs` owns the defaults (two are derived) and its own
+    /// env/Kconfig front-end, so it wants "what do the platform and board
+    /// say", not "what is the final answer".
+    pub fn platform_executor_rungs(&self, platform: &str) -> Result<ExecutorKnobs, ConfigError> {
+        self.platform_executor_knobs(platform)
+    }
+
     pub fn resolve_executor(
         &self,
         platform: &str,
