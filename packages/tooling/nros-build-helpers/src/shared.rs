@@ -501,7 +501,46 @@ fn pid_is_live(pid: u32) -> bool {
     }
 }
 
+/// phase-400 W5.c — the SUPPORTED location for a build script's output.
+///
+/// `$OUT_DIR` is where cargo says build-script products go: it is per-unit,
+/// hashed by cargo (so two feature sets or two knob sets never collide), it
+/// survives a cache hit, and cargo reports its path on the stable JSON stream —
+/// `{"reason":"build-script-executed", …, "out_dir": …}` — even on a fully
+/// cached run (measured: 13 such events with nothing to rebuild).
+///
+/// The `$CARGO_TARGET_DIR/nros-{c,cpp}-generated/` copy below is a SIDE CHANNEL
+/// by comparison: a path inside cargo's tree that cargo does not manage, which
+/// works only because nothing cleans it. It is also what blocks W5 — share the
+/// target dir and the second image takes a cache hit, the script never re-runs,
+/// and the directory the consumers were pointed at is never written.
+///
+/// So the header is emitted to BOTH, and this one is the half a consumer should
+/// migrate to. Writing it costs nothing and removes the need for the build
+/// script to have run in THIS build for the header to be findable.
+fn write_header_to_out_dir(relative: &[&str], contents: &str) {
+    let Ok(out_dir) = env::var("OUT_DIR") else {
+        return;
+    };
+    // FLAT under OUT_DIR, keeping only the `nros/<name>.h` tail: OUT_DIR is
+    // already per-unit, so the `nros-c-generated/` segment that disambiguates
+    // inside a shared target dir would only add a level nobody needs. The
+    // `nros/` prefix stays because that is how the header is INCLUDED
+    // (`<nros/nros_config_generated.h>`).
+    let tail: Vec<&str> = relative
+        .iter()
+        .copied()
+        .skip_while(|s| *s != "nros")
+        .collect();
+    if tail.is_empty() {
+        return;
+    }
+    write_to(PathBuf::from(out_dir), &tail, contents);
+}
+
 pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {
+    write_header_to_out_dir(relative, contents);
+
     let root = if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
         Some(PathBuf::from(target_dir))
     } else {
