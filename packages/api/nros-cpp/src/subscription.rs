@@ -350,7 +350,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
     options: *const nros_cpp_subscription_options_t,
 ) -> nros_cpp_ret_t {
     // phase-402 — these two could not take a callback group at all before.
-    let (sched_context, callback_group, _rx_buffer_hint) =
+    let (sched_context, callback_group, rx_buffer_hint) =
         unsafe { read_subscription_options(options) };
     let _ = callback_group;
     if node.is_null()
@@ -405,6 +405,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
         qos.to_qos_settings(),
         callback,
         context,
+        // phase-408 W5a — the hint reaches the backend's payload
+        // classing instead of being destructured and dropped.
+        rx_buffer_hint as usize,
     );
 
     match result {
@@ -467,7 +470,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
     options: *const nros_cpp_subscription_options_t,
 ) -> nros_cpp_ret_t {
     // phase-402 — these two could not take a callback group at all before.
-    let (sched_context, callback_group, _rx_buffer_hint) =
+    let (sched_context, callback_group, rx_buffer_hint) =
         unsafe { read_subscription_options(options) };
     let _ = callback_group;
     if node.is_null()
@@ -524,6 +527,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
             qos.to_qos_settings(),
             callback,
             context,
+            // phase-408 W5a — the hint reaches the backend's payload
+            // classing instead of being destructured and dropped.
+            rx_buffer_hint as usize,
         );
 
     match result {

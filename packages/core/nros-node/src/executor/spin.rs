@@ -5011,6 +5011,13 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: RawSubscriptionInfoCallback,
         context: *mut core::ffi::c_void,
+        // phase-408 W5a — bytes the caller expects to receive; 0 = no opinion.
+        // Reaches the BACKEND, which routes the payload size class on it. The
+        // ARENA slot for this variant is still `RX_BUF`: its entry stores a real
+        // `[u8; N]`, so shrinking that needs the runtime-sized `BufferStrategy`
+        // the plain C path already uses, which is W5b. Routing is the half that
+        // does not need it, and it is the half the size-class cluster is about.
+        rx_buffer_hint: usize,
     ) -> Result<HandleId, NodeError> {
         type Entry<const N: usize> = SubBufferedRawInfoCEntry<N>;
 
@@ -5030,6 +5037,12 @@ impl<'s> Executor<'s> {
             .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
+        }
+        // phase-408 W5a — only when the caller actually stated one:
+        // `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
+        // "no opinion".
+        if rx_buffer_hint != 0 {
+            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
         let handle = {
             let session = self
@@ -5093,6 +5106,13 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: super::types::RawSubscriptionSafetyCallback,
         context: *mut core::ffi::c_void,
+        // phase-408 W5a — bytes the caller expects to receive; 0 = no opinion.
+        // Reaches the BACKEND, which routes the payload size class on it. The
+        // ARENA slot for this variant is still `RX_BUF`: its entry stores a real
+        // `[u8; N]`, so shrinking that needs the runtime-sized `BufferStrategy`
+        // the plain C path already uses, which is W5b. Routing is the half that
+        // does not need it, and it is the half the size-class cluster is about.
+        rx_buffer_hint: usize,
     ) -> Result<HandleId, NodeError> {
         use super::arena::{
             SubBufferedRawSafetyCEntry, sub_buffered_raw_safety_c_has_data,
@@ -5116,6 +5136,12 @@ impl<'s> Executor<'s> {
             .with_namespace(&ns);
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
+        }
+        // phase-408 W5a — only when the caller actually stated one:
+        // `with_rx_buffer_hint(0)` would be a claim of "zero bytes", not
+        // "no opinion".
+        if rx_buffer_hint != 0 {
+            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
         let handle = {
             let session = self
