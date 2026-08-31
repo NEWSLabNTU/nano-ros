@@ -1571,6 +1571,12 @@ pub unsafe extern "C" fn nros_executor_add_subscription_raw_with_info(
             qos_settings,
             cb,
             context,
+            // phase-408 W5a — this entry point predates the options struct and
+            // has no hint to forward, so it states none. 0 is "no opinion", not
+            // a claim of zero bytes: the subscription keeps the small payload
+            // class it has always taken. A C caller that wants the derived size
+            // goes through the options-carrying registration.
+            0,
         );
         match result {
             Ok(_handle_id) => {
