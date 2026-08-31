@@ -24,6 +24,13 @@ include_guard(GLOBAL)
 # them without knowing which generator produced them.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosMessageBounds.cmake")
 
+# phase-403 step 1 -- and its second input. `nros_find_interfaces()` below hands
+# the entity inventory's fragment to the bound reader so the payload classes
+# derive over the types this image RECEIVES, so it needs that module's path
+# helpers (`nros_entity_inventory_knobs_file`, `..._seed_knobs_file`) here. The
+# include is a no-op when `nano_ros_entry()` has already pulled it in.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
+
 # _nros_collect_rs_closure(<out_var> DEPS <pkgs...> OWN <rs-files...>)
 #
 # Compute the de-duplicated transitive closure of generated FFI `.rs` files:
@@ -821,8 +828,37 @@ function(nros_find_interfaces)
     #    The result is written to one image-wide file. A consumer reads THAT,
     #    never these variables -- the readers run in other files at other points
     #    of the configure, where a function-scoped variable does not reach.
+    #
+    #    phase-403 step 1 -- and the ENTITY inventory is the second input, so
+    #    the three PAYLOAD-CLASS knobs derive over the types this image actually
+    #    RECEIVES rather than over everything it links. On the island that is
+    #    the difference between a small class set by a `std_msgs/Float64MultiArray`
+    #    nothing subscribes to and one set by the largest type that is.
+    #
+    #    ORDERING, stated rather than assumed. The entity inventory is composed
+    #    by `nano_ros_entry()`, which runs LATER in a configure than this does --
+    #    it has to, because it is the first point after every
+    #    `nano_ros_node_register()`. So the fragment read here is the one the
+    #    PREVIOUS configure wrote, which is exactly the lag the Zephyr knob
+    #    resolver already has against this file, and it is closed the same way:
+    #    `CMAKE_CONFIGURE_DEPENDS` plus a write-if-changed producer, so ninja
+    #    re-runs cmake by itself once the entity lane writes different bytes.
+    #    An image whose declaration has just changed builds once at its old
+    #    payload classes, re-configures, and builds again at the derived ones --
+    #    never silently, since the status line says which basis was used.
+    nros_entity_inventory_knobs_file(_entity_knobs)
+    nros_entity_inventory_seed_knobs_file("${_entity_knobs}")
+    set_property(DIRECTORY APPEND PROPERTY
+        CMAKE_CONFIGURE_DEPENDS "${_entity_knobs}")
     nros_message_bounds_knobs_file(_bounds_knobs)
-    nros_derive_message_bound_knobs(OUTPUT_FILE "${_bounds_knobs}")
+    nros_derive_message_bound_knobs(
+        OUTPUT_FILE "${_bounds_knobs}"
+        ENTITY_INVENTORY "${_entity_knobs}")
     set(NROS_MESSAGE_BOUNDS_STATUS "${NROS_MESSAGE_BOUNDS_STATUS}" PARENT_SCOPE)
     set(NROS_MESSAGE_BOUNDS_REASON "${NROS_MESSAGE_BOUNDS_REASON}" PARENT_SCOPE)
+    set(NROS_MESSAGE_BOUNDS_BASIS "${NROS_MESSAGE_BOUNDS_BASIS}" PARENT_SCOPE)
+    set(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS
+        "${NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS}" PARENT_SCOPE)
+    set(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON
+        "${NROS_MESSAGE_BOUNDS_PAYLOAD_REASON}" PARENT_SCOPE)
 endfunction()

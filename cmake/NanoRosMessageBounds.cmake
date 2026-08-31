@@ -46,24 +46,69 @@
 #   alone is the same confident wrong number.
 #
 # =============================================================================
-# The derived numbers are an UPPER BOUND on what the image needs
+# TWO BASES, because the four knobs are not four answers to one question
 # =============================================================================
 #
-# The inventory holds every type in the LINKED INTERFACE CLOSURE, not just the
-# subscribed ones. A package is linked because something in the image mentions
-# one of its types; the other 90 come along. So a derived class size is the
-# largest type the image COULD receive, not the largest it DOES.
+# The bound inventory holds every type in the LINKED INTERFACE CLOSURE, not just
+# the received ones. A package is linked because something in the image mentions
+# one of its types; the other 90 come along. Derived over that, a class size is
+# the largest type the image COULD receive, not the largest it DOES -- and on
+# the reference island that gap is the dominant term, not a rounding error: one
+# `std_msgs/Float64MultiArray`, linked and never received, sets the small class
+# for every subscription in the image.
 #
-# That errs in the safe direction -- too big, never too small -- and it is the
-# same direction the hand-set numbers were supposed to err in and did not. It
-# is stated here, in the generated output, and in the Kconfig help, because a
-# number a user cannot account for is a number they will eventually "fix".
+# So this reader derives on TWO bases and says which it used for what.
 #
-# Narrowing it needs the same entity inventory the out-of-scope knobs need.
-# That inventory landed in W9 and this reader does NOT yet consult it: narrowing
-# means intersecting the closure with the SUBSCRIBED type names, which is a join
-# of two artifacts and a change to what these numbers mean. Left for the wave
-# that does it deliberately rather than bolted on here.
+#   BASIS `subscribed` -- the THREE PAYLOAD-CLASS knobs
+#     NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE,
+#     NROS_MAX_LARGE_SUBSCRIBERS
+#   These size the backend's two topic payload pools. Those pools are reached
+#   through exactly one allocation -- `alloc_payload_block(rx_buffer_hint)` in
+#   `shim/subscriber.rs` -- with exactly one caller, the `declare_subscriber`
+#   path. So their population is the image's SUBSCRIPTIONS, and the entity
+#   inventory (`cmake/NanoRosEntityInventory.cmake`, phase-403 W9) names them.
+#   The join is this file's `ENTITY_INVENTORY` argument.
+#
+#   BASIS `closure` -- the take buffer
+#     NROS_SUBSCRIPTION_BUFFER_SIZE
+#   This one is NOT subscription-only, whatever its name says, and narrowing it
+#   to the subscribed set would size a buffer too small. `nros-node/build.rs`
+#   turns it into `DEFAULT_RX_BUF_SIZE`, which is the DEFAULT const generic for
+#   `RawSubscription`, `RawServiceServer`, `RawServiceClient`,
+#   `ActionServerCore` and `ActionClientCore` -- and `executor/types.rs` then
+#   defines `DEFAULT_TX_BUF = DEFAULT_RX_BUF_SIZE`, so it is also the stack
+#   array `EmbeddedPublisher::publish` serialises into. A type this image only
+#   PUBLISHES still has to fit. The closure over-approximates that, in the safe
+#   direction, and stays.
+#
+# =============================================================================
+# The join REFUSES; it never quietly widens
+# =============================================================================
+#
+# Once an image declares its entities, the payload classes are derived from
+# them or not at all. Specifically, with `ENTITY_INVENTORY` naming a fragment
+# whose own status is `derived`:
+#
+#   * its subscribed-type set REFUSED (a component declared no `ENTITIES`, or a
+#     subscription states no type)      -> the payload classes REFUSE
+#   * it names a type this bound inventory does not price at all
+#                                       -> the payload classes REFUSE, naming it
+#   * it names a type that is `unbounded`/`unresolved`
+#                                       -> the whole derivation already refused
+#
+# None of those fall back to the closure. Falling back would publish the WRONG
+# ROW of the table above while every status still read "derived", which is the
+# shape that looks like it worked.
+#
+# The one case that DOES derive over the closure is the image that declared
+# NOTHING -- no `ENTITIES` anywhere, so the entity fragment is absent or its own
+# status is `refused`. That is every image built before phase-403 W9, and it
+# keeps exactly the numbers it has today: `NROS_MESSAGE_BOUNDS_BASIS` reads
+# `closure`, the status line says so, and the generated file carries the
+# paragraph explaining what the declaration would buy. Refusing there instead
+# would take those images from an over-approximate derived number back to the
+# hand-set ones this whole wave exists to replace, which is a regression, not a
+# safety property.
 #
 # =============================================================================
 # An unbounded type is not silently dropped
@@ -83,6 +128,7 @@
 #   include(NanoRosMessageBounds.cmake)
 #   nros_derive_message_bound_knobs(
 #       FRAGMENTS <nros_message_bounds.cmake>...   # or omit: uses the cache list
+#       [ENTITY_INVENTORY <entity_inventory.cmake>]# the join; see above
 #       [SMALL_CLASS_CEILING 2048]                 # policy, see below
 #       [OUTPUT_FILE <path>]                       # write the answer + why
 #       [QUIET])
@@ -95,6 +141,15 @@
 #   NROS_MESSAGE_BOUNDS_TYPE_COUNT    types seen
 #   NROS_MESSAGE_BOUNDS_BOUNDED_COUNT types with a derived bound
 #   NROS_MESSAGE_BOUNDS_OPEN_TYPES    the unbounded/unresolved ones
+#   NROS_MESSAGE_BOUNDS_BASIS         subscribed | closure -- which set the
+#                                     three payload-class knobs were derived
+#                                     over. UNSET when they were not derived.
+#   NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS  derived | refused, for those three
+#                                     alone. It can refuse while the take
+#                                     buffer still derives, and that is not a
+#                                     contradiction: two bases, two questions.
+#   NROS_MESSAGE_BOUNDS_PAYLOAD_REASON  prose, when it refused
+#   NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT  subscribing ENTITIES joined
 #   NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE     \
 #   NROS_DERIVED_SUBSCRIBER_LARGE_SIZE       |  unset when not derivable --
 #   NROS_DERIVED_MAX_LARGE_SUBSCRIBERS       |  ABSENT means "no answer",
@@ -125,6 +180,21 @@ include_guard(GLOBAL)
 # never read field-by-field on the hope that nothing moved.
 set(NROS_MESSAGE_BOUNDS_SCHEMA_SUPPORTED 1 CACHE INTERNAL
     "phase-403 W8: the nros_message_bounds fragment schema this tree reads")
+
+# Where this module lives, so the join can reach its sibling
+# `NanoRosEntityInventory.cmake` for the ENTITY fragment's schema constant.
+#
+# `CACHE INTERNAL` for the same `_NROS_ENTRY_DIR` reason the constant above
+# gives -- this file is reachable from inside a function frame, and a file-scope
+# `set()` that lands there is gone when the frame pops while `include_guard`
+# makes every later include a no-op.
+#
+# Reading `NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED` from that module rather than
+# restating the number here is deliberate: a second spelling of a version
+# constant is how a producer and a reader come to disagree while both look
+# right, which is the failure the constant exists to prevent.
+set(_NROS_MESSAGE_BOUNDS_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
+    "phase-403: the directory NanoRosMessageBounds.cmake was included from")
 
 # The split between the small and the large payload class, in bytes.
 #
@@ -232,7 +302,8 @@ endfunction()
 
 # nros_derive_message_bound_knobs(...)  -- see the header comment.
 function(nros_derive_message_bound_knobs)
-    cmake_parse_arguments(_B "QUIET" "SMALL_CLASS_CEILING;OUTPUT_FILE" "FRAGMENTS" ${ARGN})
+    cmake_parse_arguments(_B "QUIET"
+        "SMALL_CLASS_CEILING;OUTPUT_FILE;ENTITY_INVENTORY" "FRAGMENTS" ${ARGN})
 
     set(_fragments "${_B_FRAGMENTS}")
     if(NOT _fragments)
@@ -253,6 +324,10 @@ function(nros_derive_message_bound_knobs)
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_TYPE_COUNT 0)
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_BOUNDED_COUNT 0)
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_OPEN_TYPES "")
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS "refused")
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON
+        "the derivation did not reach the payload classes")
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT 0)
     # Cleared in BOTH scopes. The parent's copy so a second call cannot leave a
     # stale answer standing; this frame's copy because a function inherits the
     # caller's variables through the scope chain, and
@@ -266,7 +341,8 @@ function(nros_derive_message_bound_knobs)
         NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE
         NROS_DERIVED_LARGEST_TYPE
         NROS_DERIVED_LARGEST_RX
-        NROS_DERIVED_LARGE_TYPES)
+        NROS_DERIVED_LARGE_TYPES
+        NROS_MESSAGE_BOUNDS_BASIS)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -423,35 +499,70 @@ function(nros_derive_message_bound_knobs)
         return()
     endif()
 
+    # ---- The JOIN: which of those types does this image RECEIVE? ---------
+    #
+    # phase-403 step 1. Everything above is a fact about the closure. The three
+    # payload-class knobs are a fact about the SUBSCRIPTIONS, and this is where
+    # the second inventory supplies them. See the header for why the take
+    # buffer deliberately does not take part.
+    _nros_bounds_join_subscribed("${_B_ENTITY_INVENTORY}" "${_ceiling}"
+        _basis _payload_status _payload_why _sub_count
+        _sub_small _sub_large_types _sub_large_max _sub_large_count)
+
     # ---- Derive ----------------------------------------------------------
     #
     # Buffer 1, the runtime-owned take buffer: ONE global size for every
-    # subscription in the image (`RX_BUF` is a const generic and the C/C++ path
-    # is type-erased), so it must hold the largest type the image could
-    # receive.
+    # ENTITY in the image (`RX_BUF` is a const generic and the C/C++ path is
+    # type-erased), so it must hold the largest type the image could receive --
+    # and, because `DEFAULT_TX_BUF` aliases it, the largest it could publish.
+    # BASIS `closure`, always. Narrowing this one is the under-derivation.
     _nros_bounds_publish(NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE "${_max_rx}")
     _nros_bounds_publish(NROS_DERIVED_LARGEST_TYPE "${_max_type}")
     _nros_bounds_publish(NROS_DERIVED_LARGEST_RX "${_max_rx}")
 
-    # Buffer 2, the backend's staging pools: two classes, split at the policy
-    # ceiling. `_small` is the largest bound AT OR UNDER the ceiling, so the
-    # shim's own `min(threshold, SUBSCRIBER_BUFFER_SIZE)` picks it and the
-    # classification here is the routing at runtime.
-    #
-    # `_small == 0` means no type fits under the ceiling. The small class is
-    # still USED -- a caller that states no hint (`rx_buffer_hint == 0`, which
-    # is still every C/C++ subscription until W3/W5) is served from it -- so
-    # there is nothing to derive from the type set and the configured value
-    # stands.
-    if(_small GREATER 0)
-        _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE "${_small}")
-    endif()
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS "${_payload_status}")
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON "${_payload_why}")
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT "${_sub_count}")
 
-    list(LENGTH _large_types _large_count)
-    _nros_bounds_publish(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS "${_large_count}")
-    _nros_bounds_publish(NROS_DERIVED_LARGE_TYPES "${_large_types}")
-    if(_large_count GREATER 0)
-        _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE "${_large_max}")
+    if(_payload_status STREQUAL "derived")
+        _nros_bounds_publish(NROS_MESSAGE_BOUNDS_BASIS "${_basis}")
+
+        # BASIS `closure` -- this image declared no entities, so there is no
+        # join to make and the payload classes keep exactly the answer W8
+        # published: derived over every type in the linked closure. The label
+        # and the status line are what stop that being mistaken for the joined
+        # row.
+        if(_basis STREQUAL "closure")
+            set(_sub_small "${_small}")
+            set(_sub_large_types "${_large_types}")
+            set(_sub_large_max "${_large_max}")
+            list(LENGTH _large_types _sub_large_count)
+        endif()
+
+        # Buffer 2, the backend's staging pools: two classes, split at the
+        # policy ceiling. `_sub_small` is the largest bound AT OR UNDER the
+        # ceiling among the receiving set, so the shim's own
+        # `min(threshold, SUBSCRIBER_BUFFER_SIZE)` picks it and the
+        # classification here is the routing at runtime.
+        #
+        # `_sub_small == 0` means nothing received fits under the ceiling --
+        # including the case where nothing is received at all. The small class
+        # is still USED (a caller that states no hint is served from it), so
+        # there is nothing to derive and the configured value stands.
+        if(_sub_small GREATER 0)
+            _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE "${_sub_small}")
+        endif()
+
+        # The large COUNT is a count of BLOCKS, so on the `subscribed` basis it
+        # counts subscribing ENTITIES and not distinct types: two subscriptions
+        # on one large type need two blocks, and a type count would under-reserve
+        # by exactly the duplicates. On the `closure` basis there are no entities
+        # to count and it stays a type count, which is what it has always been.
+        _nros_bounds_publish(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS "${_sub_large_count}")
+        _nros_bounds_publish(NROS_DERIVED_LARGE_TYPES "${_sub_large_types}")
+        if(_sub_large_count GREATER 0)
+            _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE "${_sub_large_max}")
+        endif()
     endif()
     # A count of ZERO is an ANSWER, not an abstention -- W4 made
     # `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` legal precisely so an image whose types
@@ -471,26 +582,219 @@ function(nros_derive_message_bound_knobs)
             "${_pkg_count} interface packages (all bounded)")
         message(STATUS
             "nros:   largest type ${_max_type} at ${_max_rx} B -> "
-            "NROS_SUBSCRIPTION_BUFFER_SIZE")
-        if(_small GREATER 0)
+            "NROS_SUBSCRIPTION_BUFFER_SIZE (basis: the whole closure -- this "
+            "knob is also DEFAULT_TX_BUF and every raw entity's default "
+            "buffer, so a type this image only publishes still has to fit)")
+        if(NOT _payload_status STREQUAL "derived")
+            message(WARNING
+                "nros: the three PAYLOAD-CLASS knobs are REFUSED -- "
+                "NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE and "
+                "NROS_MAX_LARGE_SUBSCRIBERS keep their configured values.\n"
+                "  ${_payload_why}\n"
+                "  They are NOT falling back to the closure: this image states "
+                "what it receives, and a class sized over types it does not "
+                "receive is the wrong answer wearing a `derived` status.")
+        else()
+            if(_sub_small GREATER 0)
+                message(STATUS
+                    "nros:   small payload class ${_sub_small} B -> "
+                    "NROS_SUBSCRIBER_BUFFER_SIZE")
+            endif()
             message(STATUS
-                "nros:   small payload class ${_small} B -> "
-                "NROS_SUBSCRIBER_BUFFER_SIZE")
+                "nros:   ${_sub_large_count} over the ${_ceiling} B ceiling -> "
+                "NROS_MAX_LARGE_SUBSCRIBERS")
+            if(_sub_large_count GREATER 0)
+                message(STATUS
+                    "nros:   large payload class ${_sub_large_max} B -> "
+                    "NROS_SUBSCRIBER_LARGE_SIZE")
+            endif()
+            if(_basis STREQUAL "subscribed")
+                message(STATUS
+                    "nros:   payload classes derived over the ${_sub_count} "
+                    "SUBSCRIPTIONS this image declares, not the "
+                    "${_type_count}-type closure")
+            else()
+                message(STATUS
+                    "nros:   payload classes are an UPPER BOUND -- this image "
+                    "declares no entities, so they derive over the whole "
+                    "linked closure and are sized for the largest type it "
+                    "COULD receive. Declare "
+                    "`nano_ros_node_register(... ENTITIES sub:<pkg>/msg/<Name> "
+                    "...)` to narrow them to what it does.")
+            endif()
         endif()
-        message(STATUS
-            "nros:   ${_large_count} types over the ${_ceiling} B ceiling -> "
-            "NROS_MAX_LARGE_SUBSCRIBERS")
-        if(_large_count GREATER 0)
-            message(STATUS
-                "nros:   large payload class ${_large_max} B -> "
-                "NROS_SUBSCRIBER_LARGE_SIZE")
-        endif()
-        message(STATUS
-            "nros:   these are UPPER BOUNDS -- the inventory holds the whole "
-            "linked closure, not only the subscribed types")
     endif()
 
     _nros_message_bounds_write_output("${_B_OUTPUT_FILE}" "derived" "" "${_ceiling}")
+endfunction()
+
+# _nros_bounds_join_subscribed(<entity_fragment> <ceiling>
+#                              <out_basis> <out_status> <out_why> <out_count>
+#                              <out_small> <out_large_types> <out_large_max>
+#                              <out_large_count>)
+#
+# phase-403 step 1 -- the JOIN. Reads the ENTITY inventory's subscribed-type
+# set and classifies each of those types against the bounds this frame has
+# already composed.
+#
+# Called from inside `nros_derive_message_bound_knobs`, so it reads the
+# per-type `NROS_MESSAGE_BOUND_<key>_STATE` / `_RX` variables through the SCOPE
+# CHAIN -- the same way `_nros_message_bounds_write_output` reads the published
+# results. That is what makes it a function rather than a second composition:
+# there is one `include()` of the fragments per call, and re-including them here
+# would be a second read of the same files with a second chance to differ.
+#
+# `<out_basis>` is `subscribed` or `closure`; on `closure` the four
+# classification outputs are left EMPTY and the caller substitutes its own
+# closure-wide values. `<out_status>` is `derived` or `refused`, and a refusal
+# NEVER degrades to `closure` -- see the header.
+function(_nros_bounds_join_subscribed _frag _ceiling
+         _o_basis _o_status _o_why _o_count _o_small _o_large_types _o_large_max
+         _o_large_count)
+    set(${_o_basis} "" PARENT_SCOPE)
+    set(${_o_status} "derived" PARENT_SCOPE)
+    set(${_o_why} "" PARENT_SCOPE)
+    set(${_o_count} 0 PARENT_SCOPE)
+    set(${_o_small} 0 PARENT_SCOPE)
+    set(${_o_large_types} "" PARENT_SCOPE)
+    set(${_o_large_max} 0 PARENT_SCOPE)
+    set(${_o_large_count} 0 PARENT_SCOPE)
+
+    # No fragment named, or none written yet. The image declared nothing, which
+    # is every image built before phase-403 W9. Keep W8's closure answer and
+    # label it; see the header for why this one case is not a refusal.
+    if(NOT _frag OR NOT EXISTS "${_frag}")
+        set(${_o_basis} "closure" PARENT_SCOPE)
+        return()
+    endif()
+
+    # The entity fragment carries its own schema, and it is checked HERE too
+    # rather than trusted because this reader has landed since it was written --
+    # a version-1 fragment predates the subscribed-type set entirely, and
+    # reading it would silently derive a payload class over an EMPTY set.
+    #
+    # The constant comes from the module that OWNS the fragment, so there is one
+    # spelling of the number. The include is a no-op when that module is already
+    # in (the usual case: `nano_ros_entry()` includes it), and its constants are
+    # `CACHE INTERNAL`, so they survive an include from inside this frame.
+    include("${_NROS_MESSAGE_BOUNDS_DIR}/NanoRosEntityInventory.cmake")
+    unset(NROS_ENTITY_INVENTORY_SCHEMA_VERSION)
+    unset(NROS_ENTITY_INVENTORY_STATUS)
+    unset(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS)
+    unset(NROS_ENTITY_SUBSCRIBED_TYPES)
+    unset(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS)
+    unset(NROS_ENTITY_SUBSCRIBED_TYPES_REASON)
+    include("${_frag}")
+
+    if(NOT DEFINED NROS_ENTITY_INVENTORY_SCHEMA_VERSION OR
+       NOT NROS_ENTITY_INVENTORY_SCHEMA_VERSION EQUAL
+           NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED)
+        # LOUD, and deliberately NOT a FATAL_ERROR, which is the one place this
+        # module departs from its own "refuse rather than read a moved field"
+        # rule. The fragment's PRODUCER (`nano_ros_entry()`) runs LATER in this
+        # same configure than this reader does, so a fatal here aborts the
+        # configure before the stale fragment can ever be rewritten -- the build
+        # dir would be stuck until someone deleted the file by hand. Nothing is
+        # read from the fragment either way: the payload classes fall to the
+        # closure, which over-approximates in the safe direction.
+        message(WARNING
+            "nros: ${_frag} states entity-inventory schema version "
+            "`${NROS_ENTITY_INVENTORY_SCHEMA_VERSION}`; the payload-class join "
+            "understands ${NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED}. It is being "
+            "IGNORED -- nothing is read from it field-by-field.\n"
+            "  A fragment that predates the join carries no subscribed-type set "
+            "at all, so this image's payload classes derive over its whole "
+            "LINKED CLOSURE, which is an upper bound and not the answer its "
+            "declaration would give.\n"
+            "  Rebuild the `nros` CLI so the producer and the reader come from "
+            "one tree (`./scripts/bootstrap.sh`; contributors: "
+            "`just setup-cli`) and re-configure; the fragment is "
+            "rewritten by `nano_ros_entry()` later in that configure and this "
+            "reader picks it up on the one after.")
+        set(${_o_basis} "closure" PARENT_SCOPE)
+        return()
+    endif()
+
+    # The image registered components but at least one declared no `ENTITIES`,
+    # so W9 refused for the whole image. Nothing was declared that this join can
+    # narrow to; the pre-W9 state, and it keeps the pre-W9 answer.
+    if(NOT NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived")
+        set(${_o_basis} "closure" PARENT_SCOPE)
+        return()
+    endif()
+
+    # From here the image HAS declared, so the join is live and every failure
+    # below is a REFUSAL. A fall-back to the closure would publish a number
+    # derived over types this image never receives while the status still read
+    # `derived`.
+    if(NOT DEFINED NROS_ENTITY_SUBSCRIBED_TYPES_STATUS)
+        # The version matches, so the producer is current and the field must be
+        # there. Its absence is a hand-edited or half-written fragment. REFUSED
+        # and not widened to the closure: the image DID declare, so a closure
+        # answer here would be the wrong row wearing a `derived` status.
+        set(${_o_status} "refused" PARENT_SCOPE)
+        set(${_o_why}
+            "${_frag} states entity-inventory schema ${NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED}, which carries a subscribed-type set, and sets no NROS_ENTITY_SUBSCRIBED_TYPES_STATUS. The fragment is malformed -- delete it and re-configure, or regenerate the `nros` CLI with `./scripts/bootstrap.sh` (contributors: `just setup-cli`)."
+            PARENT_SCOPE)
+        return()
+    endif()
+    if(NOT NROS_ENTITY_SUBSCRIBED_TYPES_STATUS STREQUAL "resolved")
+        set(${_o_status} "refused" PARENT_SCOPE)
+        set(${_o_why}
+            "this image declares its entities, so the payload classes are derived from them or not at all -- and the subscribed-type set did not resolve:\n${NROS_ENTITY_SUBSCRIBED_TYPES_REASON}"
+            PARENT_SCOPE)
+        return()
+    endif()
+
+    set(_count 0)
+    set(_small 0)
+    set(_large_types "")
+    set(_large_max 0)
+    set(_large_count 0)
+    set(_unpriced "")
+    foreach(_entry IN LISTS NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS)
+        string(REGEX REPLACE "=[0-9]+$" "" _t "${_entry}")
+        string(REGEX REPLACE "^.*=" "" _n "${_entry}")
+        math(EXPR _count "${_count} + ${_n}")
+        string(REGEX REPLACE "[^A-Za-z0-9]" "_" _key "${_t}")
+        if(NOT DEFINED NROS_MESSAGE_BOUND_${_key}_STATE)
+            list(APPEND _unpriced "${_t}")
+            continue()
+        endif()
+        set(_rx "${NROS_MESSAGE_BOUND_${_key}_RX}")
+        if(_rx GREATER _ceiling)
+            list(APPEND _large_types "${_t}=${_rx}")
+            math(EXPR _large_count "${_large_count} + ${_n}")
+            if(_rx GREATER _large_max)
+                set(_large_max "${_rx}")
+            endif()
+        elseif(_rx GREATER _small)
+            set(_small "${_rx}")
+        endif()
+    endforeach()
+
+    # A type the entity inventory names and the bound inventory does not price
+    # is the join failing, and it is loud. Today the commonest cause is
+    # structural rather than a typo: the bound inventory records MESSAGES only
+    # (`BoundInventory::record_message` is called for `.msg` and for nothing
+    # else), so a `pkg/srv/Name_Request` or a `pkg/action/Name_Result` has no
+    # entry however well-formed the declaration is.
+    if(_unpriced)
+        list(LENGTH _unpriced _unpriced_count)
+        string(REPLACE ";" "\n    " _unpriced_block "${_unpriced}")
+        set(${_o_status} "refused" PARENT_SCOPE)
+        set(${_o_why}
+            "${_unpriced_count} type(s) this image receives are not in the bound inventory, so their payload class cannot be derived:\n    ${_unpriced_block}\n  Either the declaration names a type this image does not link, or it names a service/action type -- the bound inventory prices MESSAGES (`pkg/msg/Name`) and nothing else, so `pkg/srv/*` and `pkg/action/*` have no entry to join against."
+            PARENT_SCOPE)
+        return()
+    endif()
+
+    set(${_o_basis} "subscribed" PARENT_SCOPE)
+    set(${_o_count} "${_count}" PARENT_SCOPE)
+    set(${_o_small} "${_small}" PARENT_SCOPE)
+    set(${_o_large_types} "${_large_types}" PARENT_SCOPE)
+    set(${_o_large_max} "${_large_max}" PARENT_SCOPE)
+    set(${_o_large_count} "${_large_count}" PARENT_SCOPE)
 endfunction()
 
 # _nros_message_bounds_write_output(<path> <status> <reason> <ceiling>)
@@ -515,10 +819,13 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
     string(APPEND _c "# environment override states a number and WINS; this file only fills in\n")
     string(APPEND _c "# what nobody stated.\n")
     string(APPEND _c "#\n")
-    string(APPEND _c "# Each is an UPPER BOUND on what the image needs: the inventory holds every\n")
-    string(APPEND _c "# type in the LINKED interface closure, not only the subscribed ones. Too\n")
-    string(APPEND _c "# big, never too small. Narrowing it needs an ENTITY inventory, which no\n")
-    string(APPEND _c "# resolved SystemModel carries today (phase-403 W4).\n")
+    string(APPEND _c "# There are TWO BASES here and the file says which each number used.\n")
+    string(APPEND _c "# NROS_SUBSCRIPTION_BUFFER_SIZE is always derived over the LINKED closure:\n")
+    string(APPEND _c "# it is also DEFAULT_TX_BUF and the default buffer of every raw service,\n")
+    string(APPEND _c "# client and action entity, so a type this image only PUBLISHES still has\n")
+    string(APPEND _c "# to fit and narrowing it would size a buffer too small. The three payload\n")
+    string(APPEND _c "# classes are derived over the SUBSCRIBED set when the image declares its\n")
+    string(APPEND _c "# entities (phase-403 W9), and over the closure when it declares none.\n")
     string(APPEND _c "#\n")
     string(APPEND _c "# Derivation: nros_serdes::size::max_serialized_size, the same rule the\n")
     string(APPEND _c "# runtime's M::MAX_SERIALIZED_SIZE_XCDR* uses. NOT the C++ pack's\n")
@@ -540,29 +847,64 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
             "# ${NROS_DERIVED_LARGEST_TYPE} is the largest type in the closure.\n")
         string(APPEND _c
             "set(NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE ${NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE})\n")
-        if(DEFINED NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
+        string(APPEND _c "\n")
+        string(APPEND _c
+            "# ---- the three PAYLOAD-CLASS knobs, and the set they were derived over ----\n")
+        string(APPEND _c
+            "set(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS \"${NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS}\")\n")
+        if(NOT NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS STREQUAL "derived")
+            string(REPLACE "\\" "\\\\" _pr "${NROS_MESSAGE_BOUNDS_PAYLOAD_REASON}")
+            string(REPLACE "\"" "\\\"" _pr "${_pr}")
+            string(REPLACE "\n" "\\n" _pr "${_pr}")
+            string(APPEND _c "set(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON \"${_pr}\")\n")
             string(APPEND _c
-                "# The largest type at or under the class split.\n")
-            string(APPEND _c
-                "set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE ${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE})\n")
+                "# NROS_SUBSCRIBER_BUFFER_SIZE, NROS_SUBSCRIBER_LARGE_SIZE and\n"
+                "# NROS_MAX_LARGE_SUBSCRIBERS are NOT derived and do NOT fall back to the\n"
+                "# closure. This image states what it receives, so the classes come from\n"
+                "# that or from nowhere; each keeps its configured value.\n")
         else()
             string(APPEND _c
-                "# No type fits under the ${_ceiling} B split, so the small class size is\n"
-                "# not derivable from the type set -- but the class is still used, by any\n"
-                "# caller that states no hint. NROS_SUBSCRIBER_BUFFER_SIZE keeps its\n"
-                "# configured value.\n")
+                "set(NROS_MESSAGE_BOUNDS_BASIS \"${NROS_MESSAGE_BOUNDS_BASIS}\")\n")
+            if(NROS_MESSAGE_BOUNDS_BASIS STREQUAL "subscribed")
+                string(APPEND _c
+                    "# Derived over the ${NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT} SUBSCRIPTIONS this image declares\n"
+                    "# (`nano_ros_node_register(... ENTITIES ...)`), not over the\n"
+                    "# ${NROS_MESSAGE_BOUNDS_TYPE_COUNT}-type linked closure. A type the image links and never\n"
+                    "# receives cannot set a class here.\n")
+            else()
+                string(APPEND _c
+                    "# UPPER BOUND: this image declares no entities, so the classes are derived\n"
+                    "# over the whole ${NROS_MESSAGE_BOUNDS_TYPE_COUNT}-type linked closure and are sized for the largest\n"
+                    "# type it COULD receive, not the largest it does. Declare\n"
+                    "# `nano_ros_node_register(... ENTITIES sub:<pkg>/msg/<Name> ...)` on every\n"
+                    "# component to narrow them.\n")
+            endif()
         endif()
-        string(APPEND _c
-            "# Types over the split: ${NROS_DERIVED_LARGE_TYPES}\n")
-        string(APPEND _c
-            "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS ${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS})\n")
-        if(DEFINED NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
+        if(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS STREQUAL "derived")
+            if(DEFINED NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
+                string(APPEND _c
+                    "# The largest received type at or under the class split.\n")
+                string(APPEND _c
+                    "set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE ${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE})\n")
+            else()
+                string(APPEND _c
+                    "# Nothing this image receives fits under the ${_ceiling} B split, so the small\n"
+                    "# class size is not derivable from that set -- but the class is still used,\n"
+                    "# by any caller that states no hint. NROS_SUBSCRIBER_BUFFER_SIZE keeps its\n"
+                    "# configured value.\n")
+            endif()
             string(APPEND _c
-                "set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE ${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE})\n")
-        else()
+                "# Received types over the split: ${NROS_DERIVED_LARGE_TYPES}\n")
             string(APPEND _c
-                "# Zero large-class blocks, so the pool is zero bytes whatever size it\n"
-                "# would name -- NROS_SUBSCRIBER_LARGE_SIZE is deliberately not derived.\n")
+                "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS ${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS})\n")
+            if(DEFINED NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
+                string(APPEND _c
+                    "set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE ${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE})\n")
+            else()
+                string(APPEND _c
+                    "# Zero large-class blocks, so the pool is zero bytes whatever size it\n"
+                    "# would name -- NROS_SUBSCRIBER_LARGE_SIZE is deliberately not derived.\n")
+            endif()
         endif()
     endif()
     set(_write TRUE)
@@ -589,6 +931,7 @@ endfunction()
 #
 #   cmake -DNROS_BOUNDS_FRAGMENTS="a.cmake;b.cmake" \
 #         [-DNROS_BOUNDS_CEILING=2048] [-DNROS_BOUNDS_OUTPUT=out.cmake] \
+#         [-DNROS_BOUNDS_ENTITY_INVENTORY=entity_inventory.cmake] \
 #         -P cmake/NanoRosMessageBounds.cmake
 # -----------------------------------------------------------------------------
 if(CMAKE_SCRIPT_MODE_FILE AND
@@ -606,11 +949,17 @@ if(CMAKE_SCRIPT_MODE_FILE AND
     if(DEFINED NROS_BOUNDS_OUTPUT)
         list(APPEND _args OUTPUT_FILE "${NROS_BOUNDS_OUTPUT}")
     endif()
+    if(DEFINED NROS_BOUNDS_ENTITY_INVENTORY)
+        list(APPEND _args ENTITY_INVENTORY "${NROS_BOUNDS_ENTITY_INVENTORY}")
+    endif()
     nros_derive_message_bound_knobs(${_args})
     message(STATUS "NROS_MESSAGE_BOUNDS_STATUS=${NROS_MESSAGE_BOUNDS_STATUS}")
     foreach(_v
         NROS_MESSAGE_BOUNDS_TYPE_COUNT
         NROS_MESSAGE_BOUNDS_BOUNDED_COUNT
+        NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS
+        NROS_MESSAGE_BOUNDS_BASIS
+        NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT
         NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE
         NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE
         NROS_DERIVED_MAX_LARGE_SUBSCRIBERS
@@ -621,4 +970,8 @@ if(CMAKE_SCRIPT_MODE_FILE AND
             message(STATUS "${_v}=${${_v}}")
         endif()
     endforeach()
+    if(NOT NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS STREQUAL "derived")
+        message(STATUS
+            "NROS_MESSAGE_BOUNDS_PAYLOAD_REASON=${NROS_MESSAGE_BOUNDS_PAYLOAD_REASON}")
+    endif()
 endif()

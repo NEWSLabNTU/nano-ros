@@ -20,6 +20,30 @@
 //!   is the same one `nros ws entity-facts` already publishes through
 //!   `corrosion_set_env_vars` (`cmake/NanoRosEntityFacts.cmake`).
 //!
+//! # The JOIN KEY (phase-403 step 1)
+//!
+//! Counting entities answers `NROS_EXECUTOR_MAX_CBS` and nothing else. The two
+//! SIZE consumers need which types are received, which is why every transport
+//! also carries [`EntityInventory::subscribed_types`] and
+//! [`EntityInventory::received_types`].
+//!
+//! They are two different sets on purpose. `subscribed_types` is what
+//! `nros_derive_message_bound_knobs` narrows the zenoh payload classes with,
+//! because those pools have exactly one allocation site and it is reached only
+//! from `declare_subscriber`. `received_types` is wider -- a service server, a
+//! service client and both action roles all carry receive buffers -- and it is
+//! what the executor arena needs. Collapsing them would either price a
+//! service's request against a pool it never allocates from, or leave the arena
+//! blind to four kinds. See [`EntityKind::receives`] for how each was read off
+//! the arena entry types rather than off the names.
+//!
+//! The spellings join because both inventories key on `pkg/msg/Name`. That is
+//! true for messages and cannot be true for services and actions:
+//! `BoundInventory::record_message` is called for `.msg` files and for nothing
+//! else, so `pkg/srv/Name_Request` and `pkg/action/Name_Result` have no bound
+//! entry to join against. A consumer that meets one must REFUSE, and the CMake
+//! reader does.
+//!
 //! # Where the declaration comes from, and why it is AUTHOR-STATED
 //!
 //! RFC-0043/0044 components create their entities in CONSTRUCTORS, at runtime.
@@ -88,7 +112,15 @@ use std::collections::BTreeMap;
 
 /// Bumped when the shape of the emitted inventory changes incompatibly.
 /// A consumer that does not recognise the version must refuse, never guess.
-pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 1;
+///
+/// **2** (phase-403 step 1): the fragment now also carries WHICH TYPES THE
+/// IMAGE RECEIVES -- `NROS_ENTITY_SUBSCRIBED_TYPES` and its wider sibling
+/// `NROS_ENTITY_RECEIVED_TYPES`, each with its own status. A version-1 fragment
+/// carries neither, and a reader that treated its absence as "no type is
+/// received" would derive a payload class over an EMPTY set and publish a
+/// number smaller than any real sample. That is an incompatible addition even
+/// though nothing moved, so it bumps.
+pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 2;
 
 /// Canonical artifact name.
 pub const ENTITY_INVENTORY_JSON_NAME: &str = "nros_entity_inventory.json";
@@ -163,6 +195,66 @@ impl EntityKind {
             | EntityKind::ActionClient
             | EntityKind::GuardCondition => 1,
         }
+    }
+
+    /// Does an entity of this kind RECEIVE a serialized payload?
+    ///
+    /// Read off the arena entry types in
+    /// `packages/core/nros-node/src/executor/arena.rs`, which is where a
+    /// receive buffer is actually spelled -- not off the names, which mislead
+    /// in both directions (a service CLIENT receives; an action CLIENT receives
+    /// three different things).
+    ///
+    /// * `Subscription` -- the topic sample. `SubBufferedRawCEntry` and its
+    ///   siblings.
+    /// * `ServiceServer` -- the REQUEST. `SrvRawEntry<REQ_BUF, REPLY_BUF>`
+    ///   carries a `req_buffer`.
+    /// * `ServiceClient` -- the REPLY. `ServiceClientRawArenaEntry<REPLY_BUF>`
+    ///   carries a `reply_buffer`.
+    /// * `ActionServer` -- three: the SendGoal request, the GetResult request
+    ///   and the CancelGoal request.
+    ///   `ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, _>`.
+    /// * `ActionClient` -- three: the goal RESPONSE, the result RESPONSE and
+    ///   the feedback message. `ActionClientRawArenaEntry` has the same three
+    ///   const buffers, which is the clearest statement that "client" says
+    ///   nothing about direction.
+    /// * `Publisher` -- no. It SERIALIZES into a per-call stack array
+    ///   (`DEFAULT_TX_BUF` in `executor/types.rs`), which is a transmit buffer
+    ///   and a different question.
+    /// * `Timer`, `GuardCondition` -- no payload at all.
+    ///
+    /// This is the SEMANTIC predicate. It is deliberately wider than
+    /// [`Self::receives_topic_sample`], because the two answer different
+    /// questions and collapsing them is how a buffer gets sized too small.
+    pub fn receives(self) -> bool {
+        match self {
+            EntityKind::Subscription
+            | EntityKind::ServiceServer
+            | EntityKind::ServiceClient
+            | EntityKind::ActionServer
+            | EntityKind::ActionClient => true,
+            EntityKind::Publisher | EntityKind::Timer | EntityKind::GuardCondition => false,
+        }
+    }
+
+    /// Does an entity of this kind draw from the backend's TOPIC PAYLOAD
+    /// pools -- the two statically sized classes
+    /// `NROS_SUBSCRIBER_BUFFER_SIZE` / `NROS_SUBSCRIBER_LARGE_SIZE` size?
+    ///
+    /// Only a subscription, and that is MEASURED rather than assumed: in
+    /// `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs` the pools
+    /// `SMALL_PAYLOADS` / `LARGE_PAYLOADS` are reached through exactly one
+    /// allocation, `alloc_payload_block(rx_buffer_hint)`, and it has exactly
+    /// one caller -- the `declare_subscriber` path. A service server's request
+    /// buffer and an action client's feedback buffer are real receive buffers
+    /// and neither is one of these blocks; they are sized by other knobs.
+    ///
+    /// So narrowing the payload classes to subscriptions is not an
+    /// under-count. Including the other receiving kinds would not make the
+    /// number safer -- it would make it describe a pool those entities never
+    /// allocate from.
+    pub fn receives_topic_sample(self) -> bool {
+        matches!(self, EntityKind::Subscription)
     }
 
     /// Parse one declared kind.
@@ -357,6 +449,44 @@ impl Derivation {
     }
 }
 
+/// Which types an image RECEIVES, and how many entities receive each.
+///
+/// The count is per ENTITY and not per type, because the consumer that needs
+/// it counts blocks: `NROS_MAX_LARGE_SUBSCRIBERS` is how many large payload
+/// BLOCKS the backend reserves, and two subscriptions on one large type need
+/// two. Deduplicating to a type set would under-reserve by exactly the
+/// duplicates.
+///
+/// `Refused` carries prose and NO list, for the reason [`Derivation`] does: a
+/// consumer either reads a set this module resolved or reads nothing. An empty
+/// list is a legitimate ANSWER ("this image receives nothing of that shape")
+/// and must never be confused with "nobody said".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReceivedTypes {
+    /// `(type_name, receiving entity count)`, sorted by `type_name` so the
+    /// artifact is byte-stable and a write-if-changed keeps mtimes still.
+    Resolved(Vec<(String, usize)>),
+    Refused {
+        reason: String,
+    },
+}
+
+impl ReceivedTypes {
+    pub fn tag(&self) -> &'static str {
+        match self {
+            ReceivedTypes::Resolved(_) => "resolved",
+            ReceivedTypes::Refused { .. } => "refused",
+        }
+    }
+
+    pub fn types(&self) -> Option<&[(String, usize)]> {
+        match self {
+            ReceivedTypes::Resolved(v) => Some(v),
+            ReceivedTypes::Refused { .. } => None,
+        }
+    }
+}
+
 impl EntityInventory {
     pub fn new(source: impl Into<String>) -> Self {
         Self {
@@ -464,6 +594,91 @@ impl EntityInventory {
         }))
     }
 
+    /// The types this image receives THROUGH THE TOPIC PAYLOAD POOLS -- the
+    /// join key for the zenoh payload classes (phase-403 step 1).
+    ///
+    /// Filters the declaration to [`EntityKind::receives_topic_sample`], which
+    /// is subscriptions, and counts one per ENTITY.
+    pub fn subscribed_types(&self) -> ReceivedTypes {
+        self.types_received_by(EntityKind::receives_topic_sample, "subscribed")
+    }
+
+    /// Every type this image receives, over every receiving kind
+    /// ([`EntityKind::receives`]).
+    ///
+    /// WIDER than [`Self::subscribed_types`] and published beside it because
+    /// the two consumers differ: the payload classes size a pool only
+    /// subscriptions allocate from, while the executor ARENA charges a receive
+    /// buffer for a service server, a service client and both action roles as
+    /// well. Emitting only the narrow set would leave the arena's derivation
+    /// (step 3) to re-derive it, and a second derivation is how two green
+    /// tools come to disagree.
+    pub fn received_types(&self) -> ReceivedTypes {
+        self.types_received_by(EntityKind::receives, "received")
+    }
+
+    /// The one implementation behind the two views above.
+    ///
+    /// REFUSES in two cases, and both are "the answer would be short":
+    ///
+    /// 1. The image's own composition refused -- some component declared no
+    ///    `ENTITIES` at all. Its subscriptions are then unknown, and a set
+    ///    composed over the components that DID answer is a subset of what the
+    ///    image receives.
+    /// 2. A matching entity carries no `type_name`. A count needs no type and
+    ///    `MAX_CBS` derives happily without one, but a SIZE does: an untyped
+    ///    receiving entity is a payload of unknown size, and pricing the rest
+    ///    would publish a maximum a real sample can exceed.
+    fn types_received_by(&self, matches: fn(EntityKind) -> bool, what: &str) -> ReceivedTypes {
+        if let Derivation::Refused { reason } = self.derive() {
+            return ReceivedTypes::Refused {
+                reason: format!(
+                    "the entity inventory itself did not compose, so the {what} type set would \
+                     be a subset of what this image receives:\n{reason}"
+                ),
+            };
+        }
+
+        let mut untyped: Vec<String> = Vec::new();
+        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+        for c in self.components() {
+            for e in c.declaration.entities() {
+                if !matches(e.kind) {
+                    continue;
+                }
+                match &e.type_name {
+                    Some(t) => *counts.entry(t.clone()).or_insert(0) += 1,
+                    None => untyped.push(format!(
+                        "    {}::{} declares a `{}`{} with no type",
+                        c.pkg,
+                        c.component,
+                        e.kind.tag(),
+                        match &e.name {
+                            Some(n) => format!(" on `{n}`"),
+                            None => String::new(),
+                        }
+                    )),
+                }
+            }
+        }
+
+        if !untyped.is_empty() {
+            untyped.dedup();
+            return ReceivedTypes::Refused {
+                reason: format!(
+                    "{} receiving entities state no type, so the size of what they receive is \
+                     unknown:\n{}\nA count does not need the type and NROS_EXECUTOR_MAX_CBS still \
+                     derives; a payload SIZE does. State it as `<kind>:<pkg>/msg/<Name>[:<name>]` \
+                     in the component's `nano_ros_node_register(... ENTITIES ...)`.",
+                    untyped.len(),
+                    untyped.join("\n")
+                ),
+            };
+        }
+
+        ReceivedTypes::Resolved(counts.into_iter().collect())
+    }
+
     /// The canonical artifact.
     pub fn to_json(&self) -> String {
         let derivation = self.derive();
@@ -526,6 +741,34 @@ impl EntityInventory {
             Derivation::Refused { reason } => {
                 doc.insert("reason".into(), reason.clone().into());
             }
+        }
+        // The join key, on the canonical transport too. Same three states as
+        // the CMake projection: a `status` is always present and the list is
+        // present only when it resolved.
+        for (key, r) in [
+            ("subscribed_types", self.subscribed_types()),
+            ("received_types", self.received_types()),
+        ] {
+            let mut m = serde_json::Map::new();
+            m.insert("status".into(), r.tag().into());
+            match &r {
+                ReceivedTypes::Refused { reason } => {
+                    m.insert("reason".into(), reason.clone().into());
+                }
+                ReceivedTypes::Resolved(v) => {
+                    m.insert(
+                        "types".into(),
+                        serde_json::Value::Object(
+                            v.iter().map(|(t, n)| (t.clone(), (*n).into())).collect(),
+                        ),
+                    );
+                    m.insert(
+                        "entity_count".into(),
+                        v.iter().map(|(_, n)| *n).sum::<usize>().into(),
+                    );
+                }
+            }
+            doc.insert(key.into(), serde_json::Value::Object(m));
         }
         format!(
             "{}\n",
@@ -608,6 +851,31 @@ impl EntityInventory {
                 ));
             }
         }
+
+        // phase-403 step 1 -- the JOIN KEY. `nros_derive_message_bound_knobs`
+        // prices a type; these two say which types this image RECEIVES, which
+        // is the half it cannot know. Emitted in BOTH branches: a refusal here
+        // is a fact a reader must act on, and an absent variable would read as
+        // "no type is received" -- a payload class derived over an empty set.
+        s.push_str(&render_received(
+            "SUBSCRIBED",
+            "the types SUBSCRIPTIONS receive. These and only these allocate from the\n\
+             # backend's two topic payload classes (one `alloc_payload_block` call site,\n\
+             # reached only from `declare_subscriber`), so they are the join key for\n\
+             # NROS_SUBSCRIBER_BUFFER_SIZE / _LARGE_SIZE / NROS_MAX_LARGE_SUBSCRIBERS.\n\
+             # The count is per ENTITY, not per type: two subscriptions on one large type\n\
+             # need two blocks.",
+            &self.subscribed_types(),
+        ));
+        s.push_str(&render_received(
+            "RECEIVED",
+            "every type this image receives, over every receiving kind -- a service\n\
+             # SERVER receives requests, a service CLIENT receives replies, and an action\n\
+             # server and action client each receive three things. WIDER than the\n\
+             # subscribed set above; it is what the executor arena needs, not the payload\n\
+             # classes.",
+            &self.received_types(),
+        ));
         s
     }
 
@@ -622,6 +890,49 @@ impl EntityInventory {
             Derivation::Refused { .. } => String::new(),
         }
     }
+}
+
+/// One received-type view, as CMake.
+///
+/// `NROS_ENTITY_<WHAT>_TYPES_STATUS` is always set, so a reader can tell
+/// "resolved to nothing" from "refused" from "this fragment predates the
+/// field" -- three states that license three different actions and that an
+/// absent list collapses into one.
+fn render_received(what: &str, prose: &str, r: &ReceivedTypes) -> String {
+    let mut s = format!("# {prose}\n");
+    s.push_str(&format!(
+        "set(NROS_ENTITY_{what}_TYPES_STATUS \"{}\")\n",
+        r.tag()
+    ));
+    match r {
+        ReceivedTypes::Refused { reason } => {
+            s.push_str(&format!(
+                "set(NROS_ENTITY_{what}_TYPES_REASON \"{}\")\n",
+                cmake_escape(reason)
+            ));
+            s.push_str(&format!(
+                "# No {} type set. A consumer that needs one must REFUSE, never fall back\n\
+                 # to a wider set -- a wider set is a different question with a different\n\
+                 # answer.\n",
+                what.to_ascii_lowercase()
+            ));
+        }
+        ReceivedTypes::Resolved(v) => {
+            let names: Vec<&str> = v.iter().map(|(t, _)| t.as_str()).collect();
+            s.push_str(&format!(
+                "set(NROS_ENTITY_{what}_TYPES \"{}\")\n",
+                names.join(";")
+            ));
+            let pairs: Vec<String> = v.iter().map(|(t, n)| format!("{t}={n}")).collect();
+            s.push_str(&format!(
+                "set(NROS_ENTITY_{what}_TYPE_COUNTS \"{}\")\n",
+                pairs.join(";")
+            ));
+            let total: usize = v.iter().map(|(_, n)| *n).sum();
+            s.push_str(&format!("set(NROS_ENTITY_{what}_ENTITY_COUNT {total})\n"));
+        }
+    }
+    s
 }
 
 /// CMake `set(... "...")` is quote- and backslash-sensitive, and a refusal
@@ -752,7 +1063,9 @@ mod tests {
         assert!(c.contains("set(NROS_ENTITY_COUNT_PUBLISHER 4)"));
         assert!(c.contains("a::one = 7 entities, 3 slots"));
         assert!(
-            c.contains("set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 1)"),
+            c.contains(&format!(
+                "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION {ENTITY_INVENTORY_SCHEMA_VERSION})"
+            )),
             "a reader must be able to refuse an unrecognised schema"
         );
     }
@@ -824,6 +1137,214 @@ mod tests {
         b.insert(stated("z", "one", &["sub"]));
         assert_eq!(a.to_cmake(), b.to_cmake());
         assert_eq!(a.to_json(), b.to_json());
+    }
+
+    // -----------------------------------------------------------------
+    // phase-403 step 1 -- the JOIN KEY.
+    // -----------------------------------------------------------------
+
+    /// Which kinds RECEIVE is the decision this step turns on, and the two
+    /// predicates are deliberately different sets. Pinning both here is what
+    /// stops someone "simplifying" one into the other: widening
+    /// `receives_topic_sample` would price a service's request against a pool
+    /// it never allocates from, and narrowing `receives` would leave the arena
+    /// blind to four kinds that carry receive buffers.
+    #[test]
+    fn a_client_receives_and_a_publisher_does_not() {
+        for k in [
+            EntityKind::Subscription,
+            EntityKind::ServiceServer,
+            EntityKind::ServiceClient,
+            EntityKind::ActionServer,
+            EntityKind::ActionClient,
+        ] {
+            assert!(k.receives(), "{} receives a payload", k.tag());
+        }
+        for k in [
+            EntityKind::Publisher,
+            EntityKind::Timer,
+            EntityKind::GuardCondition,
+        ] {
+            assert!(!k.receives(), "{} receives nothing", k.tag());
+        }
+        // Only a subscription draws from the topic payload pools -- one
+        // `alloc_payload_block` call site, reached only from
+        // `declare_subscriber`.
+        for k in ALL_ENTITY_KINDS {
+            assert_eq!(
+                k.receives_topic_sample(),
+                *k == EntityKind::Subscription,
+                "{} and the payload pools",
+                k.tag()
+            );
+        }
+    }
+
+    /// The join key counts ENTITIES, not distinct types. Two subscriptions on
+    /// one large type need two large payload BLOCKS, and a deduplicated type
+    /// set would reserve one.
+    #[test]
+    fn the_subscribed_set_counts_entities_per_type() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/a",
+                "sub:std_msgs/msg/Int32:/b",
+                "sub:nav_msgs/msg/Odometry:/c",
+                "pub:sensor_msgs/msg/Image:/d",
+                "timer",
+            ],
+        ));
+        let types = inv.subscribed_types();
+        assert_eq!(
+            types.types().expect("resolved"),
+            &[
+                ("nav_msgs/msg/Odometry".to_string(), 1),
+                ("std_msgs/msg/Int32".to_string(), 2),
+            ],
+            "two subscriptions on Int32, one on Odometry, and the PUBLISHED \
+             Image is not in the set"
+        );
+    }
+
+    /// A service SERVER receives requests and a service CLIENT receives
+    /// replies, so both are in the wider set -- and neither is in the payload
+    /// pools' set. The two views are what keep the arena (step 3) from
+    /// re-deriving this and disagreeing.
+    #[test]
+    fn the_received_set_is_wider_than_the_subscribed_one() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/t",
+                "service_server:demo/srv/Op_Request:/s",
+                "service_client:demo/srv/Op_Response:/c",
+                "pub:std_msgs/msg/Bool:/p",
+            ],
+        ));
+        let sub: Vec<String> = inv
+            .subscribed_types()
+            .types()
+            .expect("resolved")
+            .iter()
+            .map(|(t, _)| t.clone())
+            .collect();
+        assert_eq!(sub, vec!["std_msgs/msg/Int32".to_string()]);
+        let recv: Vec<String> = inv
+            .received_types()
+            .types()
+            .expect("resolved")
+            .iter()
+            .map(|(t, _)| t.clone())
+            .collect();
+        assert_eq!(
+            recv,
+            vec![
+                "demo/srv/Op_Request".to_string(),
+                "demo/srv/Op_Response".to_string(),
+                "std_msgs/msg/Int32".to_string(),
+            ],
+            "a server's request and a client's reply are both received"
+        );
+        // And the publisher is in neither.
+        assert!(!recv.contains(&"std_msgs/msg/Bool".to_string()));
+    }
+
+    /// An untyped SUBSCRIPTION refuses the set rather than being skipped. A
+    /// skipped row is an under-report, and here it would size a payload class
+    /// from the types that happened to be annotated.
+    #[test]
+    fn an_untyped_subscription_refuses_the_set_but_not_the_slot_count() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("a", "one", &["sub:std_msgs/msg/Int32:/t", "sub"]));
+        match inv.subscribed_types() {
+            ReceivedTypes::Refused { reason } => {
+                assert!(reason.contains("a::one"), "names the component: {reason}");
+                assert!(reason.contains("subscription"), "names the kind: {reason}");
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+        // MAX_CBS does not need the type, so it still derives -- the two
+        // questions have different inputs and different answers.
+        assert_eq!(inv.derive().knobs().expect("derived").max_cbs, 2);
+        // A timer has no type and that is not a refusal.
+        let mut ok = EntityInventory::new("test");
+        ok.insert(stated(
+            "a",
+            "one",
+            &["sub:std_msgs/msg/Int32:/t", "timer*3"],
+        ));
+        assert!(ok.subscribed_types().types().is_some());
+    }
+
+    /// An image whose composition refused has NO subscribed set either. The
+    /// un-annotated component's subscriptions are unknown, so a set composed
+    /// over the rest is a subset of what the image receives -- and a payload
+    /// class derived from a subset is too small.
+    #[test]
+    fn an_incomplete_image_has_no_subscribed_set() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("a", "one", &["sub:std_msgs/msg/Int32:/t"]));
+        inv.insert(ComponentEntities {
+            pkg: "b".into(),
+            component: "two".into(),
+            class: "b::Two".into(),
+            declaration: Declaration::Absent,
+        });
+        assert!(matches!(
+            inv.subscribed_types(),
+            ReceivedTypes::Refused { .. }
+        ));
+        let c = inv.to_cmake();
+        assert!(c.contains("set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"refused\")"));
+        assert!(
+            !c.contains("set(NROS_ENTITY_SUBSCRIBED_TYPES "),
+            "a refusal must publish no set at all: {c}"
+        );
+    }
+
+    /// An image that declares entities and subscribes to NOTHING resolves to
+    /// an EMPTY set, which is an answer and not a refusal: its payload pools
+    /// are genuinely unused. The status is what tells the two apart, so the
+    /// fragment must always carry one.
+    #[test]
+    fn a_subscriber_less_image_resolves_to_an_empty_set() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("a", "one", &["pub:std_msgs/msg/Bool:/p", "timer"]));
+        assert_eq!(inv.subscribed_types().types().expect("resolved").len(), 0);
+        let c = inv.to_cmake();
+        assert!(c.contains("set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"resolved\")"));
+        assert!(c.contains("set(NROS_ENTITY_SUBSCRIBED_TYPES \"\")"));
+        assert!(c.contains("set(NROS_ENTITY_SUBSCRIBED_ENTITY_COUNT 0)"));
+    }
+
+    /// The CMake projection carries the join key in the shape
+    /// `_nros_bounds_join_subscribed` parses: a `;` list of names and a
+    /// parallel `;` list of `type=count`.
+    #[test]
+    fn the_cmake_projection_carries_the_join_key() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:nav_msgs/msg/Odometry:/k",
+                "sub:std_msgs/msg/Int32:/t",
+                "sub:std_msgs/msg/Int32:/u",
+            ],
+        ));
+        let c = inv.to_cmake();
+        assert!(c.contains(
+            "set(NROS_ENTITY_SUBSCRIBED_TYPES \"nav_msgs/msg/Odometry;std_msgs/msg/Int32\")"
+        ));
+        assert!(c.contains(
+            "set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"nav_msgs/msg/Odometry=1;std_msgs/msg/Int32=2\")"
+        ));
+        assert!(c.contains("set(NROS_ENTITY_SUBSCRIBED_ENTITY_COUNT 3)"));
     }
 
     /// The measured island. Its four components, exactly as their ctors read
