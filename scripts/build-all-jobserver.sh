@@ -6,11 +6,11 @@ source scripts/build/cargo.sh
 make_bin="$(nros sdk-path make)/bin/make"
 ninja_bin="$(nros sdk-path ninja)/bin/ninja"
 if [ ! -x "$make_bin" ] || ! "$make_bin" --version | head -1 | grep -q "4.4"; then
-    echo "jobserver build needs make >=4.4 — run: just workspace install-make" >&2
+    echo "jobserver build needs make >=4.4 — run: nros setup --tool make" >&2
     exit 1
 fi
 if [ ! -x "$ninja_bin" ]; then
-    echo "jobserver build needs ninja >=1.13 — run: just workspace install-ninja" >&2
+    echo "jobserver build needs ninja >=1.13 — run: nros setup --tool ninja" >&2
     exit 1
 fi
 

@@ -225,7 +225,7 @@ if [ $MISSING -eq 1 ]; then
     else
         echo "  (build the CLI first — just setup-cli — then run: nros setup --system)"
     fi
-    echo "  ninja (sudo-less): just workspace install-ninja"
+    echo "  ninja (sudo-less): nros setup --tool ninja"
     echo "  rust:  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     exit 1
 fi

@@ -943,7 +943,7 @@ check = { cmd = "ninja", version = { run = "ninja --version", min = "1.13" } }
 # `[tool.make]` to fall through TO yet. `ToolSource` is git-only, and GNU
 # make's git tree ships no `configure` — only `bootstrap`, which wants
 # autoconf/automake/gettext and pulls gnulib. The repo already solved this the
-# other way: `just workspace install-make` builds 4.4.1 from the RELEASE
+# other way: the retired `just workspace install-make` built 4.4.1 from the RELEASE
 # TARBALL into `third-party/make/`, carrying two hard-won details (`--without-guile`,
 # and bootstrapping with a make that is not the one being replaced).
 #
@@ -954,7 +954,7 @@ check = { cmd = "ninja", version = { run = "ninja --version", min = "1.13" } }
 # SECOND make provisioning path before then would be the drift this repo keeps
 # paying for.
 [prereq.make]
-why = "GNU make >=4.4 serves `--jobserver-style=fifo`, the only jobserver flavour ninja 1.13 can join; 4.3 and older serve a pipe-fd jobserver that ninja ignores. Until [tool.make] exists, install with `just workspace install-make`"
+why = "GNU make >=4.4 serves `--jobserver-style=fifo`, the only jobserver flavour ninja 1.13 can join; 4.3 and older serve a pipe-fd jobserver that ninja ignores. install with `nros setup --tool make`"
 apt = ["make"]
 dnf = ["make"]
 pacman = ["make"]
