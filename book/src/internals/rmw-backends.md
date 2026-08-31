@@ -175,7 +175,7 @@ backend binaries with one auto-registering backend Just Work
 without user code mentioning the backend's name.
 
 The user-facing knob is a **declared, language-agnostic, per-deploy
-value** (`system.toml` `[system].rmw` / `[deploy.<t>].rmw`, or a
+value** (`system.toml` `[system].rmw` / `[image.<id>].rmw`, or a
 CLI/build flag) that the toolchain **lowers** to each language's
 native link mechanism. The Cargo feature / shim dep and the CMake
 cache var below are those *lowering targets* — what the build uses,

@@ -42,7 +42,7 @@ Mirrors [RFC-0004 §3](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/des
 
 Where a concern has both a native-idiom projection and a `system.toml`, the
 resolution is a **fixed precedence ladder**, not a merge: explicit CLI/build
-flag (`--rmw` / `-DNANO_ROS_*`) > `system.toml` (`[deploy.<t>]` > `[system]`)
+flag (`--rmw` / `-DNANO_ROS_*`) > `system.toml` (`[image.<id>]` > `[system]`)
 > the per-package projection (`[package.metadata.nros.*]` / CMake) > built-in
 default. `nros config show` prints the resolved effective config with
 per-value provenance; `nros check` flags values still sourced from legacy

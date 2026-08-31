@@ -177,7 +177,7 @@ Validate an `nros-plan.json` (default `build/nros/nros-plan.json`):
 static checker — catches unconnected required topics, conflicting QoS,
 missing parameters, and SchedContext binding errors before the platform
 build runs. A `.toml` argument is instead validated as a **root `nros.toml`**
-(the workspace deployment SSOT) — `[system]`/`[deploy.<name>]` shape,
+(the workspace deployment SSOT) — `[system]`/`[image.<id>]`/`[host.<name>]` shape,
 default-deploy + system references, bridge endpoints, etc.
 
 ### `nros explain [<plan>]`

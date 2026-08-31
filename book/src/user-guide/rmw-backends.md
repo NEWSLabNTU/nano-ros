@@ -169,7 +169,7 @@ Full walkthrough: [Cross-backend Bridges](./cross-backend-bridges.md).
 
 RMW selection is a **declared, language-agnostic, per-deploy value** —
 you set it once in `system.toml` (`[system].rmw`, optionally overridden
-per target by `[deploy.<t>].rmw`) or via a CLI/build flag, and the
+per image by `[image.<id>].rmw`) or via a CLI/build flag, and the
 toolchain **lowers** that declaration to each language's native build
 mechanism: a Rust cargo `rmw-<x>` feature, or a CMake `-DNANO_ROS_RMW`
 cache var. The cargo feature and the CMake var below are the *lowering
@@ -182,26 +182,29 @@ for the full selection-and-lowering model and precedence rules.
 
 ### Cargo.toml (Rust)
 
-Lowered form of the declared RMW: add `nros` with the platform feature
-plus exactly one `nros-rmw-<x>` shim dep (cyclonedds is the exception —
-see below):
+Lowered form of the declared RMW. The selection point is the **board crate**
+(RFC-0031's phase-248 C5b amendment): an app declares one `rmw-<x>` feature
+that activates the backend dep *and* forwards to the board crate's matching
+feature. Codegen no longer emits `nros/rmw-<x>` or `nros/platform-<y>` — the
+board brings both.
 
 ```toml
-# Zenoh backend
-[dependencies]
-nros = { path = "<...>/packages/api/nros",
-         default-features = false,
-         features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-zenoh = { path = "<...>/packages/rmw/zenoh/nros-rmw-zenoh",
-                   features = ["std", "platform-posix", "ros-humble"] }
+[features]
+default = ["rmw-zenoh"]
+# Each `rmw-*` activates the app-owned optional backend dep and forwards to
+# the board crate, which is what actually selects the backend.
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+rmw-cyclonedds = [
+    "nros/rmw-cyclonedds",              # the marker feature; see below
+    "dep:nros-rmw-cyclonedds-sys",
+    "nros-board-linux/rmw-cyclonedds",
+]
+```
 
-# XRCE-DDS backend
-[dependencies]
-nros = { path = "<...>/packages/api/nros",
-         default-features = false,
-         features = ["std", "rmw-cffi", "platform-posix"] }
-nros-rmw-xrce-cffi = { path = "<...>/packages/rmw/xrce/nros-rmw-xrce-cffi",
-                       features = ["std"] }
+In a WORKSPACE you write none of this: `[image.<id>].rmw` in the bringup's
+`system.toml` is the declaration, and the Entry pkg's generated manifest carries
+the lowered form. The block above is the standalone copy-out shape, where there
+is no bringup to declare it in.
 
 # Cyclone DDS backend — Rust runtime sees the generic rmw-cffi C-ABI
 # vtable; actual Cyclone wiring lives C++-side under

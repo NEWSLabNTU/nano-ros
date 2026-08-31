@@ -120,7 +120,7 @@ nros = { features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "link-udp-u
 
 > The `rmw-zenoh` feature here is the *lowering* of the declared RMW —
 > you declare the backend once in `system.toml` (`[system].rmw` /
-> `[deploy.<t>].rmw`) and the toolchain sets the cargo feature; the
+> `[image.<id>].rmw`) and the toolchain sets the cargo feature; the
 > feature is what the build uses, not the user-facing selector. See
 > [RFC-0031](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md).
 

@@ -95,7 +95,7 @@ A design that assumes a configure-time hook silently excludes PX4 and PIO.
 | home | count | holds | read by | when |
 | --- | ---: | --- | --- | --- |
 | `packages/boards/*/nros-board.toml` | 8 files, 9 boards | the descriptor | `BoardCatalog` (CLI) | `nros sync` / `setup` |
-| `<bringup>/system.toml` `[deploy.<name>]` | 59 blocks | `kind`, `board`, `target`, `launch`, `nodes`, `rmw`, `framework` | `nros codegen system` | codegen |
+| `<bringup>/system.toml` `[image.<id>]` / `[host.<name>]` / `[board_config.<board>]` | 123 / 28 / 24 blocks | build description, placement, site config — one table each | `nros codegen system`, `nros build` | codegen |
 | `<leaf>/.cargo/nros-board.toml` | 44 | projection of `cargo_config` | cargo | every build |
 | `cmake/board/nano-ros-board-*.cmake` | 7 | toolchain file, kernel/stack targets | cmake, **by filename** | configure |
 | `just/sdk-env.just` | — | `FREERTOS_DIR`, `LWIP_DIR`, … | build scripts, via shell env | build |
@@ -272,39 +272,46 @@ everything §2b measured as site content in six of nine descriptors.
 
 ### Where site facts go (category B) — no new file
 
-`[deploy.<name>]` in the bringup's `system.toml` **already exists**, already
-keyed per board, already read at codegen time — 59 blocks in the tree, nine in
-one workspace. It gains the site keys rather than a sibling file being invented:
+The bringup's `system.toml` **already exists** and is already read at codegen
+time, so the site keys go in it rather than in a sibling file nobody would
+discover. They go in a table keyed by the BOARD, because that is what the fact
+is about:
 
 ```toml
-[deploy.nucleo-h723zg]
-kind    = "self"
-board   = "nucleo-h723zg"     # the join key to the board package (already there)
-target  = "thumbv7em-none-eabihf"
-
+[board_config."nucleo-h723zg"]                       # (B)
 sdk.cube      = "{env:CUBE_PROJECT}"      # machine path, env-interpolated
 netstack      = "lwip"
 config_files  = { tx_user = "Core/Inc/tx_user.h", nx_user = "Core/Inc/nx_user.h" }
 upload        = { port = "/dev/ttyACM0" }  # instance params; MECHANISM is the board's
 ```
 
+The board and what is built for it are declared separately, in the table that
+owns each — `[image.<id>] board = "nucleo-h723zg"` says what to build, and the
+descriptor supplies the rustc triple, so no block restates it.
+
 This satisfies the SSoT requirement (one file, per workspace, greppable),
-survives multi-board workspaces (keyed per deploy), and needs no new discovery
-path. `config_files` is a **named map** rather than a directory, because ThreadX
-needs `TX_USER_FILE` *and* `NX_USER_FILE` and FreeRTOS+TCP needs
-`FreeRTOSConfig.h` *and* `FreeRTOSIPConfig.h`.
+survives multi-board workspaces (keyed per board, so a workspace with two
+FreeRTOS boards cannot reach the wrong block), and needs no new discovery path.
+`config_files` is a **named map** rather than a directory, because ThreadX needs
+`TX_USER_FILE` *and* `NX_USER_FILE` and FreeRTOS+TCP needs `FreeRTOSConfig.h`
+*and* `FreeRTOSIPConfig.h`.
 
 #### Amendment 1 — the key is the BOARD, not the deploy (issue 0951)
 
 `[deploy.<name>.nros]` was the shipped spelling for three phases. It is now
-`[board_config.<board>]` in the same file. The rest of this section stands
-unchanged: same struct, same file, same `{env:…}` interpolation, same named
-`config_files` map.
+`[board_config.<board>]` in the same file: same struct, same file, same
+`{env:…}` interpolation, same named `config_files` map.
+
+*(This amendment originally said "the rest of this section stands unchanged".
+It did not — the section's block count, its worked example, its sequencing step
+and all eight §6 examples still showed `[deploy.*]`. They were rewritten on
+2026-08-31 when `[deploy.*]` reached zero blocks tree-wide. Fixing the key
+without the prose left the page teaching the shape it had just retired.)*
 
 What was wrong was one clause above — "already keyed per board". A deploy name
-is *usually* a board name, and the example on this page
-(`[deploy.nucleo-h723zg]`) is one of the cases where it is. But the two are not
-in bijection, and the tree drifted apart in both directions:
+is *usually* a board name — the `nucleo-h723zg` block this section used to show
+was one of the cases where it is, which is exactly why the clause read as true.
+But the two are not in bijection, and the tree drifted apart in both directions:
 `[deploy.threadx-linux]` pairs with `[image.threadx]`, `[deploy.an536]` with
 `[image.mps3_an536]`, and several workspaces carry BOTH `[deploy.freertos]` and
 `[deploy.mps2-an385-freertos]` for one board.
@@ -337,7 +344,7 @@ them.
 | --- | --- | --- |
 | our fixtures | nothing | — |
 | Zephyr / NuttX / ESP-IDF | one manifest line (unchanged) | board packages |
-| vendored FreeRTOS or ThreadX, CMake host | one board package + one `[deploy.*]` block | nano-ros itself |
+| vendored FreeRTOS or ThreadX, CMake host | one board package + one `[image.*]` block | nano-ros itself |
 | IDE host (CubeIDE, IAR, MTB) | the same, plus `nros emit` | — |
 | PX4 | `EXTERNAL_MODULES_LOCATION` | everything else — and they get no per-board opt-in (§2c) |
 
@@ -349,7 +356,7 @@ this is new value, not repackaging.
 
 ### Sequencing
 
-1. `[deploy.*]` gains the site keys; `nros config explain` reports file, section
+1. `[board_config.*]` carries the site keys; `nros config explain` reports file, section
    and rung. Nothing moves yet.
 2. Generate this repo's site values from `just/sdk-env.just`; both live, gated
    for agreement (the phase-347 pattern).
@@ -378,10 +385,8 @@ net_stack  = "host"               # the OS has sockets; nothing to choose
 ```
 ```toml
 # <bringup>/system.toml                                     (B)
-[deploy.native]
-kind = "self"
+[image.native]
 board = "native"
-target = "x86_64-unknown-linux-gnu"
 ```
 
 No SDK root, no netstack, no flashing. Every other row is a delta from this.
@@ -402,10 +407,10 @@ supported_netstacks = ["lwip", "freertos_plus_tcp"]     # the pairing domain
 toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"   # must precede project()
 ```
 ```toml
-[deploy.freertos]                                          # (B)
-kind = "self"
+[image.freertos]
 board = "mps2-an385-freertos"
-target = "thumbv7m-none-eabi"
+
+[board_config."mps2-an385-freertos"]                       # (B)
 netstack     = "lwip"
 sdk.freertos = "{env:FREERTOS_DIR}"
 sdk.lwip     = "{env:LWIP_DIR}"
@@ -438,10 +443,10 @@ supported_netstacks = ["lwip"]
 mechanism = "st-link"             # HOW this board is programmed — a board fact
 ```
 ```toml
-[deploy.nucleo]                                            # (B)
-kind = "self"
+[image.nucleo]
 board = "nucleo-h723zg"
-target = "thumbv7em-none-eabihf"
+
+[board_config."nucleo-h723zg"]                       # (B)
 netstack = "lwip"
 sdk.cube = "{env:CUBE_PROJECT}"
 include_dirs = [
@@ -470,9 +475,10 @@ entry_kind = "zephyr-staticlib"   # a west module, not main()
 net_stack  = "rtos-owned"         # zsock; nothing for us to choose
 ```
 ```toml
-[deploy.zephyr]                                            # (B)
-kind = "self"
+[image.zephyr]
 board = "zephyr"
+
+[board_config."zephyr"]                       # (B)
 zephyr_board = "qemu_cortex_m3"   # west's namespace, not ours
 ```
 
@@ -491,10 +497,10 @@ link_kind = "nuttx-staging"      # we land on EXTRA_LIBS
 net_stack  = "rtos-owned"
 ```
 ```toml
-[deploy.nuttx]                                             # (B)
-kind = "self"
+[image.nuttx]
 board = "nuttx"
-target = "armv7a-nuttx-eabihf"
+
+[board_config."nuttx"]                       # (B)
 sdk.nuttx      = "{env:NUTTX_DIR}"
 sdk.nuttx_apps = "{env:NUTTX_APPS_DIR}"
 ```
@@ -513,16 +519,17 @@ link_kind = "px4-external"
 net_stack  = "rtos-owned"
 ```
 ```toml
-[deploy.px4]                                               # (B)
-kind = "self"
+[image.px4]
 board = "px4-fmu-v6x"
+
+[board_config."px4-fmu-v6x"]                       # (B)
 px4.dir    = "{env:PX4_DIR}"
 px4.target = "px4_fmu-v6x_default"        # <vendor>_<model>_<label>
 ```
 
 PX4's configuration namespace is **closed to out-of-tree code**: everything a
 board declares is Kconfig-selectable per label; nothing an external module
-provides is. So a `[deploy.*]` block **cannot** produce a `<label>.px4board`
+provides is. So no block in `system.toml` **can** produce a `<label>.px4board`
 opt-in, and codegen must run *ahead* of the vendor tool (RFC-0003's hookless
 path), emitting module dirs into `$PX4_DIR/src/modules/`. Per-board selection
 would require being in-tree, as PX4 itself did for zenoh.
@@ -547,9 +554,10 @@ entry_kind = "board-run"
 supported_netstacks = ["netxduo"]
 ```
 ```toml
-[deploy.threadx_rv64]                                      # (B)
-kind = "self"
+[image.threadx_rv64]
 board = "threadx-riscv64"
+
+[board_config."threadx-riscv64"]                       # (B)
 sdk.threadx = "{env:THREADX_DIR}"
 sdk.netxduo = "{env:NETXDUO_DIR}"
 config_files = { tx_user = "boards/rv64/tx_user.h", nx_user = "boards/rv64/nx_user.h" }
@@ -569,9 +577,10 @@ entry_kind = "board-run"
 net_stack = "rtos-owned"          # esp_netif over IDF's lwIP fork
 ```
 ```toml
-[deploy.esp32]                                             # (B)
-kind = "self"
+[image.esp32]
 board = "esp32-qemu"
+
+[board_config."esp32-qemu"]                       # (B)
 idf.dir = "{env:IDF_PATH}"
 ```
 
@@ -720,7 +729,8 @@ it with the principle.
 **Draft 2 put `[board.integration]` in the board descriptor.** Every field in it
 (`rtos`, `netstack`, `include_dirs`, `defines`) is site configuration, so it
 belonged in the project, not the board package. §5 relocates it to
-`[deploy.<name>]`.
+`[board_config.<board>]` (via `[deploy.<name>.nros]`, which Amendment 1
+re-keyed).
 
 **Draft 2 also proposed a `netstack` provider kind with selection.** The survey
 found no vendor leaves the stack selectable — NXP's lwIP fork *contains* the

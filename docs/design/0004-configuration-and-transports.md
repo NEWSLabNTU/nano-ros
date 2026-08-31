@@ -134,7 +134,7 @@ sign, and "what is the effective config?" needs N files reconciled in your head.
 
 **Resolution, where a concern has both a native-idiom projection and a `system.toml`,** is a
 **fixed, short precedence ladder** (not an open merge): explicit CLI/build flag
-(`--rmw` / `-DNANO_ROS_*`) > `system.toml` (`[deploy.<t>]` > `[system]`) > the per-package
+(`--rmw` / `-DNANO_ROS_*`) > `system.toml` (`[image.<id>]` > `[system]`) > the per-package
 native projection (`[package.metadata.nros.*]` / CMake) > built-in default. One ladder, each
 rung a known file — auditable, unlike an arbitrary-file overlay.
 
@@ -173,10 +173,11 @@ pkg   = "talker_pkg"
 class = "talker_pkg::Talker"
 name  = "talker"
 
-[deploy.native]
-kind   = "self"
-target = "x86_64-unknown-linux-gnu"
-# rmw  = "cyclonedds"        # optional per-deploy override of [system].rmw
+[image.native]
+board = "native"
+# rmw = "cyclonedds"         # optional per-image override of [system].rmw
+
+[host.native]                # WHERE the nodes run; no `nodes` means all of them
 
 # Declared capability axes (RFC-0031 §Generalization; phase-250/252/254). Typed,
 # system-wide, optional. Lower to build features (and, for the C/C++ bake, a
@@ -203,9 +204,9 @@ is retired by phase-254: `nros.toml` is the embedded direct-mode runtime file on
 not a build-capability overlay.
 
 The same single-source rule applies to **RMW** (phase-255, **landed**): `[system].rmw` +
-`[deploy.<t>].rmw` is the one declared home — both the Rust board-feature lowering and the
+`[image.<id>].rmw` is the one declared home — both the Rust board-feature lowering and the
 C/C++ `#define NROS_SYSTEM_RMW_<TOKEN>` resolve from it via `SystemToml::resolved_rmw(target,
-cli)` (RFC-0031 precedence `--rmw` > `[deploy.<t>]` > `[system]` > `zenoh`; `--rmw` is on `nros
+cli)` (RFC-0031 precedence `--rmw` > `[image.<id>]` > `[system]` > `zenoh`; `--rmw` is on `nros
 plan` + `nros codegen-system`). The legacy `[build].rmw` / `[[transport]].rmw` `nros.toml`
 overlay is now a **deprecated fallback that warns** (no fixture declares it), retired after the
 next release; a binary's multi-RMW link set comes from `[[bridge]]` here (`bridged_rmws()` →
@@ -377,7 +378,7 @@ scope, issue 0079; `[[scheduling.contexts]]` → `[tiers]`, decision A); (2) **r
 `nros.toml` file entirely** (no surviving role); (3) scrub the `config.toml` reader;
 (4) treat transport/network as part of the **`deploy` class**, not a separate file surface;
 (5) make the `deploy`-class precedence (`[..deploy.<t>]` projection vs `system.toml
-[deploy.<t>]`) explicit. Option *scope* classes: **node** (identity/params/remaps/qos/
+[image.<id>]`) explicit. Option *scope* classes: **node** (identity/params/remaps/qos/
 callback-groups), **system** (topology/capabilities/tiers — agnostic),
 **deploy** (target/board/build-tuning + net + rmw/domain/locator overrides),
 **build/capability** (lowered, not authored).
@@ -428,6 +429,23 @@ on the next callback.
 
 ## Changelog
 
+- 2026-08-31 (`[deploy.*]` retired; issue 0951) — This page described
+  `[deploy.<t>]` as the per-target rung of the precedence ladder and showed it
+  in the §4 example, while mentioning `[image.*]` and `[host.*]` nowhere. The
+  tree had moved: `[deploy.*]` conflated three facts and split into
+  `[image.<id>]` (what is BUILT), `[host.<name>]` (WHERE it runs) and
+  `[board_config.<board>]` (site config), and there are now **zero**
+  `[deploy.*]` blocks in any `system.toml`.
+
+  Corrected: the ladder rung is `[image.<id>]` (§5, §6, §9), and the §4 example
+  declares an image and a host instead of a deploy. Being a **Stable** page is
+  what made this worth doing promptly rather than at leisure — a stable doc is
+  the one people trust without checking, so it is the most expensive one to
+  leave wrong. RFC-0031 had already been amended for the same split; this page
+  was the one that had not.
+
+  `[deploy.*]` still PARSES, for out-of-tree users who have not migrated, and
+  warns. Removal is phase-383 W10.b, a 0.6.0 action.
 - 2026-06 (config.toml kept as a file path; issue 0081 wontfix) — Reversed the
   "config.toml fully retired" stance. The OLD `[network]/[zenoh]/[scheduling]` schema
   stays retired, but the direct-mode `config.toml` (`[node]`/`[[transport]]`/`[node.rt]`)

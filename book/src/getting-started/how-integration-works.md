@@ -78,16 +78,17 @@ reusable and shareable. Discovery: the CLI's board catalog scans
 `packages/boards/`), so an out-of-tree board dir is seen without
 copying it into the checkout.
 
-**2. A `[deploy.<name>]` block — facts about this checkout, this
+**2. An `[image.<id>]` block, and a `[board_config.<board>]` beside it — facts about this checkout, this
 machine, this application.** It lives in your bringup package's
 `system.toml`, next to your nodes and launch files:
 
 ```toml
-[deploy.my-board]
-kind   = "embedded"
-board  = "my-board"        # joins to the board package by name
-target = "thumbv7em-none-eabihf"
-# site facts: where YOUR SDK lives, which config headers are yours, …
+[image.my-board]
+board = "my-board"         # joins to the board package by name
+                           # the rustc triple comes from that board's descriptor
+
+[board_config."my-board"]  # site facts: where YOUR SDK lives, which config
+sdk.vendor = "{env:VENDOR_SDK_DIR}"     # headers are yours — keyed by BOARD
 ```
 
 SDK paths, config-header locations, serial ports: anything another

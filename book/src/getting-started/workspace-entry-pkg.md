@@ -81,7 +81,7 @@ domain_id = 0
 `deploy` is the key that `nros check` and the Entry macro use to
 find the board crate and verify the topology. Keep it short and descriptive —
 it becomes the identifier in `nros plan` output and in `system.toml`'s
-`[deploy.<name>]` table when you later add a Bringup pkg.
+`[image.<id>]` table when you later add a Bringup pkg.
 
 ## `nros::main!()` — the forms
 
