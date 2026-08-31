@@ -323,6 +323,28 @@ nros_fixtures_stamp_clear() {
     printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "${NROS_FIXTURE_STAMP}.started" 2>/dev/null || true
 }
 
+# nros_fixtures_skipped_modules [joblog]
+#
+# The modules this build did NOT achieve, from the fan-out's own joblog — one
+# `<stage>\t<start>\t<end>\t<dur>\t<status>` row per module, status 78 being
+# `nros_lane_skip` ("a precondition is missing"), issue 0599.
+#
+# phase-407 W1. The stamp used to record the lane's NOMINAL coordinates, from
+# the manifest, regardless of what the build achieved — so a module that skipped
+# for a missing toolchain still read as covered, `nros_fixtures_stamp_require`
+# answered "yes, covered", and the run proceeded to skip its tests. The skip was
+# laundered into a coverage claim, and every consumer downstream read the claim
+# instead of the reality.
+#
+# The build already knew. This just writes it down.
+nros_fixtures_skipped_modules() {
+    local joblog="${1:-tmp/build-test-fixtures-latest/build-test-fixtures.joblog}"
+    [ -r "$joblog" ] || return 0
+    # Field 5 is the status. 78 = SKIPPED; a non-zero, non-78 status aborts the
+    # fan-out, so it cannot reach the stamp and needs no arm here.
+    awk -F'\t' 'NR>1 && $5==78 {print $1}' "$joblog" 2>/dev/null | sort -u
+}
+
 # nros_fixtures_stamp_write <lane>
 #
 # Called only after a build succeeds. Records the lane AND the coordinate set,
@@ -334,6 +356,8 @@ nros_fixtures_stamp_write() {
     if [ "$lane" != "all" ]; then
         coords="$(nros_lane_coords_file "$lane")" || return 1
     fi
+    local skipped
+    skipped="$(nros_fixtures_skipped_modules | tr '\n' ' ')"
     mkdir -p "$(dirname "$NROS_FIXTURE_STAMP")"
     {
         echo "# nano-ros fixture build stamp (issue 0393) — lane + coordinates built"
@@ -345,10 +369,34 @@ nros_fixtures_stamp_write() {
             echo "started_at=$(cat "${NROS_FIXTURE_STAMP}.started")"
         fi
         echo "lane=$lane"
+        # phase-407 W1 — what the build ACHIEVED, not only what it was asked
+        # for. A consumer that reads `lane=` alone is reading an intention.
+        local m
+        for m in $skipped; do echo "skipped_module=$m"; done
         if [ -n "$coords" ]; then sed 's/^/coord=/' "$coords"; fi
     } > "$NROS_FIXTURE_STAMP"
     rm -f "${NROS_FIXTURE_STAMP}.started"
     echo "fixture stamp: $NROS_FIXTURE_STAMP (lane=$lane)"
+    if [ -n "$skipped" ]; then
+        # Loud, and at the moment the fact is known. The 0599 header records
+        # what a skip invisible at the point of decision costs: it resurfaces as
+        # an artifact error twenty minutes later, with a remedy naming the
+        # command that had just "succeeded".
+        echo ""
+        echo "  NOT BUILT — these modules skipped a missing prerequisite:"
+        for m in $skipped; do echo "      $m    (provision: just setup $m)"; done
+        echo "  A run needing them will FAIL rather than skip. This stamp does"
+        echo "  not claim them."
+        echo ""
+    fi
+}
+
+# Echo the modules the recorded build did NOT achieve (phase-407 W1).
+# Empty for a legacy stamp, which is why the caller must treat absence as
+# "cannot tell", never as "nothing was skipped".
+nros_fixtures_stamp_skipped() {
+    [ -f "$NROS_FIXTURE_STAMP" ] || return 1
+    sed -n 's/^skipped_module=//p' "$NROS_FIXTURE_STAMP"
 }
 
 # Echo the stamp's lane, or `all` for a legacy timestamp-only stamp.
@@ -469,6 +517,36 @@ nros_fixtures_stamp_require() {
     # present, an unnarrowed run is fine, and `NROS_FIXTURE_LANE=tier2` on top
     # of a full build is a legitimate combination (scope the FRESHNESS gate,
     # keep the run wide).
+    # phase-407 W1 — a build of everything covers every lane ONLY if it built
+    # everything. This early return is where a skip became a coverage claim:
+    # `lane=all` with an unprovisioned module skipped still answered "covered",
+    # so the run proceeded and its tests skipped for absent binaries, and the
+    # sweep was green. The stamp now records what was achieved, so ask it.
+    #
+    # A legacy stamp has no `skipped_module=` lines and this is empty — which
+    # means "cannot tell", not "nothing was skipped", so behaviour there is
+    # unchanged rather than newly strict.
+    local stamp_skipped
+    stamp_skipped="$(nros_fixtures_stamp_skipped 2>/dev/null)"
+    if [ -n "$stamp_skipped" ]; then
+        echo "ERROR: the recorded fixture build did not cover every module." >&2
+        echo "" >&2
+        echo "  These skipped a missing prerequisite and were NOT built:" >&2
+        local m
+        for m in $stamp_skipped; do
+            echo "      $m    (provision: just setup $m)" >&2
+        done
+        echo "" >&2
+        echo "  A run over them would report SKIPPED and the sweep would be" >&2
+        echo "  green, which is why this is an error and not a warning." >&2
+        echo "" >&2
+        echo "  Either provision them and rebuild, or run only what you have:" >&2
+        echo "      just <module> test        # e.g. just native test" >&2
+        echo "" >&2
+        echo "  (deliberately accepting the gap?  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+        return 1
+    fi
+
     if [ "$have" = "all" ]; then
         return 0
     fi
