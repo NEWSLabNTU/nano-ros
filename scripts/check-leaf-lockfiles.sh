@@ -206,7 +206,7 @@ if [ ${#unsynced[@]} -gt 0 ]; then
     #
     # Issue 0466 — this used to `exit 1` either way, which made the gate
     # unrunnable in the very lane it lives in. `check-fast` is documented
-    # BUILDLESS *and* SOURCE-FREE, and pr-checks.yml deliberately does NOT
+    # BUILDLESS *and* SOURCE-FREE, and gate.yml deliberately does NOT
     # provision the CLI or run `nros sync` on a push; so on every push this gate
     # met two leaves it could not resolve and failed. Per-push CI was red
     # CONTINUOUSLY for over a day on exactly this, which also buried every other

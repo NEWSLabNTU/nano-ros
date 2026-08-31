@@ -88,7 +88,7 @@ if ! git rev-parse --verify --quiet "$baseline^{commit}" >/dev/null; then
     # had existed. Measured: a real play_launch pin rewind reached a pushed
     # branch and was caught only by a LOCAL run.
     #
-    # pr-checks.yml already documents this exact trap for a sibling check:
+    # gate.yml already documents this exact trap for a sibling check:
     # "the base ref is usually absent and the diff would fail — which the
     # fail-safe would turn into code=true forever, i.e. safe but never actually
     # firing". Same trap, different gate.

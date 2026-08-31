@@ -20,7 +20,10 @@ name: queue-notify
 
 on:
   workflow_run:
-    workflows: ["pr-checks", "queue"]
+    # phase-410 W1 — `gate`, renamed from `pr-checks`. This is a
+    # workflow_run trigger keyed on the workflow NAME, so it breaks
+    # SILENTLY on a rename: the notifier simply stops firing.
+    workflows: ["gate", "queue"]
     types: [completed]
 
 permissions:
