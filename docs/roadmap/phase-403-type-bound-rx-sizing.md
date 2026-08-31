@@ -123,6 +123,58 @@ halves of an actual contract:
 Both are ABI questions, and getting them wrong is expensive to undo, so they are
 W1 rather than an afterthought.
 
+## Two decisions that shrink this phase (2026-08-31)
+
+**1. The ABI may be broken.** nano-ros is not released. "Adding a mandatory
+vtable slot breaks every out-of-tree backend at once" was the stated reason W1's
+`required_rx_bytes` had to be OPTIONAL and NULLable, and the reason W3's change
+to `nros_subscription_t`'s size looked expensive. Neither is a constraint now.
+Shape both on the merits.
+
+**2. Every message type has a derived upper bound, by requirement.** A user MUST
+bound it in the `.msg` (`string<=64`) or cap it in the codegen config. An
+unbounded type is a BUILD ERROR, not a fallback to a configured default.
+
+The second is the larger of the two, because the fallback is what forced a global
+constant to exist at all. Consequences:
+
+* The "unbounded" branch stops being a runtime size question and becomes a
+  codegen diagnostic. The C pack already does exactly this -- `message.h.jinja`
+  emits an `unbounded_token` so naming the size constant of an unbounded type is
+  a deliberate compile error, with `unbounded_reason` naming the member that cost
+  the bound. That precedent is the shape to follow, not a new one.
+* Phase-380's rule is untouched and still governs: `None` means "no bound
+  EXISTS", never "unknown", and the code must never invent a number. Erroring
+  honours that rule; substituting a default is what it forbade.
+* `DEFAULT_RX_BUF_SIZE` may have no remaining purpose once every type is bounded.
+  That is a W5 question, not a W2 one -- the constant is load-bearing in the
+  arena derivation and in the C API's `MESSAGE_BUFFER_SIZE` welding.
+
+## The arena already allocates variable-size, which is why W5 is small
+
+`Executor::arena_alloc<T>` is a BUMP allocator (`executor/spin.rs`), with a
+`trailing_bytes` variant. Allocation is already per-entry and variable; nothing
+about the allocator has to change to give one subscription a different buffer
+from another.
+
+So `MAX_CBS * per_entry` is not the shape of the allocations. It is a build-time
+ESTIMATE of how large the arena must be, and it is the estimate -- not the
+allocator -- that budgets every slot at the worst case. W5 is therefore two
+things, neither of them structural:
+
+1. Pass the per-type byte count to the allocation site (see the C++ component
+   path section above -- `M` is in scope there).
+2. Make the arena SIZE estimate honest. Issue 0900's W1 already landed the
+   measurement half: `arena_used()` / `arena_capacity()` plus a first-spin
+   advisory naming the value to set. An image can be built once, read its own
+   advisory, and pin the number -- so a build-time entity inventory is NOT a
+   prerequisite for the mechanism, only for deriving the estimate automatically.
+
+Two stale doc comments claim the arena is inline on the task stack and invisible
+to the linker: `executor/arena.rs` (in `report_arena_headroom`) and
+`executor/spin.rs` (on `arena_capacity`). Both predate phase-271 and both should
+go with this wave; see the W5 note.
+
 ## Waves
 
 **W1 — the contract, in the ABI and in prose.** Two additions to
