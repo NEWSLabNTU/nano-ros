@@ -46,9 +46,15 @@
 //     Issue 0970 does the same in `nros_sertype.{hpp,cpp}`; the message
 //     publisher and subscriber now use it and neither builds a typed sample.
 //
-// `service.cpp` is what still uses this builder. Its request/reply path reads
-// typed samples for several action types, and moving it belongs with the work
-// that retires those adapters rather than with the data-path change.
+// `service.cpp` is what still uses this builder, and issue 0976 is why it has
+// not followed. Two of its five action adapters do not merely read the typed
+// sample — `strip_goal_id_len_at` and `strip_nested_cdr_at` DELETE BYTES, so a
+// blob sertype would put an action's uncorrected CDR on the wire. Measured, the
+// only thing exercising them is nano-ros talking to nano-ros
+// (`test_native_cyclonedds_rust_action`), where both ends share whatever
+// convention the adapters implement — so the one property they exist to provide
+// is the one no test can observe. The migration is blocked on a ROS 2 action
+// interop test, not on effort.
 // --------------------------------------------------------------------------
 
 #include <dds/dds.h>
