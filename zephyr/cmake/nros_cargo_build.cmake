@@ -432,43 +432,18 @@ endfunction()
 # stable and the NuttX eviction mechanism is unavailable here.
 function(_nros_root_cargo_dir out_var features)
     set(_dir "")
-    if(NROS_SHARED_CARGO_ROOT AND NOT NROS_ZEPHYR_SHARED_CARGO_UNSAFE_OK)
-        # phase-400 W5.b — the key below is ready; the LANE is not. Refusing is
-        # deliberate, and it is not caution: enabling sharing here produces a
-        # BROKEN BUILD today, and this was demonstrated rather than predicted.
-        #
-        # `nros-{c,cpp}`'s build script writes the per-build config headers under
-        # `$CARGO_TARGET_DIR`. Share that dir and image B gets a cargo cache hit,
-        # so the script does not re-run and never writes B's copy — while the
-        # consumers (`_nros_generated_header_dir`, per-image since W5.a) look in
-        # B's own directory. Observed exactly that way, from a stale
-        # `-DNROS_SHARED_CARGO_ROOT` left in ONE build dir by an earlier reverted
-        # experiment:
-        #
-        #   ninja: error: 'nros-rust/nros-c-generated/nros/nros_generated.h',
-        #   needed by '.../Listener.cpp.obj', missing and no known rule to make it
-        #
-        # W5.c has to make the headers reach each image before this can open.
-        # None of the three candidate routes is free — fingerprinting the
-        # destination is a path env var (issue 0491) plus churn; a cmake copy from
-        # the shared dir is issue 0834's POST_BUILD shape; sharing them under a
-        # key that covers them collides across the two packages, which is the D1
-        # failure recorded in the phase doc.
-        #
-        # A FATAL_ERROR rather than a silent fallback to per-image: a caller who
-        # passed the flag asked for sharing, and quietly not doing it is how a
-        # measurement gets attributed to a build that never shared anything.
-        message(FATAL_ERROR
-            "nano-ros: -DNROS_SHARED_CARGO_ROOT is not supported on the Zephyr "
-            "lane yet (phase-400 W5.c). The per-build config headers are written "
-            "into the cargo target dir, so sharing it leaves every image after "
-            "the first without them:\n"
-            "  ninja: error: '<build>/nros-rust/nros-c-generated/nros/"
-            "nros_generated.h' ... missing and no known rule to make it\n"
-            "Unset it for this build. If you are DEVELOPING W5.c, pass "
-            "-DNROS_ZEPHYR_SHARED_CARGO_UNSAFE_OK=ON and expect that error until "
-            "the header path is solved.")
-    endif()
+    # phase-400 W5.c — the refusal that stood here is LIFTED, because the
+    # reason for it is gone rather than tolerated.
+    #
+    # It read: sharing the target dir leaves image B without its generated
+    # headers, because B takes a cargo cache hit, its build script never runs,
+    # and the per-image directory the consumers include is never written. That
+    # was true while the headers came from a side channel inside the target dir.
+    #
+    # They no longer do. `cargo-out-dir-headers.py` places them from `$OUT_DIR`,
+    # which cargo reports on its JSON stream EVEN ON A CACHE HIT (measured: 13
+    # `build-script-executed` events with nothing to rebuild), and the BYPRODUCTS
+    # name the per-image directory. So a cache hit still places the headers.
     if(COMMAND nros_shared_cargo_dir AND NROS_SHARED_CARGO_ROOT)
         if(NOT DEFINED NROS_RESOLVED_KNOBS)
             message(FATAL_ERROR
