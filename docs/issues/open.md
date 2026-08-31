@@ -25,7 +25,6 @@ fails if this block drifts.
 - **#0783** (api, docs) — `RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust error type the user API never returns See `0783-*`.
 - **#0784** (api) — `nros::` publishes three different audiences under one namespace — the component API a user writes, the machinery `nros::node!` expands into, and four types nothing consumes See `0784-*`.
 - **#0788** (api) — The same API verb is spelled differently in our C, C++ and Rust — and in two cases one language ships both spellings See `0788-*`.
-- **#0791** (api, rmw) — We are visible in the ROS graph and cannot read it — 12 rmw vtable graph slots exist, all `None`, while both backends already run the discovery machinery See `0791-*`.
 - **#0793** (api, params) — C ships two disjoint parameter stores — parameters declared on the node-local one are invisible to `ros2 param`, and its accept/reject callback fires for nobody See `0793-*`.
 - **#0794** (build, codegen, boot) — The baked boot config carries four fields and the C/C++ emitter sets one — a launch-declared namespace, domain or locator never reaches a C image See `0794-*`.
 - **#0798** (examples) — `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that hardcodes `mps2-an385-freertos` — the pairing fails all three arms of `_nra_board_active`, so the image links without its platform glue See `0798-*`.
