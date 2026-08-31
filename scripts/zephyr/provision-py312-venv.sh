@@ -16,10 +16,24 @@
 # What is left is the part worth keeping: saying exactly what the 4.4 line needs
 # and where, so a host can be made ready in one obvious step.
 #
-# Usage: provision-py312-venv.sh <workspace-dir>
+# `--create` is the ONE exception, and it is for a host that owns its own
+# interpreter: a CI container. There the workflow IS the host, the image ships
+# `uv` for exactly this ("uv (Python 3.12 for the Zephyr 4.4 line)"), and the
+# alternative is pasting this venv path and package list into three workflow
+# jobs — a second copy of the list that drifts from
+# `scripts/check-python-deps.py`, which is the single source. It stays OPT-IN,
+# so a developer machine still gets the refusal and the remedy above.
+#
+# Without it the 4.4 line could not set up at all: nothing in CI ever created
+# the venv, so every 4.4 cell died at `Set up Zephyr 4.4 workspace` from the day
+# provisioning was removed (2026-08-19), and twelve cells reported nothing.
+#
+# Usage: provision-py312-venv.sh <workspace-dir> [--create]
 set -euo pipefail
 
-WS="${1:?usage: provision-py312-venv.sh <workspace-dir>}"
+WS="${1:?usage: provision-py312-venv.sh <workspace-dir> [--create]}"
+CREATE=0
+[ "${2:-}" = "--create" ] && CREATE=1
 VENV="$WS/.venv312"
 PY="$VENV/bin/python"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
@@ -41,6 +55,42 @@ remedy() {
       $VENV/bin/python -m west build ...    (or prepend $VENV/bin to PATH)
 EOF
 }
+
+if [ ! -x "$PY" ] && [ "$CREATE" = 1 ]; then
+    echo "[py312] --create: no venv at $VENV; making one."
+    # The package list comes from `check-python-deps.py`, the single source the
+    # checker below reads too — never a second copy in this file or in YAML.
+    # NOTE `--list` ignores its group arguments and prints every group, so the
+    # filtering is here: the header line names the group, and the block's SECOND
+    # indented line is the packages.
+    pkgs="$(python3 "$here/scripts/check-python-deps.py" --list \
+        | awk 'BEGIN{split("west zephyr-build",w," "); for(i in w) want[w[i]]=1}
+               /^[^ ]/ {g=$1; blk=0; next}
+               {blk++; if (blk==2 && (g in want)) print}')"
+    if [ -z "$pkgs" ]; then
+        echo "ERROR: could not read the package list from check-python-deps.py --list." >&2
+        exit 1
+    fi
+    echo "[py312] installing:$(echo " $pkgs" | tr -s ' ')"
+
+    if command -v uv >/dev/null 2>&1; then
+        uv venv --python 3.12 "$VENV"
+        # `uv venv` makes a venv with NO pip in it — `$PY -m pip` here fails
+        # with `No module named pip`, and the failure lands mid-script where it
+        # reads as a broken interpreter. `uv pip` installs into it directly.
+        # shellcheck disable=SC2086
+        uv pip install --python "$PY" --quiet $pkgs
+    elif command -v python3.12 >/dev/null 2>&1; then
+        python3.12 -m venv "$VENV"
+        "$PY" -m pip install --quiet --upgrade pip
+        # shellcheck disable=SC2086
+        "$PY" -m pip install --quiet $pkgs
+    else
+        echo 'ERROR: --create needs uv or python3.12 on PATH; neither is here.' >&2
+        remedy
+        exit 1
+    fi
+fi
 
 if [ ! -x "$PY" ]; then
     echo "ERROR: the Zephyr 4.4 line needs a Python >=3.12 venv at $VENV — none found." >&2

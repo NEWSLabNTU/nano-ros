@@ -12,8 +12,16 @@ REPO_ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$REPO_ROOT"
 WORKSPACE="${1:?usage: patches/4.4.sh <zephyr-workspace-dir>}"
 
-echo "[zephyr setup] 4.4 line: provisioning Python 3.12 venv (Zephyr 4.4 requires >=3.12)..."
-bash ./scripts/zephyr/provision-py312-venv.sh "$WORKSPACE"
+# CHECKS by default; CREATES only when the caller owns its interpreter and says
+# so. A CI container is that caller — the zephyr CI image ships `uv` for exactly
+# this ("uv (Python 3.12 for the Zephyr 4.4 line)") — and nothing ever ran it, so
+# every 4.4 cell died here from the day provisioning was removed. Threaded as an
+# env var rather than a separate workflow step so the venv PATH stays derived in
+# one place instead of pasted into three jobs.
+CREATE_VENV=""
+[ "${NROS_ZEPHYR_CREATE_VENV:-0}" = "1" ] && CREATE_VENV="--create"
+echo "[zephyr setup] 4.4 line: Python 3.12 venv (Zephyr 4.4 requires >=3.12)${CREATE_VENV:+ — creating}..."
+bash ./scripts/zephyr/provision-py312-venv.sh "$WORKSPACE" $CREATE_VENV
 echo "[zephyr setup] 4.4 line: applying 4.4 NSOS patches (Phase 180.A)..."
 # Task 5 — NSOS recvmsg (cyclonedds UDP receive). Task 6 — NSOS
 # IPv4-multicast forwarding (SPDP discovery): guest half first
