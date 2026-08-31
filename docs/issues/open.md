@@ -96,5 +96,9 @@ fails if this block drifts.
 - **#0947** (build) — NuttX has two ROS-edition surfaces that cannot express each other, and `jazzy` is unreachable on one See `0947-*`.
 - **#0949** (build) — For a migrated workspace, board facts are never delivered — `_ws` resolves to the generated root, which has no `system.toml` See `0949-*`.
 - **#0950** (build) — `macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target See `0950-*`.
+- **#0941** (build) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent See `0941-*`.
+- **#0945** (build) — The shared-cargo-dir campaign rests on five unsupported build-system internals — a Corrosion path formula, an unstable cargo flag, cargo's private `.fingerprint` format, a side channel inside cargo's target dir, and an undocumented depfile location See `0945-*`.
+- **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
+- **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
 
 <!-- END GENERATED open-issue list -->
