@@ -78,5 +78,6 @@ fails if this block drifts.
 - **#0939** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0939-*`.
 - **#0940** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0940-*`.
 - **#0941** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0941-*`.
+- **#0942** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0942-*`.
 
 <!-- END GENERATED open-issue list -->
