@@ -2,18 +2,6 @@ set working-directory := '..'
 
 NIGHTLY := `awk '/^channel/ {gsub(/"/, "", $3); print $3; exit}' tools/rust-toolchain.toml`
 
-# Pinned ninja version. Ubuntu's apt `ninja-build` lags (1.10); we need
-# ≥1.13 for the GNU-jobserver client (Phase 176). Installed as a static
-# binary under `third-party/ninja/`; `.envrc` prepends it to PATH.
-NINJA_VERSION := "1.13.2"
-
-# Pinned GNU make version. Ubuntu ships 4.3, whose jobserver is
-# pipe-fd-based; ninja 1.13's jobserver client speaks ONLY the
-# fifo protocol (make ≥4.4, `--jobserver-style=fifo`). Phase 176's
-# unified jobserver needs 4.4. Built from source to third-party/make/;
-# `.envrc` prepends it to PATH.
-MAKE_VERSION := "4.4.1"
-
 # Pinned Corrosion version. Corrosion is the cmake-side Rust bridge used
 # by mixed-language workspaces (Phase 212 — `corrosion_import_crate` in
 # `cmake/NanoRosThreadxSystemCodegen.cmake` etc.). Installed to
@@ -71,8 +59,11 @@ setup:
     # system-package step is LAST and only PRINTS (a missing OS package must
     # never abort the sudo-less remainder — one sudo failure here used to
     # cascade into zephyr/esp32/px4).
-    @just workspace install-ninja
-    @just workspace install-make
+    # make + ninja: store tools, not bespoke recipes (see the note where those
+    # recipes used to be). `--tool` so a `just workspace setup` still provisions
+    # the jobserver pair without the user knowing they moved.
+    @nros setup --tool ninja
+    @nros setup --tool make
     @just workspace install-corrosion
     @just workspace install-play-launch-parser
     @just workspace rust-pinned-toolchains
@@ -96,111 +87,18 @@ build-codegen:
     nros_cargo_ensure_codegen_c
     echo "[codegen] nros tool: $(nros_cargo_codegen_c_bin)"
 
-# Build the pinned GNU make (>=4.4) from source under third-party/make/.
-# Ubuntu's make 4.3 jobserver is pipe-fd-based; ninja 1.13's jobserver
-# client only speaks fifo (make 4.4 `--jobserver-style=fifo`). Needed
-# for the Phase 176 unified jobserver. `.envrc` puts it first on PATH.
-# Lives under third-party/ (survives `just clean`). Idempotent.
-[group("setup")]
-install-make:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    want="{{MAKE_VERSION}}"
-    dest="third-party/make"
-    bin="$dest/make"
-    if [ -x "$bin" ] && "$bin" --version 2>/dev/null | head -1 | grep -q "$want"; then
-        echo "[make] $want already installed ($bin)"
-        exit 0
-    fi
-    mkdir -p "$dest"
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    echo "[make] downloading $want..."
-    curl -fSL "https://ftp.gnu.org/gnu/make/make-$want.tar.gz" -o "$tmp/make.tar.gz"
-    tar xzf "$tmp/make.tar.gz" -C "$tmp"
-    echo "[make] building (./configure && ./build.sh)..."
-    # --without-guile: make's configure AUTODETECTS a host guile and links it,
-    # which is how this binary became unportable across the ROS distrobox. The
-    # tree is shared with the box (same paths, different distro), so an Arch
-    # build landed a `libguile-3.0.so.1` dependency that Ubuntu 22.04 cannot
-    # satisfy, and every box-side `just <plat> build-fixtures` died as
-    # `make: error while loading shared libraries` — the same one-path-two-worlds
-    # collision the box CLI has (ros2-box-env.sh `nros_box_publish`), for the
-    # same reason. Guile only powers make's `$(guile …)` function, which nothing
-    # in this repo calls; dropping it makes ONE binary serve both sides.
-    # Bootstrap with a make that is NOT the one we are replacing. `activate.sh`
-    # puts `third-party/make` first on PATH, and make's own configure needs a
-    # working make to bootstrap its depfile fragments — so when the installed
-    # binary is broken (the guile case above, or any half-written copy) the
-    # recipe that FIXES it fails first, on an error that names dependency
-    # tracking and never mentions PATH. Drop our own dir for the build only.
-    _boot_path=""
-    for _d in ${PATH//:/ }; do
-        case "$_d" in
-          */third-party/make|*/third-party/make/) ;;
-          *) _boot_path="${_boot_path:+$_boot_path:}$_d" ;;
-        esac
-    done
-    # Log rather than discard: a silenced build reports only "exit code 1", and
-    # this recipe runs in two different distros over one tree.
-    if ! ( cd "$tmp/make-$want" && export PATH="$_boot_path" \
-             && ./configure --without-guile > cfg.log 2>&1 \
-             && ./build.sh > build.log 2>&1 ); then
-        echo "[make] build failed; last lines:" >&2
-        tail -20 "$tmp/make-$want/build.log" "$tmp/make-$want/cfg.log" 2>/dev/null >&2 || true
-        exit 1
-    fi
-    # issue 0726 — `nros_grep_q` rather than a bare `grep -q`: in an `if`, a
-    # grep that fails to START reads as "no guile", which is the answer that
-    # lets the bad binary install. It exits 2 instead.
-    # shellcheck source=scripts/lib/grep-q.sh
-    source scripts/lib/grep-q.sh
-    if ldd "$tmp/make-$want/make" 2>/dev/null | nros_grep_q guile; then
-        echo "[make] refusing to install: built make still links guile — a host-only" >&2
-        echo "       binary breaks the distrobox (see the --without-guile note above)." >&2
-        exit 1
-    fi
-    cp "$tmp/make-$want/make" "$bin"
-    chmod +x "$bin"
-    # Some sub-builds (cmake generators, RTOS kernel makefiles) invoke
-    # `gmake`, not `make`. Provide a gmake -> make 4.4 alias so they too
-    # are fifo-jobserver-capable; otherwise a stray make 4.3 chokes on
-    # the inherited `--jobserver-auth=fifo:` in MAKEFLAGS.
-    ln -sf make "$dest/gmake"
-    echo "[make] installed: $("$bin" --version | head -1) ($bin) (+ gmake alias)"
-    echo "[make] ensure third-party/make is on PATH (direnv .envrc does this)."
-
-# Install the pinned ninja static binary under third-party/ninja/.
-# Ubuntu's apt ninja is too old (1.10) for the GNU-jobserver client;
-# `.envrc` puts third-party/ninja first on PATH so this one wins. Lives
-# under third-party/ (not build/) so `just clean` doesn't wipe it.
-# Idempotent: skips when the pinned version is already present.
-[group("setup")]
-install-ninja:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    want="{{NINJA_VERSION}}"
-    dest="third-party/ninja"
-    bin="$dest/ninja"
-    if [ -x "$bin" ] && [ "$("$bin" --version 2>/dev/null)" = "$want" ]; then
-        echo "[ninja] $want already installed ($bin)"
-        exit 0
-    fi
-    case "$(uname -m)" in
-        x86_64)  asset="ninja-linux.zip" ;;
-        aarch64) asset="ninja-linux-aarch64.zip" ;;
-        *) echo "[ninja] unsupported arch $(uname -m); install ninja >=1.13 manually" >&2; exit 1 ;;
-    esac
-    url="https://github.com/ninja-build/ninja/releases/download/v$want/$asset"
-    echo "[ninja] downloading $want ($asset)..."
-    mkdir -p "$dest"
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    curl -fSL "$url" -o "$tmp/ninja.zip"
-    unzip -o "$tmp/ninja.zip" -d "$dest" >/dev/null
-    chmod +x "$bin"
-    echo "[ninja] installed: $("$bin" --version) ($bin)"
-    echo "[ninja] ensure third-party/ninja is on PATH (direnv .envrc does this)."
+# make + ninja are NOT installed here any more.
+#
+# They were two bespoke recipes filling `third-party/{make,ninja}/`, each with
+# its own version variable — a second pin beside `nros-sdk-index.toml`'s, free
+# to drift from it. They are ordinary store tools now:
+#
+#     nros setup --tool make      # 4.4.1, source tarball (upstream ships no binary)
+#     nros setup --tool ninja     # 1.13.2, upstream prebuilt zip
+#
+# Policy: prebuilt when upstream publishes one, source only as the fallback.
+# `scripts/sdk-path-tools.txt` puts both on PATH; consumers resolve the exact
+# path with `nros sdk-path <tool>`, constructed from the pin (issue 0625).
 
 # Install Corrosion (cmake ↔ Rust bridge) into `~/.nros/sdk/corrosion/`.
 # Mixed-language workspaces (Phase 212) use `find_package(Corrosion)` +
@@ -398,11 +296,14 @@ doctor:
     fi
 
     # --- pinned ninja (>=1.13 for the GNU-jobserver client, Phase 176) ---
-    ninja_bin="third-party/ninja/ninja"
-    if [ -x "$ninja_bin" ] && [ "$("$ninja_bin" --version 2>/dev/null)" = "{{NINJA_VERSION}}" ]; then
-        echo "  [OK] ninja {{NINJA_VERSION}} (third-party/ninja; jobserver-capable)"
+    # Store tool now; path CONSTRUCTED from the index pin (issue 0625), so this
+    # cannot drift from what `nros setup --tool ninja` installed. The version is
+    # the index's — there is no second pin here to disagree with it.
+    ninja_bin="$(nros sdk-path ninja 2>/dev/null)/bin/ninja"
+    if [ -x "$ninja_bin" ]; then
+        echo "  [OK] ninja $("$ninja_bin" --version) (SDK store; jobserver-capable)"
     else
-        echo "  [MISSING] ninja {{NINJA_VERSION}} (run: just workspace install-ninja)"
+        echo "  [MISSING] ninja (run: nros setup --tool ninja)"
         fail=1
     fi
 
@@ -510,11 +411,11 @@ doctor:
     fi
 
     # --- pinned make (>=4.4 for the fifo jobserver, Phase 176) ---
-    make_bin="third-party/make/make"
-    if [ -x "$make_bin" ] && "$make_bin" --version 2>/dev/null | head -1 | grep -q "{{MAKE_VERSION}}"; then
-        echo "  [OK] make {{MAKE_VERSION}} (third-party/make; fifo jobserver)"
+    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
+    if [ -x "$make_bin" ]; then
+        echo "  [OK] make $("$make_bin" --version | head -1 | awk '{print $NF}') (SDK store; fifo jobserver)"
     else
-        echo "  [MISSING] make {{MAKE_VERSION}} (run: just workspace install-make)"
+        echo "  [MISSING] make (run: nros setup --tool make)"
         fail=1
     fi
 

@@ -335,19 +335,13 @@ EOF
 fi
 unset _nros_sdk
 
-# Pinned ninja (>=1.13, GNU-jobserver client — Phase 176) installed by
-# `just workspace install-ninja`. Wins over Ubuntu's apt 1.10 (no
-# jobserver). Required by `just build-all-jobserver` to scale cargo +
-# cmake + ninja under one token pool.
-if [ -x "$_nros_root/third-party/ninja/ninja" ]; then
-    export PATH="$_nros_root/third-party/ninja:$PATH"
-fi
-
-# Pinned GNU make (>=4.4, fifo jobserver — Phase 176) installed by
-# `just workspace install-make`. Wins over Ubuntu's 4.3.
-if [ -x "$_nros_root/third-party/make/make" ]; then
-    export PATH="$_nros_root/third-party/make:$PATH"
-fi
+# Pinned make (>=4.4, fifo jobserver server) and ninja (>=1.13, its client) —
+# Phase 176. NO block here any more: both are ordinary SDK-store tools now
+# (`nros setup --tool make` / `--tool ninja`), so the generic store loop above
+# puts them on PATH via `scripts/sdk-path-tools.txt`. They used to live under
+# `third-party/` behind two bespoke `just workspace install-*` recipes, which
+# meant a second version pin (`MAKE_VERSION`/`NINJA_VERSION`) that could drift
+# from the index's.
 
 # Zephyr's `west` is NOT put on PATH here. It is resolved when a Zephyr lane
 # needs it, by `nros_zephyr_activate` in scripts/build/zephyr-python.sh.

@@ -198,17 +198,36 @@ impl SdkLock {
     }
 }
 
+/// Where a source recipe's tree comes from.
+///
+/// Two modes because git is not always a way to GET a buildable tree: GNU
+/// make's git tree ships no `configure`, only a `bootstrap` that wants
+/// autotools and gnulib. Everything after the fetch — `configure`, `install`,
+/// the toolchain choice — is identical between them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SourceFetch {
+    Git { git: String, git_ref: String },
+    Tarball { url: String, sha256: String },
+}
+
 /// The decided install action for a tool on a host.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InstallAction {
     /// Already at the prefix (idempotent skip).
     Present,
     /// Fetch + verify + unpack the prebuilt artifact.
-    Prebuilt { url: String, sha256: String },
+    Prebuilt {
+        url: String,
+        sha256: String,
+        /// Optional unpack override — see `DistArtifact::install`. `None` keeps
+        /// the mirror-shaped default (`tar -xf` into the prefix).
+        install: Option<String>,
+    },
     /// Build from source into the same prefix.
     Source {
-        git: String,
-        git_ref: String,
+        /// Where the tree comes from. Exactly one variant, enforced by
+        /// `SdkIndex::validate`.
+        fetch: SourceFetch,
         configure: Option<String>,
         install: Option<String>,
         /// Issue 0374 d4 — build with the checkout's own `rust-toolchain.toml`
@@ -229,12 +248,26 @@ pub fn plan_install(tool: &ToolPackage, host: &str, prefix: &Path) -> InstallAct
         return InstallAction::Prebuilt {
             url: d.url.clone(),
             sha256: d.sha256.clone(),
+            install: d.install.clone(),
         };
     }
     if let Some(s) = &tool.source {
+        // `validate` has already rejected neither-and-both, so this only has to
+        // pick. Preferring `git` when present keeps the pre-tarball behaviour
+        // byte-identical for every existing recipe.
+        let fetch = match (&s.git, &s.url) {
+            (Some(git), _) => SourceFetch::Git {
+                git: git.clone(),
+                git_ref: s.git_ref.clone().unwrap_or_default(),
+            },
+            (None, Some(url)) => SourceFetch::Tarball {
+                url: url.clone(),
+                sha256: s.sha256.clone().unwrap_or_default(),
+            },
+            (None, None) => return InstallAction::Unavailable,
+        };
         return InstallAction::Source {
-            git: s.git.clone(),
-            git_ref: s.git_ref.clone(),
+            fetch,
             configure: s.configure.clone(),
             install: s.install.clone(),
             respect_toolchain: s.respect_toolchain,
@@ -254,7 +287,11 @@ pub fn execute(
     match action {
         InstallAction::Present => Provenance::read(prefix)
             .ok_or_else(|| eyre!("{tool}: present but no provenance marker")),
-        InstallAction::Prebuilt { url, sha256 } => {
+        InstallAction::Prebuilt {
+            url,
+            sha256,
+            install,
+        } => {
             // The prebuilt dists are `.tar.zst`; `tar -xf` shells out to the
             // external `zstd` binary to decompress. A host without it (stock
             // Ubuntu 22.04 ships no `zstd`) otherwise fails DEEP inside tar with
@@ -289,17 +326,32 @@ pub fn execute(
             )
             .wrap_err_with(|| format!("download {url}"))?;
             verify_sha256(&archive, sha256)?;
-            sh(
-                &[
-                    "tar",
-                    "-xf",
-                    &archive.to_string_lossy(),
-                    "-C",
-                    &prefix.to_string_lossy(),
-                ],
-                None,
-            )
-            .wrap_err("unpack prebuilt archive")?;
+            // Default: the mirror shape (a prefix-rooted tar). An UPSTREAM
+            // asset often is not that — ninja publishes a zip holding a bare
+            // binary — so a dist may carry its own unpack step. Same free-form
+            // shell as a source recipe's `install`, for the same reason.
+            match install {
+                None => {
+                    sh(
+                        &[
+                            "tar",
+                            "-xf",
+                            &archive.to_string_lossy(),
+                            "-C",
+                            &prefix.to_string_lossy(),
+                        ],
+                        None,
+                    )
+                    .wrap_err("unpack prebuilt archive")?;
+                }
+                Some(cmd) => {
+                    let cmd = cmd
+                        .replace("{archive}", &archive.to_string_lossy())
+                        .replace("{prefix}", &prefix.to_string_lossy());
+                    sh(&["sh", "-c", &cmd], None)
+                        .wrap_err("unpack prebuilt archive (dist install step)")?;
+                }
+            }
             let _ = std::fs::remove_file(&archive);
             let p = Provenance {
                 kind: ProvenanceKind::Prebuilt,
@@ -310,8 +362,7 @@ pub fn execute(
             Ok(p)
         }
         InstallAction::Source {
-            git,
-            git_ref,
+            fetch,
             configure,
             install,
             respect_toolchain,
@@ -333,30 +384,71 @@ pub fn execute(
             let src = prefix.with_extension("src");
             let _ = std::fs::remove_dir_all(&src);
             let src_str = src.to_string_lossy();
-            // `git_ref` may be a raw SHA (index tools with no upstream tag pin the
-            // commit), and `git clone --depth 1 --branch <sha>` is rejected ("Remote
-            // branch <sha> not found"). Mirror the `[source.*]` shallow path: init +
-            // fetch-by-ref at depth 1 (works for sha/tag/branch via the server's
-            // reachable-SHA support) + detached checkout of the fetched commit.
-            sh(&["git", "init", "-q", &src_str], None)
-                .wrap_err_with(|| format!("git init {src_str} ({tool})"))?;
-            sh(
-                &["git", "-C", &src_str, "remote", "add", "origin", git],
-                None,
-            )
-            .wrap_err_with(|| format!("git remote add ({tool})"))?;
-            sh(
-                &[
-                    "git", "-C", &src_str, "fetch", "-q", "--depth", "1", "origin", git_ref,
-                ],
-                None,
-            )
-            .wrap_err_with(|| format!("git fetch --depth 1 {git_ref} ({tool})"))?;
-            sh(
-                &["git", "-C", &src_str, "checkout", "-q", "FETCH_HEAD"],
-                None,
-            )
-            .wrap_err_with(|| format!("git checkout FETCH_HEAD ({tool})"))?;
+            match fetch {
+                SourceFetch::Git { git, git_ref } => {
+                    // `git_ref` may be a raw SHA (index tools with no upstream tag pin
+                    // the commit), and `git clone --depth 1 --branch <sha>` is rejected
+                    // ("Remote branch <sha> not found"). Mirror the `[source.*]` shallow
+                    // path: init + fetch-by-ref at depth 1 (works for sha/tag/branch via
+                    // the server's reachable-SHA support) + detached checkout.
+                    sh(&["git", "init", "-q", &src_str], None)
+                        .wrap_err_with(|| format!("git init {src_str} ({tool})"))?;
+                    sh(
+                        &["git", "-C", &src_str, "remote", "add", "origin", git],
+                        None,
+                    )
+                    .wrap_err_with(|| format!("git remote add ({tool})"))?;
+                    sh(
+                        &[
+                            "git", "-C", &src_str, "fetch", "-q", "--depth", "1", "origin", git_ref,
+                        ],
+                        None,
+                    )
+                    .wrap_err_with(|| format!("git fetch --depth 1 {git_ref} ({tool})"))?;
+                    sh(
+                        &["git", "-C", &src_str, "checkout", "-q", "FETCH_HEAD"],
+                        None,
+                    )
+                    .wrap_err_with(|| format!("git checkout FETCH_HEAD ({tool})"))?;
+                }
+                SourceFetch::Tarball { url, sha256 } => {
+                    // `--strip-components=1` so `configure`/`install` see the
+                    // project root exactly as the git path leaves it: every step
+                    // after the fetch is then mode-independent, which is the
+                    // point of putting both behind one enum.
+                    std::fs::create_dir_all(&src)
+                        .wrap_err_with(|| format!("create {src_str} ({tool})"))?;
+                    let archive = prefix.with_extension("src.download");
+                    sh(
+                        &[
+                            "curl",
+                            "-L",
+                            "--fail",
+                            "--silent",
+                            "--show-error",
+                            "-o",
+                            &archive.to_string_lossy(),
+                            url,
+                        ],
+                        None,
+                    )
+                    .wrap_err_with(|| format!("download {url} ({tool})"))?;
+                    verify_sha256(&archive, sha256)?;
+                    sh(
+                        &[
+                            "tar",
+                            "-xf",
+                            &archive.to_string_lossy(),
+                            "-C",
+                            &src_str,
+                            "--strip-components=1",
+                        ],
+                        None,
+                    )
+                    .wrap_err_with(|| format!("unpack source tarball ({tool})"))?;
+                    let _ = std::fs::remove_file(&archive);
+                }
+            }
             let prefix_abs = prefix.to_string_lossy().to_string();
             if let Some(cfg) = configure {
                 sh_with_toolchain(

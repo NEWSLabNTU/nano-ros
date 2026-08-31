@@ -195,9 +195,9 @@ run_with_make() {
 
     jobs="$(nros_cargo_frontend_jobs)"
     make_bin="make"
-    if [ -x "$PWD/third-party/make/make" ] && \
-       "$PWD/third-party/make/make" --version | head -1 | grep -q "4.4"; then
-        make_bin="$PWD/third-party/make/make"
+    if [ -x "$(nros sdk-path make)/bin/make" ] && \
+       "$(nros sdk-path make)/bin/make" --version | head -1 | grep -q "4.4"; then
+        make_bin="$(nros sdk-path make)/bin/make"
     fi
 
     "$make_bin" -j"$jobs" -f "$makefile"

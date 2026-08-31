@@ -174,12 +174,12 @@ build-fvp-ws-entry:
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$nros_root/third-party/make/make"
+    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
     cd "$workspace"
-    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     export NROS_REPO_DIR="$nros_root"
     # phase-298 W3 — bake the fast-sim flag into the configure-time
@@ -231,7 +231,7 @@ run-fvp-ws-entry:
     fi
     nros_root="$(pwd)"
     cd "$workspace"
-    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     export NROS_REPO_DIR="$nros_root"
     export ARMFVP_EXTRA_FLAGS="-C cache_state_modelled=0"
@@ -287,13 +287,13 @@ build-fvp-board-import:
     source scripts/build/cargo.sh
     nros_cargo_ensure_codegen_c
     codegen_tool="$(nros_cargo_codegen_c_bin)"
-    make_bin="$nros_root/third-party/make/make"
+    make_bin="$(nros sdk-path make 2>/dev/null)/bin/make"
     if [ ! -x "$make_bin" ]; then
         make_bin="$(command -v make)"
     fi
     src="$nros_root/packages/testing/nros-tests/fixtures/board_import_fvp"
     cd "$workspace"
-    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$sdk"
     # Phase 215.B — the fixture's CMakeLists includes
     # `$ENV{NROS_REPO_DIR}/zephyr/cmake/nano_ros_use_board.cmake` BEFORE
@@ -342,7 +342,7 @@ run-fvp-board-import:
     fi
     nros_root="$(pwd)"
     cd "$workspace"
-    export PATH="$nros_root/third-party/make:$nros_root/third-party/ninja:$PATH"
+    export PATH="$(nros sdk-path make)/bin:$(nros sdk-path ninja)/bin:$PATH"
     export ZEPHYR_SDK_INSTALL_DIR="$nros_root/scripts/zephyr/sdk/zephyr-sdk-0.16.8"
     west fvp run -d build-fvp-board-import
 
