@@ -3,10 +3,10 @@ id: 841
 title: "A subscription whose hint lands between the small block size and the size
   threshold gets a block that cannot hold it — and the build error's own remedy
   puts it there"
-status: open
+status: resolved
 type: bug
 area: rmw
-related: [phase-392, issue-0757, issue-0776, rfc-0038]
+related: [phase-392, phase-403, issue-0757, issue-0776, rfc-0038]
 ---
 
 ## Problem
@@ -123,3 +123,35 @@ needs a consumer-side packet capture to attribute (which is exactly what the
 
 Raising `ZPICO_MAX_LARGE_SUBSCRIBERS`, or `ZPICO_SUBSCRIBER_BUFFER_SIZE` so the
 type fits the small class, are both valid answers; the inventory prices each.
+
+## Resolution — fixed, and the top end closed with it
+
+`alloc_payload_block` no longer routes on the threshold alone. It routes on
+`SMALL_CLASS_CEILING`, the `min` of the two knobs:
+
+```rust
+const SMALL_CLASS_CEILING: usize = if SUBSCRIBER_SIZE_THRESHOLD < SUBSCRIBER_BUFFER_SIZE {
+    SUBSCRIBER_SIZE_THRESHOLD
+} else {
+    SUBSCRIBER_BUFFER_SIZE
+};
+```
+
+`min`, not a replacement: setting the threshold BELOW the block size stays a
+legitimate way to push borderline topics into the large class early. What can no
+longer happen is a hint small-classed into a block that cannot hold it, which
+was the 1,025..=2,048 window this issue reported and the one the build error's
+own remedy walked you into.
+
+**Phase-403 W4 then closed the same defect one class up**, which this issue left
+open: a hint above `SUBSCRIBER_LARGE_SIZE` used to route large into a block too
+small for it and drop every sample identically. It is now refused at create time
+via `LARGEST_PAYLOAD_CLASS`, so the image fails where the person who set the
+knobs is standing. That is also what makes `MAX_LARGE_SUBSCRIBERS == 0` legal:
+with no large class, a hint past the small block has nowhere legal to go.
+
+Both ends carry tests in `shim/subscriber.rs` — every block handed out can hold
+the hint that routed to it, and the top-end refusal.
+
+Closed 2026-09-01 after verifying against the code rather than the issue text;
+the fix had landed and only the issue was left open.
