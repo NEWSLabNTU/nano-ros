@@ -781,7 +781,17 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
         out.write_char(',')?;
         self.write_entity_array(out, "services", node_id, EntityKind::ServiceServer)?;
         out.write_char(',')?;
-        self.write_entity_array(out, "actions", node_id, EntityKind::ActionServer)
+        self.write_entity_array(out, "actions", node_id, EntityKind::ActionServer)?;
+        // issue 0900 — the CLIENT halves. `record_entity` has always captured
+        // them (`EntityKind::{ActionClient,ServiceClient}`, set in node.rs) and
+        // this writer dropped them on the way out, so a sidecar described only
+        // what a component SERVES. The executor arena is sized from the client
+        // count, which is why the omission had a size cost and not just a
+        // descriptive one.
+        out.write_char(',')?;
+        self.write_entity_array(out, "action_clients", node_id, EntityKind::ActionClient)?;
+        out.write_char(',')?;
+        self.write_entity_array(out, "service_clients", node_id, EntityKind::ServiceClient)
     }
 
     #[cfg(feature = "alloc")]
@@ -808,6 +818,12 @@ impl<const MAX_NODES: usize, const MAX_ENTITIES: usize, const MAX_CALLBACKS: usi
                 EntityKind::Timer => write_timer_json(out, entity)?,
                 EntityKind::ServiceServer => write_service_json(out, entity)?,
                 EntityKind::ActionServer => write_action_json(out, entity)?,
+                // issue 0900 — a client registers no callbacks, so it needs
+                // none of the server writers' callback fields. One writer
+                // serves both client kinds.
+                EntityKind::ActionClient | EntityKind::ServiceClient => {
+                    write_client_json(out, entity)?
+                }
                 _ => {}
             }
         }
@@ -1164,6 +1180,35 @@ fn write_service_json(
     if let Some(callback_slot) = entity.callback_slot {
         write!(out, ",\"callback_slot\":{}", callback_slot.index())?;
     }
+    write!(out, "}}")
+}
+
+/// issue 0900 — a client entity: identity, name and interface, no callbacks.
+///
+/// Deliberately ONE writer for both `ActionClient` and `ServiceClient`. They
+/// differ only in the interface KIND word, and the server-side pair is already
+/// two near-identical functions; a third and fourth would be the second
+/// spelling this repo keeps paying for.
+#[cfg(feature = "alloc")]
+fn write_client_json(
+    out: &mut impl core::fmt::Write,
+    entity: &EntityMetadata,
+) -> core::fmt::Result {
+    let interface_kind = if entity.kind == EntityKind::ActionClient {
+        "action"
+    } else {
+        "service"
+    };
+    write!(out, "{{")?;
+    write_json_field(out, "id", entity.id.as_str())?;
+    out.write_char(',')?;
+    if let Some(slot) = entity.slot {
+        write!(out, "\"declaration_slot\":{},", slot.index())?;
+    }
+    write!(out, "\"unresolved_name\":")?;
+    write_source_name(out, entity.source_name.as_str(), entity.source_name_kind)?;
+    out.write_char(',')?;
+    write_interface(out, entity.type_name, interface_kind)?;
     write!(out, "}}")
 }
 

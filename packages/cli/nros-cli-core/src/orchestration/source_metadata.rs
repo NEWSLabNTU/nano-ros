@@ -60,6 +60,17 @@ pub struct SourceNode {
     pub timers: Vec<SourceTimer>,
     pub services: Vec<SourceService>,
     pub actions: Vec<SourceAction>,
+    /// issue 0900 — the CLIENT halves, which size the executor arena.
+    ///
+    /// `#[serde(default)]` because this struct is `deny_unknown_fields` and a
+    /// sidecar emitted before these existed must still parse. An empty vector
+    /// from an OLD sidecar is indistinguishable from a component that genuinely
+    /// has no clients, which is why the consumer keys on the sidecar's presence
+    /// rather than on the count being zero — see `entity_facts`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub action_clients: Vec<SourceClient>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub service_clients: Vec<SourceClient>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -156,6 +167,21 @@ pub struct SourceService {
     pub callback: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub callback_slot: Option<u32>,
+}
+
+/// issue 0900 — an action or service CLIENT.
+///
+/// One struct for both: a client registers no callbacks, so unlike the server
+/// pair (`SourceService` carries a `callback`, `SourceAction` carries three)
+/// they differ in nothing but which array they arrive in.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceClient {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declaration_slot: Option<u32>,
+    pub unresolved_name: SourceName,
+    pub interface: InterfaceRef,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
