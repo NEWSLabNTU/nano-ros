@@ -1,11 +1,11 @@
 # Phase 405 — finish phase-271: every knob-scaled member leaves the `Executor` value
 
-**Status (2026-08-31). Opened from issue 0937.** phase-271 externalised SIX
+**Status (2026-08-31). Opened from issue 0938.** phase-271 externalised SIX
 sized arrays and said so deliberately: "`Executor` keeps every field except the
 six sized arrays". Nine knob-scaled members were left inline. On a 320 KiB part
 that line turns out to be in the wrong place.
 
-## What issue 0937 measured
+## What issue 0938 measured
 
 `size_of::<Executor>()` is about 16 KiB, and the value is built on the stack and
 moved twice:
@@ -87,7 +87,7 @@ edit: `heapless::Vec` also derefs to `[T]`, so `.iter()`, `.get()`, `.len()`,
 `[i]` and the public `Executor::nodes() -> &[NodeRecord]` accessor are unchanged
 text. `MaybeUninit<T>` rather than `Option<T>` for that accessor, and because
 `carve` then writes NOTHING for these tables at open -- the `__aeabi_memclr8` in
-issue 0937's fault report is the executor's tables being zeroed.
+issue 0938's fault report is the executor's tables being zeroed.
 
 `ExecutorSizing` gained ONE field, `nodes`: seven of the nine were scaled by
 `MAX_NODES`, `group_sched_table` by `MAX_CBS` (already `sizing.cbs`), and
@@ -172,4 +172,4 @@ and still cover the new value; they were deliberately left alone.
 Acceptance 3 -- the island boot on `mr_canhubk3/s32k344` -- needs the board, which
 this work did not have. `ZenohSession::names_and_types_filtered` (19840 bytes,
 the largest frame in the image and larger than `open_in` ever was) is untouched;
-it is not on the boot path, and issue 0937 files it separately.
+it is not on the boot path, and issue 0938 files it separately.
