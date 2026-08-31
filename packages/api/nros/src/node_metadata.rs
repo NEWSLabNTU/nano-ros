@@ -1767,7 +1767,10 @@ mod tests {
     #[cfg(feature = "alloc")]
     #[test]
     fn source_metadata_json_uses_agent_a_schema_shape() {
-        let mut recorder = MetadataRecorder::<1, 5, 1>::new();
+        // 7 entity slots, not 5: issue 0900 added the two CLIENT kinds to this
+        // fixture. The recorder is fixed-capacity by design (`no_std`, static
+        // storage), so a new entity here is a deliberate widening.
+        let mut recorder = MetadataRecorder::<1, 7, 1>::new();
         recorder
             .push_node(NodeId::new("node_talker"), "talker", "/", 0)
             .unwrap();
@@ -1858,6 +1861,38 @@ mod tests {
             )
             .unwrap();
 
+        // Issue 0900 — one of each client kind, on the node that also SERVES
+        // (it owns the action server above), so this would catch a writer that
+        // filtered by node rather than by kind.
+        recorder
+            .push_entity(
+                entity_metadata(EntityMetadataSpec {
+                    id: EntityId::new("client_fib"),
+                    node_id: NodeId::new("node_talker"),
+                    kind: EntityKind::ActionClient,
+                    source_name: "/fibonacci",
+                    type_name: "example_interfaces::action::dds_::Fibonacci_",
+                    type_hash: "hash",
+                    qos: crate::qos::DEFAULT,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+        recorder
+            .push_entity(
+                entity_metadata(EntityMetadataSpec {
+                    id: EntityId::new("client_add"),
+                    node_id: NodeId::new("node_talker"),
+                    kind: EntityKind::ServiceClient,
+                    source_name: "/add_two_ints",
+                    type_name: "example_interfaces::srv::dds_::AddTwoInts_",
+                    type_hash: "hash",
+                    qos: crate::qos::DEFAULT,
+                })
+                .unwrap(),
+            )
+            .unwrap();
+
         let json = recorder
             .to_source_metadata_json(
                 &SourceMetadataExport::new("demo_nodes_rs", "talker")
@@ -1883,6 +1918,66 @@ mod tests {
         assert!(json.contains("\"accepted_callback\":\"cb_count_accepted\""));
         assert!(json.contains("\"kind\":\"action_cancel\""));
         assert!(json.contains("\"kind\":\"action_accepted\""));
+
+        // Issue 0900 — the CLIENT halves must reach the JSON, not just the
+        // recorder. `record_entity` always captured them and the writer dropped
+        // them, so the sidecar described only what a component SERVES. The
+        // executor arena is sized from the client count, so the omission cost
+        // bytes on a task stack and not merely description.
+        //
+        // Asserted on the SERIALISED form rather than on `recorder.entities()`:
+        // the defect was entirely in the writer, so a test that stops at the
+        // recorder passes against the broken tree — the vacuous shape this repo
+        // keeps finding.
+        assert!(
+            json.contains("\"action_clients\":[{"),
+            "an action client must reach the sidecar, got {json}"
+        );
+        assert!(
+            json.contains("\"service_clients\":[{"),
+            "a service client must reach the sidecar, got {json}"
+        );
+        // Scoped to the client ARRAYS, not to the whole document. The first
+        // version of these asserts searched all of `json` and passed against a
+        // broken emitter: this fixture's action SERVER carries the same
+        // Fibonacci interface, so "the string appears somewhere" was true
+        // whatever `write_client_json` did. A test that cannot fail is the
+        // shape `check-no-vacuous-tests` exists to catch.
+        let action_clients = &json[json.find("\"action_clients\":").expect("array present")..];
+        let action_clients = &action_clients[..action_clients.find(']').unwrap()];
+        let service_clients = &json[json.find("\"service_clients\":").expect("array present")..];
+        let service_clients = &service_clients[..service_clients.find(']').unwrap()];
+
+        // The interface must be PARSED, not echoed as a Rust path. `write_
+        // client_json` shares `write_interface` with the server writers, and
+        // `parse_interface` only splits the 4-segment DDS-mangled form — which
+        // is what `A::ACTION_NAME` actually supplies. Pinning the parsed shape
+        // is what would catch a client writer that bypassed that helper.
+        assert!(
+            action_clients.contains(
+                "\"interface\":{\"package\":\"example_interfaces\",\"name\":\"action/Fibonacci\",\"kind\":\"action\"}"
+            ),
+            "action client interface must be parsed, got {action_clients}"
+        );
+        assert!(
+            service_clients.contains(
+                "\"interface\":{\"package\":\"example_interfaces\",\"name\":\"srv/AddTwoInts\",\"kind\":\"service\"}"
+            ),
+            "service client interface must be parsed, got {service_clients}"
+        );
+        // The KIND word is the only thing `write_client_json` branches on, so
+        // the two arrays must not agree on it.
+        assert!(
+            !action_clients.contains("\"kind\":\"service\"")
+                && !service_clients.contains("\"kind\":\"action\""),
+            "the client kind word is what distinguishes the arrays"
+        );
+        // A client registers no callbacks, so it must carry none of the server
+        // writers' callback fields.
+        assert!(
+            !action_clients.contains("callback") && !service_clients.contains("callback"),
+            "a client registers no callback; emitting one would misdescribe it"
+        );
         assert!(json.contains("\"generator\":\"nros-metadata-rust\""));
     }
 }
