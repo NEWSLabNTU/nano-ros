@@ -183,6 +183,33 @@ _nros_lane_skip_file() {
     printf '%s/%s.skips' "$(nros_build_dir "$NROS_KIND_LANE_SKIPS")" "$lane"
 }
 
+# nros_sdk_missing <VAR_NAME> <marker-relative-path>
+#
+# True when the SDK that <VAR_NAME> points at is not present. Issue 0955.
+#
+# Six guards used to ask `[ -z "${NUTTX_DIR:-}" ] && [ ! -d third-party/... ]`.
+# `just/sdk-env.just` EXPORTS all 23 such variables with a default, so `-z` is
+# never true, so the `&&` is never true, and the skip could never fire. Under a
+# broad lane those steps did not skip — they walked into cmake and FAILED where
+# the author intended a skip, so an unprovisioned host got a cmake-level message
+# instead of `== nuttx == SKIPPED (...)`.
+#
+# The same files already carried the idiom that works, testing the RESOLVED
+# directory rather than the variable (`[ ! -d "$NUTTX_DIR/include" ]`). Two
+# spellings of one question with the newer one broken is the #282 -> #326 shape,
+# so this is ONE helper rather than six corrections — a seventh site cannot
+# reintroduce the dead form by copying a neighbour.
+#
+# An UNSET variable still counts as missing: that is the case the `-z` arm was
+# reaching for, and it stays true here without being the only thing asked.
+nros_sdk_missing() {
+    local var="${1:?nros_sdk_missing: variable name}"
+    local marker="${2:?nros_sdk_missing: marker path}"
+    local dir="${!var-}"
+    [ -n "$dir" ] || return 0
+    [ ! -e "$dir/$marker" ]
+}
+
 nros_lane_skip_reset() {
     local f
     f="$(_nros_lane_skip_file "${1:?nros_lane_skip_reset: lane}")"
