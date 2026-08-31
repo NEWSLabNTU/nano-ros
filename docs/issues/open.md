@@ -79,5 +79,6 @@ fails if this block drifts.
 - **#0971** ([rmw, api]) — `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it See `0971-*`.
 - **#0975** (ci) — `--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue See `0975-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
+- **#0958** (rmw) — The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no per-type receive sizing reaches a Cyclone image See `0958-*`.
 
 <!-- END GENERATED open-issue list -->
