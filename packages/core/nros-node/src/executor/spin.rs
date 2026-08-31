@@ -5011,15 +5011,14 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: RawSubscriptionInfoCallback,
         context: *mut core::ffi::c_void,
-        // phase-408 W5a — bytes the caller expects to receive; 0 = no opinion.
-        // Reaches the BACKEND, which routes the payload size class on it. The
-        // ARENA slot for this variant is still `RX_BUF`: its entry stores a real
-        // `[u8; N]`, so shrinking that needs the runtime-sized `BufferStrategy`
-        // the plain C path already uses, which is W5b. Routing is the half that
-        // does not need it, and it is the half the size-class cluster is about.
+        // phase-408 W5a/W5b — bytes the caller expects to receive; 0 = no
+        // opinion. It now buys BOTH halves: the BACKEND's payload size-class
+        // routing (W5a, below) and the ARENA slot (W5b, further down). `RX_BUF`
+        // survives only as the fallback for a caller that states nothing, which
+        // is exactly its role on the plain C path.
         rx_buffer_hint: usize,
     ) -> Result<HandleId, NodeError> {
-        type Entry<const N: usize> = SubBufferedRawInfoCEntry<N>;
+        type Entry = SubBufferedRawInfoCEntry;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -5053,15 +5052,29 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)?
         };
 
-        let offset = self.arena_alloc::<Entry<RX_BUF>>()?;
+        // phase-408 W5b — the hint sizes the ARENA too, not just the backend's
+        // size class. ONE slot, not `buffered_region_size`: this entry hands the
+        // sample's attachment to the callback alongside the payload, so it
+        // dispatches exactly one sample per spin and has no queue to size. 0
+        // still means "this caller stated nothing", so `RX_BUF` — which is
+        // `DEFAULT_RX_BUF_SIZE` at every call site — is what it falls back to,
+        // and an unhinted registration claims the same bytes it always did.
+        let rx_bytes = if rx_buffer_hint != 0 {
+            rx_buffer_hint
+        } else {
+            RX_BUF
+        };
+
+        let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry>(rx_bytes)?;
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<RX_BUF>;
+            let buf = super::arena::TrailingBuf::init(arena_ptr.add(trailing_offset), rx_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry;
             core::ptr::write(
                 entry_ptr,
                 Entry {
                     handle,
-                    buffer: [0u8; RX_BUF],
+                    buffer: buf,
                     att: [0u8; super::arena::RAW_INFO_ATT_CAP],
                     callback,
                     context,
@@ -5072,11 +5085,11 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
-            try_process: sub_buffered_raw_info_c_try_process::<RX_BUF>,
-            has_data: sub_buffered_raw_info_c_has_data::<RX_BUF>,
+            try_process: sub_buffered_raw_info_c_try_process,
+            has_data: sub_buffered_raw_info_c_has_data,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<RX_BUF>>,
+            drop_fn: drop_entry::<Entry>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);
@@ -5106,19 +5119,18 @@ impl<'s> Executor<'s> {
         qos: QoSProfile,
         callback: super::types::RawSubscriptionSafetyCallback,
         context: *mut core::ffi::c_void,
-        // phase-408 W5a — bytes the caller expects to receive; 0 = no opinion.
-        // Reaches the BACKEND, which routes the payload size class on it. The
-        // ARENA slot for this variant is still `RX_BUF`: its entry stores a real
-        // `[u8; N]`, so shrinking that needs the runtime-sized `BufferStrategy`
-        // the plain C path already uses, which is W5b. Routing is the half that
-        // does not need it, and it is the half the size-class cluster is about.
+        // phase-408 W5a/W5b — bytes the caller expects to receive; 0 = no
+        // opinion. It now buys BOTH halves: the BACKEND's payload size-class
+        // routing (W5a, below) and the ARENA slot (W5b, further down). `RX_BUF`
+        // survives only as the fallback for a caller that states nothing, which
+        // is exactly its role on the plain C path.
         rx_buffer_hint: usize,
     ) -> Result<HandleId, NodeError> {
         use super::arena::{
-            SubBufferedRawSafetyCEntry, sub_buffered_raw_safety_c_has_data,
+            SubBufferedRawSafetyCEntry, TrailingBuf, sub_buffered_raw_safety_c_has_data,
             sub_buffered_raw_safety_c_try_process,
         };
-        type Entry<const N: usize> = SubBufferedRawSafetyCEntry<N>;
+        type Entry = SubBufferedRawSafetyCEntry;
 
         let slot = self.next_entry_slot()?;
         let (node_name, ns, session_idx) = match node_id {
@@ -5152,15 +5164,27 @@ impl<'s> Executor<'s> {
                 .map_err(NodeError::Transport)?
         };
 
-        let offset = self.arena_alloc::<Entry<RX_BUF>>()?;
+        // phase-408 W5b — same as the info sibling: one flat slot in the
+        // trailing region, sized from the hint, `RX_BUF` only as the
+        // stated-nothing fallback. The integrity status is per-sample side
+        // data, so this path also dispatches one sample per spin and wants no
+        // queue.
+        let rx_bytes = if rx_buffer_hint != 0 {
+            rx_buffer_hint
+        } else {
+            RX_BUF
+        };
+
+        let (offset, trailing_offset) = self.arena_alloc_with_trailing::<Entry>(rx_bytes)?;
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<RX_BUF>;
+            let buf = TrailingBuf::init(arena_ptr.add(trailing_offset), rx_bytes);
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry;
             core::ptr::write(
                 entry_ptr,
                 Entry {
                     handle,
-                    buffer: [0u8; RX_BUF],
+                    buffer: buf,
                     callback,
                     context,
                 },
@@ -5170,11 +5194,11 @@ impl<'s> Executor<'s> {
         let meta = CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
-            try_process: sub_buffered_raw_safety_c_try_process::<RX_BUF>,
-            has_data: sub_buffered_raw_safety_c_has_data::<RX_BUF>,
+            try_process: sub_buffered_raw_safety_c_try_process,
+            has_data: sub_buffered_raw_safety_c_has_data,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<RX_BUF>>,
+            drop_fn: drop_entry::<Entry>,
         };
         self.emplace_entry(slot, meta, TraceName::Text(topic_name));
         self.apply_node_default_sched(slot, node_id, None);

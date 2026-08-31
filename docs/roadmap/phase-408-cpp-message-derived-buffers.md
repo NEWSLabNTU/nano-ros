@@ -11,7 +11,7 @@ place. What that reader found:
 | W2 retarget publish helper | **done** | bounded types get `_TX_MAX_SERIALIZED_SIZE`; `NROS_PUB_BUFFER_SIZE` survives only as the unbounded fallback, which is the honest answer |
 | W3 runtime `RX_BUF` | **open** | `add_arena_subscription_c_callback<const RX_BUF: usize>` and five siblings |
 | W4 deliver at the call site | **done (C)** | `<Type>_subscribe` passes the constant; an unbounded type gets a POISONED macro naming the costing member |
-| W5 `_with_info` keeps the hint | **open** | `subscription.rs:353` and `:470` destructure `_rx_buffer_hint` and fall back to `DEFAULT_RX_BUF_SIZE` |
+| W5 `_with_info` keeps the hint | **done** | W5a routed it to the backend; W5b (2026-09-01) put the info + validated entries' payload slot in the arena's trailing region, so the hint sizes the allocation too |
 | C++ pack | **open, and not what it looks like** | see below |
 
 **The C++ pack is the part with a trap in it.** It emits a single
@@ -160,8 +160,8 @@ the generated helper.
 and only one of them is small. Split after reading the entries.
 
 The plain C path was already migrated to a runtime-sized `BufferStrategy` over
-trailing arena bytes. The info and validated paths were NOT: their entries store
-a real `[u8; RX_BUF]` —
+trailing arena bytes. The info and validated paths were NOT — their entries
+stored a real `[u8; RX_BUF]` —
 
 ```rust
 type Entry<const N: usize> = SubBufferedRawInfoCEntry<N>;
@@ -176,14 +176,33 @@ different jobs on this path:
   so zenoh-pico's payload size-class routing sees it. The two C++ sites stop
   destructuring it into `_rx_buffer_hint` and dropping it. This is the half the
   size-class cluster is actually about, and it needs no entry change.
-* **W5b — the hint sizes the ARENA. OPEN.** Requires migrating
-  `SubBufferedRawInfoCEntry` and the validated sibling off `[u8; N]` onto the
-  same `BufferStrategy` the plain path uses. Real work, not a parameter.
+* **W5b — the hint sizes the ARENA. LANDED 2026-09-01.**
+  `SubBufferedRawInfoCEntry` and `SubBufferedRawSafetyCEntry` are off `[u8; N]`
+  and are no longer generic at all; their payload slot is a `TrailingBuf` in the
+  arena's trailing region, sized at registration from `rx_buffer_hint`. Both
+  registration sites compute `rx_bytes` the way the plain C path does, so
+  `RX_BUF` survives only as the stated-nothing fallback and an unhinted
+  subscription claims exactly what it always did.
 
-Until W5b, an info-callback subscription routes to the right payload class and
-still charges `DEFAULT_RX_BUF_SIZE` of arena. Both numbers matter and they are
-not the same number — the distinction this phase's status section already had to
-make once.
+  **Not the `BufferStrategy` W5a predicted, and the prediction was wrong for a
+  reason worth keeping.** A triple buffer or ring DECOUPLES the producer's slot
+  from the consumer's, and these two entries carry PER-SAMPLE side data beside
+  the payload — the wire attachment for the info variant, the integrity status
+  for the validated one. That is why both were flat in the first place
+  (`SubBufferedRawInfoEntry`'s own doc-comment says so), and it has not changed.
+  What made them expensive was the CONST, not the flatness: `RX_BUF` arrives as
+  `DEFAULT_RX_BUF_SIZE` at every call site. So the migration moves the bytes out
+  to the trailing region and keeps one flat slot, one sample per dispatch —
+  which is what the acceptance asked for, since the acceptance is about where
+  the bytes come from, not about which strategy manages them. Adopting a
+  `BufferStrategy` here would have decoupled the attachment from its message.
+
+  One slot, not `buffered_region_size(depth, ...)`: neither entry has a queue to
+  size.
+
+Both numbers matter and they are not the same number — the distinction this
+phase's status section already had to make once. As of W5b an info-callback
+subscription spends its hint on both.
 
 ## Explicitly out of scope
 
