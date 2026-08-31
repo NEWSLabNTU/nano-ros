@@ -43,10 +43,10 @@ nano = "client_response_subscription_get_actual_qos"
 reason = "client_response_subscription_get_actual_qos — as above"
 
 [rmw_client_set_on_new_response_callback]
-where = "vtable"
-nano = "client_set_on_new_response_callback"
-status = "not-implemented"
-issue = 960
+where = "declined"
+status = "not-supported"
+reason = "as rmw_service_set_on_new_request_callback (issue 0960)."
+
 
 [rmw_compare_gids_equal]
 where = "global"
@@ -301,11 +301,9 @@ nano = "publisher_get_actual_qos"
 reason = "publisher_get_actual_qos — W4. PARTIAL ANSWERS ALLOWED since W5/B2: a backend that can determine four policies and not the fifth writes `*_UNKNOWN` for the fifth and returns OK. UNSUPPORTED now means only \"no read-back at all\""
 
 [rmw_publisher_get_network_flow_endpoints]
-where = "vtable"
-nano = "publisher_get_network_flow_endpoints"
-status = "not-implemented"
-issue = 956
-reason = "publisher_get_network_flow_endpoints — W5. The decline read \"zenoh-pico/XRCE have no such notion\", which is true of those two and silent about Cyclone: the reason was scoped to the ABI when it belonged on a backend. NULL there, a visitor here"
+where = "declined"
+status = "not-supported"
+reason = "DECLINED, phase-407: reporting the transport's 5-tuples is diagnostics, and the value is in a multi-homed deployment with dynamic discovery — the case least like this ABI's target, where one interface and a static config mean the answer is already in the file you wrote. Landed in phase-376 W5 for shape parity, never filled, never read (issue 0956). Cheap to revisit for Cyclone alone if `ros2` tooling ever needs to introspect a nano-ros node: it is read-only and has no wire effect."
 
 [rmw_publisher_wait_for_all_acked]
 where = "vtable"
@@ -354,10 +352,10 @@ where = "vtable"
 nano = "service_server_is_available"
 
 [rmw_service_set_on_new_request_callback]
-where = "vtable"
-nano = "service_set_on_new_request_callback"
-status = "not-implemented"
-issue = 960
+where = "declined"
+status = "not-supported"
+reason = "DECLINED, phase-407: readiness belongs to the EXECUTOR here, not to the backend. `set_wake_callback` says \"something on this session moved\" and `spin_once` then walks its entry table calling `has_data` per entity — one vtable call each, on images whose entity count is single digits. Upstream's per-entity callback carries `number_of_events`, so honouring it means every backend tracking per-entity pending DEPTH: new state on a target where static RAM is already the pressure (issue 0827 measures a talker reserving 275 KB), bought for a scan nobody has measured as costly and a consumer that does not exist. If rclcpp `EventsExecutor` compatibility is ever wanted, that is a phase with a stated goal, not three slots kept warm (issue 0960)."
+
 
 [rmw_set_log_severity]
 where = "vtable"
@@ -382,31 +380,25 @@ nano = "subscription_get_actual_qos"
 reason = "subscription_get_actual_qos — as above"
 
 [rmw_subscription_get_content_filter]
-where = "vtable"
-nano = "subscription_get_content_filter"
-status = "not-implemented"
-issue = 956
-reason = "subscription_get_content_filter — as above"
+where = "declined"
+status = "not-supported"
+reason = "as rmw_subscription_set_content_filter — declined with it, since a getter for a filter nothing can set is not a capability (issue 0956)."
 
 [rmw_subscription_get_network_flow_endpoints]
-where = "vtable"
-nano = "subscription_get_network_flow_endpoints"
-status = "not-implemented"
-issue = 956
-reason = "subscription_get_network_flow_endpoints — as above"
+where = "declined"
+status = "not-supported"
+reason = "as rmw_publisher_get_network_flow_endpoints (issue 0956)."
 
 [rmw_subscription_set_content_filter]
-where = "vtable"
-nano = "subscription_set_content_filter"
-status = "not-implemented"
-issue = 956
-reason = "subscription_set_content_filter — W5. \"DDS-only, would bloat every non-DDS backend\" argues for a NULL SLOT, not for absence: a declined symbol is missing from the ABI for the backend that CAN answer too, and one pointer is what the bloat actually costs"
+where = "declined"
+status = "not-supported"
+reason = "DECLINED, phase-407: network-side content filtering needs a DDS feature our pinned Cyclone does not have. 0.10.5 exposes `dds_set_topic_filter{,_and_arg,_extended}` — a LOCAL sample callback applied after the message arrives — and not `dds_create_topic_filtered`, which is the one that propagates the predicate to the writer. Shipping the local filter under this name would promise saved BANDWIDTH and deliver saved CPU, which is the class of deviation reason W4 spent its time undoing. The slot existed from phase-376 W5 to 2026-08-31 and no backend ever filled it (issue 0956)."
 
 [rmw_subscription_set_on_new_message_callback]
-where = "vtable"
-nano = "subscription_set_on_new_message_callback"
-status = "not-implemented"
-issue = 960
+where = "declined"
+status = "not-supported"
+reason = "as rmw_service_set_on_new_request_callback — and note the header had argued, correctly, that `set_wake_callback` does NOT cover this trio: it is session-scoped and serves subscriptions, services and clients identically. That is why these are DECLINED rather than re-mapped: nothing else answers them, and we have decided not to (issue 0960)."
+
 
 [rmw_take]
 where = "vtable"

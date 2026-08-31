@@ -2,10 +2,10 @@
 id: 960
 title: "The per-entity readiness callback trio is declared, unfilled, and
   undecided — and `set_wake_callback` does not answer it"
-status: open
+status: resolved
 type: tech-debt
 area: rmw
-related: [phase-406, 0956, 0800]
+related: [phase-406, phase-407, 0956, 0800, 0827]
 ---
 
 ## Problem
@@ -90,3 +90,36 @@ an argued replacement, not a placeholder: "the capabilities the runtime
 actually branches on are each their own slot, answered by nullity or a
 dedicated probe, which is a narrower and checkable mechanism." That names what
 answers the capability. The callback trio's reason never did.
+
+## Resolution, 2026-08-31 — DECLINED, and the three slots are deleted
+
+Option 2. Readiness belongs to the executor here, and the measurement says the
+gap costs almost nothing:
+
+```rust
+// packages/core/nros-node/src/executor/spin.rs — spin_once
+for (i, meta) in self.entries.iter().enumerate() {
+    if unsafe { (meta.has_data)(data_ptr) } { … }
+}
+```
+
+One vtable call per entity per wake, on images whose entity count is single
+digits. So implementing the trio would save a scan nobody has measured as
+costly.
+
+What it would COST is concrete. Upstream's callback carries `number_of_events`,
+so honouring the contract means every backend tracking per-entity pending
+DEPTH — new per-entity state on a target where static RAM is already the
+pressure (issue 0827 measures a talker reserving 275 KB of service and
+large-block arena). New state, for a scan-skip nobody needs, for a consumer that
+does not exist.
+
+The parity argument is real but conditional: rclcpp's `EventsExecutor` is built
+on these callbacks. If that compatibility is ever wanted it is a phase with a
+stated goal, not three slots kept warm against the possibility.
+
+Recorded so the next reader does not re-litigate: `set_wake_callback` does NOT
+answer these. It is session-scoped and carries no count, so a consumer holding
+only it must poll every entity anyway. The two mechanisms answer different
+questions; we implement one and decline the other, and the map now says exactly
+that instead of pointing at a slot the header itself said does not cover them.

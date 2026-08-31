@@ -2,10 +2,10 @@
 id: 956
 title: "Four W4 parity slots are declared, unfilled, and undecided: content
   filtering and network flow endpoints"
-status: open
+status: resolved
 type: tech-debt
 area: rmw
-related: [phase-406, 0800]
+related: [phase-406, phase-407, 0800]
 ---
 
 ## Problem
@@ -58,3 +58,28 @@ Either is a fine outcome; leaving it unstated is not:
 
 The one thing that must not happen is a third phase in which they are still
 declared, still unfilled, and still unexplained.
+
+## Resolution, 2026-08-31 — DECLINED, and the four slots are deleted
+
+Option 2 of the two above, for both families, and the deciding fact for content
+filtering was measured rather than argued:
+
+**Our pinned Cyclone cannot do it.** 0.10.5 exposes `dds_set_topic_filter`,
+`dds_set_topic_filter_and_arg` and `dds_set_topic_filter_extended` — a LOCAL
+sample callback applied after the message arrives — and NOT
+`dds_create_topic_filtered`, the one that propagates the predicate to the writer.
+So "implement it on the backend that can" had no backend. What was available was
+a different feature under upstream's name: it would promise saved BANDWIDTH and
+deliver saved CPU. That is the shape of deviation reason W4 spent its time
+undoing, so it was not worth having.
+
+**Network flow endpoints** are diagnostics whose value is in a multi-homed
+deployment with dynamic discovery — the case least like this ABI's target, where
+one interface and a static config mean the answer is in the file you already
+wrote. No consumer in-tree. Declined, with the note that Cyclone-only support is
+cheap to revisit if `ros2` tooling ever needs to introspect a nano-ros node: it
+is read-only and has no wire effect.
+
+Deleted rather than left NULL, per issue 0800: a declared slot nothing will ever
+fill reads as capability, and that is exactly how these four came to be counted
+as answered for two phases.

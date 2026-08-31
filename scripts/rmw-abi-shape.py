@@ -392,21 +392,6 @@ ARG_DEVIATIONS = {
         "shape the caller has to know out of band"
     ),
     # ---- Content filter / network flows: allocation replaced by a visitor ----
-    "subscription_set_content_filter": (
-        "upstream passes an allocated `rmw_subscription_content_filter_options_t` "
-        "(a `char *` plus an `rcutils_string_array_t`); ours passes the expression "
-        "and its parameters directly, because there is no allocator at this seam "
-        "and that struct exists only to own the allocation"
-    ),
-    "subscription_get_content_filter": (
-        "visitor instead of the allocating options struct + `rcutils_allocator_t *`, "
-        "as subscription_set_content_filter"
-    ),
-    "publisher_get_network_flow_endpoints": (
-        "visitor instead of an allocating `rmw_network_flow_endpoint_array_t` + "
-        "`rcutils_allocator_t *`; the flow count is a property of the OS routing "
-        "table, not something the caller can size in advance"
-    ),
     "subscription_get_network_flow_endpoints": ("as publisher_get_network_flow_endpoints"),
     # ---- Events ----
     "publisher_event_init": (

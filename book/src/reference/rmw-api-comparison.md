@@ -84,9 +84,8 @@ rmw must provide" than any reading of the headers.
 | same | 12 | 1 |  |  |  |  |  |  | **13** |
 | re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
 | re-mapped | 15 |  | 4 | 1 | 3 | 3 | 2 |  | **28** |
-| not supported — *by decision* |  |  |  |  |  |  |  | 6 | **6** |
-| not implemented — *tracked* | 7 |  |  |  |  |  |  |  | **7** |
-| **total** | **67** | **2** | **4** | **1** | **3** | **3** | **2** | **6** | **88** |
+| not supported — *by decision* |  |  |  |  |  |  |  | 13 | **13** |
+| **total** | **60** | **2** | **4** | **1** | **3** | **3** | **2** | **13** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
 **not implemented** should shrink over time; **not supported** is the one
@@ -199,20 +198,15 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-same'>● same</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_client_set_on_new_response_callback</span><span class=pu>(</span>
   <span class='ty'>rmw_client_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>client_set_on_new_response_callback</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>rmw_client_t *client</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty'>const void *user_data</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0960</div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as rmw_service_set_on_new_request_callback (issue 0960).</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -855,19 +849,15 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-same'>● same</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_publisher_get_network_flow_endpoints</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
-  <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
-  <span class='ty del'>rmw_network_flow_endpoint_array_t *</span>
+  <span class='ty'>rcutils_allocator_t *</span><span class=pu>,</span>
+  <span class='ty'>rmw_network_flow_endpoint_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>publisher_get_network_flow_endpoints</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
-  <span class='ty add'>rmw_network_flow_endpoint_visitor_t visitor</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>DECLINED, phase-407: reporting the transport&#x27;s 5-tuples is diagnostics, and the value is in a multi-homed deployment with dynamic discovery — the case least like this ABI&#x27;s target, where one interface and a static config mean the answer is already in the file you wrote. Landed in phase-376 W5 for shape parity, never filled, never read (issue 0956). Cheap to revisit for Cyclone alone if `ros2` tooling ever needs to introspect a nano-ros node: it is read-only and has no wire effect.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1007,20 +997,15 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_service_set_on_new_request_callback</span><span class=pu>(</span>
   <span class='ty'>rmw_service_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>service_set_on_new_request_callback</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>rmw_service_t *service</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty'>const void *user_data</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0960</div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>DECLINED, phase-407: readiness belongs to the EXECUTOR here, not to the backend. `set_wake_callback` says &quot;something on this session moved&quot; and `spin_once` then walks its entry table calling `has_data` per entity — one vtable call each, on images whose entity count is single digits. Upstream&#x27;s per-entity callback carries `number_of_events`, so honouring it means every backend tracking per-entity pending DEPTH: new state on a target where static RAM is already the pressure (issue 0827 measures a talker reserving 275 KB), bought for a scan nobody has measured as costly and a consumer that does not exist. If rclcpp `EventsExecutor` compatibility is ever wanted, that is a phase with a stated goal, not three slots kept warm (issue 0960).</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1079,63 +1064,44 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-same'>● same</div></td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_subscription_get_content_filter</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
-  <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
-  <span class='ty del'>rmw_subscription_content_filter_options_t *</span>
+  <span class='ty'>rcutils_allocator_t *</span><span class=pu>,</span>
+  <span class='ty'>rmw_subscription_content_filter_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>subscription_get_content_filter</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
-  <span class='ty add'>rmw_content_filter_visitor_t visitor</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>reserved shape, no backend</b> — Content filtering is declared for parity shape; no backend implements it, so the options type has no consumer to shape it for.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as rmw_subscription_set_content_filter — declined with it, since a getter for a filter nothing can set is not a capability (issue 0956).</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_subscription_get_network_flow_endpoints</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
-  <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
-  <span class='ty del'>rmw_network_flow_endpoint_array_t *</span>
+  <span class='ty'>rcutils_allocator_t *</span><span class=pu>,</span>
+  <span class='ty'>rmw_network_flow_endpoint_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>subscription_get_network_flow_endpoints</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
-  <span class='ty add'>rmw_network_flow_endpoint_visitor_t visitor</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as rmw_publisher_get_network_flow_endpoints (issue 0956).</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_subscription_set_content_filter</span><span class=pu>(</span>
   <span class='ty'>rmw_subscription_t *</span><span class=pu>,</span>
-  <span class='ty del'>const rmw_subscription_content_filter_options_t *</span>
+  <span class='ty'>const rmw_subscription_content_filter_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>subscription_set_content_filter</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>rmw_subscription_t *subscription</span><span class=pu>,</span>
-  <span class='ty add'>const char *expression</span><span class=pu>,</span>
-  <span class='ty add'>const char *const *parameters</span><span class=pu>,</span>
-  <span class='ty add'>size_t parameter_count</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>reserved shape, no backend</b> — Content filtering is declared for parity shape; no backend implements it, so the options type has no consumer to shape it for.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>DECLINED, phase-407: network-side content filtering needs a DDS feature our pinned Cyclone does not have. 0.10.5 exposes `dds_set_topic_filter{,_and_arg,_extended}` — a LOCAL sample callback applied after the message arrives — and not `dds_create_topic_filtered`, which is the one that propagates the predicate to the writer. Shipping the local filter under this name would promise saved BANDWIDTH and deliver saved CPU, which is the class of deviation reason W4 spent its time undoing. The slot existed from phase-376 W5 to 2026-08-31 and no backend ever filled it (issue 0956).</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_subscription_set_on_new_message_callback</span><span class=pu>(</span>
   <span class='ty'>rmw_subscription_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><pre><span class=ret>rmw_ret_t</span>
-<span class=pu>(*</span><span class='fn'>subscription_set_on_new_message_callback</span><span class=pu>)</span><span class=pu>(</span>
-  <span class='ty'>rmw_subscription_t *subscription</span><span class=pu>,</span>
-  <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
-  <span class='ty'>const void *user_data</span>
-<span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0960</div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as rmw_service_set_on_new_request_callback — and note the header had argued, correctly, that `set_wake_callback` does NOT cover this trio: it is session-scoped and serves subscriptions, services and clients identically. That is why these are DECLINED rather than re-mapped: nothing else answers them, and we have decided not to (issue 0960).</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

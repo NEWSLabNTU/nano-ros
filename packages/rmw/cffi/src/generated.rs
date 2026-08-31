@@ -337,18 +337,6 @@ pub struct rmw_topic_endpoint_info_visitor_t {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct rmw_content_filter_visitor_t {
-    pub visit: rmw_content_filter_visit_fn,
-    pub ctx: *mut core::ffi::c_void,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct rmw_network_flow_endpoint_visitor_t {
-    pub visit: rmw_network_flow_endpoint_visit_fn,
-    pub ctx: *mut core::ffi::c_void,
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct nros_rmw_vtable_t {
     #[doc = " Create a session (phase-301: renamed from `open` to the table's\n  own `create_*` convention). The runtime supplies a\n  zero-initialised `rmw_session_t` via @p out with\n  `node_name` / `namespace_` already filled. The backend writes\n  `out->backend_data`.\n\n  @param mode One of `nros_rmw_session_mode_t`. Passed as `uint8_t`\n              rather than the enum to keep the slot's width fixed\n              across compilers. A backend with no peer/client\n              distinction must IGNORE it, not reject it.\n  @param options NULLable; NULL means every default. Issue 0808 — the\n              home for init-time context this flat list cannot grow\n              without another break. `mode` is NOT moved into it: doing\n              so would be a second break for no gain, and it is already\n              a named argument every backend reads. What moved in are the\n              two fields issue 0785 measured as GAPS, `localhost_only`\n              and `enclave`."]
     pub create_session: ::core::option::Option<
@@ -715,30 +703,6 @@ pub struct nros_rmw_vtable_t {
             message_info: *mut rmw_message_info_t,
         ) -> rmw_ret_t,
     >,
-    #[doc = " Upstream `rmw_service_set_on_new_request_callback`. Exact parity.\n\n  Wake the executor when a request arrives, from the transport's own\n  thread or an ISR. `set_wake_callback` is the SESSION-level sibling and\n  does not cover this: it is installed once at open and says nothing about\n  which entity woke. Without a per-entity callback a service-heavy image\n  polls where a subscription-heavy one sleeps.\n\n  The callback is upstream's `rmw_event_callback_t` shape — which is why\n  our DDS status-event callback had to give the name back\n  (`rmw_status_event_callback_t`)."]
-    pub service_set_on_new_request_callback: ::core::option::Option<
-        unsafe extern "C" fn(
-            service: *mut rmw_service_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
-        ) -> rmw_ret_t,
-    >,
-    #[doc = " Upstream `rmw_client_set_on_new_response_callback`. Exact parity."]
-    pub client_set_on_new_response_callback: ::core::option::Option<
-        unsafe extern "C" fn(
-            client: *mut rmw_client_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
-        ) -> rmw_ret_t,
-    >,
-    #[doc = " Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.\n\n  The third of the family, added with the other two rather than left\n  recorded as \"covered by `set_wake_callback`\" — it never was: that slot\n  is session-scoped and serves subscriptions, services and clients\n  identically."]
-    pub subscription_set_on_new_message_callback: ::core::option::Option<
-        unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
-            callback: rmw_event_callback_t,
-            user_data: *const core::ffi::c_void,
-        ) -> rmw_ret_t,
-    >,
     #[doc = " Upstream `rmw_get_node_names` AND `rmw_get_node_names_with_enclaves`.\n\n  One slot, two upstream names: upstream split them only because appending\n  to a fixed out-parameter list would have broken its ABI. A visitor has\n  no such list, so the enclave is simply a fourth argument, NULL where\n  untracked. Recorded in the checker's grouping table."]
     pub get_node_names: ::core::option::Option<
         unsafe extern "C" fn(
@@ -815,36 +779,6 @@ pub struct nros_rmw_vtable_t {
             topic_name: *const core::ffi::c_char,
             no_mangle: bool,
             visitor: rmw_topic_endpoint_info_visitor_t,
-        ) -> rmw_ret_t,
-    >,
-    #[doc = " Upstream `rmw_subscription_set_content_filter`.\n\n  Phase 376 W5. Previously DECLINED as \"DDS-only, would bloat every\n  non-DDS backend\" — but a declined symbol is absent from the ABI for\n  EVERY backend, including the one that can answer. A NULL slot costs one\n  pointer, lets Cyclone answer, and is what the runtime already reads as\n  UNSUPPORTED everywhere else. Narrowest scope wins.\n\n  Deviation, declared: upstream passes an allocated\n  `rmw_subscription_content_filter_options_t` (a `char *` plus an\n  `rcutils_string_array_t`); ours passes the expression and its parameters\n  directly, because there is no allocator at this seam and the options\n  struct exists only to own that allocation. `expression == NULL` clears\n  the filter."]
-    pub subscription_set_content_filter: ::core::option::Option<
-        unsafe extern "C" fn(
-            subscription: *mut rmw_subscription_t,
-            expression: *const core::ffi::c_char,
-            parameters: *const *const core::ffi::c_char,
-            parameter_count: usize,
-        ) -> rmw_ret_t,
-    >,
-    #[doc = " Upstream `rmw_subscription_get_content_filter`. Visitor, for the same\n  reason `set` takes plain arguments: the options struct is an allocation\n  we have nothing to make."]
-    pub subscription_get_content_filter: ::core::option::Option<
-        unsafe extern "C" fn(
-            subscription: *const rmw_subscription_t,
-            visitor: rmw_content_filter_visitor_t,
-        ) -> rmw_ret_t,
-    >,
-    #[doc = " Upstream `rmw_publisher_get_network_flow_endpoints`.\n\n  Phase 376 W5. The old decline said \"zenoh-pico/XRCE have no such\n  notion\", which is true of those two and says nothing about Cyclone —\n  the reason was scoped to the ABI when it belonged on a backend. NULL\n  there, present here.\n\n  Deviation, declared: a visitor instead of the allocating\n  `rmw_network_flow_endpoint_array_t` + `rcutils_allocator_t *`."]
-    pub publisher_get_network_flow_endpoints: ::core::option::Option<
-        unsafe extern "C" fn(
-            publisher: *const rmw_publisher_t,
-            visitor: rmw_network_flow_endpoint_visitor_t,
-        ) -> rmw_ret_t,
-    >,
-    #[doc = " Upstream `rmw_subscription_get_network_flow_endpoints`."]
-    pub subscription_get_network_flow_endpoints: ::core::option::Option<
-        unsafe extern "C" fn(
-            subscription: *const rmw_subscription_t,
-            visitor: rmw_network_flow_endpoint_visitor_t,
         ) -> rmw_ret_t,
     >,
     #[doc = " Upstream `rmw_count_publishers`."]

@@ -109,32 +109,11 @@ INERT_FAMILIES = {
         "runtime gets publisher GID and timestamps from the attachment on the "
         "message it already took, so it has never needed the variant",
     ),
-    "on-new-callbacks": (
-        (
-            "service_set_on_new_request_callback",
-            "client_set_on_new_response_callback",
-            "subscription_set_on_new_message_callback",
-        ),
-        "upstream's per-entity readiness callbacks. `set_wake_callback` is this "
-        "ABI's answer and it is per-SESSION, which is the shape an executor "
-        "driving several backends can use; the per-entity trio is reserved for "
-        "parity",
-    ),
     "graph-guard": (
         ("node_get_graph_guard_condition",),
         "a guard condition fired on graph change. Guard conditions here are a "
         "platform primitive the executor owns, not something a backend hands out, "
         "and nothing consumes graph change events",
-    ),
-    "content-filter": (
-        ("subscription_set_content_filter", "subscription_get_content_filter"),
-        "DDS content-filtered topics. Landed in W4 for shape parity; no backend "
-        "implements filtering and the runtime never asks",
-    ),
-    "network-flow": (
-        ("publisher_get_network_flow_endpoints", "subscription_get_network_flow_endpoints"),
-        "reporting the transport's endpoints. Landed in W4 for shape parity; "
-        "diagnostic only, and nothing diagnoses",
     ),
 }
 
