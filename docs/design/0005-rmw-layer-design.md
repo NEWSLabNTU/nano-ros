@@ -640,6 +640,28 @@ type name, type hash and the hint the caller supplied, and use `*out_bytes` on
 `NROS_RMW_RET_OK` — treating `NULL` and `NROS_RMW_RET_UNSUPPORTED` identically,
 as the hint, falling back to the configured default only when the hint is `0`.
 
+### `required_rx_bytes` is permanently optional (decided 2026-08-31)
+
+A NULL slot means "the hint is the answer", and that is a CORRECT answer rather
+than a degraded one. cyclonedds and XRCE keep a single receive buffer, so the
+hint is precisely what they would return; requiring the slot would not delete
+that case, only relocate it into five identical `*out_bytes = hint` bodies one
+layer down, where it is less visible than a NULL whose meaning this document
+pins down.
+
+A backend should answer only when it can say something the caller did not
+already know. zenoh-pico can, because it keeps size classes and frames payloads,
+so a type's requirement and the backend's own rounding genuinely differ. Most
+backends cannot.
+
+**The concept generalises to every backend; a useful ANSWER does not.** That
+asymmetry is the reason, and unlike the sequencing argument -- which dissolves
+the moment a dispatch site exists -- it does not expire.
+
+Promotion remains cheap if that ever stops being true: it is a change to the
+registration check, not to the struct. The honest trigger would be "every
+backend can answer something better than the hint", which is false today.
+
 ## Reference Documents
 
 - **RMW trait design inspiration**: `docs/reference/rmw-h-analysis.md` — Analysis of ROS 2's `rmw.h` for embedded, 6 limitations identified, what to adopt vs avoid
