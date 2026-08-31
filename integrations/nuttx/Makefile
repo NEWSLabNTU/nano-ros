@@ -80,7 +80,19 @@ clean::
 # RMW choice maps onto those names.
 # nros-c features. Names mirror what `packages/api/nros-c/CMakeLists.txt`
 # passes to Corrosion. nros-c uses `cffi-zenoh-cffi` etc.
-NROS_C_FEATURES := std ros-humble platform-nuttx
+# issue 0947 — derived, so a new edition needs no edit here. The Kconfig choice
+# guarantees the value is one of the three; `patsubst "%",%` strips the quotes
+# Kconfig puts around a string symbol, the same way NROS_APPS_ARCH does above.
+NROS_ROS_EDITION := $(patsubst "%",%,$(CONFIG_NROS_ROS_EDITION))
+ifeq ($(NROS_ROS_EDITION),)
+# Not a default. The Kconfig choice always yields a value when
+# integrations/nuttx/Kconfig is sourced, so an empty one means it is NOT — and
+# quietly picking humble there is the RFC-0056 wire mismatch: it builds clean
+# and fails on the wire. Say so instead.
+$(error CONFIG_NROS_ROS_EDITION is unset — is integrations/nuttx/Kconfig sourced?)
+endif
+
+NROS_C_FEATURES := std ros-$(NROS_ROS_EDITION) platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
 NROS_C_FEATURES += cffi-zenoh-cffi
 endif
@@ -90,14 +102,11 @@ endif
 ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
 NROS_C_FEATURES += rmw-cffi
 endif
-ifneq ($(CONFIG_NROS_ROS_IRON),)
-NROS_C_FEATURES := $(filter-out ros-humble,$(NROS_C_FEATURES)) ros-iron
-endif
 
 # nros-cpp features. Different per-backend feature names from nros-c
 # (rmw-{zenoh,xrce,cyclonedds}-cffi instead of cffi-{...}). Mirrors
 # `packages/api/nros-cpp/CMakeLists.txt`.
-NROS_CPP_FEATURES := std ros-humble platform-nuttx
+NROS_CPP_FEATURES := std ros-$(NROS_ROS_EDITION) platform-nuttx
 ifneq ($(CONFIG_NROS_RMW_ZENOH),)
 NROS_CPP_FEATURES += rmw-zenoh-cffi
 endif
@@ -106,9 +115,6 @@ NROS_CPP_FEATURES += rmw-xrce-cffi
 endif
 ifneq ($(CONFIG_NROS_RMW_CYCLONEDDS),)
 NROS_CPP_FEATURES += rmw-cffi
-endif
-ifneq ($(CONFIG_NROS_ROS_IRON),)
-NROS_CPP_FEATURES := $(filter-out ros-humble,$(NROS_CPP_FEATURES)) ros-iron
 endif
 
 # Pass the feature set + NuttX include dir to Cargo via env.
