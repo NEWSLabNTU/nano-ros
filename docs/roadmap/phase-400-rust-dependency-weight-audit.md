@@ -233,6 +233,67 @@ is confined to `main_macro.rs` (verified: `tier_from_model`,
 modules `qos_override` / `sidecar_slots` / `model_location` / `wcet` are exactly
 what the other arms use). What is missing is a reason, in seconds.
 
+### W2 orchestration half — the seconds arrived 2026-08-31, and they say DECLINE
+
+The missing reason was measured. It is **3.96 CPU-s of the leaf's 118.3, or
+3.3 %**, and that does not buy the refactor.
+
+**Method, in two halves, because neither answers alone.** *Which* crates leave
+is a property of the LEAF (the workspace graph has already been optimistic
+three times in this document); *what they cost* needs a timings report, and the
+leaf's own cold report costs a 1.2 GB delete and a full rebuild.
+
+  1. `just leaf-graph <leaf>/rust/target --side host --exclusive-to
+     nros-orchestration-ir --exclusive-to ros-launch-manifest-model`, on a
+     FRESHLY BUILT leaf (the W4 stale-record rule) — **15 crates** of the 112
+     the host side actually builds:
+     `arraydeque byteorder encoding_rs hash32 hashlink heapless nros_core
+     nros_rmw nros_serdes ros_launch_manifest_sched ros_launch_manifest_types
+     stable_deref_trait thiserror thiserror_impl yaml_rust2`.
+  2. cold `cargo build -p nros-macros --release --timings` into a scratch
+     target dir (18.3 CPU-s, 53 packages) for the per-crate durations, summed
+     over those 15 plus the two gated crates themselves.
+
+`zerocopy` (1.70 s, the largest single unit in the standalone graph and the one
+the original W2 write-up called "the largest single unit freed") is **not** in
+the leaf's removable set. Nor are `ahash`, `hashbrown`, `serde_yaml_ng` or
+`unsafe-libyaml`. They are contested — other requirers in the leaf hold them —
+which is the third time this document has had to record that a subtree
+difference is an upper bound and not a measurement.
+
+**The bound is generous in the safe direction.** These durations come from a
+standalone `--release` build, not from the leaf's own host units, which compile
+under the build-override profile and are FASTER — the cold leaf report in the
+next section puts `nros-orchestration-ir` at 0.07 s where this one puts it at
+0.28 s, about 4x. So 3.96 s is a ceiling; the leaf figure is plausibly 1-2 s.
+
+**Against that, the cost is unchanged and it is not small:** split
+`nros-orchestration-ir` (the cut separates ITEMS, not files — `lib.rs` and
+`executor_sizing.rs` are both on the every-arm path AND touch the model types),
+a default-off `model` feature, a `launch` feature threaded through ~22 leaf
+manifests plus the codegen emitter, a required-feature `compile_error!` path, a
+`TierBake` boundary type, 13 `unused_mut` suppressions, and another round of
+leaf-lockfile churn under the `just lock-update`-only rule.
+
+*Status: W2 orchestration half DECLINED on measurement, not deferred.* Recorded
+as declined rather than left open on purpose: "not yet implemented" is an
+invitation to recompute the same estimate a fourth time, and the estimate is
+not the problem — three of them were optimistic and this one is finally
+attributed. Reopen it only if the leaf's own cold `--timings` disagrees with
+the ceiling above by an order of magnitude, or if a future change makes those
+15 crates cost materially more.
+
+One finding worth keeping from the code reading, because it makes the design
+CLEANER than the revert left it: every `nros-orchestration-ir` item that
+`nros-macros` names is confined to `main_macro.rs` and
+`source_metadata_sidecars.rs`, and `qos_override::{lower_all, is_qos_override}`
+— the reason `nros-rmw`, and with it `nros-core`/`nros-serdes`/`heapless`, is
+in the host graph at all — sits inside the `if let Some(model_lit)` branch at
+`main_macro.rs:597`. So the whole `nros-rmw` tail IS launch-only, which the
+revert's "needed on every arm" table did not establish. That is why the leaf
+set is 15 crates and not the 9 the previous section reports. It still costs
+3.96 s.
+
 ## W2 measured on the real build — `cargo build --timings`, cold
 
 `--timings` injected into the Zephyr talker's `EXTRA_CARGO_ARGS`, the leaf's
@@ -287,6 +348,7 @@ lever lands and nothing else changes.
 | wave | lever | exclusive | share |
 | --- | --- | --- | --- |
 | W2 | gate orchestration **and** cbindgen, together | ~~**50.4 s**~~ see below | ~~42.6 %~~ |
+| W2 | *orchestration half — DECLINED 2026-08-31 on measurement* | 3.96 s (ceiling) | 3.3 % |
 | W3 | ~~`bindgen` -> committed output~~ RETRACTED | ~~20.6 s~~ 0 s | — |
 | W4 | *landed* — `just leaf-graph`: ask the build, not the workspace | (enabling) | — |
 | W1 | *landed* — unused dep removed | 1 crate | — |
@@ -1347,8 +1409,11 @@ One crate (67 -> 66): everything it brought is also reached through
 
 ## Directions, in measured order
 
-1. **Gate the orchestration half of `nros-macros`** — see W2, and note it must
-   ship WITH the cbindgen move or the contested pool stays put.
+1. ~~**Gate the orchestration half of `nros-macros`**~~ — DECLINED 2026-08-31,
+   measured at 3.96 CPU-s (3.3 %, a ceiling). See "W2 orchestration half — the
+   seconds arrived" above. It could only ever have paid WITH the cbindgen move,
+   and W2a took that alone; the contested pool it would have unlocked is held
+   by requirers this lever does not touch.
 2. **`bindgen` at build time — 18.4 %.** The repo ALREADY has the alternative and
    proved it: RFC-0054 commits bindgen output for the ABI crates
    (`nros-{rmw,platform,board}-cffi/src/generated.rs`) and gates staleness with
