@@ -83,6 +83,107 @@ so each was reported twice under two labels — and the ERROR block named them
 partition bug. Now `--builder cargo`, matching `is_cargo_row`. That removed the
 ERROR block; the oscillation above is what remains.
 
+## Direction 1 answered: it is not a SHARED artifact, it is a DUPLICATED one
+
+The hunt asked which output one family produces that the other's signature
+hashes. The answer is neither — the two families never share the directory at
+all. They each get their own, because the shared-cargo key hashes a field that
+does not affect what the directory holds.
+
+`build/corrosion-cargo/threadx-riscv64/` holds FOUR groups where the
+configuration space has two:
+
+    036d16e80e45  platform=threadx          rmw=zenoh       board=riscv64-qemu  ...
+    89bb1118ba8f  platform=threadx_riscv64  rmw=zenoh       board=riscv64-qemu  ...
+    591f35a52a72  platform=threadx          rmw=cyclonedds  board=riscv64-qemu  ...
+    4ec5af25ffb6  platform=threadx_riscv64  rmw=cyclonedds  board=riscv64-qemu  ...
+
+Same board, target, profile and rmw; two spellings of one platform. Both are
+populated with real builds — 2.8 GB / 12 `libnros_c*.a` against 595 MB / 14 for
+the zenoh pair alone.
+
+And the split is exactly by family:
+
+    036d16e80e45 (platform=threadx)            6 leaves, all examples/.../rust/*
+    89bb1118ba8f (platform=threadx_riscv64)   13 leaves, all c/ and cpp/
+
+Six rust leaves x two rmw build dirs = the same **twelve** rows this issue
+already identified as the ones the probe could not partition.
+
+## Where the second spelling comes from
+
+`examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt:11`:
+
+    set(NANO_ROS_PLATFORM threadx)
+
+A plain `set()` creates a NORMAL variable that shadows the cache entry
+`-DNANO_ROS_PLATFORM=threadx_riscv64` wrote, so everything downstream in that
+leaf — including `packages/api/nros-c/CMakeLists.txt`'s
+`nros_share_corrosion_cargo_dir(KEY "platform=${NANO_ROS_PLATFORM}" ...)` — sees
+`threadx`. The C/C++ leaves set nothing and take the `-D` value. Both spellings
+end up in one leaf's own state: its `CMakeCache.txt` says `threadx_riscv64`
+while its `cargo` symlink points at the `platform=threadx` group, both written in
+the same second.
+
+## Why the obvious fix is wrong
+
+Deleting the hardcode is not available: FIVE sites key on the exact string,
+including the ThreadX carrier arm in `NanoRosNodeRegister.cmake:619` and
+`nros-rmw-zenoh-staticlib/CMakeLists.txt:30`. The value is load-bearing for
+cmake dispatch.
+
+**But it is not load-bearing for cargo.** `NanoRosFeatureSet.cmake` resolves both
+spellings to the same feature list on this board:
+
+    threadx_riscv64  -> alloc platform-threadx
+    threadx          -> if(_cross) alloc platform-threadx     # riscv64-qemu IS cross
+
+So `NANO_ROS_PLATFORM` carries two meanings at once — a platform FAMILY for cmake
+dispatch and a platform VARIANT for tier selection — and the cargo directory key
+hashes the label instead of what the label resolves to.
+
+## Recommended fix
+
+Key the shared cargo directory on the **resolved cargo feature set**, not the
+platform label. Features, profile and target are exactly what determine the
+artifacts in that directory; the platform string is a cmake-dispatch detail that
+happens to correlate. `nros_feature_set` already computes the list, and `caps=`
+and `target=` are already in the key, so this is a substitution rather than a new
+input.
+
+Cost, stated plainly: every existing group hash changes, so the first build after
+it lands is a full rebuild of the corrosion cargo dirs. That is a one-time price
+for ending a permanent duplicate.
+
+### The survey is done: ThreadX is the only platform that splits
+
+    freertos          1 group   platform=freertos
+    native            4 groups  posix x {zenoh, xrce, cyclonedds} + caps=safety   <- all legitimate
+    threadx-linux     2 groups  threadx_linux x {zenoh, cyclonedds}               <- legitimate
+    threadx-riscv64   4 groups  {threadx, threadx_riscv64} x {zenoh, cyclonedds}  <- HALF are duplicates
+    nuttx, nuttx-riscv            a different key shape entirely (triple|profile|ffi)
+
+Every other platform has exactly one spelling, and their multiple groups differ
+by `rmw` or `caps` — real configuration differences. So the duplication is
+confined to the six ThreadX rust leaves, and the blast radius of a re-key is
+smaller than feared: no other pair would collapse, and none would split.
+
+Not done here, and the reason is cost rather than doubt. Substituting the
+resolved feature list for `platform=` changes EVERY group's hash, so the next
+build after it lands rebuilds every corrosion cargo directory on every platform —
+a one-time full rebuild that should be scheduled, not slipped into an unrelated
+branch at the end of a session.
+
+The two candidate fixes, for whoever takes it:
+
+1. **Key on the resolved feature set** (recommended). Honest — features, profile
+   and target are exactly what determine the directory's contents. One line at
+   the call site in `packages/api/nros-c/CMakeLists.txt`. Re-keys everything.
+2. **Normalise the platform label in the key only.** Narrow, no behaviour change
+   anywhere else, and it fixes the one real case — but it encodes
+   `threadx_riscv64 ~ threadx` as a fact about ThreadX rather than as the general
+   rule, so the next platform that grows a variant repeats this issue.
+
 ## Directions
 
 1. **Find the shared artifact.** The candidates are the rmw staticlibs and the
