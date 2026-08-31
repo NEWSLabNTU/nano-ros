@@ -1,6 +1,6 @@
 # phase-407 — the scope you name IS the specification
 
-**Status (2026-08-31). Design agreed; W1–W4 open.**
+**Status (2026-08-31). W1–W4 landed.**
 
 Implements the workflow half of RFC-0061's tier discipline. Sibling of
 phase-399 (the justfile surface) and phase-395 (the CI event design); it does
@@ -108,7 +108,7 @@ What absorbs it:
 | `source ./activate.sh` ×9 | recipes self-activate |
 | submodule init, CLI build, `nros setup --source …` | `just setup <scope>` |
 | separate fixture-build step | `just test <scope>` |
-| `NROS_FIXTURES_OPTIONAL` | deleted — its job was tolerating the mismatch |
+| `NROS_FIXTURES_OPTIONAL` | banned from CI (`check-ci-no-fixture-tolerance`) |
 | `lane=` ↔ platform translation | one scope vocabulary |
 
 Runner tuning (`NROS_BUILD_JOBS`, `RUSTFLAGS`, job counts) STAYS in `env:`. That
@@ -137,7 +137,12 @@ platform sets, `just <plat> <verb>` kept as a deprecated alias for one release.
 that is a real incompatibility for anyone typing `just test 1`.
 
 **W4 — CI as transcripts.** Only safe once W1–W3 hold, because the YAML stops
-carrying the compensating boilerplate. `NROS_FIXTURES_OPTIONAL` is deleted here.
+carrying the compensating boilerplate. `NROS_FIXTURES_OPTIONAL` is banned from CI here — NOT deleted outright, which
+is a deliberate amendment to this doc's earlier wording. The reader in
+`nros-tests` is a legitimate LOCAL opt-in for a developer who has provisioned
+one platform; deleting it would remove a real affordance in order to fix a
+CI-only defect. The rule is about WHO SETS IT, so the gate is about where it
+appears.
 
 ## Accepted consequences
 

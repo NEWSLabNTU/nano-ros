@@ -103,14 +103,22 @@ jobs:
       # A lane answers two questions with different answers: which fixtures must
       # be FRESH (its cell cover) and which must EXIST (a property of the run).
       # `lane=tier2` is the build tier 2's run requires — see #482 / phase-340 W3.
-      - name: Build tier-2 fixtures
+      # phase-407 W4 — a CI job is `just setup <scope>` then `just test <scope>`.
+      # Only the SCOPE differs between lanes, so this file reads as a transcript
+      # of a user session and "does CI do what I do?" is answerable by looking.
+      #
+      # What these two lines replaced: a `build-test-fixtures lane=tier2` step
+      # plus a `ci matrix` step, i.e. the lane vocabulary spelled twice with the
+      # reader left to know they must agree. `just test tier2` builds what that
+      # scope needs and runs exactly it.
+      - name: just setup tier2
         run: |
           source ./activate.sh
-          just build-test-fixtures lane=tier2
-      - name: just ci matrix
+          just setup tier2
+      - name: just test tier2
         run: |
           source ./activate.sh
-          just ci matrix
+          just test tier2
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
