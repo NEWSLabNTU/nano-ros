@@ -55,6 +55,8 @@ fn default_new_args(
         use_case: "talker".to_string(),
         component: false,
         deploy: None,
+        image: None,
+        host: None,
         workspace: false,
         kind: "self".to_string(),
         target: None,

@@ -160,7 +160,25 @@ Still open:
   destination is not uniform — the first version sent `domain_id` and `locator`
   to `[image.*]`, a table with no such keys.
 
-Found by an audit of every remaining `[deploy.*]` reader, and NOT yet fixed:
+Found by an audit of every remaining `[deploy.*]` reader, and since FIXED:
+
+* **`resolved_domain_id` / `resolved_locator` now read `[host.*]`.** The link
+  from an image id to a machine is the image's `args`, matched by VALUE so the
+  launch argument may be named anything; two arguments naming two hosts is
+  refused rather than guessed. Latent in this tree — no host sets either key —
+  so it is pinned by tests, not by a model diff.
+* **`nros new` scaffolds the right table.** `--image` writes `[image.<name>]`,
+  `--host` writes `[host.<name>]`, and `--deploy` survives as a deprecated flag
+  dispatched by the `--kind` it always took (`self` → host, else image), which
+  is the meaning it already had rather than a rename that would write the wrong
+  one. `--target` is accepted and ignored with a note (the board states the
+  triple); `--board` on a host is refused, naming the command that was meant.
+* **Three unreachable paths retired** — `doctor::check_deprecated_verbs` (which
+  also called `nros build` deprecated, and RFC-0065 made it primary), the
+  per-deploy `edf`/`cores` scheduling knobs, and the `gen-sched-matrix.py`
+  documentation advertising the latter as supported.
+
+The historical record, for whoever picks up issue 0259:
 
 * **`resolved_domain_id` / `resolved_locator` never read `[host.*]`.** The
   deprecation lint tells users to move `domain_id` and `locator` there, and
@@ -173,7 +191,7 @@ Found by an audit of every remaining `[deploy.*]` reader, and NOT yet fixed:
   returns an IMAGE id while `[host.*]` is keyed by MACHINE name, and the link
   between them is the image's `args.host` binding — so a plain
   `self.host.get(t)` would be wrong too.
-* **`nros new --deploy` still scaffolds into the retiring table.**
+* (FIXED, see above) **`nros new --deploy` scaffolded into the retiring table.**
   `scaffold_deploy.rs` writes `board` and `target` into `[deploy.<name>]` —
   exactly the two fields the lint measured as actually firing — so the
   scaffolder emits a workspace that immediately trips its own deprecation

@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use crate::cmd::{
     new_system::{BringupScaffold, scaffold_bringup},
-    scaffold_deploy::{DeployScaffold, scaffold_deploy},
+    scaffold_deploy::{DeployScaffold, ScaffoldTable, scaffold_deploy},
 };
 
 #[derive(Debug, ClapArgs)]
@@ -98,8 +98,19 @@ pub struct Args {
     #[arg(long)]
     pub component: bool,
 
-    /// Scaffold a `[deploy.<name>]` target into the bringup package's
-    /// `system.toml` (RFC-0004 §4) instead of a project.
+    /// Scaffold an `[image.<name>]` — a buildable image — into the bringup
+    /// package's `system.toml` (RFC-0065 D6) instead of a project.
+    #[arg(long)]
+    pub image: Option<String>,
+
+    /// Scaffold a `[host.<name>]` — a machine nodes run on — into the bringup
+    /// package's `system.toml`.
+    #[arg(long)]
+    pub host: Option<String>,
+
+    /// DEPRECATED (issue 0951): `[deploy.*]` split into `[image.*]` (what is
+    /// BUILT) and `[host.*]` (WHERE it runs). Still accepted, and dispatched
+    /// by `--kind`: `self` scaffolds a host, anything else an image.
     #[arg(long)]
     pub deploy: Option<String>,
 
@@ -110,16 +121,18 @@ pub struct Args {
     #[arg(long)]
     pub workspace: bool,
 
-    /// Deploy kind (deploy mode) — free-form runner key (`self`, `qemu`,
-    /// `flash`, …) written verbatim to `[deploy.<name>].kind`.
+    /// DEPRECATED (issue 0951) — only read by `--deploy`, to decide whether it
+    /// meant a machine (`self`) or a board build (anything else). `--image` and
+    /// `--host` say which directly.
     #[arg(long, default_value = "self")]
     pub kind: String,
 
-    /// Cargo target triple / board id / runner key (deploy mode)
+    /// DEPRECATED (issue 0951): the rustc triple comes from the board
+    /// descriptor, so an image carries none. Accepted and ignored.
     #[arg(long)]
     pub target: Option<String>,
 
-    /// Board (deploy mode)
+    /// Board this image is built for (`--image` mode).
     #[arg(long)]
     pub board: Option<String>,
 
@@ -132,7 +145,8 @@ pub struct Args {
     #[arg(long)]
     pub from_launch: Option<String>,
 
-    /// Deploy mode: fork an existing `[deploy.<name>]` profile
+    /// Fork an existing block of the same table (`[image.<name>]` with
+    /// `--image`, `[host.<name>]` with `--host`).
     #[arg(long)]
     pub from_profile: Option<String>,
 
@@ -379,12 +393,48 @@ pub fn run(args: Args) -> Result<()> {
         return Ok(());
     }
 
-    // Deploy mode: `nros new --deploy <name> [--kind <k>] ...` writes a
-    // `[deploy.<name>]` into the bringup package's `system.toml` (RFC-0004 §4).
-    if let Some(deploy_name) = args.deploy {
+    // Issue 0951 — `[deploy.*]` split into `[image.*]` (what is BUILT) and
+    // `[host.*]` (WHERE it runs), so the scaffolder asks which one.
+    //
+    // `--deploy` still works, dispatched by the `--kind` it already took:
+    // `self` was always a machine and everything else a board build. That is
+    // the same meaning the old flag had, routed to the table that now holds it,
+    // rather than a rename that would quietly write the wrong one.
+    let scaffold = match (&args.image, &args.host, &args.deploy) {
+        (Some(_), Some(_), _) | (Some(_), _, Some(_)) | (_, Some(_), Some(_)) => {
+            eyre::bail!("--image, --host and --deploy are alternatives; pass one")
+        }
+        (Some(name), None, None) => Some((name.clone(), ScaffoldTable::Image)),
+        (None, Some(name), None) => Some((name.clone(), ScaffoldTable::Host)),
+        (None, None, Some(name)) => {
+            let table = if args.kind == "self" {
+                ScaffoldTable::Host
+            } else {
+                ScaffoldTable::Image
+            };
+            let replacement = match table {
+                ScaffoldTable::Host => "--host",
+                ScaffoldTable::Image => "--image",
+            };
+            eprintln!(
+                "nros new: --deploy is deprecated (issue 0951) — `[deploy.*]` split \
+                 into `[image.*]` (what is BUILT) and `[host.*]` (WHERE it runs). \
+                 With --kind {}, this scaffolds {} block; use `{replacement}` \
+                 directly.",
+                args.kind,
+                match table {
+                    ScaffoldTable::Image => "an [image.*]",
+                    ScaffoldTable::Host => "a [host.*]",
+                },
+            );
+            Some((name.clone(), table))
+        }
+        (None, None, None) => None,
+    };
+    if let Some((name, table)) = scaffold {
         return scaffold_deploy(&DeployScaffold {
-            name: deploy_name,
-            kind: Some(args.kind),
+            name,
+            table,
             target: args.target,
             board: args.board,
             from_launch: args.from_launch,

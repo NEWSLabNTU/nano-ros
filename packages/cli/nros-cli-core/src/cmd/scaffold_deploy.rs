@@ -20,12 +20,39 @@ use crate::orchestration::{
     nros_config::{BringupSource, NrosConfig},
 };
 
+/// Which table this scaffold writes.
+///
+/// Issue 0951 — `[deploy.*]` conflated a MACHINE with a BUILD, and the
+/// scaffolder inherited the conflation: it wrote `board` (a build fact) into a
+/// block whose `kind = "self"` said "machine". The two are separate tables now,
+/// so the scaffolder has to know which one it is making.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScaffoldTable {
+    /// `[image.<name>]` — a buildable image.
+    Image,
+    /// `[host.<name>]` — a machine nodes run on.
+    Host,
+}
+
+impl ScaffoldTable {
+    fn key(self) -> &'static str {
+        match self {
+            ScaffoldTable::Image => "image",
+            ScaffoldTable::Host => "host",
+        }
+    }
+}
+
 pub struct DeployScaffold {
     pub name: String,
-    /// Free-form deploy kind written verbatim to `DeployTarget.kind`
-    /// (`"self"`, `"qemu"`, `"flash"`, …). `None` ⇒ the runner derives it
-    /// from the target-name key.
-    pub kind: Option<String>,
+    /// Which table to write. A `kind = "self"` deploy was a machine
+    /// ([`ScaffoldTable::Host`]); everything else was a board build
+    /// ([`ScaffoldTable::Image`]).
+    pub table: ScaffoldTable,
+    /// `--target`: the rustc triple. ACCEPTED AND IGNORED — the board
+    /// descriptor states it, and `[image.*]` deliberately carries no `target`
+    /// (RFC-0065 D9). Kept only so an existing invocation warns instead of
+    /// failing on an unknown flag.
     pub target: Option<String>,
     pub board: Option<String>,
     /// `--from-launch <path>`: also set the bringup `[system].default_launch`
@@ -52,11 +79,27 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
         .parse()
         .wrap_err_with(|| format!("parse {}", system_toml.display()))?;
 
-    if doc.get("deploy").and_then(|d| d.get(&s.name)).is_some() && !s.force {
+    let table = s.table.key();
+    if doc.get(table).and_then(|d| d.get(&s.name)).is_some() && !s.force {
         bail!(
-            "[deploy.{}] already exists in {} — pass --force to overwrite",
+            "[{table}.{}] already exists in {} — pass --force to overwrite",
             s.name,
             system_toml.display()
+        );
+    }
+    if s.target.is_some() {
+        eprintln!(
+            "nros new: --target is ignored. The board descriptor states the rustc \
+             triple, so `[image.*]` does not carry one (RFC-0065 D9); pass --board \
+             and the triple follows."
+        );
+    }
+    if s.table == ScaffoldTable::Host && s.board.is_some() {
+        bail!(
+            "--board with a machine: a host says WHERE nodes run, and a board is \
+             what an image is BUILT for. Scaffold the image instead \
+             (`nros new --image {} --board <board>`), or drop --board.",
+            s.name
         );
     }
 
@@ -68,7 +111,7 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
     // `--from-profile`: fork an existing target; else build a fresh table.
     match &s.from_profile {
         Some(from) => clone_profile(&mut doc, s, from)?,
-        None => write_deploy_table(&mut doc, s),
+        None => write_scaffold_table(&mut doc, s),
     }
 
     // Validate the result before writing it back, so a scaffold never leaves an
@@ -79,11 +122,17 @@ pub fn scaffold_deploy(s: &DeployScaffold) -> Result<()> {
         .wrap_err_with(|| format!("write {}", system_toml.display()))?;
 
     eprintln!(
-        "nros new --deploy: added [deploy.{}] to {}",
+        "nros new: added [{table}.{}] to {}",
         s.name,
         system_toml.display()
     );
-    eprintln!("  build with the bringup package's platform tool (e.g. `cargo run -p <entry_pkg>`)");
+    match s.table {
+        ScaffoldTable::Image => eprintln!("  build it with `nros build {}`", s.name),
+        ScaffoldTable::Host => eprintln!(
+            "  place nodes on it with `nodes = [...]`; an image selects it \
+             through its `args`"
+        ),
+    }
     Ok(())
 }
 
@@ -141,57 +190,54 @@ fn locate_bringup_system_toml(s: &DeployScaffold) -> Result<PathBuf> {
     }
 }
 
-/// Fork an existing `[deploy.<from>]` into `[deploy.<name>]`: clone its table,
-/// then apply any explicit `--target` / `--board` overrides.
+/// Fork an existing block of the SAME table into `<table>.<name>`, then apply
+/// any explicit `--board` override.
 fn clone_profile(doc: &mut DocumentMut, s: &DeployScaffold, from: &str) -> Result<()> {
+    let table = s.table.key();
     let base = doc
-        .get("deploy")
+        .get(table)
         .and_then(|d| d.get(from))
         .and_then(|i| i.as_table())
-        .ok_or_else(|| eyre!("--from-profile: no [deploy.{from}] to fork"))?
+        .ok_or_else(|| eyre!("--from-profile: no [{table}.{from}] to fork"))?
         .clone();
 
     let mut forked = base;
-    if let Some(kind) = &s.kind {
-        forked["kind"] = value(kind.clone());
-    }
-    if let Some(target) = &s.target {
-        forked["target"] = value(target.clone());
-    }
     if let Some(board) = &s.board {
         forked["board"] = value(board.clone());
     }
 
-    insert_deploy(doc, &s.name, forked);
+    insert_block(doc, table, &s.name, forked);
     Ok(())
 }
 
-/// Build the `[deploy.<name>]` table programmatically (toml_edit preserves the
+/// Build the `<table>.<name>` block programmatically (toml_edit preserves the
 /// rest of the file).
-fn write_deploy_table(doc: &mut DocumentMut, s: &DeployScaffold) {
+///
+/// A host gets an EMPTY table on purpose: no `nodes` means "every node", which
+/// is what a single machine means, and writing a `nodes = []` would say the
+/// opposite of what it looks like.
+fn write_scaffold_table(doc: &mut DocumentMut, s: &DeployScaffold) {
     let mut t = Table::new();
-    if let Some(kind) = &s.kind {
-        t["kind"] = value(kind.clone());
-    }
-    if let Some(target) = &s.target {
-        t["target"] = value(target.clone());
-    }
-    if let Some(board) = &s.board {
+    if s.table == ScaffoldTable::Image
+        && let Some(board) = &s.board
+    {
         t["board"] = value(board.clone());
     }
-    insert_deploy(doc, &s.name, t);
+    insert_block(doc, s.table.key(), &s.name, t);
 }
 
-/// Insert `[deploy.<name>]` as a block table under the implicit `[deploy]`
+/// Insert `[<table>.<name>]` as a block table under the implicit `[<table>]`
 /// super-table (idempotent — removes any existing entry first).
-fn insert_deploy(doc: &mut DocumentMut, name: &str, table: Table) {
-    let deploy = doc
-        .entry("deploy")
+fn insert_block(doc: &mut DocumentMut, table: &str, name: &str, block: Table) {
+    let parent = doc
+        .entry(table)
         .or_insert_with(|| Item::Table(Table::new()));
-    let deploy = deploy.as_table_mut().expect("[deploy] must be a table");
-    deploy.set_implicit(true);
-    deploy.remove(name); // idempotent / --force
-    deploy.insert(name, Item::Table(table));
+    let parent = parent
+        .as_table_mut()
+        .unwrap_or_else(|| panic!("[{table}] must be a table"));
+    parent.set_implicit(true);
+    parent.remove(name); // idempotent / --force
+    parent.insert(name, Item::Table(block));
 }
 
 #[cfg(test)]
@@ -232,11 +278,11 @@ name = \"talker\"
         toml::from_str(&raw).expect("reparse system.toml")
     }
 
-    fn scaffold(root: &Path, name: &str, kind: Option<&str>) -> DeployScaffold {
+    fn scaffold(root: &Path, name: &str, table: ScaffoldTable) -> DeployScaffold {
         DeployScaffold {
             name: name.into(),
-            kind: kind.map(str::to_string),
-            target: Some("x86_64-unknown-linux-gnu".into()),
+            table,
+            target: None,
             board: None,
             from_launch: None,
             from_profile: None,
@@ -247,14 +293,16 @@ name = \"talker\"
     }
 
     #[test]
-    fn writes_deploy_into_bringup_system_toml() {
+    fn writes_the_block_into_the_bringup_system_toml() {
         let (root, system_toml) = temp_ws("nros-scaffold-sys");
-        scaffold_deploy(&scaffold(&root, "native", Some("self"))).expect("scaffold");
+        scaffold_deploy(&scaffold(&root, "native", ScaffoldTable::Host)).expect("scaffold");
 
         let sys = reload(&system_toml);
-        let d = sys.deploy.get("native").expect("[deploy.native] written");
-        assert_eq!(d.kind.as_deref(), Some("self"));
-        assert_eq!(d.target.as_deref(), Some("x86_64-unknown-linux-gnu"));
+        let d = sys.host.get("native").expect("[host.native] written");
+        // A host is an EMPTY table: no `nodes` means "every node", which is
+        // what a single machine means.
+        assert!(d.nodes.is_empty());
+        assert!(d.launch.is_none());
         // No root nros.toml is ever created.
         assert!(!root.join("nros.toml").exists());
         // No vendor-dir scaffolding.
@@ -266,15 +314,15 @@ name = \"talker\"
     #[test]
     fn preserves_existing_system_and_components() {
         let (root, system_toml) = temp_ws("nros-scaffold-preserve");
-        scaffold_deploy(&scaffold(&root, "native", Some("self"))).unwrap();
-        scaffold_deploy(&scaffold(&root, "qemu", Some("qemu"))).unwrap();
+        scaffold_deploy(&scaffold(&root, "native", ScaffoldTable::Host)).unwrap();
+        scaffold_deploy(&scaffold(&root, "qemu", ScaffoldTable::Image)).unwrap();
 
         let sys = reload(&system_toml);
         assert_eq!(sys.system.name, "demo");
         assert_eq!(sys.system.rmw, "zenoh");
         assert_eq!(sys.components.len(), 1);
-        assert!(sys.deploy.contains_key("native"));
-        assert!(sys.deploy.contains_key("qemu"));
+        assert!(sys.host.contains_key("native"));
+        assert!(sys.image.contains_key("qemu"));
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -282,10 +330,10 @@ name = \"talker\"
     #[test]
     fn rejects_duplicate_without_force() {
         let (root, _) = temp_ws("nros-scaffold-dup");
-        scaffold_deploy(&scaffold(&root, "native", Some("self"))).unwrap();
-        assert!(scaffold_deploy(&scaffold(&root, "native", Some("self"))).is_err());
+        scaffold_deploy(&scaffold(&root, "native", ScaffoldTable::Host)).unwrap();
+        assert!(scaffold_deploy(&scaffold(&root, "native", ScaffoldTable::Host)).is_err());
 
-        let mut forced = scaffold(&root, "native", Some("self"));
+        let mut forced = scaffold(&root, "native", ScaffoldTable::Host);
         forced.force = true;
         scaffold_deploy(&forced).expect("force overwrites");
 
@@ -295,7 +343,7 @@ name = \"talker\"
     #[test]
     fn from_launch_sets_system_default_launch() {
         let (root, system_toml) = temp_ws("nros-scaffold-launch");
-        let mut s = scaffold(&root, "native", Some("self"));
+        let mut s = scaffold(&root, "native", ScaffoldTable::Host);
         s.from_launch = Some("demo.launch.xml".into());
         scaffold_deploy(&s).expect("scaffold");
 
@@ -308,16 +356,46 @@ name = \"talker\"
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// An image carries a board; a host must not. `--board` with `--host` is a
+    /// category error, refused with the command that would have been right.
+    #[test]
+    fn a_board_on_a_host_is_refused() {
+        let (root, _) = temp_ws("nros-scaffold-host-board");
+        let mut s = scaffold(&root, "native", ScaffoldTable::Host);
+        s.board = Some("mps2-an385-freertos".into());
+        let err = scaffold_deploy(&s).unwrap_err().to_string();
+        assert!(err.contains("--image native"), "{err}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The scaffolded block must round-trip through the real schema — a
+    /// scaffolder that emits something `SystemToml` rejects is worse than no
+    /// scaffolder, because the damage lands in the user's file.
+    #[test]
+    fn an_image_names_its_board_and_reparses() {
+        let (root, system_toml) = temp_ws("nros-scaffold-image");
+        let mut s = scaffold(&root, "fw", ScaffoldTable::Image);
+        s.board = Some("mps2-an385-freertos".into());
+        scaffold_deploy(&s).expect("scaffold");
+
+        let sys = reload(&system_toml);
+        let img = sys.image.get("fw").expect("[image.fw] written");
+        assert_eq!(img.board.as_deref(), Some("mps2-an385-freertos"));
+        // No `[deploy.*]` is ever produced now.
+        assert!(sys.deploy.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn from_profile_forks_an_existing_target() {
         let (root, system_toml) = temp_ws("nros-scaffold-fork");
-        let mut base = scaffold(&root, "qemu", Some("qemu"));
+        let mut base = scaffold(&root, "qemu", ScaffoldTable::Image);
         base.board = Some("mps2_an385".into());
         scaffold_deploy(&base).unwrap();
 
         let fork = DeployScaffold {
             name: "qemu2".into(),
-            kind: None,
+            table: ScaffoldTable::Image,
             target: None,
             board: None,
             from_launch: None,
@@ -329,8 +407,7 @@ name = \"talker\"
         scaffold_deploy(&fork).expect("fork");
 
         let sys = reload(&system_toml);
-        let forked = sys.deploy.get("qemu2").expect("forked target");
-        assert_eq!(forked.kind.as_deref(), Some("qemu")); // inherited
+        let forked = sys.image.get("qemu2").expect("forked image");
         assert_eq!(forked.board.as_deref(), Some("mps2_an385")); // inherited
 
         let _ = std::fs::remove_dir_all(&root);
@@ -339,10 +416,10 @@ name = \"talker\"
     #[test]
     fn from_profile_errors_on_missing_base() {
         let (root, _) = temp_ws("nros-scaffold-fork-miss");
-        let mut s = scaffold(&root, "x", None);
+        let mut s = scaffold(&root, "x", ScaffoldTable::Image);
         s.from_profile = Some("ghost".into());
         let err = scaffold_deploy(&s).unwrap_err().to_string();
-        assert!(err.contains("no [deploy.ghost]"), "{err}");
+        assert!(err.contains("no [image.ghost]"), "{err}");
 
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -351,7 +428,7 @@ name = \"talker\"
     fn errors_without_a_bringup_system_toml() {
         let root = crate::test_support::scratch_dir("scaffold-noboot");
         std::fs::create_dir_all(&root).unwrap();
-        let err = scaffold_deploy(&scaffold(&root, "x", Some("self")))
+        let err = scaffold_deploy(&scaffold(&root, "x", ScaffoldTable::Host))
             .unwrap_err()
             .to_string();
         assert!(err.contains("no bringup package"), "{err}");
@@ -377,20 +454,20 @@ name = \"talker\"
         }
 
         // Ambiguous → error naming the candidates.
-        let err = scaffold_deploy(&scaffold(&root, "native", Some("self")))
+        let err = scaffold_deploy(&scaffold(&root, "native", ScaffoldTable::Host))
             .unwrap_err()
             .to_string();
         assert!(err.contains("multiple bringup packages"), "{err}");
 
         // --bringup disambiguates.
-        let mut s = scaffold(&root, "native", Some("self"));
+        let mut s = scaffold(&root, "native", ScaffoldTable::Host);
         s.bringup = Some("beta_bringup".into());
         scaffold_deploy(&s).expect("explicit --bringup scaffolds");
         let sys = reload(&root.join("beta_bringup/system.toml"));
-        assert!(sys.deploy.contains_key("native"));
+        assert!(sys.host.contains_key("native"));
         // The other bringup is untouched.
         let other = reload(&root.join("alpha_bringup/system.toml"));
-        assert!(other.deploy.is_empty());
+        assert!(other.host.is_empty());
 
         let _ = std::fs::remove_dir_all(&root);
     }
