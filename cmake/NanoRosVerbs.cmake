@@ -64,7 +64,22 @@ function(_nros_generate_declared_interfaces lang)
     endif()
     nros_read_package_xml_body("${_pkgxml}" _body)
     if(_body MATCHES "<(depend|build_depend|exec_depend|run_depend|build_export_depend)>")
-        nros_find_interfaces(LANGUAGE ${lang} SKIP_INSTALL)
+        # phase-403 -- a leaf's own `nros-codegen.toml`, if it has one.
+        #
+        # A package that CONSUMES an interface cannot bound it any other way.
+        # The .msg belongs to someone else, so there is no bound to add there,
+        # and `CapacityResolver::discover` walks up from the codegen OUTPUT
+        # directory under the CMake binary tree -- not from the consumer's
+        # source -- so a config sitting beside package.xml is not found.
+        #
+        # Beside package.xml is the discoverable place: it is where a consumer
+        # already declares WHICH interfaces it wants, so it is where it says
+        # how big they may be.
+        set(_leaf_cfg)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/nros-codegen.toml")
+            set(_leaf_cfg CODEGEN_CONFIG "${CMAKE_CURRENT_SOURCE_DIR}/nros-codegen.toml")
+        endif()
+        nros_find_interfaces(LANGUAGE ${lang} SKIP_INSTALL ${_leaf_cfg})
     endif()
 endfunction()
 
