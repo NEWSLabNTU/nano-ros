@@ -217,36 +217,6 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
     }
 }
 
-/// [`SchedCaps`] for a target, with the per-deploy `edf` capability knob
-/// applied. The knob is the bake-authoritative SSoT (RFC-0052 §"CAPS
-/// provenance"): a `[deploy.<board>] edf = <bool>` in the deploy config
-/// (carried on `Deploy.extra`) OVERRIDES the platform default, so the
-/// realizer's `Native`-vs-`Degrade` decision is accurate against the image
-/// that will actually be built. Absent knob → the platform default stands.
-pub fn sched_caps_from_deploy(
-    target: &str,
-    deploy: Option<&ros_launch_manifest_model::Deploy>,
-) -> SchedCaps {
-    let mut caps = sched_caps_for(target);
-    if let Some(d) = deploy
-        && let Some(ros_launch_manifest_model::ExtraValue::Bool(b)) = d.extra.get("edf")
-    {
-        caps.edf = *b;
-    }
-    // Issue 0259 — `[deploy.<board>] cores = <n>`. Same knob shape as `edf`:
-    // the deployment is the only place that knows, and it is authoritative for
-    // the image actually being built. A non-positive count is ignored rather
-    // than trusted — zero cores is not a claim, it is a typo, and honouring it
-    // would divide by nothing.
-    if let Some(d) = deploy
-        && let Some(ros_launch_manifest_model::ExtraValue::Int(n)) = d.extra.get("cores")
-        && *n > 0
-    {
-        caps.n_cores = Some((*n).min(u16::MAX as i64) as u16);
-    }
-    caps
-}
-
 /// Per-node facts distilled from the [`MapperInput`] (v1: activation +
 /// deadline + budget; the ranking supplies urgency).
 struct NodeFacts {
@@ -816,42 +786,18 @@ mod tests {
         assert!(hi2.priority < lo2.priority, "urgent node lower number");
     }
 
-    use ros_launch_manifest_model::{Deploy, ExtraValue, Target};
-
-    fn zephyr_deploy_with_edf(edf: bool) -> Deploy {
-        let mut extra = std::collections::BTreeMap::new();
-        extra.insert("edf".to_string(), ExtraValue::Bool(edf));
-        Deploy {
-            target: Some(Target::default()),
-            extra,
-            ..Default::default()
-        }
-    }
-
     #[test]
-    fn deploy_knob_overrides_platform_edf_default() {
-        // Platform default for zephyr is edf = true.
-        assert!(sched_caps_for("zephyr").edf);
-        // A deploy that turns edf OFF must be honored.
-        let caps = sched_caps_from_deploy("zephyr", Some(&zephyr_deploy_with_edf(false)));
-        assert!(
-            !caps.edf,
-            "deploy edf=false must override the platform default"
-        );
-        // A deploy with no edf key falls back to the platform default.
-        let caps_default = sched_caps_from_deploy("zephyr", None);
-        assert!(
-            caps_default.edf,
-            "no knob → platform default (true for zephyr)"
-        );
-    }
-
-    #[test]
-    fn deploy_edf_false_produces_accurate_degrade() {
-        // The honesty property: edf=false → realize_rtos records a deadline Degrade.
+    fn edf_false_produces_accurate_degrade() {
+        // The honesty property: edf=false → realize_rtos records a deadline
+        // Degrade. Issue 0951 — the caps are built directly now. They used to
+        // come from a per-deploy `edf` knob that nothing could author, and the
+        // property under test was never about the knob.
         let input = input_two();
         let ranked = chain_aware_rank(&input);
-        let caps = sched_caps_from_deploy("zephyr", Some(&zephyr_deploy_with_edf(false)));
+        let caps = SchedCaps {
+            edf: false,
+            ..sched_caps_for("zephyr")
+        };
         let plan = realize_rtos(&ranked, &input, &caps);
         let hi = plan.nodes.iter().find(|n| n.name == "/hi").unwrap();
         assert!(matches!(hi.deadline_real, DimRealization::Degrade { .. }));
@@ -1147,18 +1093,6 @@ mod tests {
             "{}",
             u.reason
         );
-    }
-
-    /// A zero core count is a typo, not a claim: ignored rather than honoured.
-    #[test]
-    fn a_zero_core_count_is_ignored_rather_than_divided_by() {
-        use ros_launch_manifest_model::{Deploy, ExtraValue};
-        let mut d = Deploy::default();
-        d.extra.insert("cores".into(), ExtraValue::Int(0));
-        assert_eq!(sched_caps_from_deploy("zephyr", Some(&d)).n_cores, None);
-
-        d.extra.insert("cores".into(), ExtraValue::Int(4));
-        assert_eq!(sched_caps_from_deploy("zephyr", Some(&d)).n_cores, Some(4));
     }
 
     fn node_with_rate(name: &str, rate_hz: f64, exec_ms: f64) -> MapperNode {

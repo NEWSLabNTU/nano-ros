@@ -109,14 +109,6 @@ pub fn run(args: Args) -> Result<()> {
         None => None,
     };
 
-    // Phase 222.B.3 — flag use of deprecated `nros build` / `run` / `deploy` /
-    // `monitor` verbs inside any shell-step arrays. WARN only (gated
-    // migration); the verbs still work today and disappear in 0.5.0
-    // (Phase 222.C).
-    if let Some(path) = &config {
-        check_deprecated_verbs(path);
-    }
-
     // Phase 187.7 — license-gated SDK presence (NVIDIA SPE, ARM FVP, …): never
     // fetched, only instructed. Read before `args.workspace` is moved below.
     // Phase 217.B.2 — when `--board <name>` is set, filter to that board's
@@ -427,96 +419,6 @@ fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
     Ok(Some(problems))
 }
 
-/// Phase 222.B.3 — surface `nros build` / `run` / `deploy` / `monitor` / `launch` usage
-/// inside any `[deploy.<name>]` `build` / `package` shell-step arrays as WARN
-/// (not FAIL — gated migration). The wrapper verbs still work today; deletion
-/// lands in Phase 222.C with the 0.5.0 bump.
-///
-/// Best-effort raw TOML scan: parses the file as a generic `toml::Value` so
-/// the lint surfaces drift in any TOML config carrying such arrays. Silent
-/// no-op when the file is absent or unparseable — this is a hint, not an
-/// authority. (The live `system.toml` `DeployTarget` no longer carries
-/// `build`/`package` arrays, so this is dormant on the RFC-0004 path.)
-fn check_deprecated_verbs(config: &Path) {
-    if !config.is_file() {
-        return;
-    }
-    let raw = match std::fs::read_to_string(config) {
-        Ok(r) => r,
-        Err(_) => return,
-    };
-    let doc: toml::Value = match toml::from_str(&raw) {
-        Ok(d) => d,
-        Err(_) => return,
-    };
-    let Some(deploy) = doc.get("deploy").and_then(|v| v.as_table()) else {
-        return;
-    };
-
-    let mut printed_header = false;
-    for (name, target) in deploy {
-        let Some(table) = target.as_table() else {
-            continue;
-        };
-        for field in ["build", "package"] {
-            let Some(arr) = table.get(field).and_then(|v| v.as_array()) else {
-                continue;
-            };
-            for step in arr {
-                let Some(cmd) = step.as_str() else { continue };
-                let trimmed = cmd.trim_start();
-                let Some((verb, replacement)) = match_deprecated_verb(trimmed) else {
-                    continue;
-                };
-                if !printed_header {
-                    eprintln!(
-                        "nros doctor: deprecated-verb usage in {} ({}-list)",
-                        config.display(),
-                        field
-                    );
-                    printed_header = true;
-                }
-                eprintln!(
-                    "  [WARN] {}: [deploy.{name}].{field} = \"{cmd}\" — `nros {verb}` deprecated \
-                     in 222.B; will fail in 0.5.0 (222.C). Replace with: {replacement}.",
-                    config.display(),
-                );
-            }
-        }
-    }
-}
-
-/// Return `Some((verb, replacement))` if `cmd` starts with one of the
-/// deprecated `nros` verbs (after an optional leading `nros` token).
-/// Matches `nros build …`, `nros run …`, `nros deploy …`,
-/// `nros monitor …`, `nros launch …` (Phase 222.D).
-fn match_deprecated_verb(cmd: &str) -> Option<(&'static str, &'static str)> {
-    let rest = cmd.strip_prefix("nros ")?.trim_start();
-    // Peel off the first token. `split_whitespace` collapses runs of WS;
-    // we only need the head word.
-    let head = rest.split_whitespace().next()?;
-    match head {
-        "build" => Some((
-            "build",
-            "cargo build / cmake --build / west build / idf.py build",
-        )),
-        "run" => Some((
-            "run",
-            "cargo run / west <runner> run / probe-rs run / idf.py monitor",
-        )),
-        "deploy" => Some((
-            "deploy",
-            "the platform's native flash+run combo (west flash, idf.py flash, probe-rs run)",
-        )),
-        "monitor" => Some(("monitor", "probe-rs attach / idf.py monitor / picocom")),
-        "launch" => Some((
-            "launch",
-            "cargo run -p <entry_pkg> (composed Entry pkg IS the launch product per Phase 212.N + 222.D)",
-        )),
-        _ => None,
-    }
-}
-
 fn run_just_doctor(root: &Path, platform: Option<&str>) -> Result<()> {
     if which("just").is_err() {
         // phase-368 — absent `just` is the NORMAL user condition, not an
@@ -746,47 +648,6 @@ mod tests {
                 None => unsafe { std::env::remove_var(e) },
             }
         }
-        std::fs::remove_dir_all(&ws).ok();
-    }
-
-    /// Phase 222.B.3 — `match_deprecated_verb` recognises the four
-    /// deprecated `nros` verbs (with leading whitespace and trailing args)
-    /// and skips everything else.
-    #[test]
-    fn matches_deprecated_verbs() {
-        assert!(match_deprecated_verb("nros build").is_some());
-        assert!(match_deprecated_verb("nros build --release").is_some());
-        assert!(match_deprecated_verb("nros run").is_some());
-        assert!(match_deprecated_verb("nros deploy native").is_some());
-        assert!(match_deprecated_verb("nros monitor --env foo").is_some());
-        // Phase 222.D — launch joins the set.
-        assert!(match_deprecated_verb("nros launch demo_bringup").is_some());
-        // Non-deprecated verbs / non-nros commands should not match.
-        assert!(match_deprecated_verb("nros setup native").is_none());
-        assert!(match_deprecated_verb("cargo build").is_none());
-        assert!(match_deprecated_verb("west build -b mps2_an385").is_none());
-        // No leading `nros ` ⇒ not our concern.
-        assert!(match_deprecated_verb("build").is_none());
-    }
-
-    /// Phase 217.B.2 — unknown board name on `--board` is a hard error
-    /// (matches `nros setup`'s policy — no silent wrong package set).
-    #[test]
-    fn license_gate_board_filter_rejects_unknown() {
-        let ws = crate::test_support::scratch_dir("gate_unk");
-        std::fs::create_dir_all(&ws).unwrap();
-        std::fs::write(
-            ws.join("nros-sdk-index.toml"),
-            "[gated.arm-fvp]\nversion=\"1\"\nenv=\"E\"\ninstaller=\"i\"\n\
-             [board.known]\npackages=[]\n",
-        )
-        .unwrap();
-        let err = check_license_gates(Some(&ws), Some("nope")).unwrap_err();
-        let s = format!("{err:#}");
-        assert!(
-            s.contains("nope") || s.contains("unknown board"),
-            "expected unknown-board error, got: {s}"
-        );
         std::fs::remove_dir_all(&ws).ok();
     }
 }
