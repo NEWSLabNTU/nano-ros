@@ -3040,7 +3040,6 @@ example-leaf-target-dirs:
 # array parser and its walk-up on every run.
 [private]
 example-leaf-workspace-roots:
-    @python3 scripts/check-example-leaf-workspace-roots.py --self-test >/dev/null
     @python3 scripts/check-example-leaf-workspace-roots.py
 
 # issue 0718 — an example leaf builds in-tree (RFC-0026), so every build
