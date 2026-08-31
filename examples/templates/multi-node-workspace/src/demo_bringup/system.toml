@@ -20,6 +20,13 @@ pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
 
+# The LAST `[deploy.*]` block: the implicit machine this system runs on.
+#
+# Everything else has moved — placement to `[host.<name>]`, board builds to
+# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
+# machine too, so it belongs in `[host.*]`; it stays here until that move is
+# measured, because it is the block that currently makes placement HAPPEN
+# (issue 0951).
 [deploy.native]
 kind = "self"
 board = "native"

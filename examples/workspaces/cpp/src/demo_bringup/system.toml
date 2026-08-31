@@ -46,32 +46,15 @@ pkg = "action_client_pkg"
 class = "action_client_pkg::FibClient"
 name = "fib_client"
 
+# The LAST `[deploy.*]` block: the implicit machine this system runs on.
+#
+# Everything else has moved — placement to `[host.<name>]`, board builds to
+# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
+# machine too, so it belongs in `[host.*]`; it stays here until that move is
+# measured, because it is the block that currently makes placement HAPPEN
+# (issue 0951).
 [deploy.native]
 kind = "self"
-
-# Embedded deploy targets for this workspace's embedded Entry packages (issue
-# 0356). No `launch` key → the default `system.launch.xml` nodes deploy to each
-# board (the same demo, cross-compiled). The resolver places multi-board nodes
-# board-agnostically; `nros codegen entry --board <b>` selects the concrete board.
-
-[deploy.freertos]
-kind = "embedded"
-
-# phase-372 W2 — the S32Z270 cross cell (Cortex-R52); same entry leaf, one
-# board per configure.
-[deploy.s32z270]
-kind = "embedded"
-
-# phase-385 W1 — the AN536 cell: the same entry leaf on the emulated R52, which
-# unlike the S32Z270 above can actually be booted.
-[deploy.an536]
-kind = "embedded"
-board = "mps3-an536-freertos"
-
-[deploy.threadx-linux]
-kind = "embedded"
-board = "threadx-linux"
-
 # phase-326 (issue 0364) — per-host deploy targets for the multi-host launch
 # (`launch/multihost.launch.xml`: talker on robot1, listener on robot2, chosen at RESOLVE time by the `host`
 # launch argument). Each per-host model (`config/multihost_robot<N>_model.yaml`,
@@ -90,32 +73,6 @@ nodes = ["/talker"]
 [host.robot2]
 launch = "multihost.launch.xml"
 nodes = ["/listener"]
-
-# phase-315 — the embedded BOARD BUILDS of this system.
-#
-# Not placements: `kind = "self"` blocks are machines and PARTITION the nodes;
-# a `kind = "embedded"` block is the whole system compiled for another board,
-# running every node. The resolver excludes embedded blocks from placement.
-#
-# Missing while entries named them, which was invisible until the SystemModel
-# started carrying real `execution.deploy` — then those entries failed with
-# "places no nodes on board <x>". Ids are the DEPLOY values the entries pass.
-
-[deploy.mps2-an385-freertos]
-kind = "embedded"
-board = "mps2-an385-freertos"
-
-# phase-370 W3 — the FreeRTOS POSIX simulator. `kind = "embedded"` like its
-# `mps2-an385-freertos` sibling and NOT `native`: the image is a host process,
-# but the nodes run as FreeRTOS TASKS under a scheduler the board's `main`
-# starts, which is the property `kind` names.
-[deploy.freertos-posix]
-kind = "embedded"
-board = "freertos-posix"
-
-[deploy.zephyr]
-kind = "embedded"
-
 # phase-330 W4.0 (RFC-0063) — binding variants declared as INPUTS.
 # These resolves take launch ARGUMENTS, which nothing in the launch tree
 # records; until now the only machine-readable trace was the committed
