@@ -418,8 +418,24 @@ endfunction()
 # for the reason the header of this file gives.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosSharedCargoDir.cmake")
 
+# Issue 0945 item 1 — captured at FILE scope, CACHE INTERNAL, because
+# `nros_assert_shared_cargo_dir_used()` below is a function and a plain
+# `set(_X ${CMAKE_CURRENT_LIST_DIR})` does not survive the frame pop (the
+# `_NROS_ENTRY_DIR` pattern; it broke every freertos workspace member once).
+set(_NROS_SHARED_CARGO_CHECK_SH
+    "${CMAKE_CURRENT_LIST_DIR}/../scripts/check-shared-cargo-dir-used.sh"
+    CACHE INTERNAL "issue 0945 — shared-cargo-dir redirect assertion")
+
 
 function(nros_share_corrosion_cargo_dir)
+    # Issue 0945 item 1 — report to the caller whether the redirect is ACTUALLY
+    # in place, so it can arm `nros_assert_shared_cargo_dir_used()`. Empty by
+    # default: every path below that does not end with a symlink at the chosen
+    # directory leaves it empty, and the caller must not assert on those. The
+    # degrade branch ("a real `cargo` directory from an earlier build") is a
+    # supported state, not a violation, and arming the check there would turn
+    # every pre-existing build dir red.
+    set(NROS_SHARED_CARGO_DIR "" PARENT_SCOPE)
     # Delegate the keying to `nros_shared_cargo_dir()` above — ONE normalise,
     # hash and record. This function's own job is the part Corrosion forces:
     # redirecting a `--target-dir` it computes itself, which only a symlink can
@@ -478,8 +494,10 @@ function(nros_share_corrosion_cargo_dir)
             "nano-ros: shared-cargo key changed, re-pointing ${_link}\n"
             "  was: ${_prev_key}\n"
             "  now: ${_key_text}")
+        set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_DIR}" PARENT_SCOPE)
         return()
         endif()
+        set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_DIR}" PARENT_SCOPE)
         return()
     endif()
 
@@ -508,6 +526,58 @@ function(nros_share_corrosion_cargo_dir)
     endif()
     message(STATUS
         "nano-ros: sharing Corrosion cargo dir -> ${NROS_SHARED_CARGO_DIR}")
+    set(NROS_SHARED_CARGO_DIR "${NROS_SHARED_CARGO_DIR}" PARENT_SCOPE)
+endfunction()
+
+# --------------------------------------------------------------------------
+# nros_assert_shared_cargo_dir_used(<shared-dir> <corrosion-target>)
+#
+# Issue 0945 item 1 — make a Corrosion move FAIL instead of silently degrading.
+#
+# The symlink above redirects a `--target-dir` Corrosion derives privately, and
+# Corrosion offers no knob for it — still true on upstream `master` as of
+# 2026-08-31, not merely on the pinned v0.6.1. So the redirect cannot be
+# retired; what it can be given is a witness. If a future Corrosion moves that
+# path, the link points where cargo no longer writes, the build SUCCEEDS, and
+# the only symptom is six platforms getting slower with nobody watching the
+# number.
+#
+# This asserts the RESULT rather than re-deriving the formula: after the target
+# builds, the shared directory must hold this artifact, and the redirect must
+# still be a symlink at the directory this configure chose. A second copy of
+# Corrosion's path rule would drift from it silently, which is the defect and
+# not the fix. See the script for what the check can and cannot catch.
+#
+# Only call this when `nros_share_corrosion_cargo_dir()` reported a live
+# redirect — it leaves `NROS_SHARED_CARGO_DIR` empty on the supported degrade
+# paths (sharing not requested; a real `cargo` directory from an earlier
+# build), and asserting there would turn every pre-existing build dir red.
+# --------------------------------------------------------------------------
+function(nros_assert_shared_cargo_dir_used shared_dir target)
+    if(NOT shared_dir)
+        return()
+    endif()
+    if(NOT TARGET ${target})
+        message(FATAL_ERROR
+            "nros_assert_shared_cargo_dir_used: no target '${target}'. Call "
+            "this AFTER corrosion_import_crate().")
+    endif()
+    set(_stamp "${CMAKE_CURRENT_BINARY_DIR}/nros-shared-cargo-dir-${target}.checked")
+    # A real OUTPUT with a file-level DEPENDS on the artifact, not a POST_BUILD:
+    # issue 0268's rule. The check must re-run whenever cargo produces a new
+    # archive, and only then — a cached build has nothing new to witness.
+    add_custom_command(
+        OUTPUT "${_stamp}"
+        COMMAND bash "${_NROS_SHARED_CARGO_CHECK_SH}"
+            --shared-dir "${shared_dir}"
+            --link "${CMAKE_BINARY_DIR}/cargo"
+            --artifact "$<TARGET_FILE:${target}>"
+            --label "${target}"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
+        DEPENDS "$<TARGET_FILE:${target}>"
+        COMMENT "nano-ros: checking cargo wrote ${target} into the shared dir (issue 0945)"
+        VERBATIM)
+    add_custom_target(nros_shared_cargo_dir_check_${target} ALL DEPENDS "${_stamp}")
 endfunction()
 
 # A macro, not a function: `find_package` / `FetchContent_MakeAvailable` define

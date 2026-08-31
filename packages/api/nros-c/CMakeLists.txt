@@ -120,6 +120,23 @@ corrosion_import_crate(
     PROFILE       ${NROS_CARGO_PROFILE}
     LOCKED
 )
+# Issue 0945 item 1 — witness that cargo actually built into the shared
+# directory. The redirect above works by symlinking over a path Corrosion
+# derives privately and offers no knob for, so a Corrosion upgrade that moves
+# that path stops the sharing SILENTLY: the build still succeeds, just slower.
+# No-op unless the redirect is live (`NROS_SHARED_CARGO_DIR` is empty when
+# sharing was not requested, and on the degrade path where `cargo` is already a
+# real directory).
+#
+# Armed on `nros-c` alone and that is deliberate: `${CMAKE_BINARY_DIR}/cargo` is
+# ONE link per build dir, and `nros-cpp` — the only other Corrosion crate that
+# rides it — is imported from a sibling directory scope that cannot see this
+# variable. One witness answers the question for both, and a second would only
+# double the stat(2) calls.
+if(COMMAND nros_assert_shared_cargo_dir_used)
+    nros_assert_shared_cargo_dir_used("${NROS_SHARED_CARGO_DIR}" nros_c-static)
+endif()
+
 # The preset's definition, so the crate resolves `--profile nros-…` without a
 # `[profile.*]` block of its own. No-op for a user-owned profile.
 nros_cargo_profile_env(nros_c-static)
