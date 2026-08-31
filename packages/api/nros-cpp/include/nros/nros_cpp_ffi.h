@@ -642,7 +642,10 @@ typedef uint32_t nros_cpp_shutdown_callback_handle_t;
 #define NROS_CPP_RET_NOT_ALLOWED -12
 
 /**
- * Rejected (QoS/ABI incompatibility).
+ * Request was rejected — the peer considered it and declined.
+ * A goal rejected by an action server, or a QoS/ABI incompatibility.
+ * Distinct from `Error`, which means the request never got that far
+ * (issue 0868).
  */
 #define NROS_CPP_RET_REJECTED -13
 
@@ -2118,6 +2121,27 @@ nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
  */
 nros_cpp_ret_t nros_cpp_action_client_wait_for_action_server(void *handle, uint32_t timeout_ms);
 
+/**
+ * Send a goal and block until the server accepts or rejects it.
+ *
+ * # Returns
+ *
+ * Three outcomes, three codes — they were two before issue 0868, and callers
+ * could not tell a server decision from a failed send:
+ *
+ * * `NROS_CPP_RET_OK` — the server ACCEPTED; `goal_id_out` is filled.
+ * * `NROS_CPP_RET_REJECTED` — the server RECEIVED the goal and declined it.
+ *   This is a decision, not a fault: the server's goal callback said no.
+ * * `NROS_CPP_RET_TIMEOUT` — no goal response within 30 s. The server may
+ *   never have received the goal at all; nothing here can tell.
+ * * `NROS_CPP_RET_ERROR` — the goal could not be SENT (no arena entry, or
+ *   the backend refused the request).
+ * * `NROS_CPP_RET_REENTRANT` — called from inside a callback. This spins the
+ *   executor, so it cannot run under one.
+ *
+ * # Safety
+ * All pointers must be valid; `handle` must be an initialized `CppActionClient`.
+ */
 nros_cpp_ret_t nros_cpp_action_client_send_goal(void *handle,
                                                 const uint8_t *goal_buf,
                                                 size_t goal_len,

@@ -3535,6 +3535,18 @@ bool nros_action_client_action_server_is_ready(const struct nros_action_client_t
  * all I/O is driven by the executor's `spin_once`.
  *
  * Like the runtime's `Promise::wait`, this is syntactic sugar over async + spin.
+ *
+ * # Returns
+ *
+ * Three outcomes, three codes — they were two before issue 0868 (see the C++
+ * twin `nros_cpp_action_client_send_goal`):
+ *
+ * * `NROS_RET_OK` — the server ACCEPTED; `goal_uuid` is filled.
+ * * `NROS_RET_REJECTED` — the server RECEIVED the goal and declined it.
+ * * `NROS_RET_TIMEOUT` — no goal response within the blocking budget. The
+ *   server may never have received the goal at all.
+ * * `NROS_RET_ERROR` — the goal could not be SENT.
+ * * `NROS_RET_REENTRANT` — called from inside a dispatch callback.
  */
 NROS_PUBLIC
 nros_ret_t nros_action_send_goal(struct nros_action_client_t *client,

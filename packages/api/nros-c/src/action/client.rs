@@ -445,6 +445,18 @@ pub unsafe extern "C" fn nros_action_client_action_server_is_ready(
 /// all I/O is driven by the executor's `spin_once`.
 ///
 /// Like the runtime's `Promise::wait`, this is syntactic sugar over async + spin.
+///
+/// # Returns
+///
+/// Three outcomes, three codes — they were two before issue 0868 (see the C++
+/// twin `nros_cpp_action_client_send_goal`):
+///
+/// * `NROS_RET_OK` — the server ACCEPTED; `goal_uuid` is filled.
+/// * `NROS_RET_REJECTED` — the server RECEIVED the goal and declined it.
+/// * `NROS_RET_TIMEOUT` — no goal response within the blocking budget. The
+///   server may never have received the goal at all.
+/// * `NROS_RET_ERROR` — the goal could not be SENT.
+/// * `NROS_RET_REENTRANT` — called from inside a dispatch callback.
 #[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_action_send_goal(
     client: *mut nros_action_client_t,
@@ -510,10 +522,15 @@ pub unsafe extern "C" fn nros_action_send_goal(
         if flag >= 0 {
             client_ref.goal_response_callback = orig_cb;
             client_ref.context = orig_ctx;
+            // issue 0868 — a server REJECTION is `REJECTED`, not `ERROR`.
+            // Same split as the C++ twin `nros_cpp_action_client_send_goal`:
+            // `ERROR` is what the async send below returns when the goal
+            // could not be sent at all, so reusing it here left the caller
+            // unable to tell "the server said no" from "it never left".
             return if flag == 1 {
                 NROS_RET_OK
             } else {
-                NROS_RET_ERROR
+                NROS_RET_REJECTED
             };
         }
         let elapsed_ns = crate::platform::get_time_ns().saturating_sub(start_ns);

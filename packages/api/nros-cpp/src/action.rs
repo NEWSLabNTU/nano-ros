@@ -17,9 +17,9 @@ use nros_node::config::DEFAULT_RX_BUF_SIZE;
 
 use crate::{
     CppContext, DispatchGuard, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
-    NROS_CPP_RET_REENTRANT, NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR,
-    NROS_CPP_RET_TRY_AGAIN, cpp_ctx_checked, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
-    nros_cpp_ret_t,
+    NROS_CPP_RET_REENTRANT, NROS_CPP_RET_REJECTED, NROS_CPP_RET_TIMEOUT,
+    NROS_CPP_RET_TRANSPORT_ERROR, NROS_CPP_RET_TRY_AGAIN, cpp_ctx_checked, cstr_to_str,
+    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Scratch buffer for re-framing an incoming goal payload before handing
@@ -1044,6 +1044,25 @@ pub unsafe extern "C" fn nros_cpp_action_client_wait_for_action_server(
     }
 }
 
+/// Send a goal and block until the server accepts or rejects it.
+///
+/// # Returns
+///
+/// Three outcomes, three codes — they were two before issue 0868, and callers
+/// could not tell a server decision from a failed send:
+///
+/// * `NROS_CPP_RET_OK` — the server ACCEPTED; `goal_id_out` is filled.
+/// * `NROS_CPP_RET_REJECTED` — the server RECEIVED the goal and declined it.
+///   This is a decision, not a fault: the server's goal callback said no.
+/// * `NROS_CPP_RET_TIMEOUT` — no goal response within 30 s. The server may
+///   never have received the goal at all; nothing here can tell.
+/// * `NROS_CPP_RET_ERROR` — the goal could not be SENT (no arena entry, or
+///   the backend refused the request).
+/// * `NROS_CPP_RET_REENTRANT` — called from inside a callback. This spins the
+///   executor, so it cannot run under one.
+///
+/// # Safety
+/// All pointers must be valid; `handle` must be an initialized `CppActionClient`.
 #[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
@@ -1142,10 +1161,23 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
             // Restore original callback
             client.callbacks.goal_response = orig_cb;
             client.callbacks.context = orig_ctx;
+            // issue 0868 — a server REJECTION is `REJECTED`, not `ERROR`.
+            //
+            // This used to return `ERROR` (-1), which is also what the two
+            // failure paths above return when the goal could not be SENT at
+            // all (no arena core, `send_goal_raw` failed). One code for
+            // "the server considered this goal and said no" and "the goal
+            // never left" makes the distinction unrecoverable by the caller,
+            // so every C++ action-client example printed "Goal was rejected
+            // by server" for all three outcomes including `TIMEOUT`.
+            //
+            // With this split the three are distinguishable: `REJECTED` = the
+            // server decided, `ERROR` = we could not send, `TIMEOUT` = no
+            // answer within the budget.
             return if flag == 1 {
                 NROS_CPP_RET_OK
             } else {
-                NROS_CPP_RET_ERROR
+                NROS_CPP_RET_REJECTED
             };
         }
         let elapsed_ns = crate::nros_cpp_time_ns().saturating_sub(start_ns);

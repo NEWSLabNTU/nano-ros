@@ -55,7 +55,10 @@ enum class ErrorCode : int32_t {
     SubscriptionFailed = -11,
     /// Operation not allowed for this entity/backend.
     NotAllowed = -12,
-    /// Rejected (QoS/ABI incompatibility).
+    /// Request was rejected — the peer considered it and declined.
+    /// A goal rejected by an action server, or a QoS/ABI
+    /// incompatibility. Distinct from `Error`, which means the
+    /// request never got that far (issue 0868).
     Rejected = -13,
     /// Transient — no data ready yet (non-blocking take). Retry later.
     TryAgain = -14,

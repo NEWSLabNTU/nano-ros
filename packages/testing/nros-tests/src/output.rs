@@ -530,6 +530,25 @@ pub const ACTION_GOAL_ACCEPTED_PREFIX: &str = "Goal accepted by server";
 /// [`ACTION_GOAL_ACCEPTED_PREFIX`] plus `", waiting for result"`.
 pub const ACTION_GOAL_ACCEPTED_MARKER: &str = "Goal accepted by server, waiting for result";
 
+/// Action client log prefix when the server RECEIVED the goal and DECLINED it
+/// (`"Goal was rejected by server"`).
+///
+/// Issue 0868 — this line used to be printed for every non-OK `send_goal`
+/// return, so a test asserting it proved only "something failed": a timeout,
+/// a failed send and a real rejection all produced it. `send_goal` now
+/// returns `Rejected` only for a server decision, and the examples branch on
+/// it, so this marker means what it says — and
+/// [`ACTION_GOAL_NO_RESPONSE_PREFIX`] is what a timeout prints instead.
+pub const ACTION_GOAL_REJECTED_PREFIX: &str = "Goal was rejected by server";
+
+/// Action client log prefix when no goal response arrived within the
+/// `send_goal` budget (`"No goal response from server"`).
+///
+/// Issue 0868 — the case that used to masquerade as a server rejection. The
+/// server may never have received the goal at all, so this names the missing
+/// response rather than a decision nobody made.
+pub const ACTION_GOAL_NO_RESPONSE_PREFIX: &str = "No goal response from server";
+
 /// Action client log prefix for each feedback sample
 /// (`"Next number in sequence received:"`, followed by the partial sequence
 /// like `[0, 1, 1, 2]`).

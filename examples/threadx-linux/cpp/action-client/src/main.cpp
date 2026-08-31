@@ -78,7 +78,28 @@ int nros_app_main(int argc, char** argv) {
     uint8_t goal_id[16];
     ret = client.send_goal(goal, goal_id);
     if (!ret.ok()) {
-        fprintf(stderr, "Goal was rejected by server (order=%d, ret=%d)\n", order, ret.raw());
+        // Issue 0868 — say WHICH of the three outcomes this was.
+        //
+        // This used to print "Goal was rejected by server" for every non-OK
+        // code, so a TIMEOUT — the server never answered, and may never have
+        // received the goal at all — was reported as a decision the server
+        // made. `on_goal` does have a real reject path (order out of range),
+        // so the message sent readers to the wrong file; it cost exactly that
+        // once, with the real fault in the transport.
+        //
+        // The three became distinguishable in the same issue: before it,
+        // `send_goal` returned ERROR for both "the server said no" and "the
+        // goal never left", so no message here could have been accurate.
+        if (ret.code() == nros::ErrorCode::Rejected) {
+            fprintf(stderr, "Goal was rejected by server (order=%d)\n", order);
+        } else if (ret.code() == nros::ErrorCode::Timeout) {
+            fprintf(stderr,
+                    "No goal response from server (order=%d, ret=%d) — the goal may never "
+                    "have been received\n",
+                    order, ret.raw());
+        } else {
+            fprintf(stderr, "Failed to send goal (order=%d, ret=%d)\n", order, ret.raw());
+        }
         nros::shutdown();
         return 2;
     }

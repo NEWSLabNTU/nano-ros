@@ -231,7 +231,10 @@ pub const NROS_CPP_RET_PUBLISH_FAILED: nros_cpp_ret_t = -10;
 pub const NROS_CPP_RET_SUBSCRIPTION_FAILED: nros_cpp_ret_t = -11;
 /// Operation not allowed for this entity/backend.
 pub const NROS_CPP_RET_NOT_ALLOWED: nros_cpp_ret_t = -12;
-/// Rejected (QoS/ABI incompatibility).
+/// Request was rejected — the peer considered it and declined.
+/// A goal rejected by an action server, or a QoS/ABI incompatibility.
+/// Distinct from `Error`, which means the request never got that far
+/// (issue 0868).
 pub const NROS_CPP_RET_REJECTED: nros_cpp_ret_t = -13;
 /// Try again — operation not ready yet.
 pub const NROS_CPP_RET_TRY_AGAIN: nros_cpp_ret_t = -14;
