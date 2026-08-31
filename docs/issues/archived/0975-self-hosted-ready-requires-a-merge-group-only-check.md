@@ -1,10 +1,11 @@
 ---
 id: 975
 title: "`--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue"
-status: open
+status: resolved
 area: ci
 severity: high
 found: 2026-09-01
+resolved: 2026-09-01
 related: [0883, phase-410, phase-395]
 ---
 
@@ -118,3 +119,42 @@ The remaining evidence is positional: the queue held entries before the flip
 thing that changed. Confirming it is one command — apply without the flag and
 watch the PRs unblock — but that mutates repo settings, so it is left to a
 human rather than guessed at.
+
+
+# Resolution (2026-09-01)
+
+Confirmed by experiment before fixing: applying the ruleset WITHOUT
+`--self-hosted-ready` moved six PRs from `BLOCKED` to `CLEAN` within 20 s, and
+the queue began accepting entries again. The positional evidence in the section
+above is therefore now direct.
+
+Three changes:
+
+1. `--self-hosted-ready` no longer appends to the required set. It sets
+   `vars.NROS_SELF_HOSTED_READY`, which is what makes the self-hosted jobs run —
+   that is the whole flag. `SELF_HOSTED_CHECKS` survives as a DESCRIPTIVE list
+   so the plan output can still name what the flag turns on.
+2. The plan text stopped saying "Add them with --self-hosted-ready", which had
+   become false, and now states that these lanes gate through the `CI`
+   aggregator whichever way the flag goes.
+3. New gate `check-required-contexts-reportable` (fast line). It reads the
+   script's declared arrays — not the live ruleset, since a gate that needs the
+   network is a gate that gets skipped — and rejects a required context that is
+   produced by no job, or only by jobs without a `pull_request` trigger.
+
+The gate also rejects a required job whose `if:` depends on `vars.`/`secrets.`.
+That is the same defect one level down: `l3` carries
+`if: vars.NROS_SELF_HOSTED_READY == 'true'`, so even had it run on
+`pull_request`, flipping a variable in Settings would silently stop a REQUIRED
+check from reporting with nothing in any diff to show it. Issue 0883's shape.
+
+Verified against the real regression rather than a synthetic one: re-adding
+`L3 (cross build + link)` to `HOSTED_CHECKS` makes the gate red with the
+diagnosis naming both the workflow and its triggers. Its selftest covers four
+shapes (reportable, merge_group-only, variable-gated, produced-by-nothing) and
+runs on the normal path.
+
+What this does NOT do: nothing verifies the LIVE ruleset against the script.
+A context added by hand in the GitHub UI is still invisible here. That is
+deliberate — the alternative is a network-dependent gate — but it means the
+script has to stay the only way the required set is edited.
