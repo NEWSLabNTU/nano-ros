@@ -35,15 +35,84 @@
 
 set -uo pipefail
 
-baseline="${1:-origin/main}"
+baseline="${1:-${NROS_SUBMODULE_PIN_BASELINE:-origin/main}}"
 local_ref="${2:-HEAD}"
+
+# --- selftest, on the NORMAL path (phase-395) -------------------------------
+#
+# This gate spent its life able to report OK without comparing anything, and a
+# negative control nobody runs would not have caught that. So it runs here, and
+# it exercises the exact decision that was wrong: what happens when the baseline
+# cannot be resolved. It re-invokes this same script, so the selftest cannot
+# drift from the shipped logic.
+#
+# NROS_SUBMODULE_PINS_REENTRY is a RECURSION guard, not an opt-in flag — the
+# inner runs must not selftest themselves. Named for what it does, because an
+# earlier spelling with SELFTEST in the name read to both check-gate-selftests
+# and to a human as "this only runs when asked", which is the thing being
+# forbidden.
+nros_submodule_pins_selftest() {
+    [ -n "${NROS_SUBMODULE_PINS_REENTRY:-}" ] && return 0
+    local missing="refs/heads/__nros_selftest_absent__" rc
+
+    NROS_SUBMODULE_PINS_REENTRY=1 GITHUB_ACTIONS=true \
+        bash "$0" "$missing" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -ne 1 ]; then
+        echo "submodule-pins SELFTEST FAILED (got rc=$rc, want 1): an unresolvable" >&2
+        echo "  baseline must be FATAL in CI. That it was not is how this gate" >&2
+        echo "  passed a real pin rewind at PR stage while comparing nothing." >&2
+        exit 1
+    fi
+
+    NROS_SUBMODULE_PINS_REENTRY=1 GITHUB_ACTIONS= CI= \
+        bash "$0" "$missing" >/dev/null 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "submodule-pins SELFTEST FAILED (got rc=$rc, want 0): a fresh LOCAL" >&2
+        echo "  clone with no origin/main must still be able to run the fast tier." >&2
+        exit 1
+    fi
+}
+nros_submodule_pins_selftest
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root" || exit 2
 
 if ! git rev-parse --verify --quiet "$baseline^{commit}" >/dev/null; then
+    # A gate that cannot check must SAY SO, not report OK.
+    #
+    # `actions/checkout` is shallow by default, so on a pull request
+    # `origin/main` usually does not exist — and this branch used to `exit 0`.
+    # The gate therefore ran on every PR and compared NOTHING, for as long as it
+    # had existed. Measured: a real play_launch pin rewind reached a pushed
+    # branch and was caught only by a LOCAL run.
+    #
+    # pr-checks.yml already documents this exact trap for a sibling check:
+    # "the base ref is usually absent and the diff would fail — which the
+    # fail-safe would turn into code=true forever, i.e. safe but never actually
+    # firing". Same trap, different gate.
+    #
+    # Locally the skip is still right: a fresh clone genuinely has nothing to
+    # compare against, and refusing to run the fast tier there helps nobody.
+    if [ -n "${GITHUB_ACTIONS:-}${CI:-}" ]; then
+        echo "submodule-pins: FAILED — baseline '$baseline' does not resolve, in CI." >&2
+        echo "" >&2
+        echo "  This gate is NETWORK-FREE by the check-fast contract, so it cannot" >&2
+        echo "  fetch the base itself. The workflow must provide it before" >&2
+        echo "  \`just check fast\`, e.g.:" >&2
+        echo "" >&2
+        echo "    git fetch --no-tags --depth=1 origin \\" >&2
+        echo "      +refs/heads/\${GITHUB_BASE_REF:-main}:refs/remotes/origin/\${GITHUB_BASE_REF:-main}" >&2
+        echo "" >&2
+        echo "  or pass one via \$NROS_SUBMODULE_PIN_BASELINE. Failing instead of" >&2
+        echo "  skipping is deliberate: a silent skip here is indistinguishable" >&2
+        echo "  from a green check." >&2
+        exit 1
+    fi
     echo "submodule-pins: NOT CHECKED — baseline '$baseline' does not resolve." >&2
-    echo "  (a fresh clone with no origin/main yet; nothing to compare against)" >&2
+    echo "  (a fresh LOCAL clone with no origin/main yet; nothing to compare" >&2
+    echo "   against. In CI this is a FAILURE, not a skip.)" >&2
     exit 0
 fi
 

@@ -431,6 +431,26 @@ jobs:
       # (check-c / check-cpp — nros-c/nros-cpp build + syntax + clippy, which pull
       # the ros-launch-resolve submodule + the zenoh-pico source) live in
       # check-build (PR/nightly), so the push lane needs no submodule/source.
+      # `check-submodule-pins` runs inside `check fast` and compares this
+      # branch's gitlinks against the BASE's. It is network-free by the
+      # check-fast contract, so it cannot fetch the base itself — and
+      # `actions/checkout` is shallow, so `origin/main` is normally absent here.
+      #
+      # That combination made the gate `exit 0` without comparing anything, on
+      # every PR, for as long as it existed. A real play_launch pin rewind
+      # reached a pushed branch and was caught only by a local run. The gate now
+      # FAILS instead of skipping when it has no baseline; this step is what
+      # gives it one.
+      #
+      # depth=1 is enough: the gate reads TREES (`git ls-tree <ref>`), never
+      # history. On merge_group GITHUB_BASE_REF is empty, so default to main.
+      - name: Fetch the pin baseline for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git fetch --no-tags --quiet --depth=1 origin \
+            "+refs/heads/$base:refs/remotes/origin/$base"
+          echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
+
       - name: just check fast
         run: |
           source ./activate.sh
