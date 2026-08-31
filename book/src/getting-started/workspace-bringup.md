@@ -61,7 +61,7 @@ into the Entry pkg.
 ```
 src/demo_bringup/
 ├── package.xml          # ROS 2 manifest; <exec_depend> per node pkg
-├── system.toml          # [system] + [[component]] + [deploy.<target>]
+├── system.toml          # [system] + [[component]] + [image.<id>] + [host.<name>]
 ├── launch/
 │   └── system.launch.xml   # ROS 2 launch schema, verbatim
 └── config/                 # optional — params.yaml, per-target overrides
@@ -94,9 +94,10 @@ pkg = "listener_pkg"
 class = "listener_pkg::Listener"
 name = "listener"
 
-[deploy.native]
-kind = "self"
-target = "x86_64-unknown-linux-gnu"
+[image.native]
+board = "native"
+
+[host.native]
 ```
 
 Key fields:
@@ -109,9 +110,10 @@ Key fields:
 | `[[component]] pkg` | The ROS package name (matches `<name>` in `package.xml`) |
 | `[[component]] class` | Fully-qualified Rust type (`crate::TypeName`) |
 | `[[component]] name` | Node name at runtime |
-| `[deploy.<target>]` | Deploy target block; read by `nros check` and Entry codegen |
-| `[deploy.<t>] kind` | `"self"` = host native binary; `"flash"` = embedded target |
-| `[deploy.<t>] target` | Rust target triple |
+| `[image.<id>]` | A buildable image; read by `nros build`, `nros check` and Entry codegen |
+| `[image.<id>] board` | The board this image is built for; its descriptor supplies the rustc triple |
+| `[host.<name>]` | A machine nodes run on. No `nodes` means every node |
+| `[board_config.<board>]` | Site facts for that board (SDK roots, netstack) |
 
 For multi-domain setups or cross-domain bridges add `[[domain]]` and
 `[[bridge]]` sections — see `docs/design/0024-multi-node-workspace-layout.md` §11

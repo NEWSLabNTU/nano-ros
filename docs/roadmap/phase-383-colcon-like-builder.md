@@ -9,8 +9,10 @@
 (who owns `build/`), [RFC-0077](../design/0077-image-runtime-is-the-images-choice.md)
 (the `panic` policy this forwards)
 
-**Status (2026-08-27). W1–W8 COMPLETE. W9.a COMPLETE — all 16 bringups declare
-`[image.*]`, 99 images, every one resolving.** The W10 chain is PROVEN on one
+**Status (2026-08-31). W1–W9 and W10.a / W10.c / W10.d COMPLETE — all bringups
+declare `[image.*]` (123 images tree-wide, every one resolving), and `panic` /
+`args` are carried (see the W9.a note below). W10.b alone remains, and is NOT
+DUE: it is a 0.6.0 action.** The W10 chain is PROVEN on one
 real workspace: `examples/workspaces/rust` built with its hand-written root and
 entry deleted and the generated pair compiling. That proof found three more
 defects (all fixed) and was then reverted — the tree is unchanged.
@@ -31,17 +33,21 @@ the migration:
   failures. Tier 2 is green today only on residue from an older `lane=all`.
   W9.c therefore runs against a `lane=all` build until 0828 lands.
 
-**W9.a is not as complete as it was marked.** All 16 bringups declare
-`[image.*]` and every image resolves, but two keys were never carried over from
-the entries they were derived from: **zero images declare `panic`** (6 entries
-do — `esp32_entry`, `freertos_entry`, `nuttx_entry` in `workspaces/rust`;
-`nuttx_entry`, `riscv_nuttx_entry`, `freertos_realtime_entry` in
-`workspaces/realtime-rust`) and **zero declare `args`**, so the three
-args-bearing entries (`native_entry_robot1`, `native_entry_robot2`,
-`zephyr_entry_robot1`) have no image at all. Nine declarations missing. A
-generated entry would silently lose its panic policy or its machine binding —
-which is a build that succeeds and is wrong, the worst shape. Fix belongs with
-the first workspace migration.
+**W9.a's gap is CLOSED (re-measured 2026-08-31).** It was real when written:
+two keys had never been carried over from the entries the images were derived
+from, and a generated entry would have silently lost its panic policy or its
+machine binding — a build that succeeds and is wrong.
+
+Both are carried now. Measured against the tree rather than re-read:
+**7 images declare `panic`** (`workspaces/rust`: esp32, freertos, nuttx;
+`workspaces/realtime-rust`: freertos_realtime, nuttx, riscv_nuttx;
+`workspaces/cpp`: native) and **9 declare `args`** (the robot1/robot2 pairs in
+`c`, `cpp`, `mixed`, `rust`, plus `rust`'s `zephyr_robot1`). The count is higher
+than the nine this note predicted because every multihost image needs its own
+binding. On the entry side the keys are simply gone: across 67 entry packages,
+**zero** declare `panic` or `args` — `[package.metadata.nros.entry]` now carries
+only `deploy` / `name` / `class` / `default_namespace` / `board` / `rmw` /
+`node_pkgs` / `domain_id`.
 
 **What remains needs a validated build cycle, not more code:** W9.b (retarget
 `examples/fixtures.toml`'s rows at `nros build`), W9.c (`just build-test-fixtures
@@ -422,14 +428,12 @@ found only because these trees are not uniform the way ours are.
 
 ## W9 — Migrate the nine (RFC-0065 D13, stage 2)
 
-- [~] **W9.a** Migrate all nine workspace roots and their entry packages, one
+- [x] **W9.a** Migrate all nine workspace roots and their entry packages, one
       commit per workspace so a regression bisects to one.
 
-      **Images declared, but nine declarations are missing** — see the status
-      note at the top. No image carries `panic` (6 entries declare one) and
-      none carries `args` (so the 3 args-bearing entries have no image). Both
-      would generate an entry that builds and is WRONG. Close with the first
-      workspace migration.
+      Images declared AND complete: 7 carry `panic`, 9 carry `args`, and no
+      entry package declares either any more. See the re-measured status note
+      at the top — this item was marked `[~]` for a gap that has since closed.
 - [x] **W9.b** Update `examples/fixtures.toml` rows to invoke `nros build`.
       **Done for every row it can apply to. The "337 rows" figure conflated two
       tables that are not the same kind of thing** — measured 2026-08-29:
@@ -683,69 +687,51 @@ found only because these trees are not uniform the way ours are.
       **So the deletion is mechanically safe for all 42**, and what remains is
       a shape decision rather than a correctness risk.
 
-      **SURVEYED 2026-08-31, and the retirement premise does not hold.** Three
-      parallel surveys (readers, TOML inventory, upstream schema) plus one
-      decisive experiment. Recorded here because the previous paragraph — which
-      said placement "moves to `[image.*]` too" — was extrapolation, and the
-      code says otherwise.
+      **SURVEYED 2026-08-31, and OVERTAKEN the same day.** The survey below is
+      kept because its method was right and its conclusion has an expiry date
+      worth seeing. Everything it measured was true when measured; issue 0951
+      landed hours later and removed the subject.
 
-      * **`[deploy.*]` is upstream's, and upstream has no image concept.** The
-        table is `ros_launch_manifest_model::system_config::DeployBlock`, pinned
-        at a tag. rlm's `apply_to_launch` is the SOLE source of placement (node
-        FQN → target/domain/locator/rmw); there is no `ImageBlock` anywhere in
-        that crate. nano-ros's own `image.rs` header agrees: "An image needs no
-        deploy block and a deploy block needs no image" — `[image.*]` is a NEW
-        table, explicitly not a rename.
-      * **The table is mostly placement.** 77 deploy blocks across 26 files:
-        `kind` in all 77, plus `launch` 11 and `nodes` 8, against `board` 27,
-        `target` 13, `rmw` 2. And a `[deploy.<n>.nros]` site layer — 30 `sdk` +
-        17 `netstack` keys — with no `[image.*]` counterpart at all, wired into
-        cmake and two `just` gates.
-      * **The build fields are NOT inert, which kills W10.b as written.**
-        Measured: removing `target` from `[deploy.robot1]`/`[robot2]` DROPS
-        `target: x86_64-unknown-linux-gnu` from the generated SystemModels.
-        `board_facts.rs` hard-ERRORS when `.board` is absent, and
-        `cmake/NanoRosBoardFacts.cmake` shells that verb;
-        `check-deploy-board-resolves.py` errors if it finds zero deploy values.
-        13 production reader sites across `plan`, `codegen-system`,
-        `ws board-facts`, `doctor`, `check`.
-      * **`nros build --dry-run` cannot see any of this.** It reads deploy ONLY
-        to emit the deprecation lint; no deploy value influences a build
-        decision. Seven images came back byte-identical under a deletion that
-        does change generated models — the proof method W10.a established is
-        sound for the build path and silent about the model path.
+      What it found, and what is true now:
 
-      **What landed instead: the 2 `[deploy.*].rmw` fields are gone**, the one
-      slice that is provably inert now that the image rung outranks them (issue
-      0938). Both duplicated the `[system].rmw` they would fall through to.
-      Zero `[deploy.*].rmw` remain in the tree.
+      | survey claim (2026-08-31, morning) | now |
+      | --- | --- |
+      | "77 deploy blocks across 26 files" | **0** in any `system.toml`. 123 `[image.*]`, 28 `[host.*]`. |
+      | "a `[deploy.<n>.nros]` site layer — 30 `sdk` + 17 `netstack` — with no `[image.*]` counterpart" | 24 `[board_config.<board>]` blocks. The 30 held 3 distinct value-sets; keying on the board removed 25 duplicates. |
+      | "`board_facts.rs` hard-ERRORS when `.board` is absent" | It selects candidates from `[image.*] ∪ [deploy.*]` and matches `--board` through the board catalog. |
+      | "`check-deploy-board-resolves.py` errors if it finds zero deploy values" | It reads `[image.*]` and `[image_defaults]` too. Run today: `deploy boards resolve: OK (20 distinct value(s))`. |
+      | "13 production reader sites … the build fields are NOT inert" | Every one migrated to `[image.*]`-first with a deploy fallback: `resolve_target`, `derive_target_rtos`, `schema_build_json`, the `codegen_system` launch fallback, `doctor`, `board_facts`, and `synthesise_self_bringup`. |
+      | "`nros build --dry-run` cannot see any of this" | Still true, and it is why 0951 verified with regenerated SystemModels plus `nros codegen entry` before/after, not with dry-runs. |
 
-      **What retirement would actually require**, in ascending cost: delete the
-      lints and the `nros check` counter (cheap); find an `[image.*]` home for
-      `launch`, `domain_id`, `locator`, and the `.nros` site block (medium);
-      and replace rlm's placement projection, which is consumed OUTSIDE this
-      repo and drives which nodes land in which entry binary (hard, and a
-      schema change in another repository). Issues 0356/0370 record what
-      silently emptying that projection looks like.
+      The one claim that stands is the first: `[deploy.*]` is upstream's type
+      and rlm has no image concept. That did not block the retirement — it
+      shaped it. Placement moved to `[host.<name>]`, which is ALSO upstream's
+      (rlm v0.1.21), so the projection other repositories consume still exists;
+      it is keyed by machine now instead of by a table that also described
+      builds.
+
+      **What W10.b therefore means at 0.6.0:** delete the PARSING of a table
+      nothing in the tree authors — `SystemToml::deploy`, the deprecation
+      lints, the fallback rungs in the readers above, and the `nros check`
+      counter. Not a migration; a subtraction. The three surviving
+      `[deploy.*]` blocks are in
+      `packages/cli/testing_workspaces/orchestration_e2e/nros.toml`, the root
+      overlay `cmd/check.rs` already reports as "retired; unsupported and
+      ignored" — dead text in a file no reader loads.
+
+      **What it still needs:** out-of-tree users may author `[deploy.*]`, and
+      the deprecation warning is what moves them. That warning was never
+      emitted until it was wired to `collect_images`, so the clock started
+      then, not when the lint was written.
 
       **Superseded direction (2026-08-31, kept for the record): `[deploy.*]`
       retires ENTIRELY, not just its build fields.** This item was scoped to the build fields, on the standing
       claim that "`[deploy.*]` keeps PLACEMENT and is not being retired" — the
       deprecation message said exactly that, and it has been corrected. Placement
-      moves to `[image.*]` too, so the eventual state is one table describing a
-      buildable unit and where it runs, rather than two describing halves of it.
+      moved to `[host.*]`, so the eventual state is one table describing a
+      buildable unit and another describing where it runs, rather than one
+      describing halves of both.
 
-      That does not change what 0.6.0 does here — the build fields go first,
-      because they are the redundant half and their removal is provably inert.
-      Placement retirement needs its own work item: `kind`, `nodes` and `launch`
-      have live readers, and unlike the build fields there is no second table
-      already carrying the same values.
-
-      **What 0.6.0 must therefore decide, and it is a design question:** which
-      of the 14 deploys deserve to be images. Several are placement-only
-      (`robot1`/`robot2` carrying a host `target`), and giving those an image
-      declares them separately buildable — which may be right, but is a choice
-      about the workspace's shape rather than a rename.
 - [x] **W10.c** Add `check-no-tracked-workspace-roots` so the shape cannot
       return. Every gate in this repo exists because a class recurred; this one
       is cheap and the class is "someone re-adds a hand-written root".

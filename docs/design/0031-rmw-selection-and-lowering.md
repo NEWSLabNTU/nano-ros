@@ -290,11 +290,18 @@ the Rust `nros/safety-e2e` feature (targets 1-3) AND the C/C++ `#define NROS_SYS
   Rust uses the cargo feature directly).
 - Converge examples so zenoh / xrce / cyclonedds all lower uniformly from the
   declared value.
-- Make `nros new --rmw <x>` actually template the scaffold (today it only prints
-  a "next steps" banner).
-- Sync the contradictory book pages (`user-guide/rmw-backends.md`,
-  `internals/rmw-backends.md` say "not by features"; `reference/build-commands.md`,
-  `porting/custom-platform.md` show the bare feature).
+- ~~Make `nros new --rmw <x>` actually template the scaffold~~ — **CLOSED
+  (verified 2026-08-31).** `args.rmw` is threaded into the scaffold structs at
+  `cmd/new.rs:302`, `:460`/`:472` and `:507`, each with a real default. No
+  "next steps" banner remains. The RFC had simply not been updated.
+- ~~Sync the contradictory book pages~~ — **CLOSED (2026-08-31).**
+  `user-guide/rmw-backends.md` had kept documenting the PRE-C5b lowering ("add
+  `nros` with the platform feature plus one `nros-rmw-<x>` shim"), which the
+  C5b amendment below retired when the board crate became the selection point.
+  Measured against real leaves before rewriting: they forward to
+  `nros-board-linux/rmw-<x>`, and workspace node pkgs say so in a comment. The
+  page now shows that shape and says a workspace declares
+  `[image.<id>].rmw` instead of writing any of it.
 
 ## Changelog
 

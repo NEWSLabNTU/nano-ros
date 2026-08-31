@@ -40,8 +40,8 @@ pub struct Args {
     pub workspace: Option<PathBuf>,
 
     /// Bringup `system.toml` (or a directory containing one) whose
-    /// `[deploy.<target>]` blocks to health-check (RFC-0004 §4). When
-    /// omitted, the cwd's `system.toml` is used if present.
+    /// `[image.<id>]` blocks to health-check — and any `[deploy.*]` still
+    /// declared. When omitted, the cwd's `system.toml` is used if present.
     #[arg(long)]
     pub config: Option<PathBuf>,
 }
@@ -126,7 +126,7 @@ pub fn run(args: Args) -> Result<()> {
             Err(_) if deploy_problems.is_some() => {
                 eprintln!(
                     "nros doctor: no nano-ros workspace here — skipped `just doctor` \
-                     (checked deploy targets only)"
+                     (checked the bringup's images only)"
                 );
                 None
             }
@@ -145,7 +145,7 @@ pub fn run(args: Args) -> Result<()> {
 
     let problems = deploy_problems.unwrap_or(0) + gate_problems;
     if problems > 0 {
-        bail!("nros doctor: {problems} problem(s) (deploy targets + license gates)");
+        bail!("nros doctor: {problems} problem(s) (images + license gates)");
     }
     Ok(())
 }
@@ -497,7 +497,7 @@ mod tests {
     use super::*;
 
     /// RFC-0004 §4 — `check_deploy_targets` parses a bringup `system.toml`,
-    /// reports each `[deploy.<target>]`, and flags a deploy whose `launch`
+    /// reports each `[image.<id>]`, and flags one whose `launch`
     /// file is missing relative to the bringup dir.
     #[test]
     fn deploy_targets_flag_missing_launch_file() {

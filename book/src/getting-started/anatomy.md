@@ -47,9 +47,10 @@ pkg = "talker_pkg"
 class = "talker_pkg::Talker"
 name = "talker"
 
-[deploy.native]                      # one block per build target
-kind = "self"
+[image.native]                       # one block per BUILDABLE image
 board = "native"
+
+[host.native]                        # WHERE the nodes run; no `nodes` = all
 ```
 
 The launch file is the **ROS 2 launch XML schema, verbatim** —
@@ -64,7 +65,7 @@ even carries a per-topic QoS override to show the plumbing:
 </node>
 ```
 
-When you later target hardware, you add a `[deploy.<name>]` block per
+When you later target hardware, you add an `[image.<id>]` block per
 board — the code and topology stay put. That is the growth rule:
 **configuration is a new block, never a restructure.**
 

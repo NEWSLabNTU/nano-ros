@@ -48,7 +48,7 @@ per-target deploy config, and contains no compiled code:
 ```
 src/demo_bringup/
 ├── package.xml          # <name>demo_bringup</name>, <exec_depend> per node
-├── system.toml          # [system] + [[component]] + [deploy.<target>] (+ [[domain]]/[[bridge]])
+├── system.toml          # [system] + [[component]] + [image.<id>] + [host.<name>] (+ [[domain]]/[[bridge]])
 ├── launch/
 │   └── system.launch.xml   # ROS 2 launch schema, verbatim
 └── config/                 # optional — params.yaml, etc.

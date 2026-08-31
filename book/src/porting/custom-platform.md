@@ -283,7 +283,7 @@ nros = { features = ["rmw-zenoh", "platform-cffi"] }
 
 > The `rmw-zenoh` feature is the *lowering* of the declared RMW: the
 > backend is declared once in `system.toml` (`[system].rmw` /
-> `[deploy.<t>].rmw`) and the toolchain emits the cargo feature. The
+> `[image.<id>].rmw`) and the toolchain emits the cargo feature. The
 > feature is the build mechanism, not the user-facing knob — see
 > [RFC-0031](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0031-rmw-selection-and-lowering.md).
 
