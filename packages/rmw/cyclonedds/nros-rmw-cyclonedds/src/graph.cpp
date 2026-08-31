@@ -1,7 +1,14 @@
 // Phase 177.36 — ROS 2 graph publisher (`ros_discovery_info`). See graph.hpp.
 #include "graph.hpp"
 
-#include <cstdio>
+// issue 0942 — `<stdio.h>` and UNQUALIFIED `fprintf`, matching `descriptors.cpp`,
+// the only other library TU here that prints. `<cstdio>` is only required to put
+// the C names in namespace `std`; putting them in the GLOBAL namespace too is
+// optional, and the freestanding libstdc++ in the riscv64 cross toolchain does
+// the opposite — there `std::fprintf` does not exist. So this TU compiled on
+// every hosted target and failed only on threadx-riscv64.
+#include <stdio.h>
+
 #include <cstdlib>
 #include <cstring>
 

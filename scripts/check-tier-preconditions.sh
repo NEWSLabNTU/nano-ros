@@ -56,6 +56,17 @@ probe() {
 #    Issue 0550: a stale cyclonedds checkout took the fixture sweep down 17
 #    leaves in, as a missing-file cmake error naming neither the submodule nor
 #    the pull that moved the pointer.
+# 0. Cross Rust targets. FIRST because no amount of tree work fixes it: it is a
+#    host-provisioning fact, it is the cheapest probe here, and without it the
+#    failure surfaces 20 minutes into a fixture sweep as a corrosion CONFIGURE
+#    error under a tail of unrelated newlib warnings (issue 0943; the shape
+#    issue 0833's header describes). `just doctor` has checked this since 0833 —
+#    but a doctor is something you run when you already suspect trouble, and
+#    this is the moment the answer is about to matter.
+probe "cross Rust target(s) declared by this tree are not installed" \
+    "just workspace rust-targets   (or: rustup target add <triple>)" \
+    bash scripts/check-rust-targets-installed.sh
+
 probe "a submodule is not at the commit this superproject records" \
     "git submodule update <path>   (bypass: NROS_SKIP_SUBMODULE_DRIFT_CHECK=1)" \
     bash scripts/check-submodule-drift.sh
