@@ -32,8 +32,13 @@ set(NANO_ROS_PLATFORM "posix" CACHE STRING
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
     posix freertos nuttx threadx esp_idf
     freertos_armcm3 nuttx_armv7a threadx_linux threadx_riscv64)
-set(NANO_ROS_ROS_EDITION "humble" CACHE STRING "ROS 2 edition: humble, iron, or jazzy")
-set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS humble iron jazzy)
+# phase-405 W3 — the default and the valid list come from the one module that
+# is allowed to spell an edition, so adding an edition is one edit.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRosEdition.cmake")
+string(REPLACE ";" ", " _nros_known_editions "${NANO_ROS_KNOWN_ROS_EDITIONS}")
+set(NANO_ROS_ROS_EDITION "${NANO_ROS_DEFAULT_ROS_EDITION}" CACHE STRING
+    "ROS 2 edition: ${_nros_known_editions}")
+set_property(CACHE NANO_ROS_ROS_EDITION PROPERTY STRINGS ${NANO_ROS_KNOWN_ROS_EDITIONS})
 
 # phase-261 W5 — declared capability axes, the C/C++ projection of `system.toml`
 # `[system].features = [...]` (RFC-0004). A user sets this BEFORE pulling nano-ros

@@ -93,5 +93,7 @@ fails if this block drifts.
 - **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
 - **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
 - **#0941** (build) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent See `0941-*`.
+- **#0946** (build) — Two independent per-platform locator ladders in cmake, and they disagree on threadx and freertos See `0946-*`.
+- **#0947** (build) — NuttX has two ROS-edition surfaces that cannot express each other, and `jazzy` is unreachable on one See `0947-*`.
 
 <!-- END GENERATED open-issue list -->

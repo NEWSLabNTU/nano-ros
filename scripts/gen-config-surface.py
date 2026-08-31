@@ -96,7 +96,8 @@ FACTS = [
             "CONFIG_NROS_XRCE_AGENT_PORT",
         ],
         "note": "Zephyr is exempt from the cmake precedence chain by design "
-                "(NanoRosEntry.cmake:485), so the Kconfig spelling is the carrier "
+                "(see the exemption comments in NanoRosEntry.cmake — no line ref, they move), "
+                "so the Kconfig spelling is the carrier "
                 "there rather than an override.",
     },
     {

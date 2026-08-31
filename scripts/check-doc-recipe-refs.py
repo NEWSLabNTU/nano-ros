@@ -62,6 +62,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from tracked import tracked  # issue 0721: index lookup, not a walk
+
 REPO = Path(__file__).resolve().parent.parent
 BASELINE = REPO / ".config" / "doc-recipe-refs-baseline.txt"
 
@@ -233,14 +236,17 @@ def resolves(recipe, second, roots, mods) -> bool:
 
 def doc_groups():
     """[(justfile, [documents])] — the namespace a document resolves against."""
+    # issue 0721 — the index, not a walk. `book/` and `docs/` are cheap, but
+    # `packages/cli` below is not: it holds `target/`, and a `**/*.md` glob
+    # descends into every build tree to produce the paths it then discards.
+    # Same helper as the sibling gates rather than a second spelling.
     root_docs = set()
-    for pat in ("docs/**/*.md", "book/src/**/*.md"):
-        for p in REPO.glob(pat):
-            # `archived/` records what was true THEN; a retired recipe named
-            # there is history, not a broken instruction.
-            if "archived" in p.parts:
-                continue
-            root_docs.add(p)
+    for p in tracked("docs", "book/src", suffix=".md"):
+        # `archived/` records what was true THEN; a retired recipe named
+        # there is history, not a broken instruction.
+        if "archived" in p.parts:
+            continue
+        root_docs.add(p)
     for name in ("README.md", "AGENTS.md", "CLAUDE.md"):
         if (REPO / name).is_file():
             root_docs.add(REPO / name)
@@ -250,16 +256,15 @@ def doc_groups():
     # under `packages/cli` stats the whole vendored `third-party/play_launch`
     # tree and every `target/` to throw the results away
     # (`check-no-tracked-file-find`; measured 7m36s -> 0.8s for the same set).
-    cli_docs = {
-        cli_root / rel
-        for rel in subprocess.run(
-            ["git", "-C", str(cli_root), "ls-files", "*.md"],
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.split()
-        if "third-party" not in Path(rel).parts and "target" not in Path(rel).parts
-    }
+    #
+    # Resolved against main's independent fix of the same bug, which inlined a
+    # `git ls-files` subprocess here. Same diagnosis, but scripts/lib/tracked.py
+    # exists precisely so this is not spelled twice — CLAUDE.md's "add ONE
+    # shared helper rather than a second spelling", which is the rule the
+    # #282 -> #326 pair was filed under. The `target` filter main carried is
+    # dropped as dead: git never tracks it, so the index cannot yield it.
+    cli_docs = {p for p in tracked("packages/cli", suffix=".md")
+                if "third-party" not in p.parts}
     return [
         (REPO / "justfile", sorted(root_docs)),
         (cli_root / "justfile", sorted(cli_docs)),

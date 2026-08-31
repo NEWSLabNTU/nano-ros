@@ -1,6 +1,6 @@
 # Phase 405 — one configuration surface: name the SSoT, project the rest, delete the strays
 
-**Status (2026-08-31). W1, W2, W4, W5 and W6 landed; W3 open.**
+**Status (2026-08-31). W1–W6 landed. Two findings split out as issues 0946/0947.**
 Opened from [issue 0934](../issues/0934-config-redundancy-map.md)'s survey and
 [issue 0931](../issues/0931-retire-model-and-default-launch.md)'s argument-surface
 count. `book/src/reference/configuration-surface.md` and its gate are in; every
@@ -81,19 +81,61 @@ compares them — `NanoRosWorkspace.cmake` builds the path to that file and neve
 parses it. **Start here: a gate that compares them is a day's work and catches
 the class.**
 
-**W3 — `domain_id`, `locator`, `ros_edition`.** Same treatment, lower stakes.
-Note `ros_edition` has THREE independent defaulting sites that all say `humble`;
-they agree by coincidence, not derivation.
+**W3 LANDED — and its own three-line summary was wrong, in both directions.**
 
-**W4 — `nano_ros_entry` from eleven arguments to five** (issue 0931). `LAUNCH`
-drops entirely (all nine authored uses say `default`); `MODEL`/`LOCATOR`/`ARGS`/
-`LAUNCH_ARGS` go with W1; `LANG` is already inferred from `SOURCES`;
-`DEPLOY`/`BOARD` become derivable.
+This doc said: *"`ros_edition` has THREE independent defaulting sites that all
+say `humble`."* Measured: **six** cmake sites plus five Rust ones, and they did
+not all say humble — `nros-tests/src/ros_env.rs` defaults the docker
+editions axis to **`jazzy`** (correctly; it names the PEER under test, not the
+image). Same shape as W6, where "SDK roots exist four times" dissolved into one
+value plus readers. A count written from memory is not a measurement.
 
-**The ordering constraint that would break a naive sweep:** cmake asks for
-`DEPLOY`/`BOARD` because its gate at `NanoRosEntry.cmake:159` runs BEFORE the
-model is resolved around line 270. Deleting the arguments without moving the
-gate fails every non-native entry.
+**The gate meant to prevent this matched nothing.** `check-feature-set-ssot.sh`
+has always declared *"the edition is chosen in exactly one place"* — while
+grepping for `ros-humble`, the CARGO FEATURE spelling. Every defaulting site
+writes the bare word `humble`. Zero of six matched, and it printed OK for as
+long as it had existed. So the gate was fixed FIRST, and its own failure list
+became the work — the W6 method.
+
+**The six were not equivalent, which made this a real defect and not tidying.**
+Two consulted `NANO_ROS_ROS_EDITION` before defaulting; four went straight to
+the literal. Measured on `examples/templates/cpp-port-minimal-publisher` with
+`-DNANO_ROS_ROS_EDITION=jazzy`, pinning `NANO_ROS_ROOT` at the pre-fix commit:
+`nano_ros_generate_cpp_args__std_msgs.json` and `__builtin_interfaces.json`
+both read `"ros_edition": "humble"`. After: both `jazzy`. `nros_find_interfaces`
+was discarding a workspace's declared edition, which is RFC-0056's wire mismatch
+— it builds clean and fails on the wire.
+
+Now `cmake/NanoRosRosEdition.cmake` holds the default and the valid list and is
+the only file permitted to spell an edition; everything else calls
+`_nros_resolve_ros_edition()`. Rust likewise: `DEFAULT_ROS_EDITION` beside the
+`#[default]`, consumed by four clap verbs and the schema parser.
+
+**One trap worth recording.** The module's first version used plain `set()` and
+was scope-fragile — a cmake function body runs in its CALLER's scope, so the
+valid-edition list was visible from some call sites and empty from others, and
+validation silently degraded to rejecting every explicit edition with
+`expected: ` (a blank list in an error message is the tell). `CACHE INTERNAL`,
+per the `_NROS_ENTRY_DIR` pitfall. It surfaced only because a SECOND entry point
+was tested; the workspace path alone was green.
+
+`domain_id`: two dead spellings deleted — `_nros_domain_id` in
+`integrations/nano-ros/CMakeLists.txt` (computed, read by nothing; ESP-IDF's own
+sdkconfig.h already carries it), and the cyclonedds scaffold's
+`CONFIG_NROS_CYCLONE_DOMAIN_ID=0`, which pinned a DERIVED symbol to a literal —
+the phase-180 split-brain, reproduced into every new user project.
+
+`locator`: **not merged.** Two independent per-platform ladders exist and they
+disagree on threadx and freertos, each with a plausible justification naming a
+different network. Deciding needs a QEMU run per platform; merging on a reading
+would break whichever lane loses. Filed as **0946** with the measured table.
+`NROS_SYSTEM_LOCATOR` has no consumers but is kept and now documented as
+app-informational, matching the intent already stated for the edition defines.
+
+Issue **0947** carries the NuttX edition vocabulary — a string symbol the CMake
+lane reads and NuttX's Kconfig never declares, versus a bool choice the Make lane
+reads, with `jazzy` unreachable on both. That is why the gate's glob stops short
+of `integrations/**`: widening it now lands a red nobody can turn green.
 
 **W4 LANDED — eleven keywords to six, and the ordering constraint held.**
 `MODEL` is gone: zero callers passed it, authored OR generated, and it named a
