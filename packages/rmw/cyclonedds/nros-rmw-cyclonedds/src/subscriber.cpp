@@ -1,19 +1,39 @@
-// Subscriber path — Phase 117.6 + 117.6.B.
+// Subscriber path — Phase 117.6 + 117.6.B, receive rewritten by issue 0969.
 //
 // Entity creation: registry lookup → topic + reader + QoS.
-// Data path: dds_take typed sample → dds_stream_write_sample to
-// caller's CDR buffer (with 4-byte XCDR1-LE encapsulation header).
+// Data path: dds_takecdr → ddsi_serdata_to_ser into the caller's buffer.
+//
+// The receive path USED to deserialize the wire CDR into a typed sample and
+// then re-serialize it (`dds_take` → `dds_stream_write_sample`), because
+// `sertype_min.hpp` recorded the raw-CDR API as blocked on Cyclone exposing
+// `dds_writer_lookup_serdatatype`. That blocker is real for the PUBLISH
+// direction and does not exist here: `dds_takecdr` takes only a reader entity,
+// and the reader already owns its sertype from `dds_create_topic(desc)`. The
+// serdata Cyclone hands back is already holding the wire bytes;
+// `ddsi_serdata_to_ser` copies them — encapsulation header included, since
+// `serdata_default_get_size` counts the `CDRHeader` and `to_ser` starts at
+// `&d->hdr` — straight into the caller's buffer. One copy, no typed sample, no
+// ostream, no re-encode. This is the shape `rmw_cyclonedds_cpp`'s
+// `rmw_take_serialized_message` has always had.
+//
+// Consequence worth stating, because it is a behaviour change and not only a
+// cost one: the caller now sees the WIRE representation rather than one this
+// backend re-encoded as XCDR1 in native byte order. That is the point — an
+// XCDR2 publisher's bytes now reach `CdrReader::new_with_header`, which
+// dispatches on the encapsulation id. It also means a big-endian peer is no
+// longer silently normalised to little-endian on the way through. nros-serdes
+// decodes little-endian unconditionally, so a BE peer was never supported
+// end-to-end anyway; this backend was the only one papering over that, and it
+// now behaves like the rest.
 
 #include "internal.hpp"
 
 #include "descriptors.hpp"
 #include "qos.hpp"
-#include "sertype_min.hpp"
 #include "topic_prefix.hpp"
 
 #include <dds/dds.h>
-#include <dds/ddsi/ddsi_cdrstream.h>
-#include <dds/ddsrt/heap.h>
+#include <dds/ddsi/ddsi_serdata.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -27,8 +47,11 @@ namespace {
 struct SubState {
     dds_entity_t topic{0};
     dds_entity_t reader{0};
+    /// The type this subscription was created against. The data path no longer
+    /// reads it — `dds_takecdr` needs only the reader — but it is the
+    /// subscription's type identity, and issue 0970 needs it to build the
+    /// sertype that replaces `dds_create_topic(desc)`.
     const dds_topic_descriptor_t* desc{nullptr};
-    SertypeMin* st{nullptr};
 };
 
 inline SubState* as_state(const rmw_subscription_t* s) {
@@ -105,13 +128,10 @@ rmw_ret_t subscription_create(const rmw_node_t* node, const rmw_message_type_sup
     }
     state->reader = reader;
 
-    state->st = new (std::nothrow) SertypeMin(desc);
-    if (state->st == nullptr) {
-        (void)dds_delete(reader);
-        (void)dds_delete(topic);
-        delete state;
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
+    // No `SertypeMin` here since issue 0969: the receive path reads the
+    // serdata's own CDR and never runs the cdrstream helpers, which were the
+    // only thing that builder existed to feed. The publish path still has one
+    // (`publisher.cpp`) until issue 0970 retires it there too.
 
     out->backend_data = state;
     graph_track_reader(session_graph(session), reader); // Phase 177.36
@@ -124,7 +144,6 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     if (state == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     dds_return_t reader_rc = state->reader > 0 ? dds_delete(state->reader) : DDS_RETCODE_OK;
     dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
-    delete state->st;
     delete state;
     subscriber->backend_data = nullptr;
     if (reader_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
@@ -147,91 +166,58 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     SubState* state = as_state(subscriber);
-    if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
+    if (state == nullptr || state->reader <= 0) {
         return NROS_RMW_RET_ERROR;
     }
 
-    // Phase 177.26.RX.2 — allocate the transient take buffer from Cyclone's
-    // ddsrt heap, not libc. On RTOS targets (ThreadX, FreeRTOS) the libc heap
-    // is separate from (and may be unconfigured relative to) the ddsrt heap, so
-    // std::calloc returns nullptr and every take fails BAD_ALLOC. dds_take
-    // deserialises into this buffer and dds_stream_free_sample frees nested
-    // members through the ddsrt heap, so the buffer itself must match. Mirrors
-    // the publisher path (Phase 177.22).
-    void* sample = ddsrt_calloc(1, state->desc->m_size);
-    if (sample == nullptr) {
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
-    void* samples[1] = {sample};
+    // Skip invalid samples rather than reporting "nothing taken" on the first
+    // one, as `rmw_take_ser_int` does. A dispose/unregister notification used
+    // to mask any valid sample queued behind it for a whole poll cycle. The
+    // loop terminates because each `dds_takecdr` removes what it returns.
+    struct ddsi_serdata* d = nullptr;
     dds_sample_info_t si[1];
-    dds_return_t taken = dds_take(state->reader, samples, si, 1, 1);
-    if (taken < 0) {
-        ddsrt_free(sample);
-        return NROS_RMW_RET_ERROR;
-    }
-    if (taken == 0 || !si[0].valid_data) {
-        dds_stream_free_sample(sample, state->desc->m_ops);
-        ddsrt_free(sample);
-        // Empty subscription: OK with `taken = false`, not a sentinel.
-        *out_taken = false;
-        return NROS_RMW_RET_OK;
-    }
-
-    // Serialise the typed sample back to CDR (XCDR1, native byte
-    // order). Cyclone's ostream grows on demand via realloc.
-    dds_ostream_t os;
-    dds_ostream_init(&os, 0, 1 /*xcdr1*/);
-    bool ok = dds_stream_write_sample(&os, sample, state->st->as_sertype());
-
-    if (!ok) {
-        dds_ostream_fini(&os);
-        dds_stream_free_sample(sample, state->desc->m_ops);
-        ddsrt_free(sample);
-        return NROS_RMW_RET_ERROR;
+    for (;;) {
+        dds_return_t taken = dds_takecdr(state->reader, &d, 1, si, DDS_ANY_STATE);
+        if (taken < 0) {
+            return NROS_RMW_RET_ERROR;
+        }
+        if (taken == 0) {
+            // Empty subscription: OK with `taken = false`, not a sentinel.
+            *out_taken = false;
+            return NROS_RMW_RET_OK;
+        }
+        if (si[0].valid_data) {
+            break;
+        }
+        ddsi_serdata_unref(d);
+        d = nullptr;
     }
 
-    // Prepend the 4-byte CDR encapsulation header. Native byte order
-    // → 00 00 (BE) / 00 01 (LE) for the encoding identifier; options
-    // = 00 00.
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-    constexpr uint8_t kEncId[2] = {0x00, 0x01};
-#else
-    constexpr uint8_t kEncId[2] = {0x00, 0x00};
-#endif
-    constexpr uint8_t kEncOpts[2] = {0x00, 0x00};
-
-    // 233.6 — the action `goal_id` is a fixed `octet[16]` on both the IDL
-    // and the Rust runtime side now (ROS 2 `unique_identifier_msgs/UUID`),
-    // so the serialised sample already matches what the Rust read path
-    // expects — no length-prefix insert (the old `insert_goal_id_len_at`
-    // mirror of `publisher.cpp::strip_feedback_goal_id_prefix` was removed
-    // together with it).
-    uint32_t paylen = os.m_index;
-    uint32_t total = paylen + 4;
+    // `ddsi_serdata_size` counts the 4-byte `CDRHeader`, and `to_ser` copies
+    // from `&d->hdr`, so this one call delivers header + payload in the wire's
+    // own representation. No header is synthesised here any more.
+    //
+    // 233.6 — the action `goal_id` is a fixed `octet[16]` on both the IDL and
+    // the Rust runtime side (ROS 2 `unique_identifier_msgs/UUID`), so the wire
+    // bytes already match what the Rust read path expects; the old
+    // `insert_goal_id_len_at` adapter was removed with its publisher mirror.
+    const uint32_t total = ddsi_serdata_size(d);
     if (buf_len < total) {
-        dds_ostream_fini(&os);
-        dds_stream_free_sample(sample, state->desc->m_ops);
-        ddsrt_free(sample);
+        ddsi_serdata_unref(d);
         return NROS_RMW_RET_BUFFER_TOO_SMALL;
     }
-    buf[0] = kEncId[0];
-    buf[1] = kEncId[1];
-    buf[2] = kEncOpts[0];
-    buf[3] = kEncOpts[1];
-    std::memcpy(buf + 4, os.m_buffer, paylen);
-    dds_ostream_fini(&os);
-    dds_stream_free_sample(sample, state->desc->m_ops);
-    ddsrt_free(sample);
+    ddsi_serdata_to_ser(d, 0, total, buf);
+    ddsi_serdata_unref(d);
 
     *out_len = static_cast<size_t>(total);
     *out_taken = true;
     return NROS_RMW_RET_OK;
 }
 
-// Phase 124.D.3 — native batch take. Cyclone DDS `dds_take` accepts
-// (reader, buf, info, count, maxs) and returns N samples in one
-// call. Serialise each typed sample back to CDR with the same
-// encoding-header convention as `subscription_try_recv_raw`.
+// Phase 124.D.3 — native batch take. Cyclone DDS `dds_takecdr` accepts
+// (reader, buf, maxs, info, mask) and returns N serdatas in one call; issue
+// 0969 replaced the typed `dds_take` + re-serialize body with a copy out of
+// each serdata, matching `subscription_take` above.
 static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscriber, uint8_t* buf,
                                                size_t per_msg_cap, size_t max_msgs,
                                                size_t* out_lens) {
@@ -242,7 +228,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
         return 0;
     }
     SubState* state = as_state(subscriber);
-    if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
+    if (state == nullptr || state->reader <= 0) {
         return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
     }
 
@@ -252,10 +238,10 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
     constexpr size_t kMaxBatch = 32;
     const size_t take_n = max_msgs > kMaxBatch ? kMaxBatch : max_msgs;
 
-    void* samples[kMaxBatch] = {nullptr};
+    struct ddsi_serdata* ds[kMaxBatch] = {nullptr};
     dds_sample_info_t si[kMaxBatch];
 
-    dds_return_t taken = dds_take(state->reader, samples, si, take_n, take_n);
+    dds_return_t taken = dds_takecdr(state->reader, ds, take_n, si, DDS_ANY_STATE);
     if (taken < 0) {
         return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
     }
@@ -263,51 +249,39 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
         return 0;
     }
 
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-    constexpr uint8_t kEncId[2] = {0x00, 0x01};
-#else
-    constexpr uint8_t kEncId[2] = {0x00, 0x00};
-#endif
-    constexpr uint8_t kEncOpts[2] = {0x00, 0x00};
-
+    // A sample too large for `per_msg_cap` ends the batch and is DROPPED, and
+    // the samples already written are still reported. That is the behaviour
+    // this function has always had, preserved deliberately rather than
+    // inherited: the old body assigned `err = NROS_RMW_RET_BUFFER_TOO_SMALL`
+    // and then tested `if (err < 0)`, which is never true — every
+    // `nros_rmw_ret_t` is non-negative (`rmw_ret.h`), which is why the callers
+    // negate. So the error was already unreachable and every caller has only
+    // ever seen the partial count. Changing that here would be a semantic
+    // change smuggled into a data-path rewrite; the silent drop deserves its
+    // own issue, not a side effect of this one.
     size_t produced = 0;
-    int32_t err = 0;
     for (dds_return_t i = 0; i < taken; ++i) {
         if (!si[i].valid_data) {
             continue;
         }
-        dds_ostream_t os;
-        dds_ostream_init(&os, 0, 1 /*xcdr1*/);
-        bool ok = dds_stream_write_sample(&os, samples[i], state->st->as_sertype());
-        if (!ok) {
-            dds_ostream_fini(&os);
-            err = NROS_RMW_RET_ERROR;
-            break;
-        }
-        uint32_t paylen = os.m_index;
-        uint32_t total = paylen + 4;
+        const uint32_t total = ddsi_serdata_size(ds[i]);
         if (per_msg_cap < total) {
-            dds_ostream_fini(&os);
-            err = NROS_RMW_RET_BUFFER_TOO_SMALL;
             break;
         }
-        uint8_t* slot = buf + produced * per_msg_cap;
-        slot[0] = kEncId[0];
-        slot[1] = kEncId[1];
-        slot[2] = kEncOpts[0];
-        slot[3] = kEncOpts[1];
-        std::memcpy(slot + 4, os.m_buffer, paylen);
+        ddsi_serdata_to_ser(ds[i], 0, total, buf + produced * per_msg_cap);
         out_lens[produced] = total;
         produced++;
-        dds_ostream_fini(&os);
     }
 
-    // Return all loans (valid + invalid) in one call.
-    (void)dds_return_loan(state->reader, samples, taken);
-
-    if (err < 0) {
-        return err;
+    // Release every serdata this call took — including the ones the loop above
+    // skipped or never reached after a break. `dds_takecdr` refcounts rather
+    // than loans, so this replaces the old single `dds_return_loan`.
+    for (dds_return_t i = 0; i < taken; ++i) {
+        if (ds[i] != nullptr) {
+            ddsi_serdata_unref(ds[i]);
+        }
     }
+
     return static_cast<int32_t>(produced);
 }
 
