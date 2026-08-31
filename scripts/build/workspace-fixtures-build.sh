@@ -67,6 +67,81 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 # shellcheck source=scripts/build/build-root.sh
 source "$repo_root/scripts/build/build-root.sh"
 source "$repo_root/scripts/build/cargo.sh"
+
+# nros_warm_leaf_cache <workspace-dir>
+#
+# Populate the cargo registry cache for one workspace leaf, ONCE, before the
+# `--offline` build that follows. Issue 0961.
+#
+# `nros build --offline` passes `--frozen` (= `--locked --offline`, issue 0676),
+# and for a GENERATED root it first runs `cargo generate-lockfile --offline`.
+# Both can only use crates already in the cache. `examples/workspaces/*` leaves
+# are SEPARATE cargo workspace roots: CI provisioning warms the cache for the
+# ROOT graph, and nothing warmed it for the leaves. So the resolve wanted crates
+# nobody had fetched and cargo reported
+#
+#     error: failed to download `toml v0.9.12+spec-1.1.0`
+#     Caused by: attempting to make an HTTP request, but --frozen was specified
+#
+# — a headline that reads as a network flake and invites a retry that cannot
+# help. `host-tests` died on it for 20 consecutive runs, in the step BEFORE any
+# test, so the only CI lane that runs E2E ran nothing at all.
+#
+# This does NOT relax `--locked` or `--frozen`. The BUILD stays hermetic, which
+# is the property issue 0676 wants; only this prepare step reaches the network,
+# exactly as `nros setup --source` already does. A lockfile that moves because
+# CI could not resolve is the drift issues 0359/0378 exist to prevent, and
+# fetching is what avoids it — permitting re-resolution would not.
+#
+# `NROS_CARGO_FLAGS=` because the PATH shim injects `--locked` project-wide, and
+# a leaf whose lock `nros sync` regenerates would be refused by it here.
+#
+# Local runs pay nothing: a warm cache makes this a no-op, which is also why the
+# defect never showed up in a developer sweep — only `--offline` exposes it.
+_NROS_WARMED_LEAVES=""
+_NROS_WARMED_ROOT=""
+nros_warm_leaf_cache() {
+    local ws="${1:?nros_warm_leaf_cache: workspace dir}"
+    case " $_NROS_WARMED_LEAVES " in *" $ws "*) return 0 ;; esac
+    _NROS_WARMED_LEAVES="$_NROS_WARMED_LEAVES $ws"
+
+    if [ "${NROS_SKIP_LEAF_FETCH:-0}" != "0" ]; then
+        echo "  leaf-fetch: SKIPPED for $ws (NROS_SKIP_LEAF_FETCH set)"
+        return 0
+    fi
+
+    # TWO roots, because the generated root draws from both and MEASUREMENT
+    # showed the leaf alone is not enough. Against a cold CARGO_HOME, a leaf
+    # fetch pulled `allocator-api2` but NOT `toml 0.9.12+spec-1.1.0` — the two
+    # crates CI reported. `toml` reaches the generated root through nano-ros
+    # PATH deps (cbindgen, nros-bridge, nros-tests), whose registry deps live in
+    # the REPO ROOT lock, not the leaf's. Warming only the leaf would have
+    # fixed half the failure and looked like a fix.
+    if [ -z "$_NROS_WARMED_ROOT" ]; then
+        _NROS_WARMED_ROOT=1
+        if ( cd "$repo_root" && NROS_CARGO_FLAGS= cargo fetch >/dev/null 2>&1 ); then
+            :
+        else
+            echo "  leaf-fetch: could NOT warm the cargo cache for the repo root." >&2
+        fi
+    fi
+
+    [ -f "$ws/Cargo.toml" ] || return 0
+
+    if ( cd "$ws" && NROS_CARGO_FLAGS= cargo fetch >/dev/null 2>&1 ); then
+        return 0
+    fi
+    # Not fatal: an environment that is offline BY DESIGN with a warm cache is
+    # legitimate, and failing here would break it. But say so, because the
+    # build that follows may now fail with cargo's misleading "failed to
+    # download", and this is the sentence that explains it.
+    echo "  leaf-fetch: could NOT warm the cargo cache for $ws." >&2
+    echo "              If the build below reports 'failed to download <crate>'" >&2
+    echo "              with 'but --frozen was specified', that is why — the" >&2
+    echo "              crate is missing from the cache, not from the network." >&2
+    echo "              (issue 0961; NROS_SKIP_LEAF_FETCH=1 to silence)" >&2
+    return 0
+}
 # shellcheck source=scripts/build/cmake-incremental.sh
 source "$repo_root/scripts/build/cmake-incremental.sh"
 
@@ -305,6 +380,7 @@ build_workspace() {
                 # QUALIFIED — see the note in the cargo branch below: an image
                 # id can be declared by more than one bringup in a workspace.
                 local qual_image="$(basename "$bringup"):$image"
+                nros_warm_leaf_cache "$(pwd)"
                 local nros_args=(build "$qual_image" --workspace . --offline --)
                 nros_args+=("${profile_args[@]}")
                 if [ -n "$target_dir" ]; then
@@ -401,6 +477,7 @@ build_workspace() {
                 # already names its bringup, so qualifying costs nothing and is
                 # unambiguous everywhere, including single-bringup workspaces.
                 local qual_image="$(basename "$bringup"):$image"
+                nros_warm_leaf_cache "$(pwd)"
                 local nros_args=(build "$qual_image" --workspace . --offline)
                 if [ -n "$defs" ]; then
                     local def_args=()

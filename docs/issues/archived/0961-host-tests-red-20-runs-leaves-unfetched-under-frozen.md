@@ -1,7 +1,7 @@
 ---
 id: 961
 title: "`host-tests` red for 20 consecutive runs — workspace-fixture leaves are never fetched, and `--frozen` forbids fetching them"
-status: open
+status: resolved
 area: build
 severity: high
 found: 2026-08-31
@@ -78,3 +78,44 @@ lockfile CI has fetched from mentions.
 Fixing this cannot be confirmed locally: the failure requires the offline
 condition CI imposes. Reproduce with `--offline` against a cold `CARGO_HOME`, or
 verify on the lane itself.
+
+## Resolved — 2026-08-31
+
+`nros_warm_leaf_cache` in `scripts/build/workspace-fixtures-build.sh`, called
+before both `nros build … --offline` sites. It lives in the BUILD, not the
+workflow, so the requirement travels with the thing that has it — a first clone
+needs this as much as CI does.
+
+**It warms TWO roots, and measurement is why.** The obvious fix — fetch the leaf
+— is half a fix. Against a cold `CARGO_HOME`, a leaf fetch pulled
+`allocator-api2` but **not** `toml 0.9.12+spec-1.1.0`:
+
+```
+leaf fetch (examples/workspaces/rust)   toml-0.9.12 absent   allocator-api2 PRESENT   185 crates
++ repo-root fetch                        toml-0.9.12 PRESENT  allocator-api2 PRESENT   434 crates
+```
+
+`toml` reaches the generated root through nano-ros PATH deps — `cbindgen`,
+`nros-bridge`, `nros-tests` — whose registry deps live in the REPO ROOT lock,
+not the leaf's. Warming only the leaf would have fixed one of the two crates CI
+named and looked like a fix.
+
+**`--locked` and `--frozen` are untouched.** The build stays hermetic, which is
+the property issue 0676 wants; only this prepare step reaches the network,
+exactly as `nros setup --source` already does. Permitting re-resolution instead
+would have been the drift issues 0359/0378 exist to prevent.
+
+A failed fetch is a loud WARNING, not fatal: an environment that is offline by
+design with a warm cache is legitimate, and failing there would break it. The
+warning names the symptom the build will otherwise print, because cargo's
+"failed to download" is the misleading headline that cost this lane 20 runs.
+
+Both roots are memoized, so 110 workspace rows pay two fetches, not 220. A warm
+cache makes the whole thing a no-op — which is also why the defect never
+appeared in a developer sweep.
+
+**Not verified on the lane.** This cannot be confirmed locally: the failure
+requires the offline condition CI imposes. What IS measured is the premise —
+that the two crates cargo could not download are present in a cold cache after
+these two fetches and absent after the leaf fetch alone. Whether `host-tests`
+goes green needs a run on the lane.
