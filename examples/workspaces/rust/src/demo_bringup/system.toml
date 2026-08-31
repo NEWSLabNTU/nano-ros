@@ -48,47 +48,15 @@ pkg = "action_client_pkg"
 class = "action_client_pkg::FibonacciClient"
 name = "fibonacci_client"
 
+# The LAST `[deploy.*]` block: the implicit machine this system runs on.
+#
+# Everything else has moved — placement to `[host.<name>]`, board builds to
+# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
+# machine too, so it belongs in `[host.*]`; it stays here until that move is
+# measured, because it is the block that currently makes placement HAPPEN
+# (issue 0951).
 [deploy.native]
 kind = "self"
-
-# phase-326 (issue 0364) — per-host deploy targets for the multi-host launch
-# (`launch/multihost.launch.xml`: talker on robot1, listener on robot2, chosen
-# at RESOLVE time by the `host` launch argument). Each per-host model
-# (`config/multihost_robot<N>_model.yaml`, resolved with `host:=robot<N>`)
-# contains only that host's nodes; the explicit `nodes = [..]` below places
-# them — with `machine=` gone there is no launch-derived placement fact, so
-# every node needs a list entry (pre-0291 behaviour, restored).
-# (RFC-0004 §4 home; NOT a root nros.toml — see issue #51.)
-# phase-315 — the embedded BOARD BUILDS of this system.
-#
-# These are not placements. `kind = "self"` blocks (native/robot1/robot2) are
-# machines and PARTITION the nodes between them; a `kind = "embedded"` block is
-# the whole system compiled for another board, running every node. The resolver
-# excludes embedded blocks from placement for exactly this reason.
-#
-# They were missing while the workspace carried entries declaring them, and
-# nothing noticed: the pre-0.1.0 SystemModel had no `execution:` section at all,
-# so `nros::main!` placed every node on whatever board asked.
-#
-# Board ids come from the ws-realtime-c / ws-realtime-c-mps2 bringups and each
-# entry's fixtures.toml row.
-[deploy.zephyr]
-kind = "embedded"
-
-[deploy.freertos]
-kind = "embedded"
-
-[deploy.nuttx]
-kind = "embedded"
-
-[deploy.threadx-linux]
-kind = "embedded"
-board = "threadx-linux"
-
-[deploy.esp32-qemu]
-kind = "embedded"
-board = "esp32-qemu"
-
 # Issue 0951 — these are MACHINES, so they live in `[host.*]` now. A host says
 # WHERE a node runs; what it is built as comes from `[image.*]`. The old blocks
 # carried `target = "x86_64-unknown-linux-gnu"`, which is a build fact: the

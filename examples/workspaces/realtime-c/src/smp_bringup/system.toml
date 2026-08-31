@@ -110,21 +110,15 @@ priority = 10
 # the other side must SAY so with `above = "transport"` on the tier.
 priority = 98
 
+# The LAST `[deploy.*]` block: the implicit machine this system runs on.
+#
+# Everything else has moved — placement to `[host.<name>]`, board builds to
+# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
+# machine too, so it belongs in `[host.*]`; it stays here until that move is
+# measured, because it is the block that currently makes placement HAPPEN
+# (issue 0951).
 [deploy.native]
 kind = "self"
-
-# phase-281 W3c — the Zephyr (native_sim) embedded deploy target. Both [posix] and
-# [zephyr] tier tables let the same bringup deploy to native (Phase 269 W4) or embedded
-# Zephyr (this wave) by changing the BOARD cmake variable.
-[deploy.zephyr]
-kind = "embedded"
-
-# phase-281 W3-nuttx — the NuttX (QEMU arm-virt) embedded deploy target. The
-# `[tiers.*.nuttx]` tables let the same bringup deploy to native, embedded Zephyr,
-# or embedded NuttX by changing the BOARD cmake variable.
-[deploy.nuttx]
-kind = "embedded"
-
 # phase-315 — the embedded BOARD BUILDS of this system.
 #
 # Not placements: `kind = "self"` blocks are machines and PARTITION the nodes;
@@ -134,34 +128,6 @@ kind = "embedded"
 # Missing while entries named them, which was invisible until the SystemModel
 # started carrying real `execution.deploy` — then those entries failed with
 # "places no nodes on board <x>". Ids are the DEPLOY values the entries pass.
-
-[deploy.nuttx-qemu-arm]
-kind = "embedded"
-board = "nuttx-qemu-arm"
-
-[deploy.nuttx-qemu-riscv]
-kind = "embedded"
-board = "nuttx-qemu-riscv"
-
-# phase-331 W6 — folded in from the retired ws-realtime-c-mps2. The board was
-# never a separate workspace: its ctrl_pkg was byte-identical to this one and
-# only a CMAKE_TOOLCHAIN_FILE block separated them.
-[deploy.freertos]
-kind = "embedded"
-
-# phase-315 — the embedded BOARD BUILDS of this system.
-#
-# Not placements: `kind = "self"` blocks are machines and PARTITION the nodes;
-# a `kind = "embedded"` block is the whole system compiled for another board,
-# running every node. The resolver excludes embedded blocks from placement.
-#
-# Missing while entries named them, which was invisible until the SystemModel
-# started carrying real `execution.deploy` — then those entries failed with
-# "places no nodes on board <x>". Ids are the DEPLOY values the entries pass.
-
-[deploy.mps2-an385-freertos]
-kind = "embedded"
-board = "mps2-an385-freertos"
 # --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
 # Derived from the entry packages that existed at migration time; each
 # entry's `deploy` token picked its board, and its `launch` its topology.
