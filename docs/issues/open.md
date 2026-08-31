@@ -69,9 +69,8 @@ fails if this block drifts.
 - **#0931** (build, api) — `nano_ros_entry` has eleven arguments; four have no users and three restate the bringup See `0931-*`.
 - **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
 - **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
+- **#0941** (build) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent See `0941-*`.
 - **#0945** (build) — The shared-cargo-dir campaign rests on five unsupported build-system internals — a Corrosion path formula, an unstable cargo flag, cargo's private `.fingerprint` format, a side channel inside cargo's target dir, and an undocumented depfile location See `0945-*`.
-- **#0949** (build) — For a migrated workspace, board facts are never delivered — `_ws` resolves to the generated root, which has no `system.toml` See `0949-*`.
-- **#0950** (build) — `macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target See `0950-*`.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
 - **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
 
