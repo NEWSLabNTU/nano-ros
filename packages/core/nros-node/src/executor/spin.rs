@@ -3699,8 +3699,9 @@ impl<'s> Executor<'s> {
 
     /// Total arena bytes this executor was given.
     ///
-    /// Inline in the `Executor` value, so on the board path this is stack, not
-    /// `.bss` (see `report_arena_headroom`).
+    /// The arena is a borrowed slice; whether its storage is stack or `.bss` is
+    /// the caller's choice, not a property of this type (see
+    /// `report_arena_headroom`).
     pub fn arena_capacity(&self) -> usize {
         self.arena.len()
     }

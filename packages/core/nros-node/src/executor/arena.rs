@@ -474,10 +474,19 @@ static ARENA_ADVISORY_DONE: portable_atomic::AtomicBool = portable_atomic::Atomi
 /// enumerate is a knob nobody sets — and this turns it from folklore into a
 /// measurement.
 ///
-/// **The arena is on the STACK**, not in `.bss`: `Executor` holds
-/// `arena: [MaybeUninit<u8>; ARENA_SIZE]` inline, so `mem-report` cannot see it
-/// and the cost lands on whichever task calls spin
-/// (`docs/reference/platform-implementation-notes.md`, FreeRTOS pitfalls).
+/// **Where the arena lives is the CALLER's choice**, and both answers are real.
+/// `Executor` holds `arena: &'s mut [MaybeUninit<u8>]` -- a borrowed slice, since
+/// phase-271 (issue 0110) moved the sized tables off build-time consts. What is
+/// inline is `ExecutorInlineStorage::backing`, which the C FFI sizes its
+/// `_opaque` from, so a stack-declared `nros_executor_t` does put the arena on
+/// the task stack -- that is the FreeRTOS "Invalid mbox" case in
+/// `docs/reference/platform-implementation-notes.md`. The C++ component entry
+/// does not take that path: `run_components` -> `nros::init` ->
+/// `Node::GlobalStorageHolder` is a `static`, so the arena is `.bss` and IS
+/// visible to `nm` and `mem-report`. Measured on mr-canhubk344: DTCM tracked
+/// ARENA_SIZE one-for-one across MAX_CBS 24 -> 36.
+///
+/// Do not size against one placement and assume the other.
 ///
 /// `nros_log`, never stdio: this is reached on `no_std` targets and inside
 /// Zephyr `native_sim`, where a Rust `std` stdio call is FATAL (issue 0589).
