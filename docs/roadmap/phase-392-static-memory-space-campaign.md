@@ -49,7 +49,10 @@ and `malloc` itself had been garbage-collected because nothing calls it. Setting
 **7.7% of SRAM held by a heap with no allocator**, invisible until someone
 listed symbols by size. That is the shape of everything below.
 
-## The three levers, in order of leverage
+## The levers, in order of leverage
+
+Three shrink what is reserved; **1b shrinks nothing and is listed anyway**,
+because it is what makes the other three measurable.
 
 ### 1. Wire buffers — 48 bytes of RAM per byte of knob
 
@@ -70,6 +73,31 @@ Half the mechanism already exists: `MAX_LARGE_SUBSCRIBERS` /
 `SUBSCRIBER_LARGE_SIZE` is a two-class split (1x4x2048 large, 12x4x1024 small).
 It is simply **decoupled from codegen**, so a human picks which subscribers are
 "large".
+
+### 1b. The arena is on the STACK, so none of lever 1 is visible
+
+`Executor` holds `arena: [MaybeUninit<u8>; ARENA_SIZE]` inline, so the arena —
+and every `SubInfoEntry::buffer` inside it — lands on whichever task calls
+`spin`, not in `.bss`.
+
+That defeats this campaign's own instrument. W1 exists to price every pool by
+reading symbols; a stack-resident arena has no symbol, so **the largest single
+RAM consumer in an image is the one thing `mem-report` cannot see**. It is also
+why the FreeRTOS action examples pin an 8192-byte arena and still need a 64 KB
+app-task stack — a number found by hitting `Invalid mbox` and working backwards
+(issues 0271/0739).
+
+And it makes lever 1 land in the worst place: raising
+`SUBSCRIPTION_BUFFER_SIZE` for one large topic multiplies across every
+subscription and lands on a *stack*. A five-subscription image at the 64 KiB
+default reserves ~320 KiB of stack for ~20 KiB of real need.
+
+Moving it to a named static changes no allocation strategy — the same bytes,
+reserved the same way — and buys three things this campaign is otherwise
+paying for: a symbol `mem-report` can price, a map-file bound, and a task stack
+that no longer carries a term proportional to the subscription graph. Decision
+recorded in [RFC-0002 § 4.4b](../design/0002-rt-execution-model.md); wave W6
+below.
 
 ### 2. Component buffers — 1:1 with per-field storage mode
 
@@ -877,6 +905,40 @@ one that decides whether "sized by declaration" ever becomes "sized exactly".
 **`ZPICO_MAX_SESSIONS`** multiplies the pool and has no declaration path at all.
 Either it joins the model or it stays a knob and this phase says so explicitly.
 It is currently 1 everywhere, which is why it has never been the visible term.
+
+### W6 — the executor arena becomes a named static
+
+**Why it is a wave and not a patch.** The move itself is small; what it touches
+is where every image's largest allocation is accounted. Do it after W1 so the
+instrument can show the before/after, and measure on a named image rather than
+asserting the saving.
+
+Steps:
+
+1. Replace `Executor`'s inline `arena` field with a reference to a
+   platform-provided static. The arena is already bound to `Dispatcher` at
+   construction as a stable pointer (RFC-0002 § 4.4), so the ownership change
+   is confined to construction.
+2. Give the static a name the instrument can find, and a section a linker
+   script can place — TCM is a candidate on parts that have it (amendment A).
+3. `mem-report` gains a row it previously could not see. That row IS the
+   acceptance evidence.
+4. Re-derive one over-large task stack against the new figure. The FreeRTOS
+   action examples' 64 KB app task is the honest test: if it can drop, the
+   number was carrying the arena and the campaign can say so with a diff.
+
+**Acceptance.** A named image shows the arena as a priced symbol in
+`mem-report`, and one task-stack knob is reduced by a measured amount rather
+than by bisection.
+
+**Interaction with amendment B.** This does not decide whether payload buffers
+become heap-backed; it makes that question measurable, because the pools stop
+being invisible. If B later moves them, this wave is not wasted work — the
+arena still needs an address.
+
+**Non-goal.** Sizing each subscription to its type is W3a's job, not this
+wave's. The two compound (a static sized by type is both smaller and visible)
+but neither depends on the other.
 
 ## Explicitly out of scope
 

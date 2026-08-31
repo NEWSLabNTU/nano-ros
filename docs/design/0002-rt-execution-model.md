@@ -382,6 +382,65 @@ tier's spin period quantizes to the spin grid (33 ms on a 5 ms spin alternates
 so no rule fires — correctly — but the jitter is predictable at resolve time and
 would be better as a resolver warning than a surprise on target.
 
+### 4.4b Arena placement: a named static, not the caller's stack
+
+**Decision.** The executor arena is a named static in `.bss`, not an inline
+`[MaybeUninit<u8>; ARENA_SIZE]` field of `Executor`.
+
+Today it is the latter, so the arena lands on whichever task calls `spin`. Three
+consequences, all of them working against the properties this RFC exists to
+provide:
+
+* **It is invisible to the tools that are supposed to bound it.** `mem-report`
+  reads symbols; a stack-resident arena has none. The largest single RAM
+  consumer in an image is the one thing the memory instrument cannot see.
+* **It pushes its cost onto a number nobody derives.** The FreeRTOS action
+  examples pin an 8192-byte arena and still need a 64 KB app-task stack — a
+  figure found by hitting `Invalid mbox` and working backwards (issues
+  0271/0739). A task stack sized by bisection is not an analysable bound.
+* **It scales with subscription buffers.** Each `SubInfoEntry` embeds
+  `buffer: [u8; RX_BUF]`, so raising `NROS_SUBSCRIPTION_BUFFER_SIZE` for one
+  large topic multiplies across every subscription and lands on that stack. An
+  image with five subscriptions at a 64 KiB default reserves ~320 KiB of
+  **stack** for ~20 KiB of actual need.
+
+As a named static the same bytes are a linker-visible symbol: `mem-report` sees
+it, the map file bounds it, and the task stack no longer carries a term that
+depends on how many topics the application happens to subscribe to.
+
+**Orthogonal, and deliberately not decided here: whether payload buffers
+themselves become heap-backed.** Phase 392 amendment B reopened that as a
+measurement wave — pools are each sized for their own worst case and then
+SUMMED, and an arena sized for the aggregate peak could be the larger win. This
+decision is about WHERE the arena lives, not what backs the buffers inside it,
+and it does not pre-empt that wave: a `.bss` arena is a better starting point
+for it, because the thing being measured becomes visible to `mem-report`.
+
+The standing case against, which amendment B must answer rather than assume:
+timing is not the objection — rlsf is O(1) (phase 391 W2) — but a heap-backed
+payload converts a compile-time constant into a bound that depends on worst-case
+concurrent in-flight samples across every topic, widens the heap's block-size
+spread (what Robson's bound scales with, and what phase 391 says makes TLSF
+sizeable at all), and puts an allocation failure on the receive path, where the
+existing failure mode is already "received, ACKed, then silently discarded"
+(`report_dropped_take`, issue 0757).
+
+**Rejected alternative: one buffer shared by all subscriptions.** LET sampling
+settles it: `SubInfoEntry::sampled_len` records pre-sampled data that must
+survive the LET window, so the buffer cannot be reused by another subscription
+in the meantime. Sharing would also require mutual exclusion across
+receive→deserialize, which couples the WCET of unrelated topics and introduces
+a priority-inversion channel between tiers — the opposite of § 4.2's intent. And
+it does not even pay: sized to the largest type it saves the difference between
+`max` and `sum`, which for a typical island graph is a few KiB against the loss
+of per-topic independence.
+
+**What makes the static affordable** is sizing each subscription to its own
+type rather than to a global default — `MAX_SERIALIZED_SIZE_XCDR{1,2}` (phase
+380) via `rx_buffer_for!`. That is a separate lever (phase 392 W3a) and this
+decision does not depend on it, but the two together are what turn the arena
+from a stack-resident unknown into a static the linker can print.
+
 ### 4.5 ISR ↔ Executor SPSC Ring
 
 ReadySet is single-threaded (no `Sync`). When an ISR (transport RX, hardware timer, GuardCondition fire) needs to activate a callback, it writes into a **lock-free SPSC ring** read by the executor at the top of `spin_once`. Mirrors FreeRTOS `xQueueSendFromISR` / `xQueueReceive`.
