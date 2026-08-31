@@ -1,6 +1,39 @@
 # Phase 408 — a C/C++ subscription sizes its buffer from its own message type
 
-**Status (2026-08-31). Opened from a design review; survey done, no code yet.**
+**Status (2026-09-01). W1, W2 and W4 are LANDED on the C pack — by other work,
+not by this phase.** Re-measured against the tree rather than read off this
+file, which said "no code yet" and sent the next reader looking in the wrong
+place. What that reader found:
+
+| wave | state | evidence |
+| --- | --- | --- |
+| W1 emit the constant | **done (C)** | `packs/c/message.h.jinja` emits `_TX_/_RX_MAX_SERIALIZED_SIZE`, comment cites 0896 |
+| W2 retarget publish helper | **done** | bounded types get `_TX_MAX_SERIALIZED_SIZE`; `NROS_PUB_BUFFER_SIZE` survives only as the unbounded fallback, which is the honest answer |
+| W3 runtime `RX_BUF` | **open** | `add_arena_subscription_c_callback<const RX_BUF: usize>` and five siblings |
+| W4 deliver at the call site | **done (C)** | `<Type>_subscribe` passes the constant; an unbounded type gets a POISONED macro naming the costing member |
+| W5 `_with_info` keeps the hint | **open** | `subscription.rs:353` and `:470` destructure `_rx_buffer_hint` and fall back to `DEFAULT_RX_BUF_SIZE` |
+| C++ pack | **open, and not what it looks like** | see below |
+
+**The C++ pack is the part with a trap in it.** It emits a single
+`SERIALIZED_SIZE_MAX` from `types::compute_serialized_size_max`, and that number
+must NOT be reused as the receive hint. `bounds.rs` says why, in its own words:
+
+> It is deliberately NOT `crate::types::compute_serialized_size_max` … That
+> function ESTIMATES: it charges a flat 512 bytes per nested message and a flat
+> default capacity per string, and it always returns a value, so it can never
+> report "unbounded". A flat 512 for a nested type whose own bound exceeds 512
+> is an UNDER-estimate, which is the direction that matters.
+
+Wiring the existing C++ constant into `rx_buffer_hint` would ship an UNDER-sized
+receive buffer — the drop-every-sample failure this whole cluster is about,
+reintroduced by reusing a number that was already there. The C++ work is
+*emit the real bound from `bounds.rs`*, not *use the number in the header*.
+
+**Two numbers, not one — the distinction W3 turns on.** The C path already
+carries a runtime hint to the BACKEND for payload-class routing (phase-402,
+`subscription.rs:301`). What is still fixed at `DEFAULT_RX_BUF_SIZE` is the
+const that sizes the EXECUTOR ARENA's trailing region. W3 is about the second;
+the first is done for one of the three variants.
 Scope is the C and C++ path only. The other obstacles to
 [phase 392](phase-392-static-memory-space-campaign.md)'s "W3 remainder" — Rust
 being opt-in (W3c), Cyclone not consuming the hint (W3f), unbounded diagnostics
