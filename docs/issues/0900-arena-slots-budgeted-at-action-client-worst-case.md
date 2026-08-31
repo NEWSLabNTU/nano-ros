@@ -299,6 +299,20 @@ Measured from `target/nros-cpp-generated/nros/nros_cpp_config_generated.h`
     NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S = 654  ->  5,232 B
     NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S = 799  ->  6,392 B
 
+**Caveat on those two numbers, added on integration.** `NROS_CPP_RAW_ACTION_*_
+OPAQUE_U64S` are the C++ FFI OPAQUE HANDLE sizes, not arena entry sizes. The
+arena budgets an action client at 18,048 B from a different formula
+(`3 x (4096+384) + 3 x rx_buf + 1536`), so 6,392 vs 5,232 does NOT say the
+action-server ARENA ENTRY exceeds the client's — only that the C++ handle does.
+
+The conclusion the gate acts on survives the correction, for a different reason:
+the arena demonstrably stores action servers (`ActionServerArenaEntry`,
+`ActionServerRawArenaEntry` in `arena.rs`), so an action-server image occupies
+slots and must not be advised to zero the knob. Treating both entities as heavy
+is conservative and correct whichever handle is larger. The size ORDERING is
+recorded as suggestive, not as the justification.
+
+
 against a pub/sub entry budgeted at `3 x rx_buf + 512` = 3,584 B. So an action
 server needs a slot a pub/sub budget cannot hold either, and advising an
 action-server image to set `NROS_EXECUTOR_ACTION_CLIENTS=0` would have traded the
