@@ -625,7 +625,47 @@ typedef struct rmw_publisher_options_t {
 typedef struct rmw_subscription_options_t {
     /** Phase 231 (RFC-0038) — receive-buffer size hint, bytes, so a
      *  size-classing backend (zenoh-pico) can pick a small/large receive
-     *  buffer. `0` = unset. A transport hint, not a DDS policy. */
+     *  buffer. `0` = unset. A transport hint, not a DDS policy.
+     *
+     *  Phase 403 W1 — the paragraph above is what this field MEANS; the rules
+     *  below are what it OBLIGES, and they are normative. They were prose in
+     *  RFC-0005 ("Receive-buffer sizing: what a backend is obliged to do") and
+     *  nowhere else, so a third party reading only this header could not tell
+     *  whether ignoring the hint was conformant. It is.
+     *
+     *  - ADVISORY. A backend MAY ignore this field entirely. A backend with a
+     *    single receive-buffer size is conformant, and so is one that rounds
+     *    68 up to 1024.
+     *  - `0` IS "THIS CALLER SAID NOTHING", NOT "THIS TYPE HAS NO BOUND".
+     *    Every message type carries a derived upper bound — bounded in the
+     *    `.msg` (`string<=64`) or capped in `nros-codegen.toml`, and an
+     *    unbounded type is a BUILD ERROR rather than something that falls back
+     *    to a configured default — so the runtime always has a number to put
+     *    here. `0` therefore reaches a backend only from a caller that
+     *    supplied no options at all (`options == NULL`, or a zero-filled
+     *    struct from a hand-rolled C caller). A backend must never read it as
+     *    a claim that the type is unbounded, and must not treat a non-zero
+     *    hint as a tighter bound than the type's own.
+     *  - IT IS NOT THE TAKE BUFFER. `take`'s `buf` / `buf_len` are owned by
+     *    the RUNTIME, and `buf_len` is authoritative on every call — including
+     *    when it disagrees with this hint, and when it changes between calls
+     *    for the same subscription. A backend must not cache a length from
+     *    here and write `buf` against it.
+     *  - MUST NOT LIE. A backend MUST NOT copy a sample that does not fit the
+     *    caller's take buffer and return `NROS_RMW_RET_OK`. A sample larger
+     *    than `buf_len` is reported as a failure — `*taken = false` with
+     *    `NROS_RMW_RET_BUFFER_TOO_SMALL` — never as a truncated success. The
+     *    runtime turns that into a diagnostic naming the buffer
+     *    (`report_dropped_take`); a silent truncation is a corrupt message
+     *    with no symptom at all. This is the ONE guarantee the hint carries,
+     *    and it holds whether or not the backend honoured the hint.
+     *  - NOT A WIRE BOUND. A remote publisher is bound by the `.msg`, never by
+     *    our config, so this is no promise about incoming sample size. A
+     *    backend must not size a fixed structure from it in a way that makes a
+     *    larger sample undeliverable WITHOUT a diagnostic.
+     *
+     *  The vtable's OPTIONAL `required_rx_bytes` is the other direction: how a
+     *  backend says what it would rather the take buffer were. */
     uint32_t rx_buffer_hint;
     uint8_t  _reserved[4];    /**< Reserved; must be zero. */
 } rmw_subscription_options_t;

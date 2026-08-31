@@ -277,7 +277,14 @@ typedef struct nros_rmw_vtable_t {
      *    nothing to point at. Two earlier reasons here were wrong:
      *    "pools are baked" (issue 0777 — cyclonedds calls
      *    `ddsrt_calloc` on this very path) and then "upstream
-     *    pre-sizes an `rcutils_allocator_t`" (there is none). */
+     *    pre-sizes an `rcutils_allocator_t`" (there is none).
+     *
+     *  Phase 403 W1 — `buf_len` is AUTHORITATIVE on every call, and a
+     *  sample that does not fit it is a FAILURE (`*taken = false` with
+     *  `NROS_RMW_RET_BUFFER_TOO_SMALL`), never a truncated success.
+     *  That holds however the backend treated
+     *  `rmw_subscription_options_t.rx_buffer_hint`, whose doc writes the
+     *  rule out in full. */
     rmw_ret_t (*take)(const rmw_subscription_t *subscription,
         rmw_mut_byte_span_t *out, bool *taken);
     /** Phase 376 W3.d step A — status in the return, answer in the
@@ -1269,6 +1276,76 @@ typedef struct nros_rmw_vtable_t {
      *  NULL slot: the backend has no adjustable logging, and the runtime
      *  surfaces `UNSUPPORTED`. */
     rmw_ret_t (*set_log_severity)(rmw_log_severity_t severity);
+
+    /* ---- Phase 403 W1 — receive-buffer sizing (optional) ---- */
+
+    /** How many bytes of TAKE buffer this type actually needs, so the runtime
+     *  can stop sizing `take`'s `buf` from one global constant.
+     *
+     *  RTOS addition; upstream has no counterpart. Upstream's nearest thing is
+     *  `rmw_get_serialized_message_size`, which is about a MESSAGE and which
+     *  all three reference implementations leave unimplemented; this is about
+     *  the buffer the CALLER must present, and the answer is the backend's
+     *  because only the backend knows what its framing, size classes and
+     *  attachment handling add on top of the payload.
+     *
+     *  `type_name` and `type_hash` name the type (both BORROWED for the call;
+     *  `type_hash` may be NULL exactly as in `create_subscription`). `hint` is
+     *  the same number the runtime would put in
+     *  `rmw_subscription_options_t.rx_buffer_hint`, and carries the same
+     *  meaning, including that `0` says the CALLER stated nothing rather than
+     *  that the type is unbounded — every message type has a derived bound or
+     *  the build fails. On `NROS_RMW_RET_OK`, `*out_bytes` is a take-buffer
+     *  length that is SUFFICIENT for this type at this hint: a `take` given
+     *  that many bytes must not fail for want of room. It may exceed `hint` —
+     *  a backend that frames or pads says so here rather than discovering it
+     *  at `take` time — and it may be smaller.
+     *
+     *  This is a QUERY about a type, not about an entity: it is answerable
+     *  before any subscription exists, which is the point — the runtime has to
+     *  size the buffer in order to create one.
+     *
+     *  NULL slot: FALLBACK class (RFC-0035's NULL-slot contract) — THE HINT IS
+     *  THE ANSWER, never `UNSUPPORTED` to the caller. The runtime uses `hint`,
+     *  and since a type without a derived bound is a build error, that is a
+     *  real number rather than a fallback to a configured default. A backend
+     *  that cannot answer for a PARTICULAR type returns
+     *  `NROS_RMW_RET_UNSUPPORTED` and leaves `*out_bytes` untouched; the
+     *  runtime falls back to the hint exactly as for a NULL slot.
+     *
+     *  OPTIONAL on the merits, not for compatibility. nano-ros is unreleased
+     *  and this ABI may be broken, so "a mandatory slot breaks every
+     *  out-of-tree backend" is not the reason and must not be cited as one.
+     *  Three reasons that survive without it:
+     *
+     *  - A SLOT CANNOT BE REQUIRED BEFORE SOMETHING DISPATCHES IT. Required
+     *    here means `first_missing_vtable_slot` REFUSES to register a backend
+     *    that leaves it NULL, and `check-rmw-required-slots.sh` holds that set
+     *    equal to the set the runtime `.expect()`s. Nothing calls this yet —
+     *    phase-403 W3/W4 are the consumers — so requiring it now would refuse
+     *    working backends over a function no caller reaches. That is issue
+     *    0349 exactly, and it cost three backends their registration once.
+     *  - "NO OPINION" IS A REAL ANSWER, and mandatory does not delete it, only
+     *    relocates it: five in-tree backends would each carry the same
+     *    `*out_bytes = hint; return OK;` body, and the Rust ones would get it
+     *    from a defaulted `RustBackend` trait method — the same special case,
+     *    one layer up and less visible.
+     *  - IT IS SLOT 75, AND TWO BACKENDS INITIALISE POSITIONALLY. uORB's
+     *    C++14 initialiser stops at slot 17 and positional initialisation
+     *    cannot skip, so reaching a mandatory slot 75 means writing 58
+     *    meaningless entries to get there.
+     *
+     *  Promotion stays cheap and stays open: making this required later is a
+     *  change to the registration check, not to the struct, so W4 can require
+     *  it in the same commit that adds the dispatch site.
+     *
+     *  It does not weaken `take`'s obligation. The runtime may pass a `buf_len`
+     *  smaller than what this returned — it has its own memory to answer to —
+     *  and a sample that does not fit is still a reported failure rather than
+     *  a truncated success. Answering here is how a backend avoids that
+     *  outcome, not how it licenses one. */
+    rmw_ret_t (*required_rx_bytes)(const char *type_name,
+        const char *type_hash, size_t hint, size_t *out_bytes);
 
 } nros_rmw_vtable_t;
 

@@ -58,6 +58,11 @@ STATUS_ONLY = {
     "take_loaned_message", "has_data", "has_request",
     "service_server_is_available", "subscription_supports_in_place",
     "process_raw_in_place", "next_deadline_ms",
+    # phase-403 W1 — born with the answer in `size_t *out_bytes`, so it is
+    # status-only from the start. Listed rather than omitted: the set is what
+    # tells this gate which names to watch, and a slot that returns a SIZE is
+    # exactly the shape that tempts a `< 0` test.
+    "required_rx_bytes",
 }
 
 # Slots that multiplex count-or-flag with status. `< 0` is their CONTRACT today;

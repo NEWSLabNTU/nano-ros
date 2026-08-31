@@ -177,8 +177,8 @@ go with this wave; see the W5 note.
 
 ## Waves
 
-**W1 — the contract, in the ABI and in prose.** Two additions to
-`nros/rmw_vtable.h` + `rmw_entity.h`:
+**W1 — the contract, in the ABI and in prose. LANDED 2026-08-31.** Two additions
+to `nros/rmw_vtable.h` + `rmw_entity.h`:
 
 1. `rx_buffer_hint`'s doc becomes normative: a backend MUST NOT deliver a sample
    larger than the hint into a caller buffer smaller than it, and MUST report
@@ -194,6 +194,43 @@ go with this wave; see the W5 note.
    contract: adding a mandatory one breaks every out-of-tree backend at once,
    and the campaign's own rule is that a gap goes in the ledger with an issue id
    rather than being forced.
+
+   **The `-> size_t` return above is what landed as an out-parameter**, because
+   the header's own preamble makes it one rule with no exceptions: every slot
+   returns `rmw_ret_t`, every ANSWER is an out-parameter, and no slot may
+   multiplex a count with a status — gated by `scripts/check-rmw-ret-sign.py`.
+   A `size_t` return also has no way to say "I cannot size this type", which is
+   a PER-TYPE answer that NULLing the whole slot cannot express.
+   The landed slot is
+
+   ```c
+   rmw_ret_t (*required_rx_bytes)(const char *type_name,
+       const char *type_hash, size_t hint, size_t *out_bytes);
+   ```
+
+   appended LAST in `nros_rmw_vtable_t` (slot 75), NULL in every in-tree
+   backend, `NROS_RMW_RET_UNSUPPORTED` reserved for "cannot size this type"
+   with the same fallback as a NULL slot.
+
+   **The optionality argument above is also retired.** nano-ros is unreleased
+   and this ABI may be broken, so "breaks every out-of-tree backend at once" is
+   not a reason for anything in this phase. The slot is still OPTIONAL, on
+   three arguments that survive without it: a slot cannot be REQUIRED before
+   something dispatches it (`check-rmw-required-slots.sh` holds the required set
+   equal to the `.expect()`ed set — requiring one nothing calls is issue 0349);
+   mandatory does not delete the "no opinion" answer, it relocates it into five
+   identical backend bodies and a defaulted `RustBackend` method; and it is slot
+   75, while uORB's C++14 positional initialiser stops at slot 17 and cannot
+   skip. **W4 should promote it to required in the same commit that adds the
+   dispatch site** — that is a registration-check change, not an ABI change, so
+   nothing is foreclosed by leaving it optional here.
+
+   **`rx_buffer_hint`'s `0` also changed meaning** and W2/W3 inherit it: every
+   message type now has a derived upper bound (`.msg` bound or a
+   `nros-codegen.toml` cap; unbounded is a BUILD ERROR), so the runtime always
+   has a number. `0` means "this caller stated nothing", never "this type is
+   unbounded". The "falls back to a configured default" framing is gone with
+   it.
 
 **W2 — buffer 1, Rust path.** `create_subscription::<M>` already knows `M`;
 size `RX_BUF` from `M::MAX_SERIALIZED_SIZE_*` instead of the global default.
