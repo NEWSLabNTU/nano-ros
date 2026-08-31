@@ -12,6 +12,10 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/cargo.sh
+    # phase-400 W5 — `nros_build_dir` and the KIND constants come from here, and
+    # this must happen BEFORE the recipe changes into the west workspace: the
+    # path is relative to the repo root.
+    source scripts/build/build-root.sh
     # Phase 180.B — examples read the ROS interface package dirs from env
     # (no more hardcoded /opt/ros/humble/share/* PKG_DIR). Default to the
     # stock Humble install; override per package if your ROS lives elsewhere.
@@ -117,8 +121,21 @@ build-one example rmw="zenoh" board="native_sim/native/64":
     bd="build-$(echo '{{example}}' | tr '/' '-')-{{rmw}}"
     echo "Zephyr {{NROS_ZEPHYR_VERSION}}: building zephyr/{{example}} ({{rmw}}, {{board}}) -> $workspace/$bd"
     cd "$workspace"
+    # phase-400 W5 — share the cargo dependency mass across images.
+    #
+    # Zephyr was the one platform building every image against its own cargo
+    # target dir: 191 of them across 89 west build trees, each recompiling the
+    # same ~86 host crates. The six other platforms have passed a shared root
+    # since issue 0805; this is the same call they make.
+    #
+    # Safe here only because the generated headers no longer come from inside
+    # that directory (W5.c): they are placed from `$OUT_DIR`, which cargo reports
+    # even on a cache hit. Before that, sharing left every image after the first
+    # without its headers.
+    shared_cargo_root="$(nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr)"
     "${west_cmd[@]}" build -b "{{board}}" -d "$bd" "$src" -- \
-        -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool"
+        -DCONF_FILE="$conf" -D_NANO_ROS_CODEGEN_TOOL="$codegen_tool" \
+        -DNROS_SHARED_CARGO_ROOT="$shared_cargo_root"
     echo "Built: $workspace/$bd/zephyr/zephyr.elf"
 
 # Phase 180.B item 5 — copy-out CI check. Copies an example OUT of the

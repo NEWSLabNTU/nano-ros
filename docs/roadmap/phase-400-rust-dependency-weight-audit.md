@@ -976,6 +976,51 @@ getting the generated headers to each image while the dependency mass is shared.
 Three candidate routes, none free, all recorded above and in the design-fork
 section.
 
+### W5 — TURNED ON 2026-08-31, and measured. ~2x on a subsequent image.
+
+The Zephyr lane now passes `-DNROS_SHARED_CARGO_ROOT` (the same
+`nros_build_dir "$NROS_KIND_CORROSION_CARGO" zephyr` call the six other platforms
+make), and W5.b's `FATAL_ERROR` is lifted — because the reason for it is gone,
+not tolerated. W5.c's placer takes the headers from `$OUT_DIR`, which cargo
+reports even on a cache hit, so the second image gets its headers without its
+build script running. **Verified in the run itself:** image 2 took the cache hit
+and still reported both placements, with the header present in its own dir.
+
+Two keyed directories appear under the shared root, one per package — features
+are in the key, as W5.b's note explains.
+
+#### The measurement, and the confound that nearly buried it
+
+With `sccache` DISABLED, which is the honest configuration for this question:
+
+```
+first image,  empty shared root   wall 15.1 s   CPU 24.6 s
+second image, warm shared root    wall  8.4 s   CPU 12.9 s
+```
+
+**A subsequent image costs about half.** That is the wave's payoff, and it is the
+first CPU number in this phase that is a saving rather than an estimate.
+
+With `sccache` ENABLED the same pair reads the other way — 61.8 CPU-s shared
+against 24.9 unshared — and that comparison is INVALID. The unshared baseline
+drew on an sccache warmed by hundreds of unshared builds in the same session,
+while the shared runs use a different path spelling and therefore different
+`-C metadata`, so they hit no existing entries and paid population cost. The two
+configurations do not share cache keys, so the pair never measured sharing at
+all.
+
+Recorded because the wrong reading was the FIRST one taken, and it looked like a
+clean refutation. The phase's own rule applies to a disappointing number exactly
+as it does to a flattering one: ask what else changed before believing it.
+
+*Still to measure before quoting a sweep figure:* a run on a machine with no
+pre-warmed sccache — CI, or after `sccache --zero-stats` and a cache clear — to
+learn what the pairing is worth in production rather than on this host.
+
+*Still open:* the target-dir side channel is still written, and the Corrosion and
+NuttX lanes still read it. Zephyr no longer does, which is why sharing is safe
+there now; retiring it everywhere is the follow-up that lets the write go.
+
 ### W5 open items — closed 2026-08-30, and the path-divergence finding is RETRACTED
 
 **1. The `DOTCONFIG` exemption reason — rewritten.**
