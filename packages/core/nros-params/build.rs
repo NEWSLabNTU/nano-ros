@@ -8,11 +8,22 @@ use std::{env, path::Path};
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
-    let max_parameters = env_usize("NROS_MAX_PARAMETERS", 32);
-    let max_param_name_len = env_usize("NROS_MAX_PARAM_NAME_LEN", 64);
-    let max_string_value_len = env_usize("NROS_MAX_STRING_VALUE_LEN", 256);
-    let max_array_len = env_usize("NROS_MAX_ARRAY_LEN", 32);
-    let max_byte_array_len = env_usize("NROS_MAX_BYTE_ARRAY_LEN", 256);
+    // phase-400 W6 — the platform and board rungs sit under the env/Kconfig
+    // front-end each of these already had. phase-292's ASI consumer needed
+    // `NROS_MAX_PARAMETERS=256` and set it in a `build.sh`: a board fact living
+    // in a shell script because there was nowhere to declare it.
+    //
+    // `None` when no lane names a platform (a bare `cargo build`), and then
+    // every knob below is exactly the env-or-default it always was.
+    let rungs = nros_board_common::platform_config::BuildRungs::from_build_env()
+        .map(|r| r.param_rungs())
+        .unwrap_or_default();
+
+    let max_parameters = knob("NROS_MAX_PARAMETERS", rungs.max_parameters, 32);
+    let max_param_name_len = knob("NROS_MAX_PARAM_NAME_LEN", rungs.max_param_name_len, 64);
+    let max_string_value_len = knob("NROS_MAX_STRING_VALUE_LEN", rungs.max_string_value_len, 256);
+    let max_array_len = knob("NROS_MAX_ARRAY_LEN", rungs.max_array_len, 32);
+    let max_byte_array_len = knob("NROS_MAX_BYTE_ARRAY_LEN", rungs.max_byte_array_len, 256);
 
     let contents = format!(
         "/// Maximum number of parameters the server can store \
@@ -39,22 +50,17 @@ fn main() {
     std::fs::write(Path::new(&out_dir).join("nros_params_config.rs"), contents).unwrap();
 }
 
-/// Read a usize from an environment variable, falling back to a default.
-/// Resolve a sizing knob the way every other nros build script does.
+/// One parameter knob: env → Kconfig → the descriptor rung → built-in default.
 ///
-/// Issue 0460 — a Zephyr RUST image inherits NONE of cmake's `set(ENV{...})`
-/// knob exports: that call only touches the configure-time process, the C lane
-/// re-bakes them into its own command, and zephyr-lang-rust's
-/// `rust_cargo_application` builds a fresh one that inherits nothing. So a plain
-/// `env::var` here reads the crate DEFAULT on Zephyr no matter what Kconfig
-/// says, and the two lanes then disagree about a compile-time constant — an
-/// 0135-class ABI split, silently.
-///
-/// `knob_usize` reads `$DOTCONFIG` for `CONFIG_<name>` and falls back to the
-/// environment, which is what `nros-node`'s identical helper does. Gated by
-/// `check-kconfig-knob-forwarding`, which went red when #0749 taught
-/// `zephyr/cmake/nros_cargo_build.cmake` to forward `NROS_MAX_PARAMETERS` while
-/// this crate — its only reader — still used the env-only form.
-fn env_usize(name: &str, default: usize) -> usize {
-    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), default)
+/// The front-end keeps winning. Migrating a knob into the ladder must not take
+/// an operator's override away, which is half of this wave's own gate.
+fn knob(name: &str, rung: Option<usize>, default: usize) -> usize {
+    println!("cargo:rerun-if-env-changed={name}");
+    if let Some(v) = env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
+        return v;
+    }
+    if let Some(v) = nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}")) {
+        return v;
+    }
+    rung.unwrap_or(default)
 }

@@ -65,6 +65,12 @@ OWNERS: dict[str, str] = {
     # The transport and zenoh-tx tenants resolve inside the ladder itself, so
     # the resolver IS the owner. `nros-zpico-build` re-read the tx trio for its
     # no-platform case until W8 replaced that with `tx_env_only`.
+    # The parameter tenant (phase-400 W6).
+    "NROS_MAX_PARAMETERS": "packages/core/nros-params/build.rs",
+    "NROS_MAX_PARAM_NAME_LEN": "packages/core/nros-params/build.rs",
+    "NROS_MAX_STRING_VALUE_LEN": "packages/core/nros-params/build.rs",
+    "NROS_MAX_ARRAY_LEN": "packages/core/nros-params/build.rs",
+    "NROS_MAX_BYTE_ARRAY_LEN": "packages/core/nros-params/build.rs",
     "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
     "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
     "ZPICO_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",

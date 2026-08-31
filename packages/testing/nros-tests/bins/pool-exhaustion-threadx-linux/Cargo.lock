@@ -326,6 +326,7 @@ name = "nros-params"
 version = "0.5.0"
 dependencies = [
  "heapless",
+ "nros-board-common",
  "nros-zephyr-build",
 ]
 

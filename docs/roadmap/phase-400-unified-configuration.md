@@ -1,7 +1,8 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
-**Status (2026-08-31): W2-W5 and W7 done; W6's first and largest tenant
-(`NROS_EXECUTOR_*`) done, its remaining tenants and W1 / W8 outstanding.** Design is
+**Status (2026-09-01): W2-W5, W7 and W8 done; W6's `executor`, `transport`,
+`zenoh.tx`, `memory` and `params` tenants done, its remaining tenants and W1
+outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
 new mechanism — the ladder and `nros config explain` already exist and work.
@@ -301,15 +302,60 @@ Same shape as the buffers one family over (phase-403). The census marks both
 `derived` and names the owning campaign, so the backlog count stops inviting
 the mistake.
 
-**W6's own backlog is therefore 23, not 31**, and its largest families are:
+**W6's own backlog is therefore 23, not 31** (re-measured at 28 after the
+census fix below), and its largest families are:
 
 | family | knobs | note |
 | --- | --- | --- |
-| `NROS_MAX_*` | 5 | PARAMETER value bounds, in `nros-params/build.rs`. Not message bounds — that mislabel is corrected in the census. |
+| `NROS_MAX_*` | 5 | **DONE** — the `params` tenant, below. |
 | `NROS_RUNTIME_*` | 4 | component caps. Worth asking whether these are derivable from the declared component set before migrating — the same question phase-392 asks of the zenoh caps. |
 | platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
+
+### The `params` tenant — done
+
+The five `NROS_MAX_*` PARAMETER value bounds (not message bounds — that mislabel
+is corrected in the census) now resolve through the ladder: `ParamKnobs`,
+`[knobs.params]` in a platform or board toml, `BuildRungs::param_rungs()`, and a
+single reader in `nros-params/build.rs` composing env -> Kconfig -> rung ->
+builtin. `nros config explain` prints them beside the executor and memory
+tenants.
+
+No campaign owns these; the only doc hit was
+`phase-292-asi-reference-consumer-revisit.md`, and it is a usage RECORD —
+"consumer-side knobs that made it fit: `NROS_MAX_PARAMETERS=256`" — living in a
+consumer's `build.sh`. That is the argument FOR a rung, not against one: a
+consumer discovering a platform-appropriate value and having nowhere to put it
+is the gap the ladder closes.
+
+### The census had been under-counting by 29
+
+Wiring this tenant's gate turned up a defect in the measuring instrument. The
+census found readers by matching a fixed list of helper NAMES
+(`env_usize`, `env::var`, ...), so `nros-params/build.rs` wrapping its rungs in
+a local `knob()` took its five knobs out of the count while `--check` stayed
+green — the gate only fails on a name it SEES and cannot classify.
+
+Matching any call instead is the opposite error: `.define("ZPICO_X", ..)` emits
+a C macro and `.with_env(..)` sets a CHILD's environment, and counting those
+added 67 phantom names. So the matcher now carries `READ_CALLEES` and
+`NON_READ_CALLEES`, and a callee in NEITHER is a failure — the same "a new knob
+forces a decision" rule this census already applies to knobs, applied to the
+idioms that read them.
+
+That surfaced 29 names read through `req` / `list` / `env_get` / `flag`, which
+the fixed list never knew: 18 infra (board descriptor facts, include and source
+dirs) and **11 sizing** — the RMW static pools, the smoltcp driver pools and
+timeouts, the XRCE stream depth, and the zpico subscriber ring depth. So W6's
+backlog is **28, not 17**; it went up because the instrument stopped lying. Two
+candidate tenants fall out of it, an `rmw` one and a `net` one, neither owned by
+another campaign.
+
+**The lesson, and it is not the same one as below:** a counting gate that
+under-counts silently is worse than no gate, because a wrong baseline looks
+measured. Both of this census's counters now have negative controls on synthetic
+input for exactly that reason.
 
 **The lesson for the wave, stated once:** "migrate the long tail into the
 ladder" was the right instinct for the executor tenant and is the wrong default
