@@ -53,11 +53,13 @@ LADDER_FLOOR = 13
 #
 #   ladder   already resolved over the RFC-0049 ladder
 #   sizing   a sizing knob still to migrate — THE BACKLOG
-#   derived  a size that should come from the MESSAGE TYPE, not from a knob
-#            (phase-403, phase-408, issue 0896). Migrating one of these into
-#            the ladder would be WRONG: a rung gives a global a per-platform
-#            default, and the whole point of that work is that it stops being
-#            a global.
+#   derived  a number ANOTHER CAMPAIGN is making derived rather than set:
+#            phase-403 / phase-408 for the receive and transmit buffers (from
+#            the message type), phase-392 for the zenoh entity caps and pools
+#            (from what the image declares). Migrating one of these into the
+#            ladder would be WRONG: a rung gives a global a per-platform
+#            default, and the point of that work is that it stops being a
+#            global. The reason column names the owner.
 #   infra    a path, a flag, or an input to the ladder itself. Not a knob, and
 #            counting it as one overstates the backlog — which the first
 #            census did, by ~40%.
@@ -81,9 +83,9 @@ KNOB_CLASS = {
     "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
     "ZPICO_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
     # --- sizing: the backlog ---
-    "NROS_MAX_ARRAY_LEN": ("sizing", "message bound"),
-    "NROS_MAX_BYTE_ARRAY_LEN": ("sizing", "message bound"),
-    "NROS_MAX_STRING_VALUE_LEN": ("sizing", "message bound"),
+    "NROS_MAX_ARRAY_LEN": ("sizing", "parameter value bound (nros-params)"),
+    "NROS_MAX_BYTE_ARRAY_LEN": ("sizing", "parameter value bound (nros-params)"),
+    "NROS_MAX_STRING_VALUE_LEN": ("sizing", "parameter value bound (nros-params)"),
     "NROS_MAX_PARAM_NAME_LEN": ("sizing", "parameter bound"),
     "NROS_MAX_PARAMETERS": ("sizing", "parameter cap"),
     "NROS_RUNTIME_COMPONENT_SLOT_BYTES": ("sizing", "component cap"),
@@ -96,8 +98,8 @@ KNOB_CLASS = {
     "NROS_KEYEXPR_STRING_SIZE": ("sizing", "keyexpr bound"),
     "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape"),
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": ("sizing", "transport MTU; numeric, read as a string"),
-    "ZPICO_MAX_LARGE_SUBSCRIBERS": ("sizing", "pool cardinality, not a payload size"),
-    "ZPICO_SERVICE_BUFFER_SIZE": ("sizing", "service staging block"),
+    "ZPICO_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
+    "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # --- infra: not knobs ---
     "NROS_ALLOW_UNRESOLVED_DEPS": ("infra", "policy flag"),
     "NROS_BUILD_ROOT": ("infra", "path"),
@@ -115,12 +117,12 @@ KNOB_CLASS = {
     "ZPICO_TX_BATCH_FLUSH_MS": ("ladder", "zenoh.tx tenant"),
     # --- sizing: the zenoh-pico entity caps and buffers. The largest single
     # --- family left, and the one the phase doc calls "the per-entity caps".
-    "ZPICO_MAX_PUBLISHERS": ("sizing", "entity cap"),
-    "ZPICO_MAX_SUBSCRIBERS": ("sizing", "entity cap"),
-    "ZPICO_MAX_QUERYABLES": ("sizing", "entity cap; issue 0460 raised it for services"),
-    "ZPICO_MAX_SESSIONS": ("sizing", "entity cap"),
-    "ZPICO_MAX_LIVELINESS": ("sizing", "entity cap"),
-    "ZPICO_MAX_PENDING_GETS": ("sizing", "entity cap"),
+    "ZPICO_MAX_PUBLISHERS": ("derived", "entity cap; phase-392 is deciding whether it is derived from the declaration"),
+    "ZPICO_MAX_SUBSCRIBERS": ("derived", "entity cap; phase-392"),
+    "ZPICO_MAX_QUERYABLES": ("derived", "already a CHECKED OVERRIDE over a derived default (phase-392 W5.f)"),
+    "ZPICO_MAX_SESSIONS": ("derived", "phase-392 poses it explicitly: joins the model, or stays a knob and that phase says so"),
+    "ZPICO_MAX_LIVELINESS": ("derived", "entity cap; phase-392"),
+    "ZPICO_MAX_PENDING_GETS": ("derived", "entity cap; phase-392"),
     "ZPICO_BATCH_UNICAST_SIZE": ("sizing", "wire batch buffer"),
     "ZPICO_BATCH_MULTICAST_SIZE": ("sizing", "wire batch buffer"),
     "ZPICO_FRAG_MAX_SIZE": ("sizing", "fragmentation ceiling"),
@@ -299,7 +301,7 @@ def main() -> int:
     print(f"  {'-' * 38} -----")
     for cls, label in (
         ("sizing", "sizing knobs still to migrate  <-- W6"),
-        ("derived", "sized by the MESSAGE TYPE, not a knob"),
+        ("derived", "another campaign is DERIVING these"),
         ("ladder", "already on the ladder"),
         ("infra", "paths / flags / ladder inputs (not knobs)"),
     ):
