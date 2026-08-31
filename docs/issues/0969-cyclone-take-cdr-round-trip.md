@@ -130,11 +130,55 @@ support, and even its SHM path ends in a `memcpy`; see the amendment to
 [design 0038](../design/0038-zero-copy-data-transport.md). Removing the round trip
 is the whole of the available win on the buffered path.
 
-## Verification
+## Verification — measured
 
-Before/after on the an536 lane: allocation count per take (the rlsf ledger from
-[phase 394](../roadmap/phase-394-memory-campaign-ledger.md) can report it), and delivery
-rate at the fragment sizes characterized in
-[#0917](0917-an536-fragmented-sample-never-syncs.md). The bytes the caller sees should
-become byte-identical to the wire payload, encapsulation header included — that
-equality is the sharpest test that the round trip is gone.
+**Allocation count: 9.93 per message → 2.00.** `data_roundtrip` gained
+`NROS_ROUNDTRIP_ITERS`; two runs at different counts under valgrind cancel
+session and entity setup and give the per-message cost as a slope. Same harness,
+this backend against `origin/main`'s:
+
+| | allocs @1 | allocs @200 | per message |
+| --- | ---: | ---: | ---: |
+| before | 984 | 2,960 | **9.93** |
+| after | 968 | 1,366 | **2.00** |
+
+The remaining 2 are one serdata object and its payload buffer — on the loopback
+path Cyclone hands the same serdata to the local reader by reference, so one
+message costs one serdata.
+
+The before figure is not an integer, and that is information: the old path's
+ostream grew by `realloc`, so its allocation count depended on the sample. Part
+of what the round trip cost varied with the message, which is the property a
+real-time budget most dislikes. The after figure is exactly 2.00 across 199
+messages.
+
+**Correcting this section as first written:** it said the
+[phase 394](../roadmap/phase-394-memory-campaign-ledger.md) ledger could report
+allocation count per take. It cannot — that instrument reads static RAM out of an
+ELF symbol table. Runtime allocation needed an instrument and did not have one.
+
+**Byte-identity: confirmed, with a qualification that matters for sizing.**
+`ros2_pubsub_e2e` now prints what a real ROS 2 Humble peer over stock
+`rmw_cyclonedds` actually delivers (the payload was widened to 16 characters
+first, because the old one came to exactly 24 bytes of CDR — already 4-aligned,
+so it could not tell wire bytes from a padded re-encode):
+
+```
+WIRE=len:28 hdr:00010000 cdr:25
+```
+
+The backend adds nothing — `get_size` returns exactly what `from_ser` was handed.
+But **transparent is not unpadded**: the three extra bytes are the RTPS
+submessage's 4-byte alignment applied by the SENDER, and the encapsulation
+options read `0000` rather than `0003`, so the pad length is not recoverable from
+the header either. Two consequences survive this issue rather than being removed
+by it — a deserialiser must tolerate trailing bytes (nros-serdes reads by
+position, so it does), and a receive buffer cut to a type's exact
+`MAX_SERIALIZED_SIZE` can be up to 3 bytes short of what a remote peer delivers.
+That belongs to [#0964](0964-two-different-sizes-for-the-same-type.md).
+
+**Not measured, and not expected to move:** delivery rate at the fragment sizes
+in [#0917](0917-an536-fragmented-sample-never-syncs.md). That cliff is the
+LAN9118's RX FIFO capacity and has nothing to do with serialisation. What should
+move on that lane is per-message CPU and allocation, so the rate below the cliff
+and the jitter — an an536 measurement still owed.
