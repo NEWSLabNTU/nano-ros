@@ -127,10 +127,14 @@ const nros_message_type_t* {{ struct_name }}_get_type_support(void);
 /// Reason: {{ unbounded_reason }}
 ///
 /// "unbounded member" means the bound was computed and does not exist -- bound
-/// the field in the `.msg` (`string<=64`) or give it a `cap` in
-/// `nros-codegen.toml`. "could not be resolved" means the bound was NOT
-/// computed, because a nested type was not reachable; that is a search-path
-/// problem, not a property of the message. Issue 0896.
+/// the field in the `.msg` (`string<=64`), or give it an INLINE `cap` in
+/// `nros-codegen.toml` (`[fields]` / `[types]` / `[packages]` / `[defaults]`).
+/// A `heap` or `view` cap is a sizing hint nothing enforces (RFC-0033 "What each
+/// mode GUARANTEES"), so it deliberately does not bound. EVERY offending member
+/// is listed above, so one build names everything there is to fix (phase-403
+/// W0). "could not be resolved" means the bound was NOT computed, because a
+/// nested type was not reachable; that is a search-path problem, not a property
+/// of the message. Issue 0896.
 
 /* issue 0896 layer 5 -- naming the size constant of an unbounded type is a
    deliberate error, and this makes the compiler SAY SO. Without it the

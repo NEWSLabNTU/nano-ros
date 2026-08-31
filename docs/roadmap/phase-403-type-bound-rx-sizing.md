@@ -506,12 +506,18 @@ that the Zephyr lane reads. With the inventory available:
 It also answers this phase's standing open question about where an entity
 inventory comes from: it is codegen's output, currently discarded.
 
-## What a `cap` may and may not claim (2026-08-31, owner's direction: follow ROS 2)
+## What a `cap` may and may not claim (2026-08-31, SUPERSEDED and re-ruled)
+
+> **This section was reversed on the day it was written.** The first ruling read
+> the ROS 2 evidence correctly and drew the wrong conclusion from it; the
+> reversal is below. Both are kept, because "a cap is storage-only" was
+> load-bearing prose for half a day and a reader who finds only the answer
+> cannot tell which question it settles.
 
 W0 found that the `cap` in `nros-codegen.toml` reaches the STORAGE container and
 not the bound, so the C header's advice ("bound it in the `.msg`, or give it a
-`cap`") currently names a knob that does not help. The question was whether to
-wire `cap` into the bound. The owner's ruling is to follow ROS 2, for interop.
+`cap`") named a knob that could not help. The question was whether to wire `cap`
+into the bound.
 
 **What ROS 2 does**, read from the Humble installation rather than from memory:
 
@@ -528,27 +534,107 @@ string serialize to identical CDR (length, bytes, terminator). Our own generated
 `Odometry` shows it: `child_frame_id` is `[u8; 256]` in storage and goes out
 through `write_string(fixed_str(..))`, the same encoding an unbounded field uses.
 
-**What follows.** A cap changes our storage and our derived bound. It changes
-nothing a remote participant can observe -- not the type name, not the encoding,
-not endpoint matching. But that is exactly why it cannot silently become the
-bound we size a RECEIVE buffer from:
+**The first ruling** (superseded) read that as a reason a cap must NOT become the
+bound: a `.msg` bound is contractual, a config cap is unilateral, and a
+conforming remote publisher never agreed to it.
 
-| | where it lives | may a receive buffer be sized from it? |
+### The re-ruling: a cap DOES set the bound (owner, 2026-08-31)
+
+The evidence above is unchanged and was not re-litigated. What changed is the
+conclusion drawn from it.
+
+A cap cannot change the type name, the encoding, or endpoint matching -- that is
+what the Humble read established. So the ONLY exposure a cap creates is a peer
+sending more than the cap, and that case is already handled LOUDLY: the runtime
+reports it through `report_dropped_take` and counts it in `DROPPED_TAKES`. A cap
+is therefore a stated deployment assumption that FAILS LOUDLY, not a silent
+truncation, and the first ruling's "silent shortfall" was the wrong name for it.
+
+Against that, "storage-only" left the rule unusable in practice: **86 of 126
+stock ROS Humble types have no `.msg` bound** (measured below), across every
+package an Autoware-facing image consumes. Requiring the interface to be edited
+means editing vendored `.msg` files we do not own, which forks the interface --
+strictly worse for interop than a cap that no participant can observe.
+
+| | where it lives | may a bound come from it? |
 | --- | --- | --- |
-| `.msg` bound (`string<=64`) | the interface, shared by every participant | YES -- contractual |
-| `cap` in our codegen config | our build only | NO -- unilateral |
+| `.msg` bound (`string<=64`) | the interface, shared by every participant | YES -- and it WINS over any cap, in both directions |
+| `inline` cap in our codegen config | our build only, ENFORCED at deserialize | YES -- a stated assumption, enforced and reported |
+| `heap` / `view` cap | our build only, enforced NOWHERE | NO |
+| built-in 256 / 64 fallback | nobody stated it | NO |
 
-A `.msg` bound is part of the contract every participant compiled against. A
-config cap is a claim only we made; a conforming remote publisher never agreed to
-it and may legitimately send more, and we would then take the sample and discard
-it. That is the silent-shortfall failure this phase exists to remove, so
-promoting `cap` to a bound would reintroduce it through the config file.
+**Only an `inline` cap bounds**, and that is RFC-0033's own "What each mode
+GUARANTEES" table rather than a new policy: `inline` is "bounded, statically
+provable -- the size is in the type", `heap` is "`alloc::Vec<T>` (cap = hint)",
+and `view` is a slice into the receive buffer with "no fixed capacity". Read off
+the emitters, not the prose: an `inline` field decodes through
+`heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)`, so a
+sample above the cap cannot be decoded into the type at all; a `heap` field
+decodes through `heap::String::from(s)` and `nros_type_for_field_heap` does not
+even take the cap; a `view` field decodes through a bare `reader.read_string()?`
+with no length check anywhere. A cap in the latter two is a number nothing
+enforces, so promoting it would put a fabricated bound under a receive buffer --
+which IS the failure the first ruling named, correctly, just about a different
+two thirds of the feature.
 
-**Therefore:** codegen enforces "every type must be bounded" against `.msg`
-bounds. `cap` stays storage-only. Where an image needs a bound that the `.msg`
-does not give, the honest fix is to bound the interface -- which is also the fix
-ROS 2 would require, and keeps the two stacks describing the same type the same
-way.
+**The built-in fallback is not a bound either.** `CapacityResolver::resolve`
+always answers, so the naive wiring would have bounded every unbounded string in
+the tree at 256 and quietly satisfied W0's rule everywhere -- deleting the rule.
+`resolve_configured` / `declared_bound` separate "a config file states this" from
+"this is what codegen does when told nothing"; `[defaults]` counts as stated, the
+level-6 constant does not.
+
+**A `.msg` bound wins by construction, not by precedence.** A bounded shape has
+its own arm in `schema_value::lower` and in `render_field_type_expr` and never
+consults the resolver, so a cap can neither widen nor narrow an interface bound.
+
+**One cap is keyed on the DECLARING type, so it is transitive.** One
+`"std_msgs/Header.frame_id" = 64` bounds `header` in every message that nests a
+`Header`, at any depth and across package boundaries. Verified by test
+(`one_cap_on_the_declaring_type_bounds_every_message_that_nests_it`), with a
+negative control that a cap keyed on the CONTAINING type does NOT reach a nested
+field -- W6 had just fixed a bug in this exact walk where a bare nested reference
+resolved against the top-level package, and the same mistake here would have made
+the direct case pass while every nested `Header` stayed unbounded.
+
+### Measured: what capping actually buys (2026-08-31)
+
+Over the same 12 stock ROS Humble interface packages W6 measured
+(`geometry_msgs`, `nav_msgs`, `sensor_msgs`, `std_msgs`, `builtin_interfaces`,
+`action_msgs`, `diagnostic_msgs`, `trajectory_msgs`, `shape_msgs`,
+`visualization_msgs`, `tf2_msgs`, `stereo_msgs`), 126 message types, XCDR1,
+resolving nested types across the whole `/opt/ros/humble/share` tree:
+
+| config | bounded | unbounded |
+| --- | --- | --- |
+| none (the `.msg` alone) | 40 | 86 |
+| ONE line: `"std_msgs/Header.frame_id" = 64` | **60** | 66 |
+| per-package `string`/`sequence` caps for the 12, plus 4 per-field overrides | **121** | 5 |
+
+The one-line row is the transitivity claim as a number: `header.frame_id` alone
+costs 50 of the 126 types their bound, and capping it once moves `geometry_msgs`
+14 -> 25, `sensor_msgs` 3 -> 11 and `std_msgs` 15 -> 16 bounded, with no entry
+naming any of those packages.
+
+The 5 that remain unbounded under the full config are all the SAME shape --
+`sensor_msgs/JointState.name`, `sensor_msgs/MultiDOFJointState.joint_names`,
+`trajectory_msgs/JointTrajectory.joint_names`,
+`trajectory_msgs/MultiDOFJointTrajectory.joint_names`,
+`visualization_msgs/InteractiveMarkerUpdate.erases` -- a `string[]`, i.e. a
+sequence whose ELEMENT is an unbounded string. A config key names a FIELD, and an
+element is not one; the emitter spells such an element
+`heapless::String<NROS_DEFAULT_STRING_CAPACITY>` from a built-in constant nobody
+chose, so claiming a bound from it would be claiming 256 bytes per element that
+no config states. **`string[]` therefore cannot be bounded by cap today** -- only
+by a `.msg` bound. Open: whether the config gains an element key.
+
+Also found while measuring: `nros_serdes::size::size_bound` WALKS a bounded
+sequence element by element, so a capped sequence nested three deep costs the
+PRODUCT of the caps. `visualization_msgs` nests
+`InteractiveMarkerInit -> markers -> controls -> markers -> points`, and a
+uniform cap of 128 there does not terminate in any useful time. Pre-existing (a
+`.msg`-bounded sequence has the same shape) but newly reachable, because a cap is
+now a way to create deeply nested bounded sequences. Not fixed here.
 
 ### W6 LANDED 2026-08-31 -- and it found that the C++ number was never a bound
 

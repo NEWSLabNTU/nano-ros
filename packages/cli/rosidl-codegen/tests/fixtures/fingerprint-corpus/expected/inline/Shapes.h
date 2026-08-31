@@ -90,13 +90,17 @@ const nros_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
 
 /// NO size bound is emitted for this type.
 ///
-/// Reason: unbounded member: text (string)
+/// Reason: unbounded members: text (string), seq_prim (sequence<T>), seq_string (sequence<T>)
 ///
 /// "unbounded member" means the bound was computed and does not exist -- bound
-/// the field in the `.msg` (`string<=64`) or give it a `cap` in
-/// `nros-codegen.toml`. "could not be resolved" means the bound was NOT
-/// computed, because a nested type was not reachable; that is a search-path
-/// problem, not a property of the message. Issue 0896.
+/// the field in the `.msg` (`string<=64`), or give it an INLINE `cap` in
+/// `nros-codegen.toml` (`[fields]` / `[types]` / `[packages]` / `[defaults]`).
+/// A `heap` or `view` cap is a sizing hint nothing enforces (RFC-0033 "What each
+/// mode GUARANTEES"), so it deliberately does not bound. EVERY offending member
+/// is listed above, so one build names everything there is to fix (phase-403
+/// W0). "could not be resolved" means the bound was NOT computed, because a
+/// nested type was not reachable; that is a search-path problem, not a property
+/// of the message. Issue 0896.
 
 /* issue 0896 layer 5 -- naming the size constant of an unbounded type is a
    deliberate error, and this makes the compiler SAY SO. Without it the
@@ -118,7 +122,7 @@ const nros_message_type_t* fingerprint_corpus_msg_shapes_get_type_support(void);
 static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publisher_t* publisher,
                                                    const fingerprint_corpus_msg_shapes* msg) {
 
-    /* No bound for this type (unbounded member: text (string)), so the global knob is
+    /* No bound for this type (unbounded members: text (string), seq_prim (sequence<T>), seq_string (sequence<T>)), so the global knob is
        still the only available answer. */
     uint8_t buf[NROS_PUB_BUFFER_SIZE];
 
@@ -160,7 +164,7 @@ static inline nros_ret_t fingerprint_corpus_msg_shapes_publish(struct nros_publi
         nros_c_qos_default(), (cb), (ctx), (out_handle), (uint32_t)(rx_bytes))
 
 /* issue 0896 layer 5 -- this type has NO receive bound
-   (unbounded member: text (string)), so there is no number a plain `_subscribe` could
+   (unbounded members: text (string), seq_prim (sequence<T>), seq_string (sequence<T>)), so there is no number a plain `_subscribe` could
    pass, and sizing the buffer is a decision only the caller can make. The macro
    is emitted anyway, POISONED, so the diagnostic names the type and the member
    that costs it the bound instead of reporting an undeclared function.

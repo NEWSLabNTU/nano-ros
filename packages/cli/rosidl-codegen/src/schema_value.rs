@@ -40,6 +40,7 @@
 //! avoid.
 
 use nros_serdes::schema::{Field, FieldType as SerdeFieldType, NestedType};
+use rosidl_lower::config::{CapacityResolver, FieldKind};
 use rosidl_parser::{
     Message,
     ast::{FieldType as IdlFieldType, PrimitiveType},
@@ -51,9 +52,16 @@ use std::collections::BTreeSet;
 pub enum TypeBound {
     /// A bound exists. Bytes, encapsulation header included.
     Bounded(usize),
-    /// No bound exists — an unbounded member. Carries the offending member as
-    /// `nros_serdes` names it, so a diagnostic can say WHICH field.
-    Unbounded(String),
+    /// No bound exists. Carries EVERY offending member as `nros_serdes` names
+    /// them, in declaration order, so one build names everything that has to be
+    /// bounded (phase-403 W0).
+    ///
+    /// A `Vec` and not the first offender: with an unbounded type now a build
+    /// error, and most stock ROS types unbounded in several places, naming one
+    /// member per build makes bounding a package a cap-rebuild-repeat loop with
+    /// a full codegen run per member. Never empty — `Unbounded` is only
+    /// constructed from a walk that found at least one.
+    Unbounded(Vec<String>),
     /// We could not look: this nested type was not reachable through the
     /// resolver. NOT the same as unbounded; nothing may be sized from it.
     Unresolved(String),
@@ -76,49 +84,107 @@ pub type MsgLookup<'a> = dyn Fn(&str) -> Option<Message> + 'a;
 /// Build the `&'static [Field]` schema for `msg`, resolving nested types
 /// recursively through `lookup`.
 ///
-/// `owner` is the fully-qualified name of `msg`, used for cycle reporting.
+/// `owner` is the fully-qualified name of `msg`, used for cycle reporting and
+/// as the resolver key of its own fields.
+///
+/// `caps` is the `nros-codegen.toml` resolver. A field the config caps in a mode
+/// that actually holds the cap is lowered to the BOUNDED variant, so the cap
+/// reaches the derived bound and not only the storage container (phase-403 W0).
+/// Pass [`CapacityResolver::empty`] to bound a type from its `.msg` alone.
 pub fn build_schema(
     owner: &str,
     msg: &Message,
+    caps: &CapacityResolver,
     lookup: &MsgLookup<'_>,
 ) -> Result<&'static [Field], SchemaError> {
     let mut stack = BTreeSet::new();
     stack.insert(owner.to_string());
-    build_fields(msg, package_of(owner), lookup, &mut stack)
+    build_fields(msg, decl_of(owner), caps, lookup, &mut stack)
 }
 
-/// The package half of an owner name (`nav_msgs/msg/Odometry` ->  `nav_msgs`,
-/// `nav_msgs/Odometry` -> `nav_msgs`). `None` for a bare `Odometry`, which is
-/// what the unit tests and any caller without package context pass.
-fn package_of(owner: &str) -> Option<&str> {
-    owner.split('/').next().filter(|p| p.len() < owner.len())
+/// The `(package, message)` a type name resolves against as a DECLARING type.
+///
+/// `nav_msgs/msg/Odometry` and `nav_msgs/Odometry` both give
+/// `(Some("nav_msgs"), "Odometry")`; a bare `Odometry` gives `(None, "Odometry")`,
+/// which is what the unit tests and any caller without package context pass.
+///
+/// Package first segment, message LAST: the `.msg` spelling with the `msg/`
+/// infix and the spelling without it are both in use across this crate's
+/// callers, and keying on "everything after the first slash" would make
+/// `nav_msgs/msg/Odometry` and `nav_msgs/Odometry` two different config keys for
+/// one type.
+fn decl_of(owner: &str) -> (Option<&str>, &str) {
+    let package = owner.split('/').next().filter(|p| p.len() < owner.len());
+    let message = owner.rsplit('/').next().unwrap_or(owner);
+    (package, message)
 }
 
 fn build_fields(
     msg: &Message,
-    // phase-403 W6 — the package a BARE nested reference resolves against.
+    // The DECLARING type of these fields: the package a bare nested reference
+    // resolves against (phase-403 W6), and the resolver key the fields' own caps
+    // are read with (phase-403 W0). One value, because both questions have the
+    // same answer and splitting them is how they drift apart.
     //
-    // ROS `.msg` says a bare `Pose` means "same package", and "same" is the
-    // package of the message the field is DECLARED IN, not of whatever
-    // top-level message the walk started from. Descending into
+    // W6, the package half. ROS `.msg` says a bare `Pose` means "same package",
+    // and "same" is the package of the message the field is DECLARED IN, not of
+    // whatever top-level message the walk started from. Descending into
     // `geometry_msgs/PoseWithCovariance` from `nav_msgs/msg/Odometry` and then
     // asking a lookup for a bare `Pose` asks it the wrong question: the answer
     // is `geometry_msgs/Pose`, and a lookup keyed on the ORIGINAL package finds
-    // nothing and reports `Unresolved`.
+    // nothing and reports `Unresolved`. Latent until W6 only because no caller
+    // had a cross-package lookup at all, so the walk never got one level down.
     //
-    // Latent until now only because no caller had a cross-package lookup at
-    // all, so the walk never got one level down; W6 gave the C/C++ drivers one
-    // and `nav_msgs/msg/Odometry` immediately came back "nested type `Pose`
-    // could not be resolved".
-    current_package: Option<&str>,
+    // W0, the message half. A config entry names the type that DECLARES the
+    // field, so descending into `std_msgs/Header` from `nav_msgs/msg/Odometry`
+    // must ask about `std_msgs/Header.frame_id`, not
+    // `nav_msgs/Odometry.frame_id`. That is what makes ONE cap on
+    // `Header.frame_id` bound every message that nests a `Header` — the same
+    // mistake W6 fixed on the package half would have made the direct case pass
+    // and left every nested `Header` unbounded, so it is tested both ways
+    // (`one_cap_on_the_declaring_type_bounds_every_message_that_nests_it` and
+    // `a_cap_keyed_on_the_containing_type_does_not_reach_a_nested_field`).
+    decl: (Option<&str>, &str),
+    caps: &CapacityResolver,
     lookup: &MsgLookup<'_>,
     stack: &mut BTreeSet<String>,
 ) -> Result<&'static [Field], SchemaError> {
+    let (current_package, current_message) = decl;
     let mut out = Vec::with_capacity(msg.fields.len());
     for f in &msg.fields {
+        // Only the field's OWN top-level shape consults the config, and only
+        // for the two shapes the resolver is keyed on — the same
+        // `String`/`WString`/`Sequence` set `field_to_nros_field_with_mode`
+        // calls configurable. A `string[]` element gets NO cap from here: the
+        // emitter spells its element `heapless::String<NROS_DEFAULT_STRING_CAPACITY>`
+        // from a built-in constant nobody chose, and claiming a bound from a
+        // default would bound the whole tree at a number no config states —
+        // which is the rule phase-403 W0 exists to enforce, deleted.
+        let declared = match &f.field_type {
+            IdlFieldType::String | IdlFieldType::WString => caps.declared_bound(
+                current_package.unwrap_or_default(),
+                current_message,
+                &f.name,
+                FieldKind::String,
+            ),
+            IdlFieldType::Sequence { .. } => caps.declared_bound(
+                current_package.unwrap_or_default(),
+                current_message,
+                &f.name,
+                FieldKind::Sequence,
+            ),
+            _ => None,
+        };
         out.push(Field {
             name: Box::leak(f.name.clone().into_boxed_str()),
-            ty: *lower(&f.field_type, current_package, lookup, stack)?,
+            ty: *lower(
+                &f.field_type,
+                declared,
+                current_package,
+                caps,
+                lookup,
+                stack,
+            )?,
             // The size rule never reads `offset` (checked: zero references in
             // `nros_serdes::size`), and codegen cannot know a Rust struct's
             // layout anyway. Zero is honest here precisely because nothing
@@ -131,29 +197,52 @@ fn build_fields(
 
 fn lower(
     ty: &IdlFieldType,
+    // phase-403 W0 — the bound the codegen config STATES for this field, or
+    // `None`. Precomputed by the caller from the DECLARING type, so the
+    // recursion below can pass `None` for element types without needing a rule
+    // about which nesting level a config key applies to.
+    //
+    // A `.msg` bound wins over it by CONSTRUCTION, not by precedence: a bounded
+    // shape has its own arm here and never looks at `declared` at all. The
+    // interface is authoritative, and a config cap can neither widen nor narrow
+    // it.
+    declared: Option<usize>,
     current_package: Option<&str>,
+    caps: &CapacityResolver,
     lookup: &MsgLookup<'_>,
     stack: &mut BTreeSet<String>,
 ) -> Result<&'static SerdeFieldType, SchemaError> {
+    let sub = |ty: &IdlFieldType,
+               stack: &mut BTreeSet<String>|
+     -> Result<&'static SerdeFieldType, SchemaError> {
+        lower(ty, None, current_package, caps, lookup, stack)
+    };
     let v = match ty {
         IdlFieldType::Primitive(p) => primitive(p),
-        IdlFieldType::String => SerdeFieldType::String,
-        IdlFieldType::WString => SerdeFieldType::WString,
+        IdlFieldType::String => match declared {
+            Some(n) => SerdeFieldType::BoundedString(n),
+            None => SerdeFieldType::String,
+        },
+        IdlFieldType::WString => match declared {
+            Some(n) => SerdeFieldType::BoundedWString(n),
+            None => SerdeFieldType::WString,
+        },
         IdlFieldType::BoundedString(n) => SerdeFieldType::BoundedString(*n),
         IdlFieldType::BoundedWString(n) => SerdeFieldType::BoundedWString(*n),
         IdlFieldType::Array { element_type, size } => {
-            SerdeFieldType::Array(*size, lower(element_type, current_package, lookup, stack)?)
+            SerdeFieldType::Array(*size, sub(element_type, stack)?)
         }
         IdlFieldType::Sequence { element_type } => {
-            SerdeFieldType::Sequence(lower(element_type, current_package, lookup, stack)?)
+            let elem = sub(element_type, stack)?;
+            match declared {
+                Some(n) => SerdeFieldType::BoundedSequence(n, elem),
+                None => SerdeFieldType::Sequence(elem),
+            }
         }
         IdlFieldType::BoundedSequence {
             element_type,
             max_size,
-        } => SerdeFieldType::BoundedSequence(
-            *max_size,
-            lower(element_type, current_package, lookup, stack)?,
-        ),
+        } => SerdeFieldType::BoundedSequence(*max_size, sub(element_type, stack)?),
         IdlFieldType::NamespacedType { package, name } => {
             let fqn = match (package, current_package) {
                 (Some(p), _) => format!("{p}/{name}"),
@@ -169,8 +258,7 @@ fn lower(
                 return Err(SchemaError::Cycle(fqn));
             }
             let nested = lookup(&fqn).ok_or_else(|| SchemaError::Unresolved(fqn.clone()))?;
-            let nested_package = fqn.split('/').next().filter(|p| p.len() < fqn.len());
-            let fields = build_fields(&nested, nested_package, lookup, stack)?;
+            let fields = build_fields(&nested, decl_of(&fqn), caps, lookup, stack)?;
             stack.remove(&fqn);
             SerdeFieldType::Nested(Box::leak(Box::new(NestedType {
                 type_name: Box::leak(fqn.into_boxed_str()),
@@ -198,7 +286,7 @@ fn primitive(p: &PrimitiveType) -> SerdeFieldType {
 }
 
 /// Bound a parsed message under one encoding, resolving nested types through
-/// `lookup`.
+/// `lookup` and reading capped fields through `caps`.
 ///
 /// The size itself comes from `nros_serdes::size::max_serialized_size` — this
 /// function only supplies its input and classifies the answer.
@@ -206,9 +294,10 @@ pub fn bound_message(
     owner: &str,
     msg: &Message,
     version: nros_serdes::cdr::EncodingVersion,
+    caps: &CapacityResolver,
     lookup: &MsgLookup<'_>,
 ) -> TypeBound {
-    let fields = match build_schema(owner, msg, lookup) {
+    let fields = match build_schema(owner, msg, caps, lookup) {
         Ok(f) => f,
         Err(SchemaError::Unresolved(t)) | Err(SchemaError::Cycle(t)) => {
             return TypeBound::Unresolved(t);
@@ -216,17 +305,31 @@ pub fn bound_message(
     };
     match nros_serdes::size::max_serialized_size(fields, version) {
         Some(n) => TypeBound::Bounded(n),
-        None => TypeBound::Unbounded(
-            nros_serdes::size::first_unbounded(fields)
-                .map(|u| alloc_fmt(&u))
-                .unwrap_or_else(|| "<unknown>".to_string()),
-        ),
+        // EVERY offending member, not the first: with an unbounded type a build
+        // error, one build has to name everything the user must bound, or
+        // bounding a package becomes one cap and one full codegen run per
+        // member (phase-403 W0).
+        None => TypeBound::Unbounded(unbounded_members(fields)),
     }
 }
 
-/// `UnboundedField` is `Display` on `no_std`; this is the `std` side of that.
-fn alloc_fmt(u: &nros_serdes::size::UnboundedField) -> String {
-    format!("{u}")
+/// Every unbounded member of a built schema, formatted as `nros_serdes` names
+/// them.
+///
+/// Never empty for a schema `max_serialized_size` rejected: the two walks agree
+/// by construction (`nros_serdes::size` asserts it). The `<unknown>` fallback
+/// exists so a hypothetical disagreement produces a diagnostic rather than a
+/// reason nobody can read.
+fn unbounded_members(fields: &'static [Field]) -> Vec<String> {
+    let mut out = Vec::new();
+    let _ = nros_serdes::size::visit_unbounded(fields, &mut |u| {
+        out.push(format!("{u}"));
+        std::ops::ControlFlow::Continue(())
+    });
+    if out.is_empty() {
+        out.push("<unknown>".to_string());
+    }
+    out
 }
 
 #[cfg(test)]
@@ -234,6 +337,10 @@ mod tests {
     use super::*;
     use nros_serdes::cdr::EncodingVersion;
     use rosidl_parser::parse_message;
+
+    fn no_caps() -> CapacityResolver {
+        CapacityResolver::empty()
+    }
 
     fn no_lookup(_: &str) -> Option<Message> {
         None
@@ -243,7 +350,7 @@ mod tests {
     fn a_flat_bounded_message_gets_a_number() {
         let m = parse_message("int32 a\nuint8 b\n").unwrap();
         assert!(matches!(
-            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup),
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup),
             TypeBound::Bounded(_)
         ));
     }
@@ -255,11 +362,11 @@ mod tests {
     #[test]
     fn the_bound_equals_what_nros_serdes_computes_directly() {
         let m = parse_message("int64 big\nuint8 small\n").unwrap();
-        let fields = build_schema("p/M", &m, &no_lookup).unwrap();
+        let fields = build_schema("p/M", &m, &no_caps(), &no_lookup).unwrap();
         for v in [EncodingVersion::Xcdr1, EncodingVersion::Xcdr2] {
             let direct = nros_serdes::size::max_serialized_size(fields, v).unwrap();
             assert_eq!(
-                bound_message("p/M", &m, v, &no_lookup),
+                bound_message("p/M", &m, v, &no_caps(), &no_lookup),
                 TypeBound::Bounded(direct)
             );
         }
@@ -277,8 +384,8 @@ mod tests {
     #[test]
     fn the_two_encodings_do_not_agree_so_both_constants_are_needed() {
         let m = parse_message("int64 b\n").unwrap();
-        let x1 = bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup);
-        let x2 = bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_lookup);
+        let x1 = bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup);
+        let x2 = bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_caps(), &no_lookup);
         assert_eq!(x1, TypeBound::Bounded(12));
         assert_eq!(x2, TypeBound::Bounded(16));
     }
@@ -288,8 +395,8 @@ mod tests {
     fn some_types_do_agree_across_encodings_which_is_why_the_case_matters() {
         let m = parse_message("uint8 a\nint64 b\n").unwrap();
         assert_eq!(
-            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup),
-            bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_lookup),
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup),
+            bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_caps(), &no_lookup),
             "DHEADER +4 cancels the saved 4 bytes of padding here"
         );
     }
@@ -297,8 +404,10 @@ mod tests {
     #[test]
     fn an_unbounded_field_is_named_not_just_reported() {
         let m = parse_message("string label\n").unwrap();
-        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup) {
-            TypeBound::Unbounded(which) => assert!(which.contains("label"), "{which}"),
+        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup) {
+            TypeBound::Unbounded(which) => {
+                assert!(which.iter().any(|w| w.contains("label")), "{which:?}")
+            }
             other => panic!("expected Unbounded, got {other:?}"),
         }
     }
@@ -308,7 +417,7 @@ mod tests {
     #[test]
     fn an_unresolvable_nested_type_is_unresolved_not_unbounded() {
         let m = parse_message("std_msgs/Header header\n").unwrap();
-        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup) {
+        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup) {
             TypeBound::Unresolved(t) => assert!(t.contains("Header"), "{t}"),
             other => panic!("expected Unresolved, got {other:?}"),
         }
@@ -321,7 +430,7 @@ mod tests {
             (fqn == "std_msgs/Header").then(|| parse_message("uint32 seq\nint32 sec\n").unwrap())
         };
         assert!(matches!(
-            bound_message("p/M", &m, EncodingVersion::Xcdr1, &lookup),
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &lookup),
             TypeBound::Bounded(_)
         ));
     }
@@ -340,9 +449,12 @@ mod tests {
                 _ => None,
             }
         };
-        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &lookup) {
+        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &lookup) {
             TypeBound::Unbounded(which) => {
-                assert!(which.contains("header.stamp.frame_id"), "{which}")
+                assert!(
+                    which.iter().any(|w| w.contains("header.stamp.frame_id")),
+                    "{which:?}"
+                )
             }
             other => panic!("expected Unbounded, got {other:?}"),
         }
@@ -365,7 +477,7 @@ mod tests {
     fn the_value_walk_matches_the_fields_the_emitter_walks() {
         let src = "bool flag\nint64 wide\nstring<=8 label\nint32[4] fixed\nuint16[] seq\n";
         let m = parse_message(src).unwrap();
-        let built = build_schema("p/M", &m, &no_lookup).unwrap();
+        let built = build_schema("p/M", &m, &no_caps(), &no_lookup).unwrap();
 
         assert_eq!(built.len(), m.fields.len(), "field count");
         for (b, idl) in built.iter().zip(&m.fields) {
@@ -438,6 +550,7 @@ mod tests {
             let expr = crate::generator::common::render_field_type_expr(
                 "f",
                 idl_ty,
+                None,
                 "p",
                 "P_",
                 &mut helpers,
@@ -450,7 +563,7 @@ mod tests {
             );
 
             // Walk B — this module's, building a value.
-            let built = build_schema("p/M", &m, &no_lookup).unwrap();
+            let built = build_schema("p/M", &m, &no_caps(), &no_lookup).unwrap();
             let got = match built[0].ty {
                 S::Bool => "Bool",
                 S::Uint8 => "Uint8",
@@ -497,7 +610,13 @@ mod tests {
             parse_message(&body).ok()
         };
 
-        let got = bound_message("p/Outer", &outer, EncodingVersion::Xcdr1, &lookup);
+        let got = bound_message(
+            "p/Outer",
+            &outer,
+            EncodingVersion::Xcdr1,
+            &no_caps(),
+            &lookup,
+        );
         std::fs::remove_dir_all(&dir).ok();
         assert!(
             matches!(got, TypeBound::Bounded(_)),
@@ -518,8 +637,8 @@ mod tests {
             "int32[4] fixed\nuint16 u\n",
         ] {
             let m = parse_message(src).unwrap();
-            let x1 = bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_lookup);
-            let x2 = bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_lookup);
+            let x1 = bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup);
+            let x2 = bound_message("p/M", &m, EncodingVersion::Xcdr2, &no_caps(), &no_lookup);
             if let (TypeBound::Bounded(tx), TypeBound::Bounded(other)) = (&x1, &x2) {
                 let rx = *tx.max(other);
                 assert!(rx >= *tx, "rx {rx} < tx {tx} for `{src}`");
@@ -536,8 +655,340 @@ mod tests {
             (fqn == "p/A").then(|| parse_message("p/A inner\n").unwrap())
         };
         assert!(matches!(
-            bound_message("p/M", &m, EncodingVersion::Xcdr1, &lookup),
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &lookup),
             TypeBound::Unresolved(_)
         ));
+    }
+
+    // ── phase-403 W0 — a `cap` reaches the derived BOUND, not only storage ──
+
+    fn caps(toml: &str) -> CapacityResolver {
+        CapacityResolver::from_toml_str(toml).expect("corpus config parses")
+    }
+
+    /// The gap this wave closes. A `cap` selected the storage container and
+    /// stopped there, so a type whose only unbounded field was capped still had
+    /// NO bound — and phase-403 W0 had just made that a build error, with a
+    /// diagnostic telling the user to reach for exactly this knob.
+    #[test]
+    fn an_inline_cap_gives_the_type_a_bound_the_msg_never_stated() {
+        let m = parse_message("string label\n").unwrap();
+        let r = caps("[fields]\n\"p/M.label\" = 24\n");
+        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup) {
+            TypeBound::Bounded(n) => {
+                // 4 encapsulation + 4 length + 24 payload + 1 NUL.
+                assert_eq!(n, 33, "the bound must be the cap the config states");
+            }
+            other => panic!("expected Bounded, got {other:?}"),
+        }
+        // Same `.msg`, no config: still unbounded. The cap is the whole
+        // difference.
+        assert!(matches!(
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup),
+            TypeBound::Unbounded(_)
+        ));
+    }
+
+    /// THE transitivity claim, tested rather than assumed.
+    ///
+    /// The resolver is keyed by the DECLARING type, so ONE entry for
+    /// `std_msgs/Header.frame_id` should bound `header` in every message that
+    /// nests a `Header` — which is the difference between capping stock ROS once
+    /// and capping it once per containing type (12 packages, 120 types).
+    ///
+    /// Not assumed, because W6 found the sibling bug in this exact walk: a BARE
+    /// nested reference resolved against the top-level package instead of the
+    /// declaring one. The same mistake here would key the cap on
+    /// `robot_msgs/Pose.frame_id`, find nothing, and leave every nested Header
+    /// unbounded while the direct case passed.
+    ///
+    /// Three levels, and the containing messages are in a DIFFERENT package from
+    /// the capped one, so a walk that carried the top-level key forward cannot
+    /// pass by coincidence.
+    #[test]
+    fn one_cap_on_the_declaring_type_bounds_every_message_that_nests_it() {
+        let lookup = |fqn: &str| -> Option<Message> {
+            match fqn {
+                "std_msgs/Header" => {
+                    Some(parse_message("builtin_interfaces/Time stamp\nstring frame_id\n").unwrap())
+                }
+                "builtin_interfaces/Time" => {
+                    Some(parse_message("int32 sec\nuint32 nanosec\n").unwrap())
+                }
+                "geometry_msgs/PoseStamped" => {
+                    Some(parse_message("std_msgs/Header header\nfloat64 x\n").unwrap())
+                }
+                _ => None,
+            }
+        };
+
+        // ONE entry, naming the type that DECLARES the field.
+        let r = caps("[fields]\n\"std_msgs/Header.frame_id\" = 32\n");
+
+        // Directly, one level down, and two levels down through a third package.
+        for (owner, src) in [
+            (
+                "std_msgs/msg/Header",
+                "builtin_interfaces/Time stamp\nstring frame_id\n",
+            ),
+            ("robot_msgs/msg/Tagged", "std_msgs/Header header\nint32 v\n"),
+            (
+                "robot_msgs/msg/Deep",
+                "geometry_msgs/PoseStamped pose\nint32 v\n",
+            ),
+        ] {
+            let m = parse_message(src).unwrap();
+            let got = bound_message(owner, &m, EncodingVersion::Xcdr1, &r, &lookup);
+            assert!(
+                matches!(got, TypeBound::Bounded(_)),
+                "{owner} must be bounded by the ONE cap on std_msgs/Header.frame_id, got {got:?}"
+            );
+        }
+
+        // Control: without the entry every one of them is unbounded, so the
+        // test above is measuring the cap and not a walk that bounds by
+        // accident.
+        for (owner, src) in [
+            ("robot_msgs/msg/Tagged", "std_msgs/Header header\nint32 v\n"),
+            (
+                "robot_msgs/msg/Deep",
+                "geometry_msgs/PoseStamped pose\nint32 v\n",
+            ),
+        ] {
+            let m = parse_message(src).unwrap();
+            assert!(
+                matches!(
+                    bound_message(owner, &m, EncodingVersion::Xcdr1, &no_caps(), &lookup),
+                    TypeBound::Unbounded(_)
+                ),
+                "{owner} must be unbounded with no config"
+            );
+        }
+    }
+
+    /// A cap keyed on the CONTAINING type must not reach a nested field. The
+    /// mirror of the test above: if the walk carried the top-level key down, a
+    /// key that names the wrong type would start working, and both tests are
+    /// needed to say the key means what it says.
+    #[test]
+    fn a_cap_keyed_on_the_containing_type_does_not_reach_a_nested_field() {
+        let lookup = |fqn: &str| -> Option<Message> {
+            (fqn == "std_msgs/Header").then(|| parse_message("string frame_id\n").unwrap())
+        };
+        let r = caps("[fields]\n\"robot_msgs/Tagged.frame_id\" = 32\n");
+        let m = parse_message("std_msgs/Header header\n").unwrap();
+        assert!(matches!(
+            bound_message(
+                "robot_msgs/msg/Tagged",
+                &m,
+                EncodingVersion::Xcdr1,
+                &r,
+                &lookup
+            ),
+            TypeBound::Unbounded(_)
+        ));
+    }
+
+    /// A `.msg` bound is the interface every participant compiled against; a cap
+    /// is this build's own claim. The interface wins, and a cap can neither
+    /// widen nor narrow it — asserted in BOTH directions so "wins" cannot be
+    /// read as "the larger of the two".
+    #[test]
+    fn a_msg_bound_wins_over_a_config_cap_in_both_directions() {
+        let m = parse_message("string<=8 label\n").unwrap();
+        let from_msg = bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup);
+        for cap in ["4", "4096"] {
+            let r = caps(&format!("[fields]\n\"p/M.label\" = {cap}\n"));
+            assert_eq!(
+                bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup),
+                from_msg,
+                "a cap of {cap} moved a bound the .msg already states"
+            );
+        }
+    }
+
+    /// RFC-0033 "What each mode GUARANTEES": only `inline` promises the size is
+    /// in the type. A `heap` cap is documented as a hint (`alloc::Vec<T>`, and
+    /// `nros_type_for_field_heap` does not even take the cap); a `view` field is
+    /// "a slice into the CDR receive buffer, no copy, NO FIXED CAPACITY", read
+    /// out with a bare `reader.read_string()?` that checks no length.
+    ///
+    /// So a cap in either mode is a number nothing enforces, and sizing a
+    /// receive buffer from it would be the silent shortfall this phase exists to
+    /// remove. Unbounded is the safe answer and it fails at BUILD time.
+    #[test]
+    fn a_cap_bounds_only_in_the_mode_that_actually_holds_it() {
+        let m = parse_message("string label\nint64[] samples\n").unwrap();
+        for (mode, bounded) in [("inline", true), ("heap", false), ("view", false)] {
+            let r = caps(&format!(
+                "[fields]\n\
+                 \"p/M.label\"   = {{ cap = 24, mode = \"{mode}\" }}\n\
+                 \"p/M.samples\" = {{ cap = 4, mode = \"{mode}\" }}\n"
+            ));
+            let got = bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup);
+            assert_eq!(
+                matches!(got, TypeBound::Bounded(_)),
+                bounded,
+                "mode `{mode}` produced {got:?}"
+            );
+        }
+    }
+
+    /// The built-in 256/64 fallback must NOT read as a bound.
+    ///
+    /// `CapacityResolver::resolve` always answers, so the naive wiring would
+    /// have bounded every unbounded string in the tree at 256 — quietly
+    /// satisfying phase-403 W0's rule everywhere and deleting it. A bound has to
+    /// be something a human stated.
+    #[test]
+    fn the_builtin_capacity_default_is_not_a_stated_bound() {
+        let m = parse_message("string label\n").unwrap();
+        // An unrelated entry, so the resolver is non-empty and the fallthrough
+        // path is the one under test.
+        let r = caps("[fields]\n\"other/Thing.x\" = 8\n");
+        assert!(matches!(
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup),
+            TypeBound::Unbounded(_)
+        ));
+    }
+
+    /// A `[defaults]` line IS a stated bound: somebody wrote it in a config
+    /// file. Only the level-6 built-in constant is not.
+    #[test]
+    fn a_defaults_level_cap_is_a_stated_bound() {
+        let m = parse_message("string label\n").unwrap();
+        let r = caps("[defaults]\nstring = 16\n");
+        assert!(matches!(
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup),
+            TypeBound::Bounded(_)
+        ));
+    }
+
+    /// A capped SEQUENCE OF STRINGS stays unbounded, because the element string
+    /// is spelled from a built-in default (`nros_type_for_field_with_mode`) and
+    /// not from any config key. Claiming a bound here would be claiming 256
+    /// bytes per element that nobody chose.
+    ///
+    /// Pinned because it is the tempting over-reach: the field HAS a cap, so it
+    /// looks bounded, and the resulting number would be wrong in the direction
+    /// that under-sizes a buffer if the default ever moved.
+    #[test]
+    fn capping_a_sequence_of_strings_does_not_bound_its_elements() {
+        let m = parse_message("string[] lines\n").unwrap();
+        let r = caps("[fields]\n\"p/M.lines\" = 4\n");
+        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup) {
+            TypeBound::Unbounded(which) => assert!(
+                which.iter().any(|w| w.contains("lines")),
+                "the element, not the sequence, is what is unbounded: {which:?}"
+            ),
+            other => panic!("expected Unbounded, got {other:?}"),
+        }
+    }
+
+    /// EVERY offending member, in declaration order — the whole point of the
+    /// all-members form. `first_unbounded` would have named `a` and stopped,
+    /// which is one cap and one full codegen run per member for a stock ROS
+    /// type that has several.
+    #[test]
+    fn every_unbounded_member_is_reported_not_just_the_first() {
+        let m = parse_message("string a\nint32 keep\nint64[] b\nstring c\n").unwrap();
+        match bound_message("p/M", &m, EncodingVersion::Xcdr1, &no_caps(), &no_lookup) {
+            TypeBound::Unbounded(which) => {
+                assert_eq!(
+                    which,
+                    vec![
+                        "a (string)".to_string(),
+                        "b (sequence<T>)".to_string(),
+                        "c (string)".to_string()
+                    ]
+                );
+            }
+            other => panic!("expected Unbounded, got {other:?}"),
+        }
+    }
+
+    /// Members are reported across NESTED types too, and capping some of them
+    /// leaves exactly the rest — so the second build's diagnostic is strictly
+    /// shorter, which is what makes the loop terminate.
+    #[test]
+    fn capping_some_members_leaves_exactly_the_others_named() {
+        let lookup = |fqn: &str| -> Option<Message> {
+            (fqn == "std_msgs/Header").then(|| parse_message("string frame_id\n").unwrap())
+        };
+        let m = parse_message("std_msgs/Header header\nstring child_frame_id\n").unwrap();
+
+        let all = bound_message(
+            "nav_msgs/msg/Odom",
+            &m,
+            EncodingVersion::Xcdr1,
+            &no_caps(),
+            &lookup,
+        );
+        assert_eq!(
+            all,
+            TypeBound::Unbounded(vec![
+                "header.frame_id (string)".to_string(),
+                "child_frame_id (string)".to_string(),
+            ])
+        );
+
+        let r = caps("[fields]\n\"std_msgs/Header.frame_id\" = 32\n");
+        assert_eq!(
+            bound_message("nav_msgs/msg/Odom", &m, EncodingVersion::Xcdr1, &r, &lookup),
+            TypeBound::Unbounded(vec!["child_frame_id (string)".to_string()])
+        );
+    }
+
+    /// THE cross-check the cap change owes, and the reason `SchemaCaps` exists.
+    ///
+    /// Two walks read the config now — this module's (which feeds the C header's
+    /// `_TX/_RX_MAX_SERIALIZED_SIZE`) and the emitter's (which feeds the Rust
+    /// `Message::FIELDS`, and therefore `M::MAX_SERIALIZED_SIZE_XCDR*` and
+    /// `rx_buffer_for!(M)`). If only one of them honoured a cap, capping a field
+    /// would fix the C build and leave the Rust build still refusing to compile,
+    /// which is the defect wearing a different hat.
+    ///
+    /// So: the same cap, through both walks, must produce the same VARIANT with
+    /// the same number.
+    #[test]
+    fn a_cap_reaches_the_c_bound_and_the_rust_schema_alike() {
+        use crate::generator::common::{SchemaCaps, build_nros_message_schema};
+
+        let src = "string label\nint64[] samples\n";
+        let m = parse_message(src).unwrap();
+        let r = caps(
+            "[fields]\n\
+             \"p/M.label\"   = 24\n\
+             \"p/M.samples\" = { cap = 6, mode = \"inline\" }\n",
+        );
+
+        // Walk A — the value this module builds, which the C constant is
+        // computed from.
+        let built = build_schema("p/M", &m, &r, &no_lookup).unwrap();
+        use nros_serdes::schema::FieldType as S;
+        assert!(matches!(built[0].ty, S::BoundedString(24)));
+        assert!(matches!(built[1].ty, S::BoundedSequence(6, _)));
+
+        // Walk B — the Rust expression the emitter renders into `FIELDS`.
+        let schema = build_nros_message_schema("p", "M", &m.fields, &SchemaCaps::new("M", &r));
+        assert!(
+            schema.fields_block.contains("FieldType::BoundedString(24)"),
+            "{}",
+            schema.fields_block
+        );
+        assert!(
+            schema
+                .fields_block
+                .contains("FieldType::BoundedSequence(6, &FT_SAMPLES_ELEM)"),
+            "{}",
+            schema.fields_block
+        );
+
+        // And with no config both walks fall back together.
+        let plain = build_schema("p/M", &m, &no_caps(), &no_lookup).unwrap();
+        assert!(matches!(plain[0].ty, S::String));
+        let plain_schema =
+            build_nros_message_schema("p", "M", &m.fields, &SchemaCaps::unconfigured());
+        assert!(plain_schema.fields_block.contains("FieldType::String"));
     }
 }

@@ -1,6 +1,7 @@
 use super::common::{
-    GeneratorError, PayloadLang, build_action_envelope_schemas, build_c_fields, build_nros_fields,
-    build_nros_schema_for_struct, determine_field_kind, ensure_supported_storage_for_payload,
+    GeneratorError, PayloadLang, SchemaCaps, build_action_envelope_schemas, build_c_fields,
+    build_nros_fields, build_nros_schema_for_struct, determine_field_kind,
+    ensure_supported_storage_for_payload,
 };
 use crate::{
     config::CapacityResolver,
@@ -337,6 +338,7 @@ pub fn generate_nros_action_package(
         &format!("{}/action/{}_Goal", package_name, action_name),
         "GOAL_",
         &action.spec.goal.fields,
+        &SchemaCaps::new(&goal_msg, resolver),
     );
     let result_schema = build_nros_schema_for_struct(
         package_name,
@@ -344,6 +346,7 @@ pub fn generate_nros_action_package(
         &format!("{}/action/{}_Result", package_name, action_name),
         "RESULT_",
         &action.spec.result.fields,
+        &SchemaCaps::new(&result_msg, resolver),
     );
     let feedback_schema = build_nros_schema_for_struct(
         package_name,
@@ -351,6 +354,7 @@ pub fn generate_nros_action_package(
         &format!("{}/action/{}_Feedback", package_name, action_name),
         "FEEDBACK_",
         &action.spec.feedback.fields,
+        &SchemaCaps::new(&feedback_msg, resolver),
     );
 
     let envelopes = build_action_envelope_schemas(package_name, action_name);
@@ -532,6 +536,7 @@ pub fn generate_nros_inline_action(
         &format!("{}/action/{}_Goal", package_name, action_name),
         "GOAL_",
         &action.spec.goal.fields,
+        &SchemaCaps::new(&goal_msg, resolver),
     );
     let result_schema = build_nros_schema_for_struct(
         package_name,
@@ -539,6 +544,7 @@ pub fn generate_nros_inline_action(
         &format!("{}/action/{}_Result", package_name, action_name),
         "RESULT_",
         &action.spec.result.fields,
+        &SchemaCaps::new(&result_msg, resolver),
     );
     let feedback_schema = build_nros_schema_for_struct(
         package_name,
@@ -546,6 +552,7 @@ pub fn generate_nros_inline_action(
         &format!("{}/action/{}_Feedback", package_name, action_name),
         "FEEDBACK_",
         &action.spec.feedback.fields,
+        &SchemaCaps::new(&feedback_msg, resolver),
     );
 
     let envelopes = build_action_envelope_schemas(package_name, action_name);
