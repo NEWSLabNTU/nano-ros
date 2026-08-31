@@ -78,6 +78,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosVerbs.cmake")
 # is gone when the frame pops and never comes back.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
 
+# issue 0946 — `_nros_resolve_entry_locator`, the ONE producer of the connect
+# locator. The three RTOS typed-entry carriers below used to each carry their
+# own per-platform default, independently of the ladder in NanoRosEntry.cmake.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntryLocator.cmake")
+
 if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
 endif()
@@ -562,10 +567,15 @@ function(nano_ros_node_register)
         # passes the per-cell `zenohd_port_for` port); the default 7447
         # serves manual `zenohd` runs. Mirrors the Rust `*_entry`
         # `[…entry] locator = …` bake.
-        if(NOT DEFINED NROS_NUTTX_LOCATOR)
-            set(NROS_NUTTX_LOCATOR "tcp/10.0.2.2:7447")
-        endif()
-        set(NROS_ENTRY_LOCATOR "${NROS_NUTTX_LOCATOR}")
+        #
+        # issue 0946 — the default lives in NanoRosEntryLocator.cmake now, with
+        # the entry lane's, so the two cannot drift apart unnoticed. They still
+        # DIFFER where they always did; the `node-register` rung preserves this
+        # lane's answer exactly. `NROS_ENTRY_LOCATOR` here is the
+        # `@NROS_ENTRY_LOCATOR@` template substitution the carrier TU reads, not
+        # a second producer.
+        _nros_resolve_entry_locator(node-register
+            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
         # Phase 240.3 (RFC-0043) — TYPED routes the carrier to the real
@@ -664,10 +674,12 @@ function(nano_ros_node_register)
         # router at `10.0.2.2:<port>`. Override with `-DNROS_THREADX_LOCATOR=…`;
         # the default 7553 matches the qemu-riscv64-threadx fixture port.
         # CycloneDDS ignores the locator (no router); domain id is compile-time.
-        if(NOT DEFINED NROS_THREADX_LOCATOR)
-            set(NROS_THREADX_LOCATOR "tcp/10.0.2.2:7553")
-        endif()
-        set(NROS_ENTRY_LOCATOR "${NROS_THREADX_LOCATOR}")
+        #
+        # issue 0946 — resolved through the ONE producer. Note this lane's
+        # threadx default (7553, slirp host) is NOT the entry lane's
+        # (127.0.0.1:7447 on threadx-linux); both are preserved deliberately.
+        _nros_resolve_entry_locator(node-register
+            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
@@ -768,10 +780,15 @@ function(nano_ros_node_register)
         # router at `10.0.2.2:<port>`. Override with `-DNROS_FREERTOS_LOCATOR=…`;
         # the default 7447 matches the qemu-arm-freertos example deploy + the
         # rtos_e2e harness's manual `zenohd` default.
-        if(NOT DEFINED NROS_FREERTOS_LOCATOR)
-            set(NROS_FREERTOS_LOCATOR "tcp/10.0.2.2:7447")
-        endif()
-        set(NROS_ENTRY_LOCATOR "${NROS_FREERTOS_LOCATOR}")
+        #
+        # issue 0946 — resolved through the ONE producer. This is the rung that
+        # DISAGREES most visibly with the entry lane: 10.0.2.2 (slirp host) here
+        # against 192.0.3.1 (static-lwIP gateway) there. Both justifications are
+        # on the record and they name different networks, so the disagreement is
+        # carried forward rather than resolved by reading — deciding it needs a
+        # QEMU run per lane.
+        _nros_resolve_entry_locator(node-register
+            "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
         set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
