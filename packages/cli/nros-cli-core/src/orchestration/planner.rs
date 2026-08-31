@@ -32,11 +32,20 @@ pub struct PlanOptions {
     /// `plan.build.rmw` regardless of `system.toml`. `None` ⇒ resolve from
     /// `system.toml`.
     pub rmw: Option<String>,
-    /// Phase 256 — `--target` selects the `[deploy.<t>]` the planner resolves
-    /// per-target values against (RMW override, and later build tuning / domain /
-    /// locator). `None` ⇒ `[system].default_target` → the sole `[deploy.<t>]` →
-    /// target-agnostic. See `SystemToml::resolve_target`.
+    /// Phase 256 / issue 0951 — `--image` (alias `--target`) selects the
+    /// `[image.<id>]` the planner resolves per-target values against (RMW
+    /// override, build tuning). `None` ⇒ the sole image `default_images` picks
+    /// → the sole deprecated `[deploy.<t>]` → target-agnostic. See
+    /// `SystemToml::resolve_target`.
     pub target: Option<String>,
+    /// nano-ros checkout holding `packages/boards`, for deriving the selected
+    /// image's rustc triple from its board descriptor.
+    ///
+    /// `None` ⇒ `NROS_REPO_DIR`, then an autodetect walk from the workspace —
+    /// the same ladder `nros build` uses, because the two must agree about
+    /// which board descriptors exist. Finding none is not an error: a plan that
+    /// needs no triple is still a valid plan.
+    pub nano_ros_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,11 +179,32 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // `[[transport]]`) from the typed `system.toml` (the selected `[deploy.<t>]`) +
     // `--rmw`/`--target`, then validate the transport semantics with a clear error
     // before the plan is written.
+    // Issue 0951 — the board catalog, so the plan's rustc triple is DERIVED
+    // from the selected image's board rather than copied from a `[deploy.*]`
+    // field that is going away.
+    //
+    // Resolved exactly as `nros build` resolves it (`--nano-ros-path` →
+    // `NROS_REPO_DIR` → an autodetect walk), because the two must agree about
+    // which descriptors exist. Unlike `build`, a MISSING checkout is not fatal
+    // here: `nros plan` legitimately runs outside a nano-ros tree, and every
+    // plan that needs no triple still works. What is fatal is an image naming a
+    // board the catalog HAS and cannot resolve — that is a wrong plan, not an
+    // absent one, and `schema_build_json` refuses it.
+    let nano_ros_root = options
+        .nano_ros_path
+        .clone()
+        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
+        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&options.workspace_root));
+    let catalog = nano_ros_root
+        .as_deref()
+        .and_then(|r| super::board_descriptor::BoardCatalog::load(r).ok());
+
     let build_json = schema_build_json(
         system_toml_path.as_deref(),
         options.rmw.as_deref(),
         options.target.as_deref(),
-    );
+        catalog.as_ref(),
+    )?;
     let build: PlanBuildOptions = serde_json::from_value(build_json.clone())
         .wrap_err("invalid [build] / [[transport]] section in system.toml")?;
     let transport_problems = build.validate_transports();
@@ -710,7 +740,8 @@ fn schema_build_json(
     system_toml: Option<&Path>,
     cli_rmw: Option<&str>,
     cli_target: Option<&str>,
-) -> Value {
+    catalog: Option<&super::board_descriptor::BoardCatalog>,
+) -> Result<Value> {
     let mut build = json!({
         "target": "x86_64-unknown-linux-gnu",
         "board": "native",
@@ -722,14 +753,19 @@ fn schema_build_json(
     });
     let obj = build.as_object_mut().expect("build is an object");
     // Phase 255/256 — `[system].rmw` (resolved) is the SSoT; `--rmw` tops the
-    // ladder. Phase 256 makes the planner target-aware: it resolves the selected
-    // deploy target (`--target` → `[system].default_target` → sole `[deploy.<t>]`)
-    // and feeds it to `resolved_rmw`, so `[deploy.<t>].rmw` finally reaches the plan
-    // (the phase-255 stub resolved at target=None). With no system.toml, `--rmw`
-    // alone still drives the plan.
+    // ladder. The planner resolves the selected target (`--image`, alias
+    // `--target` → the sole image `default_images` picks → the sole deprecated
+    // `[deploy.<t>]`) and feeds it to `resolved_rmw`. With no system.toml,
+    // `--rmw` alone still drives the plan.
     let sys = system_toml
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
+    // A bad `default_images` must FAIL, not quietly downgrade the plan to
+    // target-agnostic. `resolve_target` returns an `Option` and can only ignore
+    // it; this is the rung with an error channel.
+    if let Some(s) = &sys {
+        s.validate_default_images().map_err(|e| eyre!("{e}"))?;
+    }
     // The selected deploy target (phase-256 W3a): shared by RMW + build-tuning.
     let selected_target = sys.as_ref().and_then(|s| s.resolve_target(cli_target));
     let resolved_rmw = match &sys {
@@ -789,8 +825,33 @@ fn schema_build_json(
         if let Some(f) = features {
             obj.insert("features".to_string(), json!(f));
         }
-        if let Some(t) = dep.and_then(|d| d.target.clone()) {
-            obj.insert("target".to_string(), json!(t));
+        // The rustc triple. Issue 0951 — DERIVED from the image's board, not
+        // copied from a `[deploy.*]` field.
+        //
+        // `[image.*]` deliberately carries no `target` (RFC-0065 D9): the board
+        // descriptor already states it, and a second copy is free to disagree
+        // with the board it claims to describe. `build.rs` has always derived
+        // it this way (`descriptor.target.clone()`); this is the same
+        // derivation, so the plan and the build cannot differ about what a
+        // board compiles to.
+        //
+        // It matters more than a provenance string: `is_hosted_target` below
+        // tests `build.target.contains("linux")` to choose hosted vs bare
+        // metal, and `metadata_build` reads it to decide `-Z build-std`. An
+        // embedded image falling back to the host default is silently built as
+        // if it were hosted.
+        //
+        // An image that names a board no descriptor claims is an ERROR here,
+        // not a fallback to the host triple — that is the whole point.
+        let derived = match (&img, catalog) {
+            (Some(i), Some(cat)) if i.board.is_some() => {
+                let d = super::image::resolve_image_board(cat, t, i).map_err(|e| eyre!("{e}"))?;
+                d.target.clone()
+            }
+            _ => None,
+        };
+        if let Some(triple) = derived.or_else(|| dep.and_then(|d| d.target.clone())) {
+            obj.insert("target".to_string(), json!(triple));
         }
         if let Some(o) = dep.and_then(|d| d.optimize.clone()) {
             obj.insert("optimize".to_string(), json!(o));
@@ -816,7 +877,7 @@ fn schema_build_json(
             obj.insert("transports".to_string(), json!(transports));
         }
     }
-    build
+    Ok(build)
 }
 
 /// Issue 0099 — resolve a `[[bridge]]` endpoint selector to `(rmw, domain_id,
@@ -3486,7 +3547,7 @@ mod tests {
     fn schema_build_json_defaults() {
         // No system.toml ⇒ pre-173.5 defaults, empty transports — keeps existing
         // plans byte-identical.
-        let build = schema_build_json(None, None, None);
+        let build = schema_build_json(None, None, None, None).expect("build json");
         assert_eq!(build["board"], "native");
         assert_eq!(build["rmw"], "zenoh");
         assert_eq!(build["target"], "x86_64-unknown-linux-gnu");
@@ -3508,11 +3569,11 @@ mod tests {
         .unwrap();
 
         // --rmw xrce beats system.toml's cyclonedds.
-        let build = schema_build_json(Some(&st), Some("xrce"), None);
+        let build = schema_build_json(Some(&st), Some("xrce"), None, None).expect("build json");
         assert_eq!(build["rmw"], "xrce");
 
         // --rmw with no system.toml still drives (top rung).
-        let bare = schema_build_json(None, Some("xrce"), None);
+        let bare = schema_build_json(None, Some("xrce"), None, None).expect("build json");
         assert_eq!(bare["rmw"], "xrce");
     }
 
@@ -3530,13 +3591,13 @@ mod tests {
         )
         .unwrap();
 
-        let build = schema_build_json(Some(&st), None, None);
+        let build = schema_build_json(Some(&st), None, None, None).expect("build json");
         assert_eq!(build["bridged_rmws"], json!(["zenoh", "cyclonedds"]));
 
         // No bridges → no `bridged_rmws` field (single-RMW build byte-identical).
         let st2 = dir.path().join("plain.toml");
         std::fs::write(&st2, "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n").unwrap();
-        let plain = schema_build_json(Some(&st2), None, None);
+        let plain = schema_build_json(Some(&st2), None, None, None).expect("build json");
         assert!(plain.get("bridged_rmws").is_none());
     }
 
@@ -3557,7 +3618,7 @@ mod tests {
         )
         .unwrap();
 
-        let build = schema_build_json(Some(&st), None, None);
+        let build = schema_build_json(Some(&st), None, None, None).expect("build json");
         // Deserializing proves the emitted JSON is a valid transports table; two
         // entries ⇒ bridge mode.
         let opts: crate::orchestration::plan::PlanBuildOptions =
@@ -3725,8 +3786,8 @@ mod tests {
 
     /// Phase 256 — planner target-awareness: `[deploy.<t>].rmw` now reaches the
     /// plan (the phase-255 stub resolved at target=None, so it never did). The
-    /// selected target comes from `--target`, else `default_target`, else the
-    /// sole deploy.
+    /// selected target comes from `--image`, else the sole image
+    /// `default_images` picks, else the sole deploy.
     #[test]
     fn schema_build_json_resolves_per_deploy_rmw_via_target() {
         let dir = tempfile::tempdir().unwrap();
@@ -3739,28 +3800,31 @@ mod tests {
         .unwrap();
 
         // --target qemu → the deploy override reaches the plan.
-        let picked = schema_build_json(Some(&st), None, Some("qemu"));
+        let picked = schema_build_json(Some(&st), None, Some("qemu"), None).expect("build json");
         assert_eq!(picked["rmw"], "cyclonedds");
 
-        // No target, no default_target, sole deploy → resolve_target picks it.
-        let sole = schema_build_json(Some(&st), None, None);
+        // No flag, no images at all → the deprecated sole-deploy rung.
+        let sole = schema_build_json(Some(&st), None, None, None).expect("build json");
         assert_eq!(
             sole["rmw"], "cyclonedds",
             "sole deploy is the selected target"
         );
 
-        // default_target drives when set + no --target.
+        // `default_images` drives when set + no --image.
         let st2 = dir.path().join("two.toml");
         std::fs::write(
             &st2,
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"a\"\n\
-             [deploy.a]\nkind=\"self\"\nrmw=\"xrce\"\n[deploy.b]\nkind=\"self\"\n",
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_images=[\"a\"]\n\
+             [image.a]\nboard=\"native\"\nrmw=\"xrce\"\n[image.b]\nboard=\"native\"\n",
         )
         .unwrap();
-        assert_eq!(schema_build_json(Some(&st2), None, None)["rmw"], "xrce");
-        // --target b → b has no rmw → falls to [system].rmw.
         assert_eq!(
-            schema_build_json(Some(&st2), None, Some("b"))["rmw"],
+            schema_build_json(Some(&st2), None, None, None).expect("build json")["rmw"],
+            "xrce"
+        );
+        // --image b → b has no rmw → falls to [system].rmw.
+        assert_eq!(
+            schema_build_json(Some(&st2), None, Some("b"), None).expect("build json")["rmw"],
             "zenoh"
         );
     }
@@ -3774,29 +3838,125 @@ mod tests {
         let st = dir.path().join("system.toml");
         std::fs::write(
             &st,
-            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\ndefault_target=\"embedded\"\n\
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
              [deploy.embedded]\nkind=\"flash\"\ntarget=\"thumbv7m-none-eabi\"\nboard=\"stm32f4\"\n\
              profile=\"release\"\noptimize=\"size\"\nfeatures=[\"a\",\"b\"]\n\
              [deploy.native]\nkind=\"self\"\n",
         )
         .unwrap();
 
-        // default_target = embedded → its build shape (W3-tail: target/board) + tuning land.
-        let emb = schema_build_json(Some(&st), None, None);
+        // The DEPRECATED path, named explicitly: this block's fields still
+        // reach the plan, including the two `[image.*]` does not carry
+        // (`target`, `optimize`). `default_images` is deliberately absent —
+        // it names IMAGES, and this fixture declares none.
+        let emb = schema_build_json(Some(&st), None, Some("embedded"), None).expect("build json");
         assert_eq!(emb["target"], "thumbv7m-none-eabi");
         assert_eq!(emb["board"], "stm32f4");
         assert_eq!(emb["profile"], "release");
         assert_eq!(emb["optimize"], "size");
         assert_eq!(emb["features"], json!(["a", "b"]));
 
-        // --target native → nothing declared → pre-256 defaults (native / x86_64 /
+        // --image native → nothing declared → pre-256 defaults (native / x86_64 /
         // debug, no optimize, empty features).
-        let nat = schema_build_json(Some(&st), None, Some("native"));
+        let nat = schema_build_json(Some(&st), None, Some("native"), None).expect("build json");
         assert_eq!(nat["target"], "x86_64-unknown-linux-gnu");
         assert_eq!(nat["board"], "native");
         assert_eq!(nat["profile"], "debug");
         assert!(nat.get("optimize").is_none());
         assert_eq!(nat["features"], json!([]));
+    }
+
+    /// Issue 0951 — the rustc triple is DERIVED from the image's board.
+    ///
+    /// `[image.*]` carries no `target` (RFC-0065 D9), so without this the plan
+    /// falls back to the host default and an embedded image is silently
+    /// planned as hosted — `is_hosted_target` tests
+    /// `build.target.contains("linux")`, and `metadata_build` reads the same
+    /// field to decide `-Z build-std`.
+    #[test]
+    fn the_triple_is_derived_from_the_images_board() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&repo)
+            .expect("in-tree catalog");
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image.fw]\nboard=\"mps2-an385-freertos\"\n",
+        )
+        .unwrap();
+
+        let with = schema_build_json(Some(&st), None, None, Some(&catalog)).expect("build json");
+        assert_eq!(with["board"], "mps2-an385-freertos");
+        assert_eq!(
+            with["target"], "thumbv7m-none-eabi",
+            "derived from the board descriptor, not authored"
+        );
+        assert!(
+            !with["target"].as_str().expect("string").contains("linux"),
+            "an embedded image must not read as hosted"
+        );
+
+        // No catalog (a plan run outside a nano-ros checkout) — the board still
+        // lands, the triple falls back. That is the degradation, and it is why
+        // `nros build` resolves the catalog too rather than trusting the plan.
+        let without = schema_build_json(Some(&st), None, None, None).expect("build json");
+        assert_eq!(without["board"], "mps2-an385-freertos");
+        assert_eq!(without["target"], "x86_64-unknown-linux-gnu");
+    }
+
+    /// An image naming a board the catalog cannot resolve is an ERROR, not a
+    /// fall back to the host triple. Falling back would plan a board that does
+    /// not exist as if it were this machine.
+    #[test]
+    fn an_unresolvable_board_fails_rather_than_defaulting() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&repo)
+            .expect("in-tree catalog");
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image.fw]\nboard=\"no-such-board-xyz\"\n",
+        )
+        .unwrap();
+        let e = schema_build_json(Some(&st), None, None, Some(&catalog))
+            .expect_err("no descriptor claims it")
+            .to_string();
+        assert!(e.contains("no-such-board-xyz"), "{e}");
+    }
+
+    /// A `default_images` naming no declared image must FAIL the plan.
+    ///
+    /// `resolve_target` returns an `Option`, so it can only ignore the bad
+    /// value — and ignoring it downgrades the plan to target-agnostic, which
+    /// looks like success and silently drops every per-image value. That is the
+    /// silent-skip shape, so the rung with an error channel refuses it.
+    #[test]
+    fn a_default_images_naming_no_image_fails_the_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             default_images=[\"typo\"]\n[image.real]\nboard=\"native\"\n",
+        )
+        .unwrap();
+        let e = schema_build_json(Some(&st), None, None, None)
+            .expect_err("a typo must not read as target-agnostic")
+            .to_string();
+        assert!(e.contains("typo"), "{e}");
+        assert!(e.contains("real"), "names what IS declared: {e}");
     }
 
     /// Issue 0951 — the same tuning, read from `[image.<t>]`, which is where a
@@ -3808,12 +3968,12 @@ mod tests {
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             default_target=\"embedded\"\n\
+             default_images=[\"embedded\"]\n\
              [image_defaults]\nprofile=\"release\"\n\
              [image.embedded]\nboard=\"mps2-an385-freertos\"\nfeatures=[\"safety\"]\n",
         )
         .unwrap();
-        let v = schema_build_json(Some(&st), None, None);
+        let v = schema_build_json(Some(&st), None, None, None).expect("build json");
         let o = v.as_object().expect("object");
         assert_eq!(
             o.get("board").and_then(|b| b.as_str()),
@@ -3840,13 +4000,13 @@ mod tests {
         std::fs::write(
             &st,
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
-             default_target=\"embedded\"\n\
+             default_images=[\"embedded\"]\n\
              [image.embedded]\nboard=\"mps2-an385-freertos\"\n\
              [deploy.embedded]\nkind=\"embedded\"\n\
              target=\"thumbv7m-none-eabi\"\nboard=\"stale-board\"\n",
         )
         .unwrap();
-        let v = schema_build_json(Some(&st), None, None);
+        let v = schema_build_json(Some(&st), None, None, None).expect("build json");
         let o = v.as_object().expect("object");
         assert_eq!(
             o.get("board").and_then(|b| b.as_str()),
@@ -3905,6 +4065,7 @@ mod tests {
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -3969,6 +4130,7 @@ mod tests {
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -4033,6 +4195,7 @@ mod tests {
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -4120,6 +4283,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -4457,6 +4621,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -4612,6 +4777,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -4844,6 +5010,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -4959,6 +5126,7 @@ topics:
         make_metadata(&listener_md, "Listener");
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -5059,6 +5227,7 @@ topics:
         )
         .unwrap();
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -5123,6 +5292,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -5207,6 +5377,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -5285,6 +5456,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,
@@ -5487,6 +5659,7 @@ topics:
         fs::write(&metadata, metadata_json).unwrap();
 
         plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.to_path_buf(),
             launch_file: launch,
@@ -5519,6 +5692,7 @@ topics:
         fs::write(&metadata, metadata_json).unwrap();
 
         plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.to_path_buf(),
             launch_file: launch,
@@ -5601,6 +5775,7 @@ topics:
         .unwrap();
 
         let output = plan_system(PlanOptions {
+            nano_ros_path: None,
             system_pkg: "system_pkg".to_string(),
             workspace_root: root.clone(),
             launch_file: launch,

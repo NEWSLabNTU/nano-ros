@@ -75,6 +75,7 @@ fn fixture_workspace_plans_and_checks() {
     let model = resolve_demo_pkg_model(&demo_pkg, &output);
 
     plan::run(plan::Args {
+        nano_ros_path: None,
         system_pkg: "e2e_system".to_string(),
         // R-code.1 — the launch parse path is deleted; `plan` takes a resolved
         // model, so the dir argument is only the discovery root now.

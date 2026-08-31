@@ -89,6 +89,44 @@ Landed so far:
   fallback, `doctor`, `board_facts`, and `synthesise_self_bringup` (which wrote
   no images at all, silently losing every value for self-bringup packages).
 
+* **`resolve_target` selects an IMAGE** (`--image`, alias `--target` → the sole
+  image `select_default_images` picks → the sole deprecated `[deploy.<t>]`).
+  `[system].default_target` is retired: it named the deploy era's concept and
+  is authored nowhere. The field still parses — `SystemToml` is
+  `deny_unknown_fields`, so deleting it would turn an unused key into a hard
+  parse error for an out-of-tree user — and a warning says it decides nothing.
+  A `default_images` naming no declared image now FAILS the plan instead of
+  silently downgrading it to target-agnostic.
+
+### A board did not record its own rustc triple
+
+Found while making the plan derive the triple instead of copying
+`[deploy.*].target`, which `[image.*]` deliberately does not carry (RFC-0065
+D9 — the board descriptor owns it).
+
+It did not own it. `BoardDescriptor::target` expects a scalar `target = "..."`
+on the `[[board]]` table, and **no shipped descriptor uses that spelling**. The
+triple is written inside the `cargo_config` STRING TEMPLATE — as
+`[build] target = "..."`, or implied by the sole `[target.<triple>]` header —
+so the field was `None` for every board in the tree.
+
+Two consumers read it, and both failed open:
+
+* `cmd/build.rs` drops `--target` when it is `None`, with a comment saying that
+  "builds the image for the HOST — silently, since cargo is happy to", and
+  claiming phase-383 W9 had fixed it. The fix never fired. Measured, by
+  disabling the new inference and re-running: `nros build --dry-run freertos`
+  in `examples/workspaces/rust` emits `cargo build -p freertos_entry` with **no
+  `--target`**; with the inference it emits `--target thumbv7m-none-eabi`.
+* `builder/preflight.rs` checks whether the board's Rust target is installed,
+  so `rustup target add <triple>` was never suggested either.
+
+Fixed by parsing the triple out of the `cargo_config` template — as TOML, not
+by regex, so a triple mentioned inside a rustflag is not mistaken for a
+declaration — and only when unambiguous (`[build].target`, else exactly one
+`[target.*]` key). `shipped_boards_resolve_their_rustc_triple` is the
+regression pin, at the layer where the fact lives.
+
 Still open — the build half:
 * **the last `[deploy.*]` block per bringup** — one `kind = "self"` each, the
   implicit machine the system runs on. It is a machine, so it belongs in

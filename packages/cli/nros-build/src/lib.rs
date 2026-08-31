@@ -230,6 +230,11 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
     let plan_options = PlanOptions {
         system_pkg: opts.system_pkg.clone(),
         workspace_root: opts.workspace_root.clone(),
+        // Issue 0951 — let the planner run its own ladder (`NROS_REPO_DIR`,
+        // then an autodetect walk from the workspace). A build script has no
+        // better answer than that, and inventing one here would be a second
+        // opinion about where the board catalog lives.
+        nano_ros_path: None,
         launch_file: model_path.clone(),
         record_file: Some(record_tmp),
         out_root: plan_out_root.clone(),

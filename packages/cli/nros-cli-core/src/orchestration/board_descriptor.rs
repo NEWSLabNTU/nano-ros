@@ -414,6 +414,65 @@ struct BoardFile {
     boards: Vec<BoardDescriptor>,
 }
 
+/// The `[build]` / `[target.<triple>]` shape of a `cargo_config` template.
+#[derive(Debug, Default, Deserialize)]
+struct CargoConfigTemplate {
+    #[serde(default)]
+    build: Option<CargoConfigBuild>,
+    #[serde(default)]
+    target: std::collections::BTreeMap<String, toml::Value>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct CargoConfigBuild {
+    #[serde(default)]
+    target: Option<String>,
+}
+
+/// The rustc triple a board's `cargo_config` template states.
+///
+/// Issue 0951 — a board descriptor does not record its triple as DATA. It
+/// records a `.cargo/config.toml` template, and the triple is in there: as
+/// `[build] target = "..."`, or as the sole `[target.<triple>]` header. Every
+/// shipped descriptor uses one of those two and NONE sets the `target` field
+/// on `[[board]]` that `BoardDescriptor::target` expects — so that field has
+/// been `None` for every board, and `nros build` has been copying the `None`
+/// into `ImagePlan.target` (build.rs) without anyone noticing.
+///
+/// Parsed as TOML rather than matched with a regex: it IS a TOML document, and
+/// a regex over it would also match a triple mentioned inside a rustflag.
+///
+/// Inferred only when UNAMBIGUOUS — `[build].target` wins; otherwise exactly
+/// one `[target.*]` key. A template with several is genuinely multi-triple and
+/// must not be collapsed to whichever came first.
+fn target_from_cargo_config(cargo_config: &str) -> Option<String> {
+    let parsed: CargoConfigTemplate = toml::from_str(cargo_config).ok()?;
+    if let Some(t) = parsed.build.and_then(|b| b.target) {
+        return Some(t);
+    }
+    let mut keys = parsed.target.into_keys();
+    match (keys.next(), keys.next()) {
+        (Some(only), None) => Some(only),
+        _ => None,
+    }
+}
+
+impl BoardFile {
+    /// Fill each board's `target` from its `cargo_config` template when the
+    /// board did not state one. An authored `target` always wins.
+    fn with_inferred_targets(mut self) -> Vec<BoardDescriptor> {
+        for b in &mut self.boards {
+            if b.target.is_none()
+                && let Some(cfg) = b.cargo_config.as_deref()
+                && let Some(t) = target_from_cargo_config(cfg)
+            {
+                b.target = Some(t);
+            }
+        }
+        self.boards
+    }
+}
+
 /// Every board descriptor discovered under `<workspace>/packages/boards`.
 #[derive(Debug, Default)]
 pub struct BoardCatalog {
@@ -514,7 +573,7 @@ impl BoardCatalog {
             // not in one.
             let abs = descriptor_path.display().to_string();
             self.descriptors
-                .extend(file.boards.into_iter().map(|mut b| {
+                .extend(file.with_inferred_targets().into_iter().map(|mut b| {
                     b.source = Some(abs.clone());
                     b
                 }));
@@ -560,7 +619,7 @@ impl BoardCatalog {
                     .join("/"),
                 None => descriptor_path.display().to_string(),
             };
-            descriptors.extend(file.boards.into_iter().map(|mut b| {
+            descriptors.extend(file.with_inferred_targets().into_iter().map(|mut b| {
                 b.source = Some(rel.clone());
                 b
             }));
@@ -1398,6 +1457,78 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             DeployResolution::Board(d) => assert_eq!(d.chip.as_deref(), Some("stm32f407")),
             other => panic!("unique platform must resolve, got {other:?}"),
         }
+    }
+
+    /// Issue 0951 — every shipped board's triple comes out of its
+    /// `cargo_config` template, because no descriptor sets the `target` field
+    /// on `[[board]]`. Before this, `BoardDescriptor::target` was `None` for
+    /// EVERY board in the tree and both readers silently got nothing.
+    #[test]
+    fn shipped_boards_resolve_their_rustc_triple() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root")
+            .to_path_buf();
+        let catalog = BoardCatalog::load(&repo).expect("in-tree catalog");
+        for (board, want) in [
+            ("mps2-an385-freertos", "thumbv7m-none-eabi"),
+            ("mps3-an536-freertos", "armv8r-none-eabihf"),
+            ("esp32-qemu", "riscv32imc-unknown-none-elf"),
+        ] {
+            let d = match catalog.resolve_deploy(board) {
+                DeployResolution::Board(d) => d,
+                other => panic!("{board} does not resolve: {other:?}"),
+            };
+            assert_eq!(
+                d.target.as_deref(),
+                Some(want),
+                "{board} must state its triple"
+            );
+        }
+        // A host board has no cross triple, and inventing one would be worse
+        // than `None` — the caller's default IS the host.
+        let host = match catalog.resolve_deploy("threadx-linux") {
+            DeployResolution::Board(d) => d,
+            other => panic!("threadx-linux does not resolve: {other:?}"),
+        };
+        assert_eq!(host.target, None);
+    }
+
+    /// `[build].target` wins, and several `[target.*]` tables are ambiguous
+    /// rather than first-wins — collapsing them is how one board answers for
+    /// another.
+    #[test]
+    fn a_triple_is_inferred_only_when_unambiguous() {
+        assert_eq!(
+            target_from_cargo_config("[target.thumbv7m-none-eabi]\nrunner = \"q\"\n").as_deref(),
+            Some("thumbv7m-none-eabi")
+        );
+        assert_eq!(
+            target_from_cargo_config(
+                "[build]\ntarget = \"riscv32imc-unknown-none-elf\"\n\
+                 [target.riscv32imc-unknown-none-elf]\nrunner = \"q\"\n"
+            )
+            .as_deref(),
+            Some("riscv32imc-unknown-none-elf")
+        );
+        assert_eq!(
+            target_from_cargo_config(
+                "[target.thumbv7m-none-eabi]\nrunner = \"a\"\n\
+                 [target.armv8r-none-eabihf]\nrunner = \"b\"\n"
+            ),
+            None,
+            "two triples, no `[build]` — ambiguous"
+        );
+        // A triple MENTIONED in a rustflag is not a declaration. This is why
+        // the template is parsed as TOML rather than matched with a regex.
+        assert_eq!(
+            target_from_cargo_config(
+                "[build]\nrustflags = [\"--sysroot=/x/thumbv7m-none-eabi\"]\n"
+            ),
+            None
+        );
+        assert_eq!(target_from_cargo_config("not = valid toml ["), None);
     }
 
     #[test]

@@ -141,6 +141,7 @@ fn plan_system_succeeds_with_cargo_metadata_alpha_bridge() {
 
     let out_root = root.join("build/cargo_self_bringup/nros");
     let output = plan_system(PlanOptions {
+        nano_ros_path: None,
         system_pkg: "cargo_self_bringup".to_string(),
         workspace_root: root.clone(),
         launch_file,
@@ -258,6 +259,7 @@ domain_id = 0
     fs::write(&launch_file, "").unwrap();
 
     let err = plan_system(PlanOptions {
+        nano_ros_path: None,
         system_pkg: "pure_empty_bringup".to_string(),
         workspace_root: root.clone(),
         launch_file,

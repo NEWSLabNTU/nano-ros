@@ -29,6 +29,7 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
     assert!(preserved_metadata.is_file());
 
     plan::run(plan::Args {
+        nano_ros_path: None,
         system_pkg: "system_pkg".to_string(),
         launch_file: root.join("system.launch.xml"),
         record: Some(root.join("record.json")),
