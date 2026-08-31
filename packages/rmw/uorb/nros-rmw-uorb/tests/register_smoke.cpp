@@ -17,6 +17,20 @@
 // Pull in the same ABI declarations the backend sees.
 #include "uorb_abi.hpp"
 
+/* phase-406 W2 — `take` carries ONE `rmw_mut_byte_span_t` where it used to
+ * carry buf / cap / *out_len. This adapter keeps the flat call shape for the
+ * assertions below, which are about what uORB delivers, not about how the byte
+ * range is spelled at the ABI. */
+static inline rmw_ret_t uorb_test_take(const nros_rmw_vtable_t* vt,
+                                       const rmw_subscription_t* sub, uint8_t* buf, size_t cap,
+                                       size_t* out_len, bool* taken) {
+    rmw_mut_byte_span_t span{buf, cap, 0};
+    const rmw_ret_t rc = vt->take(sub, &span, taken);
+    if (out_len != nullptr) *out_len = span.len;
+    return rc;
+}
+
+
 namespace {
 const nros_rmw_vtable_t* g_stashed_vtable = nullptr;
 
@@ -222,7 +236,8 @@ int main() {
     // Without a registered topic, create_publisher must reject with
     // TOPIC_NAME_INVALID — distinct from UNSUPPORTED.
     rmw_publisher_t pubp{};
-    rc = vt->create_publisher(&node, "/unregistered", "T", "H", 0, nullptr, nullptr, &pubp);
+    const rmw_message_type_support_t ts_1{"T", "H"};
+    rc = vt->create_publisher(&node, &ts_1, "/unregistered", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
             stderr,
@@ -247,7 +262,8 @@ int main() {
         return 1;
     }
 
-    rc = vt->create_publisher(&node, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &pubp);
+    const rmw_message_type_support_t ts_2{"test::Msg", "H"};
+    rc = vt->create_publisher(&node, &ts_2, "/test_topic", 0, nullptr, nullptr, &pubp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher returned %d, expected OK\n", rc);
         return 1;
@@ -259,7 +275,7 @@ int main() {
 
     // First publish must trigger lazy orb_advertise_multi.
     uint8_t payload[8] = {1, 2, 3, 4, 5, 6, 7, 8};
-    rc = vt->publish(&pubp, payload, sizeof(payload));
+    rc = vt->publish(&pubp, rmw_byte_span_t{payload, sizeof(payload)});
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw[0] returned %d\n", rc);
         return 1;
@@ -281,7 +297,7 @@ int main() {
 
     // Subsequent publish must use orb_publish.
     payload[0] = 0xff;
-    rc = vt->publish(&pubp, payload, sizeof(payload));
+    rc = vt->publish(&pubp, rmw_byte_span_t{payload, sizeof(payload)});
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "publish_raw[1] returned %d\n", rc);
         return 1;
@@ -296,7 +312,7 @@ int main() {
     }
 
     // Short payload must reject with BUFFER_TOO_SMALL.
-    rc = vt->publish(&pubp, payload, sizeof(payload) - 1);
+    rc = vt->publish(&pubp, rmw_byte_span_t{payload, sizeof(payload) - 1});
     if (rc != NROS_RMW_RET_BUFFER_TOO_SMALL) {
         std::fprintf(stderr, "short publish returned %d, expected BUFFER_TOO_SMALL\n", rc);
         return 1;
@@ -318,7 +334,8 @@ int main() {
     // Without a registered topic, create_subscription must reject
     // with TOPIC_NAME_INVALID.
     rmw_subscription_t subp{};
-    rc = vt->create_subscription(&node, "/unregistered", "T", "H", 0, nullptr, nullptr, &subp);
+    const rmw_message_type_support_t ts_3{"T", "H"};
+    rc = vt->create_subscription(&node, &ts_3, "/unregistered", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_TOPIC_NAME_INVALID) {
         std::fprintf(
             stderr,
@@ -327,7 +344,8 @@ int main() {
         return 1;
     }
 
-    rc = vt->create_subscription(&node, "/test_topic", "test::Msg", "H", 0, nullptr, nullptr, &subp);
+    const rmw_message_type_support_t ts_4{"test::Msg", "H"};
+    rc = vt->create_subscription(&node, &ts_4, "/test_topic", 0, nullptr, nullptr, &subp);
     if (rc != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription returned %d, expected OK\n", rc);
         return 1;
@@ -358,7 +376,7 @@ int main() {
     // longer the same observation.
     size_t n = 0;
     bool took = true;
-    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    rc = uorb_test_take(vt, &subp, rxbuf, sizeof(rxbuf), &n, &took);
     if (rc != NROS_RMW_RET_OK || took) {
         std::fprintf(stderr, "take empty[0] rc=%d taken=%d, expected OK/false\n", (int)rc,
                      (int)took);
@@ -378,7 +396,7 @@ int main() {
         return 1;
     }
     took = true;
-    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    rc = uorb_test_take(vt, &subp, rxbuf, sizeof(rxbuf), &n, &took);
     if (rc != NROS_RMW_RET_OK || took) {
         std::fprintf(stderr, "take empty[1] rc=%d taken=%d, expected OK/false\n", (int)rc,
                      (int)took);
@@ -406,7 +424,7 @@ int main() {
         std::fprintf(stderr, "has_data with pending returned false\n");
         return 1;
     }
-    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    rc = uorb_test_take(vt, &subp, rxbuf, sizeof(rxbuf), &n, &took);
     if (rc != NROS_RMW_RET_OK || !took || n != static_cast<size_t>(kFakeMeta.o_size)) {
         std::fprintf(stderr, "take returned rc=%d taken=%d %zu bytes, expected %u\n", (int)rc,
                      (int)took, n, kFakeMeta.o_size);
@@ -428,7 +446,7 @@ int main() {
     g_orb.pending = true;
     g_orb.pending_len = kFakeMeta.o_size;
     g_push.cb(g_push.arg);
-    rc = vt->take(&subp, rxbuf, /*too small*/ 4, &n, &took);
+    rc = uorb_test_take(vt, &subp, rxbuf, /*too small*/ 4, &n, &took);
     if (rc != NROS_RMW_RET_BUFFER_TOO_SMALL) {
         std::fprintf(stderr, "short take returned %d, expected BUFFER_TOO_SMALL\n", (int)rc);
         return 1;
@@ -438,7 +456,7 @@ int main() {
         return 1;
     }
     // Retry with full buffer drains.
-    rc = vt->take(&subp, rxbuf, sizeof(rxbuf), &n, &took);
+    rc = uorb_test_take(vt, &subp, rxbuf, sizeof(rxbuf), &n, &took);
     if (rc != NROS_RMW_RET_OK || !took || n != static_cast<size_t>(kFakeMeta.o_size)) {
         std::fprintf(stderr, "retry take returned rc=%d taken=%d %zu bytes, expected %u\n",
                      (int)rc, (int)took, n, kFakeMeta.o_size);

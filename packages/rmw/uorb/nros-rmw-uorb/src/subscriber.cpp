@@ -66,9 +66,8 @@ extern "C" void subscriber_ready_callback(void *arg) {
 } // namespace
 
 rmw_ret_t subscription_create(const rmw_node_t* node,
+                                 const rmw_message_type_support_t * /*type_support*/,
                                  const char *topic_name,
-                                 const char * /*type_name*/,
-                                 const char * /*type_hash*/,
                                  uint32_t /*domain_id*/,
                                  const rmw_qos_profile_t * /*qos*/,
                                  const rmw_subscription_options_t * /*options*/,
@@ -142,8 +141,12 @@ rmw_ret_t subscription_destroy(rmw_subscription_t *subscriber) {
 }
 
 rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
-                                 uint8_t *buf, size_t buf_len,
-                                 size_t *out_len, bool *taken) {
+                                 rmw_mut_byte_span_t *message, bool *taken) {
+    /* phase-406 W2 — one span in, the old three names out. */
+    if (message == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    uint8_t *buf = message->data;
+    size_t buf_len = message->capacity;
+    size_t *out_len = &message->len;
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

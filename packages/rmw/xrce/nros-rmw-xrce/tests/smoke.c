@@ -194,7 +194,7 @@ int main(void) {
      * must reach the backend (no longer the K.2.0 UNSUPPORTED stub)
      * and return INVALID_ARGUMENT. */
     rmw_publisher_t pub = {0};
-    r = g_received_vtable->publish(&pub, NULL, 0);
+    r = g_received_vtable->publish(&pub, (rmw_byte_span_t){NULL, 0});
     if (r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: publish_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
@@ -205,9 +205,12 @@ int main(void) {
     /* Phase 115.K.2.2 — take / has_data on a fresh subscriber
      * shell with NULL backend_data must reach the backend. */
     rmw_subscription_t sub = {0};
-    size_t rr_len = 0;
+    /* phase-406 W2 — the empty byte range is a span with a NULL base, which
+     * is the same input the flat (NULL, 0) pair carried: the point is that a
+     * NULL backend_data still reaches the backend and is rejected there. */
+    rmw_mut_byte_span_t rr_span = {NULL, 0, 0};
     bool rr_took = false;
-    rmw_ret_t rr = g_received_vtable->take(&sub, NULL, 0, &rr_len, &rr_took);
+    rmw_ret_t rr = g_received_vtable->take(&sub, &rr_span, &rr_took);
     if (rr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr, "FAIL: take on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
                 (int)rr);
@@ -234,8 +237,8 @@ int main(void) {
      * NULL session, create_service returns INVALID_ARGUMENT
      * (no longer UNSUPPORTED stub). */
     rmw_service_t srv = {0};
-    rmw_ret_t srv_r = g_received_vtable->create_service(
-        NULL, "/foo", "Foo_", NULL, 0, NULL, &srv);
+    const rmw_service_type_support_t srv_ts = {"Foo_", NULL};
+    rmw_ret_t srv_r = g_received_vtable->create_service(NULL, &srv_ts, "/foo", 0, NULL, &srv);
     if (srv_r != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: create_service with NULL session returned %d, expected INVALID_ARGUMENT\n",
@@ -246,10 +249,9 @@ int main(void) {
     /* take_request / has_request / send_response / send_request_raw
      * on NULL backend_data also reach the backend. */
     int64_t seq = 0;
-    size_t tr_len = 0;
+    rmw_mut_byte_span_t tr_span = {NULL, 0, 0};
     bool tr_took = false;
-    rmw_ret_t tr =
-        g_received_vtable->take_request(&srv, NULL, 0, &seq, &tr_len, &tr_took);
+    rmw_ret_t tr = g_received_vtable->take_request(&srv, &tr_span, &seq, &tr_took);
     if (tr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: take_request on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
@@ -265,7 +267,7 @@ int main(void) {
     /* Issue 0778 — `send_request` reports the id it assigned. NULL is accepted
      * for a caller that does not want it; this one is checking the reject
      * path, so it passes NULL. */
-    int32_t cr = g_received_vtable->send_request(&cli, NULL, 0, NULL);
+    int32_t cr = g_received_vtable->send_request(&cli, (rmw_byte_span_t){NULL, 0}, NULL);
     if (cr != NROS_RMW_RET_INVALID_ARGUMENT) {
         fprintf(stderr,
                 "FAIL: send_request_raw on NULL backend_data returned %d, expected INVALID_ARGUMENT\n",
