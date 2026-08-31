@@ -73,7 +73,7 @@ fails if this block drifts.
 - **#0960** (rmw) — The per-entity readiness callback trio is declared, unfilled, and undecided — and `set_wake_callback` does not answer it See `0960-*`.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
 - **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
-- **#0936** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0936-*`.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0937** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0937-*`.
 
 <!-- END GENERATED open-issue list -->
