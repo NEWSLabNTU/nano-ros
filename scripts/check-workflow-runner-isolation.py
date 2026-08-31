@@ -17,7 +17,7 @@ finding. A `runs-on` line is one word away from unsafe and the failure is silent
 the workflow simply runs, on the wrong machine, for anyone who opens a PR.
 
 Related: docs/development/multi-agent-ci-workflow.md ("Security — this is a
-PUBLIC repo") and scripts/ci/runner-container.sh, which bounds what such a job
+PUBLIC repo") and `just runner-container`, which bounds what such a job
 could reach but does NOT make it safe to admit one.
 """
 import sys
