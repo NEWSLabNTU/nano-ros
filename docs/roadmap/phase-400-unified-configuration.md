@@ -362,3 +362,89 @@ finished business.
   are classified explicitly now, and an unclassified name FAILS the gate: a new
   knob has to be decided about (ladder? derived? infra?) rather than guessed at
   by a heuristic, which is how a backlog number stops meaning anything.
+
+---
+
+<!-- Restored 2026-09-01. W7, W8 and the scope note below were deleted by
+     accident in the phase-400 W6 census commit: a section replacement anchored
+     on "### Remaining tenants" ran to END OF FILE and took everything after it.
+     Recovered verbatim from caa634aff~1. -->
+
+## W7 — core's exclusive features — DONE, and the premise was wrong
+
+**Audited 2026-08-30. No work outstanding.** This wave was scoped from a claim
+that did not survive checking, and the correction is recorded here rather than
+quietly dropped.
+
+The claim: `nros-node`'s `scheduler-fifo` / `-edf` / `-bucketed` / `-sporadic`
+is a pick-one family expressed in an additive mechanism, guarded by five
+`compile_error!` calls standing in for the constraint Cargo cannot express.
+
+What the tree actually says, three lines above those declarations:
+
+> Each flag is independent; multiple may be on simultaneously when runtime
+> selection across classes is needed.
+
+The `cfg` sites agree — they gate scheduler classes in, additively. The five
+`compile_error!` guards are feature IMPLICATIONS (`param-services` needs
+`alloc`), not exclusivity. Every `cfg(not(feature = …))` in core is the correct
+no_std shape. And `packages/api/nros/src/lib.rs` records that a platform
+mutual-exclusion `compile_error!` was deliberately *removed* — the tree has
+already learned this lesson.
+
+The error was inferring exclusivity from a naming family without reading the
+comment above it.
+
+**What survives.** RFC-0086 D5's rule stands on its own footing: Cargo features
+are additive by contract, so they cannot express "off over an on-default",
+which RFC-0049 requires of a front-end. That is a constraint on new knobs,
+enforced at review. It simply has no backlog attached.
+
+**Gate.** Satisfied on audit: no `compile_error!` in core stands in for an
+exclusivity constraint, and no core feature encodes a negative.
+
+---
+
+## W8 — retire the old paths
+
+Retirement is a wave, not a side effect, because a mechanism that still
+resolves is a mechanism people still use.
+
+* A migrated knob's old reader is **deleted**, not left as a fallback. A
+  fallback that silently wins is how issue 0135/0316 happened: two consumers
+  disagreeing about one value with no diagnostic.
+* Env vars that were the *only* home for a knob before nano-ros #0749/#0752
+  keep their names as front-ends. Env vars that duplicated a ladder knob are
+  removed.
+* `config/<name>/nros-platform.toml` stops being read after W1's grace period.
+* A gate asserts no knob has two readers.
+
+**Gate.** For every migrated knob, exactly one reader exists, and
+`nros config explain` is the only way to learn its value.
+
+---
+
+## Risks, and the ones already realised
+
+* **A fallback left in place wins silently.** Realised twice: issue 0135 and
+  issue 0316, both "two consumers disagreed about a struct's size with no
+  diagnostic". W8's one-reader gate exists for this.
+* **A drift test that mirrors nothing.** RFC-0049's mirror test is only as good
+  as its coverage; W5 must extend it to the new `depends on`, or the Kconfig
+  projection silently diverges.
+* **Migrating a knob without its coupling.** A sizing knob moved into the
+  ladder with its implications left in a `.conf` file is worse than not moving
+  it — the value looks authoritative and is not. Move the rule with the knob.
+* **`implies` implemented as `select`.** The single most likely wrong turn, and
+  the one the surveyed prior art most clearly warns against.
+
+## What this phase does NOT do
+
+* It does not change the four-rung ladder or its order. RFC-0049's precedence
+  is correct.
+* It does not touch the runtime seam (`nros_rmw_vtable_t`, RFC-0035).
+* It does not introduce a constraint solver. `requires` validates and `implies`
+  enforces; picking a satisfying assignment reintroduces the opacity W4 exists
+  to prevent.
+* It does not migrate RFC-0045's boot-config resolution, which is the runtime
+  half of the same story and lands separately.
