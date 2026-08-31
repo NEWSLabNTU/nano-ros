@@ -101,7 +101,7 @@ def stranded_leaves(manifests, root_txt):
     return sorted(out)
 
 
-def self_test():
+def self_test(quiet=False):
     """The parser, against the shapes that have actually appeared here."""
     txt = """
 [workspace]
@@ -138,13 +138,17 @@ exclude = [
         "examples/ws/Cargo.toml"
     )
     assert owning_root("examples/other/leaf", exists=lambda p: p in tree) == "Cargo.toml"
-    print("check-example-leaf-workspace-roots: self-test OK")
+    if not quiet:
+        print("check-example-leaf-workspace-roots: self-test OK")
 
 
 def main():
     if "--self-test" in sys.argv:
         self_test()
         return
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this gate's parser is where it would decay.
+    self_test(quiet=True)
 
     manifests = subprocess.run(
         ["git", "ls-files", "examples/Cargo.toml", "examples/**/Cargo.toml"],
