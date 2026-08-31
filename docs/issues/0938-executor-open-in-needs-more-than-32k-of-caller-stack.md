@@ -1,5 +1,5 @@
 ---
-id: 937
+id: 938
 title: "Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so"
 status: open
 area: core, memory
