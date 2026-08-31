@@ -58,7 +58,6 @@ fails if this block drifts.
 - **#0891** (testing) — Six nuttx `rtos_e2e` cells fail in-sweep and pass solo — the group cap was never measured, and a slow boot is reported as a dead image See `0891-*`.
 - **#0895** (build) — `just format` is red or green depending on whether a migrated colcon workspace has been BUILT See `0895-*`.
 - **#0896** (rmw, api) — Every C/C++ subscription takes the small size class regardless of its message type — nothing fills `rx_buffer_hint` See `0896-*`.
-- **#0897** (tooling) — `nros-launch-resolve` hard-links one `libpython` soname, so one build serves one interpreter — and abi3, which issue 0400 recommends, does not apply to embedding See `0897-*`.
 - **#0899** (rmw, boards) — The FreeRTOS C talker dies mid-run inside zenoh-pico's write buffer — two different asserts, both after tens of successful publishes See `0899-*`.
 - **#0900** (core, memory) — Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use See `0900-*`.
 - **#0902** (rmw) — action goals complete between 20 % and 90 % of the time on the same build, with no session expiry and no fault to explain the difference See `0902-*`.
