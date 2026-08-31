@@ -167,7 +167,11 @@ def fmt_sig(ret, params, name, is_slot, dropped=(), added=(), renamed=False, typ
     C syntax already says it, so nothing else has to.
     """
     e = html.escape
-    nm = f"<span class='fn{" ren" if renamed else ""}'>{e(name)}</span>"
+    # Nested same-type quotes inside an f-string are PEP 701, i.e. Python 3.12+.
+    # CI's python3 is 3.10, where this is a SyntaxError at IMPORT time — the
+    # whole gate dies before it runs.
+    ren_cls = " ren" if renamed else ""
+    nm = f"<span class='fn{ren_cls}'>{e(name)}</span>"
     head = f"<span class=pu>(*</span>{nm}<span class=pu>)</span>" if is_slot else nm
 
     def ty(i, p):
@@ -188,7 +192,10 @@ def fmt_sig(ret, params, name, is_slot, dropped=(), added=(), renamed=False, typ
 
 def arg_rules():
     """The systematic reasons an argument list differs, from the map."""
-    import tomllib
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:  # the repo's interpreter is 3.10
+        import tomli as tomllib
 
     with open(os.path.join(ROOT, "docs", "reference", "rmw-api-map.toml"), "rb") as fh:
         return tomllib.load(fh).get("arg_rule", [])
