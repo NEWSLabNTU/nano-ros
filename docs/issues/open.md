@@ -75,5 +75,6 @@ fails if this block drifts.
 - **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
 - **#0938** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0938-*`.
+- **#0939** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0939-*`.
 
 <!-- END GENERATED open-issue list -->
