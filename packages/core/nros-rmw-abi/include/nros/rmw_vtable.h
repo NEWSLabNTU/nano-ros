@@ -125,20 +125,6 @@ typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
  *  slot nobody can use safely is worse than one nobody uses. */
 typedef struct rmw_loan_token_t rmw_loan_token_t;
 
-/** An event callback and the data it needs — phase-406 W2.
- *
- *  Same argument as the visitor one slot up: the function and its `user_data`
- *  are meaningless apart, so they travel together. Upstream keeps them as two
- *  parameters; upstream also has an allocator and a heap, and pays for a
- *  mistake here with a wild pointer rather than a compile error.
- *
- *  `callback == NULL` is how a caller CLEARS the callback — that is upstream's
- *  contract too, and unlike the visitor case it is not an error. */
-typedef struct rmw_event_callback_reg_t {
-    rmw_event_callback_t callback;
-    const void *user_data;
-} rmw_event_callback_reg_t;
-
 /** A visitor: the function and the context it needs — phase-406 W2.
  *
  *  Upstream fills a heap-owning out-parameter the caller must `fini`
@@ -185,6 +171,18 @@ typedef struct rmw_topic_endpoint_info_visitor_t {
     rmw_topic_endpoint_info_visit_fn visit;
     void *ctx;
 } rmw_topic_endpoint_info_visitor_t;
+
+typedef struct rmw_content_filter_visitor_t {
+    /* `visit`, not `fn` — see the siblings above. */
+    rmw_content_filter_visit_fn visit;
+    void *ctx;
+} rmw_content_filter_visitor_t;
+
+typedef struct rmw_network_flow_endpoint_visitor_t {
+    /* `visit`, not `fn` — see the siblings above. */
+    rmw_network_flow_endpoint_visit_fn visit;
+    void *ctx;
+} rmw_network_flow_endpoint_visitor_t;
 
 
 /* Phase 376 W5 — teardown and loan-return REPORT.
@@ -322,14 +320,13 @@ typedef struct nros_rmw_vtable_t {
      *  `rmw_service_info_t *` — an RTOS reply needs the sequence
      *  and nothing else in that struct. */
     rmw_ret_t (*take_request)(const rmw_service_t *server,
-        uint8_t *buf, size_t buf_len, int64_t *seq_out,
-        size_t *out_len, bool *taken);
+        rmw_mut_byte_span_t *request, int64_t *seq_out, bool *taken);
     /** Phase 376 W3.d step A — the service-side sibling of
      *  `has_data`; same contract, same reason. */
     rmw_ret_t (*has_request)(rmw_service_t *server,
         bool *out_has_request);
     rmw_ret_t (*send_response)(const rmw_service_t *server,
-        int64_t seq, const uint8_t *data, size_t len);
+        int64_t seq, rmw_byte_span_t response);
 
     /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
     rmw_ret_t (*create_client)(const rmw_node_t *node,
@@ -364,7 +361,7 @@ typedef struct nros_rmw_vtable_t {
      *  which travel this path. Same application code, different behaviour per
      *  transport. The id is what deletes both policies. */
     rmw_ret_t (*send_request)(const rmw_client_t *client,
-        const uint8_t *request, size_t req_len, int64_t *sequence_id);
+        rmw_byte_span_t request, int64_t *sequence_id);
 
     /** Upstream `rmw_take_response`. Same shape and the same
      *  declared deviations as `take_request`.
@@ -380,8 +377,7 @@ typedef struct nros_rmw_vtable_t {
      *  after step A moved the count to an out-parameter and step B made the
      *  errors positive.) */
     rmw_ret_t (*take_response)(const rmw_client_t *client,
-        uint8_t *reply_buf, size_t reply_buf_len,
-        int64_t *seq_out, size_t *out_len, bool *taken);
+        rmw_mut_byte_span_t *reply, int64_t *seq_out, bool *taken);
 
     /* ---- Phase 108 — status events (optional) ---- */
     /** Register a callback for a subscription-side event. NULL function
@@ -543,10 +539,9 @@ typedef struct nros_rmw_vtable_t {
      *  runtime falls back to a per-publisher staging arena and emits
      *  a single memcpy on commit. */
     rmw_ret_t (*borrow_loaned_message)(const rmw_publisher_t *publisher,
-                                size_t                requested_len,
-                                uint8_t             **out_buf,
-                                size_t               *out_cap,
-                                rmw_loan_token_t   **out_token);
+                                size_t                 requested_len,
+                                rmw_mut_byte_span_t   *out_slot,
+                                rmw_loan_token_t     **out_token);
 
     /** Phase 124.A — commit a previously loaned slot.
      *
@@ -609,9 +604,8 @@ typedef struct nros_rmw_vtable_t {
      *  `SlotBorrowing for ZenohSubscriber`, not through here. Recorded so
      *  "the slot exists" is not read as "the capability works": issue 0781. */
     rmw_ret_t (*take_loaned_message)(const rmw_subscription_t *subscription,
-                           const uint8_t        **out_buf,
-                           size_t                *out_len,
-                           rmw_loan_token_t    **out_token,
+                           rmw_byte_span_t       *out_view,
+                           rmw_loan_token_t     **out_token,
                            bool                  *taken);
 
     /** Phase 124.A — release a previously borrowed view.
@@ -847,7 +841,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*process_raw_in_place)(
         rmw_subscription_t *subscription,
         void                  *ctx,
-        void                 (*cb)(void *ctx, const uint8_t *ptr, size_t len),
+        void                 (*cb)(void *ctx, rmw_byte_span_t message),
         bool                  *out_processed);
     /* ---- Phase 376 W4 — identity + matched counts (all optional) ---- */
 
@@ -1007,15 +1001,14 @@ typedef struct nros_rmw_vtable_t {
      *  NULL slot: the runtime falls back to `take`, and the caller gets no
      *  metadata — which is exactly today's behaviour for every C backend. */
     rmw_ret_t (*take_with_info)(const rmw_subscription_t *subscription,
-        uint8_t *buf, size_t buf_len,
-        size_t *out_len, bool *taken, rmw_message_info_t *message_info);
+        rmw_mut_byte_span_t *message, bool *taken, rmw_message_info_t *message_info);
 
     /** Upstream `rmw_take_loaned_message_with_info`.
      *
      *  `take_loaned_message` plus metadata; same deviations as that slot (a
      *  byte view and an opaque release token rather than a typed loan). */
     rmw_ret_t (*take_loaned_message_with_info)(const rmw_subscription_t *subscription,
-        const uint8_t **out_buf, size_t *out_len, void **out_token,
+        rmw_byte_span_t *out_view, rmw_loan_token_t **out_token,
         bool *taken, rmw_message_info_t *message_info);
 
     /** Upstream `rmw_service_set_on_new_request_callback`. Exact parity.
@@ -1030,11 +1023,11 @@ typedef struct nros_rmw_vtable_t {
      *  our DDS status-event callback had to give the name back
      *  (`rmw_status_event_callback_t`). */
     rmw_ret_t (*service_set_on_new_request_callback)(rmw_service_t *service,
-        rmw_event_callback_reg_t cb);
+        rmw_event_callback_t callback, const void *user_data);
 
     /** Upstream `rmw_client_set_on_new_response_callback`. Exact parity. */
     rmw_ret_t (*client_set_on_new_response_callback)(rmw_client_t *client,
-        rmw_event_callback_reg_t cb);
+        rmw_event_callback_t callback, const void *user_data);
 
     /** Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.
      *
@@ -1044,7 +1037,7 @@ typedef struct nros_rmw_vtable_t {
      *  identically. */
     rmw_ret_t (*subscription_set_on_new_message_callback)(
         rmw_subscription_t *subscription,
-        rmw_event_callback_reg_t cb);
+        rmw_event_callback_t callback, const void *user_data);
 
     /* ---- Phase 376 W4 — graph introspection (all optional) ----
      *
@@ -1129,7 +1122,7 @@ typedef struct nros_rmw_vtable_t {
      *  reason `set` takes plain arguments: the options struct is an allocation
      *  we have nothing to make. */
     rmw_ret_t (*subscription_get_content_filter)(const rmw_subscription_t *subscription,
-        rmw_content_filter_visit_fn visit, void *ctx);
+        rmw_content_filter_visitor_t visitor);
 
     /* ---- Network flow endpoints (OS-level; NULL where there is no notion) ---- */
     /** Upstream `rmw_publisher_get_network_flow_endpoints`.
@@ -1142,12 +1135,12 @@ typedef struct nros_rmw_vtable_t {
      *  Deviation, declared: a visitor instead of the allocating
      *  `rmw_network_flow_endpoint_array_t` + `rcutils_allocator_t *`. */
     rmw_ret_t (*publisher_get_network_flow_endpoints)(const rmw_publisher_t *publisher,
-        rmw_network_flow_endpoint_visit_fn visit, void *ctx);
+        rmw_network_flow_endpoint_visitor_t visitor);
 
     /** Upstream `rmw_subscription_get_network_flow_endpoints`. */
     rmw_ret_t (*subscription_get_network_flow_endpoints)(
         const rmw_subscription_t *subscription,
-        rmw_network_flow_endpoint_visit_fn visit, void *ctx);
+        rmw_network_flow_endpoint_visitor_t visitor);
 
     /** Upstream `rmw_count_publishers`. */
     rmw_ret_t (*count_publishers)(const rmw_session_t *session,
@@ -1173,7 +1166,7 @@ typedef struct nros_rmw_vtable_t {
      *  honest name for this shape is `set_on_graph_change_callback` — flagged
      *  for W5 rather than decided quietly here. */
     rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
-        rmw_event_callback_reg_t cb);
+        rmw_event_callback_t callback, const void *user_data);
 
     /* ---- Phase 376 W4 — graph node lifecycle (optional) ----
      *

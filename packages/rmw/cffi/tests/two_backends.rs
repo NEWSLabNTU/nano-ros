@@ -47,9 +47,8 @@ unsafe extern "C" fn a_drive_io(session: *mut NrosRmwSession, _timeout_ms: i32) 
 
 unsafe extern "C" fn a_create_publisher(
     _session: *const NrosRmwNode,
+    _type_name: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _topic_name: *const core::ffi::c_char,
-    _type_name: *const core::ffi::c_char,
-    _type_hash: *const core::ffi::c_char,
     _domain_id: u32,
     _qos: *const NrosRmwQos,
     _options: *const nros_rmw_cffi::rmw_publisher_options_t,
@@ -64,9 +63,9 @@ unsafe extern "C" fn a_create_publisher(
 
 unsafe extern "C" fn a_publish_raw(
     publisher: *const NrosRmwPublisher,
-    _data: *const u8,
-    _len: usize,
+    _data: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
+    let (_data, _len) = (_data.data, _data.len);
     assert_eq!(unsafe { (*publisher).backend_data } as usize, 0xA000_0001);
     A_PUBLISH_CALLS.fetch_add(1, Ordering::SeqCst);
     NROS_RMW_RET_OK
@@ -99,9 +98,8 @@ unsafe extern "C" fn b_drive_io(session: *mut NrosRmwSession, _timeout_ms: i32) 
 
 unsafe extern "C" fn b_create_publisher(
     _session: *const NrosRmwNode,
+    _type_name: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _topic_name: *const core::ffi::c_char,
-    _type_name: *const core::ffi::c_char,
-    _type_hash: *const core::ffi::c_char,
     _domain_id: u32,
     _qos: *const NrosRmwQos,
     _options: *const nros_rmw_cffi::rmw_publisher_options_t,
@@ -116,9 +114,9 @@ unsafe extern "C" fn b_create_publisher(
 
 unsafe extern "C" fn b_publish_raw(
     publisher: *const NrosRmwPublisher,
-    _data: *const u8,
-    _len: usize,
+    _data: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
+    let (_data, _len) = (_data.data, _data.len);
     assert_eq!(unsafe { (*publisher).backend_data } as usize, 0xB000_0001);
     B_PUBLISH_CALLS.fetch_add(1, Ordering::SeqCst);
     NROS_RMW_RET_OK
@@ -134,8 +132,7 @@ unsafe extern "C" fn noop_destroy_pub(_p: *mut NrosRmwPublisher) -> NrosRmwRet {
 }
 unsafe extern "C" fn noop_create_sub(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -149,9 +146,7 @@ unsafe extern "C" fn noop_destroy_sub(_: *mut NrosRmwSubscription) -> NrosRmwRet
 }
 unsafe extern "C" fn noop_take(
     _: *const NrosRmwSubscription,
-    _: *mut u8,
-    _: usize,
-    _: *mut usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut bool,
 ) -> NrosRmwRet {
     NROS_RMW_RET_ERROR
@@ -166,8 +161,7 @@ unsafe extern "C" fn noop_has_data(
 }
 unsafe extern "C" fn noop_create_srv(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -180,10 +174,8 @@ unsafe extern "C" fn noop_destroy_srv(_: *mut NrosRmwService) -> NrosRmwRet {
 }
 unsafe extern "C" fn noop_take_request(
     _: *const NrosRmwService,
-    _: *mut u8,
-    _: usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut i64,
-    _: *mut usize,
     _: *mut bool,
 ) -> NrosRmwRet {
     // Phase 376 W3.d step A — this stub always FAILED; still does, named.
@@ -200,15 +192,13 @@ unsafe extern "C" fn noop_has_request(
 unsafe extern "C" fn noop_send_response(
     _: *const NrosRmwService,
     _: i64,
-    _: *const u8,
-    _: usize,
+    _: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_create_client(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,

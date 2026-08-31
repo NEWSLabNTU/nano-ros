@@ -224,15 +224,17 @@ mod loan_trampolines {
     /// being read as a length.
     const TOKEN_TAG: usize = 1usize << (usize::BITS - 1);
 
-    /// Encode a granted loan length as the opaque `void *` token the cffi
-    /// runtime hands back at commit / discard. Never dereferenced.
-    fn encode_token(len: usize) -> *mut c_void {
-        (len | TOKEN_TAG) as *mut c_void
+    /// Encode a granted loan length as the opaque token the cffi runtime
+    /// hands back at commit / discard. Never dereferenced — phase-406 W3
+    /// gave it a type so it cannot be crossed with another backend's token
+    /// or with a message pointer, but it is still a tagged integer.
+    fn encode_token(len: usize) -> *mut nros_rmw_cffi::generated::rmw_loan_token_t {
+        (len | TOKEN_TAG) as *mut nros_rmw_cffi::generated::rmw_loan_token_t
     }
 
     /// Recover the granted length, or `None` when `token` did not come
     /// from [`encode_token`].
-    fn decode_token(token: *mut c_void) -> Option<usize> {
+    fn decode_token(token: *mut nros_rmw_cffi::generated::rmw_loan_token_t) -> Option<usize> {
         let raw = token as usize;
         if (raw & TOKEN_TAG) == 0 {
             return None;
@@ -261,11 +263,10 @@ mod loan_trampolines {
     unsafe extern "C" fn zenoh_pub_loan(
         publisher: *const NrosRmwPublisher,
         requested_len: usize,
-        out_buf: *mut *mut u8,
-        out_cap: *mut usize,
-        out_token: *mut *mut c_void,
+        out_slot: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
+        out_token: *mut *mut nros_rmw_cffi::generated::rmw_loan_token_t,
     ) -> NrosRmwRet {
-        if out_buf.is_null() || out_cap.is_null() || out_token.is_null() || requested_len == 0 {
+        if out_slot.is_null() || out_token.is_null() || requested_len == 0 {
             return nros_rmw_cffi::NROS_RMW_RET_INVALID_ARGUMENT;
         }
         // SAFETY: cffi-runtime contract — the view describes a live
@@ -284,8 +285,9 @@ mod loan_trampolines {
                 // whole content of the token.
                 core::mem::forget(slot);
                 unsafe {
-                    *out_buf = buf_ptr;
-                    *out_cap = cap;
+                    (*out_slot).data = buf_ptr;
+                    (*out_slot).capacity = cap;
+                    (*out_slot).len = 0;
                     *out_token = encode_token(cap);
                 }
                 NROS_RMW_RET_OK
@@ -297,7 +299,7 @@ mod loan_trampolines {
 
     unsafe extern "C" fn zenoh_pub_commit(
         publisher: *const NrosRmwPublisher,
-        token: *mut c_void,
+        token: *mut nros_rmw_cffi::generated::rmw_loan_token_t,
         actual_len: usize,
     ) -> NrosRmwRet {
         let Some(len) = decode_token(token) else {
@@ -322,7 +324,7 @@ mod loan_trampolines {
 
     unsafe extern "C" fn zenoh_pub_discard(
         publisher: *const NrosRmwPublisher,
-        token: *mut c_void,
+        token: *mut nros_rmw_cffi::generated::rmw_loan_token_t,
     ) -> NrosRmwRet {
         let Some(len) = decode_token(token) else {
             // A NULL or foreign token is a caller bug, not a no-op: the

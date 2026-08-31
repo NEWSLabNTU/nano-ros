@@ -1046,8 +1046,15 @@ static int32_t service_try_recv_request_len(const rmw_service_t* server, uint8_t
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t service_take_request(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
-                                    int64_t* seq_out, size_t* out_len, bool* taken) {
+rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
+                                    int64_t* seq_out, bool* taken) {
+    /* phase-406 W2 — see the XRCE sibling: one span in, the old names out. */
+    if (request == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    uint8_t* buf = request->data;
+    size_t buf_len = request->capacity;
+    size_t* out_len = &request->len;
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1110,7 +1117,9 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
 }
 
 rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
-                                  const uint8_t* data, size_t len) {
+                                  rmw_byte_span_t response) {
+    const uint8_t* data = response.data;
+    size_t len = response.len;
     if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
         static_cast<std::size_t>(seq) >= kRequestSlots) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1295,8 +1304,10 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
 // (Phase 127.C.4 root cause class). Phase-301: the deprecated
 // blocking `call_raw` slot was deleted from the vtable; this pair
 // is the one request/reply path.
-rmw_ret_t service_send_request_raw(const rmw_client_t* client, const uint8_t* request,
-                                        size_t req_len, int64_t* sequence_id) {
+rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t request_span,
+                                        int64_t* sequence_id) {
+    const uint8_t* request = request_span.data;
+    size_t req_len = request_span.len;
     if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1426,9 +1437,14 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
-                                     size_t reply_buf_len, int64_t* seq_out, size_t* out_len,
-                                     bool* taken) {
+rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
+                                     int64_t* seq_out, bool* taken) {
+    if (reply == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    uint8_t* reply_buf = reply->data;
+    size_t reply_buf_len = reply->capacity;
+    size_t* out_len = &reply->len;
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

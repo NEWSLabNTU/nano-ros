@@ -71,8 +71,7 @@ unsafe extern "C" fn stub_drive_io(_: *mut NrosRmwSession, _: i32) -> NrosRmwRet
 }
 unsafe extern "C" fn stub_create_publisher(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -86,15 +85,13 @@ unsafe extern "C" fn stub_destroy_publisher(_: *mut NrosRmwPublisher) -> NrosRmw
 }
 unsafe extern "C" fn stub_publish_raw(
     _: *const NrosRmwPublisher,
-    _: *const u8,
-    _: usize,
+    _: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_create_subscription(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -111,11 +108,11 @@ unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) -> N
 // `try_recv_raw` stub: feed the i-th queue entry on the i-th call.
 unsafe extern "C" fn stub_take(
     _: *const NrosRmwSubscription,
-    buf: *mut u8,
-    buf_len: usize,
-    out_len: *mut usize,
+    buf: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     taken: *mut bool,
 ) -> NrosRmwRet {
+    let out_len = unsafe { &raw mut (*buf).len };
+    let (buf, buf_len) = unsafe { ((*buf).data, (*buf).capacity) };
     // Phase 376 W3.d step A — the byte count is an out-parameter now, so a
     // drained queue (`taken = false`) and a zero-length message (`taken = true`
     // with `out_len == 0`) stop sharing the value 0.
@@ -135,9 +132,7 @@ unsafe extern "C" fn stub_take(
 }
 unsafe extern "C" fn stub_take_no_data(
     _: *const NrosRmwSubscription,
-    _: *mut u8,
-    _: usize,
-    _: *mut usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     taken: *mut bool,
 ) -> NrosRmwRet {
     unsafe { *taken = false };
@@ -153,8 +148,7 @@ unsafe extern "C" fn stub_has_data(
 }
 unsafe extern "C" fn stub_create_service(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -167,10 +161,8 @@ unsafe extern "C" fn stub_destroy_service(_: *mut NrosRmwService) -> NrosRmwRet 
 }
 unsafe extern "C" fn stub_take_request(
     _: *const NrosRmwService,
-    _: *mut u8,
-    _: usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut i64,
-    _: *mut usize,
     taken: *mut bool,
 ) -> NrosRmwRet {
     unsafe { *taken = false };
@@ -187,15 +179,13 @@ unsafe extern "C" fn stub_has_request(
 unsafe extern "C" fn stub_send_response(
     _: *const NrosRmwService,
     _: i64,
-    _: *const u8,
-    _: usize,
+    _: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn stub_create_client(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,

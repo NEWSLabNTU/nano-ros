@@ -95,6 +95,7 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node, const rmw_service_type_sup
        created without it matches nothing and reports nothing. */
     if (type_support == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     const char* type_name = type_support->type_name;
+    const char* type_hash = type_support->type_hash;
     (void)type_name;
     /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
      * The node carries the route to its session (our `context`). */
@@ -299,9 +300,18 @@ static rmw_ret_t xrce_service_try_recv_request_len(const rmw_service_t* server, 
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_request(const rmw_service_t* server, uint8_t* buf,
-                                         size_t buf_len, int64_t* seq_out, size_t* out_len,
+rmw_ret_t xrce_service_take_request(const rmw_service_t* server,
+                                         rmw_mut_byte_span_t* request, int64_t* seq_out,
                                          bool* taken) {
+    /* phase-406 W2 — one span in, the old three names out, so the body below
+       is unchanged. `len` lives IN the span now, which is what removes the
+       "who writes the count" question the flat triple kept raising. */
+    if (request == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    uint8_t* buf = request->data;
+    size_t buf_len = request->capacity;
+    size_t* out_len = &request->len;
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -338,7 +348,9 @@ rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request)
 }
 
 rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
-                                       const uint8_t* data, size_t len) {
+                                       rmw_byte_span_t response) {
+    const uint8_t* data = response.data;
+    size_t len = response.len;
     if (server == NULL || server->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -389,8 +401,10 @@ rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
 rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
-                                             const uint8_t* request, size_t req_len,
+                                             rmw_byte_span_t request_span,
                                              int64_t* sequence_id) {
+    const uint8_t* request = request_span.data;
+    size_t req_len = request_span.len;
     if (client == NULL || client->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -479,9 +493,15 @@ static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client,
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_buf,
-                                          size_t reply_buf_len, int64_t* seq_out,
-                                          size_t* out_len, bool* taken) {
+rmw_ret_t xrce_service_take_response(const rmw_client_t* client,
+                                          rmw_mut_byte_span_t* reply, int64_t* seq_out,
+                                          bool* taken) {
+    if (reply == NULL) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    uint8_t* reply_buf = reply->data;
+    size_t reply_buf_len = reply->capacity;
+    size_t* out_len = &reply->len;
     if (out_len == NULL || taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -513,6 +533,7 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_supp
        created without it matches nothing and reports nothing. */
     if (type_support == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     const char* type_name = type_support->type_name;
+    const char* type_hash = type_support->type_hash;
     (void)type_name;
     /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
      * The node carries the route to its session (our `context`). */

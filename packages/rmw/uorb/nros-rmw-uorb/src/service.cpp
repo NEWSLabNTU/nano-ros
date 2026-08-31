@@ -33,9 +33,9 @@ rmw_ret_t service_destroy(rmw_service_t* /*server*/) {
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t service_take_request(const rmw_service_t* /*server*/, uint8_t* /*buf*/,
-                                    size_t /*buf_len*/, int64_t* /*seq_out*/,
-                                    size_t* /*out_len*/, bool* /*taken*/) {
+rmw_ret_t service_take_request(const rmw_service_t* /*server*/,
+                                    rmw_mut_byte_span_t* /*request*/, int64_t* /*seq_out*/,
+                                    bool* /*taken*/) {
     /* uORB has no service transport — see service_send_response. */
     return NROS_RMW_RET_UNSUPPORTED;
 }
@@ -49,7 +49,7 @@ rmw_ret_t service_has_request(rmw_service_t* /*server*/, bool* out_has_request) 
 }
 
 rmw_ret_t service_send_response(const rmw_service_t* /*server*/, int64_t /*seq*/,
-                                  const uint8_t* /*data*/, size_t /*len*/) {
+                                  rmw_byte_span_t /*response*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 

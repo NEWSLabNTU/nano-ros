@@ -101,8 +101,12 @@ static rmw_ret_t cyclone_subscription_count_matched_publishers(
  * `enclave` is NULL: `ParticipantEntitiesInfo` carries none, and reporting a
  * value we do not have would be worse than saying we do not — the ABI's NULL is
  * exactly "this backend does not track one". */
-static rmw_ret_t cyclone_get_node_names(const rmw_session_t *session, rmw_node_visit_fn visit,
-                                        void *ctx) {
+static rmw_ret_t cyclone_get_node_names(const rmw_session_t *session,
+                                        rmw_node_visitor_t visitor) {
+    /* phase-406 W2 — the function and its context arrive together; the body
+       below still reads the two names it always did. */
+    rmw_node_visit_fn visit = visitor.visit;
+    void *ctx = visitor.ctx;
     if (session == nullptr || visit == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

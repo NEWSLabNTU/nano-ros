@@ -265,19 +265,6 @@ ARG_DEVIATIONS = {
     # makes "pass one, forget the other" unrepresentable rather than merely
     # discouraged, and costs nothing at the ABI — every one of these structs is
     # a POD the caller builds on the stack.
-    "client_set_on_new_response_callback": (
-        "upstream passes (callback, user_data) as two parameters; ours is one "
-        "`rmw_event_callback_reg_t`. Upstream can afford the loose pair — it has an "
-        "allocator and a heap, and pays for a mismatched pair with a wild pointer at "
-        "run time. On target the same mistake is unrecoverable and undetectable, so "
-        "the pairing is made structural."
-    ),
-    "service_set_on_new_request_callback": (
-        "as client_set_on_new_response_callback — one `rmw_event_callback_reg_t`."
-    ),
-    "subscription_set_on_new_message_callback": (
-        "as client_set_on_new_response_callback — one `rmw_event_callback_reg_t`."
-    ),
     "return_loaned_message_from_publisher": (
         "upstream's loan handle is a bare `void *`; ours is an opaque "
         "`rmw_loan_token_t *`. The bare pointer let a caller return a PUBLISHER's "

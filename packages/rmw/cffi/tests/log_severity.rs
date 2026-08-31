@@ -43,8 +43,7 @@ mod stub {
     #[allow(clippy::too_many_arguments)]
     pub unsafe extern "C" fn cpub(
         _: *const rmw_node_t,
-        _: *const c_char,
-        _: *const c_char,
+        _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
         _: *const c_char,
         _: u32,
         _: *const rmw_qos_profile_t,
@@ -56,14 +55,16 @@ mod stub {
     pub unsafe extern "C" fn dpub(_: *mut rmw_publisher_t) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
-    pub unsafe extern "C" fn pubr(_: *const rmw_publisher_t, _: *const u8, _: usize) -> rmw_ret_t {
+    pub unsafe extern "C" fn pubr(
+        _: *const rmw_publisher_t,
+        _: nros_rmw_cffi::generated::rmw_byte_span_t,
+    ) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
     #[allow(clippy::too_many_arguments)]
     pub unsafe extern "C" fn csub(
         _: *const rmw_node_t,
-        _: *const c_char,
-        _: *const c_char,
+        _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
         _: *const c_char,
         _: u32,
         _: *const rmw_qos_profile_t,
@@ -81,9 +82,7 @@ mod stub {
     }
     pub unsafe extern "C" fn take(
         _: *const rmw_subscription_t,
-        _: *mut u8,
-        _: usize,
-        _: *mut usize,
+        _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
         taken: *mut bool,
     ) -> rmw_ret_t {
         unsafe { *taken = false };
@@ -91,8 +90,7 @@ mod stub {
     }
     pub unsafe extern "C" fn csrv(
         _: *const rmw_node_t,
-        _: *const c_char,
-        _: *const c_char,
+        _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
         _: *const c_char,
         _: u32,
         _: *const rmw_qos_profile_t,
@@ -105,8 +103,7 @@ mod stub {
     }
     pub unsafe extern "C" fn ccli(
         _: *const rmw_node_t,
-        _: *const c_char,
-        _: *const c_char,
+        _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
         _: *const c_char,
         _: u32,
         _: *const rmw_qos_profile_t,
@@ -120,8 +117,7 @@ mod stub {
     pub unsafe extern "C" fn sresp(
         _: *const rmw_service_t,
         _: i64,
-        _: *const u8,
-        _: usize,
+        _: nros_rmw_cffi::generated::rmw_byte_span_t,
     ) -> rmw_ret_t {
         NROS_RMW_RET_OK
     }
@@ -131,10 +127,8 @@ mod stub {
     }
     pub unsafe extern "C" fn takereq(
         _: *const rmw_service_t,
-        _: *mut u8,
-        _: usize,
+        _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
         _: *mut i64,
-        _: *mut usize,
         taken: *mut bool,
     ) -> rmw_ret_t {
         unsafe { *taken = false };

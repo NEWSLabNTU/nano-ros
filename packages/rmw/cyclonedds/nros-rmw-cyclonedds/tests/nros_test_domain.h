@@ -168,3 +168,37 @@ static inline uint32_t nros_test_domain(uint32_t fallback) {
 }
 
 #endif // NROS_TEST_DOMAIN_H
+
+/* phase-406 W2 — the copying takes carry ONE `rmw_mut_byte_span_t` where they
+ * used to carry `buf` / `cap` / `*out_len`. These adapters keep the old flat
+ * call shape for the tests below, which are transport round-trip tests: what
+ * they assert is that bytes arrive, not how the byte range is spelled at the
+ * ABI. Keeping the shape here means the span change is reviewed in ONE place
+ * instead of being retyped into eleven `if` conditions, where a mistake would
+ * read as a transport failure. */
+static inline rmw_ret_t nros_test_take(const nros_rmw_vtable_t* vt,
+                                       const rmw_subscription_t* sub, uint8_t* buf, size_t cap,
+                                       size_t* out_len, bool* taken) {
+    rmw_mut_byte_span_t span{buf, cap, 0};
+    const rmw_ret_t rc = vt->take(sub, &span, taken);
+    if (out_len != nullptr) *out_len = span.len;
+    return rc;
+}
+
+static inline rmw_ret_t nros_test_take_request(const nros_rmw_vtable_t* vt,
+                                               const rmw_service_t* srv, uint8_t* buf, size_t cap,
+                                               int64_t* seq_out, size_t* out_len, bool* taken) {
+    rmw_mut_byte_span_t span{buf, cap, 0};
+    const rmw_ret_t rc = vt->take_request(srv, &span, seq_out, taken);
+    if (out_len != nullptr) *out_len = span.len;
+    return rc;
+}
+
+static inline rmw_ret_t nros_test_take_response(const nros_rmw_vtable_t* vt,
+                                                const rmw_client_t* cli, uint8_t* buf, size_t cap,
+                                                int64_t* seq_out, size_t* out_len, bool* taken) {
+    rmw_mut_byte_span_t span{buf, cap, 0};
+    const rmw_ret_t rc = vt->take_response(cli, &span, seq_out, taken);
+    if (out_len != nullptr) *out_len = span.len;
+    return rc;
+}

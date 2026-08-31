@@ -15,6 +15,7 @@
 #include "nros/rmw_ret.h"
 #include "nros/rmw_vtable.h"
 #include "nros_rmw_cyclonedds.h"
+#include "nros_test_domain.h"
 
 namespace {
 const nros_rmw_vtable_t *g_vt = nullptr;
@@ -43,7 +44,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
                         size_t rep_cap, size_t *out_len) {
     if (out_len == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
-    rmw_ret_t sr = g_vt->send_request(cli, req, req_len, nullptr);
+    rmw_ret_t sr = g_vt->send_request(cli, rmw_byte_span_t{req, req_len}, nullptr);
     if (sr != NROS_RMW_RET_OK) {
         return sr;
     }
@@ -54,7 +55,7 @@ rmw_ret_t call_blocking(rmw_client_t *cli, const uint8_t *req, size_t req_len, u
          * loop, which is what `!= NO_DATA` used to mean. */
         size_t n = 0;
         bool took = false;
-        rmw_ret_t rc = g_vt->take_response(cli, rep, rep_cap, nullptr, &n, &took);
+        rmw_ret_t rc = nros_test_take_response(g_vt, cli, rep, rep_cap, nullptr, &n, &took);
         if (rc != NROS_RMW_RET_OK) {
             return rc;
         }
@@ -101,8 +102,8 @@ int main() {
     rmw_client_t cli{};
     cli.service_name = "add_two_ints";
     cli.type_name    = "example_interfaces::srv::dds_::AddTwoInts";
-    if (g_vt->create_client(&node, cli.service_name, cli.type_name, "",
-                                    domain, nullptr, &cli) != NROS_RMW_RET_OK) {
+    const rmw_service_type_support_t ts_1{cli.type_name, ""};
+    if (g_vt->create_client(&node, &ts_1, cli.service_name, domain, nullptr, &cli) != NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_client failed\n");
         return 3;
     }

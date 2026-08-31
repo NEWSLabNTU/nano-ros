@@ -60,8 +60,7 @@ unsafe extern "C" fn drive_io(_: *mut NrosRmwSession, _: i32) -> NrosRmwRet {
 }
 unsafe extern "C" fn create_publisher(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -79,9 +78,9 @@ unsafe extern "C" fn destroy_publisher(_: *mut NrosRmwPublisher) -> NrosRmwRet {
 }
 unsafe extern "C" fn publish_raw(
     _: *const NrosRmwPublisher,
-    data: *const u8,
-    len: usize,
+    data: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
+    let (data, len) = (data.data, data.len);
     PUBLISH_CALLS.fetch_add(1, Ordering::SeqCst);
     LAST_PUBLISH_LEN.store(len, Ordering::SeqCst);
     let slice = unsafe { core::slice::from_raw_parts(data, len) };
@@ -92,8 +91,7 @@ unsafe extern "C" fn publish_raw(
 }
 unsafe extern "C" fn noop_csub(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_message_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -107,9 +105,7 @@ unsafe extern "C" fn noop_dsub(_: *mut NrosRmwSubscription) -> NrosRmwRet {
 }
 unsafe extern "C" fn noop_recv(
     _: *const NrosRmwSubscription,
-    _: *mut u8,
-    _: usize,
-    _: *mut usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut bool,
 ) -> NrosRmwRet {
     // Phase 376 W3.d step A — this stub always FAILED (-1); it still does,
@@ -122,8 +118,7 @@ unsafe extern "C" fn noop_hasd(_: *mut NrosRmwSubscription, has: *mut bool) -> N
 }
 unsafe extern "C" fn noop_csrv(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,
@@ -136,10 +131,8 @@ unsafe extern "C" fn noop_dsrv(_: *mut NrosRmwService) -> NrosRmwRet {
 }
 unsafe extern "C" fn noop_recvreq(
     _: *const NrosRmwService,
-    _: *mut u8,
-    _: usize,
+    _: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
     _: *mut i64,
-    _: *mut usize,
     _: *mut bool,
 ) -> NrosRmwRet {
     // Phase 376 W3.d step A — this stub always FAILED; still does, named.
@@ -152,15 +145,13 @@ unsafe extern "C" fn noop_hasreq(_: *mut NrosRmwService, has: *mut bool) -> Nros
 unsafe extern "C" fn noop_reply(
     _: *const NrosRmwService,
     _: i64,
-    _: *const u8,
-    _: usize,
+    _: nros_rmw_cffi::generated::rmw_byte_span_t,
 ) -> NrosRmwRet {
     NROS_RMW_RET_UNSUPPORTED
 }
 unsafe extern "C" fn noop_ccli(
     _: *const NrosRmwNode,
-    _: *const core::ffi::c_char,
-    _: *const core::ffi::c_char,
+    _: *const nros_rmw_cffi::generated::rmw_service_type_support_t,
     _: *const core::ffi::c_char,
     _: u32,
     _: *const NrosRmwQos,

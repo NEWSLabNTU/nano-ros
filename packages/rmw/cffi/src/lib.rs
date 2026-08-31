@@ -2804,12 +2804,16 @@ impl nros_rmw::SlotLending for CffiPublisher {
             _reserved: [0u8; 7],
             backend_data: self.backend_data,
         };
-        let mut out_buf: *mut u8 = core::ptr::null_mut();
-        let mut out_cap: usize = 0;
+        let mut slot = generated::rmw_mut_byte_span_t {
+            data: core::ptr::null_mut(),
+            capacity: 0,
+            len: 0,
+        };
         let mut out_token: *mut generated::rmw_loan_token_t = core::ptr::null_mut();
         // SAFETY: vtable contract — slot pointers stay valid until
         // commit / discard.
-        let ret = unsafe { loan(&view, len, &mut out_buf, &mut out_cap, &mut out_token) };
+        let ret = unsafe { loan(&view, len, &mut slot, &mut out_token) };
+        let (out_buf, out_cap) = (slot.data, slot.capacity);
         if ret == NROS_RMW_RET_WOULD_BLOCK || ret == NROS_RMW_RET_NO_DATA {
             return Ok(None);
         }
@@ -3245,12 +3249,11 @@ impl CffiSubscription {
         };
         unsafe extern "C" fn cb_tramp<G: FnOnce(&[u8])>(
             ctx: *mut c_void,
-            ptr: *const u8,
-            len: usize,
+            message: generated::rmw_byte_span_t,
         ) {
             let cell = unsafe { &mut *(ctx as *mut Option<G>) };
             if let Some(g) = cell.take() {
-                g(unsafe { core::slice::from_raw_parts(ptr, len) });
+                g(unsafe { core::slice::from_raw_parts(message.data, message.len) });
             }
         }
         let mut cell: Option<G> = Some(f);
@@ -3347,8 +3350,10 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
             return Ok(None);
         };
         let view = self.make_view();
-        let mut out_buf: *const u8 = core::ptr::null();
-        let mut out_len: usize = 0;
+        let mut out_view = generated::rmw_byte_span_t {
+            data: core::ptr::null(),
+            len: 0,
+        };
         let mut out_token: *mut generated::rmw_loan_token_t = core::ptr::null_mut();
         // SAFETY: vtable contract — borrowed pointers stay valid
         // until `sub_release` runs.
@@ -3358,22 +3363,14 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
         // for every input — so a backend whose two answers disagreed had one
         // silently ignored. There is one length now.
         let mut taken = false;
-        let rc = unsafe {
-            borrow(
-                &view,
-                &mut out_buf,
-                &mut out_len,
-                &mut out_token,
-                &mut taken,
-            )
-        };
+        let rc = unsafe { borrow(&view, &mut out_view, &mut out_token, &mut taken) };
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
+        let (out_buf, len) = (out_view.data, out_view.len);
         if !taken || out_buf.is_null() {
             return Ok(None);
         }
-        let len = out_len;
         Ok(Some(CffiView {
             buf: out_buf,
             len,
@@ -3680,15 +3677,17 @@ impl ServiceTrait for CffiService {
         // `taken` in out-parameters. The `rc == 0` arm is gone with the same
         // fix `take` got: a zero-length REQUEST is a legitimate message and
         // used to be indistinguishable from an empty queue.
-        let mut out_len = 0usize;
+        let mut request_span = generated::rmw_mut_byte_span_t {
+            data: buf.as_mut_ptr(),
+            capacity: buf.len(),
+            len: 0,
+        };
         let mut taken = false;
         let rc = unsafe {
             (self.vtable.take_request.expect("rmw vtable: take_request"))(
                 &mut view,
-                buf.as_mut_ptr(),
-                buf.len(),
+                &mut request_span,
                 &mut seq,
-                &mut out_len,
                 &mut taken,
             )
         };
@@ -3698,7 +3697,7 @@ impl ServiceTrait for CffiService {
         if !taken {
             return Ok(None);
         }
-        let len = checked_take_len(out_len, buf.len())?;
+        let len = checked_take_len(request_span.len, buf.len())?;
         Ok(Some(ServiceRequest {
             data: &buf[..len],
             sequence_number: seq,
@@ -3714,8 +3713,10 @@ impl ServiceTrait for CffiService {
                 .expect("rmw vtable: send_response"))(
                 &mut view,
                 sequence_number,
-                data.as_ptr(),
-                data.len(),
+                generated::rmw_byte_span_t {
+                    data: data.as_ptr(),
+                    len: data.len(),
+                },
             )
         };
         if ret != NROS_RMW_RET_OK {
@@ -3799,7 +3800,16 @@ impl ClientTrait for CffiClient {
         // untouched reports 0, which is a legal id; nothing here treats it as
         // a sentinel.
         let mut sequence_id: i64 = 0;
-        let rc = unsafe { f(&view, request.as_ptr(), request.len(), &mut sequence_id) };
+        let rc = unsafe {
+            f(
+                &view,
+                generated::rmw_byte_span_t {
+                    data: request.as_ptr(),
+                    len: request.len(),
+                },
+                &mut sequence_id,
+            )
+        };
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
@@ -3817,26 +3827,24 @@ impl ClientTrait for CffiClient {
         };
         let view = self.make_view();
         // Phase 376 W3.b/W3.d step A — see `take_request`.
-        let mut out_len = 0usize;
+        let mut reply_span = generated::rmw_mut_byte_span_t {
+            data: reply_buf.as_mut_ptr(),
+            capacity: reply_buf.len(),
+            len: 0,
+        };
         let mut taken = false;
         let mut seq: i64 = 0;
-        let rc = unsafe {
-            f(
-                &view,
-                reply_buf.as_mut_ptr(),
-                reply_buf.len(),
-                &mut seq,
-                &mut out_len,
-                &mut taken,
-            )
-        };
+        let rc = unsafe { f(&view, &mut reply_span, &mut seq, &mut taken) };
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }
         if !taken {
             return Ok(None);
         }
-        Ok(Some((checked_take_len(out_len, reply_buf.len())?, seq)))
+        Ok(Some((
+            checked_take_len(reply_span.len, reply_buf.len())?,
+            seq,
+        )))
     }
 
     fn server_available(&self) -> Result<bool, TransportError> {
@@ -4327,9 +4335,8 @@ mod tests {
 
     unsafe extern "C" fn stub_create_publisher(
         _session: *const NrosRmwNode,
+        _type_support: *const generated::rmw_message_type_support_t,
         _topic_name: *const core::ffi::c_char,
-        _type_name: *const core::ffi::c_char,
-        _type_hash: *const core::ffi::c_char,
         _domain_id: u32,
         qos: *const NrosRmwQos,
         _options: *const rmw_publisher_options_t,
@@ -4353,8 +4360,7 @@ mod tests {
 
     unsafe extern "C" fn stub_publish_raw(
         publisher: *const NrosRmwPublisher,
-        _data: *const u8,
-        _len: usize,
+        _payload: generated::rmw_byte_span_t,
     ) -> NrosRmwRet {
         // Verify the runtime is still passing the same backend_data
         // and topic_name on every call.
@@ -4370,8 +4376,7 @@ mod tests {
 
     unsafe extern "C" fn stub_create_subscription(
         _: *const NrosRmwNode,
-        _: *const core::ffi::c_char,
-        _: *const core::ffi::c_char,
+        _: *const generated::rmw_message_type_support_t,
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,
@@ -4388,9 +4393,7 @@ mod tests {
     }
     unsafe extern "C" fn stub_take(
         _: *const NrosRmwSubscription,
-        _: *mut u8,
-        _: usize,
-        _: *mut usize,
+        _out: *mut generated::rmw_mut_byte_span_t,
         taken: *mut bool,
     ) -> NrosRmwRet {
         // Phase 376 W3.d step A — the stub takes nothing, which is now stated
@@ -4409,8 +4412,7 @@ mod tests {
 
     unsafe extern "C" fn stub_create_service(
         _: *const NrosRmwNode,
-        _: *const core::ffi::c_char,
-        _: *const core::ffi::c_char,
+        _: *const generated::rmw_service_type_support_t,
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,
@@ -4426,10 +4428,8 @@ mod tests {
     }
     unsafe extern "C" fn stub_take_request(
         _: *const NrosRmwService,
-        _: *mut u8,
-        _: usize,
+        _: *mut crate::generated::rmw_mut_byte_span_t,
         _: *mut i64,
-        _: *mut usize,
         taken: *mut bool,
     ) -> NrosRmwRet {
         // Phase 376 W3.d step A — NO_DATA retires: nothing to take is
@@ -4448,16 +4448,14 @@ mod tests {
     unsafe extern "C" fn stub_send_response(
         _: *const NrosRmwService,
         _: i64,
-        _: *const u8,
-        _: usize,
+        _: crate::generated::rmw_byte_span_t,
     ) -> NrosRmwRet {
         NROS_RMW_RET_OK
     }
 
     unsafe extern "C" fn stub_create_client(
         _: *const NrosRmwNode,
-        _: *const core::ffi::c_char,
-        _: *const core::ffi::c_char,
+        _: *const generated::rmw_service_type_support_t,
         _: *const core::ffi::c_char,
         _: u32,
         _: *const NrosRmwQos,

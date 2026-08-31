@@ -83,6 +83,7 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
        created without it matches nothing and reports nothing. */
     if (type_support == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     const char* type_name = type_support->type_name;
+    const char* type_hash = type_support->type_hash;
     (void)type_name;
     /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
      * The node carries the route to its session (our `context`). */
@@ -293,7 +294,7 @@ rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t *subscriber,
 
 rmw_ret_t xrce_subscription_process_raw_in_place(
     rmw_subscription_t *subscriber, void *ctx,
-    void (*cb)(void *ctx, const uint8_t *ptr, size_t len), bool *out_processed) {
+    void (*cb)(void *ctx, rmw_byte_span_t message), bool *out_processed) {
     /* Phase 376 W3.d step A — "processed one" out, status returned. An empty
      * subscription is OK with false rather than the NO_DATA sentinel. */
     if (out_processed == NULL) {
@@ -319,7 +320,8 @@ rmw_ret_t xrce_subscription_process_raw_in_place(
          * callback must not re-enter this subscriber's receive (slot locked). */
         slot->locked = true;
         if (cb != NULL && entry->len > 0) {
-            cb(ctx, entry->data, entry->len);
+            rmw_byte_span_t message = {entry->data, entry->len};
+            cb(ctx, message);
         }
         slot->locked = false;
         *out_processed = true; /* one message processed */

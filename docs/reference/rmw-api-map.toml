@@ -359,7 +359,7 @@ reason = "subscription_take_event — grouped; `publisher_take_event` on the pub
 [rmw_take_loaned_message]
 where = "vtable"
 nano = "take_loaned_message"
-reason = "take_loaned_message (slot carried, no backend fills it — issue 0781)"
+reason = "slot carried, and NO backend fills it — NULL in cyclonedds, NULL in XRCE, left at `EMPTY_VTABLE` by the Rust adapter, so every `try_borrow` across the C ABI takes the copy fallback today. Kept deliberately (issue 0781 item 2, DECIDED — not deferred): the scoped callback of `process_raw_in_place` ends the borrow when it returns, so it cannot hand a view to a caller that outlives the call, which is exactly what `nros-c` / `nros-cpp` `try_borrow` do. The loan pair is the only shape in this ABI that serves them, it is upstream-named, and its consumer degrades to a copy when the slot is NULL. What was wrong was the SILENCE — the slot existing read as the capability working; it says so now, here and in the header."
 
 [rmw_take_loaned_message_with_info]
 where = "vtable"
@@ -430,7 +430,7 @@ why = """This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so 
 [[arg_rule]]
 match = "_allocation_t"
 title = "pre-allocation declined ABI-wide"
-why = """`rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream's pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone and belongs to issue 0777, not to this parameter list."""
+why = """`rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream's pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on "pools are baked" was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason."""
 
 [[arg_rule]]
 match = "rmw_names_and_types_t"

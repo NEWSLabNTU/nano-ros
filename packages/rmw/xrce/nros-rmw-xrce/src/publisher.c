@@ -32,6 +32,7 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
        created without it matches nothing and reports nothing. */
     if (type_support == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     const char* type_name = type_support->type_name;
+    const char* type_hash = type_support->type_hash;
     (void)type_name;
     /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
      * The node carries the route to its session (our `context`). */
