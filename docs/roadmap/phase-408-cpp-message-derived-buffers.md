@@ -156,8 +156,34 @@ Acceptance: a C example subscribing to a bounded type shows a smaller arena in
 `mem-report --baseline` **without its source being edited**, beyond switching to
 the generated helper.
 
-**W5 — `_with_info` stops discarding the hint.** Small, and it is the variant a
-component with `MessageInfo` uses.
+**W5 — `_with_info` stops discarding the hint.** ~~Small~~ — it is TWO things,
+and only one of them is small. Split after reading the entries.
+
+The plain C path was already migrated to a runtime-sized `BufferStrategy` over
+trailing arena bytes. The info and validated paths were NOT: their entries store
+a real `[u8; RX_BUF]` —
+
+```rust
+type Entry<const N: usize> = SubBufferedRawInfoCEntry<N>;
+buffer: [0u8; RX_BUF],
+```
+
+— which is exactly the case W3 says to leave const. So "pass the hint" means two
+different jobs on this path:
+
+* **W5a — the hint reaches the BACKEND. LANDED 2026-09-01.** The two executor
+  entry points take `rx_buffer_hint` and set `topic.with_rx_buffer_hint(...)`,
+  so zenoh-pico's payload size-class routing sees it. The two C++ sites stop
+  destructuring it into `_rx_buffer_hint` and dropping it. This is the half the
+  size-class cluster is actually about, and it needs no entry change.
+* **W5b — the hint sizes the ARENA. OPEN.** Requires migrating
+  `SubBufferedRawInfoCEntry` and the validated sibling off `[u8; N]` onto the
+  same `BufferStrategy` the plain path uses. Real work, not a parameter.
+
+Until W5b, an info-callback subscription routes to the right payload class and
+still charges `DEFAULT_RX_BUF_SIZE` of arena. Both numbers matter and they are
+not the same number — the distinction this phase's status section already had to
+make once.
 
 ## Explicitly out of scope
 
