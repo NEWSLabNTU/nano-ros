@@ -33,7 +33,7 @@ each landed a fix commit and re-runs against the same step list now pass.
 All `just <plat> zenohd` recipes (qemu-baremetal / esp32 / freertos /
 threadx-riscv64 / nuttx / native / zephyr / threadx-linux):
 `build/zenohd/zenohd` → plain `zenohd` (D.2 shim resolves it).
-`bare-metal.md`: `just qemu-baremetal` → `just qemu` (the justfile maps
+`bare-metal.md`: `just qemu` → `just qemu` (the justfile maps
 `mod qemu 'just/qemu-baremetal.just'`).
 
 ### Batch 3 — NuttX

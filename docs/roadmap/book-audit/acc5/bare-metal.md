@@ -1,7 +1,7 @@
 BLOCKERS
 1. **L86–87**: `cd examples/.../talker && cargo build --release` fails (exit 101) — example `Cargo.toml` has no empty `[workspace]` table, so cargo finds the parent superproject and rejects it. Reproduces from `just qemu build` too. (N2 from earlier batch-2 audit — ~80 examples need the empty `[workspace]` table.)
-2. **L101**: `just qemu-baremetal zenohd` — recipe namespace doesn't exist. Correct: `just qemu zenohd`. A `just/qemu-baremetal.just` file exists in-tree but is not imported.
-3. **L107**: `just qemu-baremetal talker` — same issue. Correct: `just qemu talker`.
+2. **L101**: `just qemu zenohd` — recipe namespace doesn't exist. Correct: `just qemu zenohd`. A `just/qemu-baremetal.just` file exists in-tree but is not imported.
+3. **L107**: `just qemu talker` — same issue. Correct: `just qemu talker`.
 4. **`just qemu zenohd` itself fails (exit 127)** — hardcodes `build/zenohd/zenohd` but `nros setup --rmw zenoh` installs zenohd to `~/.nros/sdk/zenohd/<v>/bin/zenohd` (with `~/.nros/bin/zenohd` shim). The recipe never consults the nros-CLI SDK store.
 
 FRICTION

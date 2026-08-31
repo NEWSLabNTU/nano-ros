@@ -8,7 +8,7 @@ Duo, with two targets: Linux simulation and QEMU RISC-V 64-bit virt machine.
 ### Linux Simulation
 
 - Linux host with `/dev/net/tun` and persistent user-owned TAP interfaces
-  (created by `just setup-network`). No CAP_NET_RAW or other capabilities
+  (created by `just qemu setup-network`). No CAP_NET_RAW or other capabilities
   needed on the test binaries.
 - Rust nightly toolchain
 
@@ -56,7 +56,7 @@ Override paths if sources are elsewhere:
 ### Linux Simulation
 
 ```bash
-just build-examples-threadx-linux
+just threadx_linux build-examples
 ```
 
 Builds all Linux simulation examples natively. The board crate's `build.rs`
@@ -66,7 +66,7 @@ network driver via the `cc` crate.
 ### QEMU RISC-V 64-bit
 
 ```bash
-just build-examples-threadx-riscv64
+just threadx_riscv64 build-examples
 ```
 
 Cross-compiles all QEMU RISC-V examples for `riscv64gc-unknown-none-elf`. The
@@ -90,9 +90,10 @@ Examples are in `examples/threadx-linux/rust/` and
 ## Testing
 
 ```bash
-just test-threadx          # Both Linux sim + QEMU RISC-V
-just test-threadx-linux    # Linux simulation only
-just test-threadx-riscv64  # QEMU RISC-V only
+just threadx_linux test    # Linux sim
+just threadx_riscv64 test  # QEMU RISC-V
+just threadx_linux test    # Linux simulation only
+just threadx_riscv64 test  # QEMU RISC-V only
 ```
 
 ### Linux Simulation Tests
@@ -104,8 +105,8 @@ is needed on the test binaries themselves. The TAP interfaces and bridge
 must exist (one-time setup, requires sudo):
 
 ```bash
-just setup-network         # Create qemu-br + tap-tx0 + tap-tx1 (one-time)
-just test-threadx-linux    # Run tests
+just qemu setup-network         # Create qemu-br + tap-tx0 + tap-tx1 (one-time)
+just threadx_linux test    # Run tests
 ```
 
 ### QEMU RISC-V Tests

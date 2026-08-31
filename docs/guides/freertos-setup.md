@@ -44,7 +44,7 @@ Override paths if sources are elsewhere:
 ## Building Examples
 
 ```bash
-just build-examples-freertos
+just freertos build-examples
 ```
 
 This cross-compiles all FreeRTOS examples for `thumbv7m-none-eabi`. The board
@@ -67,7 +67,7 @@ Rust examples are in `examples/qemu-arm-freertos/rust/`:
 ## Testing
 
 ```bash
-just test-freertos
+just freertos test
 ```
 
 This runs QEMU-based integration tests with TAP networking. Each QEMU instance

@@ -154,7 +154,7 @@ just build-zenoh-pico-riscv
 just build-examples-esp32-qemu
 
 # Boot test (no networking)
-just test-qemu-esp32-basic
+just esp32 test-basic
 ```
 
 ### Networked E2E Tests
@@ -177,7 +177,7 @@ Run the full test suite:
 sudo ./scripts/qemu/setup-network.sh
 
 # Run all ESP32-C3 QEMU tests (builds zenohd automatically)
-just test-qemu-esp32
+just esp32 test
 ```
 
 Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native interop.
@@ -186,7 +186,7 @@ Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native int
 
 - Requires `espflash` for flash image creation (`espflash save-image --merge`)
 - Uses `-icount 3` for instruction timing (simulates 125MHz)
-- Must use zenohd from submodule (`just build-zenohd`) — system zenohd may be incompatible
+- Use the router ROS ships (`just zenohd`, resolved by `nros_zenohd_bin`) — the vendored one was retired by RFC-0075
 - Each QEMU peer uses a separate TAP device (`tap-qemu0`, `tap-qemu1`)
 
 ## Troubleshooting

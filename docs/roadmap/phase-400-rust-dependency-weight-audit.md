@@ -337,7 +337,7 @@ the pair; do not ship half and quote this table.
 
 Issue 0452 already did the hard part. `nros-cbindgen-headers` is **the only
 writer** of the committed headers (`just regen-c-headers`, `--check` via
-`just check-cbindgen-headers`); the build scripts only compare and warn, so no
+`just check cbindgen-headers`); the build scripts only compare and warn, so no
 build dirties the worktree. It is the Rust->C twin of `gen-abi-bindings.sh` +
 `check-abi-bindings`. So the 8.1 s buys nothing at build time — it regenerates
 files that are already committed and already gated.
@@ -379,7 +379,7 @@ risk of this wave is that (3) silently stops happening.
 `cbindgen` is now `optional = true` in `nros-build-helpers` and
 `nros-zpico-build`, behind a `cbindgen-drift-check` feature that defaults OFF.
 `nros-cbindgen-headers` — the single writer — turns it on, so `just
-regen-c-headers` and `just check-cbindgen-headers` are unchanged. The
+regen-c-headers` and `just check cbindgen-headers` are unchanged. The
 `rerun-if-changed` edges on the committed headers were deliberately left
 UNCONDITIONAL: those describe the build's own inputs (the C stub includes the
 header), and moving them behind the feature would have converted an opt-in
@@ -456,7 +456,7 @@ leaf resolving the caret to a different patch release — no longer exists,
 because no leaf resolves cbindgen at all. Arms 1 and 2 and the vacuity guard are
 unchanged.
 
-*Lanes run:* `just check-fast` (135/135 gates OK), `cargo clippy` on both
+*Lanes run:* `just check fast` (135/135 gates OK), `cargo clippy` on both
 feature states, `cargo +nightly fmt --check`, `check-cbindgen-pin`,
 `check-cbindgen-headers`, `check-leaf-lockfiles`, and a `--locked`
 `cargo metadata` on all 18 updated leaves. NOT run: `ci-l1`, any fixture build,

@@ -4,7 +4,7 @@
 
 ```bash
 # Build zenohd first (one-time)
-just build-zenohd
+just zenohd
 
 # Terminal 1: Router
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
@@ -113,10 +113,10 @@ sudo usermod -aG docker $USER
 # Log out and back in, or run: newgrp docker
 
 # Build and use Docker environment
-just docker-build              # Build nano-ros-qemu image
-just docker-shell              # Interactive shell
-just docker-test-qemu          # Run QEMU tests in container
-just docker-help               # Show all Docker commands
+just docker build              # Build nano-ros-qemu image
+just docker shell              # Interactive shell
+just docker test-qemu          # Run QEMU tests in container
+just docker help               # Show all Docker commands
 ```
 
 ## QEMU Bare-Metal Testing
@@ -126,14 +126,14 @@ Run bare-metal Cortex-M3 examples on QEMU (MPS2-AN385 machine with LAN9118 Ether
 ```bash
 # Build prerequisites
 just build-zenoh-pico-arm     # Build zenoh-pico for ARM Cortex-M3
-just build-examples-qemu      # Build all QEMU examples
+just qemu build-examples      # Build all QEMU examples
 
 # Non-networked tests (no setup required)
-just test-qemu-basic          # Run serialization test
-just test-qemu-lan9118        # Run Ethernet driver test
+just qemu test-basic          # Run serialization test
+just qemu test-lan9118        # Run Ethernet driver test
 
 # Networked talker/listener test (Docker Compose - recommended)
-just docker-qemu-test         # Runs zenohd, talker, listener in separate containers
+just docker test-qemu         # Runs zenohd, talker, listener in separate containers
 ```
 
 **Docker Compose Architecture:**
@@ -158,7 +158,7 @@ just docker-qemu-test         # Runs zenohd, talker, listener in separate contai
 **Manual networked test (3 terminals, requires host TAP setup):**
 ```bash
 # Terminal 1: Setup network + start router
-just setup-qemu-network                    # Requires sudo
+just qemu setup-network                    # Requires sudo
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Talker (192.0.2.10)
@@ -170,14 +170,14 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/
     --binary examples/qemu-arm-baremetal/rust/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
 ```
 
-Run `just qemu-help` for more options.
+Run `just qemu help` for more options.
 
 ## Zephyr Setup
 
 ```bash
 just zephyr setup   # Initialize workspace + create symlink
-just test-zephyr    # Run zenoh tests (native_sim uses NSOS on host loopback)
-just test-zephyr-xrce
+just zephyr test    # Run zenoh tests (native_sim uses NSOS on host loopback)
+just zephyr test-xrce
 ```
 
 The `zephyr-workspace` symlink points to the actual workspace (default: `../nano-ros-workspace/`). For custom workspace locations, update the symlink:

@@ -99,7 +99,7 @@ LET mode gives **snapshot consistency** — all callbacks see data from the same
 **Setup:** Native Linux, zenohd, release build, separate publisher/subscriber processes.
 Requires `ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447`"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd running.
 
-Run with: `just bench-fairness`
+Run with: `just native bench-fairness`
 
 **Note:** Uses separate processes for publishers and subscribers because zenoh-pico does not deliver self-published messages back to the same session.
 

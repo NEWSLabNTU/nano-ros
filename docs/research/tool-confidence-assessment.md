@@ -263,7 +263,7 @@ Tool Error Detection classifies the confidence that a tool malfunction will be d
 1. **Hardware-in-the-loop**: Validate QEMU test results against physical hardware (STM32F4 NUCLEO-F429ZI) for critical functionality. Use QEMU for CI and development; use hardware for release validation.
 2. **WCET on hardware**: Collect production WCET baselines on physical hardware, not QEMU. Use QEMU WCET measurements only as approximate sanity checks.
 3. **Version pinning**: Pin QEMU version (Docker image uses Debian bookworm = QEMU 7.2) and document known emulation limitations per machine model.
-4. **Diverse emulation**: For ESP32-C3 targets, validate on both QEMU and physical hardware. The `just test-qemu-esp32` and physical board tests provide this diversity.
+4. **Diverse emulation**: For ESP32-C3 targets, validate on both QEMU and physical hardware. The `just esp32 test` and physical board tests provide this diversity.
 
 ## 4. Summary Matrix
 
