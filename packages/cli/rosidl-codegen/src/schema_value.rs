@@ -322,6 +322,167 @@ pub fn bound_message(
     }
 }
 
+/// phase-403 W7b (issue 0939) — one chain of nested repeated members, and the
+/// counts it MULTIPLIES.
+///
+/// `nros_serdes::size::size_bound` walks a bounded sequence and a fixed array
+/// element by element, so a repeated member nested inside another costs the
+/// PRODUCT of their counts, not the sum. `visualization_msgs` nests
+/// `InteractiveMarker -> controls -> markers -> points`, and a uniform cap of
+/// 128 at each level does not terminate in any useful sense: the total has five
+/// factors in it before the leaf is counted.
+///
+/// That arithmetic is correct for a worst case and useless for sizing a receive
+/// buffer, and — this is the part that makes it a defect rather than a
+/// surprise — it does NOT trip the unbounded build error, so it fails later and
+/// less clearly than an honestly unbounded type does.
+///
+/// This type exists so the number is not opaque. A reader sees
+/// `markers.controls.markers.points = 8 x 8 x 8 x 64` and knows WHICH level to
+/// cap, instead of one total with no visible structure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SequenceChain {
+    /// Dotted member path, outermost first: `markers.controls.markers.points`.
+    pub path: String,
+    /// The count at each level of `path`, in the same order.
+    ///
+    /// Fixed arrays are factors here too, deliberately. `size_bound` iterates
+    /// them identically, so a `Pose[100]` of a type carrying a
+    /// `BoundedSequence(128)` really does cost 12800 elements, and a chain that
+    /// listed only the sequence would explain the wrong number. What differs is
+    /// the REMEDY -- an array count comes from the `.msg` and a cap does not --
+    /// which the diagnostic says in prose rather than by omitting a factor.
+    pub factors: Vec<usize>,
+}
+
+impl SequenceChain {
+    /// Elements the innermost level is visited for, in the worst case.
+    ///
+    /// Saturating: the whole point of this type is chains whose product is
+    /// absurd, and a diagnostic that panics on the case it exists to describe
+    /// is no diagnostic.
+    pub fn product(&self) -> usize {
+        self.factors
+            .iter()
+            .copied()
+            .fold(1usize, |a, b| a.saturating_mul(b))
+    }
+
+    /// How many repeated levels are nested here. `1` is an ordinary container;
+    /// `2` or more is where the multiplication starts.
+    pub fn depth(&self) -> usize {
+        self.factors.len()
+    }
+
+    /// `8 x 8 x 64`, the form a reader can check against their config.
+    pub fn factors_display(&self) -> String {
+        self.factors
+            .iter()
+            .map(usize::to_string)
+            .collect::<Vec<_>>()
+            .join(" x ")
+    }
+}
+
+impl std::fmt::Display for SequenceChain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} = {} = {}",
+            self.path,
+            self.factors_display(),
+            self.product()
+        )
+    }
+}
+
+/// Every NESTED chain of repeated members in a built schema, worst product
+/// first.
+///
+/// Depth 1 is excluded: a single bounded sequence is an ordinary container and
+/// costs what it says. Only nesting multiplies, and only nesting is what issue
+/// 0939 is about — reporting every `int32[<=4]` in the tree would bury the
+/// chains that matter under the ones that do not.
+///
+/// Ties break on the path so the artifact is byte-stable across runs, which the
+/// inventory's `write_if_changed` depends on.
+pub fn sequence_chains(fields: &[Field]) -> Vec<SequenceChain> {
+    fn walk(fields: &[Field], prefix: &[&str], factors: &[usize], out: &mut Vec<SequenceChain>) {
+        for f in fields {
+            let mut path: Vec<&str> = prefix.to_vec();
+            path.push(f.name);
+            descend(&f.ty, &path, factors, out);
+        }
+    }
+
+    fn descend(
+        ty: &SerdeFieldType,
+        path: &[&str],
+        factors: &[usize],
+        out: &mut Vec<SequenceChain>,
+    ) {
+        match ty {
+            // A repeated level: record it, then keep looking INSIDE it.
+            SerdeFieldType::BoundedSequence(n, inner) | SerdeFieldType::Array(n, inner) => {
+                let mut factors = factors.to_vec();
+                factors.push(*n);
+                if factors.len() >= 2 {
+                    out.push(SequenceChain {
+                        path: path.join("."),
+                        factors: factors.clone(),
+                    });
+                }
+                descend(inner, path, &factors, out);
+            }
+            // A nested struct is not a level of its own; its members continue
+            // whatever chain reached it.
+            SerdeFieldType::Nested(n) => walk(n.fields, path, factors, out),
+            _ => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    walk(fields, &[], &[], &mut out);
+    // Keep only the DEEPEST chain along each path. A depth-4 chain already
+    // contains its own depth-2 and depth-3 prefixes, so listing all three says
+    // the same thing three times and buries the factor that matters -- and the
+    // deep one is the whole point: `markers.controls.markers.points` is what the
+    // user has to see, not the `markers.controls` prefix of it.
+    //
+    // "Deepest" is "not a proper prefix of another chain", tested against the
+    // whole set rather than against the neighbour in a sort order: `dedup_by`
+    // over a path-sorted list drops the LONGER path, which is exactly backwards.
+    let paths: Vec<String> = out.iter().map(|c| format!("{}.", c.path)).collect();
+    let mut kept: Vec<SequenceChain> = Vec::new();
+    for (i, c) in out.iter().enumerate() {
+        let extended = paths
+            .iter()
+            .enumerate()
+            .any(|(j, p)| j != i && p.starts_with(&paths[i]));
+        if !extended {
+            kept.push(c.clone());
+        }
+    }
+    kept.sort_by(|a, b| b.product().cmp(&a.product()).then(a.path.cmp(&b.path)));
+    kept
+}
+
+/// [`sequence_chains`] over the schema `bound_message` would build for `msg`.
+///
+/// Returns an empty list when the schema cannot be built at all: a type whose
+/// nested types are unreachable has no bound to explain, and `Unresolved`
+/// already says so through its own channel.
+pub fn chains_for(
+    owner: &str,
+    msg: &Message,
+    caps: &CapacityResolver,
+    lookup: &MsgLookup<'_>,
+) -> Vec<SequenceChain> {
+    build_schema(owner, msg, caps, lookup)
+        .map(sequence_chains)
+        .unwrap_or_default()
+}
+
 /// Every unbounded member of a built schema, formatted as `nros_serdes` names
 /// them.
 ///
@@ -1158,5 +1319,100 @@ mod tests {
         );
         assert_eq!(one, TypeBound::Bounded(45));
         assert_eq!(two, TypeBound::Bounded(85), "45 + 40, not 45 * 45");
+    }
+
+    // ========================================================================
+    // phase-403 W7b (issue 0939) — the factor chain
+    // ========================================================================
+
+    /// The chain names the DEEPEST path, with one factor per level.
+    ///
+    /// Deepest, not the shallow prefix of it: `markers.controls` and
+    /// `markers.controls.markers.points` describe the same nesting, and only the
+    /// second tells a user where the 8x8x8x8 came from. The first version of
+    /// this walk kept the prefix (a `dedup_by` over a path-sorted list drops the
+    /// LONGER path), which produced a diagnostic that named two of four factors.
+    #[test]
+    fn a_chain_names_the_deepest_path_and_every_factor() {
+        let m = parse_message("Outer[<=2] outers\n").unwrap();
+        let lookup = |fqn: &str| -> Option<Message> {
+            match fqn {
+                "p/Outer" => Some(parse_message("Mid[<=3] mids\nint32 flat\n").unwrap()),
+                "p/Mid" => Some(parse_message("int32[<=4] leaves\n").unwrap()),
+                _ => None,
+            }
+        };
+        let built = build_schema("p/M", &m, &no_caps(), &lookup).unwrap();
+        let chains = sequence_chains(built);
+        assert_eq!(chains.len(), 1, "{chains:?}");
+        assert_eq!(chains[0].path, "outers.mids.leaves");
+        assert_eq!(chains[0].factors, vec![2, 3, 4]);
+        assert_eq!(chains[0].product(), 24);
+        assert_eq!(chains[0].to_string(), "outers.mids.leaves = 2 x 3 x 4 = 24");
+    }
+
+    /// A single bounded sequence is an ordinary container, not a chain. Listing
+    /// every `int32[<=4]` in the tree would bury the nesting that actually
+    /// multiplies under the shapes that do not.
+    #[test]
+    fn one_level_of_repetition_is_not_a_chain() {
+        let m = parse_message("int32[<=4] a\nint32[8] b\nstring<=8 c\n").unwrap();
+        let built = build_schema("p/M", &m, &no_caps(), &no_lookup).unwrap();
+        assert!(sequence_chains(built).is_empty());
+    }
+
+    /// A FIXED ARRAY multiplies exactly as a bounded sequence does -- `size_bound`
+    /// iterates both -- so it is a factor. A chain that listed only the sequence
+    /// would explain the wrong number: this type really does visit 200 leaves.
+    #[test]
+    fn a_fixed_array_is_a_factor_because_the_size_rule_walks_it() {
+        let m = parse_message("Inner[100] fixed\n").unwrap();
+        let lookup = |fqn: &str| -> Option<Message> {
+            (fqn == "p/Inner").then(|| parse_message("int32[<=2] leaves\n").unwrap())
+        };
+        let built = build_schema("p/M", &m, &no_caps(), &lookup).unwrap();
+        let chains = sequence_chains(built);
+        assert_eq!(chains[0].factors, vec![100, 2]);
+        assert_eq!(chains[0].product(), 200);
+    }
+
+    /// A `cap` creates a chain exactly as a `.msg` bound does -- which is why
+    /// 0939 is newly reachable from configuration, and why the chain has to be
+    /// exported rather than left implicit in one total.
+    #[test]
+    fn a_config_cap_produces_the_same_chain_a_msg_bound_would() {
+        let m = parse_message("Outer[] outers\n").unwrap();
+        let lookup = |fqn: &str| -> Option<Message> {
+            (fqn == "p/Outer").then(|| parse_message("int32[] leaves\n").unwrap())
+        };
+        let capped = build_schema(
+            "p/M",
+            &m,
+            &caps("[fields]\n\"p/M.outers\" = 2\n\"p/Outer.leaves\" = 3\n"),
+            &lookup,
+        )
+        .unwrap();
+        assert_eq!(sequence_chains(capped)[0].factors, vec![2, 3]);
+
+        let spelled = parse_message("Outer[<=2] outers\n").unwrap();
+        let spelled_lookup = |fqn: &str| -> Option<Message> {
+            (fqn == "p/Outer").then(|| parse_message("int32[<=3] leaves\n").unwrap())
+        };
+        let from_msg = build_schema("p/M", &spelled, &no_caps(), &spelled_lookup).unwrap();
+        assert_eq!(sequence_chains(from_msg), sequence_chains(capped));
+    }
+
+    /// The product saturates rather than panicking. The whole reason this type
+    /// exists is chains whose product is absurd, and a diagnostic that overflows
+    /// on the case it was written for is no diagnostic. `visualization_msgs`
+    /// under a uniform cap of 128 reaches 19 GB, which is well inside `usize`
+    /// here but is exactly the shape that is not, one level deeper.
+    #[test]
+    fn an_absurd_product_saturates_rather_than_panicking() {
+        let c = SequenceChain {
+            path: "a.b.c".into(),
+            factors: vec![usize::MAX, 2, 2],
+        };
+        assert_eq!(c.product(), usize::MAX);
     }
 }

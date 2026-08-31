@@ -9,7 +9,7 @@
 //! using heapless types, suitable for embedded systems.
 
 use crate::ament::Package;
-use eyre::{Result, WrapErr};
+use eyre::{Result, WrapErr, eyre};
 use rosidl_codegen::{
     CapacityResolver, RosEdition, generate_nros_action_package, generate_nros_message_package,
     generate_nros_service_package,
@@ -579,6 +579,10 @@ fn write_bound_inventory(
     package_output: &Path,
     inventory: &rosidl_codegen::BoundInventory,
 ) -> Result<()> {
+    // phase-403 W7b (issue 0939) -- see the sibling in `cargo-nano-ros`. One
+    // check per package, after every type is recorded, so one build names every
+    // type that blew its stated budget.
+    inventory.check_budgets().map_err(|e| eyre!("{e}"))?;
     write_if_changed(
         package_output.join(rosidl_codegen::INVENTORY_JSON_NAME),
         inventory.to_json(),

@@ -139,6 +139,127 @@ pub struct TypeBoundEntry {
     /// second naming convention.
     pub type_name: String,
     pub bound: BoundState,
+    /// phase-403 W7b (issue 0939) — the NESTED repeated chains this type's
+    /// total is a product over, worst first.
+    ///
+    /// Exported so the number is legible: a reader sees
+    /// `markers.controls.markers.points = 8 x 8 x 8 x 64` and knows which level
+    /// to cap, rather than one opaque total. Empty for the overwhelming
+    /// majority of types, which nest nothing.
+    ///
+    /// Derived from the SAME schema the bound is, in one walk
+    /// (`schema_value::sequence_chains`) — not a second derivation, which is the
+    /// rule this module exists to hold.
+    pub chains: Vec<crate::schema_value::SequenceChain>,
+    /// The `[types.*] max_serialized` budget the config states, if any.
+    ///
+    /// Carried so a consumer can see the assertion beside the derived total. It
+    /// is NEVER the exported size: a budget under the derived bound is a build
+    /// error, and a budget over it changes nothing.
+    pub budget: Option<usize>,
+}
+
+/// phase-403 W7b (issue 0939) — a derived bound that exceeds the budget its
+/// type declared.
+///
+/// Carries both numbers and the chain, because "too big" alone does not tell a
+/// user what to do. The remedy is always to cap one LEVEL of a nesting chain,
+/// and which level is a fact only the chain can supply.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetExceeded {
+    pub type_name: String,
+    /// XCDR1, what this stack writes.
+    pub derived_tx: usize,
+    /// The larger of the two encodings — what a receive buffer must hold, and
+    /// therefore the number checked against the budget.
+    pub derived_rx: usize,
+    pub budget: usize,
+    pub chains: Vec<crate::schema_value::SequenceChain>,
+}
+
+impl std::fmt::Display for BudgetExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}: derived serialized-size bound {} bytes (RX; TX {}) exceeds the \
+             `max_serialized = {}` budget stated for this type in nros-codegen.toml",
+            self.type_name, self.derived_rx, self.derived_tx, self.budget
+        )?;
+        if self.chains.is_empty() {
+            // No nesting: the total is a sum of this type's own members, so the
+            // remedy is a cap on one of them or a larger budget. Say that,
+            // rather than printing an empty chain list and leaving the user to
+            // infer it.
+            return write!(
+                f,
+                ".\n  This type nests no repeated members, so the total is a SUM of \
+                 its own fields -- cap one of them, or raise the budget."
+            );
+        }
+        writeln!(
+            f,
+            ".\n  The total is a PRODUCT: `nros_serdes::size` walks a bounded \
+             sequence and a fixed array element by element, so nesting \
+             MULTIPLIES (issue 0939). Cap ONE level of the worst chain and the \
+             whole product divides:"
+        )?;
+        for c in &self.chains {
+            writeln!(f, "    {c} elements")?;
+        }
+        write!(
+            f,
+            "  A factor that is a FIXED ARRAY comes from the `.msg` and no cap \
+             can change it; a bounded-sequence factor is either a `.msg` bound \
+             or a `cap` in nros-codegen.toml."
+        )
+    }
+}
+
+impl std::error::Error for BudgetExceeded {}
+
+/// Check one type's derived bound against the budget its config states.
+///
+/// `Ok(())` when there is no budget, when the bound does not exist (an
+/// unbounded or unresolved type has no total to check, and already fails
+/// through its own louder channel), or when the derived total FITS.
+///
+/// The derived number is never replaced by the budget in any of those cases --
+/// see [`rosidl_lower::config::CapacityResolver::max_serialized`].
+pub fn check_budget(
+    type_name: &str,
+    bound: &BoundState,
+    chains: &[crate::schema_value::SequenceChain],
+    budget: Option<usize>,
+) -> Result<(), BudgetExceeded> {
+    let (Some(budget), BoundState::Bounded { tx, rx }) = (budget, bound) else {
+        return Ok(());
+    };
+    if *rx <= budget {
+        return Ok(());
+    }
+    Err(BudgetExceeded {
+        type_name: type_name.to_string(),
+        derived_tx: *tx,
+        derived_rx: *rx,
+        budget,
+        chains: chains.to_vec(),
+    })
+}
+
+/// The `(package, message)` half of a `pkg/Msg` or `pkg/msg/Msg` type name, as
+/// the config keys it.
+///
+/// The inventory records `pkg/msg/Name` and `[types.*]` is keyed `pkg/Name`, so
+/// this is where the two spellings meet. One place, because a second
+/// normalisation is how a budget silently stops matching its type.
+fn config_key_of(type_name: &str) -> (String, String) {
+    let package = type_name.split('/').next().unwrap_or("").to_string();
+    let message = type_name
+        .rsplit('/')
+        .next()
+        .unwrap_or(type_name)
+        .to_string();
+    (package, message)
 }
 
 /// Every generated message type of one interface package, with its bound.
@@ -159,11 +280,64 @@ impl BoundInventory {
     /// Record one type. Later records for the same name replace earlier ones so
     /// a driver that regenerates a type in one pass cannot emit it twice.
     pub fn insert(&mut self, type_name: impl Into<String>, bound: BoundState) {
+        self.insert_full(type_name, bound, Vec::new(), None)
+    }
+
+    /// [`Self::insert`] plus the nesting chains and the declared budget
+    /// (phase-403 W7b).
+    pub fn insert_full(
+        &mut self,
+        type_name: impl Into<String>,
+        bound: BoundState,
+        chains: Vec<crate::schema_value::SequenceChain>,
+        budget: Option<usize>,
+    ) {
         let type_name = type_name.into();
         match self.entries.iter_mut().find(|e| e.type_name == type_name) {
-            Some(existing) => existing.bound = bound,
-            None => self.entries.push(TypeBoundEntry { type_name, bound }),
+            Some(existing) => {
+                existing.bound = bound;
+                existing.chains = chains;
+                existing.budget = budget;
+            }
+            None => self.entries.push(TypeBoundEntry {
+                type_name,
+                bound,
+                chains,
+                budget,
+            }),
         }
+    }
+
+    /// phase-403 W7b (issue 0939) — every recorded type whose derived bound
+    /// exceeds the budget it declared.
+    ///
+    /// A `Vec` and not the first, for the reason `TypeBound::Unbounded` names
+    /// every offending member: a driver reports the whole set in one build
+    /// rather than making the user re-run codegen per type.
+    ///
+    /// Empty whenever no type states a budget, which is the default and the
+    /// entire stock tree.
+    pub fn budget_violations(&self) -> Vec<BudgetExceeded> {
+        self.entries()
+            .into_iter()
+            .filter_map(|e| check_budget(&e.type_name, &e.bound, &e.chains, e.budget).err())
+            .collect()
+    }
+
+    /// [`Self::budget_violations`] as one error, or `Ok(())`.
+    ///
+    /// The spelling a driver calls once after recording a package, so the check
+    /// happens in ONE place per driver instead of once per message.
+    pub fn check_budgets(&self) -> Result<(), String> {
+        let v = self.budget_violations();
+        if v.is_empty() {
+            return Ok(());
+        }
+        Err(v
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"))
     }
 
     /// Derive and record the bound for one parsed message.
@@ -183,11 +357,21 @@ impl BoundInventory {
         caps: &crate::CapacityResolver,
         lookup: &crate::schema_value::MsgLookup<'_>,
     ) {
-        use crate::schema_value::bound_message;
+        use crate::schema_value::{bound_message, chains_for};
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(type_name, message, EncodingVersion::Xcdr1, caps, lookup);
         let x2 = bound_message(type_name, message, EncodingVersion::Xcdr2, caps, lookup);
-        self.insert(type_name, BoundState::classify(&x1, &x2));
+        // phase-403 W7b (issue 0939) — the chains and the budget travel with the
+        // bound. The chain is a property of the SHAPE, so it is encoding-
+        // independent and computed once; the budget is read with the same
+        // `pkg/Msg` key the capacity entries beside it use.
+        let (pkg, msg) = config_key_of(type_name);
+        self.insert_full(
+            type_name,
+            BoundState::classify(&x1, &x2),
+            chains_for(type_name, message, caps, lookup),
+            caps.max_serialized(&pkg, &msg),
+        );
     }
 
     pub fn is_empty(&self) -> bool {
@@ -234,6 +418,32 @@ impl BoundInventory {
                     BoundState::Unbounded { reason } | BoundState::Unresolved { reason } => {
                         m.insert("reason".into(), reason.clone().into());
                     }
+                }
+                // phase-403 W7b (issue 0939) — the factor chain, so a total with
+                // five factors in it is legible instead of opaque. Omitted
+                // entirely when the type nests nothing, which is almost all of
+                // them: an empty key on every row is noise, and its absence
+                // already means "no nesting".
+                if !e.chains.is_empty() {
+                    m.insert(
+                        "sequence_chains".into(),
+                        e.chains
+                            .iter()
+                            .map(|c| {
+                                serde_json::json!({
+                                    "path": c.path,
+                                    "factors": c.factors,
+                                    "elements": c.product(),
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .into(),
+                    );
+                }
+                // The user's assertion, beside the derived number. Never the
+                // exported size -- see `CapacityResolver::max_serialized`.
+                if let Some(b) = e.budget {
+                    m.insert("max_serialized_budget".into(), b.into());
                 }
                 serde_json::Value::Object(m)
             })
@@ -298,6 +508,41 @@ impl BoundInventory {
                         cmake_escape(reason)
                     ));
                 }
+            }
+            // phase-403 W7b (issue 0939) — two PARALLEL cmake lists rather than
+            // one packed string: `;` is cmake's list separator, so
+            // `foreach(p ${..._CHAIN_PATHS})` iterates them natively and a
+            // consumer never parses a delimiter by hand. Indices line up.
+            if !e.chains.is_empty() {
+                s.push_str(&format!(
+                    "set(NROS_MESSAGE_BOUND_{key}_CHAIN_PATHS \"{}\")\n",
+                    e.chains
+                        .iter()
+                        .map(|c| cmake_escape(&c.path))
+                        .collect::<Vec<_>>()
+                        .join(";")
+                ));
+                s.push_str(&format!(
+                    "set(NROS_MESSAGE_BOUND_{key}_CHAIN_FACTORS \"{}\")\n",
+                    e.chains
+                        .iter()
+                        .map(|c| c.factors_display())
+                        .collect::<Vec<_>>()
+                        .join(";")
+                ));
+                s.push_str(&format!(
+                    "set(NROS_MESSAGE_BOUND_{key}_CHAIN_ELEMENTS \"{}\")\n",
+                    e.chains
+                        .iter()
+                        .map(|c| c.product().to_string())
+                        .collect::<Vec<_>>()
+                        .join(";")
+                ));
+            }
+            if let Some(b) = e.budget {
+                s.push_str(&format!(
+                    "set(NROS_MESSAGE_BOUND_{key}_MAX_SERIALIZED_BUDGET {b})\n"
+                ));
             }
         }
         s.push_str("list(REMOVE_DUPLICATES NROS_MESSAGE_BOUND_PACKAGES)\n");
@@ -702,6 +947,196 @@ mod tests {
                 "child_frame_id (string)".to_string(),
             ]),
             "unbounded members: header.frame_id (string), child_frame_id (string)"
+        );
+    }
+
+    // ========================================================================
+    // phase-403 W7b (issue 0939) -- the budget and the factor chain
+    // ========================================================================
+
+    /// Three nested messages, each level a bounded sequence, so the total is a
+    /// product the way `visualization_msgs` is.
+    fn nested_lookup(fqn: &str) -> Option<Message> {
+        match fqn {
+            "p/Outer" => Some(parse_message("Mid[<=8] mids\n").unwrap()),
+            "p/Mid" => Some(parse_message("int64[<=8] leaves\n").unwrap()),
+            _ => None,
+        }
+    }
+
+    fn nesting_inventory(config: &str) -> BoundInventory {
+        let m = parse_message("Outer[<=8] outers\n").unwrap();
+        let caps = CapacityResolver::from_toml_str(config).unwrap();
+        let mut i = BoundInventory::new("p");
+        i.record_message("p/msg/M", &m, &caps, &nested_lookup);
+        i
+    }
+
+    /// A type with NO budget behaves exactly as before: no check, no violation,
+    /// and no budget key anywhere on any transport. This is the degrade-to-a-
+    /// no-op requirement, asserted rather than assumed -- it is the property
+    /// that makes the feature safe to add to a tree where nothing uses it.
+    #[test]
+    fn a_type_with_no_budget_is_untouched() {
+        let i = nesting_inventory("");
+        assert!(i.budget_violations().is_empty());
+        assert!(i.check_budgets().is_ok());
+        assert_eq!(i.entries()[0].budget, None);
+        assert!(!i.to_json().contains("max_serialized_budget"));
+        assert!(!i.to_cmake().contains("MAX_SERIALIZED_BUDGET"));
+        // And the bound itself is what an inventory built before this wave
+        // produced.
+        assert!(matches!(i.entries()[0].bound, BoundState::Bounded { .. }));
+    }
+
+    /// A budget the type FITS changes nothing. Specifically: the exported size
+    /// is still the DERIVED number, not the budget. A ceiling to check against
+    /// is not a value to substitute -- phase-380's rule, and the one thing this
+    /// campaign keeps taking back out.
+    #[test]
+    fn a_budget_the_type_fits_never_becomes_the_bound() {
+        let derived = match nesting_inventory("").entries()[0].bound {
+            BoundState::Bounded { tx, rx } => (tx, rx),
+            ref other => panic!("{other:?}"),
+        };
+        let i = nesting_inventory("[types.\"p/M\"]\nmax_serialized = 100000000\n");
+        assert!(i.check_budgets().is_ok());
+        assert_eq!(
+            match i.entries()[0].bound {
+                BoundState::Bounded { tx, rx } => (tx, rx),
+                ref other => panic!("{other:?}"),
+            },
+            derived,
+            "the derived total stands; the budget is a ceiling, not a value"
+        );
+        assert!(i.to_json().contains("\"max_serialized_budget\": 100000000"));
+    }
+
+    /// Over budget is a violation, and the diagnostic names the type, BOTH
+    /// numbers, the budget, and the chain WITH ITS FACTORS -- because the useful
+    /// question is which level to cap, and a bare "too big" does not answer it.
+    #[test]
+    fn over_budget_names_the_chain_and_its_factors() {
+        let i = nesting_inventory("[types.\"p/M\"]\nmax_serialized = 64\n");
+        let v = i.budget_violations();
+        assert_eq!(v.len(), 1, "{v:?}");
+        let e = &v[0];
+        assert_eq!(e.budget, 64);
+        assert!(e.derived_rx > 64);
+        assert_eq!(e.chains.len(), 1, "{:?}", e.chains);
+        assert_eq!(e.chains[0].path, "outers.mids.leaves");
+        assert_eq!(e.chains[0].factors, vec![8, 8, 8]);
+
+        let text = e.to_string();
+        assert!(text.contains("p/msg/M"), "{text}");
+        assert!(text.contains("max_serialized = 64"), "{text}");
+        assert!(text.contains(&e.derived_rx.to_string()), "{text}");
+        assert!(text.contains(&e.derived_tx.to_string()), "{text}");
+        assert!(
+            text.contains("outers.mids.leaves = 8 x 8 x 8 = 512"),
+            "{text}"
+        );
+        assert!(text.contains("PRODUCT"), "{text}");
+    }
+
+    /// An UNBOUNDED type has no total to check, so a budget on it is silent
+    /// here -- it already fails through the louder unbounded channel, and
+    /// reporting "0 exceeds 64" would be a number nobody derived.
+    #[test]
+    fn a_budget_on_an_unbounded_type_is_not_a_budget_violation() {
+        let m = parse_message("string s\n").unwrap();
+        let caps =
+            CapacityResolver::from_toml_str("[types.\"p/M\"]\nmax_serialized = 8\n").unwrap();
+        let mut i = BoundInventory::new("p");
+        i.record_message("p/msg/M", &m, &caps, &no_lookup);
+        assert_eq!(i.entries()[0].bound.tag(), "unbounded");
+        assert!(i.check_budgets().is_ok());
+    }
+
+    /// The chain reaches all three transports off ONE model, which is what this
+    /// module promises. The CMake side is PARALLEL lists so a consumer can
+    /// `foreach` them natively instead of parsing a packed delimiter.
+    #[test]
+    fn the_chain_reaches_every_transport_from_one_model() {
+        let i = nesting_inventory("");
+        let json = i.to_json();
+        assert!(json.contains("\"path\": \"outers.mids.leaves\""), "{json}");
+        assert!(json.contains("\"factors\": ["), "{json}");
+        assert!(json.contains("\"elements\": 512"), "{json}");
+
+        let cmake = i.to_cmake();
+        assert!(
+            cmake.contains("_CHAIN_PATHS \"outers.mids.leaves\""),
+            "{cmake}"
+        );
+        assert!(cmake.contains("_CHAIN_FACTORS \"8 x 8 x 8\""), "{cmake}");
+        assert!(cmake.contains("_CHAIN_ELEMENTS \"512\""), "{cmake}");
+
+        // build.rs republishes the same document, so the chain rides along with
+        // no second rendering.
+        assert!(i.to_build_rs().contains("outers.mids.leaves"));
+    }
+
+    /// A budget elsewhere than `[types.*]` is rejected at PARSE, because
+    /// `sequence`/`string` at a level are per-field capacities that compose and
+    /// a total is not.
+    #[test]
+    fn a_budget_outside_types_is_a_config_error() {
+        for body in [
+            "[defaults]\nmax_serialized = 8192\n",
+            "[packages.p]\nmax_serialized = 8192\n",
+        ] {
+            assert!(
+                CapacityResolver::from_toml_str(body).is_err(),
+                "accepted {body:?}"
+            );
+        }
+        assert!(
+            CapacityResolver::from_toml_str("[types.\"p/M\"]\nmax_serialized = 8192\n").is_ok()
+        );
+    }
+
+    /// The budget is checked as a BUILD ERROR on the emitter path, not only in
+    /// the inventory -- and the header and the inventory agree about the number
+    /// they refuse on, because both come from `BoundState::classify`.
+    #[test]
+    fn the_c_emitter_refuses_a_type_over_its_budget() {
+        let m = parse_message("Outer[<=8] outers\n").unwrap();
+        let caps =
+            CapacityResolver::from_toml_str("[types.\"p/M\"]\nmax_serialized = 64\n").unwrap();
+        let text = match crate::generate_c_message_package_with_lookup(
+            "p",
+            "M",
+            &m,
+            "h",
+            &caps,
+            &nested_lookup,
+        ) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("over budget must not generate"),
+        };
+        assert!(text.contains("p/M"), "{text}");
+        assert!(text.contains("outers.mids.leaves = 8 x 8 x 8"), "{text}");
+
+        // Without the budget the same type generates, and states the same number
+        // the violation reported.
+        let ok = crate::generate_c_message_package_with_lookup(
+            "p",
+            "M",
+            &m,
+            "h",
+            &CapacityResolver::empty(),
+            &nested_lookup,
+        )
+        .expect("a budget-free type is unaffected");
+        let rx = match nesting_inventory("").entries()[0].bound {
+            BoundState::Bounded { rx, .. } => rx,
+            ref other => panic!("{other:?}"),
+        };
+        assert!(
+            ok.header.contains(&format!("_RX_MAX_SERIALIZED_SIZE {rx}")),
+            "{}",
+            ok.header
         );
     }
 }

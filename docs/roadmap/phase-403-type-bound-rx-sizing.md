@@ -729,13 +729,67 @@ the same header. Fixed in one shared `c_sequence_struct` helper rather than a
 fourth copy of the format string. Moves `expected/{inline,configured}/Shapes.h`
 and `Probe.srv.h`.
 
+### W7b LANDED 2026-08-31 -- issue 0939's options 2 and 4, chosen by the owner
+
+W7 made deep bounded chains easy to BUILD from configuration, which is what made
+issue 0939 load-bearing rather than hypothetical. Two of its listed options were
+chosen; "cap the derived bound" was not, because capping the derived bound IS
+substituting a number nobody derived.
+
+**Option 4 -- make the multiplication visible.** `schema_value::sequence_chains`
+walks the SAME schema the bound is derived from and reports every NESTED chain of
+repeated members, deepest path first, one factor per level. It rides the W6
+inventory on all three transports off one model: `sequence_chains` in the JSON,
+three PARALLEL `_CHAIN_PATHS` / `_CHAIN_FACTORS` / `_CHAIN_ELEMENTS` cmake lists
+(so a consumer `foreach`es them rather than parsing a delimiter), and the same
+JSON on the `links` channel. Omitted for a type that nests nothing, which is
+almost all of them.
+
+Fixed arrays are factors too: `size_bound` iterates them identically, so a
+`Pose[100]` of a type carrying a `BoundedSequence(128)` really does cost 12800
+elements. What differs is the REMEDY, and the diagnostic says that in prose
+rather than by dropping a factor.
+
+**Option 2 -- a per-type total budget.** `[types."pkg/Msg"] max_serialized = N`,
+and `[types.*]` only: `sequence`/`string` at a level are per-field CAPACITIES
+that compose down the chain, and a total does not, so a `[defaults]` or
+`[packages.*]` budget is a parse error rather than a key that quietly means
+something else at each level. It is a CEILING CHECKED AGAINST and never a value
+substituted -- a derived total under budget is exported unchanged, which is
+phase-380's rule and the one this campaign keeps re-enforcing. Over budget is a
+BUILD ERROR, raised from the C header emitter (which derives the number the
+`#define` states) and from `BoundInventory::check_budgets`, which each driver
+calls once per package so one build names every type that blew its budget.
+
+**Measured on the type that motivated the issue.** `/opt/ros/humble`,
+`visualization_msgs`, under the uniform cap of 128 the issue names:
+
+| type | derived RX | worst chain |
+| --- | ---: | --- |
+| `InteractiveMarkerUpdate` | 19,379,320,485 | `markers.controls.markers.points = 128 x 128 x 128 x 128` |
+| `InteractiveMarkerInit` | 19,379,256,985 | same |
+| `InteractiveMarker` | 151,400,445 | `controls.markers.points = 128 x 128 x 128` |
+| `MarkerArray` | 1,182,217 | `markers.points = 128 x 128` |
+
+19.4 GB from caps of 128, and none of it trips the unbounded build error. "Does
+not terminate in any useful sense" now has a number behind it. The diagnostic the
+budget produces, and the evidence that a budget-free type is unaffected in every
+respect, are in
+[issue 0939](../issues/0939-nested-bounded-sequences-cost-the-product-of-their-caps.md).
+
+This does NOT fix the multiplication. `size_bound` still walks a bounded sequence
+element by element; what changed is that the number is legible and that a user
+can turn it into a build error instead of a runtime surprise.
+
 Also found while measuring: `nros_serdes::size::size_bound` WALKS a bounded
 sequence element by element, so a capped sequence nested three deep costs the
 PRODUCT of the caps. `visualization_msgs` nests
 `InteractiveMarkerInit -> markers -> controls -> markers -> points`, and a
 uniform cap of 128 there does not terminate in any useful time. Pre-existing (a
 `.msg`-bounded sequence has the same shape) but newly reachable, because a cap is
-now a way to create deeply nested bounded sequences. Not fixed here.
+now a way to create deeply nested bounded sequences. Not fixed here. **W7b above
+makes it visible and checkable** -- 19,379,256,985 bytes, measured -- without
+fixing the multiplication itself.
 
 ### W6 LANDED 2026-08-31 -- and it found that the C++ number was never a bound
 

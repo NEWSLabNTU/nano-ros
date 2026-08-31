@@ -130,6 +130,44 @@ Rules:
   of `cap`, so a `[fields]` entry overriding a length does not delete a
   `[defaults]` element bound. Level entries carry it on `sequence`.
 
+#### `max_serialized` — a TOTAL, not a capacity (phase-403 W7b, issue 0939)
+
+Every other number in this file is a per-field CAPACITY. `max_serialized` is a
+per-type TOTAL: the serialized size the type may reach once all of its capacities
+have been multiplied out. Read it as another cap and you will get it wrong.
+
+```toml
+[types."visualization_msgs/InteractiveMarkerInit"]
+sequence = 8          # a per-field CAPACITY, composes down the level chain
+max_serialized = 8192 # a TOTAL for this type, and only this type
+```
+
+It exists because `nros_serdes::size` walks a bounded sequence and a fixed array
+element by element, so nesting MULTIPLIES: `visualization_msgs` nests
+`InteractiveMarker -> controls -> markers -> points`, and a uniform cap of 128
+there derives 19,379,256,985 bytes for `InteractiveMarkerInit`. That is correct
+arithmetic for a worst case, useless for sizing a receive buffer, and — the part
+that makes it a defect — it does NOT trip the unbounded build error, so it fails
+later and less clearly than an honestly unbounded type does.
+
+- **`[types.*]` only.** A budget does not compose the way a capacity does, so
+  `[defaults]` and `[packages.*]` reject it rather than inventing a meaning
+  (`ConfigError::MaxSerializedOutsideTypes`).
+- **A ceiling to check against, never a value to substitute.** If the derived
+  bound is UNDER the budget, the derived number stands, unchanged, everywhere.
+  Substituting the budget would be a bound nobody derived, which is what
+  phase-380 forbids.
+- **Over budget is a BUILD ERROR** naming the type, the derived RX and TX, the
+  budget, and the nesting chain with its factors — because the actionable
+  question is which LEVEL to cap, and a bare "too big" does not answer it.
+- **A type with no budget is completely unaffected**: nothing is checked, nothing
+  is emitted, and the derivation is byte-identical.
+
+The chain is also exported unconditionally in `nros_message_bounds.json` /
+`.cmake` (`sequence_chains` / `_CHAIN_PATHS` + `_CHAIN_FACTORS` +
+`_CHAIN_ELEMENTS`), so a reader can see `8 x 8 x 8 x 8` and where it came from
+whether or not they state a budget.
+
 ### Precedence (highest wins)
 
 ```
@@ -394,3 +432,11 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
   independently of `cap`; the `.msg` still wins per dimension; only a mode whose
   cap is enforced may bound. Naming a field with no element dimension is an
   error, not a silently ignored key. Corpus: 121 -> 126 of 126 bounded.
+- 2026-08 — **phase-403 W7b (issue 0939)**: added `max_serialized`, a per-type
+  TOTAL rather than a per-field capacity, legal only under `[types.*]`. It is a
+  ceiling checked against the derived bound and never a value substituted for
+  it; over budget is a build error naming the type, both numbers, and the
+  nesting chain with its factors. Also exports that chain in the bound inventory
+  on all three transports, so a total with five factors in it is legible whether
+  or not a budget is stated. A config that states no budget is unaffected in
+  every respect.
