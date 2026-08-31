@@ -185,7 +185,6 @@ dynamic threads, `NET_TCP`, …) are `select`ed automatically by
 CONFIG_NROS=y
 CONFIG_NROS_RMW_CYCLONEDDS=y
 CONFIG_CPP=y
-CONFIG_NROS_CYCLONE_DOMAIN_ID=0
 CONFIG_POSIX_API=y
 CONFIG_NET_IPV4_IGMP=y                  # RTPS SPDP uses UDP multicast
 CONFIG_MAIN_STACK_SIZE=524288

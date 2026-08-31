@@ -607,9 +607,16 @@ CONFIG_NROS_XRCE_AGENT_LOCATOR="udp/127.0.0.1:2018"
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=16
 "#
         .to_string(),
+        // issue 0974 — do NOT emit `CONFIG_NROS_CYCLONE_DOMAIN_ID` here.
+        // Its Kconfig default is `NROS_DOMAIN_ID`, which is what keeps the two
+        // knobs from splitting; pinning a literal is what phase-180 did, and it
+        // silently ran every cyclone image on domain 0 while the generic knob
+        // said otherwise (issue 0161). A generated project is the worst place
+        // for that: the user sets `CONFIG_NROS_DOMAIN_ID=5`, cyclone stays on 0,
+        // and discovery just never matches. Leave it unset and let the default
+        // track.
         "cyclonedds" => r#"# Cyclone DDS backend.
 CONFIG_NROS_RMW_CYCLONEDDS=y
-CONFIG_NROS_CYCLONE_DOMAIN_ID=0
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=64
 "#
         .to_string(),
