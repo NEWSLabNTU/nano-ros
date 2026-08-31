@@ -103,7 +103,11 @@ chosen platform.
 | `--use-case` | `talker`, `listener`, `service`, `action` | `talker` |
 | `--force` | overwrite an existing directory | off |
 
-**Deploy mode:** `nros new --deploy <name> [--kind <runner>] [--target <triple>] [--board <b>] [--bringup <pkg>] [--from-launch <path>] [--from-profile <name>]` scaffolds a `[deploy.<name>]` target into the bringup package's `system.toml` (RFC-0004 §4 — the deploy-target SSOT), instead of a project. `--kind` is a free-form runner key (`self`, `qemu`, `flash`, …). The bringup package is discovered automatically when the workspace exposes exactly one; pass `--bringup <pkg>` to pick one when there are several. `--from-launch` also seeds the bringup `[system].default_launch`; `--from-profile` forks an existing `[deploy.<name>]` in the same `system.toml`.
+**Image / host mode:** `nros new --image <name> [--board <b>]` scaffolds an `[image.<name>]` — a buildable image (RFC-0065 D6) — into the bringup package's `system.toml`; `nros new --host <name>` scaffolds a `[host.<name>]`, a machine nodes run on. Both accept `[--bringup <pkg>] [--from-launch <path>] [--from-profile <name>]`. The bringup package is discovered automatically when the workspace exposes exactly one; pass `--bringup <pkg>` to pick one when there are several. `--from-launch` also seeds the bringup `[system].default_launch`; `--from-profile` forks an existing block of the same table.
+
+An image names a `--board` and derives its rustc triple from that board's descriptor, so there is no `--target`. A host takes no board: a host says WHERE nodes run, and a board is what an image is BUILT for — passing one is refused rather than written.
+
+`nros new --deploy <name>` is DEPRECATED (issue 0951): `[deploy.*]` split into those two tables. It still works, dispatched by the `--kind` it always took — `self` scaffolds a host, anything else an image — and says which flag to use instead.
 
 ### `nros generate <lang> [--manifest <path>] [--output <dir>] [--ros-edition <edition>] [--force] [--verbose] [--generate-config]`
 
