@@ -126,6 +126,7 @@ fast-serial: \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement site-config lane-scope-consumers \
     interlock-visibility fixture-stamp-honesty ci-no-fixture-tolerance sdk-guard-can-fire \
+    tier-has-ci-owner \
     board-facts-delivery deploy-board-resolves \
     opaque-storage-guards cpp-ffi-error-mapping submodule-pins \
     rust-stdio-on-zephyr \
@@ -1376,6 +1377,13 @@ cpp-ffi-error-mapping:
 # commit about issue-ID renumbering moved zenoh-pico BACK over a Zephyr
 # `socklen_t` build fix, and nothing noticed for seven hours.
 # Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
+# Every tier RFC-0061 declares must be RUN by some workflow. Two of four were
+# invoked by nothing at all, and a tier nobody runs cannot go red to say so
+# (phase-407).
+[private]
+tier-has-ci-owner:
+    @python3 scripts/check-tier-has-ci-owner.py
+
 # A `-z "${VAR:-}"` guard on a variable sdk-env.just always exports can never
 # fire. Six did, and they broke the UNUSUAL way: an intended skip became a cmake
 # failure on an unprovisioned host (issue 0955).
