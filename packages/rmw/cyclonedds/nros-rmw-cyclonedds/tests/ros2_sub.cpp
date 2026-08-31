@@ -88,6 +88,18 @@ int main() {
                     std::fprintf(stderr, "bad string length %u\n", slen);
                     return 5;
                 }
+                // Issues 0969 / 0970 — the backend now hands back the wire
+                // framing rather than something it re-encoded, so record the
+                // framing and not only the decoded string. This line is
+                // EVIDENCE, not an assertion: what reaches us is the remote
+                // peer's encoding plus whatever the RTPS submessage carries,
+                // and the point of measuring is to find that out rather than
+                // to predict it. `len` is what a caller's buffer must hold,
+                // `hdr` is the representation identifier + options, and `cdr`
+                // is where the decoded content ends — so `len > cdr` is
+                // trailing pad the caller is being charged for.
+                std::printf("WIRE=len:%zu hdr:%02x%02x%02x%02x cdr:%zu\n", n, buf[0], buf[1],
+                            buf[2], buf[3], static_cast<size_t>(8 + slen));
                 // Strip trailing NUL.
                 std::printf("DATA=%.*s\n",
                             static_cast<int>(slen - 1),
