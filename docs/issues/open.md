@@ -80,5 +80,8 @@ fails if this block drifts.
 - **#0930** (testing, tooling) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so See `0930-*`.
 - **#0932** (tooling) — The linux-arm64 arm-none-eabi-gcc dist gets neither the ncurses bundle nor the gdb Python, and its gdb fails EARLIER than x86_64's did See `0932-*`.
 - **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
+- **#0930** (testing, tooling) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so See `0930-*`.
+- **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
 
 <!-- END GENERATED open-issue list -->

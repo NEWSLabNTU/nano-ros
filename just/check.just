@@ -114,7 +114,7 @@ fast-serial: \
     version-lockstep workspace-fmt example-fmt cli-fmt \
     readiness-marker-literals \
     codegen-invocation string-conventions issue-ids knob-single-reader workflow-repo-env doc-recipe-refs \
-    std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed shared-cargo-dir-witness image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
+    std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio cpp-no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed shared-cargo-dir-witness image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
     absolute-paths \
     c-fmt cpp-fmt python \
     nuttx-integration-makefile eyre-context-alias core-only-predicate workspace-build-output cc-build-policy ffi-struct-mirrors sizes-header-mirrors retired-submodule-refs no-absolute-model-paths \
@@ -1942,6 +1942,14 @@ feature-contract:
 no-std-stdio:
     @python3 scripts/check-no-std-stdio.py
 
+# issue 0942 — the C++ twin of the rule above. `std::fprintf` in a TU that is
+# cross-compiled for a board's own toolchain depends on a guarantee freestanding
+# libstdc++ does not make; it built on every hosted target and failed only on
+# threadx-riscv64.
+[group("check")]
+cpp-no-std-stdio:
+    @python3 scripts/check-cpp-no-std-stdio.py
+
 # A test whose body only PRINTS cannot fail, so it reports PASS on exactly the
 # host it was supposed to warn about. The 2026-08-21 cleanup removed 17 of these
 # (10 files, 2 of them literal cross-file duplicates); this keeps the shape from
@@ -2200,6 +2208,7 @@ cli-source-dirs:
 # from its cause.
 [group("ci")]
 rust-targets-covered:
+    @python3 scripts/check-rust-targets-covered.py --self-test
     @python3 scripts/check-rust-targets-covered.py
 
 # Issue 0739 — every build-time sizing knob is enumerable, and the pools that

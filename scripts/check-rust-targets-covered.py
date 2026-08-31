@@ -17,9 +17,29 @@ this repo's most-repeated bug shape (CLAUDE.md, "fix the CLASS"):
   * **/.cargo/config.toml               `[build] target = "<triple>"`
 
 The list is allowed to be a SUPERSET — it carries targets no board declares yet
-(armv7r for the Orin SPE board). The gate is one-directional on purpose:
+(armv7r for the Orin SPE board). That direction is one-way on purpose:
 over-provisioning costs a download, under-provisioning costs a red build whose
 error is four layers from its cause.
+
+## The SDK index is a FOURTH place, and it drifted (issue 0944)
+
+`nros-sdk-index.toml` has its own `[rust.target.*]` table, walked by
+`nros setup --check`, which computes `rustup target add <triple>` as the remedy.
+It was a hand-authored second copy of this list with nothing between them, and
+it was already stale: `armv8r-none-eabihf` was absent, so the CLI's own doctor
+surface could not report it missing on a host that needed it. That is issue
+0833's defect one layer up — the reason to gate it rather than just add the row.
+
+This direction is EXACT, not superset, and in both senses:
+
+  * a `rustup` row MUST have a `[rust.target.*]` entry — otherwise
+    `nros setup --check` is blind to it, which is how armv8r got missed;
+  * a `build-std` row MUST NOT — those targets have no prebuilt rust-std,
+    `rustup target list` never reports them, and `rustup target add` on one
+    fails. An entry there would make the CLI print a remedy that cannot work.
+
+Several aliases may share a triple (`thumbv7m` and `thumbv7m-nightly` differ
+only by `toolchain`); the check is on the set of triples, not the aliases.
 """
 
 import re
@@ -29,6 +49,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 LIST = ROOT / "config" / "rust-targets.txt"
+INDEX = ROOT / "nros-sdk-index.toml"
 
 
 def declared_rows():
@@ -92,7 +113,102 @@ def listed():
     return out
 
 
+def index_triples():
+    """Triples named by `[rust.target.*]` in the SDK index.
+
+    Parsed by regex rather than a TOML library so this gate keeps working on a
+    host with no `tomllib` (it runs before any provisioning) and so a syntax
+    error in the index is reported by `just check sdk-index`, which owns it,
+    rather than surfacing here as a stack trace.
+    """
+    if not INDEX.is_file():
+        print(f"MISSING: {INDEX.name}", file=sys.stderr)
+        sys.exit(2)
+    triples = set()
+    in_block = False
+    for raw in INDEX.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if line.startswith("["):
+            in_block = line.startswith("[rust.target.")
+            continue
+        if in_block:
+            m = re.match(r'triple\s*=\s*"([^"]+)"', line)
+            if m:
+                triples.add(m.group(1))
+    return triples
+
+
+def check_index(known):
+    """`rustup` rows <-> `[rust.target.*]`, exactly. Issue 0944."""
+    have = index_triples()
+    want = {t for t, kind in known.items() if kind == "rustup"}
+    build_std = {t for t, kind in known.items() if kind == "build-std"}
+
+    absent = sorted(want - have)
+    forbidden = sorted(have & build_std)
+    stray = sorted(have - want - build_std)
+
+    if not (absent or forbidden or stray):
+        return 0
+
+    print("nros-sdk-index.toml `[rust.target.*]` disagrees with "
+          "config/rust-targets.txt:\n", file=sys.stderr)
+    for t in absent:
+        print(f"  MISSING from the index: {t}", file=sys.stderr)
+        print("      `nros setup --check` cannot report it missing, so a host "
+              "without it\n      gets a cmake CONFIGURE error instead of a "
+              "remedy (issue 0944).", file=sys.stderr)
+    for t in forbidden:
+        print(f"  build-std target listed in the index: {t}", file=sys.stderr)
+        print("      `rustup target add` cannot install it; the index would "
+              "print a remedy\n      that always fails.", file=sys.stderr)
+    for t in stray:
+        print(f"  in the index but in no row: {t}", file=sys.stderr)
+        print("      Add it to config/rust-targets.txt or drop it from the "
+              "index.", file=sys.stderr)
+    print("\n  [rust.target.<alias>]\n  triple = \"<triple>\"", file=sys.stderr)
+    return 1
+
+
+def self_test():
+    """The tree exercises at most one of `check_index`'s three verdicts at a
+    time, so the other two would ship unproven. Issue 0942's lesson: a gate that
+    has never been shown to fail is not known to work."""
+    ok = True
+
+    def case(name, have, known, want_rc):
+        nonlocal ok
+        global index_triples
+        saved = index_triples
+        index_triples = lambda: set(have)
+        try:
+            import io, contextlib
+            buf = io.StringIO()
+            with contextlib.redirect_stderr(buf):
+                rc = check_index(known)
+        finally:
+            index_triples = saved
+        if rc != want_rc:
+            ok = False
+            print(f"  self-test FAIL {name}: rc={rc} want {want_rc}")
+
+    rustup = {"a": "rustup", "b": "rustup"}
+    both = {"a": "rustup", "n": "build-std"}
+
+    case("in sync", ["a", "b"], rustup, 0)
+    case("missing from index", ["a"], rustup, 1)
+    case("build-std listed in index", ["a", "n"], both, 1)
+    case("stray index entry", ["a", "zzz"], {"a": "rustup"}, 1)
+    case("build-std absent is fine", ["a"], both, 0)
+
+    print("check-rust-targets-covered --self-test: "
+          + ("OK" if ok else "FAILED"))
+    return 0 if ok else 1
+
+
 def main():
+    if "--self-test" in sys.argv:
+        return self_test()
     known = listed()
     missing = {}
     for target, source in declared_rows():
@@ -119,8 +235,13 @@ def main():
         )
         return 1
 
+    if check_index(known) != 0:
+        return 1
+
+    rustup = sum(1 for k in known.values() if k == "rustup")
     print(f"check-rust-targets-covered: OK "
-          f"({len(known)} listed, {len(set(t for t, _ in declared_rows()))} declared)")
+          f"({len(known)} listed, {len(set(t for t, _ in declared_rows()))} declared, "
+          f"{rustup} mirrored in the SDK index)")
     return 0
 
 

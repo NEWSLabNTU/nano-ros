@@ -1133,6 +1133,17 @@ toolchain = "nightly-pinned"
 [rust.target.armv7r-hf]
 triple = "armv7r-none-eabihf"
 
+# Cortex-R52 / ARMv8-R AArch32 — NXP S32Z270 (phase-372) and MPS3-AN536
+# (phase-385); both `workspace-cpp-*-freertos` fixture rows cross-build to it.
+#
+# Issue 0944 — this row was MISSING while `config/rust-targets.txt` had it, so
+# `nros setup --check` could not report it on a host that needed it and the
+# failure arrived instead as a corrosion CONFIGURE error under a tail of
+# unrelated newlib warnings. The two lists are now gated against each other by
+# `check-rust-targets-covered.py`; do not add a target to one alone.
+[rust.target.armv8r-hf]
+triple = "armv8r-none-eabihf"
+
 [rust.target.riscv32imc]
 triple = "riscv32imc-unknown-none-elf"
 
