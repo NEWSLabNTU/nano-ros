@@ -1153,6 +1153,73 @@ keeps `M` as a template parameter to the last call, in a header, and the arena
 owns the buffer there rather than the caller. The hand-written C API, which
 genuinely has no `M`, is the part that still needs a caller-supplied buffer.
 
+## Deriving the arena and the payload classes: the remaining steps
+
+Two inventories now exist and neither derives these on its own. W6/W8 price a
+TYPE; W9 lists an image's ENTITIES. The arena and the payload classes both need
+the two JOINED per subscription, and a total from either half alone is the same
+confident wrong number this campaign keeps removing.
+
+The two are NOT equally blocked, and the difference is worth stating because it
+sets the order.
+
+### Step 1 -- payload classes. Ready; no new input.
+
+A payload class is about ONE sample's size, so it needs only "which types are
+RECEIVED" times "their bound". W9 supplies the first by filtering its entity
+list to the receiving kinds; W6/W8 supply the second. Nothing else is required.
+
+The payoff is already measured on the island entry:
+
+| basis | SMALL | LARGE | total |
+| --- | ---: | ---: | ---: |
+| hand-set today | 49152 | 20480 | 69632 |
+| derived over the LINKED closure | 71808 | 0 | 71808 |
+| derived over the SUBSCRIBED set | 42240 | 0 | 42240 |
+
+W8 derives the middle row, which COSTS 2176 bytes: one
+`std_msgs/Float64MultiArray`, linked and never received, sets the small class
+for every subscription in the image. The join is exactly the difference between
+that row and the last one -- 27392 bytes.
+
+### Step 2 -- QoS depth in the declaration. Blocks the arena.
+
+The arena's per-subscription cost is
+`sizeof(entry) + buffered_region_size(depth, bound)`, and that region is
+`(depth + 1) * bound + (depth + 1) * 8`. **Depth is a multiplier on the bound**,
+measured on this island at ten subscriptions: 86108 bytes at the ROS default
+depth 10, 24516 at depth 1.
+
+W9's entity record carries `kind`, `type_name` and `name`. It does NOT carry
+depth, so a derived arena today would be wrong by up to 10x.
+
+Defaulting it is the worst option available. The ROS default IS 10, so assuming
+it inflates the arena tenfold on an image that states depth 1, and assuming 1
+UNDER-sizes an image that took the default -- the unsafe direction. Depth must be
+declared, on W9's own principle: the declaration supplies, the running image
+verifies.
+
+### Step 3 -- the arena. Last, because its failure cannot report itself.
+
+With depth present the arena is a straight sum: `arena_alloc` is a BUMP
+allocator, so the total IS the sum of the allocations. Two things are still
+needed:
+
+* **A probe per arena entry kind.** There are ten distinct entry types
+  (`SubBufferedRawCEntry`, `SrvRawEntry`, `TimerEntry`,
+  `ServiceClientRawArenaEntry`, the action entries, ...), each with its own size
+  and buffer terms. The existing size probe exports `RAW_SUBSCRIPTION_SIZE` and
+  friends, but those are the L1 POLLING handles, not these arena entries.
+* **The verification half**, which already exists: issue 0900 W1 landed
+  `arena_used()` and a first-spin advisory reporting what was actually claimed.
+
+**Why the arena is last.** An under-sized arena halts DURING entity creation --
+before the first spin -- so the advisory never prints. `MAX_CBS` was the right
+first consumer for the opposite reason: it fails AT registration with
+`ExecutorFull`, which names the knob. A derived arena is the one number whose
+failure mode cannot report itself, so it should land only once the inputs
+feeding it are themselves verified.
+
 ## Measurement, first not last
 
 Every wave here claims bytes, and this campaign has twice published a number
