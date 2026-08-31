@@ -227,6 +227,49 @@ mod tests {
         reset();
     }
 
+    /// issue 0900 — the CLIENT halves reach the sidecar.
+    ///
+    /// `record_entity` has always accepted `ActionClient`/`ServiceClient`, and
+    /// the serializer dropped them: a sidecar described only what a component
+    /// SERVES. The executor arena is sized from the client count, so the
+    /// omission had a size cost (74,240 vs 16,384 bytes, on the task stack) and
+    /// not merely a descriptive one.
+    #[test]
+    fn client_entities_reach_the_sidecar() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        reset();
+        assert!(begin_node("client_node", "/", 0));
+        assert!(record_entity(
+            EntityKind::ActionClient,
+            "/fibonacci",
+            "example_interfaces/action/Fibonacci",
+            None,
+            None
+        ));
+        assert!(record_entity(
+            EntityKind::ServiceClient,
+            "/add_two_ints",
+            "example_interfaces/srv/AddTwoInts",
+            None,
+            None
+        ));
+        let export = SourceMetadataExport::new("client_pkg", "client_node").language("rust");
+        let json = to_json(&export).expect("serialize");
+        assert!(json.contains("\"action_clients\":[{"), "got: {json}");
+        assert!(json.contains("\"service_clients\":[{"), "got: {json}");
+        // A client registers no callbacks. The server writers emit a
+        // `callback`/`goal_callback` field; the client writer must not, which is
+        // why it is a separate function rather than a reused one.
+        let tail = &json[json.find("\"action_clients\"").expect("array")..];
+        let end = tail.find(']').expect("array end");
+        assert!(
+            !tail[..end].contains("callback"),
+            "a client must carry no callback field: {}",
+            &tail[..end]
+        );
+        reset();
+    }
+
     /// An entity recorded with no open node is a bug in the adapter, and must
     /// be refused rather than silently attributed or dropped — a dropped entity
     /// is an under-sized executor at boot.
