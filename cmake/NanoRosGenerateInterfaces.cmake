@@ -391,6 +391,16 @@ function(nros_generate_interfaces target)
       "phase-403 W6: derived per-type serialized-size bounds for ${target}")
   set(${target}_MESSAGE_BOUNDS_CMAKE "${_bounds_cmake}" CACHE INTERNAL
       "phase-403 W6: include() this to read ${target}'s bounds as CMake variables")
+  # phase-403 W8 (issue 0940) -- and now something READS them. One image-wide
+  # list, so `nros_find_interfaces()` composes the closure without knowing which
+  # generator produced each fragment.
+  #
+  # This lane emits the fragment as a BUILD-time custom-command output, so on a
+  # clean tree it does not exist yet at configure time and the derivation
+  # refuses (loudly, naming the missing file's package). It is present from the
+  # next configure on. The Zephyr lane runs codegen AT configure time and has it
+  # immediately -- the difference is the lane's, not this wave's.
+  nros_message_bounds_register_fragment("${_bounds_cmake}")
 
   # ---- Custom command ----
   add_custom_command(

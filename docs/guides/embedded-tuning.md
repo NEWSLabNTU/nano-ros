@@ -426,8 +426,21 @@ CONFIG_NROS_MAX_LIVELINESS=16
 # Buffer tuning
 CONFIG_NROS_FRAG_MAX_SIZE=4096
 CONFIG_NROS_BATCH_UNICAST_SIZE=2048
-CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE=1024
 CONFIG_NROS_SERVICE_BUFFER_SIZE=1024
+
+# NOT set here on purpose. The four SIZE knobs default to -1, which means
+# "derive it from this image's message-bound inventory" (phase-403 W8 /
+# issue 0940):
+#
+#   CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE     the small zenoh payload class
+#   CONFIG_NROS_SUBSCRIBER_LARGE_SIZE      the large zenoh payload class
+#   CONFIG_NROS_MAX_LARGE_SUBSCRIBERS      blocks in the large class
+#   CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE   the executor's take buffer
+#
+# Codegen already computes an exact serialized-size bound for every type it
+# generates; the build composes those and works the four out. Writing a number
+# here overrides the derivation, in both directions and without comment -- so
+# write one only when you know something the bounds do not.
 
 # Link features
 CONFIG_NROS_ZENOH_LINK_TCP=y
@@ -436,6 +449,37 @@ CONFIG_NROS_ZENOH_LINK_UDP_MULTICAST=n
 ```
 
 See `zephyr/Kconfig` for the full list of available options.
+
+### Sizes you no longer set by hand
+
+`CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE`, `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE`,
+`CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` and `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE`
+are derived from the message types the image links, unless you state a value.
+The configure reports which it did, and writes the answer plus its provenance
+to `<build>/nros/message_bound_knobs.cmake`.
+
+Precedence, highest first:
+
+1. an environment override (`ZPICO_SUBSCRIBER_BUFFER_SIZE=...`),
+2. a Kconfig / board `.conf` value,
+3. the value derived from the message bounds,
+4. the crate's own default, when nothing is stated and nothing is derivable.
+
+Two properties to keep in mind:
+
+* **The derived number is an upper bound**, because the inventory holds every
+  type in the interface closure you LINK and not just the ones you subscribe
+  to. It is never too small; it can be considerably larger than you need. The
+  configure names the type that set it, so when that type is not one of yours
+  the fix is either your own value or a smaller `<depend>` list. Narrowing it
+  automatically needs a per-image ENTITY inventory, which does not exist yet
+  (phase-403 W4).
+* **One unbounded type refuses the whole derivation.** Nothing is derived, the
+  configured values stand, and the build names every offending type and the
+  member that costs it its bound. Bound it in the `.msg` (`string<=64`) or cap
+  it `inline` in `nros-codegen.toml` -- `inline` is the only mode that bounds,
+  and one cap on a declaring type such as `"std_msgs/Header.frame_id"` reaches
+  every message that nests it.
 
 ## Troubleshooting
 

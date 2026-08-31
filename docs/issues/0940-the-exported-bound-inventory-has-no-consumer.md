@@ -4,7 +4,7 @@ title: "The derived-bound inventory is exported and nothing reads it, so every s
 status: open
 area: codegen, memory, build
 severity: high
-related: [0896, 0900, 0939, phase-403, phase-403-W6]
+related: [0896, 0900, 0939, phase-403, phase-403-W6, phase-403-W8]
 ---
 
 # The build knows every number and cannot say any of them
@@ -63,6 +63,51 @@ A consumer per number, each reading the inventory rather than a human:
 The transports exist and are verified end to end (a CMake `-P` run over five
 packages composed 97 types and derived `NROS_MAX_LARGE_SUBSCRIBERS=3` /
 `NROS_SUBSCRIBER_LARGE_SIZE=364`). What is missing is the reader.
+
+## Partly fixed 2026-08-31 (phase-403 W8): consumer 3 of 3 exists
+
+Still `open`, and the remaining half is named below rather than implied.
+
+**What landed.** `cmake/NanoRosMessageBounds.cmake` composes every package's
+fragment and derives the size knobs. `nros_find_interfaces()` runs it over the
+image's whole interface closure and writes the answer plus its provenance to
+`<build>/nros/message_bound_knobs.cmake`; the Zephyr knob resolver reads that,
+with `-1` as the Kconfig spelling of "nothing here chose a number" and a
+precedence ladder of environment > Kconfig / board `.conf` > derived > crate
+default. Item 3 of "What would resolve it" -- zenoh's payload class boundaries
+-- is done, plus `NROS_SUBSCRIPTION_BUFFER_SIZE`.
+
+Measured on the island entry (11 packages, 84 types, regenerated from the args
+files its build dir already holds): `NROS_MAX_LARGE_SUBSCRIBERS` **2 -> 0**,
+`NROS_SUBSCRIBER_LARGE_SIZE` **2560 -> not derived**, because nothing in the
+closure exceeds the 2048 B class split. The hand-set pair reserved
+`2 x 4 x 2560 = 20,480` bytes of `.bss` for a class no type can route into.
+It also found `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE=512` against a derived
+`nav_msgs/Odometry` bound of 880 -- an undersized take buffer on the image's
+own largest subscribed type, whose failure mode is a silent drop.
+
+**What is still uncovered, and why it is not a patch away.** Items 1 and 2 --
+`NROS_EXECUTOR_MAX_CBS` and the arena -- are questions about WHICH ENTITIES AN
+IMAGE CREATES, and this inventory answers only what every TYPE'S SIZE is. A
+package's type count is not an image's entity count. Deriving one from the
+other would produce exactly the plausible-wrong-number this issue exists to
+remove, so W8 declined to.
+
+A second source would have to supply, per image: the number of subscriptions,
+publishers, timers, service servers/clients and action entities, each bound to
+a type NAME the inventory can then price. `entity_facts.rs::describes_wiring`
+is the extension point and abstains on all 115 resolved SystemModels today, and
+the RFC-0043 C++ components register in constructors at runtime, so the wiring
+would have to come from codegen at component-registration time or from an
+author-stated manifest -- not from the resolved model as it exists.
+
+**The same gap sets the price of what did land.** The derived numbers are
+UPPER BOUNDS: the closure is what the image LINKS, not what it subscribes to.
+On the island the derived `1496` comes from `std_msgs/Float64MultiArray`, which
+it never receives, against `880` for its real worst case -- `29,568` B of
+`SMALL_PAYLOADS` and `66,528` B of arena, spent on types nothing reads. Safe in
+direction, expensive in magnitude, and the entity inventory is what would make
+it tight.
 
 ## Why this is severity high
 

@@ -865,6 +865,116 @@ unbounded type is a BUILD ERROR" has to decide whether a config cap
 participates in the derivation; until then, most real types are honestly
 unbounded and the inventory says so.
 
+### W8 LANDED 2026-08-31 (issue 0940) -- the inventory finally has a reader
+
+W6 exported the bound over three transports and W7/W7b made the numbers real.
+Nothing read any of them, which is issue 0940: the build knew every size and
+could say none of them, so `NROS_MAX_LARGE_SUBSCRIBERS` and
+`NROS_SUBSCRIBER_LARGE_SIZE` were still produced by reading generated C++
+headers by eye -- headers W6 proved state an ESTIMATE.
+
+`cmake/NanoRosMessageBounds.cmake` is the reader. `nros_find_interfaces()`
+composes every fragment the image's interface closure produced and derives the
+FOUR knobs a bound inventory can answer, writing the answer and its provenance
+to `<build>/nros/message_bound_knobs.cmake`. The Zephyr knob resolver reads
+that file, with `-1` as the Kconfig spelling of "nothing here chose a number".
+
+**Scope, stated as a boundary and not as a to-do.** A bound inventory knows
+every TYPE'S SIZE and nothing about WHICH ENTITIES AN IMAGE CREATES. So the
+four size knobs derive and `NROS_EXECUTOR_MAX_CBS` /
+`NROS_EXECUTOR_ARENA_SIZE` / `NROS_MAX_SUBSCRIBERS` / `NROS_MAX_PUBLISHERS`
+deliberately do not: a package's type count is not an image's entity count, and
+deriving one from the other is the plausible-wrong-number this campaign exists
+to remove. W4's survey is still the state of the art -- 0 of 115 resolved
+SystemModels carry topic wiring, and the C++ components register in
+constructors at runtime.
+
+**Precedence: a derived value is a DEFAULT, never an override.** Highest first:
+an environment value, then Kconfig / a board `.conf`, then the derivation, then
+the crate's own literal. The last rung is "leave the knob unresolved", the
+tri-state `NROS_EXECUTOR_ARENA_SIZE` already used, so the fallback literal
+stays written in exactly one place.
+
+**Measured on the reference image** -- the mr-canhubk344 island entry, its own
+11 interface packages and 84 types, regenerated from the args files its build
+dir already holds, derived with `cmake -P`:
+
+| knob | hand-set on the board | derived | where the hand-set number came from |
+| --- | ---: | ---: | --- |
+| `NROS_MAX_LARGE_SUBSCRIBERS` | 2 | **0** | `Control 2052` / `Odometry 1804` read off C++ headers |
+| `NROS_SUBSCRIBER_LARGE_SIZE` | 2560 | not derived (0 blocks) | rounded up from that 2052 |
+| `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 (never stated; the Kconfig default) | 1496 | nobody chose it |
+| `NROS_SUBSCRIPTION_BUFFER_SIZE` | 512 | 1496 | a hand computation that reaches ~718 and then writes 512 |
+
+The derived bounds behind those: `Control` 114 against an estimate of 2052 --
+a factor of 18 -- `Odometry` 880 against 1804, `VelocityReport` 108, the rest
+21-27. **Nothing in the island's linked closure exceeds the 2048 B class
+split**, so the large class is empty and its `2 x 4 x 2560 = 20,480` bytes of
+`.bss` are reserved for a class no type can route into.
+
+**And it found a live defect, which is the point of a derivation over an
+eye.** `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE=512` is smaller than
+`nav_msgs/Odometry`, the largest type that board conf itself names as
+subscribed: the derived RX bound is 880, and the conf's own prose computes
+~718 before writing 512. A sample above the buffer is dropped at `try_recv`
+with `BufferTooSmall`, silently on the C++ arena dispatch path -- the exact
+failure the conf's neighbouring comment warns about. Not verified on silicon
+here; the board is the owner's.
+
+**The over-approximation, measured rather than asserted, and it is the
+dominant term.** The derived 1496 is set by `std_msgs/Float64MultiArray`, which
+the island links and never receives. Over the ten types it actually subscribes
+to the answer is 880 (`nav_msgs/Odometry`). Priced in `.bss` at that image's
+own `MAX_SUBSCRIBERS = 12` and `RING_DEPTH = 4`:
+
+| | `SMALL_PAYLOADS` | `LARGE_PAYLOADS` | total |
+| --- | ---: | ---: | ---: |
+| today, as the board conf stands | 12 x 4 x 1024 = 49,152 | 2 x 4 x 2560 = 20,480 | 69,632 |
+| derived over the LINKED closure (1496) | 71,808 | 0 | 71,808 |
+| derived over the SUBSCRIBED types (880) | 42,240 | 0 | 42,240 |
+
+So the honest headline is not a saving. Letting all four derive as the closure
+stands today costs this image **+2,176 B**: the 20,480 B of large pool it stops
+reserving is more than spent on a small class sized by a type it never
+receives. The 27,392 B saving is real and is in the third row -- it needs the
+ENTITY inventory, which is the same second source `MAX_CBS` and the arena need.
+What the derivation buys unconditionally is that the numbers stop being wrong
+in the unsafe direction, and that the trade above is visible at configure time
+instead of after a flash.
+
+Two further notes on this image specifically. Its `.conf` PINS
+`NROS_SUBSCRIPTION_BUFFER_SIZE=512` and `NROS_EXECUTOR_ARENA_SIZE=40960`, so
+both keep their stated values and the arena does not move -- the +2,176 above
+is the whole effect. And its `.conf` also pins `MAX_LARGE_SUBSCRIBERS=2` /
+`SUBSCRIBER_LARGE_SIZE=2560`, so the 20,480 B is only recovered once those two
+lines are deleted; a derived value never overrides a stated one.
+
+**The refusal is not hypothetical either.** With the island's shipped
+`nros-codegen.toml` -- two `inline` caps -- 60 of its 84 linked types are
+bounded and 24 are not, so the derivation REFUSES and every knob keeps its
+configured value. It names all 24 and the member that costs each one. Adding a
+`[defaults]` string/sequence cap block closes the closure (84 of 84) and is
+what produced the table above. That is W0's rule reaching the place it was
+always aimed at: an unbounded type is not sizeable, and the build now says so
+where the size is chosen rather than only where the type is generated.
+
+**Ordering, stated rather than assumed.** A Zephyr module's CMakeLists is
+processed during `find_package(Zephyr)`, so `nros_resolve_knobs()` runs before
+the application reaches its own `nros_find_interfaces()`. The knobs file being
+read is therefore the one the PREVIOUS configure wrote, and it is registered
+with `CMAKE_CONFIGURE_DEPENDS` so ninja re-runs cmake by itself once the
+interfaces lane writes different bytes into it. Write-if-changed is
+load-bearing rather than tidy: rewriting identical bytes would re-arm that
+reconfigure forever. An image whose closure has just changed builds once at its
+old sizes, re-configures, and builds again at the derived ones -- never
+silently, since the configure says which of the two happened.
+
+Gate: `just check message-bound-knobs` (`tests/cmake-message-bounds-tests.sh`,
+38 assertions, `cmake -P` against hand-written fragments -- no build, no
+codegen). It pins the derived VALUES, the composition across packages, the
+refusal and its negative control, the per-fragment schema check, and the
+write-if-changed.
+
 ## Measurement, first not last
 
 Every wave here claims bytes, and this campaign has twice published a number

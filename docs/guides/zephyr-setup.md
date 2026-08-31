@@ -235,8 +235,19 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 | `CONFIG_NROS_MAX_QUERYABLES` | int | 8 | Max concurrent queryables |
 | `CONFIG_NROS_FRAG_MAX_SIZE` | int | 2048 | Max reassembled message size |
 | `CONFIG_NROS_BATCH_UNICAST_SIZE` | int | 1024 | Max unicast batch size |
-| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | 1024 | Per-subscriber buffer |
+| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Per-subscriber buffer, small payload class |
+| `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
+| `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | int | -1 (derive) | Per-sample capacity of the large class |
 | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | int | 1024 | Per-service buffer |
+
+`-1` on the three rows above, and on `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE`,
+means the build derives the number from this image's message-bound inventory
+(phase-403 W8 / issue 0940) rather than a person choosing one. Anything you
+state wins; the derived number is an upper bound over the interface closure you
+LINK; and one unbounded type in that closure refuses the derivation outright and
+says which. Full explanation, and what to do when the type it names is not one
+you receive, in the [book](../../book/src/getting-started/zephyr.md) and
+[embedded-tuning.md](embedded-tuning.md).
 
 ### XRCE Options (visible when `CONFIG_NROS_RMW_XRCE=y`)
 

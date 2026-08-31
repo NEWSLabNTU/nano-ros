@@ -139,7 +139,7 @@ fast-serial: \
     interface-glob-configure-depends \
     wait-evidence-discarded \
     path-env-fingerprints retired-platform-clock-symbols \
-    cmake-support-library \
+    cmake-support-library message-bound-knobs \
     tests-can-fail
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
@@ -831,6 +831,29 @@ cmake-support-library:
         exit 0
     fi
     ./tests/cmake-support-library-tests.sh
+
+# phase-403 W8 (issue 0940) -- the READER for the exported message-bound
+# inventory must derive the four size knobs a bound inventory can answer, and
+# must REFUSE loudly rather than derive over a closure holding an unbounded
+# type. The second half is the one worth gating: deriving over the bounded
+# subset yields a plausible number a real sample can exceed, and the drop is
+# SILENT on the C++ arena dispatch path. `cmake -P` against hand-written
+# fragments -- no build, no codegen, no toolchain, seconds -- so it belongs on the
+# fast line beside its cmake sibling above.
+message-bound-knobs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip message-bound-knobs "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-message-bounds-tests.sh
 
 abi-bindings:
     #!/usr/bin/env bash
