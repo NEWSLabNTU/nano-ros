@@ -549,19 +549,92 @@ pub use nros_macros::main;
 /// named where the type is. That constraint is also why phase-392's size
 /// classes were "decoupled from codegen" in the first place.
 ///
-/// **Unbounded types.** A type with a `String` or an unbounded sequence has no
-/// bound, and this refuses to invent one: it expands to
-/// `NROS_SUBSCRIPTION_BUFFER_SIZE`, the same default the subscription would
-/// have used. Phase 380 is explicit that `None` means "no bound EXISTS", never
-/// "unknown", and that a buffer must not be sized from a fallback — for those
-/// types the honest answer is the configured default, and `report_dropped_take`
-/// remains the backstop.
+/// **Unbounded types are a BUILD ERROR** (phase-403 W0). A type with an
+/// unbounded `string`/`wstring`/`sequence` has no bound, and this refuses to
+/// invent one. It used to expand to `DEFAULT_RX_BUF_SIZE`; it now fails to
+/// compile, naming both remedies.
+///
+/// Every message type is REQUIRED to carry a derived upper bound, stated in the
+/// `.msg` (`string<=64`) or capped in `nros-codegen.toml`. Phase 380 is explicit
+/// that `None` means "no bound EXISTS", never "unknown", and that a buffer must
+/// not be sized from a fallback. Substituting the configured default was the
+/// violation of that rule; refusing is what it licenses. `report_dropped_take`
+/// is a backstop for a buffer that is too small, not a licence to pick one.
+///
+/// ```compile_fail
+/// use nros_serdes::schema::{Field, FieldType, Message};
+/// struct Unbounded;
+/// impl Message for Unbounded {
+///     const TYPE_NAME: &'static str = "test/msg/Unbounded";
+///     const FIELDS: &'static [Field] = &[Field {
+///         name: "s",
+///         ty: FieldType::String,
+///         offset: 0,
+///     }];
+/// }
+/// let _n: usize = nros::rx_buffer_for!(Unbounded);
+/// ```
+///
+/// The positive control for that `compile_fail`, so it cannot pass because the
+/// fixture stopped compiling for an unrelated reason:
+///
+/// ```
+/// use nros_serdes::schema::{Field, FieldType, Message};
+/// struct Bounded;
+/// impl Message for Bounded {
+///     const TYPE_NAME: &'static str = "test/msg/Bounded";
+///     const FIELDS: &'static [Field] = &[Field {
+///         name: "a",
+///         ty: FieldType::Uint64,
+///         offset: 0,
+///     }];
+/// }
+/// let n: usize = nros::rx_buffer_for!(Bounded);
+/// assert!(n > 0);
+/// ```
+///
+/// **Why the `const` block.** The macro is used in two positions: as a
+/// const-generic argument (`.rx_buffer::<{ rx_buffer_for!(M) }>()`) and as a
+/// plain expression (`let n = rx_buffer_for!(M);`). A bare `panic!` is a build
+/// error in the first and a RUNTIME panic in the second, which would make the
+/// rule depend on where the macro appears. Wrapping the whole match in an inline
+/// `const` block forces compile-time evaluation in BOTH, so an unbounded type
+/// can never reach a running image.
+///
+/// **What the error names.** rustc points at this macro invocation, where the
+/// type is written literally, so the TYPE is named. The MEMBER that costs the
+/// bound cannot be in the message: const evaluation does not format, so a
+/// `panic!` there takes a literal only. The member is named by the codegen
+/// diagnostic for the same type -- `unbounded_reason` in the generated C header
+/// (`packs/c/message.h.jinja`), or `nros_serdes::size::first_unbounded` over its
+/// `FIELDS`.
 #[macro_export]
 macro_rules! rx_buffer_for {
     ($msg:ty) => {
-        match $crate::__rx_bound::<$msg>() {
-            ::core::option::Option::Some(n) => n,
-            ::core::option::Option::None => $crate::DEFAULT_RX_BUF_SIZE,
+        // The `const` block is load-bearing; see "Why the `const` block" above.
+        const {
+            match $crate::__rx_bound::<$msg>() {
+                ::core::option::Option::Some(n) => n,
+                ::core::option::Option::None => ::core::panic!(
+                    "nros: this message type has NO serialized-size bound, so no \
+                     receive buffer can be sized from it.\n\
+                     Every message type must carry a derived upper bound. Bound the \
+                     member that costs it, either:\n\
+                     \x20 - in the `.msg`: `string<=64`, `wstring<=64`, \
+                     `sequence<T, N>`, `T[<=N]`; or\n\
+                     \x20 - as a `cap` in `nros-codegen.toml`: under `[fields]`, \
+                     `\"pkg/Msg.field\" = 64`.\n\
+                     WHICH member costs the bound is named by the codegen \
+                     diagnostic for this same type: `unbounded_reason` in the \
+                     generated C header, or `nros_serdes::size::first_unbounded` \
+                     over its `FIELDS`. The type itself is named by the \
+                     `rx_buffer_for!` invocation rustc points at.\n\
+                     Phase 380: `None` means no bound EXISTS, never \"unknown\", and \
+                     a buffer sized from a fallback is the failure that rule was \
+                     written to prevent. Erroring honours it; defaulting to \
+                     `DEFAULT_RX_BUF_SIZE` did not."
+                ),
+            }
         }
     };
 }
@@ -1096,9 +1169,18 @@ pub use nros_node::config::arena_size_for;
 
 /// The configured default receive-buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`).
 ///
-/// Re-exported because [`rx_buffer_for!`] falls back to it for a type with no
-/// bound, and a macro expands at the CALLER, where `nros_node` may not be a
-/// dependency at all.
+/// NOT a fallback for a missing bound any more (phase-403 W0): [`rx_buffer_for!`]
+/// used to expand to this for an unbounded type and now refuses to compile
+/// instead. It stays public, and stays the default, for the paths that have no
+/// `M` to ask rather than a bound they declined to use -- `create_subscription_raw`
+/// and the RFC-0043 type-name-string subscriptions, the service / action / TX
+/// buffer defaults, the `pubsub_entry` term of the arena derivation in
+/// `nros-node/build.rs`, and its weld to the C API's `MESSAGE_BUFFER_SIZE`.
+/// Whether the arena derivation should stop leaning on it is a phase-403 W5
+/// question.
+///
+/// Re-exported here (rather than reached through `nros_node`) because a macro
+/// expands at the CALLER, where `nros_node` may not be a dependency at all.
 pub use nros_node::config::DEFAULT_RX_BUF_SIZE;
 
 /// Phase 392 W3b — the bound behind [`rx_buffer_for!`]. Not part of the stable

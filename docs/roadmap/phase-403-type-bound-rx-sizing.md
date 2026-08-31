@@ -177,6 +177,80 @@ go with this wave; see the W5 note.
 
 ## Waves
 
+**W0 -- an unbounded type stops being sizeable (landed 2026-08-31).** The
+precondition for every other wave: decision 2 above, made real at the one site
+that silently substituted a number. `rx_buffer_for!` expanded to
+`DEFAULT_RX_BUF_SIZE` for a type with no bound; it now fails the build, in an
+inline `const` block so the refusal does not depend on whether the macro was
+written in const-generic argument position or as a plain expression. The
+diagnostic names both remedies and points at the codegen diagnostic for the
+member. `packages/api/nros/tests/rx_buffer_for.rs::an_unbounded_type_keeps_the_configured_default`
+is RENAMED, not deleted, into `an_unbounded_type_is_refused_rather_than_defaulted`,
+and the compile-time half is a `compile_fail` doctest with a compiling positive
+control beside it.
+
+### W0's blocker: the `cap` escape hatch does not reach the bound
+
+Decision 2 says a user MUST bound a type "in the `.msg` or as a `cap` in
+`nros-codegen.toml`". **The second half is not true today**, and until it is, the
+rule has only one remedy -- editing a `.msg` you may not own.
+
+The `cap` mechanism EXISTS and works, for STORAGE.
+`rosidl-lower/src/config.rs` parses `[fields] "pkg/Msg.field" = N` (or
+`{ cap = N, mode = "..." }`) into `CapacityResolver`, and the emitted container
+becomes `heapless::String<N>` / `heapless::Vec<T, N>`. Its own module doc says
+what it is for: "Only **unbounded** fields consult the resolver."
+
+The bound is computed on a different path that never sees it.
+`schema_value::build_schema` lowers IDL `String` -> `SerdeFieldType::String`
+and `Sequence` -> `SerdeFieldType::Sequence` unconditionally -- `bound_message`
+takes `(owner, msg, version, lookup)` and no resolver -- so
+`max_serialized_size` returns `None` however the field is capped. The emitted
+Rust `Message::FIELDS` says the same (`generator/common.rs`'s
+`render_field_type_expr`).
+
+Proven by the tree's own goldens, not by reading:
+
+* `fingerprint-corpus/nros-codegen.toml` caps `Shapes.text` at 32, and
+  `expected/configured/Shapes.h` still says
+  `Reason: unbounded member: text (string)` and emits the poison token.
+* `diagnostic-msgs/nros-codegen.toml` caps `KeyValue.key` at 32, and the
+  committed `key_value.rs` stores `heapless::String<32>` while its `FIELDS` say
+  `FieldType::String`.
+
+The C header at `packs/c/message.h.jinja` already prints the advice ("or give it
+a `cap` in `nros-codegen.toml`"), so the diagnostic currently sends users to a
+knob that will not help them.
+
+Wiring cap -> bound is NOT a mechanical fix and is deliberately not done here.
+`Message::FIELDS` is also what backends that build wire-type descriptors at
+runtime read (Cyclone dynamic types), and DDS treats `string` and `string<32>`
+as different types for type-consistency matching. So "the cap narrows the bound"
+is a decision about whether a cap is a claim about OUR STORAGE (true: a longer
+sample already fails with `CapacityExceeded`, so a buffer sized to the cap loses
+nothing) or a claim about THE WIRE (false, and asserting it could stop a
+subscription matching). That belongs to the owner, not to W0.
+
+Until it is settled, three consequences:
+
+1. Codegen cannot be made to REFUSE an unbounded type. It would break every
+   in-tree type carrying a `string`, with no remedy short of forking the `.msg`.
+2. The remaining fallback in codegen stays: `{Msg}_publish` sizes its stack
+   buffer from `NROS_PUB_BUFFER_SIZE` (256) for an unbounded type
+   (`packs/c/message.h.jinja`). Poisoning it like its RX sibling is right under
+   the rule, and is blocked on the same gap -- the helper is `static inline`, so
+   the error would fire for anyone merely INCLUDING the header.
+3. The C++ pack is worse than a fallback and should be looked at on its own:
+   `types.rs::compute_serialized_size_max` never reports unboundedness at all.
+   It ADDS 512 per nested message and 256 per string and always emits
+   `SERIALIZED_SIZE_MAX`, which is what every `uint8_t buf[M::SERIALIZED_SIZE_MAX]`
+   in `nros-cpp`'s headers is sized from -- including the per-type numbers in
+   this document's own measurement table. Correcting it requires changing
+   `nros-cpp`, so it is named here rather than attempted.
+
+**W1 — the contract, in the ABI and in prose.** Two additions to
+`nros/rmw_vtable.h` + `rmw_entity.h`:
+
 **W1 — the contract, in the ABI and in prose. LANDED 2026-08-31.** Two additions
 to `nros/rmw_vtable.h` + `rmw_entity.h`:
 
