@@ -256,6 +256,33 @@ a board rung applies (`max_sc = 23`), the env front-end still wins over both
 `NROS_PLATFORM_NAME` — a bare `cargo build` with no lane — nothing changes:
 with no board named there IS no platform rung to resolve.
 
+### `[knobs.memory]` — the platform heap and stack — DONE (2 of 3)
+
+The tenant the re-scope below identified as the clearest one left: numbers that
+genuinely vary by platform and board, that no derivation campaign owns.
+
+`NROS_FREERTOS_HEAP_KB` and `NROS_FREERTOS_APP_STACK_KB` now resolve over the
+full ladder and print in `nros config explain`. `NROS_ZEPHYR_HEAP_SIZE` is the
+third and is NOT done — it is read by `option_env!` in `nros-platform`'s
+source with its own build-script resolver, so it needs that crate to take the
+`nros-board-common` build-dep first, the same decision phase-400 W6 already
+made for `nros-node`.
+
+**Stored in BYTES, always.** The front-ends disagree about units — the FreeRTOS
+pair is KiB, Zephyr's is bytes — and a table where "heap" means one thing on
+one platform and another elsewhere is a unit bug waiting to be written. The
+env names keep their spellings and the rung converts, in one place.
+
+The env-pointer dance is now written ONCE, as
+`platform_config::BuildRungs::from_build_env()`. `nros-node/build.rs` grew its
+own copy when the executor tenant landed; two build scripts resolving the same
+rungs differently is precisely the drift `check-knob-single-reader` exists to
+catch one level up, so the shared version is the one to use and that copy
+should adopt it.
+
+Verified against the running tool: builtin, platform rung, and the env
+front-end converting KiB to bytes (`NROS_FREERTOS_HEAP_KB=4096` → 4194304).
+
 ### The zenoh tenant is NOT W6's — re-scoped 2026-09-01
 
 Going to migrate it revealed that most of it belongs to a different campaign,
