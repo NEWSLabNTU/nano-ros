@@ -125,6 +125,7 @@ fast-serial: \
     lane-skip-protocol skip-marker-matching \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement workspace-rmw-agreement site-config lane-scope-consumers \
+    interlock-visibility fixture-stamp-honesty \
     board-facts-delivery deploy-board-resolves \
     opaque-storage-guards cpp-ffi-error-mapping submodule-pins \
     rust-stdio-on-zephyr \
@@ -1367,6 +1368,22 @@ cpp-ffi-error-mapping:
 # commit about issue-ID renumbering moved zenoh-pico BACK over a Zephyr
 # `socklen_t` build fix, and nothing noticed for seven hours.
 # Deliberate rollback: NROS_ALLOW_SUBMODULE_REWIND=1 (and say why).
+# A fixture stamp may not claim what the build did not achieve. The stamp used
+# to record the lane's NOMINAL coordinates, so a module that skipped a missing
+# prerequisite still read as covered and the run skipped its tests to a green
+# sweep (phase-407 W1).
+[private]
+fixture-stamp-honesty:
+    @python3 scripts/check-fixture-stamp-honesty.py
+
+# Every CI job gated on a `vars.*` interlock must have a job that reports
+# whether it ran. A skipped job does not colour its run, so post-submit reported
+# SUCCESS on runs where the tier-2 matrix — every fixture build and every E2E
+# cell in that lane — had not executed at all.
+[private]
+interlock-visibility:
+    @python3 scripts/check-interlock-visibility.py
+
 [private]
 submodule-pins:
     @bash scripts/ci/submodule-pins-check.sh
