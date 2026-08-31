@@ -110,7 +110,6 @@ scripts/ci/codegen-invocation-check.sh
 scripts/ci/dep-chain-check.sh
 scripts/ci/issue-ids-check.sh
 scripts/ci/string-conventions-check.sh
-scripts/ci/submodule-pins-check.sh
 scripts/dev/clang-format.sh
 scripts/gen-abi-bindings.sh
 scripts/gen-board-support-table.py
