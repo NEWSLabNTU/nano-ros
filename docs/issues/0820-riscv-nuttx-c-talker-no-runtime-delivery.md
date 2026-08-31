@@ -177,13 +177,49 @@ So this seam had been building every NuttX C example in the configuration the
 tree documents as broken, while `nros profile carve-out nuttx-rust` — which
 exists to prevent exactly that — sat unused.
 
-### Still open
+### The sibling seams, swept (2026-09-01) — this one IS one-of-a-kind
 
-The sibling seams. `FREERTOS_QEMU_PROFILE` is also `MINSIZEREL` (a QEMU timing
-floor rather than a miscompile, but the same "must be built at" shape), and the
-freertos / threadx / esp-idf paths are the same custom-command construction. A
-missing edge is rarely one-of-a-kind and neither is a hardcoded `--release`;
-neither has been checked.
+The open item assumed "freertos / threadx / esp-idf are the same custom-command
+construction". They are not, and that is the answer rather than a reprieve.
+
+**The missing edge.** Every tracked cmake file that contains both
+`add_custom_command` and `cargo`:
+
+    cmake/NanoRosCodegenCore.cmake                      codegen tool
+    cmake/NanoRosCorrosion.cmake                        corrosion's own targets
+    cmake/NanoRosGenerateInterfaces.cmake               codegen
+    cmake/NanoRosNodeRegister.cmake                     codegen
+    packages/api/nros-c/CMakeLists.txt                  config-header mirror
+    packages/api/nros-cpp/CMakeLists.txt                config-header mirror
+    .../NrosRmwCycloneddsTypeSupport.cmake              codegen
+    zephyr/cmake/nros_generate_interfaces.cmake         codegen
+    packages/api/nros-c/cmake/nros-nuttx.cmake          DEPFILE x3   <- the seam
+
+`nros-freertos.cmake` and `nros-threadx.cmake` contain no `cargo` reference at
+all; they reach Rust through corrosion, which creates real targets with real
+file-level edges. So NuttX is the only place a custom command drives a cargo
+build of nano-ros Rust, which is exactly why it was the only place the edge went
+missing — the construction, not the platform, is what carries the hazard.
+
+**The hardcoded profile.** `just freertos` does NOT hardcode: it passes the
+`freertos-qemu` carve-out through `NROS_CARGO_PROFILE`, with the reason written
+at the call site (`just/freertos.just:115`). The remaining `--release` literals
+are `NanoRosCodegenCore.cmake:427` (a HOST codegen tool, no carve-out applies)
+and `integrations/px4/NanoRosPx4Module.cmake` (no px4 carve-out is declared, so
+nothing contradicts it).
+
+**One real remnant, fixed here:** this file's own docstring still said
+"Schedules a `cargo build --release`" — the very text the fix below replaced in
+the code. A comment contradicting the code it documents is how the next reader
+re-derives the wrong thing, and it is the same shape as the NuttX settle-delay
+contradiction recorded further up this issue.
+
+So the class is closed by measurement rather than by fixing more sites: there
+were no more sites. What would keep it closed is a gate asserting that a cargo
+build driven by a custom command carries a `DEPFILE` — not written, because with
+exactly one instance it would be a rule inferred from a single example, and the
+codegen commands legitimately have no depfile, so the predicate would be
+guesswork.
 
 ### A note on method, because it cost most of the investigation
 
@@ -321,7 +357,8 @@ Everything that was built on that claim was wrong with it: a "domain mismatch
 root cause", a comparison to issue 0801, and a suspected sentinel defect at
 `packages/api/nros-c/src/node.rs` (`if support_domain != 0`, where 0 is both a
 legal ROS domain and the unset marker). That sentinel ambiguity IS real code and
-may deserve its own issue, but it is NOT what broke this test — the native C
+now has its own issue — [[issue-0972]], filed 2026-09-01, still live at
+`node.rs:739` — but it is NOT what broke this test — the native C
 talker, same source, resolves to domain 0 with no split, and the instrumented
 riscv image now does too.
 
