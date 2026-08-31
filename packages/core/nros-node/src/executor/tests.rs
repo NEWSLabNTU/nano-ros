@@ -367,6 +367,152 @@ fn a_bound_larger_than_the_ceiling_never_grows_the_buffer() {
 }
 
 // ====================================================================
+// phase-408 W5b -- the hint sizes the ARENA on the info / validated C paths
+//
+// W5a routed `rx_buffer_hint` to the BACKEND (payload size class) and stopped
+// there, because both entries still stored a real `[u8; RX_BUF]` and `RX_BUF`
+// is `DEFAULT_RX_BUF_SIZE` at every call site. W5b moved that slot into the
+// arena's trailing region, so the hint now buys the allocation too.
+//
+// These MEASURE. Each helper registers into a FRESH executor, so `arena_used()`
+// starts from the same value every time and the delta differs ONLY by the
+// trailing payload slot -- no alignment bookkeeping, no dependence on the entry
+// struct's size, which is a target detail these tests have no business pinning.
+// Before W5b every number below was identical.
+// ====================================================================
+
+unsafe extern "C" fn sizing_info_cb(
+    _data: *const u8,
+    _len: usize,
+    _att: *const u8,
+    _att_len: usize,
+    _ctx: *mut core::ffi::c_void,
+) {
+}
+
+/// Arena bytes ONE info-callback C subscription claims at `hint`.
+fn info_arena_delta(hint: usize) -> usize {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let before = executor.arena_used();
+    executor
+        .add_arena_subscription_c_info_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+            None,
+            "/hinted",
+            "test/msg/TestMsg",
+            "test_hash",
+            QoSProfile::default().keep_last(1),
+            sizing_info_cb,
+            core::ptr::null_mut(),
+            hint,
+        )
+        .unwrap();
+    executor.arena_used() - before
+}
+
+/// The saving, measured: the slot tracks the hint byte for byte.
+///
+/// Two hints rather than one absolute number, for the same reason
+/// `the_default_subscription_buffer_is_unchanged` uses two depths -- the
+/// difference isolates the payload slot from everything else the registration
+/// claims.
+#[test]
+fn an_info_subscription_sizes_its_arena_slot_from_the_hint() {
+    let small = info_arena_delta(128);
+    let large = info_arena_delta(512);
+
+    assert_eq!(
+        large - small,
+        512 - 128,
+        "the trailing payload slot must track the hint: 128 claimed {small} \
+         bytes, 512 claimed {large}"
+    );
+    // The delta is the payload slot PLUS the entry struct (an `RmwSubscriber`
+    // and a 256-byte attachment staging area), so the absolute number is not a
+    // thing to pin -- but it must move, and downwards, which is the whole
+    // point: before W5b a hint changed nothing at all here.
+    assert!(
+        small < info_arena_delta(0),
+        "a 128-byte hint must claim less than an unhinted registration; got \
+         {small}"
+    );
+}
+
+/// 0 is "this caller stated nothing", never "zero bytes". It falls back to the
+/// configured default, so an unhinted registration claims what it always did.
+#[test]
+fn an_unhinted_info_subscription_still_claims_the_default() {
+    let default = crate::config::DEFAULT_RX_BUF_SIZE;
+    let unhinted = info_arena_delta(0);
+    let hinted = info_arena_delta(128);
+
+    assert_eq!(
+        unhinted - hinted,
+        default - 128,
+        "a hint of 0 must fall back to {default} bytes, not to zero: unhinted \
+         claimed {unhinted}, a 128-byte hint claimed {hinted}"
+    );
+    assert_eq!(
+        unhinted,
+        info_arena_delta(default),
+        "stating the default explicitly and stating nothing must cost the same"
+    );
+}
+
+#[cfg(feature = "safety-e2e")]
+unsafe extern "C" fn sizing_validated_cb(
+    _data: *const u8,
+    _len: usize,
+    _gap: i64,
+    _duplicate: bool,
+    _crc_valid: i8,
+    _ctx: *mut core::ffi::c_void,
+) {
+}
+
+/// The validated sibling carries the same change, and it is a SEPARATE
+/// registration path -- fixing only the one the report named is how this
+/// codebase's recurring defects recur.
+#[cfg(feature = "safety-e2e")]
+#[test]
+fn a_validated_subscription_sizes_its_arena_slot_from_the_hint() {
+    fn delta(hint: usize) -> usize {
+        let mut executor: Executor = executor_with_clock(MockSession::new());
+        let before = executor.arena_used();
+        executor
+            .add_arena_subscription_c_validated_callback::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
+                None,
+                "/hinted_validated",
+                "test/msg/TestMsg",
+                "test_hash",
+                QoSProfile::default().keep_last(1),
+                sizing_validated_cb,
+                core::ptr::null_mut(),
+                hint,
+            )
+            .unwrap();
+        executor.arena_used() - before
+    }
+
+    let default = crate::config::DEFAULT_RX_BUF_SIZE;
+    let small = delta(128);
+    let large = delta(512);
+    let unhinted = delta(0);
+
+    assert_eq!(
+        large - small,
+        512 - 128,
+        "the trailing payload slot must track the hint: 128 claimed {small} \
+         bytes, 512 claimed {large}"
+    );
+    assert_eq!(
+        unhinted - small,
+        default - 128,
+        "a hint of 0 must fall back to {default} bytes, not to zero: unhinted \
+         claimed {unhinted}, a 128-byte hint claimed {small}"
+    );
+}
+
+// ====================================================================
 // Arena callback tests
 // ====================================================================
 

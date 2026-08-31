@@ -390,6 +390,68 @@ pub(crate) fn buffered_region_size(depth: u32, slot_size: usize) -> (usize, usiz
     }
 }
 
+/// phase-408 W5b — a SINGLE flat payload slot living in the arena's trailing
+/// region, sized at REGISTRATION from the caller's `rx_buffer_hint` instead of
+/// baked into the entry as `[u8; RX_BUF]`.
+///
+/// Why this and not [`BufferStrategy`], which the plain C raw path uses: a
+/// triple buffer / ring DECOUPLES the producer's slot from the consumer's, and
+/// the two entries that hold a `TrailingBuf` carry PER-SAMPLE side data beside
+/// the payload — the wire attachment for
+/// [`SubBufferedRawInfoCEntry`], the integrity status for
+/// `SubBufferedRawSafetyCEntry`. Decoupled slots cannot carry that, which is
+/// the reason both were flat in the first place (see
+/// [`SubBufferedRawInfoEntry`]'s note) and it has not changed. What made them
+/// EXPENSIVE was the const, not the flatness: `RX_BUF` is
+/// `DEFAULT_RX_BUF_SIZE` at every call site, so a subscription that knows its
+/// type's bound was still charged the image-wide default. Moving the bytes out
+/// to the trailing region spends the hint on the allocation while keeping one
+/// sample per dispatch.
+///
+/// The buffer does not own its memory — the arena does, and it outlives every
+/// entry in it.
+#[repr(C)]
+pub(crate) struct TrailingBuf {
+    ptr: *mut u8,
+    len: usize,
+}
+
+impl TrailingBuf {
+    /// Adopt `len` bytes of arena trailing region at `ptr`, zeroing them.
+    ///
+    /// The zeroing is what makes [`as_mut_slice`](Self::as_mut_slice) a safe
+    /// method: the executor arena is `&mut [MaybeUninit<u8>]`, so the region is
+    /// UNINITIALISED until someone writes it, and handing out a `&mut [u8]`
+    /// over uninit bytes is UB even if every reader stays inside the length a
+    /// receive reported. The entries this replaced held an inline
+    /// `[0u8; RX_BUF]` and were therefore initialised; one memset per
+    /// REGISTRATION (not per sample) keeps that property rather than trading it
+    /// for the allocation saving.
+    ///
+    /// # Safety
+    /// `ptr` must point to at least `len` writable bytes that stay valid for
+    /// the lifetime of this `TrailingBuf` — i.e. a region handed back by
+    /// `arena_alloc_with_trailing`, which is never reused while the entry
+    /// lives.
+    pub(crate) unsafe fn init(ptr: *mut u8, len: usize) -> Self {
+        // Safety: the caller's contract — `len` writable bytes at `ptr`.
+        unsafe { core::ptr::write_bytes(ptr, 0, len) };
+        Self { ptr, len }
+    }
+
+    /// The whole slot, for a receive to fill.
+    pub(crate) fn as_mut_slice(&mut self) -> &mut [u8] {
+        // Safety: the `init` contract — `len` writable bytes at `ptr`, valid
+        // for as long as `self`, and zeroed there so they are initialised `u8`.
+        unsafe { core::slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+
+    /// The slot's base address, for handing to a C callback.
+    pub(crate) fn as_ptr(&self) -> *const u8 {
+        self.ptr
+    }
+}
+
 /// Subscription entry with QoS-driven buffer strategy (Phase 73).
 ///
 /// Unlike the legacy single-buffer pattern, this entry
@@ -1181,10 +1243,17 @@ pub(crate) unsafe fn sub_buffered_raw_info_has_data<F, const RX_BUF: usize>(
 /// C-style (fn-ptr + context) raw buffered subscription with attachment
 /// (Phase 189.M3.4 — the C analog of [`SubBufferedRawInfoEntry`]). Flat
 /// payload + attachment buffers, one sample per dispatch.
+///
+/// phase-408 W5b — the payload slot is a [`TrailingBuf`] in the arena's
+/// trailing region rather than an inline `[u8; RX_BUF]`, so the registering
+/// caller's `rx_buffer_hint` sizes the ALLOCATION and not just the backend's
+/// payload size class. The attachment stays inline and fixed
+/// ([`RAW_INFO_ATT_CAP`]): it is small, and it is the thing that has to travel
+/// with its message.
 #[repr(C)]
-pub(crate) struct SubBufferedRawInfoCEntry<const RX_BUF: usize> {
+pub(crate) struct SubBufferedRawInfoCEntry {
     pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) buffer: TrailingBuf,
     pub(crate) att: [u8; RAW_INFO_ATT_CAP],
     pub(crate) callback: RawSubscriptionInfoCallback,
     pub(crate) context: *mut core::ffi::c_void,
@@ -1193,16 +1262,17 @@ pub(crate) struct SubBufferedRawInfoCEntry<const RX_BUF: usize> {
 /// Dispatch for the C-style raw buffered subscription with attachment.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubBufferedRawInfoCEntry<RX_BUF>`.
-pub(crate) unsafe fn sub_buffered_raw_info_c_try_process<const RX_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SubBufferedRawInfoCEntry`.
+pub(crate) unsafe fn sub_buffered_raw_info_c_try_process(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
 ) -> Result<bool, TransportError> {
-    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoCEntry<RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoCEntry) };
+    let payload = entry.buffer.as_mut_slice();
     match entry
         .handle
-        .try_recv_raw_with_attachment(&mut entry.buffer, &mut entry.att)
+        .try_recv_raw_with_attachment(payload, &mut entry.att)
     {
         // Phase 8 — hooked. One sample per dispatch; the pair brackets the
         // whole `unsafe` FFI call, which is the user callback itself.
@@ -1228,9 +1298,9 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_try_process<const RX_BUF: usize>(
 /// Readiness check for the C-style raw buffered subscription with attachment.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubBufferedRawInfoCEntry<RX_BUF>`.
-pub(crate) unsafe fn sub_buffered_raw_info_c_has_data<const RX_BUF: usize>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SubBufferedRawInfoCEntry<RX_BUF>) };
+/// `ptr` must point to a valid `SubBufferedRawInfoCEntry`.
+pub(crate) unsafe fn sub_buffered_raw_info_c_has_data(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawInfoCEntry) };
     entry.handle.has_data()
 }
 
@@ -1295,13 +1365,19 @@ pub(crate) unsafe fn sub_buffered_raw_safety_has_data<F, const RX_BUF: usize>(
 /// Phase 269 W3 — the C analog of [`SubBufferedRawSafetyEntry`]: same flat inline
 /// payload buffer + `try_recv_validated` dispatch, but the callback is a plain
 /// C function pointer (`RawSubscriptionSafetyCallback`) that receives the integrity
-/// scalars alongside the CDR bytes. No generic type parameter — monomorphism over
-/// the `RX_BUF` const only.
+/// scalars alongside the CDR bytes.
+///
+/// phase-408 W5b — the payload slot is a [`TrailingBuf`] sized from the
+/// registering caller's `rx_buffer_hint`, so this entry is no longer generic at
+/// all: the `RX_BUF` const it was monomorphised over only ever arrived as
+/// `DEFAULT_RX_BUF_SIZE`, and the status a validated sample carries is
+/// per-sample side data, which is why the slot stays flat rather than becoming
+/// a [`BufferStrategy`].
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
-pub(crate) struct SubBufferedRawSafetyCEntry<const RX_BUF: usize> {
+pub(crate) struct SubBufferedRawSafetyCEntry {
     pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) buffer: TrailingBuf,
     pub(crate) callback: super::types::RawSubscriptionSafetyCallback,
     pub(crate) context: *mut core::ffi::c_void,
 }
@@ -1310,15 +1386,16 @@ pub(crate) struct SubBufferedRawSafetyCEntry<const RX_BUF: usize> {
 /// buffer, then pass the raw slice + unpacked integrity scalars to the callback.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubBufferedRawSafetyCEntry<RX_BUF>`.
+/// `ptr` must point to a valid, aligned `SubBufferedRawSafetyCEntry`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process<const RX_BUF: usize>(
+pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process(
     ptr: *mut u8,
     _delta_us: u64,
     desc_idx: u8,
 ) -> Result<bool, TransportError> {
-    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyCEntry<RX_BUF>) };
-    match entry.handle.try_recv_validated(&mut entry.buffer) {
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyCEntry) };
+    let payload = entry.buffer.as_mut_slice();
+    match entry.handle.try_recv_validated(payload) {
         // Phase 8 — hooked. One sample per dispatch. The `crc_valid` unpack
         // is executor bookkeeping, not user code, so it stays OUTSIDE the
         // span; the pair brackets only the FFI call.
@@ -1350,12 +1427,10 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process<const RX_BUF: usize>(
 /// Readiness check for the C-style raw validated subscription.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubBufferedRawSafetyCEntry<RX_BUF>`.
+/// `ptr` must point to a valid `SubBufferedRawSafetyCEntry`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data<const RX_BUF: usize>(
-    ptr: *const u8,
-) -> bool {
-    let entry = unsafe { &*(ptr as *const SubBufferedRawSafetyCEntry<RX_BUF>) };
+pub(crate) unsafe fn sub_buffered_raw_safety_c_has_data(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawSafetyCEntry) };
     entry.handle.has_data()
 }
 
