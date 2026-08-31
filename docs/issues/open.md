@@ -62,7 +62,10 @@ fails if this block drifts.
 - **#0917** (rmw, platform) — The emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst, and a 5 ms RX poll drains it far too late See `0917-*`.
 - **#0925** (tooling) — `ros2-box-sync.sh` copies the GENERATED workspace manifests while excluding the `build/` members they list, so every box fixture build dies in `cargo metadata` See `0925-*`.
 - **#0930** (testing, tooling) — The built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so See `0930-*`.
+- **#0931** (build, api) — `nano_ros_entry` has eleven arguments; four have no users and three restate the bringup See `0931-*`.
+- **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
 - **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
+- **#0941** (build) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent See `0941-*`.
 - **#0945** (build) — The shared-cargo-dir campaign rests on five unsupported build-system internals — a Corrosion path formula, an unstable cargo flag, cargo's private `.fingerprint` format, a side channel inside cargo's target dir, and an undocumented depfile location See `0945-*`.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
 - **#0954** (api-c, boards) — The committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale again See `0954-*`.
