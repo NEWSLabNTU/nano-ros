@@ -731,11 +731,30 @@ config NROS_BATCH_UNICAST_SIZE
       Maps to ZPICO_BATCH_UNICAST_SIZE.
 
 config NROS_SUBSCRIBER_BUFFER_SIZE
-    int "Per-subscriber static buffer size"
-    default 1024
+    int "Per-subscriber static buffer size (-1 = derive)"
+    default -1
     help
-      Size of the static buffer for each subscriber slot (bytes).
-      Maps to ZPICO_SUBSCRIBER_BUFFER_SIZE.
+      Size of the static buffer for each subscriber slot (bytes) -- the SMALL
+      zenoh payload class. Maps to ZPICO_SUBSCRIBER_BUFFER_SIZE.
+
+      -1 means DERIVE it from this image's message-bound inventory
+      (phase-403 W8 / issue 0940): the largest derived bound at or under the
+      small/large class split (ZPICO_SUBSCRIBER_SIZE_THRESHOLD, 2048 by
+      default; it has no Kconfig row). Any other value is yours and WINS.
+
+      READ THIS BEFORE TRUSTING THE DERIVED NUMBER. The inventory holds every
+      type in the LINKED interface closure, not only the ones you subscribe to,
+      so the derived size is an UPPER BOUND: too big, never too small. On the
+      mr-canhubk344 island it is 1496 B, set by std_msgs/Float64MultiArray,
+      against 880 B for the largest type the image actually receives -- the
+      difference is the price of having no ENTITY inventory (phase-403 W4).
+      The configure prints which type set the number; if it is one you do not
+      receive, state your own value here.
+
+      If ANY type in the closure has no derived bound, NOTHING is derived and
+      the crate default (1024) applies -- the configure says so and names the
+      types. Deriving over the bounded subset would publish a maximum a real
+      sample can exceed, which is a SILENT drop on the C++ arena path.
 
 config NROS_SUBSCRIBER_RING_DEPTH
     int "Receive ring depth per subscriber"
@@ -749,8 +768,8 @@ config NROS_SUBSCRIBER_RING_DEPTH
       Maps to ZPICO_SUBSCRIBER_RING_DEPTH.
 
 config NROS_MAX_LARGE_SUBSCRIBERS
-    int "Subscribers served from the large payload class"
-    default 2
+    int "Subscribers served from the large payload class (-1 = derive)"
+    default -1
     help
       Subscribers whose rx_buffer_hint exceeds SUBSCRIBER_SIZE_THRESHOLD and
       are therefore served from LARGE_PAYLOADS. Bounded separately from
@@ -758,14 +777,36 @@ config NROS_MAX_LARGE_SUBSCRIBERS
       image-scale topic does not multiply across every subscriber.
       Maps to ZPICO_MAX_LARGE_SUBSCRIBERS.
 
+      -1 means DERIVE it: how many types in the linked interface closure
+      exceed the class split. This is the number issue 0940 records a human
+      producing by reading generated C++ headers BY EYE -- headers that state
+      an ESTIMATE and not a bound (phase-403 W6), which is how the island got
+      2 where the derived answer is 0.
+
+      0 is a legal, meaningful value and NOT the same as -1: it claims that
+      every type this image receives fits the small class, and the large pool
+      becomes zero bytes instead of RING_DEPTH x LARGE_SIZE. A hint no class
+      can hold is then refused at create_subscription rather than served a
+      block too small for it.
+
+      Derived counts TYPES, not subscriptions -- an upper bound, since the
+      closure is what is linked, not what is subscribed. See
+      NROS_SUBSCRIBER_BUFFER_SIZE for the rest of that caveat.
+
 config NROS_SUBSCRIBER_LARGE_SIZE
-    int "Large-class payload buffer size"
-    default 16384
+    int "Large-class payload buffer size (-1 = derive)"
+    default -1
     help
-      Per-sample capacity in the large payload class (bytes). The default is
-      sized for image-scale messages; an image whose largest subscribed type
-      is a few hundred bytes pays 2 x 4 x 16384 = 128 KiB for nothing.
-      Maps to ZPICO_SUBSCRIBER_LARGE_SIZE.
+      Per-sample capacity in the large payload class (bytes). The crate default
+      is 16384, sized for image-scale messages; an image whose largest
+      subscribed type is a few hundred bytes pays 2 x 4 x 16384 = 128 KiB for
+      nothing. Maps to ZPICO_SUBSCRIBER_LARGE_SIZE.
+
+      -1 means DERIVE it: the largest derived bound above the class split.
+      When NO type is above the split the size is deliberately NOT derived --
+      with zero blocks the pool is zero bytes whatever size it names, and
+      naming one for a class that does not exist would be inventing a number.
+      The crate default then applies and costs nothing.
 
 config NROS_SERVICE_BUFFER_SIZE
     int "Per-service static buffer size"
@@ -914,8 +955,8 @@ config NROS_EXECUTOR_MAX_CBS
       scales with it.
 
 config NROS_SUBSCRIPTION_BUFFER_SIZE
-    int "Per-subscription receive buffer size (bytes)"
-    default 1024
+    int "Per-subscription receive buffer size in bytes (-1 = derive)"
+    default -1
     help
       Serialized-sample capacity of every executor arena subscription
       (nros-node build.rs DEFAULT_RX_BUF_SIZE). A sample larger than this
@@ -929,6 +970,21 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
       native lanes before; the Zephyr lane's curated cargo environment
       dropped it, so every Zephyr image silently compiled 1024
       (same class as issue 0316 / the NROS_EXECUTOR_MAX_CBS history).
+
+      -1 means DERIVE it from this image's message-bound inventory
+      (phase-403 W8 / issue 0940): the largest derived bound in the LINKED
+      interface closure, which is an UPPER BOUND on what the image needs and
+      never an under-estimate. "Size it to the largest serialized message the
+      image subscribes to" is exactly the instruction nobody could follow by
+      hand -- the island's board conf reasons its way to ~718 B for
+      nav_msgs/Odometry, writes 512, and the derived bound is 880. Any value
+      other than -1 is yours and WINS; the crate default when nothing is
+      stated and nothing is derivable is 1024.
+
+      COUPLED TO THE ARENA: the arena is max_cbs * (3 * this + 512) + 2048, so
+      raising this raises the arena. An image that also PINS
+      NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
+      derive is the shape that cannot disagree.
 
 config NROS_EXECUTOR_MAX_SC
     int "Maximum scheduling-context slots per executor"

@@ -13,6 +13,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosBoardFacts.cmake")
 # FILE scope for the same reason as the two above: an include() inside a
 # function frame drops the file's vars when the frame pops.
 include("${CMAKE_CURRENT_LIST_DIR}/../../packages/api/nros-c/cmake/nros-rtos-helpers.cmake")
+# phase-403 W8 (issue 0940) -- `nros_message_bounds_knobs_file`, the ONE path the
+# derived size knobs are written to and read from. FILE scope for the same
+# reason, and here rather than via NanoRosCodegenCore.cmake because
+# `nros_resolve_knobs()` runs long before the interface generator is included.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosMessageBounds.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -150,6 +155,112 @@ function(_nros_resolve_knob env_name kconfig_value)
 endfunction()
 
 # =============================================================================
+# The DERIVE sentinel (phase-403 W8, issue 0940)
+#
+# A Kconfig `int` always states a number, so "the image chose nothing" has no
+# spelling of its own -- which is why a derived value could never be a DEFAULT
+# without one. `-1` is that spelling. It is not a legal size for any knob that
+# takes it, and, importantly, it is NOT `0`: W4 made
+# `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` a MEANINGFUL claim ("this image's types all
+# fit the small class"), so `0` was already taken.
+#
+# The precedence ladder, highest first:
+#
+#   1. an explicit environment value          -- a person, right now
+#   2. a Kconfig / board `.conf` value        -- a person, in the tree
+#   3. the value derived from message bounds  -- the build
+#   4. the crate's own default                -- nobody; the knob stays unset
+#
+# A derived value is therefore a DEFAULT and never an override. Rung 4 is
+# "leave it unresolved", the same tri-state `NROS_EXECUTOR_ARENA_SIZE` already
+# uses: an unforwarded knob reaches no cargo environment, the reading build
+# script falls through to its own literal, and nothing has to restate that
+# literal here where it would drift.
+# =============================================================================
+set(NROS_KNOB_DERIVE_SENTINEL -1)
+
+# _nros_load_derived_message_bounds()
+#
+# Read the image-wide answer `nros_find_interfaces()` composed. Sets
+# `NROS_DERIVED_*` in the CALLER's scope, or nothing at all.
+#
+# ORDERING, stated rather than assumed. A Zephyr module's CMakeLists is
+# processed during `find_package(Zephyr)`, so this runs BEFORE the application
+# reaches its own `nros_find_interfaces()` call -- the file being read is the
+# one the PREVIOUS configure wrote. That is why it is registered with
+# `CMAKE_CONFIGURE_DEPENDS`: when the interfaces lane later writes it (or
+# writes different bytes into it), ninja re-runs cmake by itself and this read
+# picks the new answer up on the next build, with no second command from the
+# user. The write is write-if-changed for exactly this reason -- rewriting
+# identical bytes every configure would re-arm the reconfigure forever.
+#
+# So the honest statement of the lag is: an image whose interface closure has
+# just changed builds once at its previous sizes, re-configures, and builds
+# again at the derived ones. It is never SILENT: the status line below says
+# which of the two happened.
+function(_nros_load_derived_message_bounds)
+    nros_message_bounds_knobs_file(_knobs)
+    if(NOT EXISTS "${_knobs}")
+        # Created EMPTY rather than skipped, because the next line registers it
+        # as a configure dependency and a ninja input with no producing rule is
+        # a hard `missing and no known rule to make it` at load. Seeding a
+        # placeholder makes the dependency well-formed on the very first
+        # configure, and the interfaces lane overwrites it later in this same
+        # one -- which is what makes ninja re-run cmake and pick the answer up.
+        nros_message_bounds_seed_knobs_file("${_knobs}")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
+    include("${_knobs}")
+    foreach(_v
+        NROS_MESSAGE_BOUNDS_STATUS
+        NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE
+        NROS_DERIVED_SUBSCRIBER_LARGE_SIZE
+        NROS_DERIVED_MAX_LARGE_SUBSCRIBERS
+        NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
+        if(DEFINED ${_v})
+            set(${_v} "${${_v}}" PARENT_SCOPE)
+        endif()
+    endforeach()
+endfunction()
+
+# _nros_resolve_derivable_knob(<env_name> <kconfig_value> <derived_var>)
+#
+# `_nros_resolve_knob` plus rungs 3 and 4 of the ladder above. Use it for a knob
+# whose Kconfig option documents `-1` as "derive"; a plain knob keeps
+# `_nros_resolve_knob`.
+function(_nros_resolve_derivable_knob env_name kconfig_value derived_var)
+    if(NOT "${kconfig_value}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}")
+        # Someone stated a number. It wins over the derivation, in both
+        # directions and without comment: that is what "a derived value is a
+        # DEFAULT" means.
+        _nros_resolve_knob(${env_name} "${kconfig_value}")
+        return()
+    endif()
+    if(DEFINED ENV{${env_name}} AND NOT "$ENV{${env_name}}" STREQUAL "")
+        # Rung 1 still outranks rung 3. `_nros_resolve_knob` prints the
+        # environment-wins line; give it the derived value (or the sentinel) as
+        # the thing being overridden so the message names the real loser.
+        _nros_resolve_knob(${env_name} "${${derived_var}}")
+        return()
+    endif()
+    if(DEFINED ${derived_var} AND NOT "${${derived_var}}" STREQUAL "")
+        message(STATUS
+            "nros: ${env_name}=${${derived_var}} DERIVED from this image's "
+            "message-bound inventory (nothing in Kconfig or the environment "
+            "states one)")
+        _nros_resolve_knob(${env_name} "${${derived_var}}")
+        return()
+    endif()
+    # Rung 4. Deliberately NOT resolved: an unforwarded knob leaves the reading
+    # build script on its own literal default, which is the one place that
+    # literal is written.
+    message(STATUS
+        "nros: ${env_name} left to its crate default -- no value stated and "
+        "none derivable (see NROS_MESSAGE_BOUNDS_REASON in "
+        "${CMAKE_BINARY_DIR}/nros/message_bound_knobs.cmake)")
+endfunction()
+
+# =============================================================================
 # nros_resolve_knobs()
 #
 # Resolve every knob for the selected backend. Must run BEFORE any consumer —
@@ -160,6 +271,16 @@ function(nros_resolve_knobs)
     # Drop last configure's list so a backend switch cannot leave stale knobs
     # behind (the per-knob values are overwritten, but the list would grow).
     unset(NROS_RESOLVED_KNOBS CACHE)
+
+    # phase-403 W8 (issue 0940) -- the size knobs' rung-3 values, if this image
+    # has an inventory to derive them from. Loaded once, before any resolution,
+    # so every `_nros_resolve_derivable_knob` below reads the same answer.
+    _nros_load_derived_message_bounds()
+    if(NROS_MESSAGE_BOUNDS_STATUS STREQUAL "derived")
+        message(STATUS
+            "nros: size knobs may derive from this image's message-bound "
+            "inventory; a Kconfig or environment value still wins")
+    endif()
 
     # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines)
     if(CONFIG_NROS_RMW_ZENOH)
@@ -193,8 +314,13 @@ function(nros_resolve_knobs)
         endif()
 
         # Buffer sizing (nros-rmw-zenoh build.rs)
-        _nros_resolve_knob(ZPICO_SUBSCRIBER_BUFFER_SIZE
-            "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
+        #
+        # The small payload class is DERIVABLE (phase-403 W8): it is the largest
+        # bound at or under the class split, which the inventory knows exactly.
+        # A service request is not a message type, so SERVICE_BUFFER_SIZE is not.
+        _nros_resolve_derivable_knob(ZPICO_SUBSCRIBER_BUFFER_SIZE
+            "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}"
+            NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
         _nros_resolve_knob(ZPICO_SERVICE_BUFFER_SIZE
             "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
 
@@ -205,10 +331,17 @@ function(nros_resolve_knobs)
         # defaults. Same class as issue 0316 / #0749.
         _nros_resolve_knob(ZPICO_SUBSCRIBER_RING_DEPTH
             "${CONFIG_NROS_SUBSCRIBER_RING_DEPTH}")
-        _nros_resolve_knob(ZPICO_MAX_LARGE_SUBSCRIBERS
-            "${CONFIG_NROS_MAX_LARGE_SUBSCRIBERS}")
-        _nros_resolve_knob(ZPICO_SUBSCRIBER_LARGE_SIZE
-            "${CONFIG_NROS_SUBSCRIBER_LARGE_SIZE}")
+        # The two W6 named by name: "numbers a human produced by reading
+        # generated headers with their eyes". Both derivable, and the count is
+        # the one that has an answer of ZERO -- W4 made that legal precisely so
+        # an image whose types all fit the small class stops reserving
+        # RING_DEPTH x LARGE_SIZE for a class it never routes into.
+        _nros_resolve_derivable_knob(ZPICO_MAX_LARGE_SUBSCRIBERS
+            "${CONFIG_NROS_MAX_LARGE_SUBSCRIBERS}"
+            NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
+        _nros_resolve_derivable_knob(ZPICO_SUBSCRIBER_LARGE_SIZE
+            "${CONFIG_NROS_SUBSCRIBER_LARGE_SIZE}"
+            NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
     endif()
 
     # nros-rmw-cffi's static subscription-handle pool. Backend-independent:
@@ -309,8 +442,18 @@ function(nros_resolve_knobs)
     # 1024-byte subscription buffers — every serialized sample above that is
     # dropped, and the C++ arena dispatch path drops it silently. Resolve the
     # whole class (nros-node + nros-params sizing knobs) in one place.
-    _nros_resolve_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
-        "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}")
+    #
+    # phase-403 W8 (issue 0940): also DERIVABLE. This is buffer 1 -- the
+    # runtime-owned take buffer -- and it is ONE global size for every
+    # subscription in the image (`RX_BUF` is a const generic and the C/C++ path
+    # is type-erased), so the number it wants is the largest type the image can
+    # receive. The inventory knows that exactly; an eye reading a header does
+    # not. Note the arena scales with it (`max_cbs * (3 * rx_buf + 512) + 2048`),
+    # so an image that also PINS `NROS_EXECUTOR_ARENA_SIZE` must move the two
+    # together -- which is an argument for pinning neither.
+    _nros_resolve_derivable_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
+        "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}"
+        NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
     # issue 0900 — how many slots the arena derivation charges at ActionClient
     # size. Read by nros-node/build.rs through the derived CONFIG_<name> lookup,
     # like its siblings above.

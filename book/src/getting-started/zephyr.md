@@ -264,8 +264,49 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 | `CONFIG_NROS_MAX_QUERYABLES` | int | 8 | Max concurrent queryables |
 | `CONFIG_NROS_FRAG_MAX_SIZE` | int | 2048 | Max reassembled message size |
 | `CONFIG_NROS_BATCH_UNICAST_SIZE` | int | 1024 | Max unicast batch size |
-| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | 1024 | Per-subscriber buffer |
+| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Per-subscriber buffer, small payload class |
+| `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | int | -1 (derive) | Blocks in the large payload class |
+| `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | int | -1 (derive) | Per-sample capacity of the large class |
 | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | int | 1024 | Per-service buffer |
+
+#### `-1` means "derive it from the message bounds"
+
+Three of the rows above, plus `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE`, default to
+`-1`. That is not a size: it is how an image says *nothing here chose a number,
+work it out* (phase-403 W8, issue 0940).
+
+Codegen derives an exact serialized-size bound for every message type it
+generates and writes it beside the code as `nros_message_bounds.cmake`. The
+build composes those, and the configure prints what it concluded:
+
+```
+-- nros: message-bound sizing DERIVED from 84 types in 11 interface packages (all bounded)
+-- nros:   largest type std_msgs/msg/Float64MultiArray at 1496 B -> NROS_SUBSCRIPTION_BUFFER_SIZE
+-- nros:   0 types over the 2048 B ceiling -> NROS_MAX_LARGE_SUBSCRIBERS
+```
+
+Three things to know before you rely on it:
+
+* **Anything you state wins.** A value in your `prj.conf`, a board `.conf`, or
+  an environment override outranks the derivation, silently and in both
+  directions. The derived number is a default, never an override.
+* **It is an UPPER BOUND.** The inventory covers every type in the interface
+  closure you LINK, not the ones you subscribe to, so the number is the largest
+  message the image *could* receive. That is the safe direction, and it can
+  still be far above what you need: the line above names
+  `std_msgs/Float64MultiArray`, which that image never receives. When the type
+  it names is not one of yours, either state your own value or stop linking the
+  package.
+* **One unbounded type refuses the lot.** If any type in the closure has no
+  derived bound, nothing is derived, every knob keeps its configured value, and
+  the configure names the types and the members that cost them their bound.
+  Deriving over the rest would publish a maximum a real sample can exceed, and
+  that drop is silent on the C++ arena path. The remedy is a bound in the
+  `.msg` or an `inline` cap in `nros-codegen.toml`; one cap on a declaring type
+  (`"std_msgs/Header.frame_id"`) reaches every message that nests it.
+
+The answer, and why it came out that way, is written to
+`<build>/nros/message_bound_knobs.cmake`.
 
 ### XRCE Options (visible when `CONFIG_NROS_RMW_XRCE=y`)
 

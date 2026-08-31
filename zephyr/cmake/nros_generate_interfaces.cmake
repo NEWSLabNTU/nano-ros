@@ -259,6 +259,10 @@ function(nros_generate_interfaces target)
       "phase-403 W6: derived per-type serialized-size bounds for ${target}")
   set(${target}_MESSAGE_BOUNDS_CMAKE "${_bounds_cmake}" CACHE INTERNAL
       "phase-403 W6: include() this to read ${target}'s bounds as CMake variables")
+  # phase-403 W8 (issue 0940) -- and now something READS them. Registered AFTER
+  # codegen has run below, not here: a fragment that does not exist yet is a
+  # FATAL_ERROR in the composer, and this lane's whole advantage is that the
+  # file is on disk before anything downstream configures.
 
   # ---- Run codegen at configure time ----
   # Phase 196.1 — the codegen CLI is the `nros codegen` subcommand (Phase 195
@@ -306,6 +310,10 @@ function(nros_generate_interfaces target)
       "  stdout: ${_codegen_output}\n"
       "  stderr: ${_codegen_error}")
   endif()
+
+  # phase-403 W8 (issue 0940) -- codegen has run, so the bound fragment is on
+  # disk. Register it for the image-wide compose in `nros_find_interfaces()`.
+  nros_message_bounds_register_fragment("${_bounds_cmake}")
 
   # ---- Language-specific post-processing ----
   if(_ARG_LANGUAGE STREQUAL "CPP")

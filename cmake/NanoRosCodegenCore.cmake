@@ -18,6 +18,12 @@
 
 include_guard(GLOBAL)
 
+# phase-403 W8 (issue 0940) -- the READER for the bound inventory W6 exports.
+# Included here rather than in each generator so both lanes register their
+# fragments through one function and `nros_find_interfaces()` below can compose
+# them without knowing which generator produced them.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosMessageBounds.cmake")
+
 # _nros_collect_rs_closure(<out_var> DEPS <pkgs...> OWN <rs-files...>)
 #
 # Compute the de-duplicated transitive closure of generated FFI `.rs` files:
@@ -781,4 +787,25 @@ function(nros_find_interfaces)
         set(${_pkg}_GENERATED_RS_FILES "${${_pkg}_GENERATED_RS_FILES}" PARENT_SCOPE)
         list(APPEND _all_preceding_pkgs "${_pkg}")
     endforeach()
+
+    # 3. phase-403 W8 (issue 0940) -- compose the bound inventories the generators
+    #    just produced and DERIVE the size knobs from them.
+    #
+    #    This is the reader the inventory never had. Before it, the numbers were
+    #    exported over three transports and every consumer downstream invented a
+    #    substitute: `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE`
+    #    were read off generated C++ headers BY EYE -- headers that state an
+    #    ESTIMATE, not a bound (W6).
+    #
+    #    HERE and not in `nros_generate_interfaces()` because the answer is a
+    #    property of the whole linked closure: one package's largest type is not
+    #    the image's. This function is the only place that knows the closure.
+    #
+    #    The result is written to one image-wide file. A consumer reads THAT,
+    #    never these variables -- the readers run in other files at other points
+    #    of the configure, where a function-scoped variable does not reach.
+    nros_message_bounds_knobs_file(_bounds_knobs)
+    nros_derive_message_bound_knobs(OUTPUT_FILE "${_bounds_knobs}")
+    set(NROS_MESSAGE_BOUNDS_STATUS "${NROS_MESSAGE_BOUNDS_STATUS}" PARENT_SCOPE)
+    set(NROS_MESSAGE_BOUNDS_REASON "${NROS_MESSAGE_BOUNDS_REASON}" PARENT_SCOPE)
 endfunction()
