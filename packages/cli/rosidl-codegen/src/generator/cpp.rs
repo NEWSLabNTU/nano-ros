@@ -7,7 +7,7 @@ use crate::{
         ServiceCppHeaderTemplate,
     },
     types::{
-        c_type_for_constant, compute_serialized_size_max, constant_value_to_rust, to_c_package_name,
+        c_type_for_constant, constant_value_to_rust, storage_serialized_size, to_c_package_name,
     },
     utils::to_snake_case,
 };
@@ -144,6 +144,17 @@ fn build_fields(
     Ok((cpp_fields, ffi_fields, seq_structs))
 }
 
+/// `goal` -> `Goal`. The action parts are spelled lowercase in the generated
+/// identifiers and capitalised in the config keys (`[types."pkg/Fib_Result"]`),
+/// which is the spelling `build_fields` already resolves capacities against.
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_ascii_uppercase().to_string() + c.as_str(),
+        None => String::new(),
+    }
+}
+
 /// Helper: build CConstant list
 fn build_constants(constants: &[rosidl_parser::Constant]) -> Vec<CConstant> {
     constants
@@ -261,13 +272,38 @@ struct FfiRenderSpec<'a> {
     deserialize_fn: &'a str,
     ffi_fields: &'a [CppFfiField],
     seq_structs: &'a [SequenceStructDef],
+    /// Bytes of stack the `nros_cpp_publish_*` export writes its CDR into.
+    /// See [`publish_buffer_size`] — this is NOT a bound on the type.
+    publish_buffer_size: usize,
+}
+
+/// How big the FFI publish export's stack buffer has to be.
+///
+/// issue 0964 — this is deliberately NOT the same question as "what is this
+/// type's serialized-size bound", and mixing the two is the defect that issue
+/// files. The header's `SERIALIZED_SIZE_MAX` answers the second: it is derived
+/// with THE size rule and it is ABSENT when the type has no bound. This answers
+/// the first, about a buffer inside generated glue no user reads.
+///
+/// * A BOUNDED type gets its derived bound, which is exact. Nothing is
+///   estimated, and a nested type larger than the estimator's flat 512 stops
+///   being under-counted.
+/// * An UNBOUNDED type has no bound to spend, so the buffer is sized from the
+///   generated C++ struct's own FIXED STORAGE instead
+///   (`types::storage_serialized_size`). That is a true statement about the
+///   struct — an `inline` field cannot hold more than its capacity — and never a
+///   claim about the ROS type, which is why it is not exported, not named in a
+///   header, and not reachable by a user. A `heap` field is the one shape the
+///   storage cannot bound, and the heap arm of the template adds each heap
+///   field's RUNTIME length on top of this figure.
+fn publish_buffer_size(derived: Option<usize>, ffi_fields: &[CppFfiField]) -> usize {
+    derived.unwrap_or_else(|| storage_serialized_size(ffi_fields))
 }
 
 /// Generate the split Rust FFI glue pair for a message-like struct
 /// (phase-306 W1, issue 0253): TYPES half + EXPORTS half.
 fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorError> {
     let has_fields = !spec.ffi_fields.is_empty();
-    let serialized_size_max = compute_serialized_size_max(spec.ffi_fields);
     let has_heap = spec.ffi_fields.iter().any(|f| f.is_heap);
     let has_heap_string = spec.ffi_fields.iter().any(|f| f.is_heap && f.is_string);
     let has_borrowed = spec.ffi_fields.iter().any(|f| f.is_borrowed);
@@ -305,7 +341,7 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
         deserialize_fn: spec.deserialize_fn.to_string(),
         fields: spec.ffi_fields.to_vec(),
         has_fields,
-        serialized_size_max,
+        publish_buffer_size: spec.publish_buffer_size,
         has_heap,
         has_borrowed,
         view_repr_struct_name,
@@ -323,13 +359,40 @@ fn render_ffi_rs(spec: FfiRenderSpec<'_>) -> Result<GeneratedFfiRs, GeneratorErr
     })
 }
 
-/// Generate C++ code for a message type
+/// Generate C++ code for a message type, with no cross-package search path.
+///
+/// A nested type this cannot reach reports `Unresolved`, which is a search-path
+/// problem and not a property of the message (issue 0896) -- so every driver
+/// that HAS an interface index calls
+/// [`generate_cpp_message_package_with_lookup`] instead. This form exists for
+/// tests and for callers with a single self-contained `.msg`.
 pub fn generate_cpp_message_package(
     package_name: &str,
     message_name: &str,
     message: &Message,
     type_hash: &str,
     resolver: &CapacityResolver,
+) -> Result<GeneratedCppPackage, GeneratorError> {
+    generate_cpp_message_package_with_lookup(
+        package_name,
+        message_name,
+        message,
+        type_hash,
+        resolver,
+        &|_| None,
+    )
+}
+
+/// Emit the C++ header + split FFI glue for one message, resolving nested types
+/// through `lookup` so the header can carry the type's DERIVED serialized-size
+/// bound (issue 0964).
+pub fn generate_cpp_message_package_with_lookup(
+    package_name: &str,
+    message_name: &str,
+    message: &Message,
+    type_hash: &str,
+    resolver: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
 ) -> Result<GeneratedCppPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let msg_snake = to_snake_case(message_name);
@@ -361,7 +424,23 @@ pub fn generate_cpp_message_package(
     let intra_package_includes = extract_intra_package_includes(&message.fields, package_name);
     let has_fields = !cpp_fields.is_empty();
     let has_borrowed = cpp_fields.iter().any(|f| f.is_borrowed);
-    let serialized_size_max = compute_serialized_size_max(&ffi_fields);
+
+    // issue 0964 — the type's own size bound, computed with THE size rule
+    // through the one funnel the C pack uses. `poison_ident` is the C pack's
+    // struct name for the SAME type, deliberately: a type that has no bound gets
+    // one identifier across both languages, so the two headers cannot name the
+    // same hole differently.
+    let poison_ident = format!("{}_msg_{}", c_pkg_name, msg_snake);
+    let fqn = format!("{package_name}/{message_name}");
+    let bound = super::common::derive_header_bound(
+        &fqn,
+        &poison_ident,
+        message,
+        resolver,
+        lookup,
+        resolver.max_serialized(package_name, message_name),
+    )?;
+    let publish_buffer = publish_buffer_size(bound.rx, &ffi_fields);
 
     // Render C++ header
     let header_template = MessageCppHeaderTemplate {
@@ -378,7 +457,9 @@ pub fn generate_cpp_message_package(
         dependencies,
         intra_package_includes,
         has_fields,
-        serialized_size_max,
+        serialized_size_max: bound.rx,
+        unbounded_reason: bound.reason,
+        unbounded_token: bound.token,
         has_borrowed,
         ffi_deserialize_view_fn: format!("{}_borrowed", ffi_deserialize_fn),
     };
@@ -398,6 +479,7 @@ pub fn generate_cpp_message_package(
         deserialize_fn: &deserialize_fn,
         ffi_fields: &ffi_fields,
         seq_structs: &seq_structs,
+        publish_buffer_size: publish_buffer,
     })?;
 
     Ok(GeneratedCppPackage {
@@ -407,13 +489,34 @@ pub fn generate_cpp_message_package(
     })
 }
 
-/// Generate C++ code for a service type
+/// Generate C++ code for a service type, with no cross-package search path.
+/// See [`generate_cpp_message_package`].
 pub fn generate_cpp_service_package(
     package_name: &str,
     service_name: &str,
     service: &Service,
     type_hash: &str,
     resolver: &CapacityResolver,
+) -> Result<GeneratedCppServicePackage, GeneratorError> {
+    generate_cpp_service_package_with_lookup(
+        package_name,
+        service_name,
+        service,
+        type_hash,
+        resolver,
+        &|_| None,
+    )
+}
+
+/// Emit the C++ header + split FFI glue for one service, resolving nested types
+/// through `lookup` so each part can carry its DERIVED bound (issue 0964).
+pub fn generate_cpp_service_package_with_lookup(
+    package_name: &str,
+    service_name: &str,
+    service: &Service,
+    type_hash: &str,
+    resolver: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
 ) -> Result<GeneratedCppServicePackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let srv_snake = to_snake_case(service_name);
@@ -450,7 +553,17 @@ pub fn generate_cpp_service_package(
         resolver,
     )?;
     let req_constants = build_constants(&service.request.constants);
-    let req_serialized_size = compute_serialized_size_max(&req_ffi_fields);
+    // issue 0964 -- each part is bounded on its own, under its own config key
+    // (`[types."pkg/Svc_Request"]`), through the same funnel the C pack uses.
+    let req_bound = super::common::derive_header_bound(
+        &format!("{package_name}/{service_name}_Request"),
+        &format!("{c_pkg_name}_srv_{srv_snake}_request"),
+        &service.request,
+        resolver,
+        lookup,
+        resolver.max_serialized(package_name, &format!("{service_name}_Request")),
+    )?;
+    let req_publish_buffer = publish_buffer_size(req_bound.rx, &req_ffi_fields);
 
     // Response
     let resp_struct = format!("{}_srv_{}_response_t", c_pkg_name, srv_snake);
@@ -477,7 +590,15 @@ pub fn generate_cpp_service_package(
         resolver,
     )?;
     let resp_constants = build_constants(&service.response.constants);
-    let resp_serialized_size = compute_serialized_size_max(&resp_ffi_fields);
+    let resp_bound = super::common::derive_header_bound(
+        &format!("{package_name}/{service_name}_Response"),
+        &format!("{c_pkg_name}_srv_{srv_snake}_response"),
+        &service.response,
+        resolver,
+        lookup,
+        resolver.max_serialized(package_name, &format!("{service_name}_Response")),
+    )?;
+    let resp_publish_buffer = publish_buffer_size(resp_bound.rx, &resp_ffi_fields);
 
     let dependencies = {
         let mut deps = extract_deps(&service.request.fields);
@@ -521,8 +642,12 @@ pub fn generate_cpp_service_package(
         intra_package_includes,
         has_request_fields: !service.request.fields.is_empty(),
         has_response_fields: !service.response.fields.is_empty(),
-        request_serialized_size_max: req_serialized_size,
-        response_serialized_size_max: resp_serialized_size,
+        request_serialized_size_max: req_bound.rx,
+        request_unbounded_reason: req_bound.reason,
+        request_unbounded_token: req_bound.token,
+        response_serialized_size_max: resp_bound.rx,
+        response_unbounded_reason: resp_bound.reason,
+        response_unbounded_token: resp_bound.token,
     };
     let header = crate::render::render("service_cpp.hpp", &header_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
@@ -540,6 +665,7 @@ pub fn generate_cpp_service_package(
         deserialize_fn: &req_deser_fn_inner,
         ffi_fields: &req_ffi_fields,
         seq_structs: &req_seq_structs,
+        publish_buffer_size: req_publish_buffer,
     })?;
 
     let response_ffi = render_ffi_rs(FfiRenderSpec {
@@ -554,6 +680,7 @@ pub fn generate_cpp_service_package(
         deserialize_fn: &resp_deser_fn_inner,
         ffi_fields: &resp_ffi_fields,
         seq_structs: &resp_seq_structs,
+        publish_buffer_size: resp_publish_buffer,
     })?;
 
     Ok(GeneratedCppServicePackage {
@@ -564,13 +691,34 @@ pub fn generate_cpp_service_package(
     })
 }
 
-/// Generate C++ code for an action type
+/// Generate C++ code for an action type, with no cross-package search path.
+/// See [`generate_cpp_message_package`].
 pub fn generate_cpp_action_package(
     package_name: &str,
     action_name: &str,
     action: &Action,
     type_hash: &str,
     resolver: &CapacityResolver,
+) -> Result<GeneratedCppActionPackage, GeneratorError> {
+    generate_cpp_action_package_with_lookup(
+        package_name,
+        action_name,
+        action,
+        type_hash,
+        resolver,
+        &|_| None,
+    )
+}
+
+/// Emit the C++ header + split FFI glue for one action, resolving nested types
+/// through `lookup` so each part can carry its DERIVED bound (issue 0964).
+pub fn generate_cpp_action_package_with_lookup(
+    package_name: &str,
+    action_name: &str,
+    action: &Action,
+    type_hash: &str,
+    resolver: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
 ) -> Result<GeneratedCppActionPackage, GeneratorError> {
     let c_pkg_name = to_c_package_name(package_name);
     let act_snake = to_snake_case(action_name);
@@ -594,7 +742,10 @@ pub fn generate_cpp_action_package(
         ffi_fields: Vec<CppFfiField>,
         seq_structs: Vec<SequenceStructDef>,
         constants: Vec<CConstant>,
-        size: usize,
+        /// The part's DERIVED bound, `None` when it has none.
+        bound: crate::bounds::HeaderBound,
+        /// Stack bytes the FFI publish export writes into -- NOT a bound.
+        publish_buffer: usize,
     }
 
     let build_part = |part_name: &str, msg: &Message| -> Result<ActionPart, GeneratorError> {
@@ -607,7 +758,19 @@ pub fn generate_cpp_action_package(
             resolver,
         )?;
         let constants = build_constants(&msg.constants);
-        let size = compute_serialized_size_max(&ffi_f);
+        // issue 0964 -- one part, one derivation, the same funnel as the C pack.
+        // `Goal` / `Result` / `Feedback` are the config's own spelling for the
+        // parts, matching the `[fields]` keys `build_fields` resolves against.
+        let cfg_name = format!("{action_name}_{}", capitalize(part_name));
+        let bound = super::common::derive_header_bound(
+            &format!("{package_name}/{cfg_name}"),
+            &format!("{c_pkg_name}_action_{act_snake}_{part_name}"),
+            msg,
+            resolver,
+            lookup,
+            resolver.max_serialized(package_name, &cfg_name),
+        )?;
+        let publish_buffer = publish_buffer_size(bound.rx, &ffi_f);
         Ok(ActionPart {
             publish_fn: format!(
                 "nros_cpp_publish_{}_action_{}_{}",
@@ -634,7 +797,8 @@ pub fn generate_cpp_action_package(
             ffi_fields: ffi_f,
             seq_structs: seq_s,
             constants,
-            size,
+            bound,
+            publish_buffer,
         })
     };
 
@@ -700,9 +864,15 @@ pub fn generate_cpp_action_package(
         has_goal_fields: !action.spec.goal.fields.is_empty(),
         has_result_fields: !action.spec.result.fields.is_empty(),
         has_feedback_fields: !action.spec.feedback.fields.is_empty(),
-        goal_serialized_size_max: goal.size,
-        result_serialized_size_max: result.size,
-        feedback_serialized_size_max: feedback.size,
+        goal_serialized_size_max: goal.bound.rx,
+        goal_unbounded_reason: goal.bound.reason.clone(),
+        goal_unbounded_token: goal.bound.token.clone(),
+        result_serialized_size_max: result.bound.rx,
+        result_unbounded_reason: result.bound.reason.clone(),
+        result_unbounded_token: result.bound.token.clone(),
+        feedback_serialized_size_max: feedback.bound.rx,
+        feedback_unbounded_reason: feedback.bound.reason.clone(),
+        feedback_unbounded_token: feedback.bound.token.clone(),
     };
     let header = crate::render::render("action_cpp.hpp", &header_template)
         .map_err(|e| GeneratorError::RenderError(e.to_string()))?;
@@ -720,6 +890,7 @@ pub fn generate_cpp_action_package(
         deserialize_fn: &goal.deser_fn_inner,
         ffi_fields: &goal.ffi_fields,
         seq_structs: &goal.seq_structs,
+        publish_buffer_size: goal.publish_buffer,
     })?;
 
     let result_ffi = render_ffi_rs(FfiRenderSpec {
@@ -734,6 +905,7 @@ pub fn generate_cpp_action_package(
         deserialize_fn: &result.deser_fn_inner,
         ffi_fields: &result.ffi_fields,
         seq_structs: &result.seq_structs,
+        publish_buffer_size: result.publish_buffer,
     })?;
 
     let feedback_ffi = render_ffi_rs(FfiRenderSpec {
@@ -748,6 +920,7 @@ pub fn generate_cpp_action_package(
         deserialize_fn: &feedback.deser_fn_inner,
         ffi_fields: &feedback.ffi_fields,
         seq_structs: &feedback.seq_structs,
+        publish_buffer_size: feedback.publish_buffer,
     })?;
 
     Ok(GeneratedCppActionPackage {

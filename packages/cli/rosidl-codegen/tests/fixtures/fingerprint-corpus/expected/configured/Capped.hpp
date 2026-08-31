@@ -33,7 +33,17 @@ struct Capped {
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Capped_";
     static constexpr const char* TYPE_HASH = "h";
-    static constexpr size_t SERIALIZED_SIZE_MAX = 1190;
+
+    /// Largest CDR payload this type can produce or consume, encapsulation
+    /// header included. Derived by `nros_serdes::size::max_serialized_size`
+    /// over this type's own schema -- THE size rule, not a copy of it -- so
+    /// it cannot disagree with the Rust `MAX_SERIALIZED_SIZE_XCDR*` const
+    /// or the exported bound inventory for the same type (issue 0964).
+    ///
+    /// `max(XCDR1, XCDR2)`: this stack WRITES XCDR1, but data_representation
+    /// is negotiable and a non-default peer may send XCDR2, so one constant
+    /// serving both a publish buffer and a receive buffer must hold either.
+    static constexpr size_t SERIALIZED_SIZE_MAX = 157;
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {

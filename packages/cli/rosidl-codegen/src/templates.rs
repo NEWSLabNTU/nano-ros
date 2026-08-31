@@ -744,7 +744,27 @@ pub struct MessageCppHeaderTemplate<'a> {
     /// Same-package type includes (relative paths like "msg/pkg_msg_foo.hpp")
     pub intra_package_includes: Vec<String>,
     pub has_fields: bool,
-    pub serialized_size_max: usize,
+    /// issue 0964 -- the type's DERIVED serialized-size bound,
+    /// `max(XCDR1, XCDR2)`, from `nros_serdes::size::max_serialized_size`.
+    ///
+    /// ONE number serves both directions here: the C++ `SERIALIZED_SIZE_MAX` is
+    /// spent on publish buffers AND on receive buffers, and the RX figure covers
+    /// TX because it is the max of the two encodings.
+    ///
+    /// `None` when the type has NO bound, or when one could not be computed. The
+    /// header then declares the constant with an INCOMPLETE poison type instead
+    /// of stating a size -- see `unbounded_token`.
+    pub serialized_size_max: Option<usize>,
+    /// Prose naming EVERY member that costs the bound (or the nested type that
+    /// could not be resolved). `Some` exactly when `serialized_size_max` is
+    /// `None`.
+    pub unbounded_reason: Option<String>,
+    /// The same fact as a C++ identifier. `SERIALIZED_SIZE_MAX` is declared as a
+    /// static member of this INCOMPLETE struct type, so including the header
+    /// costs nothing and NAMING the constant is a compile error that prints the
+    /// token -- which carries the type and the offending member. The C pack's
+    /// `#define` poison, in the form C++ can express.
+    pub unbounded_token: Option<String>,
     /// RFC-0033 borrowed (Phase 235): emit `{Msg}View` + `deserialize_view`
     /// + `<nros/span.hpp>` when any field is `mode = "view"`.
     pub has_borrowed: bool,
@@ -801,7 +821,14 @@ pub struct MessageCppExportsTemplate<'a> {
     /// Heap publish-path sizing reads the heap fields' runtime lengths.
     pub fields: Vec<CppFfiField>,
     pub has_fields: bool,
-    pub serialized_size_max: usize,
+    /// Stack bytes the `nros_cpp_publish_*` export writes its CDR into.
+    ///
+    /// issue 0964 -- NOT a bound and never emitted as one. It is the type's
+    /// derived bound where one exists, and the generated struct's own fixed
+    /// STORAGE size where it does not, because a buffer inside generated glue
+    /// still needs a number when the ROS type has none. See
+    /// `generator::cpp::publish_buffer_size`.
+    pub publish_buffer_size: usize,
     /// RFC-0033: gates the heap publish-buffer path.
     pub has_heap: bool,
     /// RFC-0033 borrowed (Phase 235): emit the `{Msg}_ffi_deserialize_view`
@@ -836,8 +863,14 @@ pub struct ServiceCppHeaderTemplate<'a> {
     pub intra_package_includes: Vec<String>,
     pub has_request_fields: bool,
     pub has_response_fields: bool,
-    pub request_serialized_size_max: usize,
-    pub response_serialized_size_max: usize,
+    /// See [`MessageCppHeaderTemplate::serialized_size_max`]; per part, because
+    /// a service can have a bounded request and an unbounded response.
+    pub request_serialized_size_max: Option<usize>,
+    pub request_unbounded_reason: Option<String>,
+    pub request_unbounded_token: Option<String>,
+    pub response_serialized_size_max: Option<usize>,
+    pub response_unbounded_reason: Option<String>,
+    pub response_unbounded_token: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -867,7 +900,15 @@ pub struct ActionCppHeaderTemplate<'a> {
     pub has_goal_fields: bool,
     pub has_result_fields: bool,
     pub has_feedback_fields: bool,
-    pub goal_serialized_size_max: usize,
-    pub result_serialized_size_max: usize,
-    pub feedback_serialized_size_max: usize,
+    /// See [`MessageCppHeaderTemplate::serialized_size_max`]; per part, because
+    /// an action routinely has a bounded goal and an unbounded result.
+    pub goal_serialized_size_max: Option<usize>,
+    pub goal_unbounded_reason: Option<String>,
+    pub goal_unbounded_token: Option<String>,
+    pub result_serialized_size_max: Option<usize>,
+    pub result_unbounded_reason: Option<String>,
+    pub result_unbounded_token: Option<String>,
+    pub feedback_serialized_size_max: Option<usize>,
+    pub feedback_unbounded_reason: Option<String>,
+    pub feedback_unbounded_token: Option<String>,
 }

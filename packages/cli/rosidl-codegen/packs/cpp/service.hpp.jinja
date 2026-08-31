@@ -1,3 +1,4 @@
+{%- import "_bound.jinja" as b -%}
 // nros-cpp service type — C++ header for embedded systems
 // Package: {{ package_name }}
 // Service: {{ service_name }}
@@ -30,6 +31,12 @@ int {{ response_ffi_deserialize_fn }}(const uint8_t* data, size_t len, void* out
 } // extern "C"
 
 namespace {{ cpp_package }} { namespace srv {
+{%- if not request_serialized_size_max %}
+{{ b.poison_decl(request_unbounded_token, request_unbounded_reason) }}
+{%- endif %}
+{%- if not response_serialized_size_max %}
+{{ b.poison_decl(response_unbounded_token, response_unbounded_reason) }}
+{%- endif %}
 
 /// {{ service_name }} service type
 struct {{ service_name }} {
@@ -51,7 +58,7 @@ struct {{ service_name }} {
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::srv::dds_::{{ service_name }}_Request_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
-        static constexpr size_t SERIALIZED_SIZE_MAX = {{ request_serialized_size_max }};
+{{ b.size_constant("        ", request_serialized_size_max, request_unbounded_token, request_unbounded_reason) }}
 
         static int ffi_publish(void* handle, const void* msg) {
             return {{ request_ffi_publish_fn }}(handle, msg);
@@ -82,7 +89,7 @@ struct {{ service_name }} {
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::srv::dds_::{{ service_name }}_Response_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
-        static constexpr size_t SERIALIZED_SIZE_MAX = {{ response_serialized_size_max }};
+{{ b.size_constant("        ", response_serialized_size_max, response_unbounded_token, response_unbounded_reason) }}
 
         static int ffi_publish(void* handle, const void* msg) {
             return {{ response_ffi_publish_fn }}(handle, msg);

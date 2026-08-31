@@ -1,3 +1,4 @@
+{%- import "_bound.jinja" as b -%}
 // nros-cpp action type — C++ header for embedded systems
 // Package: {{ package_name }}
 // Action: {{ action_name }}
@@ -33,6 +34,15 @@ int {{ feedback_ffi_deserialize_fn }}(const uint8_t* data, size_t len, void* out
 } // extern "C"
 
 namespace {{ cpp_package }} { namespace action {
+{%- if not goal_serialized_size_max %}
+{{ b.poison_decl(goal_unbounded_token, goal_unbounded_reason) }}
+{%- endif %}
+{%- if not result_serialized_size_max %}
+{{ b.poison_decl(result_unbounded_token, result_unbounded_reason) }}
+{%- endif %}
+{%- if not feedback_serialized_size_max %}
+{{ b.poison_decl(feedback_unbounded_token, feedback_unbounded_reason) }}
+{%- endif %}
 
 /// {{ action_name }} action type
 struct {{ action_name }} {
@@ -54,7 +64,7 @@ struct {{ action_name }} {
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Goal_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
-        static constexpr size_t SERIALIZED_SIZE_MAX = {{ goal_serialized_size_max }};
+{{ b.size_constant("        ", goal_serialized_size_max, goal_unbounded_token, goal_unbounded_reason) }}
 
         static int ffi_publish(void* handle, const void* msg) {
             return {{ goal_ffi_publish_fn }}(handle, msg);
@@ -85,7 +95,7 @@ struct {{ action_name }} {
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Result_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
-        static constexpr size_t SERIALIZED_SIZE_MAX = {{ result_serialized_size_max }};
+{{ b.size_constant("        ", result_serialized_size_max, result_unbounded_token, result_unbounded_reason) }}
 
         static int ffi_publish(void* handle, const void* msg) {
             return {{ result_ffi_publish_fn }}(handle, msg);
@@ -116,7 +126,7 @@ struct {{ action_name }} {
 
         static constexpr const char* TYPE_NAME = "{{ package_name }}::action::dds_::{{ action_name }}_Feedback_";
         static constexpr const char* TYPE_HASH = "{{ type_hash }}";
-        static constexpr size_t SERIALIZED_SIZE_MAX = {{ feedback_serialized_size_max }};
+{{ b.size_constant("        ", feedback_serialized_size_max, feedback_unbounded_token, feedback_unbounded_reason) }}
 
         static int ffi_publish(void* handle, const void* msg) {
             return {{ feedback_ffi_publish_fn }}(handle, msg);

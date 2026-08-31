@@ -808,8 +808,11 @@ that costs it, and sets NO size key on any transport. `BoundState::classify` is
 shared with the C header emitter, so the exported fact and the emitted `#define`
 cannot drift.
 
-**The C++ pack's `SERIALIZED_SIZE_MAX` is an ESTIMATE, and this phase has been
-quoting it as a bound.** `rosidl_codegen::types::compute_serialized_size_max`
+**The C++ pack's `SERIALIZED_SIZE_MAX` WAS an ESTIMATE, and this phase has been
+quoting it as a bound.** (Fixed since, by issue 0964 -- the C++ header now states
+the derived bound and states NO size for a type that has none, through the same
+funnel the C pack uses. The measurement below is what the C++ pack did BEFORE
+that, and it is left standing because it is why the fix exists.) `rosidl_codegen::types::compute_serialized_size_max`
 charges a flat 512 bytes per nested message and a flat default capacity per
 string, and it ALWAYS returns a number -- it has no way to say "unbounded".
 Measured over 120 types in 12 stock ROS Humble interface packages
@@ -827,7 +830,10 @@ Measured over 120 types in 12 stock ROS Humble interface packages
   `bounds::tests::the_cpp_packs_constant_under_estimates_a_large_nested_type`.
 
 So **the `Control 2052` / `Odometry 1804` table earlier in this document is a
-table of estimates**, and at least `Odometry` has no bound to estimate:
+table of estimates** (issue 0964 re-measured them from the fixed C++ pack:
+`Control` 114, `SteeringReport` 24, `OperationModeState` 27, and `Odometry` no
+constant at all until its two strings are capped, then 880), and at least
+`Odometry` has no bound to estimate:
 `std_msgs/Header.frame_id` is an unbounded `string`. The 5x arena figure derived
 from those numbers has to be re-taken from the inventory before W5 claims it.
 The inventory does NOT export the estimate, in either direction.

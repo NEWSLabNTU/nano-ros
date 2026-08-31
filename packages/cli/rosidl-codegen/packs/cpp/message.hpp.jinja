@@ -1,3 +1,4 @@
+{%- import "_bound.jinja" as b -%}
 // nros-cpp message type — C++ header for embedded systems
 // Package: {{ package_name }}
 // Message: {{ message_name }}
@@ -35,6 +36,9 @@ int {{ ffi_deserialize_view_fn }}(const uint8_t* data, size_t len, void* out);
 } // extern "C"
 
 namespace {{ cpp_package }} { namespace msg {
+{%- if not serialized_size_max %}
+{{ b.poison_decl(unbounded_token, unbounded_reason) }}
+{%- endif %}
 
 /// {{ message_name }} message structure (repr(C) compatible)
 struct {{ message_name }} {
@@ -55,7 +59,7 @@ struct {{ message_name }} {
     // Type metadata
     static constexpr const char* TYPE_NAME = "{{ package_name }}::msg::dds_::{{ message_name }}_";
     static constexpr const char* TYPE_HASH = "{{ type_hash }}";
-    static constexpr size_t SERIALIZED_SIZE_MAX = {{ serialized_size_max }};
+{{ b.size_constant("    ", serialized_size_max, unbounded_token, unbounded_reason) }}
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {

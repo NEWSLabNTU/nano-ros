@@ -25,6 +25,14 @@ int nros_cpp_deserialize_fingerprint_corpus_msg_nested(const uint8_t* data, size
 
 namespace fingerprint_corpus { namespace msg {
 
+/// NO size bound exists for this type.
+///
+/// Reason: nested type `fingerprint-corpus/Shapes` could not be resolved
+///
+/// Naming `SERIALIZED_SIZE_MAX` below is therefore a deliberate compile error,
+/// and this incomplete type is what the compiler prints when you do.
+struct NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_fingerprint_corpus_Shapes;
+
 /// Nested message structure (repr(C) compatible)
 struct Nested {
     fingerprint-corpus::msg::Shapes one = {};
@@ -33,7 +41,20 @@ struct Nested {
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Nested_";
     static constexpr const char* TYPE_HASH = "h";
-    static constexpr size_t SERIALIZED_SIZE_MAX = 33288;
+
+    /// This type has NO size bound, so there is no number to state.
+    ///
+    /// Reason: nested type `fingerprint-corpus/Shapes` could not be resolved
+    ///
+    /// Bound the field in the `.msg` (`string<=64`), or give it an
+    /// INLINE `cap` in `nros-codegen.toml` (`[fields]` / `[types]` /
+    /// `[packages]` / `[defaults]`). A `heap` or `view` cap is a sizing hint
+    /// nothing enforces (RFC-0033), so it deliberately does not bound. EVERY
+    /// offending member is named in the reason above, so one build names
+    /// everything there is to fix. "could not be resolved" instead means the
+    /// bound was NOT computed because a nested type was unreachable -- a
+    /// search-path problem, not a property of the message.
+    static const NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_fingerprint_corpus_Shapes SERIALIZED_SIZE_MAX;
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {

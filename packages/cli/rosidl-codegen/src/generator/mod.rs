@@ -12,7 +12,9 @@ pub use action::{
 pub use common::GeneratorError;
 pub use cpp::{
     GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage, GeneratedFfiRs,
-    generate_cpp_action_package, generate_cpp_message_package, generate_cpp_service_package,
+    generate_cpp_action_package, generate_cpp_action_package_with_lookup,
+    generate_cpp_message_package, generate_cpp_message_package_with_lookup,
+    generate_cpp_service_package, generate_cpp_service_package_with_lookup,
 };
 pub use msg::{
     GeneratedCPackage, GeneratedNrosPackage, GeneratedPackage, generate_c_message_package,

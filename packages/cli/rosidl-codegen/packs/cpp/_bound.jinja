@@ -1,0 +1,61 @@
+{# issue 0964 -- the ONE spelling of the C++ pack's size constant.
+
+   Messages, service request/response and action goal/result/feedback all state
+   `SERIALIZED_SIZE_MAX`, and all six used to state an ESTIMATE. The number is
+   now DERIVED (`nros_serdes::size::max_serialized_size` -- THE size rule, the
+   same one the Rust `M::MAX_SERIALIZED_SIZE_XCDR*` const and the exported
+   `nros_message_bounds.json` use), and a type that HAS no bound states none.
+
+   Both halves live here rather than in six copies, because six copies is how a
+   pack ends up disagreeing with itself about what a missing bound looks like.
+
+   `ind` is the line prefix: a message's constant sits one level in, a service
+   or action part's two. #}
+
+{# The incomplete poison type, declared at NAMESPACE scope beside the struct.
+   `SERIALIZED_SIZE_MAX` is then a static data member OF this type: legal to
+   declare (a non-defining static member declaration may have incomplete type),
+   free to include, and a compile error the moment anything NAMES it. That is
+   the C pack's poisoned `#define` in the form C++ can express -- without it the
+   constant would simply be absent and the user would get "no member named
+   'SERIALIZED_SIZE_MAX'", which names neither the type nor the member that
+   costs it the bound. #}
+{%- macro poison_decl(token, reason) %}
+/// NO size bound exists for this type.
+///
+/// Reason: {{ reason }}
+///
+/// Naming `SERIALIZED_SIZE_MAX` below is therefore a deliberate compile error,
+/// and this incomplete type is what the compiler prints when you do.
+struct {{ token }};
+{%- endmacro %}
+
+{# The constant itself, inside the struct. #}
+{%- macro size_constant(ind, size, token, reason) %}
+{%- if size %}
+{{ ind }}/// Largest CDR payload this type can produce or consume, encapsulation
+{{ ind }}/// header included. Derived by `nros_serdes::size::max_serialized_size`
+{{ ind }}/// over this type's own schema -- THE size rule, not a copy of it -- so
+{{ ind }}/// it cannot disagree with the Rust `MAX_SERIALIZED_SIZE_XCDR*` const
+{{ ind }}/// or the exported bound inventory for the same type (issue 0964).
+{{ ind }}///
+{{ ind }}/// `max(XCDR1, XCDR2)`: this stack WRITES XCDR1, but data_representation
+{{ ind }}/// is negotiable and a non-default peer may send XCDR2, so one constant
+{{ ind }}/// serving both a publish buffer and a receive buffer must hold either.
+{{ ind }}static constexpr size_t SERIALIZED_SIZE_MAX = {{ size }};
+{%- else %}
+{{ ind }}/// This type has NO size bound, so there is no number to state.
+{{ ind }}///
+{{ ind }}/// Reason: {{ reason }}
+{{ ind }}///
+{{ ind }}/// Bound the field in the `.msg` (`string<=64`), or give it an
+{{ ind }}/// INLINE `cap` in `nros-codegen.toml` (`[fields]` / `[types]` /
+{{ ind }}/// `[packages]` / `[defaults]`). A `heap` or `view` cap is a sizing hint
+{{ ind }}/// nothing enforces (RFC-0033), so it deliberately does not bound. EVERY
+{{ ind }}/// offending member is named in the reason above, so one build names
+{{ ind }}/// everything there is to fix. "could not be resolved" instead means the
+{{ ind }}/// bound was NOT computed because a nested type was unreachable -- a
+{{ ind }}/// search-path problem, not a property of the message.
+{{ ind }}static const {{ token }} SERIALIZED_SIZE_MAX;
+{%- endif %}
+{%- endmacro %}

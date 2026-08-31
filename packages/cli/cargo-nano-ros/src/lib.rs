@@ -1636,13 +1636,13 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     // (RFC-0043) are what a human was reading `Control 2052` / `Odometry 1804`
     // out of by eye.
     //
-    // The number here is DERIVED (`nros_serdes::size::max_serialized_size`). It
-    // is deliberately NOT the C++ header's own `SERIALIZED_SIZE_MAX`, which
-    // `rosidl_codegen::types::compute_serialized_size_max` ESTIMATES — flat 512
-    // per nested message, flat default capacity per string, and never able to
-    // say "unbounded". For a nested type larger than 512 that estimate is
-    // SMALLER than the real bound, so exporting it would publish a number that
-    // under-sizes a receive buffer. See `rosidl_codegen::bounds`.
+    // The number here is DERIVED (`nros_serdes::size::max_serialized_size`).
+    // Since issue 0964 the C++ header's own `SERIALIZED_SIZE_MAX` is derived by
+    // the same rule through the same funnel, so the inventory and the header
+    // cannot disagree; before that it was an ESTIMATE — flat 512 per nested
+    // message, flat default capacity per string, and never able to say
+    // "unbounded" — which for a nested type larger than 512 was SMALLER than the
+    // real bound. See `rosidl_codegen::bounds`.
     let msg_dirs: Vec<PathBuf> = args
         .interface_files
         .iter()
@@ -1669,12 +1669,13 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 let parsed = rosidl_parser::parse_message(&content)
                     .wrap_err_with(|| format!("Failed to parse message: {}", file_name))?;
 
-                let generated = rosidl_codegen::generate_cpp_message_package(
+                let generated = rosidl_codegen::generate_cpp_message_package_with_lookup(
                     &args.package_name,
                     file_name,
                     &parsed,
                     type_hash,
                     &resolver,
+                    &nested_lookup,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for message: {}", file_name)
@@ -1720,12 +1721,13 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 let parsed = rosidl_parser::parse_service(&content)
                     .wrap_err_with(|| format!("Failed to parse service: {}", file_name))?;
 
-                let generated = rosidl_codegen::generate_cpp_service_package(
+                let generated = rosidl_codegen::generate_cpp_service_package_with_lookup(
                     &args.package_name,
                     file_name,
                     &parsed,
                     type_hash,
                     &resolver,
+                    &nested_lookup,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for service: {}", file_name)
@@ -1758,12 +1760,13 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 let parsed = rosidl_parser::parse_action(&content)
                     .wrap_err_with(|| format!("Failed to parse action: {}", file_name))?;
 
-                let generated = rosidl_codegen::generate_cpp_action_package(
+                let generated = rosidl_codegen::generate_cpp_action_package_with_lookup(
                     &args.package_name,
                     file_name,
                     &parsed,
                     type_hash,
                     &resolver,
+                    &nested_lookup,
                 )
                 .wrap_err_with(|| {
                     format!("Failed to generate C++ code for action: {}", file_name)

@@ -140,6 +140,7 @@ const PACKS: &[(&str, &str)] = &[
         include_str!("../packs/rust/action.rs.jinja"),
     ),
     // C++ pack (packs/cpp)
+    ("_bound.jinja", include_str!("../packs/cpp/_bound.jinja")),
     (
         "message_cpp.hpp",
         include_str!("../packs/cpp/message.hpp.jinja"),

@@ -39,14 +39,15 @@
 //! from `nros_serdes::size::max_serialized_size` -- THE size rule, the same
 //! function the runtime's `M::MAX_SERIALIZED_SIZE_XCDR*` uses.
 //!
-//! It is deliberately NOT [`crate::types::compute_serialized_size_max`], which
-//! the C++ pack still uses for its in-header `SERIALIZED_SIZE_MAX`. That
-//! function ESTIMATES: it charges a flat 512 bytes per nested message and a flat
-//! default capacity per string, and it always returns a value, so it can never
-//! report "unbounded". A flat 512 for a nested type whose own bound exceeds 512
-//! is an UNDER-estimate, which is the direction that matters. Exporting it as
-//! authoritative build metadata would make that guess load-bearing across the
-//! whole build, which is exactly what this wave exists to stop.
+//! The C++ pack's in-header `SERIALIZED_SIZE_MAX` comes from the same place
+//! since issue 0964. It used to come from
+//! [`crate::types::storage_serialized_size`], which ESTIMATES: it charges a flat
+//! 512 bytes per nested message and a flat default capacity per string, and it
+//! always returns a value, so it can never report "unbounded". A flat 512 for a
+//! nested type whose own bound exceeds 512 is an UNDER-estimate, which is the
+//! direction that matters. That function survives for exactly one job -- sizing
+//! the FFI publish glue's stack buffer for a type that HAS no bound -- and is
+//! never emitted as a bound anywhere.
 
 use crate::schema_value::TypeBound;
 
@@ -128,6 +129,111 @@ impl BoundState {
             BoundState::Unresolved { .. } => "unresolved",
         }
     }
+}
+
+/// What ONE language pack needs in order to emit a type's size constant.
+///
+/// issue 0964 — the C pack and the C++ pack derive this identically, so they
+/// derive it ONCE. Two packs computing "is there a bound, and what do I call the
+/// hole when there isn't" separately is exactly how the C++ pack came to state
+/// an estimate for a type the C pack refused to size at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeaderBound {
+    /// XCDR1 — what this stack WRITES. `None` when there is no bound.
+    pub tx: Option<usize>,
+    /// `max(XCDR1, XCDR2)` — what a receive buffer must hold. `None` when there
+    /// is no bound.
+    pub rx: Option<usize>,
+    /// Prose, naming EVERY offending member (or the unreachable nested type).
+    /// `Some` exactly when `tx`/`rx` are `None`.
+    pub reason: Option<String>,
+    /// The same fact as an IDENTIFIER, so a compiler error that mentions it
+    /// names the type and the member. `Some` exactly when `tx`/`rx` are `None`.
+    pub token: Option<String>,
+}
+
+/// Derive [`HeaderBound`] from the two per-encoding answers.
+///
+/// `owner_ident` is the identifier stem the poison token is built around -- the
+/// generated struct name, so the compiler error names the type as the user sees
+/// it in their own source.
+///
+/// Unbounded and Unresolved BOTH mean "no constant", and the reason says which:
+/// "we looked and there is no bound" licenses bounding the field, "we could not
+/// look" licenses fixing the search path. Collapsing them into one message is
+/// the confusion issue 0896 is about.
+pub fn header_bound(owner_ident: &str, xcdr1: &TypeBound, xcdr2: &TypeBound) -> HeaderBound {
+    match BoundState::classify(xcdr1, xcdr2) {
+        BoundState::Bounded { tx, rx } => HeaderBound {
+            tx: Some(tx),
+            rx: Some(rx),
+            reason: None,
+            token: None,
+        },
+        BoundState::Unbounded { reason } => {
+            // The prose reason names EVERY offending member (phase-403 W0); the
+            // poison TOKEN can only name one, because it is an identifier. The
+            // FIRST is the one it names, matching the order the reason lists
+            // them in, so the identifier the compiler prints is the first line
+            // of the reason above it.
+            let members = match (xcdr1, xcdr2) {
+                (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => w.clone(),
+                _ => unreachable!("classify only reports Unbounded from an Unbounded input"),
+            };
+            let first = members
+                .first()
+                .map(String::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            HeaderBound {
+                tx: None,
+                rx: None,
+                reason: Some(reason),
+                token: Some(unbounded_token(owner_ident, &first)),
+            }
+        }
+        BoundState::Unresolved { reason } => {
+            let nested = match (xcdr1, xcdr2) {
+                (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => t.clone(),
+                _ => unreachable!("classify only reports Unresolved from an Unresolved input"),
+            };
+            HeaderBound {
+                tx: None,
+                rx: None,
+                reason: Some(reason),
+                token: Some(unresolved_token(owner_ident, &nested)),
+            }
+        }
+    }
+}
+
+/// Everything that is not alphanumeric becomes `_`, so the result is a legal
+/// C and C++ identifier. `a.b (string)` -> `a_b`; the parenthesised kind is
+/// dropped, because the prose reason beside the token carries it and an
+/// identifier cannot.
+fn ident_of(what: &str) -> String {
+    what.split(" (")
+        .next()
+        .unwrap_or(what)
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
+/// issue 0896 Q2 — "this type has no bound, and THIS member costs it", as an
+/// identifier a compiler can print.
+pub fn unbounded_token(owner_ident: &str, member: &str) -> String {
+    format!("NROS_UNBOUNDED__{owner_ident}__field_{}", ident_of(member))
+}
+
+/// The sibling of [`unbounded_token`] for a bound that was not COMPUTED because
+/// a nested type was unreachable. A different word because the remedy is
+/// different: fix the search path, do not bound a field.
+pub fn unresolved_token(owner_ident: &str, nested: &str) -> String {
+    format!(
+        "NROS_UNRESOLVED__{owner_ident}__nested_type_{}",
+        ident_of(nested)
+    )
 }
 
 /// One type's row in the inventory.
@@ -854,14 +960,17 @@ mod tests {
         );
     }
 
-    /// The C++ pack's in-header `SERIALIZED_SIZE_MAX` is an ESTIMATE, and the
-    /// inventory must never carry it. Pinned here rather than left as prose,
-    /// because the direction matters: the estimate charges a FLAT 512 bytes per
-    /// nested message, so a nested type whose own bound exceeds 512 makes the
-    /// C++ constant SMALLER than the real bound. That is not a conservative
-    /// over-estimate; it is a number that would under-size a receive buffer.
+    /// issue 0964 -- the C++ pack states the DERIVED bound, and it is the SAME
+    /// number the inventory carries.
+    ///
+    /// This replaces `the_cpp_packs_constant_under_estimates_a_large_nested_type`,
+    /// which pinned the DEFECT: the C++ pack charged a flat 512 bytes per nested
+    /// message, so this exact type -- an outer whose only member is an inner of
+    /// 100 doubles -- stated a number SMALLER than the real bound. The old test
+    /// said "if this ever stops holding, the C++ pack was fixed -- delete the
+    /// test and say so, do not relax it". It was fixed, so this is that.
     #[test]
-    fn the_cpp_packs_constant_under_estimates_a_large_nested_type() {
+    fn the_cpp_header_states_the_derived_bound_for_a_large_nested_type() {
         let inner_src = "float64[100] samples\n";
         let outer_src = "p/Inner inner\n";
         let outer = rosidl_parser::parse_message(outer_src).unwrap();
@@ -877,32 +986,61 @@ mod tests {
             ref other => panic!("expected a derived bound, got {other:?}"),
         };
 
-        let cpp = crate::generate_cpp_message_package(
+        let cpp = crate::generate_cpp_message_package_with_lookup(
             "p",
             "Outer",
             &outer,
             "h",
             &crate::CapacityResolver::empty(),
+            &lookup,
         )
         .unwrap();
-        let estimate: usize = cpp
+        let stated: usize = cpp
             .header
             .lines()
             .find_map(|l| l.split("SERIALIZED_SIZE_MAX = ").nth(1))
             .and_then(|t| t.trim_end_matches(';').trim().parse().ok())
             .expect("the C++ header states a SERIALIZED_SIZE_MAX");
 
-        // 100 doubles is 800 bytes of payload; the flat 512 cannot cover it.
+        // 100 doubles is 800 bytes of payload; the retired flat 512 could not
+        // cover it, which is what made the estimate an UNDER-count.
         assert!(
             derived > 800,
             "the derived bound must actually bound the type: {derived}"
         );
-        assert!(
-            estimate < derived,
-            "phase-403 W6 finding: the C++ pack estimates {estimate} where the \
-             derived bound is {derived}. If this ever stops holding, the C++ \
-             pack was fixed -- delete the test and say so, do not relax it."
+        assert_eq!(
+            stated, derived,
+            "the C++ header must state the derived bound, not a second number"
         );
+    }
+
+    /// issue 0964 -- a type with NO bound gets NO size from the C++ pack either,
+    /// and the poison identifier is BYTE-IDENTICAL to the C pack's.
+    ///
+    /// Identical because both go through `header_bound` with the same owner
+    /// stem. One type, one hole, one name for it -- so a user reading the C
+    /// diagnostic and a user reading the C++ diagnostic are reading about the
+    /// same thing, and a grep finds both.
+    #[test]
+    fn an_unbounded_type_gets_no_cpp_size_and_the_c_packs_own_poison_token() {
+        let m = parse_message("string data\n").unwrap();
+        let caps = CapacityResolver::empty();
+
+        let cpp = crate::generate_cpp_message_package("std_msgs", "String", &m, "h", &caps)
+            .unwrap()
+            .header;
+        let c = crate::generate_c_message_package("std_msgs", "String", &m, "h", &caps)
+            .unwrap()
+            .header;
+
+        const TOKEN: &str = "NROS_UNBOUNDED__std_msgs_msg_string__field_data";
+        assert!(cpp.contains(TOKEN), "{cpp}");
+        assert!(c.contains(TOKEN), "{c}");
+        // No number, under any spelling.
+        assert!(!cpp.contains("SERIALIZED_SIZE_MAX = "), "{cpp}");
+        // And the reason is the same prose in both.
+        assert!(cpp.contains("unbounded member: data (string)"), "{cpp}");
+        assert!(c.contains("unbounded member: data (string)"), "{c}");
     }
 
     // -- phase-403 W0 -- a cap reaches the inventory, and BOTH transports agree --

@@ -6,8 +6,9 @@
 # them, so every size downstream was still a number a human typed -- and on the
 # one bring-up that measured it, every one of those numbers was wrong at least
 # once. `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE` were read
-# off generated C++ headers BY EYE, and the headers they were read off state an
-# ESTIMATE rather than a bound (W6's own finding).
+# off generated C++ headers BY EYE, and the headers they were read off stated an
+# ESTIMATE rather than a bound (W6's own finding; fixed by issue 0964, so a C++
+# header now states the same derived number this module composes).
 #
 # This module composes the fragments and derives the FOUR knobs a bound
 # inventory can actually answer.
@@ -508,8 +509,9 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
     string(APPEND _c "# resolved SystemModel carries today (phase-403 W4).\n")
     string(APPEND _c "#\n")
     string(APPEND _c "# Derivation: nros_serdes::size::max_serialized_size, the same rule the\n")
-    string(APPEND _c "# runtime's M::MAX_SERIALIZED_SIZE_XCDR* uses. NOT the C++ pack's\n")
-    string(APPEND _c "# SERIALIZED_SIZE_MAX, which is an estimate (phase-403 W6).\n")
+    string(APPEND _c "# runtime's M::MAX_SERIALIZED_SIZE_XCDR* uses -- and, since issue 0964,\n")
+    string(APPEND _c "# the same rule the C AND C++ headers state, so nothing here can\n")
+    string(APPEND _c "# disagree with a generated header about the same type.\n")
     string(APPEND _c "#\n")
     string(APPEND _c "# small/large class split: ${_ceiling} B (policy -- ZPICO_SUBSCRIBER_SIZE_THRESHOLD)\n")
     string(APPEND _c "\n")

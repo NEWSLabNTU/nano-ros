@@ -90,7 +90,7 @@ pub unsafe extern "C" fn {{ ffi_publish_fn }}(
     // than a fixed stack array. `+ 16` per heap field covers the CDR length
     // header + worst-case element alignment padding.
     let msg = unsafe { &*(msg_ptr as *const {{ repr_c_struct_name }}) };
-    let mut needed: usize = {{ serialized_size_max }};
+    let mut needed: usize = {{ publish_buffer_size }};
 {%- for field in fields %}
 {%- if field.is_heap %}
 {%- if field.is_string %}
@@ -122,7 +122,7 @@ pub unsafe extern "C" fn {{ ffi_publish_fn }}(
     r
 {%- elif has_fields %}
     let msg = unsafe { &*(msg_ptr as *const {{ repr_c_struct_name }}) };
-    let mut buf = [0u8; {{ serialized_size_max }}];
+    let mut buf = [0u8; {{ publish_buffer_size }}];
     let mut writer = match CdrWriter::new_with_header(&mut buf) {
         Ok(w) => w,
         Err(_) => return -1,

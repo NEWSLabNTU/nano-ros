@@ -447,85 +447,23 @@ pub fn generate_c_message_package_with_lookup(
     //
     // The two encodings are computed separately because they genuinely differ;
     // see `MessageCHeaderTemplate::max_serialized_size_xcdr1`.
+    //
+    // phase-403 W6 / issue 0964 — the derivation, the budget check and the
+    // poison identifiers all live in `common::derive_header_bound`, so this
+    // header, the C++ header and the exported inventory cannot drift into
+    // disagreeing about which encoding feeds which direction, or about what the
+    // hole is called when there is no bound at all.
     let fqn = format!("{package_name}/{message_name}");
-    let (tx_bound, rx_bound, unbounded_reason, unbounded_token) = {
-        use crate::schema_value::{TypeBound, bound_message};
-        use nros_serdes::cdr::EncodingVersion;
-        let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, resolver, lookup);
-        let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, resolver, lookup);
-        // phase-403 W7b (issue 0961) — a stated `max_serialized` budget is
-        // checked HERE, against the same classification the header's constants
-        // come from, so the number in the diagnostic is the number in the
-        // `#define`. A type with no budget is untouched: `check_budget` returns
-        // `Ok` and nothing about the derivation changes.
-        crate::bounds::check_budget(
-            &fqn,
-            &crate::bounds::BoundState::classify(&x1, &x2),
-            &crate::schema_value::chains_for(&fqn, message, resolver, lookup),
-            resolver.max_serialized(package_name, message_name),
-        )
-        .map_err(|e| GeneratorError::BoundExceedsBudget {
-            details: e.to_string(),
-        })?;
-        // issue 0896 Q2 — the compiler error must name the TYPE and the FIELD,
-        // not just say "no bound". A C identifier cannot hold `.` or `(`, so
-        // the path is flattened; the prose reason sits above it in the header
-        // for the parts an identifier cannot carry.
-        let token = |what: &str| {
-            let ident: String = what
-                .split(" (")
-                .next()
-                .unwrap_or(what)
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                .collect();
-            format!("NROS_UNBOUNDED__{struct_name}__field_{ident}")
-        };
-        let unresolved_token = |t: &str| {
-            let ident: String = t
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                .collect();
-            format!("NROS_UNRESOLVED__{struct_name}__nested_type_{ident}")
-        };
-        // phase-403 W6 — the TX/RX classification lives in `bounds::BoundState`
-        // so this header and the exported inventory cannot drift into
-        // disagreeing about which encoding feeds which direction. The poison
-        // TOKENS stay here: they are C identifiers, which only this emitter
-        // needs.
-        //
-        // Unbounded and Unresolved BOTH mean "no constant", and the reason says
-        // which — "we looked and there is no bound" licenses bounding the field,
-        // "we could not look" licenses fixing the search path. Collapsing them
-        // into one message is the confusion issue 0896 is about.
-        match crate::bounds::BoundState::classify(&x1, &x2) {
-            // TX writes XCDR1; RX must hold either encoding, so it takes the max.
-            crate::bounds::BoundState::Bounded { tx, rx } => (Some(tx), Some(rx), None, None),
-            crate::bounds::BoundState::Unbounded { reason } => {
-                // The prose reason names EVERY offending member (phase-403 W0);
-                // the poison TOKEN can only name one, because it is a C
-                // identifier. The FIRST is the one it names, matching the order
-                // the reason lists them in, so the identifier the compiler
-                // prints is the first line of the reason above it.
-                let members = match (&x1, &x2) {
-                    (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => w.clone(),
-                    _ => unreachable!("classify only reports Unbounded from an Unbounded input"),
-                };
-                let first = members
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".to_string());
-                (None, None, Some(reason), Some(token(&first)))
-            }
-            crate::bounds::BoundState::Unresolved { reason } => {
-                let nested = match (&x1, &x2) {
-                    (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => t.clone(),
-                    _ => unreachable!("classify only reports Unresolved from an Unresolved input"),
-                };
-                (None, None, Some(reason), Some(unresolved_token(&nested)))
-            }
-        }
-    };
+    let bound = super::common::derive_header_bound(
+        &fqn,
+        &struct_name,
+        message,
+        resolver,
+        lookup,
+        resolver.max_serialized(package_name, message_name),
+    )?;
+    let (tx_bound, rx_bound, unbounded_reason, unbounded_token) =
+        (bound.tx, bound.rx, bound.reason, bound.token);
 
     // Generate header
     let header_template = MessageCHeaderTemplate {

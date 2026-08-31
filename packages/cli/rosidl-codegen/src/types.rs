@@ -1671,15 +1671,27 @@ pub fn cpp_array_suffix_for_field(field_type: &FieldType) -> String {
     }
 }
 
-/// Compute the maximum serialized CDR size for a set of C++ FFI fields.
+/// Size a stack buffer from the generated C++ struct's own FIXED STORAGE.
 ///
-/// Uses conservative estimates:
+/// **This is NOT a serialized-size bound and must never be emitted as one.**
+/// issue 0964: it used to be, as the C++ header's `SERIALIZED_SIZE_MAX`, and
+/// over 126 types in 12 stock ROS Humble packages it matched the derived bound
+/// ZERO times while stating a number for all 86 types that have no bound at all.
+/// The bound is `nros_serdes::size::max_serialized_size`, reached through
+/// [`crate::schema_value::bound_message`] -- THE size rule, the one the Rust
+/// `M::MAX_SERIALIZED_SIZE_XCDR*` const and the exported inventory both use.
+///
+/// The one remaining caller is the FFI publish glue's stack buffer for a type
+/// that HAS no bound (`generator::cpp::publish_buffer_size`), where the question
+/// really is "how much can this struct's inline storage produce" and not "what
+/// does this ROS type bound to". It stays an approximation:
 /// - Primitives: type size + up to 7 bytes alignment padding
 /// - Strings: 4 (length) + capacity + 1 (null) + 3 (alignment)
-/// - Arrays: element_count × element_size (with alignment)
-/// - Sequences: 4 (length) + capacity × element_size (with alignment)
-/// - Nested: uses a fixed estimate (512 bytes per nested type)
-pub fn compute_serialized_size_max(fields: &[super::templates::CppFfiField]) -> usize {
+/// - Arrays: element_count x element_size (with alignment)
+/// - Sequences: 4 (length) + capacity x element_size (with alignment)
+/// - Nested: a FLAT 512 bytes per nested type, which is why it can UNDER-count
+///   and why it is not allowed anywhere a bound is claimed.
+pub fn storage_serialized_size(fields: &[super::templates::CppFfiField]) -> usize {
     let mut size = 4; // CDR header
 
     for field in fields {

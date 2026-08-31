@@ -80,6 +80,51 @@ pub enum GeneratorError {
     BoundExceedsBudget { details: String },
 }
 
+/// Derive ONE message-like part's serialized-size bound for a language pack's
+/// header, and check it against any budget the config states.
+///
+/// issue 0964 -- the single funnel every emitter goes through. The C pack and
+/// the C++ pack used to answer this question separately: the C pack derived the
+/// bound with `nros_serdes::size::max_serialized_size` and refused to state a
+/// size for a type that has none, while the C++ pack ESTIMATED one and always
+/// stated it. The same type carried two numbers, and the estimate was the one a
+/// user read. One function, so there is one answer.
+///
+/// * `fqn` -- the type's ROS name (`pkg/Msg`, `pkg/Svc_Request`), the key the
+///   config, the diagnostics and the inventory all use.
+/// * `owner_ident` -- the identifier stem the poison token is built around, i.e.
+///   the generated struct name, so a compiler error names the type as it appears
+///   in the user's own source.
+/// * `budget` -- `[types."pkg/Msg"] max_serialized`, checked here so the number
+///   in the diagnostic is the number the header would have stated (phase-403
+///   W7b / issue 0961).
+pub fn derive_header_bound(
+    fqn: &str,
+    owner_ident: &str,
+    message: &rosidl_parser::Message,
+    resolver: &CapacityResolver,
+    lookup: &crate::schema_value::MsgLookup<'_>,
+    budget: Option<usize>,
+) -> Result<crate::bounds::HeaderBound, GeneratorError> {
+    use crate::schema_value::bound_message;
+    use nros_serdes::cdr::EncodingVersion;
+
+    // The two encodings are computed separately because they genuinely differ:
+    // XCDR2 adds a 4-byte DHEADER and aligns 8-byte primitives to 4 instead of 8.
+    let x1 = bound_message(fqn, message, EncodingVersion::Xcdr1, resolver, lookup);
+    let x2 = bound_message(fqn, message, EncodingVersion::Xcdr2, resolver, lookup);
+    crate::bounds::check_budget(
+        fqn,
+        &crate::bounds::BoundState::classify(&x1, &x2),
+        &crate::schema_value::chains_for(fqn, message, resolver, lookup),
+        budget,
+    )
+    .map_err(|e| GeneratorError::BoundExceedsBudget {
+        details: e.to_string(),
+    })?;
+    Ok(crate::bounds::header_bound(owner_ident, &x1, &x2))
+}
+
 /// Resolve the borrowed-view field type + full `CdrReader` read expression for
 /// a `borrowed`-mode field (RFC-0033, Phase 229.6, issue 0007).
 ///
