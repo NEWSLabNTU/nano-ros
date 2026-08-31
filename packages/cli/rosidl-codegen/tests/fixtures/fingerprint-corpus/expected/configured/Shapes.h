@@ -35,7 +35,7 @@ typedef struct fingerprint_corpus_msg_shapes {
     double f64_v;
     char text[32];
     struct { int64_t* data; size_t size; size_t capacity; } seq_prim;
-    struct { uint32_t size; char data[256][64]; } seq_string;
+    struct { uint32_t size; char data[64][256]; } seq_string;
     double arr_fixed[3];
     struct { uint32_t size; int32_t data[4]; } seq_bounded;
     char str_bounded[8];
@@ -60,7 +60,7 @@ typedef struct fingerprint_corpus_msg_shapes_View {
     double f64_v;
     nros_view_str_t text;
     struct { int64_t* data; size_t size; size_t capacity; } seq_prim;
-    struct { uint32_t size; char data[256][64]; } seq_string;
+    struct { uint32_t size; char data[64][256]; } seq_string;
     double arr_fixed[3];
     struct { uint32_t size; int32_t data[4]; } seq_bounded;
     char str_bounded[8];

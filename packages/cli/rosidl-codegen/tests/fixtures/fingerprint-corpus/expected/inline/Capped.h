@@ -23,6 +23,7 @@ extern "C" {
 typedef struct fingerprint_corpus_msg_capped {
     char label[256];
     struct { uint32_t size; int64_t data[64]; } samples;
+    struct { uint32_t size; char data[64][256]; } tags;
 } fingerprint_corpus_msg_capped;
 
 /// Get the ROS type name for Capped
@@ -75,7 +76,7 @@ const nros_message_type_t* fingerprint_corpus_msg_capped_get_type_support(void);
 
 /// NO size bound is emitted for this type.
 ///
-/// Reason: unbounded members: label (string), samples (sequence<T>)
+/// Reason: unbounded members: label (string), samples (sequence<T>), tags (sequence<T>)
 ///
 /// "unbounded member" means the bound was computed and does not exist -- bound
 /// the field in the `.msg` (`string<=64`), or give it an INLINE `cap` in
@@ -107,7 +108,7 @@ const nros_message_type_t* fingerprint_corpus_msg_capped_get_type_support(void);
 static inline nros_ret_t fingerprint_corpus_msg_capped_publish(struct nros_publisher_t* publisher,
                                                    const fingerprint_corpus_msg_capped* msg) {
 
-    /* No bound for this type (unbounded members: label (string), samples (sequence<T>)), so the global knob is
+    /* No bound for this type (unbounded members: label (string), samples (sequence<T>), tags (sequence<T>)), so the global knob is
        still the only available answer. */
     uint8_t buf[NROS_PUB_BUFFER_SIZE];
 
@@ -149,7 +150,7 @@ static inline nros_ret_t fingerprint_corpus_msg_capped_publish(struct nros_publi
         nros_c_qos_default(), (cb), (ctx), (out_handle), (uint32_t)(rx_bytes))
 
 /* issue 0896 layer 5 -- this type has NO receive bound
-   (unbounded members: label (string), samples (sequence<T>)), so there is no number a plain `_subscribe` could
+   (unbounded members: label (string), samples (sequence<T>), tags (sequence<T>)), so there is no number a plain `_subscribe` could
    pass, and sizing the buffer is a decision only the caller can make. The macro
    is emitted anyway, POISONED, so the diagnostic names the type and the member
    that costs it the bound instead of reporting an undeclared function.

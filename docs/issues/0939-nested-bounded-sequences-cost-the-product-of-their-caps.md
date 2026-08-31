@@ -54,13 +54,47 @@ Options, none chosen:
 Whatever is chosen must NOT silently substitute a number: phase-380's rule
 stands, and a bound nobody chose is exactly what this campaign keeps removing.
 
-## Adjacent, from the same work
+## Adjacent, from the same work -- RESOLVED 2026-08-31 (phase-403 W7)
 
-`string[]` cannot be capped at all -- a config key names a FIELD and an array
-element is not one -- so five stock types keep no bound: `sensor_msgs/
+`string[]` could not be capped at all -- a config key named a FIELD and an array
+element is not one -- so five stock types kept no bound: `sensor_msgs/
 JointState.name`, `sensor_msgs/MultiDOFJointState.joint_names`,
 `trajectory_msgs/JointTrajectory.joint_names`,
 `trajectory_msgs/MultiDOFJointTrajectory.joint_names`, and
-`visualization_msgs/InteractiveMarkerUpdate.erases`. The emitter spells an
-element string from a built-in 256 that nobody chose; no bound is claimed from
-it, correctly. Whether the config gains an element key is open.
+`visualization_msgs/InteractiveMarkerUpdate.erases`. The emitter spelled an
+element string from a built-in 256 that nobody chose; no bound was claimed from
+it, correctly.
+
+The config now has the element key: `element_cap`, beside `cap` in the same
+entry, mirroring the two dimensions a `.msg` already spells as
+`string<=10[<=5]`. All five are bounded; the 12-package corpus goes 121 -> 126
+of 126.
+
+## What W7 measured about THIS issue
+
+**The element key does not deepen the product, and cannot.** A string is a LEAF:
+`element_cap` turns `String` into `BoundedString`, which has no elements of its
+own, so it adds a LINEAR factor to one level (`cap * (4 + element_cap + 1)`,
+each element padded to 4) and never a level to a bounded-sequence chain. The
+depth the product is taken over stays a property of the `.msg`. Pinned by
+`schema_value::tests::an_element_cap_cannot_deepen_a_bounded_sequence_chain`.
+
+**But the product is now VISIBLE in a stock type, and it is not small.** Under
+the W7 measurement config, `visualization_msgs/InteractiveMarkerUpdate` bounds
+at **34,158,429 bytes (TX) / 34,234,821 (RX)** -- from a config whose largest
+single cap is 65536 and whose sequence caps are 8 to 64. Its `markers` chain is
+the `InteractiveMarker -> controls -> markers -> points` nesting named above.
+That is a bound in the sense that the arithmetic terminates, and useless for
+sizing a receive buffer, which is exactly what this issue says. It is now a
+number a user can PRODUCE rather than a hypothetical, so option 1 (cap the
+derived bound, with a diagnostic naming the chain) has a concrete case to be
+designed against.
+
+**No diagnostic was added, and here is why not.** Naming the nesting chain is
+cheap to COMPUTE -- one walk of the built `&'static [Field]` -- and has nowhere
+to go. `bound_message` returns a `TypeBound` with three variants and no advisory
+channel; `BoundState` is the shared classification the inventory and the C
+header both read, so a fourth state changes the exported schema and every
+consumer of it. Inventing that channel is a design decision this issue already
+lists three options for, and picking one inside an unrelated change is how a
+substituted number gets shipped. The observation is recorded here instead.

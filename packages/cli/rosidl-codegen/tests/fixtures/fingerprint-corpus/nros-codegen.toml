@@ -25,3 +25,13 @@
 # `expected/configured/`, from one .msg. Shapes.text stays unbounded in BOTH.
 "fingerprint-corpus/Capped.label"   = 24
 "fingerprint-corpus/Capped.samples" = { cap = 6, mode = "inline" }
+
+# phase-403 W7 -- the ELEMENT dimension. `cap` is the sequence LENGTH and
+# `element_cap` bounds one element, exactly as `.msg` splits `string<=8[<=4]`
+# into an array suffix and a base-type bound. These are the same two numbers
+# `Bounded.labels` spells in its .msg, so the two goldens cross-check that the
+# config path and the interface path produce ONE shape.
+#
+# `Shapes.seq_string` is deliberately NOT given one: it is the negative control
+# for the built-in 256, which nobody chose and which claims no bound.
+"fingerprint-corpus/Capped.tags" = { cap = 4, element_cap = 8, mode = "inline" }

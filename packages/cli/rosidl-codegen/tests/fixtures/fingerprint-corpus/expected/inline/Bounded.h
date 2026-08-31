@@ -27,6 +27,7 @@ typedef struct fingerprint_corpus_msg_bounded {
     double d;
     char label[8];
     int32_t fixed[4];
+    struct { uint32_t size; char data[4][8]; } labels;
 } fingerprint_corpus_msg_bounded;
 
 /// Get the ROS type name for Bounded
@@ -87,8 +88,8 @@ const nros_message_type_t* fingerprint_corpus_msg_bounded_get_type_support(void)
 /// aligns 8-byte primitives to 4 instead of 8. This stack WRITES XCDR1, so the
 /// publish helper below uses that one; a RECEIVE buffer must hold either, so a
 /// subscription wants the larger.
-#define FINGERPRINT_CORPUS_MSG_BOUNDED_TX_MAX_SERIALIZED_SIZE 68
-#define FINGERPRINT_CORPUS_MSG_BOUNDED_RX_MAX_SERIALIZED_SIZE 68
+#define FINGERPRINT_CORPUS_MSG_BOUNDED_TX_MAX_SERIALIZED_SIZE 133
+#define FINGERPRINT_CORPUS_MSG_BOUNDED_RX_MAX_SERIALIZED_SIZE 133
 
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the

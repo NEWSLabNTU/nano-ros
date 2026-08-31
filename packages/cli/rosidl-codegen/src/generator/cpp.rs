@@ -97,10 +97,26 @@ fn build_fields(
         fields,
         resolver,
     );
+    super::common::ensure_element_caps_apply(
+        current_package.unwrap_or(""),
+        message_name,
+        fields,
+        resolver,
+    )?;
     for (field, s) in fields.iter().zip(store.iter()) {
-        let storage = resolve_cap_override(
+        // phase-403 W7 — fold any configured ELEMENT bound into the shape, so the
+        // C++ container spells `nros::FixedString<32>` and the emitted struct
+        // holds what the derived bound claims. Both builders below read this.
+        let capped = resolver.element_capped(
+            current_package.unwrap_or(""),
+            message_name,
             &field.name,
             &field.field_type,
+        );
+        let field_type = capped.as_ref();
+        let storage = resolve_cap_override(
+            &field.name,
+            field_type,
             current_package,
             message_name,
             resolver,
@@ -108,13 +124,13 @@ fn build_fields(
         )?;
         cpp_fields.push(build_cpp_field(
             &field.name,
-            &field.field_type,
+            field_type,
             current_package,
             storage,
         ));
         let (ffi_field, seq_struct) = build_cpp_ffi_field(
             &field.name,
-            &field.field_type,
+            field_type,
             struct_name,
             current_package,
             storage,

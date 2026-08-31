@@ -1764,4 +1764,44 @@ mod tests {
         assert!(pkg.result_ffi.combined().contains("#[repr(C)]"));
         assert!(pkg.feedback_ffi.combined().contains("#[repr(C)]"));
     }
+
+    /// phase-403 W7 — an `element_cap` naming a field with no element dimension
+    /// stops the build, in EVERY language, rather than being ignored.
+    ///
+    /// All three funnels are exercised, because a key that fails on the C path
+    /// and passes on the Rust one is the class this repo keeps re-fixing: one
+    /// gate whose coverage is narrower than the rule it enforces.
+    #[test]
+    fn an_element_cap_on_a_field_with_no_elements_stops_every_language() {
+        let msg = parse_message("string label\n").unwrap();
+        let resolver = crate::CapacityResolver::from_toml_str(
+            "[fields]\n\"p/M.label\" = { cap = 8, element_cap = 4 }\n",
+        )
+        .unwrap();
+        let deps = HashSet::new();
+
+        let rust = generate_nros_message_package("p", "M", &msg, &deps, "0.0.0", "hash", &resolver);
+        let c = generate_c_message_package("p", "M", &msg, "hash", &resolver);
+        let cpp = generate_cpp_message_package("p", "M", &msg, "hash", &resolver);
+
+        for (lang, err) in [
+            ("rust", rust.err().map(|e| e.to_string())),
+            ("c", c.err().map(|e| e.to_string())),
+            ("cpp", cpp.err().map(|e| e.to_string())),
+        ] {
+            let err = err.unwrap_or_else(|| panic!("{lang}: expected an error, got Ok"));
+            assert!(err.contains("p/M.label"), "{lang}: {err}");
+            assert!(err.contains("element_cap"), "{lang}: {err}");
+        }
+
+        // The same key on a field that DOES have an element dimension is fine.
+        let seq = parse_message("string[] labels\n").unwrap();
+        let ok = crate::CapacityResolver::from_toml_str(
+            "[fields]\n\"p/M.labels\" = { cap = 8, element_cap = 4 }\n",
+        )
+        .unwrap();
+        assert!(generate_nros_message_package("p", "M", &seq, &deps, "0.0.0", "hash", &ok).is_ok());
+        assert!(generate_c_message_package("p", "M", &seq, "hash", &ok).is_ok());
+        assert!(generate_cpp_message_package("p", "M", &seq, "hash", &ok).is_ok());
+    }
 }

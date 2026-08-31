@@ -15,6 +15,7 @@ pub struct Bounded {
     pub d: f64,
     pub label: heapless::String<8>,
     pub fixed: [i32; 4],
+    pub labels: heapless::Vec<heapless::String<8>, 4>,
 }
 
 impl Serialize for Bounded {
@@ -29,6 +30,10 @@ impl Serialize for Bounded {
         writer.write_string(self.label.as_str())?;
         for item in &self.fixed {
             writer.write_i32(*item)?;
+        }
+        writer.write_u32(self.labels.len() as u32)?;
+        for item in &self.labels {
+            writer.write_string(item.as_str())?;
         }
         writer.end_dheader(__dh)?;
         Ok(())
@@ -56,6 +61,16 @@ impl Deserialize for Bounded {
                 }
                 arr
             },
+            labels: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = heapless::Vec::new();
+                for _ in 0..len {
+                    let s = reader.read_string()?;
+                    let elem = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
+                }
+                vec
+            },
         };
         reader.end_dheader(__dh)?;
         Ok(__value)
@@ -73,6 +88,8 @@ impl RosMessage for Bounded {
 
 #[allow(non_upper_case_globals)]
 pub const FT_FIXED_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Int32;
+#[allow(non_upper_case_globals)]
+pub const FT_LABELS_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::BoundedString(8);
 impl ::nros_serdes::Message for Bounded {
     const TYPE_NAME: &'static str = "fingerprint-corpus/msg/Bounded";
     const FIELDS: &'static [::nros_serdes::Field] = &[
@@ -105,6 +122,11 @@ impl ::nros_serdes::Message for Bounded {
             name: "fixed",
             ty: ::nros_serdes::FieldType::Array(4, &FT_FIXED_ELEM),
             offset: ::core::mem::offset_of!(Bounded, fixed),
+        },
+        ::nros_serdes::Field {
+            name: "labels",
+            ty: ::nros_serdes::FieldType::BoundedSequence(4, &FT_LABELS_ELEM),
+            offset: ::core::mem::offset_of!(Bounded, labels),
         },
 ];
 }

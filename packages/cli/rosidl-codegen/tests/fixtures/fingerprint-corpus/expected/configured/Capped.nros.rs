@@ -11,6 +11,7 @@ use nros_serdes::{CdrReader, CdrWriter, SerError, DeserError};
 pub struct Capped {
     pub label: heapless::String<24>,
     pub samples: heapless::Vec<i64, 6>,
+    pub tags: heapless::Vec<heapless::String<8>, 4>,
 }
 
 impl Serialize for Capped {
@@ -22,6 +23,10 @@ impl Serialize for Capped {
         writer.write_u32(self.samples.len() as u32)?;
         for item in &self.samples {
             writer.write_i64(*item)?;
+        }
+        writer.write_u32(self.tags.len() as u32)?;
+        for item in &self.tags {
+            writer.write_string(item.as_str())?;
         }
         writer.end_dheader(__dh)?;
         Ok(())
@@ -46,6 +51,16 @@ impl Deserialize for Capped {
                 }
                 vec
             },
+            tags: {
+                let len = reader.read_u32()? as usize;
+                let mut vec = heapless::Vec::new();
+                for _ in 0..len {
+                    let s = reader.read_string()?;
+                    let elem = heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)?;
+                    vec.push(elem).map_err(|_| DeserError::CapacityExceeded)?;
+                }
+                vec
+            },
         };
         reader.end_dheader(__dh)?;
         Ok(__value)
@@ -63,6 +78,8 @@ impl RosMessage for Capped {
 
 #[allow(non_upper_case_globals)]
 pub const FT_SAMPLES_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Int64;
+#[allow(non_upper_case_globals)]
+pub const FT_TAGS_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::BoundedString(8);
 impl ::nros_serdes::Message for Capped {
     const TYPE_NAME: &'static str = "fingerprint-corpus/msg/Capped";
     const FIELDS: &'static [::nros_serdes::Field] = &[
@@ -75,6 +92,11 @@ impl ::nros_serdes::Message for Capped {
             name: "samples",
             ty: ::nros_serdes::FieldType::BoundedSequence(6, &FT_SAMPLES_ELEM),
             offset: ::core::mem::offset_of!(Capped, samples),
+        },
+        ::nros_serdes::Field {
+            name: "tags",
+            ty: ::nros_serdes::FieldType::BoundedSequence(4, &FT_TAGS_ELEM),
+            offset: ::core::mem::offset_of!(Capped, tags),
         },
 ];
 }
