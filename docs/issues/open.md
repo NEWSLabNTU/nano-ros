@@ -74,10 +74,8 @@ fails if this block drifts.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
 - **#0931** (build, api) — `MODEL` has no users and should be retired; `LAUNCH default` is ceremony on 26 entries See `0931-*`.
 - **#0931** (build, api) — `nano_ros_entry` has eleven arguments; four have no users and three restate the bringup See `0931-*`.
-- **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
 - **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
-- **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
-- **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
 - **#0941** (build) — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent See `0941-*`.
 
 <!-- END GENERATED open-issue list -->
