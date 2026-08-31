@@ -5,7 +5,7 @@ title: "The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no
 status: open
 type: bug
 area: rmw
-related: [issue-0896, issue-0917, phase-392, phase-408]
+related: [issue-0896, issue-0917, issue-0969, issue-0970, phase-392, phase-408]
 ---
 
 ## What was measured
@@ -74,6 +74,37 @@ and the issue is closed by EITHER:
 
 Option 2 is a legitimate close. What is not legitimate is the present state,
 where the parameter is silently discarded at a comment.
+
+### Amendment (2026-08-31) — option 2 is the answer, and #0969 is why
+
+Option 1 was left open above because nobody had established what the hint could
+mean here. It has now been established, by reading the take path, and the answer
+is: nothing that survives the fix this backend actually needs.
+
+The one place a hint would have had an effect is `dds_ostream_init(&os, 0, 1)` in
+`subscription_take` — an output stream that starts empty and grows by `realloc`,
+where a correct initial size would save the reallocs. But that ostream exists only
+because the backend deserializes the wire CDR into a typed sample and then
+re-serializes it. [#0969](0969-cyclone-take-cdr-round-trip.md) deletes the round
+trip (`dds_takecdr` + `ddsi_serdata_to_ser`, upstream's shape), and the ostream
+goes with it.
+
+After #0969 this backend owns **no** receive buffer to size:
+
+* the serdata is Cyclone's, sized by the sample that arrived;
+* the destination is the caller's buffer, which is the executor arena's slot —
+  already derived from the type by phase-403 W3/W5, on the nano-ros side, exactly
+  as the "What is NOT affected" section above says.
+
+So the hint is not unimplemented here; it is **inapplicable** here, and that is a
+property of the backend's architecture rather than of anyone's backlog. Close via
+option 2 — say so where `rmw_subscription_options_t` is read, naming #0969 as the
+reason there is nothing left to size — rather than leaving option 1 open as work
+someone might pick up.
+
+The complaint that opened this issue stands unchanged: a backend that ignores a
+shared-ABI field must say so at the point it ignores it. What changes is that the
+answer to "what should it do instead" is now known, and it is "nothing".
 
 ## Not to be confused with
 
