@@ -1,0 +1,192 @@
+# phase-410 — CI is BREADTH × DEPTH, and only depth is expensive
+
+**Status (2026-08-31). W2 and W3 landed; W1 deferred with reasons; W4 open.**
+
+Restructures the CI workflows so a tier's file keeps the promise the tier makes.
+Consumes phase-407 (`just <verb> <scope>`) and phase-395 (the event design);
+amends RFC-0061's tier ladder rather than replacing it.
+
+## The defect this fixes
+
+phase-407 gave every RFC-0061 tier a CI owner. That exposed the next question:
+the owners are correct but the SHAPE is wrong, in three ways that only appear
+under load.
+
+**1. A tier's file is named for its EVENT, not its tier.** Tier 1 lives in
+`host-tests.yml`, tier 2 in `post-submit.yml`, tier-2-nightly in `nightly.yml`,
+tier 3 nowhere. "Where does tier 2 run?" needed a gate to answer.
+
+**2. `pr-checks.yml` does different work for five events in 850 lines.**
+Deliberate (phase-395's economics) and unreadable: a developer cannot answer
+"what runs on my PR?" without reading all of it. `nightly.yml` is another 851.
+
+**3. The ladder collapses two independent axes.** This is the substantive one.
+
+## BREADTH × DEPTH
+
+| axis | values | cost |
+| --- | --- | --- |
+| **breadth** — which coordinates | tier1, tier2, nightly, full | low |
+| **depth** — what we do with each | build+link, build+run | **high** |
+
+Nearly all cost is DEPTH. Building wide is affordable; RUNNING wide is not.
+
+RFC-0061's ladder encodes breadth only, so `just ci <tier>` always means
+build AND run. The build-only depth exists — `just ci l3` is "cross build +
+link", `rust-rtos-link-check` plus ELF symbol interrogation, no QEMU and no
+tests — but it lives in the LANE vocabulary (L1/L3), a second ladder sharing
+the `ci` namespace. `ci l3` and `ci full` read as siblings and are unrelated.
+
+An earlier draft of this design proposed retiring the lane vocabulary into the
+tiers. That was wrong and is recorded because the mistake is instructive: it
+would have destroyed the build-only depth, which is the CHEAP half and the one
+that can afford to be mandatory.
+
+## The rule
+
+> **Build+link is MANDATORY and WIDE. Build+run is SCHEDULED and NARROW.**
+
+"It compiles and links for every target" is the regression that hurts most and
+costs least to catch. Running is what cannot be afforded per merge.
+
+## Why per-merge run-depth STARVES with ten agents
+
+`post-submit.yml` sets `cancel-in-progress: true` — correct for "is main good
+NOW", where a newer commit's answer subsumes an older one's.
+
+Measured on this host, 2026-08-31: tier-2 fixtures rebuild in **11 min warm**
+(~45 cold) and the tier-2 run takes **9.5 min** — 20+ minutes warm, before any
+queueing.
+
+With ten agents landing through a merge queue that batches up to four, merges
+arrive faster than that. Each cancels the last, so **tier 2 completes never** —
+and a lane that always cancels looks busy while reporting nothing, which is
+strictly worse than the skipped job phase-407 just made visible.
+
+So run-depth tiers move to a CLOCK, not to `push(main)`. A scheduled run always
+finishes.
+
+## Caching is a REPOSITORY-wide budget, not a per-job one
+
+`pr-checks.yml` already records why sccache is used over caching `target/`, and
+the constraint that matters here: **the GitHub Actions Cache limit is 10 GB per
+REPOSITORY**, and GitHub evicts entries "created and deleted at a high
+frequency" (hence `SCCACHE_CACHE_SIZE=2G`).
+
+Ten agents on ten concurrent PRs, each writing cache entries, thrash a shared
+budget and make the cache worse than none.
+
+**Rule: only `main`-branch runs WRITE the cache; PR runs READ it.** Any new
+workflow must state which it is.
+
+## Target structure
+
+```
+gate.yml          REQUIRED · check fast + test-unit
+                  on: pull_request, merge_group           cheap; never starves
+
+build-wide.yml    BUILD + LINK only, wide breadth         ← the mandatory promise
+                  on: push(main)                            no fixtures, no QEMU
+
+run-host.yml      build+run, host coordinates (tier 1)
+                  on: push(main), schedule 03:00
+
+run-matrix.yml    build+run, 1-wise (tier 2)
+                  on: schedule 06:00, dispatch            ← clock, not per-merge
+
+run-nightly.yml   build+run, pairwise      on: schedule 07:00
+run-full.yml      build+run, everything    on: dispatch
+```
+
+Each file is phase-407 shaped: `just setup <scope>` then one tier command.
+Filename ↔ tier ↔ local command, 1:1.
+
+`cancel-in-progress: true` ONLY where a newer answer subsumes an older one AND
+the run is short enough to finish — `gate`, `build-wide`. The scheduled `run-*`
+files use `cancel-in-progress: false` so a run completes rather than being
+perpetually superseded.
+
+## THE MIGRATION CONSTRAINT — read before touching anything
+
+The required status check is the job **named `CI`** (`ci-ok` in
+`pr-checks.yml`), and CLAUDE.md records that a required check producing no
+verdict **deadlocked two pull requests**: a check that never reports blocks
+forever rather than failing.
+
+So: the aggregator must keep the literal name `CI` and must emit a verdict on
+EVERY event, including when its dependencies skip. Its current `if: always()`
+plus justified-skip logic moves VERBATIM; it is well built and this phase does
+not improve it.
+
+W1 lands that file ALONE and confirms the context still reports before anything
+else moves.
+
+## Work items
+
+**W1 — DEFERRED, deliberately. `pr-checks.yml` keeps its name for now.**
+
+The plan was to rename it `gate.yml`. The inference that this is safe is
+strong: the ruleset requires the bare context `CI`, which cannot come from the
+file name or from the workflow's `name: pr-checks` — so GitHub is matching the
+JOB name, `ci-ok`'s `name: CI`, and a rename preserves it.
+
+Strong is not verified. `gh pr checks` reports no contexts for this branch even
+though a `pr-checks` run succeeded, so the association cannot be observed from
+here. CLAUDE.md records that a required check producing no verdict DEADLOCKED
+two pull requests — with ten agents landing through a merge queue, that blocks
+everyone, and the benefit on offer is a better filename.
+
+So the rename is its own change, made when someone can watch the context report
+on a real PR. W2 and W3 add NEW files and touch no required context; they carry
+the substance of this phase — the breadth/depth split, the starvation fix and
+the cache rule — without betting the queue on an inference.
+
+**W2 — `build-wide.yml`.** The mandatory build+link lane on `push(main)`.
+
+MEASURED 2026-08-31: `just ci l3` = **46 s**, exit 0 — `rust-rtos-link-check`
+plus three cross ELFs interrogated and the heap-free image link-gated, without
+booting anything. Against 20+ minutes for run-depth, build depth is roughly
+**25x cheaper**, so per-merge is comfortable and the starvation argument does
+not apply to it.
+
+Caveat, stated because it changes the number and not the conclusion: 46 s is
+WARM, on a tree where the cross artifacts already exist. A cold runner pays the
+cross builds themselves, which is the bulk. The RATIO is what the design rests
+on, and no plausible cold cost closes a 25x gap.
+
+**W3 LANDED (tier 2). Tier 1 and nightly stay where they are, deliberately.**
+
+Tier 2 moved out of `post-submit.yml` into `run-matrix.yml` on a 06:00 cron with
+`cancel-in-progress: false`. That is the starvation fix and the measured case.
+`dep-chain` stays in post-submit: hosted, 158 s, genuinely per-merge.
+
+Tier 1 (`host-tests.yml`) keeps `push(main)` — it is the cheapest run depth, it
+is path-filtered, and that file has NO concurrency group, so runs QUEUE rather
+than cancel. Queueing wastes runner time under ten agents but it does not
+starve, and changing it is a separate judgement about hosted-runner budget
+rather than about correctness. Recorded here so the inconsistency is a decision
+and not an oversight.
+
+Tier-2-nightly is already on a clock by construction.
+
+**W4 — the vocabulary.** Decide whether L1/L3 stay as a lane ladder or become
+`--depth` on the tier commands. This is a decision, not an implementation, and
+it touches `CiLane`, `check-lane-contracts` and the queue.
+
+## Acceptance
+
+* every tier's file name names its tier, and its body is a command a developer
+  can type;
+* build+link is mandatory per merge; no run-depth lane is per-merge;
+* exactly one cache writer;
+* the `CI` context never stops reporting, on any event;
+* `check-tier-has-ci-owner` still passes, and its OWNERLESS list does not grow.
+
+## The open number, now closed
+
+`just ci l3` = **46 s warm** (exit 0). W2 is per-merge.
+
+Still unmeasured, and W2 should report it once the lane exists: the same
+command on a COLD runner. It cannot change the structure — a 25x gap does not
+close — but it decides whether `build-wide` needs the sccache read path to be
+fast or merely present.
