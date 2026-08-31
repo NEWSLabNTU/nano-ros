@@ -29,11 +29,13 @@
 #include "internal.hpp"
 
 #include "descriptors.hpp"
+#include "nros_sertype.hpp"
 #include "qos.hpp"
 #include "topic_prefix.hpp"
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_serdata.h>
+#include <dds/ddsi/ddsi_sertype.h>
 
 #include <cstdint>
 #include <cstdlib>
@@ -108,8 +110,20 @@ rmw_ret_t subscription_create(const rmw_node_t* node, const rmw_message_type_sup
         delete state;
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    dds_entity_t topic = dds_create_topic(pp, desc, prefixed, nullptr, nullptr);
+    // Issue 0970 — register OUR sertype rather than the descriptor's, so the
+    // reader's samples are CDR rather than typed C structs. The type name is
+    // the descriptor's, so what SEDP advertises is unchanged.
+    struct ddsi_sertype* st = create_nros_sertype(desc);
+    if (st == nullptr) {
+        // Keyed type, or out of memory. Keyed is a real refusal rather than a
+        // fallback: see `nros_sertype.hpp`.
+        delete state;
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    dds_entity_t topic = dds_create_topic_sertype(pp, prefixed, &st, nullptr, nullptr, nullptr);
     if (topic < 0) {
+        // Ownership only transfers on success, so this one is still ours.
+        ddsi_sertype_unref(st);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -127,11 +141,6 @@ rmw_ret_t subscription_create(const rmw_node_t* node, const rmw_message_type_sup
         return NROS_RMW_RET_ERROR;
     }
     state->reader = reader;
-
-    // No `SertypeMin` here since issue 0969: the receive path reads the
-    // serdata's own CDR and never runs the cdrstream helpers, which were the
-    // only thing that builder existed to feed. The publish path still has one
-    // (`publisher.cpp`) until issue 0970 retires it there too.
 
     out->backend_data = state;
     graph_track_reader(session_graph(session), reader); // Phase 177.36

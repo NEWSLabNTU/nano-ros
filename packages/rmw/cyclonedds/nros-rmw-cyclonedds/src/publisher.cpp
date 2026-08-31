@@ -1,8 +1,17 @@
-// Publisher path — Phase 117.6 + 117.6.B + Phase 212.K.7.4.d.
+// Publisher path — Phase 117.6 + 117.6.B + Phase 212.K.7.4.d, publish
+// rewritten by issue 0970.
 //
-// Entity creation: registry lookup → topic + writer + QoS.
-// Data path: CDR bytes from runtime → dds_stream_read_sample into
-// typed buffer → dds_write (Cyclone re-serialises) → wire.
+// Entity creation: registry lookup → topic (on OUR sertype) + writer + QoS.
+// Data path: CDR bytes from runtime → dds_write of an `NrosCdrBlob` → wire.
+//
+// The bytes are no longer decoded on the way out. They used to be:
+// `dds_stream_read_sample` filled a typed C struct which `dds_write` then
+// re-serialized, because the topic was registered with `dds_create_topic(desc)`
+// and Cyclone's own sertype only speaks typed samples. Registering our own
+// sertype (issue 0970, `nros_sertype.hpp`) makes the sample a span of CDR, so
+// `from_sample` copies it into a serdata and that is the whole of publish.
+// The encapsulation header the caller supplies now reaches the wire verbatim
+// rather than being parsed for its XCDR version and then regenerated.
 //
 // Phase 212.K.7.4.d retired the per-action manual ops-walking fast
 // paths (`publish_goal_status_array` + `publish_fibonacci_feedback`).
@@ -20,21 +29,20 @@
 // the 16 raw bytes inline). The receive side mirror is in
 // `subscriber.cpp::insert_goal_id_len_at` (predates this commit).
 //
-// See `src/sertype_min.hpp` for the rationale behind the round-trip
-// approach (Cyclone 0.10.5 doesn't expose the writer's internal
-// sertype + serpool publicly; full zero-copy raw-CDR write is
-// blocked on a future upstream API).
+// `src/sertype_min.hpp` used to carry the rationale for the round trip, ending
+// "blocked on a future upstream API" — `dds_writer_lookup_serdatatype`. It was
+// not: that API recovers a sertype you do not own, and owning ours removes the
+// need for it. `service.cpp` is the last user of that builder.
 
 #include "internal.hpp"
 
 #include "descriptors.hpp"
+#include "nros_sertype.hpp"
 #include "qos.hpp"
-#include "sertype_min.hpp"
 #include "topic_prefix.hpp"
 
 #include <dds/dds.h>
-#include <dds/ddsi/ddsi_cdrstream.h>
-#include <dds/ddsrt/heap.h>
+#include <dds/ddsi/ddsi_sertype.h>
 
 #include <cstdlib>
 #include <cstdint>
@@ -49,32 +57,17 @@ struct PubState {
     dds_entity_t topic{0};
     dds_entity_t writer{0};
     const dds_topic_descriptor_t* desc{nullptr};
-    SertypeMin* st{nullptr};
 };
 
 inline PubState* as_state(const rmw_publisher_t* p) {
     return static_cast<PubState*>(p->backend_data);
 }
 
-// Parse the 4-byte CDR encapsulation header (RTPS submessage prefix
-// every ROS 2 publisher emits). Returns the XCDR version (1 or 2).
-// `bytes` must be at least 4 bytes.
-//
-// Encoding identifier:
-//   00 00 = CDR_BE, plain    → XCDR1
-//   00 01 = CDR_LE, plain    → XCDR1
-//   00 06 = D_CDR_LE         → XCDR2
-//   00 07 = D_CDR_BE         → XCDR2
-//   00 0a = PL_CDR2_LE       → XCDR2
-//   00 0b = PL_CDR2_BE       → XCDR2
-// Anything outside these is treated as XCDR1.
-uint32_t cdr_xcdr_version(const uint8_t* bytes) {
-    uint8_t lo = bytes[1];
-    if (lo == 0x06 || lo == 0x07 || lo == 0x0a || lo == 0x0b) {
-        return 2;
-    }
-    return 1;
-}
+// The encapsulation header used to be parsed here for its XCDR version, to tell
+// `dds_istream_init` how to decode the body. Nothing decodes the body any more,
+// so the version is the publisher's business and not ours — the four bytes go
+// out as they came in, which is also what keeps an XCDR2 producer's framing
+// intact instead of flattening it to whatever we re-encoded as.
 
 bool type_ends_with(const dds_topic_descriptor_t* desc, const char* suffix) {
     if (desc == nullptr || desc->m_typename == nullptr || suffix == nullptr) {
@@ -150,8 +143,19 @@ rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_suppor
         delete state;
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    dds_entity_t topic = dds_create_topic(pp, desc, prefixed, nullptr, nullptr);
+    // Issue 0970 — our sertype, not the descriptor's, so the writer's samples
+    // are CDR. The type name is the descriptor's, so SEDP is unchanged.
+    struct ddsi_sertype* st = create_nros_sertype(desc);
+    if (st == nullptr) {
+        // Keyed type, or out of memory. Keyed is a refusal, not a fallback:
+        // see `nros_sertype.hpp`.
+        delete state;
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
+    dds_entity_t topic = dds_create_topic_sertype(pp, prefixed, &st, nullptr, nullptr, nullptr);
     if (topic < 0) {
+        // Ownership only transfers on success.
+        ddsi_sertype_unref(st);
         delete state;
         return NROS_RMW_RET_ERROR;
     }
@@ -169,14 +173,6 @@ rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_suppor
         return NROS_RMW_RET_ERROR;
     }
     state->writer = writer;
-
-    state->st = new (std::nothrow) SertypeMin(desc);
-    if (state->st == nullptr) {
-        (void)dds_delete(writer);
-        (void)dds_delete(topic);
-        delete state;
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
 
     out->backend_data = state;
     graph_track_writer(session_graph(session), writer); // Phase 177.36
@@ -196,7 +192,6 @@ rmw_ret_t publisher_destroy(rmw_publisher_t* publisher) {
     // state behind would turn one leak into two.
     dds_return_t writer_rc = state->writer > 0 ? dds_delete(state->writer) : DDS_RETCODE_OK;
     dds_return_t topic_rc = state->topic > 0 ? dds_delete(state->topic) : DDS_RETCODE_OK;
-    delete state->st;
     delete state;
     publisher->backend_data = nullptr;
     if (writer_rc < 0 || topic_rc < 0) return NROS_RMW_RET_ERROR;
@@ -259,31 +254,17 @@ rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher,
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     PubState* state = as_state(publisher);
-    if (state == nullptr || state->desc == nullptr || state->st == nullptr) {
+    if (state == nullptr || state->desc == nullptr) {
         return NROS_RMW_RET_ERROR;
     }
     const dds_topic_descriptor_t* desc = state->desc;
 
-    // Parse encapsulation, copy the payload bytes after the 4-byte
-    // header into a mutable scratch buffer (so we can splice out the
-    // `_FeedbackMessage_` goal_id length prefix in place if needed).
-    uint32_t xcdrv = cdr_xcdr_version(data);
-    size_t body_len = len - 4;
-    auto* body = static_cast<uint8_t*>(ddsrt_malloc(body_len > 0 ? body_len : 1));
-    if (body == nullptr) {
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
-    if (body_len > 0) {
-        std::memcpy(body, data + 4, body_len);
-    }
-
-    // 233.6 — the Rust runtime now serialises the action `goal_id` as the
-    // fixed `octet[16]` the Cyclone IDL declares (no `[4 u32=16]`
-    // sequence-style prefix), matching ROS 2 `unique_identifier_msgs/UUID`.
-    // So the body already matches `dds_stream_read_sample`'s layout — no
-    // strip needed (the old `strip_feedback_goal_id_prefix` adapter and its
-    // `subscriber.cpp::insert_goal_id_len_at` receive-side mirror were both
-    // removed together).
+    // 233.6 — the Rust runtime serialises the action `goal_id` as the fixed
+    // `octet[16]` the Cyclone IDL declares (no `[4 u32=16]` sequence-style
+    // prefix), matching ROS 2 `unique_identifier_msgs/UUID`. That mattered when
+    // the bytes were fed to `dds_stream_read_sample` against the descriptor's
+    // layout; now they are not decoded here at all, so the only thing that has
+    // to agree is the publisher and its remote reader.
 
     // For action status (e.g. `GoalStatusArray_`) the publisher only
     // emits valid wire data once at least one reader has matched (the
@@ -295,29 +276,16 @@ rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher,
     if (type_ends_with(desc, "::GoalStatusArray_")) {
         const uint64_t deadline = platform_now_ms() + 2000;
         if (wait_for_writer_match(state->writer, deadline) != NROS_RMW_RET_OK) {
-            ddsrt_free(body);
             return NROS_RMW_RET_OK;
         }
     }
 
-    // Allocate + zero typed sample buffer of the descriptor's static
-    // size. `dds_stream_read_sample` walks the ops and fills it.
-    void* sample = ddsrt_calloc(1, desc->m_size);
-    if (sample == nullptr) {
-        ddsrt_free(body);
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
-
-    dds_istream_t is;
-    dds_istream_init(&is, static_cast<uint32_t>(body_len), body, xcdrv);
-    dds_stream_read_sample(&is, sample, state->st->as_sertype());
-    dds_istream_fini(&is);
-
-    dds_return_t r = dds_write(state->writer, sample);
-
-    dds_stream_free_sample(sample, desc->m_ops);
-    ddsrt_free(sample);
-    ddsrt_free(body);
+    // Issue 0970 — the sample IS the caller's bytes. `from_sample` copies them
+    // into the serdata (the one copy a `dds_write` that returns before the
+    // network does cannot avoid), and no scratch buffer, typed struct or
+    // istream is allocated on the way.
+    const NrosCdrBlob blob{data, len};
+    dds_return_t r = dds_write(state->writer, &blob);
 
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
