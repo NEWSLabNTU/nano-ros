@@ -230,9 +230,8 @@ a diagnostic, but XML/YAML still cannot run.
 3. **Floor choice.** Humble ships Python 3.10, Jazzy 3.12. A lower floor works
    on more hosts and permits less C API; pick the lowest the parser compiles
    against.
-4. **Performance.** The parser carries deliberate optimisation work (dashmap,
-   LRU caches). The limited API is slower on some paths; measure before and
-   after on a real bringup rather than assuming it is free.
+4. **Performance.** ~~measure before and after~~ **ANSWERED, 2026-08-31 — no
+   measurable cost. See "Q4 measured" below.**
 5. **Where the `.so` ships.** It becomes a second artifact that
    `just setup-launch-resolve` must produce and that every consumer must find.
    That is new surface for the 0285 class of bug, and needs the same absolute-
@@ -427,3 +426,90 @@ launch stops requiring an interpreter that matches ours.
   abort — already true, and must stay true.
 - `docs/issues/archived/0400-*.md` carries a correction pointing here, so its
   abi3 recommendation stops reading as settled advice.
+
+
+## Q4 measured (2026-08-31) — abi3 costs nothing detectable
+
+Open question 4 asked for a before/after on a real bringup rather than an
+assumption. Measured on this host (Python 3.10.12, release builds, 40 runs per
+configuration with the slowest 5 dropped as scheduler noise), swapping only
+`libplay_launch_parser_pyexec.so` beside an unchanged `nros-launch-resolve`:
+
+| configuration | median | stdev |
+| --- | --- | --- |
+| `multihost.launch.xml`, 2 `$(eval)`, abi3 | 20.8 ms | 1.4 |
+| `multihost.launch.xml`, 2 `$(eval)`, non-abi3 | 20.6 ms | 1.3 |
+
+0.2 ms apart against 1.4 ms of noise — nothing. But two `$(eval)` calls cannot
+show a PER-CALL cost, and the limited API's penalty is per call, so that table
+alone would have been a weak answer dressed as a strong one.
+
+**First, how much Python is even in the number.** Two files from the same
+bringup, same binary:
+
+| launch file | `$(eval)` | median |
+| --- | --- | --- |
+| `system.launch.xml` | 0 | 12.0 ms |
+| `multihost.launch.xml` | 2 | 19.6 ms |
+
+So the interpreter costs **7.6 ms** — 39 % of that resolve, and the largest
+single component. Not a rounding error, which is what makes the abi3 comparison
+worth running at all.
+
+**Then the per-call cost**, on a synthetic 200-`$(eval)` file (the tree has
+nothing heavier — see below), interleaved abi3/non-abi3/abi3/non-abi3 so drift
+cannot favour one:
+
+| run | abi3 | non-abi3 |
+| --- | --- | --- |
+| 1 | 28.8 ms | 28.6 ms |
+| 2 | 29.1 ms | 28.9 ms |
+
+198 extra `$(eval)` calls cost ~9.2 ms, i.e. **~46 µs per call**; the abi3
+difference is ~0.2 ms across 200 calls, **~1 µs per call — about 2 % of one
+call, and well inside the 1.6–1.9 ms run-to-run spread.**
+
+Conclusion: **abi3 is free at any scale this project plausibly reaches.**
+
+### Scope, stated honestly
+
+The heaviest Python workload in EITHER repository is two `$(eval)` calls:
+
+* **zero** tracked `.launch.py` files exist in nano-ros — `git ls-files | grep
+  'launch\.py$'` is empty, so the `.py` path is exercised by no fixture;
+* four XML files use `$(eval)` (`multihost.launch.xml` in the c / cpp / mixed /
+  rust workspaces), each twice — which is exactly the CORRECTION above: XML is
+  not a Python-free path;
+* the LARGEST launch files in either tree (`governor_stress/cpu_sustained`, 181
+  lines; `rt_av_demo/bringup`, 97) contain **no** `$(eval)` at all.
+
+So the 200-call figure is synthetic on purpose. The real-workload table is the
+one that describes today; the synthetic one exists because a per-call cost that
+only appears at scale is precisely what a 2-call measurement would miss.
+
+### Also confirmed while measuring: the shipped artifact is already abi3
+
+`just setup-launch-resolve` builds the Python half with
+`--features extension-module,abi3` (justfile:3302), and the shipped binary has
+the shape this issue specified:
+
+```
+$ readelf -d nros-launch-resolve | grep -ci python     # 0 — no DT_NEEDED
+$ nm -D nros-launch-resolve | grep -c ' U dlopen'      # 1 — it dlopens
+$ ls  libplay_launch_parser_pyexec.so                  # ships beside it
+```
+
+Reading `nm -D` on the `.so` alone is NOT enough to tell abi3 from non-abi3, and
+mistaking one for the other is easy: the abi3 build still shows `_Py_`-prefixed
+undefined symbols (`_Py_NoneStruct`, `_Py_TrueStruct`, `_Py_IncRef`), which are
+the stable ABI's own spellings. The difference only appears against a non-abi3
+baseline built from the same source:
+
+```
+non-abi3 only:  _Py_CheckFunctionResult  Py_CompileStringExFlags
+                _Py_Dealloc              _PyObject_MakeTpCall
+abi3 instead:   _Py_IncRef  _Py_DecRef
+```
+
+Four genuinely private symbols replaced by two stable ones — which is the
+cross-version guarantee this issue was about.
