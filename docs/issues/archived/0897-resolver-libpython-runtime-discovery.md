@@ -526,7 +526,13 @@ Conclusion: **abi3 is free at any scale this project plausibly reaches.**
 The heaviest Python workload in EITHER repository is two `$(eval)` calls:
 
 * **zero** tracked `.launch.py` files exist in nano-ros — `git ls-files | grep
-  'launch\.py$'` is empty, so the `.py` path is exercised by no fixture;
+  'launch\.py$'` is empty. **CORRECTION (2026-08-31):** that command does not
+  descend into submodules, and `play_launch` carries several `.launch.py`
+  fixtures in its own test suite. So "no fixture exercises the `.py` path" was
+  too strong: the measurement below covers the `$(eval)` path only, which is
+  what the nano-ros workspaces exercise, and says nothing about `.launch.py`
+  EXECUTION cost. Trying to measure that path is how issue 0953 was found — it
+  aborts;
 * four XML files use `$(eval)` (`multihost.launch.xml` in the c / cpp / mixed /
   rust workspaces), each twice — which is exactly the CORRECTION above: XML is
   not a Python-free path;
