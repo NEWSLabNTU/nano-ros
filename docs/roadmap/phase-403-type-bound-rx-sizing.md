@@ -303,6 +303,58 @@ chain needs more than 16 KiB of MAIN stack (16384 overflows in `open_in`, 32768
 does not) at a CONSTANT arena size of ~51 KiB. That is the depth of the init
 chain, not the arena, and the two were briefly conflated during bring-up.
 
+## W6 -- the derived bound must leave codegen (2026-08-31, owner's direction)
+
+Codegen is the right place to DERIVE a bound. It is the wrong place for the
+bound to STOP, and today it stops there: the number is emitted as a per-type
+constant inside a generated header and nothing downstream can ask for it.
+
+The distinction is the one RFC-0049 already draws for platform config
+-- capabilities are facts, knobs are policy:
+
+* A **cap** (`string<=64` in the `.msg`, or a `cap` in the codegen config) is
+  POLICY. It is an author's declaration about their interface and belongs with
+  the interface.
+* A **bound** is a DERIVED FACT. Codegen computes it once, and no later stage
+  should re-derive it, re-guess it, or fall back past it.
+
+Every consumer that needs the fact and cannot get it currently invents a
+substitute:
+
+| consumer | what it does instead |
+| --- | --- |
+| arena derivation (`nros-node/build.rs`) | `MAX_CBS * worst case` |
+| zenoh payload classes | two hand-set constants, `SUBSCRIBER_BUFFER_SIZE` / `SUBSCRIBER_LARGE_SIZE` |
+| `NROS_MAX_LARGE_SUBSCRIBERS` | a human counts which types exceed the ceiling |
+| the C API's `MESSAGE_BUFFER_SIZE` | welded equal to `DEFAULT_RX_BUF_SIZE` |
+
+That last row is not hypothetical. Bringing the island up on
+mr-canhubk344 required reading `Control 2052` and `Odometry 1804` out of
+generated C++ headers BY EYE and copying them into a board `.conf` to set
+`NROS_MAX_LARGE_SUBSCRIBERS=2` and `NROS_SUBSCRIBER_LARGE_SIZE=2560`. Then the
+arena had to be pinned by guesswork, and the first guess (40960) was too small --
+the image failed at `create_subscription` with the arena exhausted. Each of those
+is a number the build already knew and could not say. This is the
+"a knob nobody can enumerate is a knob nobody sets" failure that issues 0271 and
+0739 record, reproduced end to end.
+
+**W6: export the derived bounds as build metadata.** The channel already exists
+for the executor's own numbers -- `DEP_NROS_NODE_RX_BUF_SIZE` and friends reach
+the C API through Cargo `links` -- plus a manifest for the CMake/Kconfig side
+that the Zephyr lane reads. With the inventory available:
+
+* the arena sizes from the entities actually registered, rather than
+  `MAX_CBS * worst case`;
+* W4's "class boundaries become the distinct sizes an image's types actually
+  need" becomes expressible -- it is blocked today precisely on this missing
+  inventory, which is why the phase notes W4 is "gated on the same thing issue
+  0900 is gated on";
+* `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE` stop being
+  numbers a human reads off a header.
+
+It also answers this phase's standing open question about where an entity
+inventory comes from: it is codegen's output, currently discarded.
+
 ## Measurement, first not last
 
 Every wave here claims bytes, and this campaign has twice published a number
