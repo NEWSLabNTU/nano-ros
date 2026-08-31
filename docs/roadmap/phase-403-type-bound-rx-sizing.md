@@ -120,10 +120,39 @@ is gated on.
 **W5 — arena slots.** Issue 0900's remaining half. Once W2/W3 make a
 subscription's buffer a known per-type number, an arena slot can be sized from
 the entities that will occupy it rather than from `MAX_CBS x ActionClient`.
-**Correction carried from 0900: the arena is INLINE ON THE TASK STACK, not in
-`.bss`,** so `nm` and `mem-report` cannot see it and the planned
-`NROS_ARENA_REQUIRED` linker-symbol check will not work. Sizing this needs a
-stack probe.
+**The "arena is on the task stack" correction is itself stale (measured
+2026-08-31).** 0900 says the arena is inline on the task stack, so `nm` and
+`mem-report` cannot see it and `NROS_ARENA_REQUIRED` cannot work. That is not
+what the code does any more, and it changes what W5 has to measure.
+
+Placement is CALLER-DETERMINED, and has been since phase-271 (issue 0110) moved
+the six sized tables off build-time consts:
+
+* `Executor` holds `arena: &'s mut [MaybeUninit<u8>]` -- a borrowed slice
+  (`executor/spin.rs`). Nothing arena-sized is inline in it.
+* `ExecutorInlineStorage` (`executor/storage.rs`) DOES hold `backing` inline, and
+  the C FFI sizes its `_opaque` from that type. A stack-declared
+  `nros_executor_t` therefore does put the arena on the stack -- that is the case
+  0900 saw.
+* The C++ component entry does NOT take that path. `main` ->
+  `ZephyrBoard::run_components` -> `nros::init()` -> `Node::GlobalStorageHolder`,
+  whose `static uint8_t storage[NROS_CPP_EXECUTOR_STORAGE_SIZE]` is `.bss`.
+
+Measured on mr-canhubk344 (RFC-0043 components, zenoh, serial): DTCM tracked
+ARENA_SIZE one-for-one across a MAX_CBS change of 24 -> 36, +26992 B observed
+against +24576 B predicted. The arena was in `.bss` on that image, is
+linker-visible, and `NROS_ARENA_REQUIRED` would work for this path.
+
+So W5 needs BOTH: a linker-symbol check for the `.bss` placement (the C/C++
+component path, which is where the embedded images are) and a stack probe for the
+`ExecutorInlineStorage` placement. Sizing against either one alone reports the
+wrong number for half the images. `arena.rs`'s doc comment states the stack case
+as though it were the only one and should be fixed with this wave.
+
+Not to be confused with a separate finding on the same board: the C++ init call
+chain needs more than 16 KiB of MAIN stack (16384 overflows in `open_in`, 32768
+does not) at a CONSTANT arena size of ~51 KiB. That is the depth of the init
+chain, not the arena, and the two were briefly conflated during bring-up.
 
 ## Measurement, first not last
 
