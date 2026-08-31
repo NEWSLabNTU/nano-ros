@@ -515,6 +515,43 @@ hint, and the helper is where the hint goes once the slot exists. But the issue
 title is about the buffer, and a `_subscribe` helper alone does not fix it —
 saying otherwise would overclaim.
 
+## Corrected 2026-08-31 — phase-402 landed the slot, and the arena is a second problem
+
+**"`nros_cpp_subscription_register` takes ten flat arguments and has no slot for
+a buffer hint" is no longer true.** phase-402 gave all three register variants
+an `nros_cpp_subscription_options_t`, `rx_buffer_hint` is read by
+`read_subscription_options`, and `subscription.rs:301` passes it to
+`add_arena_subscription_c_callback`, commented as this issue's point. Layer 4's
+stated blocker is gone; `_with_info` still discards the hint
+(`_rx_buffer_hint`), which is a smaller gap than the one described above.
+
+**But the hint does not size the arena entry, and that is the larger half of
+this issue.** Two buffers are charged per subscription and only one of them
+responds to the hint:
+
+| buffer | sized by | responds to `rx_buffer_hint`? |
+| --- | --- | --- |
+| backend payload block (zenoh size class) | the hint | yes, on C++ since phase-402 |
+| executor arena `SubInfoEntry::buffer` | `const BUF = DEFAULT_RX_BUF_SIZE` | **no** |
+
+All three C++ register variants do `use nros_node::config::DEFAULT_RX_BUF_SIZE
+as BUF`. This issue noted the second buffer in passing ("a SECOND
+per-subscription buffer on the C path ... not addressed by `rx_buffer_hint` at
+all") but its layers are built around the hint, so nothing here closes it.
+
+It cannot be closed by passing a bigger number, either: `BUF` is a const generic
+fixed inside nros-cpp, and the C/C++ type is a string, so no call site names a
+type that could instantiate it. That is a design fork — monomorphise per type
+from codegen, or make the arena entry runtime-sized within a bounded pool — and
+it is scoped as **phase-392 W3e**, with the decision required before the code.
+
+**Third: the whole mechanism is zenoh-only today.** `grep rx_buffer_hint
+packages/rmw/cyclonedds/` returns nothing, so a Cyclone consumer sees no effect
+from any layer here. phase-392 W3f.
+
+The layers below stand as written; the roadmap that sequences them against
+these three findings is **phase-392, "W3 remainder"**.
+
 ## Not to be confused with
 
 Issue 0841, fixed: a hint landing between the small block size and the size
