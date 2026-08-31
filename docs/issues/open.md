@@ -65,6 +65,7 @@ fails if this block drifts.
 - **#0963** (codegen, memory, build) — The derived-bound inventory has readers now — what is left is the executor arena alone (was: nothing reads it) See `0963-*`.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
+- **#0966** (build, codegen) — A codegen change invalidates every consumer's generated interfaces, and only a manual `setup-cli` connects them See `0966-*`.
 - **#0968** (testing) — Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time See `0968-*`.
 - **#0969** ([rmw, memory]) — The Cyclone RMW deserializes every received sample and re-serializes it, so `take_serialized` costs a decode, an encode and two heap allocations per take See `0969-*`.
 - **#0973** (orchestration) — No resolved SystemModel describes endpoint wiring — 0 of 119 carry topics, services or actions See `0973-*`.
