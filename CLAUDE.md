@@ -198,13 +198,33 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `(rewind)` and the dropped commits with `<`; `status.submoduleSummary=true`
   shows the same BEFORE you commit; `push.recurseSubmodules=check` refuses a push
   whose pins are on no remote. Visibility from git, enforcement from the gate.
-- **Vendored-fork branch workflow (cyclonedds, netxduo, …):** land fixes with linear history
-  (commit in submodule → `git fetch origin` + `git remote prune origin` → `git rebase origin/<branch>`
-  → push). **Push the fork branch FIRST, then bump the superproject pointer** to the pushed commit.
+- **Vendored-fork branch workflow (cyclonedds, netxduo, zenoh-pico, …):** land fixes with linear
+  history (commit in submodule → `git fetch origin` + `git remote prune origin` →
+  `git rebase origin/<branch>` → push). **Push the fork branch FIRST, then bump the superproject
+  pointer** to the pushed commit.
   **By default the agent does NOT push fork remotes** (they sit outside the trusted repo →
   exfiltration guard): the agent commits + rebases locally and leaves the branch ready; the
   maintainer pushes. The agent may push only when a scoped `Bash(git -C <submodule-path> push:*)`
   allow-rule exists — never a blanket `git push:*`.
+  **The patch branch is a PATCHSET ON A STABLE VERSION, and it is not squashed.** Its commits are
+  the readable history of what we changed and why, so they stay individual — a squash to "one
+  delta commit" trades the only record of intent for a tidier graph, which is the wrong trade.
+  New work REBASES onto the branch tip and pushes; that is what keeps it linear.
+  **Upstream contribution is a SEPARATE line with no 1:1 correspondence, deliberately.** A
+  contributor may also PR the same fix to the project's own `main`, and the two versions will
+  differ in shape, because upstream `main` and the stable version we pin have diverged. Do NOT
+  try to keep the commits identical, and do not hold our branch back waiting for upstream to
+  merge: the contributor CHERRY-PICKS onto our patch branch and pushes there. Ours is the line
+  that ships; upstream's is a courtesy that lands on its own schedule.
+  **Reading a fork's remote: use `git ls-remote`, not `git branch -r`.** A submodule clone is
+  often single-branch (`+refs/heads/main:refs/remotes/origin/main`), so remote-tracking refs show
+  ONE branch however many the remote has, and every check built on them answers "what has my
+  clone fetched", not "what exists". `push.recurseSubmodules=check` reads those same local refs,
+  so on such a clone it refuses a pin that IS published, and the refusal reads exactly like an
+  unpushed commit. On 2026-08-31 that cost a false data-loss alarm — zenoh-pico's 28 remote
+  branches looked like one, and a pin sitting on the tracked branch looked like 31 orphan commits.
+  Widen the refspec (`git config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'`)
+  and re-fetch before believing anything about a fork's remote.
 - **A submodule has exactly two legitimate shapes, and patching decides which.** Either it
   **pins a stable version on an untouched third-party repo** (a tag or release commit — the
   usual case, and the pin is a decision, see below), or it **tracks a patch-line branch on OUR
