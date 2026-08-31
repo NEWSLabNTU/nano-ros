@@ -633,7 +633,7 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
             Some("/opt/nuttx")
         );
         assert!(
-            nuttx.get("NROS_SDK_FREERTOS").is_none(),
+            !nuttx.contains_key("NROS_SDK_FREERTOS"),
             "the other board's site block must not leak in: {nuttx:?}"
         );
     }

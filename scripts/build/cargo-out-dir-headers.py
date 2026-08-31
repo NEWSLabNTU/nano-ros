@@ -76,6 +76,11 @@ def copy_headers(out_dir: str, dest: str) -> list:
     include, whichever package produced it.
     """
     pairs = []
+    # walk-ok: `out_dir` is cargo's OUT_DIR — a build directory whose generated
+    # headers are UNTRACKED by construction, so `git ls-files` cannot see them.
+    # This is the case the gate's own text carves out ("scanning for UNTRACKED
+    # artifacts is fine — scope it to a build dir"), and the scope here is one
+    # crate's OUT_DIR, not `examples/` or `packages/`.
     for root, _dirs, files in os.walk(out_dir):
         rel_root = os.path.relpath(root, out_dir)
         head = rel_root.split(os.sep)[0]
