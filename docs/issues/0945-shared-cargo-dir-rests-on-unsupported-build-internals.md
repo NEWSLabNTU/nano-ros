@@ -40,10 +40,52 @@ BLAST RADIUS: six platforms (freertos, native, nuttx, qemu-baremetal,
 threadx-linux, threadx-riscv64). This is the campaign's single largest
 dependency on someone else's internals, and it PREDATES phase-400.
 
-MITIGATION IF IT MATTERS: assert at configure time that the symlink target is
-the directory cargo actually writes to — one `find` for a known artifact after
-the first build, compared against the link — so a Corrosion move fails loudly
-instead of degrading.
+MITIGATED 2026-08-31 — the redirect stays, but it is now WITNESSED.
+
+First the retirement question, since it is the better outcome and had not been
+asked: is there a supported knob yet? No. Read against the pinned v0.6.1 AND
+against upstream `master`: the same
+`cmake_path(APPEND CMAKE_BINARY_DIR ${build_dir} cargo "<folder>_<hash5>")`,
+still a plain local, still no cache variable, no `corrosion_import_crate()`
+argument, no target property. So the symlink is not a workaround for a version
+we are behind on — it is the only override point that exists, and "bump
+Corrosion and use the knob" is not available.
+
+What landed instead is `nros_assert_shared_cargo_dir_used()`
+(cmake/NanoRosCorrosion.cmake) driving `scripts/check-shared-cargo-dir-used.sh`
+as a build-time check on every Corrosion leaf that shares. It asserts the
+RESULT, never the formula — a second copy of Corrosion's path rule would drift
+from it silently, which is the defect rather than the fix:
+
+  1. `${CMAKE_BINARY_DIR}/cargo` is still a symlink at the directory THIS
+     configure chose;
+  2. an artifact with the built target's name exists under that directory and
+     its size matches the copy Corrosion produced.
+
+Everything it consumes is documented or ours — `$<TARGET_FILE:...>` and
+stat(2). It parses nothing.
+
+Measured on `examples/native/c/talker` with sharing on: the healthy build prints
+`shared-cargo-dir OK (nros_c-static)`, and all four dead-redirect states fail
+with the artifact paths named. `ninja -t query` puts `libnros_c.a` above the
+`||` line, so the witness re-runs on a real archive change and not on an
+order-only edge (issue 0268's rule); a no-op rebuild does not re-run it.
+
+WHAT IT STILL CANNOT CATCH, precisely: a long-lived build dir that shared
+successfully BEFORE a Corrosion upgrade keeps a same-named artifact in place,
+so with no code change the sizes can still match and this passes. It cannot
+pass for long — any edit moves the size — and it cannot pass at all for a new
+key, which is what a reconfigure after an upgrade produces. Byte-comparing
+would close the hole and cost a full read of a multi-hundred-MB archive on
+every leaf build; not worth it for a performance-regression detector.
+
+Escape hatch: `NROS_ALLOW_UNSHARED_CARGO_DIR=1` downgrades the failure to a
+warning, for someone mid-upgrade who wants the build to finish.
+
+The witness's own negative control (five fixtures, including the state only the
+symlink arm can catch) runs on the NORMAL path, not behind the flag — a witness
+that had quietly stopped witnessing would be this very defect one level up.
+`just check shared-cargo-dir-witness` (fast line) runs it standalone.
 
 ### 2. `--artifact-dir` is an explicitly unstable cargo flag
 
@@ -128,7 +170,17 @@ version exposure.
 
 ## Suggested order if this is picked up
 
-1. **#1**, because it is the largest, the quietest, and it predates the campaign.
-2. **#4**, already in progress — finishing it deletes a whole class.
+1. ~~**#1**, because it is the largest, the quietest, and it predates the
+   campaign.~~ DONE 2026-08-31 — witnessed, not retired; Corrosion still
+   offers no knob to retire it with. See item 1.
+2. **#4**, the one still worth work. W5.c gave the Zephyr lane the OUT_DIR
+   placer, so the W5 blocker is gone and the side channel has one fewer
+   reader — but the WRITE is still there, because the other readers are not
+   migrated: `NanoRosNodeRegister.cmake`, `NanoRosVerbs.cmake`, the px4
+   integration module, and ~20 `just check` lanes that compile against
+   `-Itarget/nros-c-generated`. Counted, not estimated: `git grep -n
+   'nros-c-generated\|nros-cpp-generated'`. Deleting
+   `write_header_to_target_dir` needs all of them moved first, which is a wave,
+   not an afternoon.
 3. **#2** only if the NuttX lane's nightly pin is ever revisited.
 4. **#3** and **#5** are acceptable as-is: both fail loudly, neither gates CI.

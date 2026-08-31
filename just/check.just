@@ -114,7 +114,7 @@ fast-serial: \
     version-lockstep workspace-fmt example-fmt cli-fmt \
     readiness-marker-literals \
     codegen-invocation string-conventions issue-ids knob-single-reader workflow-repo-env doc-recipe-refs \
-    std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
+    std-census capability-flavour-guards flavour-lanes feature-contract no-std-stdio no-vacuous-tests nextest-binary-filters cmake-find-program-shadowed shared-cargo-dir-witness image-panic-policy cmake-image-policy tier-spin-gap rmw-api-parity rmw-abi-shape rmw-ret-sign rmw-vtable-order rmw-alloc-sites rmw-slot-producers zenohd-router-skips single-rust-staticlib cli-source-dirs rust-targets-covered api-parity-ledger just-recipe-refs \
     absolute-paths \
     c-fmt cpp-fmt python \
     nuttx-integration-makefile eyre-context-alias core-only-predicate workspace-build-output cc-build-policy ffi-struct-mirrors sizes-header-mirrors retired-submodule-refs no-absolute-model-paths \
@@ -1947,6 +1947,18 @@ nextest-binary-filters:
 cmake-find-program-shadowed:
     @python3 scripts/check-cmake-find-program-shadowed.py --self-test
     @python3 scripts/check-cmake-find-program-shadowed.py
+
+# Issue 0945 item 1 — the SELF-TEST half of the shared-cargo-dir witness.
+#
+# The witness itself is a BUILD-time check (it needs an artifact and a build
+# dir, so there is nothing for it to look at here) armed by
+# `nros_assert_shared_cargo_dir_used()` on every Corrosion leaf that shares.
+# What this lane keeps honest is the check's own logic: five fixtures covering
+# the healthy state and the four ways the redirect can be dead, including the
+# one only the symlink arm can catch. A witness that silently stopped
+# witnessing would be the defect it exists to prevent, one level up.
+shared-cargo-dir-witness:
+    @bash scripts/check-shared-cargo-dir-used.sh --self-test
 
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #
