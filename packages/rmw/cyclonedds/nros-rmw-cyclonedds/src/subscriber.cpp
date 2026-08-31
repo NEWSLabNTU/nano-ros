@@ -76,10 +76,37 @@ inline SubState* as_state(const rmw_subscription_t* s) {
 
 } // namespace
 
+/// `options` is unused, and issue 0958 is why that is a decision rather than an
+/// omission.
+///
+/// `rmw_subscription_options_t::rx_buffer_hint` tells a backend how many bytes a
+/// receive buffer needs for this type, so a size-classing backend (zenoh-pico)
+/// can pick a class. This backend has no receive buffer to class:
+///
+///   * the sample arrives in a serdata, sized by the sample and allocated by
+///     `nros_sertype.cpp` at the moment it arrives;
+///   * the destination is the CALLER's buffer, whose capacity arrives on every
+///     `take` and is authoritative there.
+///
+/// Before issue 0969 there was exactly one candidate consumer: the `dds_ostream`
+/// that re-serialised the typed sample grew by `realloc`, and an initial size
+/// would have saved those reallocs. That ostream went with the round trip, and
+/// with it the last thing a hint could have sized.
+///
+/// So the field is INAPPLICABLE here rather than unimplemented, and the
+/// difference matters to anyone measuring: a Cyclone consumer can set the hint,
+/// do everything the sizing campaign asks, and correctly observe nothing change
+/// in this backend. What DOES change is the executor's arena, which nano-ros
+/// sizes itself from the same bound — measure the arena, not the backend.
+///
+/// The ABI declares the field advisory and says a backend MAY ignore it
+/// (`rmw_entity.h`). What it may not do is ignore it silently, which is the state
+/// issue 0958 opened against: the parameter was discarded at a bare
+/// `/*options*/` with nothing for a reader to find.
 rmw_ret_t subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
                                 const char* topic_name,
                                  uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
-                                 const rmw_subscription_options_t* /*options*/,
+                                 const rmw_subscription_options_t* /*options — see above*/,
                                  rmw_subscription_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
