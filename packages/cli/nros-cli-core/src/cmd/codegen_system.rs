@@ -102,7 +102,8 @@ pub struct Args {
     pub model: Option<PathBuf>,
 
     /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
-    /// (`--rmw` > `[deploy.<target>].rmw` > `[system].rmw` > `zenoh`). Forces
+    /// (`--rmw` > `[image.<target>].rmw` > the deprecated
+    /// `[deploy.<target>].rmw` > `[system].rmw` > `zenoh`). Forces
     /// the `NROS_SYSTEM_RMW*` define for this bake regardless of `system.toml`.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,

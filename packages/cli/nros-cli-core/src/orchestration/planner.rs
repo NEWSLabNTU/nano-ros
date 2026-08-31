@@ -27,7 +27,8 @@ pub struct PlanOptions {
     pub manifest_files: Vec<PathBuf>,
     pub launch_args: Vec<String>,
     /// Phase 255 Wave 4 — `--rmw` override, the top of the precedence ladder
-    /// (`--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
+    /// (`--rmw` > `[image.<t>].rmw` > the deprecated `[deploy.<t>].rmw` >
+    /// `[system].rmw` > `zenoh`). Sets
     /// `plan.build.rmw` regardless of `system.toml`. `None` ⇒ resolve from
     /// `system.toml`.
     pub rmw: Option<String>,

@@ -65,14 +65,16 @@ pub struct Args {
     pub manifests: Vec<PathBuf>,
 
     /// Phase 255 Wave 4 — RMW override, the TOP of the precedence ladder
-    /// (`--rmw` > `[deploy.<t>].rmw` > `[system].rmw` > `zenoh`). Sets
-    /// `plan.build.rmw` regardless of `system.toml` / the `[build].rmw` overlay.
+    /// (`--rmw` > `[image.<t>].rmw` > the deprecated `[deploy.<t>].rmw` >
+    /// `[system].rmw` > `zenoh`). Sets `plan.build.rmw` regardless of
+    /// `system.toml` / the `[build].rmw` overlay.
     #[arg(long = "rmw")]
     pub rmw: Option<String>,
 
-    /// Phase 256 — select the `[deploy.<t>]` the planner resolves per-target
-    /// values against (RMW override, build tuning, domain/locator). Omitted →
-    /// `[system].default_target` → the sole `[deploy.<t>]` → target-agnostic.
+    /// Phase 256 — select the `[image.<t>]` (or deprecated `[deploy.<t>]`) the
+    /// planner resolves per-target values against (RMW override, build tuning,
+    /// domain/locator). Omitted → `[system].default_target` → the sole
+    /// `[image.<t>]`, then the sole `[deploy.<t>]` → target-agnostic.
     #[arg(long = "target")]
     pub target: Option<String>,
 
