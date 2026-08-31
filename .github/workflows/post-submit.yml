@@ -115,10 +115,16 @@ jobs:
         run: |
           source ./activate.sh
           just setup tier2
-      - name: just test tier2
+      # `just ci matrix`, NOT `just test tier2`. phase-407 W4 briefly used the
+      # latter and that was a COVERAGE REGRESSION caught by
+      # check-tier-has-ci-owner: the tier recipe is `_lane-gate` + `check` +
+      # `rust-rtos-link-check` + `test-all`, and `just test tier2` is only the
+      # last of those. Provisioning by scope + running the TIER keeps the
+      # transcript shape without quietly narrowing what runs.
+      - name: just ci matrix
         run: |
           source ./activate.sh
-          just test tier2
+          just ci matrix
       - name: Upload junit and logs
         if: always()
         uses: actions/upload-artifact@v4
