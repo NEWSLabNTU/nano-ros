@@ -28,9 +28,12 @@ per_fd_tx_ceiling = true
 # extra wbuf (Z_BATCH_UNICAST_SIZE) of RAM per session. Requires the
 # issue-0213 fork fix (declarations bypass the batch) — without it, a
 # server's readiness banner outruns its still-batched queryable declares
-# and immediately-fired queries miss. zephyr/Kconfig's NROS_ZENOH_TX_*
-# defaults MUST mirror these values — asserted by
-# nros-tests kconfig_platform_default_drift.
+# and immediately-fired queries miss.
+#
+# THIS BLOCK IS THE AUTHORITY for the zenoh tx knobs on Zephyr. zephyr/Kconfig's
+# NROS_ZENOH_TX_* `default` lines are DERIVED from it — render them with
+# `scripts/check-zephyr-knob-agreement.py --write`, which is also the gate
+# (phase-405 W6). Edit here, never there.
 [knobs.zenoh.tx]
 batch = true
 split_lock = true
