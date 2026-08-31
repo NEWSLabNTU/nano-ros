@@ -54,6 +54,20 @@ struct SubState {
     /// subscription's type identity, and issue 0970 needs it to build the
     /// sertype that replaces `dds_create_topic(desc)`.
     const dds_topic_descriptor_t* desc{nullptr};
+    /// Issue 0971 — a `BUFFER_TOO_SMALL` that happened where it could not be
+    /// returned.
+    ///
+    /// `take_sequence` is contractually a COUNT: "partial drains MUST use the
+    /// count form, not error-out" (`rmw_vtable.h`). So a batch that stops
+    /// because a sample did not fit the caller's slot has nowhere to put the
+    /// status, and used to discard it — leaving a partial drain and a drained
+    /// reader indistinguishable.
+    ///
+    /// It is parked here and delivered by the NEXT take instead. That is the
+    /// shape `nros-verification`'s `try_recv_post_fix` proves for the single
+    /// take — check the flag first, clear it, return the error, take nothing —
+    /// moved one call later, because that is where the contract leaves room.
+    bool pending_too_small{false};
 };
 
 inline SubState* as_state(const rmw_subscription_t* s) {
@@ -179,6 +193,14 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
         return NROS_RMW_RET_ERROR;
     }
 
+    // Issue 0971 — deliver a status a previous batch could not return, before
+    // taking anything. Taking nothing is the point: the caller has to be able
+    // to act on it before it asks for more.
+    if (state->pending_too_small) {
+        state->pending_too_small = false;
+        return NROS_RMW_RET_BUFFER_TOO_SMALL;
+    }
+
     // Skip invalid samples rather than reporting "nothing taken" on the first
     // one, as `rmw_take_ser_int` does. A dispose/unregister notification used
     // to mask any valid sample queued behind it for a whole poll cycle. The
@@ -241,6 +263,14 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
         return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
     }
 
+    // Issue 0971 — a status parked by an earlier drain goes out before any new
+    // take, and this call reports nothing else. Same rule as `subscription_take`
+    // above, so a caller that mixes the two entry points hears it either way.
+    if (state->pending_too_small) {
+        state->pending_too_small = false;
+        return -static_cast<int32_t>(NROS_RMW_RET_BUFFER_TOO_SMALL);  // issue 0773 — NEGATED
+    }
+
     // Stack-cap the per-call slot budget; Cyclone happily takes
     // any N but we want to bound the stack alloc. Larger callers
     // can issue multiple sequence-take rounds.
@@ -258,22 +288,22 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
         return 0;
     }
 
-    // A sample too large for `per_msg_cap` ends the batch and is DROPPED, and
-    // the samples already written are still reported. That is the behaviour
-    // this function has always had, preserved deliberately rather than
-    // inherited: the old body assigned `err = NROS_RMW_RET_BUFFER_TOO_SMALL`
-    // and then tested `if (err < 0)`, which is never true — every
-    // `nros_rmw_ret_t` is non-negative (`rmw_ret.h`), which is why the callers
-    // negate. So the error was already unreachable and every caller has only
-    // ever seen the partial count.
+    // Issue 0971 — a sample too large for `per_msg_cap` ends the batch and IS
+    // dropped, and the samples already written are still reported. Dropping it
+    // is the design rather than an oversight: live zenoh does the same on its
+    // single take ("drop the slot so the subscription isn't permanently stuck",
+    // `shim/subscriber.rs`), and `nros-verification`'s `try_recv_post_fix` /
+    // `no_silent_truncation` fix that in place — the consumer gets the complete
+    // message or an explicit error, and no subscription is left stuck holding a
+    // sample nobody can take.
     //
-    // Issue 0971 is where that is argued out, and it says more than "unfinished
-    // error handling": the count form is what the slot's contract REQUIRES of a
-    // partial drain, so making the dead branch reachable would have traded a
-    // silent drop for a contract violation. What is actually missing is a way to
-    // say WHY the drain stopped — and the runtime's loop fallback answers that
-    // question differently from this function today. Both need the contract to
-    // change, which is why nothing here does.
+    // What was missing is the explicit error, because this function has nowhere
+    // to return one: the contract says "partial drains MUST use the count form,
+    // not error-out". So the status is parked on the subscription and the next
+    // take delivers it. The old body's `err = NROS_RMW_RET_BUFFER_TOO_SMALL`
+    // followed by `if (err < 0)` was unreachable — every `nros_rmw_ret_t` is
+    // non-negative, which is why the callers negate — AND would have been the
+    // wrong fix if reached, trading a silent drop for a contract violation.
     size_t produced = 0;
     for (dds_return_t i = 0; i < taken; ++i) {
         if (!si[i].valid_data) {
@@ -281,6 +311,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
         }
         const uint32_t total = ddsi_serdata_size(ds[i]);
         if (per_msg_cap < total) {
+            state->pending_too_small = true;
             break;
         }
         ddsi_serdata_to_ser(ds[i], 0, total, buf + produced * per_msg_cap);
