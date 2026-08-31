@@ -94,6 +94,38 @@ Still open — the build half:
   destination is not uniform — the first version sent `domain_id` and `locator`
   to `[image.*]`, a table with no such keys.
 
+Found by an audit of every remaining `[deploy.*]` reader, and NOT yet fixed:
+
+* **`resolved_domain_id` / `resolved_locator` never read `[host.*]`.** The
+  deprecation lint tells users to move `domain_id` and `locator` there, and
+  `SystemToml::host` then has ZERO production readers in this repo — only the
+  upstream rlm placement resolver consumes it. A user who follows the lint's own
+  advice gets the `[system]` default silently baked into firmware
+  (`NROS_SYSTEM_DOMAIN_ID`). No in-tree fixture misbehaves today, because
+  nothing authors either key outside `[system]`; it is a hole the lint opened by
+  pointing at a table nobody reads. The wrinkle to solve first: `resolve_target`
+  returns an IMAGE id while `[host.*]` is keyed by MACHINE name, and the link
+  between them is the image's `args.host` binding — so a plain
+  `self.host.get(t)` would be wrong too.
+* **`nros new --deploy` still scaffolds into the retiring table.**
+  `scaffold_deploy.rs` writes `board` and `target` into `[deploy.<name>]` —
+  exactly the two fields the lint measured as actually firing — so the
+  scaffolder emits a workspace that immediately trips its own deprecation
+  warning and whose board is invisible to the image rungs. `--from-profile` can
+  only fork a `[deploy.*]`, never an `[image.*]`.
+
+Confirmed DEAD by the same audit (authored nowhere in the tree, and in the
+first two cases unauthorable, since upstream's `DeployBlock` is
+`deny_unknown_fields`):
+
+* `doctor::check_deprecated_verbs` — scans `[deploy.*]` blocks for `build` /
+  `package` shell-step arrays. Zero such keys exist and none could parse.
+* `rtos_realizer::sched_caps_from_deploy` + `derive.rs` — read `edf` / `cores`
+  from the resolved IR's deploy extras. `system.toml` cannot feed them.
+  `scripts/gen-sched-matrix.py` nonetheless generates documentation asserting
+  `[deploy.<board>] edf = <bool>` is a supported knob; the syntax it shows would
+  be a hard parse error.
+
 ## Trap for whoever does the build half
 
 `multi_board` in rlm is `deploy.values().any(|b| b.kind == "embedded")`, and it
