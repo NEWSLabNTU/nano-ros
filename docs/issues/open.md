@@ -76,5 +76,19 @@ fails if this block drifts.
 - **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
+- **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
+- **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
+- **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
+- **#0931** (build, api) — `MODEL` has no users and should be retired; `LAUNCH default` is ceremony on 26 entries See `0931-*`.
+- **#0931** (build, api) — `nano_ros_entry` has eleven arguments; four have no users and three restate the bringup See `0931-*`.
+- **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
+- **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
+- **#0946** (build) — Two independent per-platform locator ladders in cmake, and they disagree on threadx and freertos See `0946-*`.
+- **#0947** (build) — NuttX has two ROS-edition surfaces that cannot express each other, and `jazzy` is unreachable on one See `0947-*`.
+- **#0949** (build) — For a migrated workspace, board facts are never delivered — `_ws` resolves to the generated root, which has no `system.toml` See `0949-*`.
+- **#0950** (build) — `macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target See `0950-*`.
+- **#0955** (build) — Six lane guards can never fire — they test `-z` on a variable `sdk-env.just` always exports See `0955-*`.
+- **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
+- **#0961** (build) — `host-tests` red for 20 consecutive runs — workspace-fixture leaves are never fetched, and `--frozen` forbids fetching them See `0961-*`.
 
 <!-- END GENERATED open-issue list -->
