@@ -294,6 +294,36 @@ path. `config_files` is a **named map** rather than a directory, because ThreadX
 needs `TX_USER_FILE` *and* `NX_USER_FILE` and FreeRTOS+TCP needs
 `FreeRTOSConfig.h` *and* `FreeRTOSIPConfig.h`.
 
+#### Amendment 1 — the key is the BOARD, not the deploy (issue 0951)
+
+`[deploy.<name>.nros]` was the shipped spelling for three phases. It is now
+`[board_config.<board>]` in the same file. The rest of this section stands
+unchanged: same struct, same file, same `{env:…}` interpolation, same named
+`config_files` map.
+
+What was wrong was one clause above — "already keyed per board". A deploy name
+is *usually* a board name, and the example on this page
+(`[deploy.nucleo-h723zg]`) is one of the cases where it is. But the two are not
+in bijection, and the tree drifted apart in both directions:
+`[deploy.threadx-linux]` pairs with `[image.threadx]`, `[deploy.an536]` with
+`[image.mps3_an536]`, and several workspaces carry BOTH `[deploy.freertos]` and
+`[deploy.mps2-an385-freertos]` for one board.
+
+The cost was measured rather than argued: **30 authored site blocks held
+exactly THREE distinct value-sets**, because a block had to be repeated under
+every deploy name that reached its board. `board_facts` grew a comparison that
+refused two blocks disagreeing about one board — detection standing in for a
+shape that should not be representable. Keying on the board removes the shape:
+`[board_config.freertos]` and `[board_config."mps2-an385-freertos"]` resolve to
+one block through `BoardCatalog::resolve_deploy`, the same rule every other
+board spelling goes through (issue 0606).
+
+This also detaches category B from the `[deploy.*]` retirement. The original
+argument for putting site keys on `[deploy.*]` was that the table "already
+exists" — which stops being a reason once that table is being taken apart into
+`[host.*]` (placement) and `[image.*]` (build). Site config belongs to neither,
+and a board-keyed table is what lets it outlive both.
+
 ### Test-harness config is a third thing
 
 QEMU invocations are neither board nor project — they are how *our tests* run a
