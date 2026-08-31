@@ -141,14 +141,16 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 .rmwcmp .none{color:var(--del);font-weight:600;font-size:13px}
 .rmwcmp .elsewhere{color:var(--fn);font-weight:600;font-size:13px}
 .rmwcmp tr.inert td.c:nth-child(2) pre{opacity:.45}
-/* status chip — the WHAT axis, beside the signature that shows the HOW */
+/* status chip — the WHAT axis. It heads the REASON column, not the nano one:
+   the two signature cells must stay line-for-line comparable. */
 .rmwcmp .st{font-size:10.5px;font-weight:600;letter-spacing:.04em;
-text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
+text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
+.rmwcmp .nosig{opacity:.35}
 .rmwcmp .s-same,.rmwcmp .s-re-shaped{color:var(--add)}
 .rmwcmp .s-re-mapped{color:var(--fn)}
 .rmwcmp .s-not-supported{color:var(--del)}
 .rmwcmp .s-not-implemented{color:var(--ret)}
-.rmwcmp .answers{margin:.4rem 0 0;font-size:12px;opacity:.85}
+.rmwcmp .answers{margin:0 0 .55rem;font-size:12px;opacity:.9}
 .rmwcmp .ans{padding:.05rem 0 .05rem .8rem;position:relative}
 .rmwcmp .ans:before{content:"92";position:absolute;left:0;opacity:.55}
 .rmwcmp .wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:1rem 0}
@@ -162,14 +164,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>const rosidl_message_type_support_t *</span><span class=pu>,</span>
   <span class='ty del'>void * *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>borrow_loaned_message</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>size_t requested_len</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *out_slot</span><span class=pu>,</span>
   <span class='ty add'>rmw_loan_token_t **out_token</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -177,12 +179,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_client_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>client_request_publisher_get_actual_qos</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -190,12 +192,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_client_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>client_response_subscription_get_actual_qos</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -204,13 +206,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>client_set_on_new_response_callback</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void *user_data</span>
-<span class=pu>)</span></pre><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -219,20 +221,20 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_gid_t *</span><span class=pu>,</span>
   <span class='ty'>bool *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_compare_gids_equal</span><span class=pu>(</span>
   <span class='ty'>const rmw_gid_t *gid1</span><span class=pu>,</span>
   <span class='ty'>const rmw_gid_t *gid2</span><span class=pu>,</span>
   <span class='ty'>bool *result</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_context_fini</span><span class=pu>(</span><span class='ty del'>rmw_context_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>destroy_session</span><span class=pu>)</span><span class=pu>(</span><span class='ty add'>rmw_session_t *session</span><span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>destroy_session</code>.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>destroy_session</code>.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -241,13 +243,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty'>size_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>count_publishers</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
   <span class='ty'>size_t *count</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -256,13 +258,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty'>size_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>count_subscribers</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
   <span class='ty'>size_t *count</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_client_t *</span>
@@ -272,7 +274,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty'>const rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_client</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
   <span class='ty add'>const rmw_service_type_support_t *type_support</span><span class=pu>,</span>
@@ -281,13 +283,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_qos_profile_t *qos</span><span class=pu>,</span>
   <span class='ty add'>rmw_client_t *out</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>types are resolved at BUILD time</b> — As the message typesupport.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — As the message typesupport.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_guard_condition_t *</span>
 <span class='fn'>rmw_create_guard_condition</span><span class=pu>(</span><span class='ty'>rmw_context_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: EntryKind::GuardCondition</div></div></td>
-<td class=why>EntryKind::GuardCondition; no transport variation, and once `wait` is declined there is no backend consumer</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: EntryKind::GuardCondition</div></div>EntryKind::GuardCondition; no transport variation, and once `wait` is declined there is no backend consumer</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_node_t *</span>
@@ -296,14 +298,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty'>const char *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_node</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *name</span><span class=pu>,</span>
   <span class='ty'>const char *namespace_</span><span class=pu>,</span>
   <span class='ty add'>rmw_node_t *out</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_publisher_t *</span>
@@ -314,7 +316,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_qos_profile_t *</span><span class=pu>,</span>
   <span class='ty'>const rmw_publisher_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_publisher</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
   <span class='ty add'>const rmw_message_type_support_t *type_support</span><span class=pu>,</span>
@@ -324,7 +326,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_options_t *options</span><span class=pu>,</span>
   <span class='ty add'>rmw_publisher_t *out</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_service_t *</span>
@@ -334,7 +336,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty'>const rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_service</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
   <span class='ty add'>const rmw_service_type_support_t *type_support</span><span class=pu>,</span>
@@ -343,7 +345,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_qos_profile_t *qos</span><span class=pu>,</span>
   <span class='ty add'>rmw_service_t *out</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>types are resolved at BUILD time</b> — As the message typesupport.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — As the message typesupport.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_subscription_t *</span>
@@ -354,7 +356,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_qos_profile_t *</span><span class=pu>,</span>
   <span class='ty'>const rmw_subscription_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_subscription</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
   <span class='ty add'>const rmw_message_type_support_t *type_support</span><span class=pu>,</span>
@@ -364,7 +366,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_subscription_options_t *options</span><span class=pu>,</span>
   <span class='ty add'>rmw_subscription_t *out</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_wait_set_t *</span>
@@ -372,8 +374,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_context_t *</span><span class=pu>,</span>
   <span class='ty'>size_t</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: the arena entry table, allocated once</div></div></td>
-<td class=why>the executor&#x27;s arena entry table IS the set, allocated once; a per-wait set would be heap on the spin path</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: the arena entry table, allocated once</div></div>the executor&#x27;s arena entry table IS the set, allocated once; a per-wait set would be heap on the spin path</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -382,8 +384,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rosidl_message_type_support_t *</span><span class=pu>,</span>
   <span class='ty'>void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>nros-serdes: Deserialize / DeserializeView</div><div class=ans>codegen packs</div></div></td>
-<td class=why>as rmw_serialize</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>nros-serdes: Deserialize / DeserializeView</div><div class=ans>codegen packs</div></div>as rmw_serialize</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -391,22 +393,22 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rmw_node_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_client_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>destroy_client</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_client_t *client</span><span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_destroy_guard_condition</span><span class=pu>(</span><span class='ty'>rmw_guard_condition_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: EntryKind::GuardCondition</div></div></td>
-<td class=why>as rmw_create_guard_condition</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: EntryKind::GuardCondition</div></div>as rmw_create_guard_condition</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_destroy_node</span><span class=pu>(</span><span class='ty'>rmw_node_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>destroy_node</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_node_t *node</span><span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -414,9 +416,9 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rmw_node_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_publisher_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>destroy_publisher</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_publisher_t *publisher</span><span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -424,9 +426,9 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rmw_node_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_service_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>destroy_service</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_service_t *server</span><span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -434,15 +436,15 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rmw_node_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_subscription_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>destroy_subscription</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_subscription_t *subscription</span><span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_destroy_wait_set</span><span class=pu>(</span><span class='ty'>rmw_wait_set_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: the arena entry table, allocated once</div></div></td>
-<td class=why>as rmw_create_wait_set</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · executor</div><div class=answers><div class=ans>executor: the arena entry table, allocated once</div></div>as rmw_create_wait_set</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -451,7 +453,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty del'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>publisher_event_init</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>rmw_event_type_t kind</span><span class=pu>,</span>
@@ -459,26 +461,26 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty add'>rmw_status_event_callback_t cb</span><span class=pu>,</span>
   <span class='ty add'>void *user_context</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>publisher_event_init</code>.<br><br><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.<br><br><b>one wake callback per session</b> — Upstream installs a callback per entity. Ours is `set_wake_callback` on the session: one executor drives several backends, so the wake has to be attributable to a session rather than to whichever entity fired.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>publisher_event_init</code>.<br><br><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.<br><br><b>one wake callback per session</b> — Upstream installs a callback per entity. Ours is `set_wake_callback` on the session: one executor drives several backends, so the wake has to be attributable to a session rather than to whichever entity fired.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>bool</span>
 <span class='fn'>rmw_feature_supported</span><span class=pu>(</span><span class='ty'>rmw_feature_t</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped</div><pre><span class=ret>bool</span>
-<span class=pu>(*</span><span class='fn'>feature_supported</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_feature_t feature</span><span class=pu>)</span></pre><div class=answers><div class=ans>per-capability slots, answered by nullity or a dedicated probe</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<td class=c><pre><span class=ret>bool</span>
+<span class=pu>(*</span><span class='fn'>feature_supported</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_feature_t feature</span><span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>per-capability slots, answered by nullity or a dedicated probe</div></div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_fini_publisher_allocation</span><span class=pu>(</span><span class='ty'>rmw_publisher_allocation_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-supported'>✕ not-supported · by decision</div></td>
-<td class=why>as above</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as above</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_fini_subscription_allocation</span><span class=pu>(</span><span class='ty'>rmw_subscription_allocation_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-supported'>✕ not-supported · by decision</div></td>
-<td class=why>as above</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as above</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -489,14 +491,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty del'>rmw_names_and_types_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_client_names_and_types_by_node</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
   <span class='ty'>const char *node_namespace</span><span class=pu>,</span>
   <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -504,19 +506,19 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_gid_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_gid_for_publisher</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty'>rmw_gid_t *gid</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>const char *</span>
 <span class='fn'>rmw_get_implementation_identifier</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · runtime</div><pre><span class=ret>const char *</span>
-<span class=pu>(*</span><span class='fn'>get_implementation_identifier</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre><div class=answers><div class=ans>runtime: the registry name</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<td class=c><pre><span class=ret>const char *</span>
+<span class=pu>(*</span><span class='fn'>get_implementation_identifier</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · runtime</div><div class=answers><div class=ans>runtime: the registry name</div></div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -525,12 +527,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rcutils_string_array_t *</span><span class=pu>,</span>
   <span class='ty del'>rcutils_string_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_node_names</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty add'>rmw_node_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>visitor, not an owning out-param</b> — As `rmw_names_and_types_t` — an owning array upstream, a visitor here.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>visitor, not an owning out-param</b> — As `rmw_names_and_types_t` — an owning array upstream, a visitor here.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -540,12 +542,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rcutils_string_array_t *</span><span class=pu>,</span>
   <span class='ty del'>rcutils_string_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>get_node_names</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty add'>rmw_node_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>get_node_names</code>.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>visitor, not an owning out-param</b> — As `rmw_names_and_types_t` — an owning array upstream, a visitor here.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>get_node_names</code>.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>visitor, not an owning out-param</b> — As `rmw_names_and_types_t` — an owning array upstream, a visitor here.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -557,7 +559,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool</span><span class=pu>,</span>
   <span class='ty del'>rmw_names_and_types_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_publisher_names_and_types_by_node</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
@@ -565,7 +567,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool no_demangle</span><span class=pu>,</span>
   <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -576,21 +578,21 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool</span><span class=pu>,</span>
   <span class='ty del'>rmw_topic_endpoint_info_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_publishers_info_by_topic</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
   <span class='ty'>bool no_mangle</span><span class=pu>,</span>
   <span class='ty add'>rmw_topic_endpoint_info_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>const char *</span>
 <span class='fn'>rmw_get_serialization_format</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · runtime</div><pre><span class=ret>const char *</span>
-<span class=pu>(*</span><span class='fn'>get_serialization_format</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre><div class=answers><div class=ans>runtime: the constant cdr</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<td class=c><pre><span class=ret>const char *</span>
+<span class=pu>(*</span><span class='fn'>get_serialization_format</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · runtime</div><div class=answers><div class=ans>runtime: the constant cdr</div></div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -599,8 +601,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rosidl_runtime_c__Sequence__bound *</span><span class=pu>,</span>
   <span class='ty'>size_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · serdes</div><div class=answers><div class=ans>nros-serdes: size.rs (size_bound / max_serialized_size)</div></div></td>
-<td class=why>nros-serdes `size.rs` — `size_bound` / `max_serialized_size` / `buffer_fits` / `serialized_size`, per TYPE and `const` where the type is bounded (phase-380 W1, issue 0776, resolved). Not a vtable slot and never will be: upstream takes a `rosidl_message_type_support_t *`, declined ABI-wide since W3.c, so the symbol cannot cross this seam — but the CAPABILITY it provides is answered, which is what `layer` records. This read `gap` until 2026-08-27, after 0776 had closed</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · serdes</div><div class=answers><div class=ans>nros-serdes: size.rs (size_bound / max_serialized_size)</div></div>nros-serdes `size.rs` — `size_bound` / `max_serialized_size` / `buffer_fits` / `serialized_size`, per TYPE and `const` where the type is bounded (phase-380 W1, issue 0776, resolved). Not a vtable slot and never will be: upstream takes a `rosidl_message_type_support_t *`, declined ABI-wide since W3.c, so the symbol cannot cross this seam — but the CAPABILITY it provides is answered, which is what `layer` records. This read `gap` until 2026-08-27, after 0776 had closed</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -609,12 +611,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_names_and_types_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_service_names_and_types</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -625,14 +627,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const char *</span><span class=pu>,</span>
   <span class='ty del'>rmw_names_and_types_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_service_names_and_types_by_node</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
   <span class='ty'>const char *node_namespace</span><span class=pu>,</span>
   <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -644,7 +646,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool</span><span class=pu>,</span>
   <span class='ty del'>rmw_names_and_types_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_subscriber_names_and_types_by_node</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *node_name</span><span class=pu>,</span>
@@ -652,7 +654,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool no_demangle</span><span class=pu>,</span>
   <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -663,14 +665,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool</span><span class=pu>,</span>
   <span class='ty del'>rmw_topic_endpoint_info_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_subscriptions_info_by_topic</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
   <span class='ty'>bool no_mangle</span><span class=pu>,</span>
   <span class='ty add'>rmw_topic_endpoint_info_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -680,13 +682,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool</span><span class=pu>,</span>
   <span class='ty del'>rmw_names_and_types_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>get_topic_names_and_types</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty'>bool no_demangle</span><span class=pu>,</span>
   <span class='ty add'>rmw_names_and_types_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — Upstream fills a heap-owning out-parameter the caller must `fini`. We pass a VISITOR callback invoked once per entry, with borrowed strings valid for the call. No allocation, bounded work, and nothing for a caller to leak — which is what makes the graph family available on a target with no allocator at all.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -694,7 +696,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>const rmw_init_options_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_context_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>create_session</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const char *locator</span><span class=pu>,</span>
   <span class='ty add'>uint8_t mode</span><span class=pu>,</span>
@@ -703,7 +705,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty add'>const rmw_session_options_t *options</span><span class=pu>,</span>
   <span class='ty add'>rmw_session_t *out</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>create_session</code>.<br><br><b>build-time POD, no init/copy/fini</b> — Upstream&#x27;s options own heap and carry an allocator, which is why they need the init/copy/fini trio. Ours are a build-time POD passed by value.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>renamed</b> — the slot is <code>create_session</code>.<br><br><b>build-time POD, no init/copy/fini</b> — Upstream&#x27;s options own heap and carry an allocator, which is why they need the init/copy/fini trio. Ours are a build-time POD passed by value.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -711,14 +713,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_init_options_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_init_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: `copy` is `=`</div></div></td>
-<td class=why>as rmw_init_options_init — &quot;copy&quot; is `=`</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: `copy` is `=`</div></div>as rmw_init_options_init — &quot;copy&quot; is `=`</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_init_options_fini</span><span class=pu>(</span><span class='ty'>rmw_init_options_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: `fini` is nothing</div></div></td>
-<td class=why>as rmw_init_options_init — &quot;fini&quot; is nothing</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: `fini` is nothing</div></div>as rmw_init_options_init — &quot;fini&quot; is nothing</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -726,8 +728,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_init_options_t *</span><span class=pu>,</span>
   <span class='ty'>rcutils_allocator_t</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: rmw_init_options_t is a POD</div></div></td>
-<td class=why>upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · build time</div><div class=answers><div class=ans>build time: rmw_init_options_t is a POD</div></div>upstream needs the init/copy/fini trio because its options OWN heap and carry an rcutils_allocator_t, which cannot cross this seam; ours is a build-time POD. Does NOT decide what the options CARRY: `localhost_only` and `enclave` are gaps (issue 0785, shape deferred to 0331), `security_options` is declined on the target (a DDS-SROS2 keystore path, no filesystem and no security plugin there), and `discovery_options` is an IRON field this Humble contract does not have</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -736,8 +738,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rosidl_runtime_c__Sequence__bound *</span><span class=pu>,</span>
   <span class='ty'>rmw_publisher_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-supported'>✕ not-supported · by decision</div></td>
-<td class=why>upstream&#x27;s first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`. The sequence bound is declined ABI-wide (it is a rosidl runtime type), and the third parameter is an `rmw_publisher_allocation_t`, whose body is `{const char *implementation_identifier; void *data;}` — an opaque handle whose contents only the implementation that made it can read. Nothing crosses this seam usefully. THREE earlier reasons here were wrong, and the corrections are the record worth keeping: &#x27;pools are baked&#x27; (false for four backends of five — issue 0777, now RESOLVED with the finding that every deviation reason built on that clause was false); &#x27;upstream pre-sizes an rcutils_allocator_t the caller owns&#x27; (false — verified against Humble&#x27;s rmw/types.h); and, until phase-406, a tail deferring the capability question to 0777 as though it were still open. It is not: 0777 closed, and the pre-sizing CAPABILITY for cyclonedds is a separate question that needs its own issue if anyone wants it, not a citation here.</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>upstream&#x27;s first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`. The sequence bound is declined ABI-wide (it is a rosidl runtime type), and the third parameter is an `rmw_publisher_allocation_t`, whose body is `{const char *implementation_identifier; void *data;}` — an opaque handle whose contents only the implementation that made it can read. Nothing crosses this seam usefully. THREE earlier reasons here were wrong, and the corrections are the record worth keeping: &#x27;pools are baked&#x27; (false for four backends of five — issue 0777, now RESOLVED with the finding that every deviation reason built on that clause was false); &#x27;upstream pre-sizes an rcutils_allocator_t the caller owns&#x27; (false — verified against Humble&#x27;s rmw/types.h); and, until phase-406, a tail deferring the capability question to 0777 as though it were still open. It is not: 0777 closed, and the pre-sizing CAPABILITY for cyclonedds is a separate question that needs its own issue if anyone wants it, not a citation here.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -746,19 +748,19 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rosidl_runtime_c__Sequence__bound *</span><span class=pu>,</span>
   <span class='ty'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-supported'>✕ not-supported · by decision</div></td>
-<td class=why>as above</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div>as above</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>const rmw_guard_condition_t *</span>
 <span class='fn'>rmw_node_get_graph_guard_condition</span><span class=pu>(</span><span class='ty del'>const rmw_node_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-supported'>✕ not-supported · by decision</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>node_get_graph_guard_condition</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>rmw_session_t *session</span><span class=pu>,</span>
   <span class='ty add'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty add'>const void *user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared, written and read by nothing.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -767,12 +769,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>const void *</span><span class=pu>,</span>
   <span class='ty del'>rmw_publisher_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publish</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t payload</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -781,13 +783,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>void *</span><span class=pu>,</span>
   <span class='ty del'>rmw_publisher_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publish_loaned_message</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>rmw_loan_token_t *token</span><span class=pu>,</span>
   <span class='ty add'>size_t actual_len</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -796,19 +798,19 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>const rmw_serialized_message_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_publisher_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>publish</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t payload</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>publish</code>.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>publish</code>.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_publisher_assert_liveliness</span><span class=pu>(</span><span class='ty'>const rmw_publisher_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publisher_assert_liveliness</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -816,12 +818,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty'>size_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publisher_count_matched_subscriptions</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty'>size_t *subscription_count</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -830,7 +832,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_event_type_t</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publisher_event_init</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty'>rmw_event_type_t kind</span><span class=pu>,</span>
@@ -838,7 +840,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty add'>rmw_status_event_callback_t cb</span><span class=pu>,</span>
   <span class='ty add'>void *user_context</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -846,12 +848,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publisher_get_actual_qos</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -860,12 +862,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_network_flow_endpoint_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publisher_get_network_flow_endpoints</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>rmw_network_flow_endpoint_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -873,12 +875,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_time_t</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-supported'>✕ not-supported · by decision</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>publisher_wait_for_all_acked</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>uint32_t timeout_ms</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>milliseconds, not a struct</b> — `rmw_time_t` is a `{sec, nsec}` pair. This ABI carries `uint32_t` milliseconds throughout — the resolution every supported platform clock actually offers, and the unit the deadline arithmetic already uses.</td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared, written and read by nothing.<br><br><b>milliseconds, not a struct</b> — `rmw_time_t` is a `{sec, nsec}` pair. This ABI carries `uint32_t` milliseconds throughout — the resolution every supported platform clock actually offers, and the unit the deadline arithmetic already uses.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -889,7 +891,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>char *</span><span class=pu>,</span>
   <span class='ty'>size_t</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_qos_profile_check_compatible</span><span class=pu>(</span>
   <span class='ty add'>rmw_qos_profile_t publisher_profile</span><span class=pu>,</span>
   <span class='ty add'>rmw_qos_profile_t subscription_profile</span><span class=pu>,</span>
@@ -897,7 +899,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>char *reason</span><span class=pu>,</span>
   <span class='ty'>size_t reason_size</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>by pointer, not by value</b> — Upstream passes two `rmw_qos_profile_t` BY VALUE. The struct is ~80 bytes, and a by-value copy of it crosses the seam twice on every compatibility check — on a target where the call may run from a 512-byte task stack. Ours takes `const rmw_qos_profile_t *`, which is the same information without the copies.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>by pointer, not by value</b> — Upstream passes two `rmw_qos_profile_t` BY VALUE. The struct is ~80 bytes, and a by-value copy of it crosses the seam twice on every compatibility check — on a target where the call may run from a 512-byte task stack. Ours takes `const rmw_qos_profile_t *`, which is the same information without the copies.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -905,12 +907,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_publisher_t *</span><span class=pu>,</span>
   <span class='ty del'>void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>return_loaned_message_from_publisher</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>rmw_loan_token_t *token</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -918,12 +920,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
   <span class='ty del'>void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>return_loaned_message_from_subscription</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_loan_token_t *token</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -932,13 +934,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>const void *</span><span class=pu>,</span>
   <span class='ty'>int64_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>send_request</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t request</span><span class=pu>,</span>
   <span class='ty'>int64_t *sequence_id</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -947,13 +949,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rmw_request_id_t *</span><span class=pu>,</span>
   <span class='ty del'>void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>send_response</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t *server</span><span class=pu>,</span>
   <span class='ty add'>int64_t seq</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t response</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>visitor, not an owning out-param</b> — As `rmw_service_info_t` — the sequence number and writer GUID travel in the borrowed view rather than a separate out-param.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — As `rmw_service_info_t` — the sequence number and writer GUID travel in the borrowed view rather than a separate out-param.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -962,8 +964,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rosidl_message_type_support_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_serialized_message_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>nros-serdes: Serialize</div><div class=ans>codegen packs</div></div></td>
-<td class=why>nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the per-language codegen packs; CDR for an IDL type is fixed by ROS interop, so a per-backend answer would be a DEFECT. Not a slot for the same reason it is not per-backend, and because upstream&#x27;s parameters are two things this ABI declined anyway — a typesupport pointer and an `rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an ALLOCATOR, at a seam with no allocator</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>nros-serdes: Serialize</div><div class=ans>codegen packs</div></div>nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the per-language codegen packs; CDR for an IDL type is fixed by ROS interop, so a per-backend answer would be a DEFECT. Not a slot for the same reason it is not per-backend, and because upstream&#x27;s parameters are two things this ABI declined anyway — a typesupport pointer and an `rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an ALLOCATOR, at a seam with no allocator</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -971,12 +973,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_service_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>service_request_subscription_get_actual_qos</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -984,12 +986,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_service_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>service_response_publisher_get_actual_qos</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -998,12 +1000,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_client_t *</span><span class=pu>,</span>
   <span class='ty'>bool *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>service_server_is_available</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>bool *out_available</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1012,27 +1014,27 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>service_set_on_new_request_callback</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void *user_data</span>
-<span class=pu>)</span></pre><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_set_log_severity</span><span class=pu>(</span><span class='ty'>rmw_log_severity_t</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>set_log_severity</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_log_severity_t severity</span><span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_shutdown</span><span class=pu>(</span><span class='ty del'>rmw_context_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>destroy_session</span><span class=pu>)</span><span class=pu>(</span><span class='ty add'>rmw_session_t *session</span><span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>destroy_session</code>.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>destroy_session</code>.<br><br><b>the SESSION is the seam</b> — As `rmw_node_t`: upstream&#x27;s context is the process-wide init state, and ours is the session the slot is being called on.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1040,12 +1042,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
   <span class='ty'>size_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_count_matched_publishers</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty'>size_t *publisher_count</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1054,7 +1056,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_event_type_t</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_event_init</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty'>rmw_event_type_t kind</span><span class=pu>,</span>
@@ -1062,7 +1064,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty add'>rmw_status_event_callback_t cb</span><span class=pu>,</span>
   <span class='ty add'>void *user_context</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1070,12 +1072,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>const rmw_subscription_t *</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-same'>● same</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_get_actual_qos</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1084,12 +1086,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_content_filter_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_get_content_filter</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_content_filter_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>reserved shape, no backend</b> — Content filtering is declared for parity shape; no backend implements it, so the options type has no consumer to shape it for.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>reserved shape, no backend</b> — Content filtering is declared for parity shape; no backend implements it, so the options type has no consumer to shape it for.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1098,12 +1100,12 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>rcutils_allocator_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_network_flow_endpoint_array_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_get_network_flow_endpoints</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_network_flow_endpoint_visitor_t visitor</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1111,14 +1113,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_subscription_t *</span><span class=pu>,</span>
   <span class='ty del'>const rmw_subscription_content_filter_options_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_set_content_filter</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>const char *expression</span><span class=pu>,</span>
   <span class='ty add'>const char *const *parameters</span><span class=pu>,</span>
   <span class='ty add'>size_t parameter_count</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>reserved shape, no backend</b> — Content filtering is declared for parity shape; no backend implements it, so the options type has no consumer to shape it for.</td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 0956</div><b>inert</b> — declared, written and read by nothing.<br><br><b>reserved shape, no backend</b> — Content filtering is declared for parity shape; no backend implements it, so the options type has no consumer to shape it for.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1127,13 +1129,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_event_callback_t</span><span class=pu>,</span>
   <span class='ty'>const void *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>subscription_set_on_new_message_callback</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty'>const void *user_data</span>
-<span class=pu>)</span></pre><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.</td>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>set_wake_callback (per SESSION, not per entity)</div></div><b>inert</b> — declared, written and read by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1143,13 +1145,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1158,14 +1160,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>void *</span><span class=pu>,</span>
   <span class='ty'>bool *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>subscription_take_event</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty add'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_event_type_t kind</span><span class=pu>,</span>
   <span class='ty add'>rmw_event_payload_t *out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>subscription_take_event</code>.<br><br><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>renamed</b> — the slot is <code>subscription_take_event</code>.<br><br><b>events are a slot family, not an event object</b> — Upstream models an event as an object you take from. Ours are per-kind slots on the session (`take_event` and the event mask in `rmw_event.h`), so the object that would carry the kind is the slot itself.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1175,14 +1177,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take_loaned_message</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t *out_view</span><span class=pu>,</span>
   <span class='ty add'>rmw_loan_token_t **out_token</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1193,15 +1195,15 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_message_info_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take_loaned_message_with_info</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_byte_span_t *out_view</span><span class=pu>,</span>
   <span class='ty add'>rmw_loan_token_t **out_token</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span><span class=pu>,</span>
   <span class='ty'>rmw_message_info_t *message_info</span>
-<span class=pu>)</span></pre><div class=answers><div class=ans>take_loaned_message</div><div class=ans>the attachment on the message already taken</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>take_loaned_message</div><div class=ans>the attachment on the message already taken</div></div><b>inert</b> — declared, written and read by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1211,14 +1213,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>void *</span><span class=pu>,</span>
   <span class='ty'>bool *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take_request</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t *server</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *request</span><span class=pu>,</span>
   <span class='ty add'>int64_t *seq_out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>visitor, not an owning out-param</b> — The request/response metadata upstream writes into a caller-owned struct arrives here through the same borrowed-view discipline as the graph family.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — The request/response metadata upstream writes into a caller-owned struct arrives here through the same borrowed-view discipline as the graph family.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1228,14 +1230,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty del'>void *</span><span class=pu>,</span>
   <span class='ty'>bool *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take_response</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *reply</span><span class=pu>,</span>
   <span class='ty add'>int64_t *seq_out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>visitor, not an owning out-param</b> — The request/response metadata upstream writes into a caller-owned struct arrives here through the same borrowed-view discipline as the graph family.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — The request/response metadata upstream writes into a caller-owned struct arrives here through the same borrowed-view discipline as the graph family.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1247,7 +1249,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>size_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-shaped'>● re-shaped</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take_sequence</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>uint8_t *buf</span><span class=pu>,</span>
@@ -1256,7 +1258,7 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>size_t *out_lens</span><span class=pu>,</span>
   <span class='ty'>size_t *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>visitor, not an owning out-param</b> — `rmw_take_sequence`&#x27;s message and info sequences are caller-owned arrays sized by an allocator. The bounded form is a repeated take, which is what the executor does.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-shaped'>● re-shaped</div><b>visitor, not an owning out-param</b> — `rmw_take_sequence`&#x27;s message and info sequences are caller-owned arrays sized by an allocator. The bounded form is a repeated take, which is what the executor does.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1266,13 +1268,13 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>bool *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>take</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *out</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span>
 <span class=pu>)</span></pre></td>
-<td class=why><b>renamed</b> — the slot is <code>take</code>.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><b>renamed</b> — the slot is <code>take</code>.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1283,14 +1285,14 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_message_info_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn ren'>take_with_info</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *message</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span><span class=pu>,</span>
   <span class='ty'>rmw_message_info_t *message_info</span>
-<span class=pu>)</span></pre><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div></td>
-<td class=why><b>renamed</b> — the slot is <code>take_with_info</code>.<br><br><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div><b>renamed</b> — the slot is <code>take_with_info</code>.<br><br><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1301,20 +1303,20 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_message_info_t *</span><span class=pu>,</span>
   <span class='ty del'>rmw_subscription_allocation_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><pre><span class=ret>rmw_ret_t</span>
+<td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>take_with_info</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_subscription_t *subscription</span><span class=pu>,</span>
   <span class='ty add'>rmw_mut_byte_span_t *message</span><span class=pu>,</span>
   <span class='ty'>bool *taken</span><span class=pu>,</span>
   <span class='ty'>rmw_message_info_t *message_info</span>
-<span class=pu>)</span></pre><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div></td>
-<td class=why><b>inert</b> — declared, written and read by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<span class=pu>)</span></pre></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div><b>inert</b> — declared, written and read by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_trigger_guard_condition</span><span class=pu>(</span><span class='ty'>const rmw_guard_condition_t *</span><span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · platform</div><div class=answers><div class=ans>platform: the wake primitive, via GuardCondition::trigger</div></div></td>
-<td class=why>GuardCondition::trigger -&gt; the platform wake primitive; ISR-safety is a platform-ABI guarantee no backend makes</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · platform</div><div class=answers><div class=ans>platform: the wake primitive, via GuardCondition::trigger</div></div>GuardCondition::trigger -&gt; the platform wake primitive; ISR-safety is a platform-ABI guarantee no backend makes</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1327,8 +1329,8 @@ text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
   <span class='ty'>rmw_wait_set_t *</span><span class=pu>,</span>
   <span class='ty'>const rmw_time_t *</span>
 <span class=pu>)</span></pre></td>
-<td class=c><div class='st s-re-mapped'>◆ re-mapped · 1 → 5</div><div class=answers><div class=ans>has_data</div><div class=ans>has_request</div><div class=ans>drive_io</div><div class=ans>set_wake_callback</div><div class=ans>next_deadline_ms</div></div></td>
-<td class=why>has_data/has_request + drive_io + set_wake_callback + next_deadline_ms ARE this, decomposed. A vtable `wait` would add only the BLOCK, moved from the platform into a backend that can only block on its own handles — while one executor drives sessions from several backends, timers fire off the platform clock, and guard conditions fire from an ISR</td>
+<td class=c><span class=nosig>—</span></td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 5</div><div class=answers><div class=ans>has_data</div><div class=ans>has_request</div><div class=ans>drive_io</div><div class=ans>set_wake_callback</div><div class=ans>next_deadline_ms</div></div>has_data/has_request + drive_io + set_wake_callback + next_deadline_ms ARE this, decomposed. A vtable `wait` would add only the BLOCK, moved from the platform into a backend that can only block on its own handles — while one executor drives sessions from several backends, timers fire off the platform clock, and guard conditions fire from an ISR</td>
 </tr>
 </table></div></div>
 

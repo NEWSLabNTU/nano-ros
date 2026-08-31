@@ -174,14 +174,16 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 .rmwcmp .none{color:var(--del);font-weight:600;font-size:13px}
 .rmwcmp .elsewhere{color:var(--fn);font-weight:600;font-size:13px}
 .rmwcmp tr.inert td.c:nth-child(2) pre{opacity:.45}
-/* status chip — the WHAT axis, beside the signature that shows the HOW */
+/* status chip — the WHAT axis. It heads the REASON column, not the nano one:
+   the two signature cells must stay line-for-line comparable. */
 .rmwcmp .st{font-size:10.5px;font-weight:600;letter-spacing:.04em;
-text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
+text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
+.rmwcmp .nosig{opacity:.35}
 .rmwcmp .s-same,.rmwcmp .s-re-shaped{color:var(--add)}
 .rmwcmp .s-re-mapped{color:var(--fn)}
 .rmwcmp .s-not-supported{color:var(--del)}
 .rmwcmp .s-not-implemented{color:var(--ret)}
-.rmwcmp .answers{margin:.4rem 0 0;font-size:12px;opacity:.85}
+.rmwcmp .answers{margin:0 0 .55rem;font-size:12px;opacity:.9}
 .rmwcmp .ans{padding:.05rem 0 .05rem .8rem;position:relative}
 .rmwcmp .ans:before{content:"\2192";position:absolute;left:0;opacity:.55}
 .rmwcmp .wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:1rem 0}
@@ -548,10 +550,15 @@ def render(contract, rows, tally, matrix, _un):
             items = "".join(f"<div class=ans>{e(a)}</div>" for a in shown)
             answers_html = f"<div class=answers>{items}</div>"
 
+        # The two signature cells hold SIGNATURES and nothing else, so a reader
+        # can run down them line by line and see the shapes differ. The chip and
+        # the arrows are commentary, so they live in the commentary column —
+        # putting them above the nano signature pushed it out of step with the
+        # upstream one by however many lines they took.
         if r["ours"]:
-            w(f"<td class=c>{chip}<pre>{r['ours']}</pre>{answers_html}</td>")
+            w(f"<td class=c><pre>{r['ours']}</pre></td>")
         else:
-            w(f"<td class=c>{chip}{answers_html}</td>")
+            w('<td class=c><span class=nosig>—</span></td>')
         bits = []
         if r["renamed_to"]:
             bits.append(f"<b>renamed</b> — the slot is <code>{e(r['renamed_to'])}</code>.")
@@ -561,7 +568,7 @@ def render(contract, rows, tally, matrix, _un):
             bits.append(f"<b>{e(title)}</b> — {e(why)}")
         if r["note"]:
             bits.append(e(r["note"]))
-        w(f"<td class=why>{'<br><br>'.join(bits)}</td>")
+        w(f"<td class=why>{chip}{answers_html}{'<br><br>'.join(bits)}</td>")
         w("</tr>")
     w("</table></div></div>")
     w("")
