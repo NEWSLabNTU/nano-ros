@@ -74,5 +74,6 @@ fails if this block drifts.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
 - **#0968** (testing) — Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time See `0968-*`.
+- **#0975** (ci) — `--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue See `0975-*`.
 
 <!-- END GENERATED open-issue list -->
