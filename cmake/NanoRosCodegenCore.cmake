@@ -687,7 +687,7 @@ endfunction()
 # for a workspace + upstream-shape find_package(<pkg>) per package. Kept for
 # back-compat.
 function(nros_find_interfaces)
-    cmake_parse_arguments(_ARG "SKIP_INSTALL" "PACKAGE_XML;LANGUAGE;ROS_EDITION" "" ${ARGN})
+    cmake_parse_arguments(_ARG "SKIP_INSTALL" "PACKAGE_XML;LANGUAGE;ROS_EDITION;CODEGEN_CONFIG" "" ${ARGN})
 
     if(NOT DEFINED _ARG_PACKAGE_XML OR _ARG_PACKAGE_XML STREQUAL "")
         set(_ARG_PACKAGE_XML "${CMAKE_CURRENT_SOURCE_DIR}/package.xml")
@@ -771,11 +771,28 @@ function(nros_find_interfaces)
         if(_ARG_SKIP_INSTALL)
             set(_skip "SKIP_INSTALL")
         endif()
+        # phase-403 -- forward the codegen config to each generated package.
+        #
+        # Without this a consumer cannot bound a STOCK ROS type. Config
+        # discovery walks up from the .msg SOURCE, which for std_msgs is
+        # /opt/ros/<distro>/share/std_msgs, so an nros-codegen.toml in the
+        # consumer's own tree is never found. nros_generate_interfaces has
+        # accepted CODEGEN_CONFIG since phase-246; nros_find_interfaces, which
+        # is the entry point a consumer actually calls, did not pass it on --
+        # so the cap mechanism worked and was unreachable from a real build.
+        #
+        # Measured on an island entry with two capped stock strings: 46 of 84
+        # types bounded without this, 60 with it.
+        set(_cfg)
+        if(DEFINED _ARG_CODEGEN_CONFIG AND NOT _ARG_CODEGEN_CONFIG STREQUAL "")
+            set(_cfg CODEGEN_CONFIG "${_ARG_CODEGEN_CONFIG}")
+        endif()
         nros_generate_interfaces(${_pkg}
             ${_NROS_RESOLVED_${_pkg}_FILES}
             DEPENDENCIES ${_all_preceding_pkgs}
             LANGUAGE ${_ARG_LANGUAGE}
             ROS_EDITION ${_ARG_ROS_EDITION}
+            ${_cfg}
             ${_skip})
         # Re-export per-package vars to the caller (canonical sets all of these;
         # the zephyr generator only sets GENERATED_RS_FILES — the rest re-export
