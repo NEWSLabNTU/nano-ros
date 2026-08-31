@@ -109,6 +109,8 @@ guidance and platform guides for target-specific sizing.
 | `ZPICO_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim         | `16`             | zpico-sys      |
 | `ZPICO_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
 | `ZPICO_SUBSCRIBER_BUFFER_SIZE`     | Per-subscriber static buffer in zenoh shim             | `1024`           | nros-rmw-zenoh |
+| `ZPICO_SUBSCRIBER_LARGE_SIZE`      | `large` size-class slot, for subscriptions whose type does not fit the small block | `16384` | nros-rmw-zenoh |
+| `ZPICO_MAX_LARGE_SUBSCRIBERS`      | How many `large`-class blocks this image reserves. **`0` is legal** (phase-403 W4): an image whose subscribed types all fit `ZPICO_SUBSCRIBER_BUFFER_SIZE` declares 0 and stops paying `RING_DEPTH x LARGE_SIZE` — 65,536 B at the defaults — for a class it never routes into. A hint no class can hold then fails `create_subscription` rather than dropping every sample. | `2` | nros-rmw-zenoh |
 | `ZPICO_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
 | `ZPICO_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `ZPICO_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |

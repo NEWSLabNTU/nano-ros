@@ -219,6 +219,68 @@ const SMALL_CLASS_CEILING: usize = if SUBSCRIBER_SIZE_THRESHOLD < SUBSCRIBER_BUF
     SUBSCRIBER_BUFFER_SIZE
 };
 
+/// Phase 403 W4 — the largest sample any subscription in this image can be
+/// handed, whatever class it routes to.
+///
+/// This is the top end of issue 0841, which the fix for that issue left open.
+/// 0841 closed the SMALL/LARGE boundary: a hint the small block could not hold
+/// was small-classed and every sample dropped at the transport. The identical
+/// defect one class up was never closed — a hint above `SUBSCRIBER_LARGE_SIZE`
+/// still routed to the large class, got a block too small for it, and dropped
+/// every sample the same way, with no build assertion and no runtime error at
+/// create time.
+///
+/// The large class only exists when the image declares slots for it, so with
+/// `MAX_LARGE_SUBSCRIBERS == 0` the ceiling is the small block. That is the
+/// case W4 makes expressible: an image whose types all fit the small class
+/// declares no large slots and stops paying for a class it never routes into.
+const LARGEST_PAYLOAD_CLASS: usize =
+    if MAX_LARGE_SUBSCRIBERS > 0 && SUBSCRIBER_LARGE_SIZE > SUBSCRIBER_BUFFER_SIZE {
+        SUBSCRIBER_LARGE_SIZE
+    } else {
+        SUBSCRIBER_BUFFER_SIZE
+    };
+
+/// Phase 403 W4 — the answer to `rmw_vtable.h`'s `required_rx_bytes` for this
+/// backend: the MINIMUM number of take-buffer bytes a subscription created at
+/// `rx_buffer_hint` can need, or `None` when zenoh-pico cannot size it.
+///
+/// Minimum, not the class stride. Reporting the stride would be arithmetically
+/// safe and would collapse exactly the distinction the slot exists to recover —
+/// a 68-byte type and a 1000-byte type would both come back 1024, which is the
+/// two-arbitrary-constants answer the runtime already had. zenoh-pico can be
+/// exact here because it adds NOTHING to the payload the caller must hold:
+/// `try_recv_raw` copies `ring_len[slot]` bytes out of the ring slot and the
+/// attachment travels in its own parallel ring (`ring_att`), so the take buffer
+/// carries serialized message bytes and no framing.
+///
+/// * `hint == 0` — the CALLER stated nothing (never "this type is unbounded";
+///   every message type carries a derived bound or the build fails). zenoh-pico
+///   knows a type only by its NAME across the C ABI and holds no schema, so it
+///   cannot answer about the type. It can still answer exactly about the
+///   subscription it would create: that hint routes to the small class, whose
+///   slot stride is the most `take` can ever hand back. That is a real ceiling,
+///   not a guess, and it beats the runtime's own global default because it
+///   tracks this backend's class rather than a separate constant.
+/// * `0 < hint <= LARGEST_PAYLOAD_CLASS` — `hint`. The class the hint routes to
+///   is guaranteed to hold it (that is 0841's property, asserted by
+///   `a_routed_block_always_fits_its_hint`), and nothing is added on top.
+/// * `hint > LARGEST_PAYLOAD_CLASS` — `None`, which the vtable trampoline turns
+///   into `NROS_RMW_RET_UNSUPPORTED`. No class in this image can hold a sample
+///   that big, so there is no take-buffer size that makes the subscription work
+///   and saying a number would be a claim this backend cannot honour.
+///   `alloc_payload_block` refuses the same hint, so the two agree: asking is
+///   the create-time failure, in advance.
+pub fn required_rx_bytes(rx_buffer_hint: usize) -> Option<usize> {
+    if rx_buffer_hint == 0 {
+        return Some(SUBSCRIBER_BUFFER_SIZE);
+    }
+    if rx_buffer_hint > LARGEST_PAYLOAD_CLASS {
+        return None;
+    }
+    Some(rx_buffer_hint)
+}
+
 pub(super) static NEXT_SMALL_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
 pub(super) static NEXT_LARGE_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
 
@@ -259,6 +321,19 @@ pub(super) fn alloc_payload_block(rx_buffer_hint: usize) -> Option<(*mut u8, usi
     // legitimate way to push borderline topics into the large class early, and
     // that keeps working. What must not happen is small-routing a hint the small
     // block cannot hold.
+    //
+    // Phase 403 W4 — the same rule at the TOP end, which 0841 left open. A hint
+    // above the largest class was routed large anyway, into a block that could
+    // not hold it, and every sample was dropped at the transport exactly as in
+    // the case 0841 fixed. Refuse instead: `ZenohSubscriber::new` surfaces
+    // `SubscriberCreationFailed`, so the image fails where the person who set
+    // the knobs is standing rather than receiving nothing and reporting nothing.
+    // This is also what makes `MAX_LARGE_SUBSCRIBERS == 0` safe to declare: the
+    // large class does not exist, so a hint past the small block has nowhere
+    // legal to go and is refused rather than silently under-served.
+    if rx_buffer_hint > LARGEST_PAYLOAD_CLASS {
+        return None;
+    }
     if rx_buffer_hint > SMALL_CLASS_CEILING {
         let idx = NEXT_LARGE_PAYLOAD.fetch_add(1, Ordering::SeqCst);
         if idx >= MAX_LARGE_SUBSCRIBERS {
@@ -1520,15 +1595,28 @@ pub(super) mod tests {
 
         // One byte past what the small block can hold — inside the old gap
         // whenever the threshold exceeds the block size.
+        //
+        // Phase 403 W4 — the property is "a block that is handed out fits its
+        // hint", and REFUSING is the other way to satisfy it. That is not a
+        // weakening: it is the same rule, and it is the only answer available
+        // once `MAX_LARGE_SUBSCRIBERS = 0` makes an image with no large class
+        // legal. Demanding a block here would have made this test assert the
+        // arithmetic it was written to stop asserting.
         let hint = SUBSCRIBER_BUFFER_SIZE + 1;
-        let (_b, stride) =
-            alloc_payload_block(hint).expect("a block for a hint over the small size");
-        assert!(
-            stride >= hint,
-            "hint {hint} was routed to a {stride}-byte block: the sample cannot \
-             fit, and the drop happens at the transport where no build assertion \
-             can see it"
-        );
+        if let Some((_b, stride)) = alloc_payload_block(hint) {
+            assert!(
+                stride >= hint,
+                "hint {hint} was routed to a {stride}-byte block: the sample cannot \
+                 fit, and the drop happens at the transport where no build assertion \
+                 can see it"
+            );
+        } else {
+            assert!(
+                hint > LARGEST_PAYLOAD_CLASS,
+                "hint {hint} was refused while a {LARGEST_PAYLOAD_CLASS}-byte class \
+                 could have held it: refusal is only correct when no class fits"
+            );
+        }
 
         // And the boundary itself still takes the cheap class.
         NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
@@ -1539,6 +1627,135 @@ pub(super) mod tests {
             "a hint exactly at the ceiling must stay in the small class — \
              rounding it up would double every subscriber's cost"
         );
+    }
+
+    /// Phase 403 W4 — a hint no size class in this image can hold is REFUSED,
+    /// not routed to the biggest class and quietly under-served.
+    ///
+    /// This is the top end of issue 0841. That issue's fix stopped a hint the
+    /// SMALL block could not hold from being small-classed; the same hint one
+    /// class up — larger than `SUBSCRIBER_LARGE_SIZE` — still got a large block
+    /// too small for it, and the drop happened at the transport where nothing
+    /// could see it. Asserted as the property (`stride >= hint` for every block
+    /// handed out) rather than as the arithmetic, so it survives any knob
+    /// setting, including `MAX_LARGE_SUBSCRIBERS = 0`.
+    #[test]
+    fn a_hint_no_class_can_hold_is_refused() {
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+
+        assert!(
+            alloc_payload_block(LARGEST_PAYLOAD_CLASS + 1).is_none(),
+            "a hint of {} bytes exceeds every class ({LARGEST_PAYLOAD_CLASS} is the \
+             largest) and must fail create_subscription, not be served a block \
+             that cannot hold it",
+            LARGEST_PAYLOAD_CLASS + 1
+        );
+
+        // The boundary itself is still served, and by a block that fits it.
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+        let (_b, stride) = alloc_payload_block(LARGEST_PAYLOAD_CLASS)
+            .expect("the largest class serves its own size");
+        assert!(stride >= LARGEST_PAYLOAD_CLASS);
+
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+    }
+
+    /// Phase 403 W4 — what this backend answers `rmw_vtable.h`'s
+    /// `required_rx_bytes`, and specifically that it answers the MINIMUM
+    /// sufficient size rather than the class stride it rounded to.
+    ///
+    /// Returning the stride would be sufficient and would collapse the whole
+    /// point: a 68-byte type and a 1000-byte type would both come back
+    /// `SUBSCRIBER_BUFFER_SIZE`, which is the two-arbitrary-constants answer the
+    /// runtime already had without asking.
+    #[test]
+    fn required_rx_bytes_is_minimal_not_the_class_stride() {
+        // Two hints that share a size class must NOT share an answer.
+        let small = required_rx_bytes(68).expect("a bounded hint is answerable");
+        let bigger = required_rx_bytes(1000).expect("a bounded hint is answerable");
+        assert_eq!(
+            small, 68,
+            "the answer is the type's own bound, not the block it lands in"
+        );
+        assert_eq!(bigger, 1000);
+        assert_ne!(
+            small, bigger,
+            "rounding both up to the class stride is the distinction this slot exists to recover"
+        );
+
+        // A take buffer of the answer can always hold what `take` will copy:
+        // the block routed to is at least as large as the hint (0841), and
+        // nothing is added on top of the payload.
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+        for hint in [1usize, 68, SMALL_CLASS_CEILING, LARGEST_PAYLOAD_CLASS] {
+            assert_eq!(
+                required_rx_bytes(hint),
+                Some(hint),
+                "a hint every class boundary can serve is its own answer"
+            );
+        }
+
+        // `0` is the CALLER saying nothing, never "this type is unbounded".
+        // zenoh-pico has no schema for a type it knows only by name, so it
+        // answers about the SUBSCRIPTION it would create: that hint routes
+        // small, and the small stride is the most `take` can ever hand back.
+        assert_eq!(
+            required_rx_bytes(0),
+            Some(SUBSCRIBER_BUFFER_SIZE),
+            "hint 0 gets the small class stride — a real ceiling, not a guess"
+        );
+
+        // Past every class: no take-buffer size makes this subscription work,
+        // which is the per-type inability NULLing the whole slot cannot say.
+        assert_eq!(
+            required_rx_bytes(LARGEST_PAYLOAD_CLASS + 1),
+            None,
+            "a hint no class can hold must be UNSUPPORTED, not a number this \
+             backend cannot honour"
+        );
+    }
+
+    /// Phase 403 W4 — `required_rx_bytes` and `alloc_payload_block` agree about
+    /// which hints this image can serve.
+    ///
+    /// The slot's value is that it is answerable BEFORE any entity exists, so
+    /// the runtime can ask instead of discovering the answer at
+    /// `create_subscription`. That is only true while the two agree; if they
+    /// drifted, asking would be worse than not asking.
+    #[test]
+    fn the_sizing_query_and_the_allocator_agree() {
+        for hint in [
+            0usize,
+            1,
+            SMALL_CLASS_CEILING,
+            SMALL_CLASS_CEILING + 1,
+            LARGEST_PAYLOAD_CLASS,
+            LARGEST_PAYLOAD_CLASS + 1,
+            LARGEST_PAYLOAD_CLASS * 2,
+        ] {
+            NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+            NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
+            let allocated = alloc_payload_block(hint);
+            assert_eq!(
+                required_rx_bytes(hint).is_some(),
+                allocated.is_some(),
+                "hint {hint}: the query says {:?} and the allocator says {:?}",
+                required_rx_bytes(hint),
+                allocated.map(|(_, stride)| stride)
+            );
+            if let (Some(answer), Some((_, stride))) = (required_rx_bytes(hint), allocated) {
+                assert!(
+                    stride >= answer,
+                    "hint {hint}: answered {answer} bytes but routed to a {stride}-byte block"
+                );
+            }
+        }
+        NEXT_SMALL_PAYLOAD.store(0, Ordering::SeqCst);
+        NEXT_LARGE_PAYLOAD.store(0, Ordering::SeqCst);
     }
 
     // Phase 231 Wave 3 (RFC-0038) — size-class routing + exhaustion.
@@ -1556,12 +1773,18 @@ pub(super) mod tests {
             "hint <= threshold routes to the small class"
         );
 
-        // A hint above the threshold routes to the large class.
-        let (_b, stride) = alloc_payload_block(SUBSCRIBER_SIZE_THRESHOLD + 1).expect("large alloc");
-        assert_eq!(
-            stride, SUBSCRIBER_LARGE_SIZE,
-            "hint > threshold routes to the large class"
-        );
+        // A hint above the threshold routes to the large class. Phase 403 W4 —
+        // guarded, because `MAX_LARGE_SUBSCRIBERS = 0` is now a legal thing for
+        // an image to declare, and there the large class does not exist at all.
+        // The refusal that replaces it is `a_hint_no_class_can_hold_is_refused`.
+        if MAX_LARGE_SUBSCRIBERS > 0 {
+            let (_b, stride) =
+                alloc_payload_block(SUBSCRIBER_SIZE_THRESHOLD + 1).expect("large alloc");
+            assert_eq!(
+                stride, SUBSCRIBER_LARGE_SIZE,
+                "hint > threshold routes to the large class"
+            );
+        }
 
         // The large class exhausts at MAX_LARGE_SUBSCRIBERS, then returns None
         // (the caller surfaces SubscriberCreationFailed rather than over-allocate).

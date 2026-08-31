@@ -80,7 +80,7 @@ pub use crate::zpico::ZenohId;
 pub use publisher::ZenohPublisher;
 pub use service::{ZenohServiceClient, ZenohServiceServer};
 pub use session::{ZenohSession, effective_client_locator, normalize_locator};
-pub use subscriber::{ZenohSubscriber, overflow_drops_total};
+pub use subscriber::{ZenohSubscriber, overflow_drops_total, required_rx_bytes};
 pub use transport::{ZenohRmw, ZenohTransport};
 
 // ============================================================================

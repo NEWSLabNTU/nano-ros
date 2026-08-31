@@ -299,6 +299,25 @@ to `nros/rmw_vtable.h` + `rmw_entity.h`:
    dispatch site** — that is a registration-check change, not an ABI change, so
    nothing is foreclosed by leaving it optional here.
 
+   **W4's answer (2026-08-31): it stays OPTIONAL, and W4 could not have promoted
+   it.** The dispatch site is in the executor and `nros`'s node API, which W3/W5
+   own; W4 filled the slot for one backend and added no caller, so there was
+   nothing for `check-rmw-required-slots.sh` to hold the required set equal to.
+   On the merits the sequencing argument dissolves once a consumer exists and
+   the other two survive: cyclonedds and XRCE keep ONE receive buffer, so
+   `*out_bytes = hint` is genuinely all they have to say, and slot 75 stays
+   unreachable from a positional C++14 initialiser however the check is written.
+   A slot most backends must fill with a restatement of the documented default
+   is worse than a NULL whose meaning the header pins down.
+
+   **The slot takes no session or node handle, and for zenoh that is CORRECT.**
+   Checked against the thing it was suspected of: `alloc_payload_block(hint)`
+   reads the hint and build-time constants and nothing else — no session, no
+   node, no config the session carries. zenoh's real class choice is therefore
+   expressible without a session argument, and the ABI needs no correction on
+   this count. A backend whose classes depended on session config could not use
+   this slot, and that would be the ABI's problem; no in-tree backend is one.
+
    **`rx_buffer_hint`'s `0` also changed meaning** and W2/W3 inherit it: every
    message type now has a derived upper bound (`.msg` bound or a
    `nros-codegen.toml` cap; unbounded is a BUILD ERROR), so the runtime always
@@ -333,12 +352,70 @@ the C API cannot express the lifetime. The mitigation is that the generated
 by hand — but a hand-rolled caller can still get it wrong, and that must be said
 in the header rather than discovered.
 
-**W4 — buffer 2, exact classes.** With W1's `required_rx_bytes`, a backend can
-be asked for an exact size rather than choosing a class. zenoh-pico keeps its
-pools (a target has no allocator) but the CLASS BOUNDARIES stop being two
-arbitrary constants and become the distinct sizes an image's types actually
-need. Requires the entity inventory, so it is gated on the same thing issue 0900
-is gated on.
+**W4 — buffer 2, exact classes. LANDED 2026-08-31, one half of it.** With W1's
+`required_rx_bytes`, a backend can be asked for an exact size rather than
+choosing a class. zenoh-pico keeps its pools (a target has no allocator) but the
+CLASS BOUNDARIES stop being two arbitrary constants and become the distinct
+sizes an image's types actually need.
+
+*What landed.* zenoh-pico answers the slot, and it answers the MINIMUM rather
+than the class it rounds to — the tightening is in `rmw_vtable.h` and RFC-0005,
+because a backend replying with its class size collapses exactly the distinction
+this wave exists to recover. Three cases: `hint == 0` gets the small class
+stride (the caller stated nothing and a type is a STRING across this ABI, so
+there is no schema to consult, but the ceiling on what `take` can hand back is
+still exact); a hint any class can hold gets itself, because zenoh-pico adds
+NOTHING to the payload the caller must hold; and a hint past the largest class
+gets `NROS_RMW_RET_UNSUPPORTED`.
+
+The slot also stopped being inert without the gate noticing, which it would not
+have: `check-rmw-slot-producers.py` scanned `src/vtable.{c,cpp}` and the Rust
+adapter and NOT a backend's own table, so zenoh's publisher-loan trio had read
+as "no producer" since phase 124.A.4.b. Widened, and the `rx-sizing` inert
+family removed with its now-false reason.
+
+*The other half is what the wave text already said it was gated on, and the
+survey is now conclusive.* Making the class SIZES derive automatically needs a
+per-image list of subscribed types and their bounds. It does not exist and
+cannot be assembled today: 0 of the 115 resolved `SystemModel`s in the tree
+carry any topic wiring (`entity_facts.rs::describes_wiring` abstains on every
+one), and even where wiring exists the model knows a type's NAME and nothing
+knows its SIZE — `rosidl-codegen`'s `schema_value::bound_message` computes the
+bound but is codegen-local and no model walk calls it. `entity-facts` is the
+extension point when someone builds it, the way `ZPICO_MAX_QUERYABLES` was.
+
+*And a second gate, which the wave text did not name.* Even with the inventory,
+per-type classes buy a zenoh image nothing until the HINT arrives, and on the
+C/C++ path it is still `0` (issue 0896, W3/W5's half). The image the phase names
+is a C++ component image, so W4's classes reach it only after W3/W5.
+
+*So what W4 could deliver on buffer 2, it delivered as a declaration rather than
+a derivation:* `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` is now legal. Issue 0827's
+floor of 1 was justified by "the lookup path indexes the pool unconditionally",
+which is true of the other two floored knobs and false of this one —
+`alloc_payload_block` bounds-checks before it subscripts. The floor was
+reserving `RING_DEPTH x LARGE_SIZE` for a class an image may never route into,
+which is the waste 0827 exists to remove, kept alive by 0827's own guard. An
+image whose types all fit the small class now says so, and a hint no class can
+hold is REFUSED at `create_subscription` instead of being served a block too
+small for it — the top end of issue 0841, which 0841's fix left open.
+
+*Measured (2026-08-31), on `examples/native/rust/listener` at
+`--release`, which runs `alloc_payload_block` on every subscription and was run
+against `examples/native/rust/talker` over a local router to confirm delivery:*
+
+| | `LARGE_PAYLOADS` | `SMALL_PAYLOADS` | `.bss` |
+| --- | ---: | ---: | ---: |
+| defaults (`ZPICO_MAX_LARGE_SUBSCRIBERS=2`) | 131,072 | 32,768 | 407,170 |
+| `ZPICO_MAX_LARGE_SUBSCRIBERS=0` | absent | 32,768 | 276,098 |
+
+131,072 B of `.bss`, exactly the pool. The baseline matches the figures
+`static-pool-inventory.md` already publishes for both pools, and the after-column
+is a configuration the pre-W4 tree could not BUILD (`env_usize_min` panicked
+below the floor), so the numbers cannot have come from an unchanged binary. The
+saving is available to any zenoh image that never routes a subscription large;
+whether a given image qualifies is a claim its author makes, and getting it
+wrong now fails the build's first subscription rather than dropping samples.
 
 **W5 — arena slots.** Issue 0900's remaining half. Once W2/W3 make a
 subscription's buffer a known per-type number, an arena slot can be sized from
