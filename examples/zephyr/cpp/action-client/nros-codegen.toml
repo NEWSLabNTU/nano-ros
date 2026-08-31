@@ -1,0 +1,9 @@
+# The C++ header states a type's DERIVED bound and nothing at all for a type
+# that has no bound (nano-ros #0964). `example_interfaces/Fibonacci`'s Result
+# and Feedback carry unbounded `int32[]` sequences, and this example CONSUMES
+# the action, so there is no .msg here to bound. A cap is the only remedy.
+#
+# The demo asks for 10 terms, so 64 is ample and leaves the intent visible.
+[fields]
+"example_interfaces/Fibonacci_Result.sequence" = { cap = 64, mode = "inline" }
+"example_interfaces/Fibonacci_Feedback.sequence" = { cap = 64, mode = "inline" }

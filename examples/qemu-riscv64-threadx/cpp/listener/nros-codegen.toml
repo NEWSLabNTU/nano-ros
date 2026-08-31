@@ -1,0 +1,11 @@
+# The C++ header states a type's DERIVED bound and nothing at all for a type
+# that has no bound (nano-ros #0964). `std_msgs/String` is unbounded in its
+# stock .msg -- an unbounded `string` -- and this example CONSUMES it, so
+# there is no .msg here to bound. A cap is the only remedy.
+#
+# `inline` is the only mode that bounds: it decodes through
+# heapless::String::try_from, so an oversized sample is a reported
+# CapacityExceeded rather than a truncation. 256 is generous for a listener
+# whose publisher sends "Hello World: N".
+[fields]
+"std_msgs/String.data" = { cap = 256, mode = "inline" }
