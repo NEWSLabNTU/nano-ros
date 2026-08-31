@@ -452,6 +452,20 @@ required-features-tests:
     cargo nextest run "${cargo_nextest_args[@]}" \
         -p nros-rmw-zenoh --features lending,platform-posix \
         --test lending_traits
+    # Issue 0972 — the same class one crate over, and a MODULE rather than a
+    # test file. `nros-c`'s `mod node` is inside `rmw_modules!`, whose expansion
+    # is `#[cfg(feature = "rmw-cffi")]`; `just test-unit` runs
+    # `cargo nextest --workspace`, which activates NO features (its own comment
+    # says so). So `node.rs` was never compiled by the lane that runs tests, and
+    # `check::workspace-features` compiles it only to CLIPPY it — lint, never
+    # execute. Fifty-two unit tests in that file, including the phase-379 W4
+    # reference-invalidation set, had therefore never run anywhere.
+    #
+    # Found by adding a test for 0972 that passed against the BROKEN code: it
+    # was not being compiled. A test that cannot fail is worth less than no
+    # test, because it reads as coverage.
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-c --features rmw-cffi --lib
     # Issue 0779 — two more of the baseline five, retired. Both were reachable
     # all along; what kept them dark was that the FEATURE NAMED IN THE ISSUE IS
     # NOT ENOUGH. Each file's crate-level cfg is a CONJUNCTION:
