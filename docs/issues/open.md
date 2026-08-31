@@ -68,6 +68,7 @@ fails if this block drifts.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
 - **#0954** (api-c, boards) — The committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale again See `0954-*`.
 - **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
+- **#0958** (rmw) — The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no per-type receive sizing reaches a Cyclone image See `0958-*`.
 - **#0961** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0961-*`.
 - **#0962** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0962-*`.
 - **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
@@ -78,6 +79,5 @@ fails if this block drifts.
 - **#0970** ([rmw]) — The Cyclone backend borrows Cyclone's generated sertype instead of registering its own, and that — not an upstream gap — is what forces the CDR round trip on publish See `0970-*`.
 - **#0975** (ci) — `--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue See `0975-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
-- **#0958** (rmw) — The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no per-type receive sizing reaches a Cyclone image See `0958-*`.
 
 <!-- END GENERATED open-issue list -->
