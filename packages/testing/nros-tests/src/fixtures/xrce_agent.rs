@@ -102,9 +102,11 @@ impl XrceAgent {
     /// starts quickly" — which is true on an idle host and a guess on a loaded
     /// one. When the guess is wrong nothing reports it: the client sends its
     /// session-open to a port nobody is listening on, gets no reply, and the
-    /// test fails much later as a missing RESULT. The C++ action client even
-    /// prints that as `Goal was rejected by server` (issue 0868), so a fixture
-    /// timing bug arrives dressed as a server decision.
+    /// test fails much later as a missing RESULT. The C++ action client used
+    /// to print that as `Goal was rejected by server`, so a fixture timing bug
+    /// arrived dressed as a server decision — issue 0868 fixed the client (it
+    /// now names the missing response), but the probe below is still what
+    /// stops the failure from happening at all.
     ///
     /// The probe is a bind attempt, which works because the port LEASE is a
     /// lockfile and never holds the socket (issue 0470): while the agent owns

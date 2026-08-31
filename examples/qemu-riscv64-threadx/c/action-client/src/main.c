@@ -193,8 +193,18 @@ int nros_app_main(int argc, char** argv) {
     ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, goal_len, &goal_uuid);
 
     if (ret != NROS_RET_OK) {
-        fprintf(stderr, "Failed to send goal: %d\n", ret);
-        fprintf(stderr, "(Is the action server running?)\n");
+        // Issue 0868 — the C++ sibling printed "Goal was rejected by server"
+        // for every non-OK code; this one was only vague. Both are fixable
+        // now that `nros_action_send_goal` distinguishes REJECTED (the server
+        // decided) from TIMEOUT (no answer) from ERROR (never sent).
+        if (ret == NROS_RET_REJECTED) {
+            fprintf(stderr, "Goal was rejected by server\n");
+        } else if (ret == NROS_RET_TIMEOUT) {
+            fprintf(stderr, "No goal response from server: %d\n", ret);
+            fprintf(stderr, "(Is the action server running?)\n");
+        } else {
+            fprintf(stderr, "Failed to send goal: %d\n", ret);
+        }
         goto cleanup;
     }
 

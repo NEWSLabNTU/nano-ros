@@ -33,7 +33,8 @@ use nros_tests::{
         require_cmake, require_zenohd, zenohd_unique,
     },
     output::{
-        ACTION_EXECUTING_MARKER, ACTION_GOAL_REQUEST_PREFIX, ACTION_RESULT_PREFIX,
+        ACTION_EXECUTING_MARKER, ACTION_GOAL_ACCEPTED_PREFIX, ACTION_GOAL_NO_RESPONSE_PREFIX,
+        ACTION_GOAL_REJECTED_PREFIX, ACTION_GOAL_REQUEST_PREFIX, ACTION_RESULT_PREFIX,
         ACTION_SERVER_READY_MARKER, SERVICE_RESULT_PREFIX, service_result_line,
     },
 };
@@ -778,21 +779,46 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
         .expect("Failed to start cpp-action-client");
 
     let client_output = client
-        .wait_for_output_pattern("rejected", Duration::from_secs(20))
+        .wait_for_output_pattern(ACTION_GOAL_REJECTED_PREFIX, Duration::from_secs(20))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     server.kill();
     eprintln!("C++ action client output:\n{}", client_output);
 
+    // Issue 0868 — this assertion used to be satisfied by ANY `send_goal`
+    // failure. The example printed the rejection line for every non-OK return,
+    // so a timeout (the server never answered) passed this test as if the
+    // reject path had run. Now `send_goal` returns `Rejected` only for a
+    // server decision and the example branches on it, so the marker is
+    // evidence of the reject path rather than of some failure.
     assert!(
-        client_output.contains("Goal was rejected by server"),
+        client_output.contains(ACTION_GOAL_REJECTED_PREFIX),
         "Expected goal rejection marker in client output.\nOutput:\n{}",
         client_output
     );
+    // The other half of the same guarantee, and the one that keeps this test
+    // honest if the branches are ever re-merged: a timeout prints a DIFFERENT
+    // line, and seeing it here would mean the goal never reached the server's
+    // reject path at all.
     assert!(
-        !client_output.contains("[OK]"),
-        "Client should not report success on a rejected goal.\nOutput:\n{}",
+        !client_output.contains(ACTION_GOAL_NO_RESPONSE_PREFIX),
+        "Client timed out waiting for a goal response — the server's reject \
+         path was never exercised, so a passing rejection assertion would be \
+         reporting a transport failure as a server decision (issue 0868).\nOutput:\n{}",
+        client_output
+    );
+    // Audit 2026-07-28 finding E7 — this used to be `!contains("[OK]")`, a
+    // marker the C++ action client never prints, so the negative assertion
+    // could not fail. The audit spotted it and DOWNGRADED it on the grounds
+    // that "the positive assertion two lines above carries the test" — which
+    // was the one assertion that could not carry it, since the client printed
+    // the rejection line for every failure. Both halves are real now:
+    // `ACTION_GOAL_ACCEPTED_PREFIX` is what the client actually prints when a
+    // goal is accepted, and a rejected client exits before reaching it.
+    assert!(
+        !client_output.contains(ACTION_GOAL_ACCEPTED_PREFIX),
+        "Client reported the goal ACCEPTED on a goal the server rejects.\nOutput:\n{}",
         client_output
     );
 }

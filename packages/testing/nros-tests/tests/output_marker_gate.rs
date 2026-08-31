@@ -58,6 +58,12 @@ const MARKERS: &[&str] = &[
     output::ACTION_SERVER_READY_MARKER,
     output::ACTION_GOAL_ACCEPTED_PREFIX,
     output::ACTION_FEEDBACK_PREFIX,
+    // issue 0868 — the rejection marker was a bare literal in
+    // `native_api.rs`, which is how it survived being printed for outcomes it
+    // does not describe. Both halves of the pair are policed: a test that
+    // spells either one inline can drift from the example that prints it.
+    output::ACTION_GOAL_REJECTED_PREFIX,
+    output::ACTION_GOAL_NO_RESPONSE_PREFIX,
 ];
 
 fn tests_dir() -> PathBuf {
