@@ -31,21 +31,76 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 
-# Knobs migrated into the ladder, with the crate that legitimately reads each.
-# Adding a row here is the second half of migrating a knob; a knob that is in
-# the ladder but not here is simply unchecked, which is why W6 and W8 move
-# together.
-MIGRATED: dict[str, str] = {
+# Knobs migrated into the ladder, with the file that legitimately reads each.
+#
+# phase-400 W8 — the LIST is no longer maintained here. Which knobs are in the
+# ladder is the census's answer (`KNOB_CLASS`, class `ladder`), and this file
+# supplies only the OWNER. That coupling is the point: the previous version
+# said so itself — "a knob that is in the ladder but not here is simply
+# unchecked, which is why W6 and W8 move together" — and then relied on
+# whoever migrated a knob remembering to add a row. Two of them did not, and
+# the memory tenant's pair would have been three.
+#
+# Now a knob that reaches the ladder with no owner here FAILS, so the second
+# half of migrating a knob cannot be skipped, only done or deliberately
+# excused.
+OWNERS: dict[str, str] = {
     "NROS_EXECUTOR_MAX_CBS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_SC": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_NODES": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ACTION_CLIENTS": "packages/core/nros-node/build.rs",
     "NROS_EXECUTOR_ARENA_SIZE": "packages/core/nros-node/build.rs",
+    # Classed `derived` by the census (phase-403 makes it per-type) but still
+    # ON the ladder as the fallback for a type with no declared bound, so it
+    # keeps a single owner. Listed here deliberately: it is checked, and the
+    # membership check below skips it because the census does not call it
+    # `ladder`.
     "NROS_SUBSCRIPTION_BUFFER_SIZE": "packages/core/nros-node/build.rs",
     "NROS_PARAM_SERVICE_BUFFER_SIZE": "packages/core/nros-node/build.rs",
+    # The memory tenant (phase-400 W6). The stack is read inside the crate that
+    # owns the ladder; the heap by the board crate that sizes `ucHeap`.
+    "NROS_FREERTOS_APP_STACK_KB": "packages/boards/nros-board-common/src/freertos_build.rs",
+    "NROS_FREERTOS_HEAP_KB": "packages/boards/nros-board-freertos/build.rs",
+    # The transport and zenoh-tx tenants resolve inside the ladder itself, so
+    # the resolver IS the owner. `nros-zpico-build` re-read the tx trio for its
+    # no-platform case until W8 replaced that with `tx_env_only`.
+    "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
+    "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
+    "ZPICO_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",
+    "ZPICO_TX_SPLIT_LOCK": "packages/boards/nros-board-common/src/platform_config.rs",
+    "ZPICO_TX_BATCH_FLUSH_MS": "packages/boards/nros-board-common/src/platform_config.rs",
 }
 
+
+def census_class(classes: tuple[str, ...]) -> set[str]:
+    """The env names the census puts in any of `classes`."""
+    import importlib.util
+
+    census = REPO / "scripts" / "check" / "config-knob-census.py"
+    spec = importlib.util.spec_from_file_location("config_knob_census", census)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return {n for n, (cls, _) in mod.KNOB_CLASS.items() if cls in classes}
+
+
+def ladder_knobs_from_census() -> set[str]:
+    """The env names the census classifies as `ladder`.
+
+    Imported rather than restated: two hand-kept lists of "what is in the
+    ladder" is the same duplicate-fact shape the ladder itself exists to
+    remove, and the census is already the file a new knob has to be added to
+    (its gate fails on an unclassified name).
+    """
+    import importlib.util
+
+    census = REPO / "scripts" / "check" / "config-knob-census.py"
+    spec = importlib.util.spec_from_file_location("config_knob_census", census)
+    mod = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(mod)
+    return census_class(("ladder",))
 # The resolver itself names every knob in its front-end table; that is the map,
 # not a second reader.
 EXEMPT = {
@@ -123,6 +178,17 @@ def self_test() -> None:
 
 
 def main() -> int:
+    # The ladder's membership comes from the census; the owner comes from here.
+    # A knob in one and not the other is the drift this pairing removes.
+    ladder = ladder_knobs_from_census()
+    unowned = sorted(ladder - OWNERS.keys())
+    # A `derived` knob may legitimately keep an owner: it is on the ladder as a
+    # fallback while another campaign takes over its value. What must not
+    # happen is an owner for a knob the census does not know at all.
+    derived = census_class(("derived",))
+    stale = sorted(OWNERS.keys() - ladder - derived)
+    MIGRATED = {k: v for k, v in OWNERS.items() if k in ladder}
+
     # Single pass over the sources: read each file once and test every knob
     # against it. The naive shape (a pass per knob) re-reads several thousand
     # files eight times and takes minutes, which is a gate nobody will run.
@@ -158,6 +224,24 @@ def main() -> int:
             if readers_in(text, knob):
                 readers[knob].add(rel)
 
+    # Drift between the two halves, reported before the reader check so the
+    # message names the cause rather than a symptom.
+    if unowned or stale:
+        print("check-knob-single-reader: the ladder and its owners disagree\n")
+        for knob in unowned:
+            print(
+                f"  {knob}: in the ladder (census class `ladder`) and names no\n"
+                f"      owning reader here. Migrating a knob has TWO halves — the\n"
+                f"      rung, and the single reader. Add it to OWNERS."
+            )
+        for knob in stale:
+            print(
+                f"  {knob}: names an owner here, but the census no longer classes\n"
+                f"      it `ladder`. If it left the ladder, drop the row; if it was\n"
+                f"      reclassified, the reason column there should say why."
+            )
+        return 1
+
     failures = []
     for knob, owner in sorted(MIGRATED.items()):
         extra = sorted(readers[knob] - {owner})
@@ -174,7 +258,7 @@ def main() -> int:
             "A second reader is not a fallback, it is a disagreement waiting to\n"
             "happen: the two can resolve different values and nothing reports it\n"
             "(issues 0135, 0316). Delete the second reader, or -- if it is the\n"
-            "legitimate owner -- update MIGRATED in this script."
+            "legitimate owner -- update OWNERS in this script."
         )
         return 1
 

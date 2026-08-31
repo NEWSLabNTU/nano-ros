@@ -452,8 +452,14 @@ fn shim_config_from_env() -> ShimConfig {
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
         get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
         get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
-        tx_batch: env_usize("ZPICO_TX_BATCH", 0) != 0,
-        tx_batch_flush_ms: env_usize("ZPICO_TX_BATCH_FLUSH_MS", 50),
+        // phase-400 W8 — the BUILTINS, not a second env read. These two are
+        // ladder knobs, and the resolved values overwrite them below (search
+        // `shim_config.tx_batch =`), so reading the environment here was dead
+        // work that only looked authoritative. It is exactly the second reader
+        // `check-knob-single-reader` forbids: harmless while the overwrite
+        // stays put, a silent disagreement the moment it moves.
+        tx_batch: platform_config::BUILTIN_TX_BATCH,
+        tx_batch_flush_ms: platform_config::BUILTIN_TX_FLUSH_MS as usize,
         // Defaults MIRROR the `#define` fallbacks in
         // `zpico-sys/c/zpico/zpico.c` (16 / 16). A different number here would
         // not be a tuning choice, it would be the two lanes disagreeing.
@@ -958,28 +964,15 @@ pub fn run() {
             tx
         }
         _ => {
-            // Legacy / unknown-platform fallback: env-only ladder.
-            let b = env_get("ZPICO_TX_BATCH")
-                .and_then(|v| v.parse::<u64>().ok())
-                .map(|n| n != 0);
-            let sl = env_get("ZPICO_TX_SPLIT_LOCK")
-                .and_then(|v| v.parse::<u64>().ok())
-                .map(|n| n != 0);
-            let fm = env_get("ZPICO_TX_BATCH_FLUSH_MS").and_then(|v| v.parse::<u64>().ok());
-            platform_config::ResolvedTxKnobs {
-                batch: platform_config::Resolved {
-                    value: b.unwrap_or(platform_config::BUILTIN_TX_BATCH),
-                    source: platform_config::KnobSource::Env,
-                },
-                split_lock: platform_config::Resolved {
-                    value: sl.unwrap_or(platform_config::BUILTIN_TX_SPLIT_LOCK),
-                    source: platform_config::KnobSource::Env,
-                },
-                flush_ms: platform_config::Resolved {
-                    value: fm.unwrap_or(platform_config::BUILTIN_TX_FLUSH_MS),
-                    source: platform_config::KnobSource::Env,
-                },
-            }
+            // Legacy / unknown-platform fallback: the env front-end over the
+            // builtins, resolved by the ONE implementation of that rule.
+            //
+            // phase-400 W8 — this used to re-read the three knobs here, which
+            // made each of them have two readers that could disagree, and
+            // reported `KnobSource::Env` even for a value that came from a
+            // builtin. `check-knob-single-reader` now derives its list from the
+            // census, which is how the pair was found.
+            platform_config::tx_env_only(&env_get)
         }
     };
 
