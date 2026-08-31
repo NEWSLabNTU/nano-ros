@@ -3008,8 +3008,11 @@ impl Publisher for CffiPublisher {
         let ret = unsafe {
             (self.vtable.publish.expect("rmw vtable: publish"))(
                 &mut view,
-                data.as_ptr(),
-                data.len(),
+                // phase-406 W2 — by VALUE: a read span has nothing to report back.
+                generated::rmw_byte_span_t {
+                    data: data.as_ptr(),
+                    len: data.len(),
+                },
             )
         };
         if ret != NROS_RMW_RET_OK {
@@ -3417,17 +3420,18 @@ impl nros_rmw::Subscription for CffiSubscription {
         // `out_len == 0` respectively. That last one is a real behaviour fix:
         // a legitimately EMPTY message was previously indistinguishable from an
         // empty subscription.
-        let mut out_len = 0usize;
         let mut taken = false;
-        let rc = unsafe {
-            (self.vtable.take.expect("rmw vtable: take"))(
-                &mut view,
-                buf.as_mut_ptr(),
-                buf.len(),
-                &mut out_len,
-                &mut taken,
-            )
+        // phase-406 W2 — by POINTER: the callee sets `len`, and a by-value copy
+        // would discard it. `capacity` in, `len` out.
+        let mut span = generated::rmw_mut_byte_span_t {
+            data: buf.as_mut_ptr(),
+            capacity: buf.len(),
+            len: 0,
         };
+        let rc = unsafe {
+            (self.vtable.take.expect("rmw vtable: take"))(&mut view, &mut span, &mut taken)
+        };
+        let out_len = span.len;
         if rc != NROS_RMW_RET_OK {
             return Err(error_from_ret(rc));
         }

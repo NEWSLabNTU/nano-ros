@@ -131,8 +131,13 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, uint8_t* buf, size_t buf_len,
-                                 size_t* out_len, bool* out_taken) {
+rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
+                                 bool* out_taken) {
+    /* phase-406 W2 — by pointer: `capacity` in, `len` out. */
+    if (out == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    uint8_t* buf = out->data;
+    const size_t buf_len = out->capacity;
+    size_t* out_len = &out->len;
     // Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. The parameter
     // is `out_taken`, not upstream's `taken`: this function already has a
     // `dds_return_t taken` holding Cyclone's sample count, and the two would

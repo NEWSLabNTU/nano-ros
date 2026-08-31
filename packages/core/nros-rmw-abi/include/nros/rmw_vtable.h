@@ -163,7 +163,7 @@ typedef struct nros_rmw_vtable_t {
         rmw_publisher_t *out);
     rmw_ret_t (*destroy_publisher)(rmw_publisher_t *publisher);
     rmw_ret_t (*publish)(const rmw_publisher_t *publisher,
-        const uint8_t *data, size_t len);
+        rmw_byte_span_t payload);
 
     /* ---- Subscription (phase-301: rmw's term; was `subscriber`) ---- */
     /** `options` carries transport hints (phase-301: moved out of the
@@ -202,8 +202,7 @@ typedef struct nros_rmw_vtable_t {
      *    `ddsrt_calloc` on this very path) and then "upstream
      *    pre-sizes an `rcutils_allocator_t`" (there is none). */
     rmw_ret_t (*take)(const rmw_subscription_t *subscription,
-        uint8_t *buf, size_t buf_len,
-        size_t *out_len, bool *taken);
+        rmw_mut_byte_span_t *out, bool *taken);
     /** Phase 376 W3.d step A — status in the return, answer in the
      *  out-parameter, so no slot multiplexes a flag with a status.
      *  `*out_has_data` is written only on `NROS_RMW_RET_OK`.

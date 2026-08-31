@@ -123,6 +123,43 @@ typedef int64_t rmw_time_point_value_t;
  *  from `get_gid_for_publisher` without a documented mapping — and the narrower
  *  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is
  *  its own change and is NOT done here. */
+/** Bytes to READ — phase-406 W2.
+ *
+ *  `len` is a FACT: how many bytes exist. Nothing is written through this, and
+ *  `const` says so — `publish` handing a backend a mutable pointer is an
+ *  invitation.
+ *
+ *  PASSED BY VALUE. Two words, and there is nothing to report back. */
+typedef struct rmw_byte_span_t {
+    const uint8_t *data;
+    size_t len;
+} rmw_byte_span_t;
+
+/** Room to WRITE — phase-406 W2.
+ *
+ *  This is upstream's `rmw_serialized_message_t` MINUS THE ALLOCATOR. That is
+ *  not a coincidence and it is the whole argument: upstream's is an
+ *  `rcutils_uint8_array_t`, `{buffer, buffer_length, buffer_capacity,
+ *  allocator}`, and this ABI declined it because of the last field. Drop that
+ *  field and the remaining three are exactly what a caller-owned destination
+ *  needs, so the "carries an allocator" objection does not transfer to this.
+ *
+ *  `capacity` is a LIMIT (in) and `len` is a RESULT (out). They are separate
+ *  fields rather than one overloaded `len` because "capacity on the way in,
+ *  length on the way out" is the `snprintf` ambiguity, and it is a bug
+ *  generator.
+ *
+ *  PASSED BY POINTER, always. The callee must set `len`, and a by-value copy
+ *  would discard it — code that compiles, runs, and yields zero-length
+ *  messages. */
+typedef struct rmw_mut_byte_span_t {
+    uint8_t *data;
+    /** In: bytes available at `data`. */
+    size_t capacity;
+    /** Out: bytes actually written. Undefined on failure. */
+    size_t len;
+} rmw_mut_byte_span_t;
+
 /** A message type's identity — phase-406 W1.
  *
  *  Upstream passes `const rosidl_message_type_support_t *`: a runtime-dispatch

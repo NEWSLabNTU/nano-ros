@@ -403,8 +403,8 @@ size_t xrce_drive_streamed_body(uint8_t* body, size_t body_len, size_t total,
                                 void (*chunk_cb)(uint8_t* out_buf, size_t cap,
                                                  size_t* out_written, void* user_ctx),
                                 void* user_ctx);
-rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t* publisher, const uint8_t* data,
-                                          size_t len);
+rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t* publisher,
+                                          rmw_byte_span_t payload);
 /* Phase 124.E.3 — streamed publish via `uxr_prepare_output_stream`. */
 rmw_ret_t xrce_publisher_publish_streamed(
     rmw_publisher_t* publisher, void (*size_cb)(size_t* out_total_len, void* user_ctx),
@@ -418,8 +418,8 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node, const rmw_message_typ
                                       const rmw_subscription_options_t* options,
                                       rmw_subscription_t* out);
 rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber);
-rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, uint8_t* buf,
-                                      size_t buf_len, size_t* out_len, bool* taken);
+rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber,
+                                      rmw_mut_byte_span_t* out, bool* taken);
 rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber,
                                           bool* out_has_data);
 /* Phase 231 (RFC-0038) — zero-copy in-place take over the XRCE static ring. */
