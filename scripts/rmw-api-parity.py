@@ -98,10 +98,63 @@ def _load_map():
         where = row["where"]
         detail = row.get("nano") or row.get("reason", "")
         out[sym] = (where, detail)
+        MAP_ROWS[sym] = row
     return out
 
 
+# The full authored row, for consumers that need more than `(where, detail)` —
+# `status` / `answers` / `issue`. Same dict, read once, so the document and the
+# gate still cannot disagree.
+MAP_ROWS = {}
 MAP = _load_map()
+
+# What we DID about a symbol, as opposed to WHICH SURFACE answers it (`where`).
+# `same` and `re-shaped` are DERIVED from the signatures and must never be
+# authored; authoring them would let the map assert a match the types deny.
+STATUSES = ("same", "re-shaped", "re-mapped", "not-supported", "not-implemented")
+DERIVED_ONLY = ("same", "re-shaped")
+
+
+def check_status():
+    """The `status` axis: vocabulary, and the rules that keep it honest.
+
+    Added because `where` was doing two jobs. `declined` covered `rmw_wait`,
+    decomposed into five live slots, and `rmw_init_publisher_allocation`, where
+    nothing crosses the seam — opposite facts under one word.
+    """
+    bad = []
+    for sym, row in sorted(MAP_ROWS.items()):
+        status, where = row.get("status"), row["where"]
+        if status is None:
+            if where in ("layer", "declined"):
+                bad.append(
+                    f"{sym}: `where = \"{where}\"` needs an explicit `status` — "
+                    "absent from the vtable says nothing about whether the "
+                    "capability is answered"
+                )
+            continue
+        if status not in STATUSES:
+            bad.append(f"{sym}: unknown status {status!r}; expected one of {STATUSES}")
+            continue
+        if status in DERIVED_ONLY:
+            bad.append(
+                f"{sym}: `status = \"{status}\"` is DERIVED from the signatures "
+                "and must not be authored"
+            )
+        if status == "re-mapped" and not row.get("answers"):
+            bad.append(
+                f"{sym}: `re-mapped` must name what answers it — add `answers = [...]`. "
+                "\"Answered somewhere\" that cannot be queried is prose, not a map"
+            )
+        if status == "not-implemented" and not row.get("issue"):
+            bad.append(
+                f"{sym}: `not-implemented` must carry `issue = NNNN`. Without one a "
+                "gap is indistinguishable from a decision, and silence turns the "
+                "first into the second"
+            )
+        if status == "not-supported" and row.get("issue"):
+            bad.append(f"{sym}: `not-supported` is a decision, so it takes no `issue`")
+    return bad
 
 # `global` is distinct from `vtable`: a slot is per-BACKEND, a global is
 # defined ONCE for the image. Conflating them hid which of the two a
@@ -277,11 +330,18 @@ def self_test():
     # both were the fixture and the header diverging.
     for sym, complaint in check_against_vtable():
         bad.append(f"{sym}: {complaint}")
+    # The `status` axis: vocabulary, and the rules that stop a gap from
+    # decaying into a decision by silence.
+    bad.extend(check_status())
     if bad:
         for b in bad:
             sys.stderr.write("rmw-api-parity --self-test: " + b + "\n")
         return 2
-    print(f"rmw-api-parity --self-test: OK ({len(MAP)} mapping(s), 2 case(s))")
+    n_status = sum(1 for r in MAP_ROWS.values() if r.get("status"))
+    print(
+        f"rmw-api-parity --self-test: OK ({len(MAP)} mapping(s), "
+        f"{n_status} authored status(es), 2 case(s))"
+    )
     return 0
 
 

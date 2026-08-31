@@ -23,6 +23,7 @@ case a name-only comparison silently passes.
   python3 scripts/gen-rmw-api-comparison.py --check   # fail if it drifted
 """
 import argparse
+import collections
 import html
 import importlib.util as _util
 import os
@@ -127,14 +128,35 @@ def sig(ret, params):
 
 
 CSS = """<style>
-/* Scoped to this page. Colours follow mdBook's THEME CLASSES (`.coal`,
-   `.navy`, `.ayu` are the dark ones) rather than `prefers-color-scheme`,
-   because the book's theme is a reader choice, not an OS one. */
-.rmwcmp{--ret:#8250df;--fn:#0550ae;--ty:#116329;--pu:#8b8b9a;
+/* Scoped to this page, and the palette follows the READER'S THEME, which is a
+   choice in the book and an OS setting outside it.
+
+   The hook is `color-scheme`, not a list of theme names. Every mdBook theme
+   declares its own `--color-scheme: light|dark`; custom properties inherit, so
+   re-applying it here lets `light-dark()` resolve against whatever theme is
+   active — including a custom one this file has never heard of. Outside the
+   book `--color-scheme` is unset, the fallback `light dark` applies, and the
+   same declarations follow `prefers-color-scheme` instead.
+
+   Three layers, and each is load-bearing:
+     1. plain light values — what a browser without `light-dark()` keeps, since
+        it drops the later declarations as unparseable;
+     2. the named dark themes — so those same old browsers still get the dark
+        palette on Coal/Navy/Ayu, which is the case the enumeration was for.
+        Higher specificity, identical values, so it is inert where (3) works;
+     3. `light-dark()` — everything else, no enumeration. */
+.rmwcmp{color-scheme:var(--color-scheme,light dark);
+--ret:#8250df;--fn:#0550ae;--ty:#116329;--pu:#8b8b9a;
 --del:#cf222e;--delbg:#ffebe9;--add:#0a7d33;--addbg:#e6ffec;--renbg:#fff8c5;
 --line:var(--table-border-color,#ddd);--chip:var(--table-header-bg,#f2f2f7)}
 .coal .rmwcmp,.navy .rmwcmp,.ayu .rmwcmp{--ret:#d2a8ff;--fn:#79c0ff;--ty:#7ee787;
 --pu:#8b8b9a;--del:#ff7b72;--delbg:#3d1c1f;--add:#56d364;--addbg:#12301c;--renbg:#3a3018}
+.rmwcmp{--ret:light-dark(#8250df,#d2a8ff);--fn:light-dark(#0550ae,#79c0ff);
+--ty:light-dark(#116329,#7ee787);--del:light-dark(#cf222e,#ff7b72);
+--delbg:light-dark(#ffebe9,#3d1c1f);--add:light-dark(#0a7d33,#56d364);
+--addbg:light-dark(#e6ffec,#12301c);--renbg:light-dark(#fff8c5,#3a3018);
+--line:var(--table-border-color,light-dark(#ddd,#2c2c38));
+--chip:var(--table-header-bg,light-dark(#f2f2f7,#1e1e28))}
 .rmwcmp table{table-layout:fixed;width:100%;border-collapse:collapse;margin:0}
 .rmwcmp th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;
 text-align:left;padding:.5rem .7rem;background:var(--chip);border:none}
@@ -151,7 +173,17 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 .rmwcmp .ren{background:var(--renbg);border-radius:3px;padding:0 .15em}
 .rmwcmp .none{color:var(--del);font-weight:600;font-size:13px}
 .rmwcmp .elsewhere{color:var(--fn);font-weight:600;font-size:13px}
-.rmwcmp tr.inert td.c:nth-child(2){opacity:.5}
+.rmwcmp tr.inert td.c:nth-child(2) pre{opacity:.45}
+/* status chip — the WHAT axis, beside the signature that shows the HOW */
+.rmwcmp .st{font-size:10.5px;font-weight:600;letter-spacing:.04em;
+text-transform:uppercase;margin:0 0 .35rem;opacity:.9}
+.rmwcmp .s-same,.rmwcmp .s-re-shaped{color:var(--add)}
+.rmwcmp .s-re-mapped{color:var(--fn)}
+.rmwcmp .s-not-supported{color:var(--del)}
+.rmwcmp .s-not-implemented{color:var(--ret)}
+.rmwcmp .answers{margin:.4rem 0 0;font-size:12px;opacity:.85}
+.rmwcmp .ans{padding:.05rem 0 .05rem .8rem;position:relative}
+.rmwcmp .ans:before{content:"\2192";position:absolute;left:0;opacity:.55}
 .rmwcmp .wrap{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:1rem 0}
 </style>"""
 
@@ -221,9 +253,69 @@ def explain_args(up_params, our_params, rules):
     return seen, unexplained
 
 
+SURFACE_PREFIX = (
+    ("executor:", "executor"),
+    ("platform:", "platform"),
+    ("build time:", "build time"),
+    ("nros-serdes:", "serdes"),
+    ("runtime:", "runtime"),
+)
+SURFACES = ("vtable", "global", "executor", "platform", "build time", "serdes",
+            "runtime", "none")
+STATUS_ORDER = ("same", "re-shaped", "re-mapped", "not-supported", "not-implemented")
+CHIP = {"same": "●", "re-shaped": "●", "re-mapped": "◆",
+        "not-supported": "✕", "not-implemented": "○"}
+
+
+def surface_of(where, cstatus, answers):
+    """Which surface actually provides the capability.
+
+    `where` alone cannot say: `declined` is the answer for `rmw_wait`, which is
+    five live vtable slots, and for `rmw_init_publisher_allocation`, which is
+    nothing. `answers` carries the distinction, so read it first.
+    """
+    if cstatus == "not-supported":
+        return "none"
+    for a in answers:
+        for prefix, col in SURFACE_PREFIX:
+            if a.startswith(prefix):
+                return col
+    return {"layer": "serdes", "declined": "vtable"}.get(where, where)
+
+
+def status_of(sym, row, where, identical, shared_targets, name):
+    """(status, answers) — authored where it must be, derived where it can be.
+
+    Derived: `same` and `re-shaped` come from the signatures, and a MERGE is
+    visible in the map itself (two upstream symbols naming one slot). Authored:
+    everything the types cannot show — whether an absent symbol was decomposed
+    or dropped, and whether a declared-but-unfilled slot is a plan or a gap.
+    """
+    authored = row.get("status")
+    answers = list(row.get("answers") or [])
+    if authored:
+        return authored, answers
+    if where in ("vtable", "global"):
+        if identical:
+            return "same", answers
+        if name in shared_targets:
+            # N upstream symbols, one slot: answered, but not 1:1.
+            return "re-mapped", answers or [name]
+        return "re-shaped", answers
+    # `check_status` in the parity gate rejects this before it can be rendered.
+    return "re-mapped", answers
+
+
 def build():
     parity = _load("_parity", "rmw-api-parity.py")
     shape = _load("_shape", "rmw-abi-shape.py")
+    # A slot named by more than one upstream symbol is a MERGE — the capability
+    # is answered, but not one-for-one, and that is invisible in either
+    # signature. Counted from the map so it cannot fall out of date.
+    _claims = collections.Counter(
+        r.get("nano") for r in parity.MAP_ROWS.values() if r.get("nano")
+    )
+    shared_targets = {k for k, n in _claims.items() if n > 1}
 
     contract = parity.read_contract()
     upstream = shape.upstream_signatures()
@@ -235,6 +327,7 @@ def build():
 
     rows, unexplained = [], {}
     tally = {"same": 0, "redesigned": 0, "absent": 0}
+    matrix = collections.Counter()
 
     for sym in contract:
         where, detail = parity.MAP.get(sym, ("gap", ""))
@@ -242,6 +335,7 @@ def build():
         mechanical = sym[4:] if sym.startswith("rmw_") else sym
 
         our_html = ""
+        name = ""
         status = "absent"
         causes = []
         inert = False
@@ -286,10 +380,21 @@ def build():
         else:
             up_html = fmt_sig(up_ret, up_params, sym, False)
 
+        map_row = parity.MAP_ROWS.get(sym, {})
+        cstatus, answers = status_of(
+            sym, map_row, where, status == "same", shared_targets, name if where == "vtable" else sym
+        )
+        surface = surface_of(where, cstatus, answers)
+        matrix[(cstatus, surface)] += 1
+
         tally[status] += 1
         rows.append({
             "sym": sym, "where": where, "up": up_html, "ours": our_html,
             "status": status, "causes": causes, "note": note, "inert": inert,
+            "cstatus": cstatus, "answers": answers, "surface": surface,
+            "issue": map_row.get("issue"),
+            "merge_n": _claims.get(name, 0) if where == "vtable" else 0,
+            "slot_name": name,
             "renamed_to": (
                 re.split(r"[ ,(]", detail.strip())[0]
                 if where == "vtable" and re.split(r"[ ,(]", detail.strip())[0] not in (sym, mechanical)
@@ -297,10 +402,10 @@ def build():
             ),
         })
 
-    return contract, rows, tally, sum(1 for r in rows if r["inert"]), unexplained
+    return contract, rows, tally, matrix, unexplained
 
 
-def render(contract, rows, tally, n_inert, _un):
+def render(contract, rows, tally, matrix, _un):
     e = html.escape
     o = []
     w = o.append
@@ -336,6 +441,23 @@ def render(contract, rows, tally, n_inert, _un):
     w("`nros_rmw_vtable_t`; showing `rmw_count_publishers` on the right would flatter")
     w("the comparison.")
     w("")
+    w("**The chip says what we DID with the symbol**, which is a different question")
+    w("from what the signature shows:")
+    w("")
+    w("| chip | means |")
+    w("| --- | --- |")
+    w("| ● `same` | identical signature and name |")
+    w("| ● `re-shaped` | one slot, one symbol, different signature |")
+    w("| ◆ `re-mapped` | answered, but NOT 1:1 — decomposed, merged, or off this seam. The arrows under it name what provides the capability |")
+    w("| ✕ `not-supported` | a decision, permanent; the reason names the constraint |")
+    w("| ○ `not-implemented` | a gap, with the issue tracking it |")
+    w("")
+    w("`same` and `re-shaped` are derived from the signatures, so the map cannot")
+    w("assert a match the types deny. The other three are authored, because no")
+    w("signature can say whether an absent symbol was decomposed or dropped — and")
+    w("`not-implemented` must name an issue, so silence cannot turn a gap into a")
+    w("decision.")
+    w("")
     w("**Marks show the difference.** Red — upstream takes it, we do not. Green — we")
     w("take it, upstream does not. Yellow — the name differs from the mechanical one")
     w("(upstream minus `rmw_`). A row with **no marks is identical on both sides** and")
@@ -369,13 +491,29 @@ def render(contract, rows, tally, n_inert, _un):
     w("implementations with identical symbol sets is a better definition of \"what an")
     w("rmw must provide\" than any reading of the headers.")
     w("")
-    w("| | count |")
-    w("| --- | --- |")
-    w(f"| identical on both sides | {tally['same']} |")
-    w(f"| re-designed | {tally['redesigned']} |")
-    w(f"| rejected or answered elsewhere | {tally['absent']} |")
-    w(f"| …of the above, answered by an *inert* slot | {n_inert} |")
-    w(f"| **contract total** | **{len(contract)}** |")
+    # Two axes, because one was never enough. A row says WHAT we did with the
+    # symbol; a column says WHERE the capability lives. The old four-line tally
+    # collapsed both into `where`, so "decomposed into five slots" and "nothing
+    # crosses this seam" shared the word `rejected` — and an inert slot,
+    # declared with nothing behind it, was counted as answered.
+    used_cols = [c for c in SURFACES if any(matrix[(st, c)] for st in STATUS_ORDER)]
+    w("| | " + " | ".join(used_cols) + " | **total** |")
+    w("| --- |" + " --- |" * (len(used_cols) + 1))
+    for st in STATUS_ORDER:
+        cells = [matrix[(st, c)] for c in used_cols]
+        if not sum(cells):
+            continue
+        pretty = {"not-supported": "not supported — *by decision*",
+                  "not-implemented": "not implemented — *tracked*"}.get(st, st)
+        w(f"| {pretty} | " + " | ".join(str(c or "") for c in cells)
+          + f" | **{sum(cells)}** |")
+    totals = [sum(matrix[(st, c)] for st in STATUS_ORDER) for c in used_cols]
+    w("| **total** | " + " | ".join(f"**{t}**" for t in totals)
+      + f" | **{len(contract)}** |")
+    w("")
+    w("Read a row for what we did, a column for where it lives. Only")
+    w("**not implemented** should shrink over time; **not supported** is the one")
+    w("line that is a decision rather than a state, so it is expected to stay.")
     w("")
     w("## Every contract symbol")
     w("")
@@ -386,12 +524,34 @@ def render(contract, rows, tally, n_inert, _un):
         cls = " class=inert" if r["inert"] else ""
         w(f"<tr{cls}>")
         w(f"<td class=c><pre>{r['up']}</pre></td>")
+        # The chip is the STATUS axis, in the cell where the reader is already
+        # looking for "what did they do". `where` used to carry this and could
+        # not: "rejected" was the label on `rmw_wait`, which is five live slots.
+        cs = r["cstatus"]
+        note = ""
+        if cs == "re-mapped":
+            if r["merge_n"] > 1:
+                note = f" · {r['merge_n']} upstream → 1 slot"
+            elif len(r["answers"]) > 1:
+                note = f" · 1 → {len(r['answers'])}"
+            elif r["surface"] not in ("vtable", "global"):
+                note = f" · {r['surface']}"
+        elif cs == "not-supported":
+            note = " · by decision"
+        elif cs == "not-implemented":
+            note = f" · issue {r['issue']:04d}" if r.get("issue") else ""
+        chip = f"<div class='st s-{cs}'>{CHIP[cs]} {e(cs)}{e(note)}</div>"
+
+        answers_html = ""
+        shown = r["answers"] != [r.get("slot_name")] and r["answers"]
+        if shown and (cs == "re-mapped"):
+            items = "".join(f"<div class=ans>{e(a)}</div>" for a in shown)
+            answers_html = f"<div class=answers>{items}</div>"
+
         if r["ours"]:
-            w(f"<td class=c><pre>{r['ours']}</pre></td>")
-        elif r["where"] == "declined":
-            w("<td class=c><span class=none>rejected</span></td>")
+            w(f"<td class=c>{chip}<pre>{r['ours']}</pre>{answers_html}</td>")
         else:
-            w("<td class=c><span class=elsewhere>answered elsewhere</span></td>")
+            w(f"<td class=c>{chip}{answers_html}</td>")
         bits = []
         if r["renamed_to"]:
             bits.append(f"<b>renamed</b> — the slot is <code>{e(r['renamed_to'])}</code>.")
@@ -479,7 +639,7 @@ def main():
         print("gen-rmw-api-comparison: selftest failed — output is not trustworthy.", file=sys.stderr)
         return 1
 
-    contract, rows, tally, n_inert, unexplained = build()
+    contract, rows, tally, matrix, unexplained = build()
     if unexplained:
         print(
             "ERROR: %d slot(s) drop an upstream argument no rule explains:" % len(unexplained),
@@ -493,7 +653,31 @@ def main():
             file=sys.stderr,
         )
         return 1
-    new = render(contract, rows, tally, n_inert, unexplained)
+    # An inert slot is declared and unfilled. Under the old taxonomy it counted
+    # as ANSWERED, which is the state this axis exists to stop being invisible:
+    # say whether it is a plan, a decision, or a gap.
+    silent = [
+        r["sym"] for r in rows
+        if r["inert"] and r["cstatus"] in ("same", "re-shaped")
+    ]
+    if silent:
+        print(
+            "ERROR: %d inert slot(s) are counted as answered:" % len(silent),
+            file=sys.stderr,
+        )
+        for sym in silent:
+            print("  %s" % sym, file=sys.stderr)
+        print(
+            "\n  An inert slot is DECLARED and nothing fills it. Give each a `status`\n"
+            "  in docs/reference/rmw-api-map.toml:\n"
+            "    re-mapped       the capability ships elsewhere; `answers` names where\n"
+            "    not-supported   a decision, permanent, with a reason\n"
+            "    not-implemented a gap, with `issue = NNNN`\n",
+            file=sys.stderr,
+        )
+        return 1
+
+    new = render(contract, rows, tally, matrix, unexplained)
 
     if args.check:
         old = open(DOC).read() if os.path.exists(DOC) else ""
@@ -514,7 +698,11 @@ def main():
         fh.write(new)
     print(
         f"wrote book/src/reference/rmw-api-comparison.md — {len(contract)} symbols "
-        f"({tally['same']} identical, {tally['redesigned']} re-designed, {tally['absent']} absent)"
+        "(" + ", ".join(
+            f"{sum(matrix[(st, c)] for c in SURFACES)} {st}"
+            for st in STATUS_ORDER
+            if sum(matrix[(st, c)] for c in SURFACES)
+        ) + ")"
     )
     return 0
 

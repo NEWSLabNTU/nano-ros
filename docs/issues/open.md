@@ -70,5 +70,6 @@ fails if this block drifts.
 - **#0945** (build) — The shared-cargo-dir campaign rests on five unsupported build-system internals — a Corrosion path formula, an unstable cargo flag, cargo's private `.fingerprint` format, a side channel inside cargo's target dir, and an undocumented depfile location See `0945-*`.
 - **#0951** (orchestration, tooling) — `[deploy.*]` is three unrelated facts in one table — site config keyed on the deploy name, not the board, is the half that duplicates See `0951-*`.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
+- **#0956** (rmw) — Four W4 parity slots are declared, unfilled, and undecided: content filtering and network flow endpoints See `0956-*`.
 
 <!-- END GENERATED open-issue list -->
