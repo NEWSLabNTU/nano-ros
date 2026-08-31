@@ -156,7 +156,8 @@ typedef struct nros_rmw_vtable_t {
      *  `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
     rmw_ret_t (*create_publisher)(const rmw_node_t *node,
-        const char *topic_name, const char *type_name, const char *type_hash,
+        const rmw_message_type_support_t *type_support,
+        const char *topic_name,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         const rmw_publisher_options_t *options,
         rmw_publisher_t *out);
@@ -168,7 +169,8 @@ typedef struct nros_rmw_vtable_t {
     /** `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
     rmw_ret_t (*create_subscription)(const rmw_node_t *node,
-        const char *topic_name, const char *type_name, const char *type_hash,
+        const rmw_message_type_support_t *type_support,
+        const char *topic_name,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         const rmw_subscription_options_t *options,
         rmw_subscription_t *out);
@@ -225,7 +227,8 @@ typedef struct nros_rmw_vtable_t {
     /* Phase 193.1b — `qos` applies to both the request + reply endpoints
        (one profile per service, mirrors create_publisher/subscription). */
     rmw_ret_t (*create_service)(const rmw_node_t *node,
-        const char *service_name, const char *type_name, const char *type_hash,
+        const rmw_service_type_support_t *type_support,
+        const char *service_name,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_service_t *out);
     rmw_ret_t (*destroy_service)(rmw_service_t *server);
@@ -252,7 +255,8 @@ typedef struct nros_rmw_vtable_t {
 
     /* ---- Client (phase-301: rmw's term; was `service_client`) ---- */
     rmw_ret_t (*create_client)(const rmw_node_t *node,
-        const char *service_name, const char *type_name, const char *type_hash,
+        const rmw_service_type_support_t *type_support,
+        const char *service_name,
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_client_t *out);
     rmw_ret_t (*destroy_client)(rmw_client_t *client);

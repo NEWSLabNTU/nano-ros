@@ -1969,9 +1969,15 @@ impl Session for CffiSession {
                 .create_publisher
                 .expect("rmw vtable: create_publisher"))(
                 &node_view,
+                // phase-406 W1 — the identity as ONE argument, in upstream's
+                // position. Built here on the stack: it borrows the same two
+                // pointers the two loose arguments did, so nothing changed about
+                // their lifetime, only about how many arguments carry them.
+                &generated::rmw_message_type_support_t {
+                    type_name: type_ptr,
+                    type_hash: hash_ptr,
+                },
                 topic_ptr,
-                type_ptr,
-                hash_ptr,
                 topic.domain_id,
                 &qos_struct,
                 &options,
@@ -2048,9 +2054,15 @@ impl Session for CffiSession {
                 .create_subscription
                 .expect("rmw vtable: create_subscription"))(
                 &node_view,
+                // phase-406 W1 — the identity as ONE argument, in upstream's
+                // position. Built here on the stack: it borrows the same two
+                // pointers the two loose arguments did, so nothing changed about
+                // their lifetime, only about how many arguments carry them.
+                &generated::rmw_message_type_support_t {
+                    type_name: type_ptr,
+                    type_hash: hash_ptr,
+                },
                 topic_ptr,
-                type_ptr,
-                hash_ptr,
                 topic.domain_id,
                 &qos_struct,
                 &options,
@@ -2123,9 +2135,16 @@ impl Session for CffiSession {
                 .create_service
                 .expect("rmw vtable: create_service"))(
                 &node_view,
+                // phase-406 W1 — see the publisher site. A SERVICE type support
+                // is its own type: upstream keeps `rosidl_service_type_support_t`
+                // distinct from the message form, and collapsing them here would
+                // let a service type be passed where a message type is required
+                // with no diagnostic.
+                &generated::rmw_service_type_support_t {
+                    type_name: type_ptr,
+                    type_hash: hash_ptr,
+                },
                 svc_ptr,
-                type_ptr,
-                hash_ptr,
                 service.domain_id,
                 &qos_struct,
                 &mut view,
@@ -2174,9 +2193,16 @@ impl Session for CffiSession {
                 .create_client
                 .expect("rmw vtable: create_client"))(
                 &node_view,
+                // phase-406 W1 — see the publisher site. A SERVICE type support
+                // is its own type: upstream keeps `rosidl_service_type_support_t`
+                // distinct from the message form, and collapsing them here would
+                // let a service type be passed where a message type is required
+                // with no diagnostic.
+                &generated::rmw_service_type_support_t {
+                    type_name: type_ptr,
+                    type_hash: hash_ptr,
+                },
                 svc_ptr,
-                type_ptr,
-                hash_ptr,
                 service.domain_id,
                 &qos_struct,
                 &mut view,

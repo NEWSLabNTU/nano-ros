@@ -101,11 +101,18 @@ rmw_ret_t wait_for_writer_match(dds_entity_t writer, uint64_t deadline_ms) {
 
 } // namespace
 
-rmw_ret_t publisher_create(const rmw_node_t* node, const char* topic_name,
-                                const char* type_name, const char* /*type_hash*/,
+rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
+                                const char* topic_name,
                                 uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
                                 const rmw_publisher_options_t* /*options*/,
                                 rmw_publisher_t* out) {
+    /* phase-406 W1 — one argument in, two locals out, so the body below is
+       unchanged. A NULL type support is INVALID_ARGUMENT rather than an
+       empty type: the identity is what the entity is keyed on, and one
+       created without it matches nothing and reports nothing. */
+    if (type_support == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
+    const char* type_name = type_support->type_name;
+    (void)type_name;
     // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
     // The node carries the route to its session (our `context`).
     if (node == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
