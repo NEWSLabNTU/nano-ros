@@ -93,6 +93,7 @@ fails if this block drifts.
 - **#0934** (build, api) — The same fact is authored in up to five config surfaces; no SSoT is declared for rmw, board or domain See `0934-*`.
 - **#0939** (tooling) — The metadata probe links the node NAME, which is not a target — so every C/C++ component reports `no producer`, once, and then silently See `0939-*`.
 - **#0946** (build) — Two independent per-platform locator ladders in cmake, and they disagree on threadx and freertos See `0946-*`.
+- **#0947** (build) — NuttX has two ROS-edition surfaces that cannot express each other, and `jazzy` is unreachable on one See `0947-*`.
 - **#0949** (build) — For a migrated workspace, board facts are never delivered — `_ws` resolves to the generated root, which has no `system.toml` See `0949-*`.
 - **#0950** (build) — `macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target See `0950-*`.
 

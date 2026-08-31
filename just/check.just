@@ -264,6 +264,7 @@ fast-serial: \
     zenohd-router-skips \
     zenohd-spawn-sites \
     zephyr-knob-agreement
+    entry-locator-ssot \
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
     # depend on a root recipe, so it is called rather than depended on. It must
@@ -1008,6 +1009,19 @@ mirror-header-precedence:
 runner-doctor-sdk-resolution:
     @bash scripts/ci/runner-doctor.sh --self-test
 
+# issue 0946 — the connect locator has exactly ONE producer.
+#
+# `NROS_ENTRY_LOCATOR` (the address an embedded image dials) was computed by two
+# independent per-platform ladders that DISAGREED on threadx and freertos, one of
+# which carried the note "Mirrors NanoRosNodeRegister.cmake freertos branch; keep
+# in sync" — a hand-sync instruction with nothing enforcing it. The invariant is
+# ONE PRODUCER, not equal literals: the lanes cite different networks and may
+# each be right, so the gate demands one table rather than one value. Drift is
+# silent (a wrong locator builds and links; the image just connects nowhere), so
+# this needs a check and not a convention. Buildless — pure source analysis.
+[private]
+entry-locator-ssot:
+    @python3 scripts/check-entry-locator-ssot.py
 
 # RFC-0054 (phase-299 W3) — the committed bindgen output must match a fresh
 # regeneration from the C-header SSoT packages. Loud skip when bindgen-cli
