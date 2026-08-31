@@ -135,7 +135,7 @@ def check() -> int:
     return 1
 
 
-def self_test() -> int:
+def self_test(quiet: bool = False) -> int:
     ok = True
 
     def expect(name, got, want):
@@ -157,11 +157,17 @@ def self_test() -> int:
     expect("examples excluded",
            in_library_tree("examples/native/cpp/parameters/src/main.cpp"), False)
 
-    print("check-cpp-no-std-stdio --self-test: OK" if ok else "check-cpp-no-std-stdio --self-test: FAILED")
+    if not quiet or not ok:
+        print("check-cpp-no-std-stdio --self-test: OK" if ok
+              else "check-cpp-no-std-stdio --self-test: FAILED")
     return 0 if ok else 1
 
 
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         sys.exit(self_test())
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this gate's whole job is to fire.
+    if self_test(quiet=True) != 0:
+        sys.exit(2)
     sys.exit(check())
