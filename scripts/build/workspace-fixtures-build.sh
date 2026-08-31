@@ -71,7 +71,7 @@ source "$repo_root/scripts/build/cargo.sh"
 # nros_warm_leaf_cache <workspace-dir>
 #
 # Populate the cargo registry cache for one workspace leaf, ONCE, before the
-# `--offline` build that follows. Issue 0961.
+# `--offline` build that follows. Issue 0967.
 #
 # `nros build --offline` passes `--frozen` (= `--locked --offline`, issue 0676),
 # and for a GENERATED root it first runs `cargo generate-lockfile --offline`.
@@ -139,7 +139,7 @@ nros_warm_leaf_cache() {
     echo "              If the build below reports 'failed to download <crate>'" >&2
     echo "              with 'but --frozen was specified', that is why — the" >&2
     echo "              crate is missing from the cache, not from the network." >&2
-    echo "              (issue 0961; NROS_SKIP_LEAF_FETCH=1 to silence)" >&2
+    echo "              (issue 0967; NROS_SKIP_LEAF_FETCH=1 to silence)" >&2
     return 0
 }
 # shellcheck source=scripts/build/cmake-incremental.sh
