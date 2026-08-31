@@ -267,3 +267,62 @@ class because nothing states a per-type bound. This is one level up: even with a
 perfect per-type hint, the arena slot holding that subscription is still
 budgeted as though it were an action client. The two share the
 `NROS_SUBSCRIPTION_BUFFER_SIZE` knob and nothing else.
+
+## The remedy this issue assumed does not exist (2026-08-31)
+
+The obvious fix — derive `NROS_EXECUTOR_ACTION_CLIENTS` from what the image
+declares, the way `entity-facts` already derives the queryable figures —
+**cannot be done**, and the reason is structural rather than missing plumbing.
+
+**The mechanism is already in place.** `nros-node/build.rs` takes
+`NROS_EXECUTOR_ACTION_CLIENTS` (default `max_cbs`, so the old formula reproduces
+byte for byte and no existing image moves) and budgets the two entry SHAPES
+separately instead of charging every slot the larger one. The knob is plumbed
+through `zephyr/Kconfig`, `platform_config.rs`, the generated configuration
+surface, and the runtime advisory names it when an arena is too small. Setting
+it to 0 takes 74,240 bytes to 16,384.
+
+**Nothing sets it, and nothing can.** `source_metadata.rs` — the structure a
+model is built from — contains ZERO occurrences of "client". Its entity types
+are:
+
+```
+SourcePublisher   SourceSubscriber   SourceTimer
+SourceService   (a `callback` — the SERVER side)
+SourceAction    (goal/cancel/accepted callbacks — the SERVER side)
+```
+
+nano-ros declares the entities that need CODEGEN REGISTRATION: publishers,
+subscribers, timers, and the server halves of services and actions. A client —
+`ActionClientCore::new`, a service client — is constructed imperatively in user
+code and is invisible to the build. That is a coherent design; it simply means
+the arena cannot be sized from the model, because the model does not know.
+
+So the count is not "not yet wired". It is **not expressible**.
+
+## The decision this needs
+
+1. **Declare client-side entities.** Extend `SourceMetadata` with action and
+   service clients so `entity-facts` can report them. Buys the automatic
+   derivation, and would let other table sizing tighten too. Costs a schema
+   addition, a resolver change and a migration for every existing model — and
+   asks users to declare something they currently just construct.
+2. **Leave the knob manual and flip the DEFAULT.** Today it defaults to
+   `max_cbs`, the worst case, so nobody pays a surprise. Defaulting to 0 would
+   make every pub/sub image 56.5 KiB smaller and break every action-client image
+   at REGISTRATION rather than at link — a runtime failure for a compile-time
+   fact, which `arena_used()` and the first-spin advisory soften but do not fix.
+3. **Derive it from the LINKER, not the model.** An image that never references
+   `ActionClientCore::new` cannot have one. That is a post-link fact, so it
+   cannot size a compile-time constant — but it can power a GATE that fails an
+   image whose knob is larger than its linked reality, turning a manual setting
+   into a checked one.
+
+(3) is the interesting one: it keeps the knob manual but stops it being a guess,
+needs no schema change, and is the only option verifiable with `nm`. That last
+point matters here — the arena is INLINE ON THE TASK STACK, so `just mem-report`
+cannot see it at all. A symbol probe cannot measure the arena, but it can see
+whether the entity justifying its size was linked in.
+
+Recorded rather than acted on: choosing between these is a design decision, and
+this issue's original remedy assumed information the tree does not carry.
