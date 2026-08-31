@@ -522,20 +522,17 @@ fn write_header_to_out_dir(relative: &[&str], contents: &str) {
     let Ok(out_dir) = env::var("OUT_DIR") else {
         return;
     };
-    // FLAT under OUT_DIR, keeping only the `nros/<name>.h` tail: OUT_DIR is
-    // already per-unit, so the `nros-c-generated/` segment that disambiguates
-    // inside a shared target dir would only add a level nobody needs. The
-    // `nros/` prefix stays because that is how the header is INCLUDED
-    // (`<nros/nros_config_generated.h>`).
-    let tail: Vec<&str> = relative
-        .iter()
-        .copied()
-        .skip_while(|s| *s != "nros")
-        .collect();
-    if tail.is_empty() {
-        return;
-    }
-    write_to(PathBuf::from(out_dir), &tail, contents);
+    // The FULL relative path is preserved — `nros-c-generated/nros/<name>.h`,
+    // not just the `nros/` tail. `nros-cpp`'s build script writes BOTH its own
+    // header and the c-format companion (nros-c owns that file; this is a
+    // gap-filler plus an equality check), so a flattened layout would put two
+    // different headers in one directory and leave the consumer's include path
+    // deciding which wins by order — issue 0360's variant collision.
+    //
+    // Keeping the segment means the placer can copy the tree verbatim and every
+    // header lands in the directory its consumers already include, whichever
+    // package produced it.
+    write_to(PathBuf::from(out_dir), relative, contents);
 }
 
 pub fn write_header_to_target_dir(relative: &[&str], contents: &str) {

@@ -1078,12 +1078,36 @@ Both properties were measured rather than assumed:
 channel (`write_header_to_out_dir`). Additive, so nothing changes for existing
 consumers, and it establishes the supported location.
 
-*Remaining:* have `nros_cargo_build` capture `--message-format=json`, read
-`out_dir` for nros-c and nros-cpp, and place the header at a predictable
-per-image path as an `add_custom_command(OUTPUT …)` — the canonical cmake
-generated-header mechanism — with consumers depending on that OUTPUT. In-tree
-precedent for the JSON parse: `nros-sizes-build::find_dep_rlib_isolated` already
-reads `compiler-artifact` the same way. Then the side channel can go.
+*The cmake half — LANDED.* `scripts/build/cargo-out-dir-headers.py` RUNS cargo
+(rather than being piped from it: `add_custom_target(COMMAND …)` has no shell, so
+there is no pipe to hang a filter on), reads `out_dir` off the JSON stream, and
+copies the generated tree into the per-image dir the consumers already include.
+One process tree, one exit code, stderr untouched —
+`--message-format=json-render-diagnostics` keeps diagnostics human on stderr and
+leaves stdout pure JSON.
+
+The BYPRODUCTS moved with it: they now name `${NROS_GENERATED_HEADER_DIR}/…`
+instead of `${CARGO_TARGET_DIR}/…`. That is the whole point — under a shared
+target dir the old spelling named a file this image would never write.
+
+**A bug caught by design review rather than by building:** `nros-cpp`'s build
+script emits BOTH its own header and the c-format companion, so a per-package
+destination would have filed `nros_config_generated.h` under
+`nros-cpp-generated/`. The fix is that both sides keep the full relative path —
+`write_header_to_out_dir` preserves the `nros-{c,cpp}-generated/` segment and the
+placer copies the tree verbatim — so each header lands where its consumers look
+whichever package produced it. Flattening would have let include ORDER pick
+between two different headers, which is issue 0360.
+
+*Verified:* `build-one c/listener zenoh` and `cpp/listener zenoh` both build to
+`zephyr.elf`, both report the placement, and the header is freshly written into
+the per-image dir. `just check fast` 145/145. Self-test covers six cases
+including the c-vs-cpp separation and the unchanged-header mtime.
+
+*Still to do before the side channel can be deleted:* the target-dir write in
+`write_header_to_target_dir` is still there, and non-Zephyr lanes (Corrosion,
+NuttX) still read it. Removing it means giving those lanes the same placer, which
+is a separate change with its own verification.
 
 **One hypothesis tested and REFUTED before scoping:** that
 `compiler-artifact.filenames` reports a hashed `deps/` path for the staticlib,
