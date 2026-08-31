@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 13
+LADDER_FLOOR = 15
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -93,8 +93,8 @@ KNOB_CLASS = {
     "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("sizing", "component cap"),
     "NROS_RUNTIME_MAX_COMPONENTS": ("sizing", "component cap"),
     "NROS_ZEPHYR_HEAP_SIZE": ("sizing", "platform heap"),
-    "NROS_FREERTOS_HEAP_KB": ("sizing", "platform heap; numeric, read as a string"),
-    "NROS_FREERTOS_APP_STACK_KB": ("sizing", "platform stack; numeric, read as a string"),
+    "NROS_FREERTOS_HEAP_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
+    "NROS_FREERTOS_APP_STACK_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_KEYEXPR_STRING_SIZE": ("sizing", "keyexpr bound"),
     "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape"),
     "NROS_XRCE_CUSTOM_TRANSPORT_MTU": ("sizing", "transport MTU; numeric, read as a string"),
@@ -173,7 +173,7 @@ def ladder_knobs():
     """Fields on the typed `[knobs.*]` structs — the migrated knobs."""
     src = read(os.path.join(ROOT, "packages/boards/nros-board-common/src/platform_config.rs"))
     total = {}
-    for struct in ("TxKnobs", "ExecutorKnobs", "TransportKnobs"):
+    for struct in ("TxKnobs", "ExecutorKnobs", "TransportKnobs", "MemoryKnobs"):
         fields = _struct_fields(src, struct)
         if fields:
             total[struct] = fields

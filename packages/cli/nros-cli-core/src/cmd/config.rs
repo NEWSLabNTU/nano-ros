@@ -264,6 +264,30 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
+    // phase-400 W6 — the platform memory tenant. Defaults mirror the board
+    // crate that sizes each: FreeRTOS heap_4 `ucHeap` at the `rmw-zenoh` 2 MiB,
+    // and the `nros_app` task stack. Both in BYTES, which is the ladder's unit;
+    // their env front-ends are KiB and convert at the rung.
+    let mem_defaults: &[(&str, usize)] =
+        &[("heap_bytes", 2048 * 1024), ("app_stack_bytes", 384 * 1024)];
+    for (name, r) in tree
+        .resolve_memory(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.memory),
+            &env_get,
+            mem_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("memory.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
     for w in tree
         .transport_warnings(&args.platform, &transport)
         .map_err(|e| eyre!("{e}"))?

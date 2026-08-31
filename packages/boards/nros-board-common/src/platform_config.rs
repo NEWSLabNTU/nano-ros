@@ -159,6 +159,9 @@ pub struct Knobs {
     /// and board rung, and makes them visible to `nros config explain`.
     #[serde(default)]
     pub executor: ExecutorKnobs,
+    /// phase-400 W6 — the platform memory tenant (RTOS heap, app stack).
+    #[serde(default)]
+    pub memory: MemoryKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -222,6 +225,87 @@ pub const EXECUTOR_KNOBS: &[&str] = &[
     "param_service_buffer_size",
 ];
 
+/// The platform and board rungs a BUILD SCRIPT can reach, resolved once.
+///
+/// phase-400 W6. A build script learns its platform and board the way every
+/// other build-time fact travels here: the lane exports a value and a POINTER,
+/// and the script reads the file. `nros ws board-facts` emits
+/// `NROS_PLATFORM_NAME` and `NROS_BOARD_TOML`, and `corrosion_set_env_vars`
+/// attaches them to the target's own build command — which is what actually
+/// runs cargo, unlike cmake's `set(ENV{...})` (issue 0460).
+///
+/// Absent pointer (a bare `cargo build` with no lane) → `None`, and the
+/// caller's own front-end and default decide, exactly as before. With no board
+/// named there IS no platform rung to resolve.
+///
+/// Every failure here is FATAL rather than a fall-through to defaults: a
+/// silently empty tree resolves every knob to a builtin and produces a wrong
+/// image with no diagnostic, which is the failure the ladder exists to remove.
+/// It lives HERE so the env-pointer dance has ONE spelling — two build scripts
+/// resolving the same rungs differently is the drift
+/// `check-knob-single-reader` exists to catch, one level up.
+pub struct BuildRungs {
+    pub platform: String,
+    pub tree: PlatformsTree,
+    pub board: Option<BoardKnobsFile>,
+}
+
+impl BuildRungs {
+    /// Resolve from the environment the lane exports, or `None` when no lane
+    /// named a platform.
+    pub fn from_build_env() -> Option<Self> {
+        let platform = std::env::var("NROS_PLATFORM_NAME")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        println!("cargo:rerun-if-env-changed=NROS_PLATFORM_NAME");
+
+        let board = std::env::var("NROS_BOARD_TOML")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|raw| {
+                // issue 0491 — fingerprint the file's CONTENT. A
+                // `rerun-if-env-changed` on a variable naming a PATH compares
+                // the spelling, and one directory has three spellings here.
+                println!("cargo:rerun-if-changed={raw}");
+                BoardKnobsFile::load(Path::new(&raw))
+                    .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
+            });
+
+        let search = PlatformsTree::default_search_path(
+            &std::env::current_dir().unwrap_or_default(),
+            std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
+        );
+        let tree = PlatformsTree::load_search_path(&search)
+            .unwrap_or_else(|e| panic!("platform search path {search:?}: {e}"));
+        Some(Self {
+            platform,
+            tree,
+            board,
+        })
+    }
+
+    /// The memory tenant for this build, over the full ladder.
+    pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
+        self.tree
+            .resolve_memory(
+                &self.platform,
+                self.board.as_ref().map(|b| &b.knobs.memory),
+                &|k| std::env::var(k).ok(),
+                defaults,
+            )
+            .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={}: {e}", self.platform))
+    }
+
+    /// One resolved memory knob, by name.
+    pub fn memory_value(&self, knob: &'static str, default: usize) -> usize {
+        self.memory(&[(knob, default)])
+            .into_iter()
+            .next()
+            .map(|(_, r)| r.value)
+            .unwrap_or(default)
+    }
+}
+
 /// The env front-end name for an executor knob. These are the EXISTING names
 /// `nros-node/build.rs` already reads, kept verbatim: migrating a knob into the
 /// ladder must not change how anyone sets it.
@@ -269,6 +353,52 @@ pub struct ExecutorKnobs {
     pub arena_size: Option<usize>,
     pub subscription_buffer_size: Option<usize>,
     pub param_service_buffer_size: Option<usize>,
+}
+
+/// `[knobs.memory]` — phase-400 W6, the platform memory tenant.
+///
+/// The RTOS heap and the application task's stack: two numbers that genuinely
+/// vary by PLATFORM and BOARD and that no derivation campaign owns, which is
+/// what makes them the ladder's business rather than phase-392's or
+/// phase-403's.
+///
+/// **Stored in BYTES, always.** Their env front-ends disagree about units —
+/// `NROS_FREERTOS_HEAP_KB` and `NROS_FREERTOS_APP_STACK_KB` are KiB,
+/// `NROS_ZEPHYR_HEAP_SIZE` is bytes — and a table where "heap" means one thing
+/// on one platform and another elsewhere is a unit bug waiting to be written.
+/// The front-ends keep their spellings and convert; the ladder has one unit.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryKnobs {
+    /// The RTOS heap this platform sizes, in bytes.
+    #[serde(default)]
+    pub heap_bytes: Option<usize>,
+    /// The application task's stack, in bytes.
+    #[serde(default)]
+    pub app_stack_bytes: Option<usize>,
+}
+
+/// Every memory knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const MEMORY_KNOBS: &[&str] = &["heap_bytes", "app_stack_bytes"];
+
+/// The env front-end for a memory knob. As with the executor tenant these are
+/// the EXISTING names, kept verbatim — migrating a knob into the ladder must
+/// not change how anyone sets it.
+///
+/// The FreeRTOS pair is the platform that sizes both today; Zephyr's heap has
+/// its own spelling and is resolved by `nros-platform`'s build script.
+pub fn memory_env_key(knob: &str) -> &'static str {
+    match knob {
+        "heap_bytes" => "NROS_FREERTOS_HEAP_KB",
+        "app_stack_bytes" => "NROS_FREERTOS_APP_STACK_KB",
+        other => panic!("unknown memory knob `{other}`"),
+    }
+}
+
+/// Whether a memory knob's env front-end is spelled in KiB rather than bytes.
+/// The ladder stores bytes; this is the one place the difference lives.
+pub fn memory_env_is_kib(knob: &str) -> bool {
+    matches!(knob, "heap_bytes" | "app_stack_bytes")
 }
 
 /// One resolved executor knob: value, rung, and the env name that is still its
@@ -850,6 +980,78 @@ impl PlatformsTree {
     ///
     /// Each knob keeps its existing env name, so migrating a knob changes no
     /// call site — it only adds the two rungs it never had.
+    /// The `[knobs.memory]` a platform's chain declares, merged nearest-wins.
+    fn platform_memory_knobs(&self, name: &str) -> Result<MemoryKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = MemoryKnobs::default();
+        for file in chain.iter().rev() {
+            let m = &file.knobs.memory;
+            if m.heap_bytes.is_some() {
+                out.heap_bytes = m.heap_bytes;
+            }
+            if m.app_stack_bytes.is_some() {
+                out.app_stack_bytes = m.app_stack_bytes;
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.memory]` rungs, without resolution — for a build script that
+    /// owns the defaults and its own env/Kconfig front-end. Same shape as
+    /// [`Self::platform_executor_rungs`], and the same reason.
+    pub fn platform_memory_rungs(&self, platform: &str) -> Result<MemoryKnobs, ConfigError> {
+        self.platform_memory_knobs(platform)
+    }
+
+    /// phase-400 W6 — resolve the memory tenant over the RFC-0049 ladder:
+    /// builtin < platform toml < board toml < env front-end.
+    ///
+    /// `defaults` are passed in, as for the executor tenant: the built-in for
+    /// a FreeRTOS heap lives in the board crate that sizes it, and an absent
+    /// platform tree must change nothing.
+    pub fn resolve_memory(
+        &self,
+        platform: &str,
+        board: Option<&MemoryKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_memory_knobs(platform)?;
+        let pick = |k: &MemoryKnobs, name: &str| match name {
+            "heap_bytes" => k.heap_bytes,
+            "app_stack_bytes" => k.app_stack_bytes,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = memory_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                // The front-ends disagree about units and the ladder does not:
+                // a KiB spelling is multiplied here, once, beside the table
+                // that records which spelling each knob has.
+                value = if memory_env_is_kib(name) { n * 1024 } else { n };
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
     /// The `[knobs.executor]` a platform's chain declares, merged nearest-wins.
     ///
     /// Public because a BUILD SCRIPT needs the rungs without the resolution:
