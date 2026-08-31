@@ -126,7 +126,7 @@ fast-serial: \
     lane-skip-protocol named-lane-fails skip-marker-matching scope-namespace \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement site-config lane-scope-consumers \
-    interlock-visibility fixture-stamp-honesty ci-no-fixture-tolerance sdk-guard-can-fire \
+    interlock-visibility fixture-stamp-honesty ci-no-fixture-tolerance ci-no-verb-fallback sdk-guard-can-fire \
     tier-has-ci-owner \
     board-facts-delivery deploy-board-resolves \
     opaque-storage-guards cpp-ffi-error-mapping submodule-pins \
@@ -794,6 +794,16 @@ workflow-repo-env:
 [private]
 doc-recipe-refs:
     @python3 scripts/check-doc-recipe-refs.py
+
+# phase-411 — a CI step must not fall back from one `just` verb to another.
+# `build-all || build-examples || build` made a FAILED verb build something
+# smaller and report success, which is the "skip and report success" shape
+# phase-411 removes, written in shell instead of a skip helper. Buildless: YAML
+# plus a regex, and it skips comments and heredocs for the reason
+# `check-workflow-repo-env` documents.
+[private]
+ci-no-verb-fallback:
+    @python3 scripts/check-ci-no-verb-fallback.py
 
 # issues 0320 / 0334 — no build-host absolute paths in tracked code/config.
 # A pure grep, so it belongs in the source-free tier (see #337 for what happens

@@ -329,11 +329,29 @@ jobs:
           # Disk lever: push/PR get the lighter `build-examples` smoke; the heavy
           # `build-all` fixtures matrix (what QEMU e2e consumes) only on schedule /
           # dispatch-with-run_e2e.
+          #
+          # ONE VERB PER PATH, no `||` fallback — phase-411.
+          #
+          # This used to read `build-all || build-examples || build`. Every
+          # platform module defines all four verbs, so the fallbacks could never
+          # fire for a MISSING recipe; they fired only when the previous verb
+          # FAILED. The step then built something smaller and reported success,
+          # which is the "skip and report success" shape phase-411 exists to
+          # remove — expressed in shell rather than in a skip helper.
+          #
+          # It defeated the mechanism that was working: nightly sets no
+          # `NROS_LANE_INCLUDED`, so every platform here is NAMED, and a named
+          # platform whose prerequisite is missing already fails loudly
+          # (`NROS_LANE_NAMED_FAIL`). The chain caught that failure and
+          # downgraded it. The prerequisite then surfaced two stages later as
+          # nine skipped tests and a `_check-skip-budget` red — twenty minutes
+          # after the point of decision, naming the gate instead of the missing
+          # tool, which is exactly what phase-411's acceptance rules out.
           if [ "${{ github.event_name }}" = "schedule" ] || \
              { [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.run_e2e }}" = "true" ]; }; then
-            just ${{ matrix.plat }} build-all || just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+            just ${{ matrix.plat }} build-all
           else
-            just ${{ matrix.plat }} build-examples || just ${{ matrix.plat }} build
+            just ${{ matrix.plat }} build-examples
           fi
 
       - name: Test / e2e (${{ matrix.plat }})
