@@ -76,7 +76,14 @@ def _load_map():
     `detail` is the nano-ros name for a slot or a global, and the reason for
     everything else — the shape `check_against_vtable` already validates.
     """
-    import tomllib
+    # `tomllib` is stdlib only on 3.11+; CI runs the `ros:humble` image, whose
+    # python3 is 3.10. Every other TOML reader in `scripts/` already carries
+    # this fallback — see `fixtures-manifest.py`, `fixture-inventory.py`,
+    # `check-cargo-profile-mirror.sh`.
+    try:
+        import tomllib  # Python 3.11+
+    except ModuleNotFoundError:
+        import tomli as tomllib
 
     with open(MAP_TOML, "rb") as fh:
         raw = tomllib.load(fh)
