@@ -9,12 +9,13 @@ place. What that reader found:
 | --- | --- | --- |
 | W1 emit the constant | **done (C)** | `packs/c/message.h.jinja` emits `_TX_/_RX_MAX_SERIALIZED_SIZE`, comment cites 0896 |
 | W2 retarget publish helper | **done** | bounded types get `_TX_MAX_SERIALIZED_SIZE`; `NROS_PUB_BUFFER_SIZE` survives only as the unbounded fallback, which is the honest answer |
-| W3 runtime `RX_BUF` | **open** | `add_arena_subscription_c_callback<const RX_BUF: usize>` and five siblings |
+| W3 runtime `RX_BUF` | **done** | landed under phase-403 W3/W5, not here — `create_subscription_raw` takes `rx_bytes` and `add_arena_subscription_c_callback` spends it. See phase-403's "Relationship to phase-408" section, which says so and predates this table |
 | W4 deliver at the call site | **done (C)** | `<Type>_subscribe` passes the constant; an unbounded type gets a POISONED macro naming the costing member |
 | W5 `_with_info` keeps the hint | **done** | W5a routed it to the backend; W5b (2026-09-01) put the info + validated entries' payload slot in the arena's trailing region, so the hint sizes the allocation too |
-| C++ pack | **open, and not what it looks like** | see below |
+| C++ pack | **done (2026-09-01)** | emits the REAL bound (`bounds.rs`, not the estimator) as `TX_/RX_MAX_SERIALIZED_SIZE` + `rx_size_bound<M>`; `bind_subscription` spends it. The trap below is why this took a rewrite rather than a wiring change |
 
-**The C++ pack is the part with a trap in it.** It emits a single
+**The C++ pack had a trap in it, and the trap is why the fix was a rewrite.**
+Recorded because the number that was already there looked usable and was not: It emits a single
 `SERIALIZED_SIZE_MAX` from `types::compute_serialized_size_max`, and that number
 must NOT be reused as the receive hint. `bounds.rs` says why, in its own words:
 
