@@ -76,5 +76,7 @@ fails if this block drifts.
 - **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
 - **#0938** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0938-*`.
 - **#0939** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0939-*`.
+- **#0940** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0940-*`.
+- **#0941** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0941-*`.
 
 <!-- END GENERATED open-issue list -->
