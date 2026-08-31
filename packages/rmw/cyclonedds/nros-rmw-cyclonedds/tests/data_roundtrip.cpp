@@ -147,6 +147,20 @@ int main() {
     // identical bytes. Assert that exactly — the point of the change is that
     // this backend is now transparent to the CDR, and a length that drifted by
     // even the alignment pad would mean something started re-encoding again.
+    //
+    // TRANSPARENT IS NOT THE SAME AS UNPADDED, and this test is the loopback
+    // case where the two coincide. Measured against a real ROS 2 publisher
+    // (`ros2_pubsub_e2e`, which prints a `WIRE=` line for exactly this reason):
+    // a 25-byte CDR message arrives as `len:28 hdr:00010000 cdr:25`. The three
+    // extra bytes are the RTPS submessage's 4-byte alignment, applied by the
+    // SENDER, and `from_ser` is handed that padded length — so `get_size`
+    // returns it, having added nothing. The encapsulation options say `0000`,
+    // not `0003`, so the pad length is not recoverable from the header either.
+    //
+    // Two consequences, neither removed by issue 0970: a deserialiser must
+    // tolerate trailing bytes (nros-serdes reads by position, so it does), and
+    // a receive buffer sized from a type's exact `MAX_SERIALIZED_SIZE` can be
+    // up to 3 bytes short of what a remote peer delivers. See issue 0964.
     if (n != cdr_len) {
         std::fprintf(stderr,
                      "round-trip size mismatch: pub=%zu sub=%zu\n",

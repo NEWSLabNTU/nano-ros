@@ -162,15 +162,28 @@ sleep 1
 
 # `ros2 topic pub` repeating at 5 Hz so the subscriber wins the
 # discovery race even on a cold cache.
+#
+# Issues 0969 / 0970 — the payload is 16 characters ON PURPOSE. With the NUL
+# that is a 25-byte CDR message, which is NOT 4-aligned, so the `WIRE=` line
+# below can tell the wire bytes (len 25) from a re-encode that pads the payload
+# to a 4-byte multiple (len 28, with the pad count in the encapsulation
+# options). The previous 'hello-from-ros2' came to exactly 24 and could not
+# distinguish the two.
 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
-    ros2 topic pub -r 5 /chatter std_msgs/msg/String '{data: hello-from-ros2}' \
+    ros2 topic pub -r 5 /chatter std_msgs/msg/String '{data: hello-from-ros2!}' \
     >/dev/null 2>&1 &
 ROS_PUB_PID=$!
 
 # Wait for subscriber to print + exit.
 if wait $SUB_PID; then
-    if grep -qx 'DATA=hello-from-ros2' "$SUB_OUT"; then
-        echo "  PASS: nros sub captured 'hello-from-ros2'"
+    if grep -qx 'DATA=hello-from-ros2!' "$SUB_OUT"; then
+        echo "  PASS: nros sub captured 'hello-from-ros2!'"
+        # Issues 0969 / 0970 — surface the wire framing the subscriber saw.
+        # Reported, not asserted: the framing is the remote peer's plus the
+        # RTPS submessage, so pinning an exact number here would be pinning
+        # ROS 2's serializer rather than ours. It is printed so a reader of a
+        # CI log can see what a real peer actually delivers.
+        grep '^WIRE=' "$SUB_OUT" | sed 's/^/    /' || true
     else
         echo "  FAIL: nros sub captured unexpected payload:"
         sed 's/^/    /' "$SUB_OUT" || true
