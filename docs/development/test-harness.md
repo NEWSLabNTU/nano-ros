@@ -125,11 +125,11 @@ The post-processor runs at every test recipe's tail, **before** the
 * `justfile::_nextest-platform` — shared helper for the per-platform
   recipes (`just esp32 test`, `just freertos test`,
   `just nuttx test`, `just orin-spe test`,
-  `just threadx-linux test`, `just threadx-riscv64 test`)
+  `just threadx_linux test`, `just threadx_riscv64 test`)
 * `just/xrce.just::test` / `test-ros2` / `test-c`
 
 Other plat-specific recipes (`just zephyr test*`, `just native
-test*`, `just qemu-baremetal test*`, `just px4 test*`,
+test*`, `just qemu test*`, `just px4 test*`,
 `just cyclonedds test*`) currently invoke nextest directly without a
 skip-aware tail. When you add or refactor one, mirror the
 `_nextest-platform` pattern:

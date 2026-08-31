@@ -231,7 +231,7 @@ spans ~180 ms. A short span is itself the signal that the capture landed
 on a recovery burst; two loaded captures that happened to land in a
 quiet moment show the same profile as idle.
 
-Tooling: `just freertos-trace <load>` and `tools/analyze_trace_cpu.py`
+Tooling: `just freertos trace <load>` and `tools/analyze_trace_cpu.py`
 in the evaluation workspace; raw numbers in
 `results/issue506_trace_cpu.md`.
 

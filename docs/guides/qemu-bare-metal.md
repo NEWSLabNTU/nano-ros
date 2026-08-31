@@ -68,27 +68,27 @@ just qemu check
 ### 1. Build QEMU Examples
 
 ```bash
-just build-examples-qemu
+just qemu build-examples
 ```
 
 ### 2. Run Tests (No Networking)
 
 ```bash
 # Run all QEMU tests
-just test-qemu
+just qemu test
 
 # Run only LAN9118 driver test
-just test-qemu-lan9118
+just qemu test-lan9118
 ```
 
 ### 3. Setup Networking (For Full Stack Tests)
 
 ```bash
 # Create TAP bridge (requires sudo)
-just setup-qemu-network
+just qemu setup-network
 
 # Verify setup
-just status-qemu-network
+just qemu status-network
 ```
 
 ### 4. Run with Networking
@@ -107,7 +107,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/
 ### 5. Teardown
 
 ```bash
-just teardown-qemu-network
+just qemu teardown-network
 ```
 
 ## Scripts Reference
@@ -226,7 +226,7 @@ All examples use semihosting for debug output. Output appears directly in the te
 ```
 Error: TAP interface tap-qemu0 does not exist
 ```
-Solution: Run `just setup-qemu-network`
+Solution: Run `just qemu setup-network`
 
 **Permission denied on TAP**
 ```

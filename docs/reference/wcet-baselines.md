@@ -75,10 +75,10 @@ For certification (ISO 26262 ASIL C/D, DO-178C DAL A/B), dynamic measurement is 
 
 ```bash
 # Build all QEMU examples (includes rs-wcet-bench)
-just build-examples-qemu
+just qemu build-examples
 
 # Run the WCET benchmark
-just test-qemu-wcet
+just qemu test-wcet
 ```
 
 Output format:

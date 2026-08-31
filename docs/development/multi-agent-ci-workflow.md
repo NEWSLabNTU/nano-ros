@@ -451,7 +451,7 @@ The lanes are not new machinery so much as a re-cut of what exists.
 | interop cells (`interop::CELLS`) | **L5** | split out of the general sweep |
 
 New recipes the workflow files above assume, none of which exist yet:
-`just ci-l1`, `just ci-l2`, `just ci-l3`, `just ci-l4-tier1`, and `just claim`.
+`just ci-l1`, `just ci`, `just ci-l3`, `just ci matrix`, and `just claim`.
 Adding them is the real work; the YAML is thin by convention
 ([ci-workflow-reorg.md](ci-workflow-reorg.md)) and stays that way.
 
@@ -586,7 +586,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false          # init only what the lane needs
-      - run: just ci-l2              # Linux + native_sim + threadx-linux + freertos-posix
+      - run: just ci              # Linux + native_sim + threadx-linux + freertos-posix
 ```
 
 `l2` needs the Zephyr *sources* for native_sim but **not** the SDK — it builds
@@ -624,7 +624,7 @@ jobs:
     runs-on: [self-hosted, linux, nros-qemu]
     steps:
       - uses: actions/checkout@v4
-      - run: just ci-l4-tier1        # tier-1 boards only
+      - run: just ci matrix        # tier-1 boards only
 ```
 
 **`nightly.yml`** — the full L4 matrix plus L5 interop, on schedule. L5 stays

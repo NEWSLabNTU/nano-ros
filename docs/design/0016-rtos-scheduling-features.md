@@ -510,7 +510,7 @@ silently ignored on platforms that don't use them.
 6. Add FFI call to `zpico_set_task_config()` before `Executor::open()`
 7. Add `[scheduling]` section to one example's `config.toml` (talker)
 8. Update CMake `nano_ros_read_config()` for C examples
-9. Test with `just test-freertos`
+9. Test with `just freertos test`
 
 ### Future Platform Ports
 

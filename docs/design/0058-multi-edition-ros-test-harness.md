@@ -119,7 +119,7 @@ just ros-edition-image E                      # once, cached
 - Per-edition build-tree isolation keeps the fixture-mtime treadmill off the
   default tree.
 - The docker lanes are **gated**: excluded from default `just ci` (they need
-  docker + a slow image build); a `just ros-editions-ci` composite runs them
+  docker + a slow image build); a `just ros_editions ci` composite runs them
   for internal/CI use.
 
 ## Alternatives considered

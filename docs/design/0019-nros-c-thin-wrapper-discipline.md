@@ -248,7 +248,7 @@ After 122.3.b/c/d land:
 1. `cargo check --workspace`: clean.
 2. `just check`: green.
 3. `just test-unit`: 391/391 + N new (L1 polling round-trip tests).
-4. `just native::check`: all C/C++ examples build.
+4. `just native check`: all C/C++ examples build.
 5. Audit re-run: 11/11 entities marked ✅ opaque-thin.
 
 ## Out of scope (deferred)
