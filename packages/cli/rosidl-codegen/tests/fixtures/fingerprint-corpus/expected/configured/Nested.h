@@ -76,7 +76,7 @@ const nros_message_type_t* fingerprint_corpus_msg_nested_get_type_support(void);
 
 /// NO size bound is emitted for this type.
 ///
-/// Reason: nested type `Shapes` could not be resolved
+/// Reason: nested type `fingerprint-corpus/Shapes` could not be resolved
 ///
 /// "unbounded member" means the bound was computed and does not exist -- bound
 /// the field in the `.msg` (`string<=64`) or give it a `cap` in
@@ -89,9 +89,9 @@ const nros_message_type_t* fingerprint_corpus_msg_nested_get_type_support(void);
    constant is simply absent and the user gets "undeclared identifier", which
    names neither the type nor the member that costs it the bound. */
 #define FINGERPRINT_CORPUS_MSG_NESTED_TX_MAX_SERIALIZED_SIZE \
-    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_Shapes
+    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_fingerprint_corpus_Shapes
 #define FINGERPRINT_CORPUS_MSG_NESTED_RX_MAX_SERIALIZED_SIZE \
-    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_Shapes
+    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_fingerprint_corpus_Shapes
 
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the
@@ -104,7 +104,7 @@ const nros_message_type_t* fingerprint_corpus_msg_nested_get_type_support(void);
 static inline nros_ret_t fingerprint_corpus_msg_nested_publish(struct nros_publisher_t* publisher,
                                                    const fingerprint_corpus_msg_nested* msg) {
 
-    /* No bound for this type (nested type `Shapes` could not be resolved), so the global knob is
+    /* No bound for this type (nested type `fingerprint-corpus/Shapes` could not be resolved), so the global knob is
        still the only available answer. */
     uint8_t buf[NROS_PUB_BUFFER_SIZE];
 
@@ -146,7 +146,7 @@ static inline nros_ret_t fingerprint_corpus_msg_nested_publish(struct nros_publi
         nros_c_qos_default(), (cb), (ctx), (out_handle), (uint32_t)(rx_bytes))
 
 /* issue 0896 layer 5 -- this type has NO receive bound
-   (nested type `Shapes` could not be resolved), so there is no number a plain `_subscribe` could
+   (nested type `fingerprint-corpus/Shapes` could not be resolved), so there is no number a plain `_subscribe` could
    pass, and sizing the buffer is a decision only the caller can make. The macro
    is emitted anyway, POISONED, so the diagnostic names the type and the member
    that costs it the bound instead of reporting an undeclared function.
@@ -154,7 +154,7 @@ static inline nros_ret_t fingerprint_corpus_msg_nested_publish(struct nros_publi
    bound is ABSENT (bound the field) or merely UNCOMPUTED (fix the search path)
    -- or call the `_subscribe_sized` form above with a byte count you chose. */
 #define fingerprint_corpus_msg_nested_subscribe(node, topic, cb, ctx, out_handle) \
-    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_Shapes
+    NROS_UNRESOLVED__fingerprint_corpus_msg_nested__nested_type_fingerprint_corpus_Shapes
 
 #ifdef __cplusplus
 }

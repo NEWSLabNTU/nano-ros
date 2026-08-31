@@ -550,6 +550,80 @@ does not give, the honest fix is to bound the interface -- which is also the fix
 ROS 2 would require, and keeps the two stacks describing the same type the same
 way.
 
+### W6 LANDED 2026-08-31 -- and it found that the C++ number was never a bound
+
+One data model (`rosidl_codegen::bounds::BoundInventory`), three transports:
+
+| transport | file / key | consumer |
+| --- | --- | --- |
+| artifact | `<gen>/nros_message_bounds.json` | anything that reads a file |
+| CMake | `<gen>/nros_message_bounds.cmake`, `include()` it | the Zephyr / Kconfig lane |
+| Cargo `links` | `DEP_NROS_MSGS_<PKG>_BOUNDS_JSON` | a dependent's `build.rs` |
+
+Every number is derived by `nros_serdes::size::max_serialized_size` -- THE size
+rule, the same function `M::MAX_SERIALIZED_SIZE_XCDR*` uses. A type with no
+bound carries a state (`unbounded` / `unresolved`) and the member or nested type
+that costs it, and sets NO size key on any transport. `BoundState::classify` is
+shared with the C header emitter, so the exported fact and the emitted `#define`
+cannot drift.
+
+**The C++ pack's `SERIALIZED_SIZE_MAX` is an ESTIMATE, and this phase has been
+quoting it as a bound.** `rosidl_codegen::types::compute_serialized_size_max`
+charges a flat 512 bytes per nested message and a flat default capacity per
+string, and it ALWAYS returns a number -- it has no way to say "unbounded".
+Measured over 120 types in 12 stock ROS Humble interface packages
+(`geometry_msgs`, `nav_msgs`, `sensor_msgs`, `std_msgs`, `builtin_interfaces`,
+`action_msgs`, `diagnostic_msgs`, `trajectory_msgs`, `shape_msgs`,
+`visualization_msgs`, `tf2_msgs`, `stereo_msgs`):
+
+* **81 of 120** types have NO derived bound at all, and the C++ header states a
+  size for every one of them.
+* Of the 39 that ARE bounded, the estimate matched the derived bound **zero**
+  times: 38 over (`geometry_msgs/Twist` 1028 against 64, a factor of 16) and 1
+  under (`std_msgs/Empty` 4 against 8 -- the XCDR2 DHEADER).
+* The flat 512 makes under-estimating structural, not accidental: a nested type
+  whose own bound exceeds 512 is charged 512. Pinned by
+  `bounds::tests::the_cpp_packs_constant_under_estimates_a_large_nested_type`.
+
+So **the `Control 2052` / `Odometry 1804` table earlier in this document is a
+table of estimates**, and at least `Odometry` has no bound to estimate:
+`std_msgs/Header.frame_id` is an unbounded `string`. The 5x arena figure derived
+from those numbers has to be re-taken from the inventory before W5 claims it.
+The inventory does NOT export the estimate, in either direction.
+
+Two defects fell out, both fixed here because W6 could not produce real numbers
+without them:
+
+* **A bare nested reference lost its package.** `schema_value` resolved a bare
+  `Pose` inside `geometry_msgs/PoseWithCovariance` against the TOP-LEVEL
+  message's package, so `nav_msgs/msg/Odometry` came back "nested type `Pose`
+  could not be resolved". Latent because no caller had a cross-package lookup at
+  all. The lowering now threads the declaring package. Moves one golden:
+  `fingerprint-corpus/expected/{inline,configured}/Nested.h` now names
+  `fingerprint-corpus/Shapes` where it named `Shapes` -- the diagnostic and the
+  poison token both gain the package, which is the point.
+* **The C drivers had no cross-package search path.** `Unresolved` is a
+  search-path problem, not a property of a message (issue 0896), and the C paths
+  had a same-package-only lookup while the C++ path had none. Both now use one
+  `nested_msg_lookup` over the same interface index the Rust path already uses.
+  Consequence to watch: a C type that nests across packages now gets a real
+  `TX_MAX_SERIALIZED_SIZE`, so `{Msg}_publish` stacks the exact bound instead of
+  the 256-byte `NROS_PUB_BUFFER_SIZE`. Nothing working regresses -- such a type
+  could not serialize into 256 bytes and failed at publish -- but the stack
+  frame grows where it was previously wrong.
+
+**Still open, and NOT fixed here (needs a decision, not a patch).** This phase
+says a user MUST bound a type "in the `.msg` (`string<=64`) or cap it in the
+codegen config". Only the first half reaches the bound: `bound_message` reads
+the parsed `.msg` and never consults `CapacityResolver`, so a
+`nros-codegen.toml` cap does not make a type bounded. That is why stock
+`nav_msgs/msg/Odometry` reports `unbounded`. The C++ estimate hid this by
+silently substituting `CPP_DEFAULT_STRING_CAPACITY` for every unbounded string
+-- which is precisely the invented number phase-380 forbids. Whoever owns "an
+unbounded type is a BUILD ERROR" has to decide whether a config cap
+participates in the derivation; until then, most real types are honestly
+unbounded and the inventory says so.
+
 ## Measurement, first not last
 
 Every wave here claims bytes, and this campaign has twice published a number

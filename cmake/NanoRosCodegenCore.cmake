@@ -163,6 +163,38 @@ function(_nros_write_codegen_args_json)
     endif()
 endfunction()
 
+# nros_message_bounds_files(<output_dir> <json_var> <cmake_var>)
+#
+# phase-403 W6 — where codegen leaves the DERIVED per-type size bounds for the
+# package generated into `<output_dir>`. Two files, one document:
+#
+#   <output_dir>/nros_message_bounds.json    the artifact
+#   <output_dir>/nros_message_bounds.cmake   its CMake projection
+#
+# The `.cmake` file is a script you `include()`. It APPENDS to
+# `NROS_MESSAGE_BOUND_PACKAGES` / `NROS_MESSAGE_BOUND_TYPES` and sets, per type:
+#
+#   NROS_MESSAGE_BOUND_<pkg>_msg_<Name>_STATE   bounded | unbounded | unresolved
+#   NROS_MESSAGE_BOUND_<pkg>_msg_<Name>_TX      bytes, bounded only
+#   NROS_MESSAGE_BOUND_<pkg>_msg_<Name>_RX      bytes, bounded only
+#   NROS_MESSAGE_BOUND_<pkg>_msg_<Name>_REASON  why, unbounded/unresolved only
+#
+# A type with no bound sets NO `_TX`/`_RX` at all, so a consumer either reads a
+# number codegen DERIVED or reads nothing — never a substituted default. That is
+# the whole point: `NROS_MAX_LARGE_SUBSCRIBERS` and `NROS_SUBSCRIBER_LARGE_SIZE`
+# were numbers a human produced by reading generated headers by eye.
+#
+# `include()` it at the scope you want the variables in — a CMake function scope
+# does not leak. Fragments from several packages compose; each one de-duplicates
+# the two lists it appends to.
+#
+# The names live here, in ONE place, because the emitter
+# (`rosidl_codegen::bounds`) and every reader must agree on them.
+function(nros_message_bounds_files _output_dir _json_var _cmake_var)
+    set(${_json_var} "${_output_dir}/nros_message_bounds.json" PARENT_SCOPE)
+    set(${_cmake_var} "${_output_dir}/nros_message_bounds.cmake" PARENT_SCOPE)
+endfunction()
+
 # _nros_predict_generated_outputs(<headers_var> <sources_var> <rs_var>
 #     LANGUAGE C|CPP PACKAGE <name> OUTPUT_DIR <dir> INTERFACE_FILES <files...>)
 #

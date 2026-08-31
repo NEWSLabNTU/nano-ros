@@ -84,11 +84,33 @@ pub fn build_schema(
 ) -> Result<&'static [Field], SchemaError> {
     let mut stack = BTreeSet::new();
     stack.insert(owner.to_string());
-    build_fields(msg, lookup, &mut stack)
+    build_fields(msg, package_of(owner), lookup, &mut stack)
+}
+
+/// The package half of an owner name (`nav_msgs/msg/Odometry` ->  `nav_msgs`,
+/// `nav_msgs/Odometry` -> `nav_msgs`). `None` for a bare `Odometry`, which is
+/// what the unit tests and any caller without package context pass.
+fn package_of(owner: &str) -> Option<&str> {
+    owner.split('/').next().filter(|p| p.len() < owner.len())
 }
 
 fn build_fields(
     msg: &Message,
+    // phase-403 W6 — the package a BARE nested reference resolves against.
+    //
+    // ROS `.msg` says a bare `Pose` means "same package", and "same" is the
+    // package of the message the field is DECLARED IN, not of whatever
+    // top-level message the walk started from. Descending into
+    // `geometry_msgs/PoseWithCovariance` from `nav_msgs/msg/Odometry` and then
+    // asking a lookup for a bare `Pose` asks it the wrong question: the answer
+    // is `geometry_msgs/Pose`, and a lookup keyed on the ORIGINAL package finds
+    // nothing and reports `Unresolved`.
+    //
+    // Latent until now only because no caller had a cross-package lookup at
+    // all, so the walk never got one level down; W6 gave the C/C++ drivers one
+    // and `nav_msgs/msg/Odometry` immediately came back "nested type `Pose`
+    // could not be resolved".
+    current_package: Option<&str>,
     lookup: &MsgLookup<'_>,
     stack: &mut BTreeSet<String>,
 ) -> Result<&'static [Field], SchemaError> {
@@ -96,7 +118,7 @@ fn build_fields(
     for f in &msg.fields {
         out.push(Field {
             name: Box::leak(f.name.clone().into_boxed_str()),
-            ty: *lower(&f.field_type, lookup, stack)?,
+            ty: *lower(&f.field_type, current_package, lookup, stack)?,
             // The size rule never reads `offset` (checked: zero references in
             // `nros_serdes::size`), and codegen cannot know a Rust struct's
             // layout anyway. Zero is honest here precisely because nothing
@@ -109,6 +131,7 @@ fn build_fields(
 
 fn lower(
     ty: &IdlFieldType,
+    current_package: Option<&str>,
     lookup: &MsgLookup<'_>,
     stack: &mut BTreeSet<String>,
 ) -> Result<&'static SerdeFieldType, SchemaError> {
@@ -119,27 +142,35 @@ fn lower(
         IdlFieldType::BoundedString(n) => SerdeFieldType::BoundedString(*n),
         IdlFieldType::BoundedWString(n) => SerdeFieldType::BoundedWString(*n),
         IdlFieldType::Array { element_type, size } => {
-            SerdeFieldType::Array(*size, lower(element_type, lookup, stack)?)
+            SerdeFieldType::Array(*size, lower(element_type, current_package, lookup, stack)?)
         }
         IdlFieldType::Sequence { element_type } => {
-            SerdeFieldType::Sequence(lower(element_type, lookup, stack)?)
+            SerdeFieldType::Sequence(lower(element_type, current_package, lookup, stack)?)
         }
         IdlFieldType::BoundedSequence {
             element_type,
             max_size,
-        } => SerdeFieldType::BoundedSequence(*max_size, lower(element_type, lookup, stack)?),
+        } => SerdeFieldType::BoundedSequence(
+            *max_size,
+            lower(element_type, current_package, lookup, stack)?,
+        ),
         IdlFieldType::NamespacedType { package, name } => {
-            let fqn = match package {
-                Some(p) => format!("{p}/{name}"),
-                // A bare name is same-package; the caller's lookup owns that
-                // resolution, so hand it the name as written.
-                None => name.clone(),
+            let fqn = match (package, current_package) {
+                (Some(p), _) => format!("{p}/{name}"),
+                // A bare name is same-package, and "same" is the package of the
+                // message this field was declared in.
+                (None, Some(p)) => format!("{p}/{name}"),
+                // No package context at all: hand the lookup the name as
+                // written and let it decide, which is what callers with a
+                // single-package view already do.
+                (None, None) => name.clone(),
             };
             if !stack.insert(fqn.clone()) {
                 return Err(SchemaError::Cycle(fqn));
             }
             let nested = lookup(&fqn).ok_or_else(|| SchemaError::Unresolved(fqn.clone()))?;
-            let fields = build_fields(&nested, lookup, stack)?;
+            let nested_package = fqn.split('/').next().filter(|p| p.len() < fqn.len());
+            let fields = build_fields(&nested, nested_package, lookup, stack)?;
             stack.remove(&fqn);
             SerdeFieldType::Nested(Box::leak(Box::new(NestedType {
                 type_name: Box::leak(fqn.into_boxed_str()),

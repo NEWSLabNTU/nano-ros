@@ -245,7 +245,20 @@ function(nros_generate_interfaces target)
     PACKAGE "${target}"
     OUTPUT_DIR "${_output_dir}"
     INTERFACE_FILES ${_interface_files})
-  set(_expected_outputs ${_exp_hdr} ${_exp_src} ${_exp_rs})
+  # phase-403 W6 — the derived per-type size bounds. In the expected set so a
+  # tree generated before this wave (headers present, no inventory) re-runs
+  # codegen instead of silently having no bounds to read.
+  #
+  # This lane runs codegen at CONFIGURE time, so the fragment EXISTS by the time
+  # anything downstream configures — which is what makes it usable for a Kconfig
+  # value. See nros_message_bounds_files() in NanoRosCodegenCore.cmake.
+  nros_message_bounds_files("${_output_dir}" _bounds_json _bounds_cmake)
+  set(_expected_outputs ${_exp_hdr} ${_exp_src} ${_exp_rs}
+      "${_bounds_json}" "${_bounds_cmake}")
+  set(${target}_MESSAGE_BOUNDS_JSON "${_bounds_json}" CACHE INTERNAL
+      "phase-403 W6: derived per-type serialized-size bounds for ${target}")
+  set(${target}_MESSAGE_BOUNDS_CMAKE "${_bounds_cmake}" CACHE INTERNAL
+      "phase-403 W6: include() this to read ${target}'s bounds as CMake variables")
 
   # ---- Run codegen at configure time ----
   # Phase 196.1 — the codegen CLI is the `nros codegen` subcommand (Phase 195
