@@ -32,11 +32,12 @@ struct Bounded {
     double d = {};
     nros::FixedString<8> label = {};
     int32_t fixed[4] = {};
+    nros::FixedSequence<nros::FixedString<8>, 4> labels = {};
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Bounded_";
     static constexpr const char* TYPE_HASH = "h";
-    static constexpr size_t SERIALIZED_SIZE_MAX = 110;
+    static constexpr size_t SERIALIZED_SIZE_MAX = 1170;
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {

@@ -1110,25 +1110,13 @@ pub fn c_type_for_field(field_type: &FieldType, _current_package: Option<&str>) 
 
         // Sequences use anonymous struct
         FieldType::Sequence { element_type } => {
-            let elem = c_type_for_field(element_type, _current_package);
-            let elem_suffix = c_array_suffix_for_field(element_type);
-            format!(
-                "struct {{ uint32_t size; {} data{}[{}]; }}",
-                elem, elem_suffix, C_DEFAULT_SEQUENCE_CAPACITY
-            )
+            c_sequence_struct(element_type, _current_package, C_DEFAULT_SEQUENCE_CAPACITY)
         }
 
         FieldType::BoundedSequence {
             element_type,
             max_size,
-        } => {
-            let elem = c_type_for_field(element_type, _current_package);
-            let elem_suffix = c_array_suffix_for_field(element_type);
-            format!(
-                "struct {{ uint32_t size; {} data{}[{}]; }}",
-                elem, elem_suffix, max_size
-            )
-        }
+        } => c_sequence_struct(element_type, _current_package, *max_size),
 
         FieldType::NamespacedType { package, name } => {
             let pkg = package.as_deref().or(_current_package).unwrap_or("");
@@ -1152,12 +1140,44 @@ pub fn c_type_for_field_with_capacity(
 ) -> String {
     match field_type {
         FieldType::Sequence { element_type } => {
-            let elem = c_type_for_field(element_type, current_package);
-            let elem_suffix = c_array_suffix_for_field(element_type);
-            format!("struct {{ uint32_t size; {elem} data{elem_suffix}[{cap}]; }}")
+            c_sequence_struct(element_type, current_package, cap)
         }
         _ => c_type_for_field(field_type, current_package),
     }
+}
+
+/// The C anonymous struct for an inline sequence of `cap` elements.
+///
+/// # The dimension order, which was wrong in all three callers (phase-403 W7)
+///
+/// This existed three times as
+/// `"struct {{ uint32_t size; {elem} data{elem_suffix}[{cap}]; }}"`, which puts
+/// the ELEMENT's own suffix first: a `string[]` under the built-in 256/64 came
+/// out `char data[256][64]`, and C reads that as 256 slots of `char[64]` -- the
+/// two dimensions swapped, so the container held 256 strings of 63 characters
+/// where the config said 64 strings of 255. The total byte count is the same,
+/// which is why nothing caught it: the struct is the right SIZE and the wrong
+/// SHAPE, and `nros_cdr_read_string(..., sizeof(data[i]))` then enforced the
+/// sequence cap on the string and no cap at all on the count.
+///
+/// Latent while a sequence element could only be bounded from a `.msg` (rare in
+/// stock interfaces, absent from the corpus). W7 makes it reachable from
+/// configuration and makes the numbers CLAIMED: the derived bound now says
+/// `cap` elements of `element_cap` bytes, and a struct with those two
+/// transposed is the inventory disagreeing with the storage in the same header.
+///
+/// One helper rather than a fourth copy of the format string, because three
+/// identical spellings drifting together is what hid it.
+fn c_sequence_struct(
+    element_type: &FieldType,
+    current_package: Option<&str>,
+    cap: usize,
+) -> String {
+    let elem = c_type_for_field(element_type, current_package);
+    // `data[cap]` first: `cap` elements, each of whatever shape the element
+    // itself declares (`[N]` for a string, empty for a scalar or nested struct).
+    let elem_suffix = c_array_suffix_for_field(element_type);
+    format!("struct {{ uint32_t size; {elem} data[{cap}]{elem_suffix}; }}")
 }
 
 /// Heap (`mode = "heap"`, RFC-0033) C rendering of a **top-level unbounded**

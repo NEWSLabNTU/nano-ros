@@ -540,6 +540,76 @@ mod tests {
         ));
     }
 
+    /// The COMBINED form: an array suffix and a string bound on one field.
+    ///
+    /// ROS 2's own parser strips the array suffix FIRST and then parses the base
+    /// type, which makes the two bounds independent dimensions of one field
+    /// rather than a single number. Ours agrees -- it always has -- but nothing
+    /// pinned it, and phase-403 W7 makes the distinction load-bearing: the
+    /// codegen config's `cap` / `element_cap` pair lowers to exactly this shape,
+    /// so a parser that folded the two into one would make an element bound
+    /// unspellable in the `.msg` it is supposed to mirror.
+    ///
+    /// All four combinations, because the interesting claim is that each
+    /// dimension is INDEPENDENTLY present or absent. Asserting only the fully
+    /// bounded case would pass on a parser that ignored one of the numbers.
+    #[test]
+    fn a_string_bound_and_an_array_suffix_are_independent_dimensions() {
+        let msg = parse_message(
+            "string<=10[<=5] both\n\
+             string[<=5] seq_only\n\
+             string<=10[5] array_and_elem\n\
+             string<=10 elem_only\n",
+        )
+        .unwrap();
+        assert_eq!(msg.fields.len(), 4);
+
+        match &msg.fields[0].field_type {
+            FieldType::BoundedSequence {
+                element_type,
+                max_size,
+            } => {
+                assert_eq!(*max_size, 5, "the array suffix is the SEQUENCE bound");
+                assert_eq!(
+                    **element_type,
+                    FieldType::BoundedString(10),
+                    "the base-type bound is the ELEMENT bound"
+                );
+            }
+            other => panic!("string<=10[<=5]: expected BoundedSequence, got {other:?}"),
+        }
+
+        match &msg.fields[1].field_type {
+            FieldType::BoundedSequence {
+                element_type,
+                max_size,
+            } => {
+                assert_eq!(*max_size, 5);
+                assert_eq!(
+                    **element_type,
+                    FieldType::String,
+                    "a bounded sequence of UNBOUNDED strings -- the shape five \
+                     stock Humble types have, and the one `element_cap` bounds"
+                );
+            }
+            other => panic!("string[<=5]: expected BoundedSequence, got {other:?}"),
+        }
+
+        match &msg.fields[2].field_type {
+            FieldType::Array { element_type, size } => {
+                assert_eq!(*size, 5, "a FIXED array, not a bounded sequence");
+                assert_eq!(**element_type, FieldType::BoundedString(10));
+            }
+            other => panic!("string<=10[5]: expected Array, got {other:?}"),
+        }
+
+        assert_eq!(
+            msg.fields[3].field_type,
+            FieldType::BoundedString(10),
+            "no array suffix leaves the base type alone"
+        );
+    }
+
     #[test]
     fn parse_constant() {
         let msg = parse_message("int32 MAX_SIZE=100\n").unwrap();

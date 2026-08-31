@@ -15,3 +15,12 @@
 # behaviour passing.
 string  label
 int64[] samples
+
+# phase-403 W7 -- a `string[]`, the shape a cap alone cannot bound: capping the
+# LENGTH still leaves each element unbounded, which is why five stock Humble
+# types survived the W0 measurement. The config gives this field BOTH numbers
+# (`cap = 4, element_cap = 8`), and the emitted container must match
+# `Bounded.labels`, which spells the same two numbers as `string<=8[<=4]` in its
+# .msg. Under the `inline` arm it is a third unbounded member, named with the
+# other two.
+string[] tags

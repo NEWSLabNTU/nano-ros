@@ -54,6 +54,10 @@ int32_t fingerprint_corpus_msg_bounded_serialize_inline(const fingerprint_corpus
     for (size_t i = 0; i < 4; ++i) {
         if (nros_cdr_write_i32(&ptr, end, origin, msg->fixed[i]) < 0) return -1;
     }
+    if (nros_cdr_write_u32(&ptr, end, origin, msg->labels.size) < 0) return -1;
+    for (size_t i = 0; i < msg->labels.size; ++i) {
+        if (nros_cdr_write_string(&ptr, end, origin, msg->labels.data[i]) < 0) return -1;
+    }
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
@@ -99,6 +103,15 @@ int32_t fingerprint_corpus_msg_bounded_deserialize_inline(fingerprint_corpus_msg
     if (nros_cdr_read_string(&ptr, end, origin, msg->label, sizeof(msg->label)) < 0) return -1;
     for (size_t i = 0; i < 4; ++i) {
         if (nros_cdr_read_i32(&ptr, end, origin, &msg->fixed[i]) < 0) return -1;
+    }
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        msg->labels.size = len;
+        if (len > 4) return -1;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_string(&ptr, end, origin, msg->labels.data[i], sizeof(msg->labels.data[i])) < 0) return -1;
+        }
     }
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;

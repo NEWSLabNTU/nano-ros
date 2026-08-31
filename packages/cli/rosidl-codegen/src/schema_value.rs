@@ -152,15 +152,24 @@ fn build_fields(
     let (current_package, current_message) = decl;
     let mut out = Vec::with_capacity(msg.fields.len());
     for f in &msg.fields {
-        // Only the field's OWN top-level shape consults the config, and only
-        // for the two shapes the resolver is keyed on — the same
+        // phase-403 W7 — the ELEMENT dimension, applied first and by REWRITING
+        // the shape: a `string[]` whose config states `element_cap = 32` is
+        // lowered as the `string<=32[]` the `.msg` could have said, so the arms
+        // below need no element case at all. `declared_element_bound` applies
+        // the shape / `.msg`-wins / mode rules; an element that gets no stated
+        // cap still gets NO bound from the built-in 256, which is the rule W0
+        // exists to enforce.
+        let field_type = caps.element_capped(
+            current_package.unwrap_or_default(),
+            current_message,
+            &f.name,
+            &f.field_type,
+        );
+        // Only the field's OWN top-level shape consults the config for `cap`,
+        // and only for the two shapes the resolver is keyed on — the same
         // `String`/`WString`/`Sequence` set `field_to_nros_field_with_mode`
-        // calls configurable. A `string[]` element gets NO cap from here: the
-        // emitter spells its element `heapless::String<NROS_DEFAULT_STRING_CAPACITY>`
-        // from a built-in constant nobody chose, and claiming a bound from a
-        // default would bound the whole tree at a number no config states —
-        // which is the rule phase-403 W0 exists to enforce, deleted.
-        let declared = match &f.field_type {
+        // calls configurable.
+        let declared = match field_type.as_ref() {
             IdlFieldType::String | IdlFieldType::WString => caps.declared_bound(
                 current_package.unwrap_or_default(),
                 current_message,
@@ -178,7 +187,7 @@ fn build_fields(
         out.push(Field {
             name: Box::leak(f.name.clone().into_boxed_str()),
             ty: *lower(
-                &f.field_type,
+                field_type.as_ref(),
                 declared,
                 current_package,
                 caps,
@@ -990,5 +999,164 @@ mod tests {
         let plain_schema =
             build_nros_message_schema("p", "M", &m.fields, &SchemaCaps::unconfigured());
         assert!(plain_schema.fields_block.contains("FieldType::String"));
+    }
+
+    // ========================================================================
+    // phase-403 W7 — the element dimension
+    // ========================================================================
+
+    /// THE claim W7 makes, as one equality: `cap` + `element_cap` on a
+    /// `string[]` derives EXACTLY the number the `.msg` spelling of the same two
+    /// numbers derives.
+    ///
+    /// Not "the type is now bounded" — that would pass on a wrong number — and
+    /// not a literal, which would have to be recomputed by hand every time the
+    /// encoding rules move. Comparing the two paths makes the config a spelling
+    /// of the interface rather than a second sizing rule, which is the whole
+    /// design: the emitters and `nros_serdes::size` have always handled
+    /// `string<=32[<=16]`, and this asserts the config reaches the same shape.
+    #[test]
+    fn an_element_cap_derives_what_the_msg_spelling_of_it_derives() {
+        let configured = parse_message("string[] name\n").unwrap();
+        let spelled = parse_message("string<=32[<=16] name\n").unwrap();
+        let r = caps("[fields]\n\"p/M.name\" = { cap = 16, element_cap = 32 }\n");
+        for v in [EncodingVersion::Xcdr1, EncodingVersion::Xcdr2] {
+            let from_config = bound_message("p/M", &configured, v, &r, &no_lookup);
+            assert_eq!(
+                from_config,
+                bound_message("p/M", &spelled, v, &no_caps(), &no_lookup),
+                "{v:?}"
+            );
+            assert!(
+                matches!(from_config, TypeBound::Bounded(_)),
+                "{from_config:?}"
+            );
+        }
+    }
+
+    /// The framing, spelled out once so the arithmetic is in the tree rather
+    /// than in a commit message.
+    ///
+    /// A CDR string costs a 4-byte length prefix, the payload, and a NUL --
+    /// `write_string` writes `len + 1` as the prefix -- so ONE element is
+    /// `4 + element_cap + 1`, not `4 + element_cap`, and each element after the
+    /// first is padded up to the next multiple of 4. For `cap = 2,
+    /// element_cap = 32` under XCDR1 that is the 4-byte encapsulation header,
+    /// the sequence's own 4-byte count, one padded element (40) and one
+    /// unpadded final element (37): 85.
+    ///
+    /// Asserted as a literal deliberately. Everything else here compares two
+    /// paths, which cannot notice both paths moving together; this notices.
+    #[test]
+    fn the_per_element_cost_includes_the_length_prefix_and_the_nul() {
+        let m = parse_message("string[] name\n").unwrap();
+        let r = caps("[fields]\n\"p/M.name\" = { cap = 2, element_cap = 32 }\n");
+        assert_eq!(
+            bound_message("p/M", &m, EncodingVersion::Xcdr1, &r, &no_lookup),
+            TypeBound::Bounded(4 + 4 + 40 + 37)
+        );
+    }
+
+    /// Both walks again, for the element dimension. `SchemaCaps` reads the
+    /// config for the emitted `Message::FIELDS`; this module reads it for the C
+    /// constant. An element bound honoured by one only is the same defect
+    /// `a_cap_reaches_the_c_bound_and_the_rust_schema_alike` pins for `cap`.
+    #[test]
+    fn an_element_cap_reaches_the_c_bound_and_the_rust_schema_alike() {
+        use crate::generator::common::{SchemaCaps, build_nros_message_schema};
+
+        let m = parse_message("string[] name\n").unwrap();
+        let r = caps("[fields]\n\"p/M.name\" = { cap = 16, element_cap = 32 }\n");
+
+        let built = build_schema("p/M", &m, &r, &no_lookup).unwrap();
+        use nros_serdes::schema::FieldType as S;
+        match built[0].ty {
+            S::BoundedSequence(16, elem) => assert!(matches!(elem, S::BoundedString(32))),
+            ref other => panic!("expected BoundedSequence(16, BoundedString(32)), got {other:?}"),
+        }
+
+        let schema = build_nros_message_schema("p", "M", &m.fields, &SchemaCaps::new("M", &r));
+        assert!(
+            schema
+                .fields_block
+                .contains("FieldType::BoundedSequence(16, &FT_NAME_ELEM)"),
+            "{}",
+            schema.fields_block
+        );
+        assert!(
+            schema
+                .helper_consts
+                .contains("FT_NAME_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::BoundedString(32)"),
+            "{}",
+            schema.helper_consts
+        );
+    }
+
+    /// Issue 0939 -- `size_bound` walks a bounded sequence ELEMENT BY ELEMENT,
+    /// so nested bounded sequences cost the PRODUCT of their caps. W7 must not
+    /// make that easier to hit, and this pins WHY it does not.
+    ///
+    /// A string is a LEAF: `element_cap` can only turn `String` into
+    /// `BoundedString`, which has no elements of its own. So the key adds a
+    /// LINEAR factor to one level (`cap * (4 + element_cap + 1)`) and cannot add
+    /// a level to a bounded-sequence chain -- the depth of the nesting, which is
+    /// what the product is over, is a property of the `.msg` alone.
+    ///
+    /// Checked by construction: the deepest chain of `BoundedSequence` in a
+    /// schema is the same with and without the element bound, while the number
+    /// grows only in proportion to the cap.
+    #[test]
+    fn an_element_cap_cannot_deepen_a_bounded_sequence_chain() {
+        /// Longest chain of nested `BoundedSequence` reachable from `fields`.
+        fn depth(ty: &nros_serdes::schema::FieldType) -> usize {
+            use nros_serdes::schema::FieldType as S;
+            match ty {
+                S::BoundedSequence(_, inner) => 1 + depth(inner),
+                S::Array(_, inner) => depth(inner),
+                S::Nested(n) => n.fields.iter().map(|f| depth(&f.ty)).max().unwrap_or(0),
+                _ => 0,
+            }
+        }
+
+        let m = parse_message("string[] name\n").unwrap();
+        let without = build_schema(
+            "p/M",
+            &m,
+            &caps("[fields]\n\"p/M.name\" = 16\n"),
+            &no_lookup,
+        )
+        .unwrap();
+        let with = build_schema(
+            "p/M",
+            &m,
+            &caps("[fields]\n\"p/M.name\" = { cap = 16, element_cap = 32 }\n"),
+            &no_lookup,
+        )
+        .unwrap();
+        assert_eq!(depth(&without[0].ty), 1);
+        assert_eq!(
+            depth(&with[0].ty),
+            1,
+            "an element bound turns a leaf into a bounded leaf, never into a level"
+        );
+
+        // And the growth is linear in the cap, not multiplicative: doubling the
+        // sequence cap doubles the element block, it does not square it.
+        let one = bound_message(
+            "p/M",
+            &m,
+            EncodingVersion::Xcdr1,
+            &caps("[fields]\n\"p/M.name\" = { cap = 1, element_cap = 32 }\n"),
+            &no_lookup,
+        );
+        let two = bound_message(
+            "p/M",
+            &m,
+            EncodingVersion::Xcdr1,
+            &caps("[fields]\n\"p/M.name\" = { cap = 2, element_cap = 32 }\n"),
+            &no_lookup,
+        );
+        assert_eq!(one, TypeBound::Bounded(45));
+        assert_eq!(two, TypeBound::Bounded(85), "45 + 40, not 45 * 45");
     }
 }

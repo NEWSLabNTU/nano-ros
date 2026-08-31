@@ -53,7 +53,7 @@ int32_t fingerprint_corpus_srv_probe_request_deserialize(fingerprint_corpus_srv_
 /// Probe response structure
 typedef struct fingerprint_corpus_srv_probe_response {
     int64_t sum;
-    struct { uint32_t size; char data[256][64]; } lines;
+    struct { uint32_t size; char data[64][256]; } lines;
 } fingerprint_corpus_srv_probe_response;
 
 /// Initialize a Probe response to default values

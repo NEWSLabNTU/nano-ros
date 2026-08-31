@@ -3,8 +3,8 @@ rfc: 0033
 title: "Per-field message capacity configuration"
 status: Stable
 since: 2026-06
-last-reviewed: 2026-08-30
-implements-tracked-by: [phase-229, phase-235, phase-390]
+last-reviewed: 2026-08-31
+implements-tracked-by: [phase-229, phase-235, phase-390, phase-403]
 supersedes: []
 superseded-by: null
 ---
@@ -88,9 +88,47 @@ sequence = { cap = 2_000_000, mode = "view" }
 - `/` separates package from message (ROS convention); `.` separates the field. Keys
   are quoted so TOML does not split on the dots.
 - A value is either an **integer** (shorthand for `{ cap = <int>, mode = "inline" }`)
-  or an inline table `{ cap = <int>, mode = "inline" | "heap" | "view" }` — the
+  or an inline table
+  `{ cap = <int>, element_cap = <int>, mode = "inline" | "heap" | "view" }` — the
   same int-or-table form at every level (resolves open question 2).
 - **`mode` defaults to `inline`** when omitted. Unknown table keys are rejected.
+
+#### `element_cap` — the second dimension (phase-403 W7)
+
+`cap` bounds the FIELD. For a `string[]` that is the sequence LENGTH, and a length
+alone bounds nothing: 16 unbounded strings are still unbounded. `element_cap`
+bounds ONE ELEMENT.
+
+The two are independent dimensions because a `.msg` already says they are — ROS 2's
+parser strips the array suffix and then parses the base type, so `string<=10[<=5]`
+is five 10-byte strings and `string[<=5]` is five unbounded ones. One key carrying
+two numbers mirrors that:
+
+```toml
+[defaults]
+sequence = { cap = 16, element_cap = 32 }   # once, for every string[] in the build
+
+[fields]
+"sensor_msgs/JointState.name" = { cap = 16, element_cap = 32, mode = "inline" }
+```
+
+It is lowered by REWRITING the field to the shape the `.msg` spelling would have
+produced, so every emitter's existing bounded-element path applies unchanged, and
+the bound is enforced by the container that rewrite produces (`heapless::String<N>`,
+`char[N]`, `nros::FixedString<N>`) rather than merely asserted.
+
+Rules:
+
+- **Shape.** Only an array/sequence whose element is an unbounded `string`/`wstring`
+  has the dimension. A `[fields]` entry naming anything else is a build ERROR
+  naming the field; `element_cap` on a LEVEL's `string` key is a parse error.
+- **The `.msg` wins, per dimension.** `string<=10[]` with `element_cap = 32` keeps
+  10, exactly as level 1 above beats every other level for `cap`.
+- **Only a bounding mode bounds** — `heap` and `view` state no bound for the
+  element, same as for `cap` (see "What each mode GUARANTEES").
+- **Its own level chain.** `element_cap` resolves through levels 2–5 independently
+  of `cap`, so a `[fields]` entry overriding a length does not delete a
+  `[defaults]` element bound. Level entries carry it on `sequence`.
 
 ### Precedence (highest wins)
 
@@ -346,3 +384,13 @@ Absent any file, the resolver uses built-in defaults — no behavior change.
   why loan/borrow are raw-only. The old config tokens still parse, with a
   deprecation naming the replacement. No behaviour change; the support matrix is
   unchanged.
+- 2026-08 — **phase-403 W7**: added `element_cap`, the per-element bound of an
+  array/sequence field, beside `cap` in the same entry. `cap` bounds the field
+  (for a `string[]`, its LENGTH) and a length alone bounds nothing, so five
+  stock ROS Humble types could not be bounded from configuration at all. The two
+  are independent dimensions because a `.msg` already spells them that way
+  (`string<=10[<=5]`), and the key is lowered by rewriting the field into that
+  shape, so it is one spelling rather than two. Same level chain, walked
+  independently of `cap`; the `.msg` still wins per dimension; only a mode whose
+  cap is enforced may bound. Naming a field with no element dimension is an
+  error, not a silently ignored key. Corpus: 121 -> 126 of 126 bounded.

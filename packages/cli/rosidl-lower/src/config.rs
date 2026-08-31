@@ -14,6 +14,21 @@
 //!
 //! Precedence (highest wins): `.msg` bound (caller) → `[fields]` → `[types]` →
 //! `[packages]` → `[defaults]` → built-in constant.
+//!
+//! # Two dimensions, not one (phase-403 W7)
+//!
+//! An entry carries `cap` AND `element_cap`. `cap` bounds the field; for a
+//! `string[]` that is the sequence LENGTH, and a length alone bounds nothing.
+//! `element_cap` bounds ONE ELEMENT, and it is a genuinely independent
+//! dimension because `.msg` already treats it as one: ROS 2's parser strips the
+//! array suffix and THEN parses the base type, so `string<=10[<=5]` is five
+//! ten-byte strings and `string[<=5]` is five unbounded ones.
+//!
+//! The two walk the level chain above independently — see
+//! [`CapacityResolver::declared_element_bound`] — and the element dimension is
+//! lowered by REWRITING the field into the `.msg` shape
+//! ([`with_element_bound`]), so every emitter's existing bounded-element path
+//! applies unchanged.
 
 use std::{
     collections::BTreeMap,
@@ -220,7 +235,8 @@ pub struct FieldStorage {
     pub mode: StorageMode,
 }
 
-/// A config entry value: either an integer (owned shorthand) or `{ cap, mode }`.
+/// A config entry value: either an integer (owned shorthand) or
+/// `{ cap, element_cap, mode }`.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(untagged)]
 enum CapEntry {
@@ -229,6 +245,17 @@ enum CapEntry {
     /// `field = { cap = 2_000_000, mode = "view" }`.
     Table {
         cap: usize,
+        /// phase-403 W7 — the bound on one ELEMENT of an array/sequence field,
+        /// a SECOND and independent dimension from `cap`.
+        ///
+        /// `.msg` already says the two are independent: ROS 2's parser strips
+        /// the array suffix and then parses the base type, so `string<=10[<=5]`
+        /// is a 5-element sequence of 10-byte strings and `string[<=5]` is a
+        /// 5-element sequence of unbounded ones. One config key carrying two
+        /// numbers mirrors that, rather than inventing a second key namespace
+        /// for elements that would have to be kept in step with the first.
+        #[serde(default)]
+        element_cap: Option<usize>,
         #[serde(default)]
         mode: StorageMode,
     },
@@ -241,7 +268,22 @@ impl CapEntry {
                 cap,
                 mode: StorageMode::Inline,
             },
-            CapEntry::Table { cap, mode } => FieldStorage { cap, mode },
+            CapEntry::Table { cap, mode, .. } => FieldStorage { cap, mode },
+        }
+    }
+
+    /// The element bound this entry states, or `None`.
+    ///
+    /// Deliberately NOT part of [`FieldStorage`]: the two dimensions resolve
+    /// through the level chain INDEPENDENTLY (see
+    /// [`CapacityResolver::declared_element_bound`]), so folding them into one
+    /// resolved value would make a per-field `cap` shadow a `[defaults]`
+    /// `element_cap` — capping one field's length would silently drop the
+    /// element default the user set once.
+    fn element_cap(self) -> Option<usize> {
+        match self {
+            CapEntry::Int(_) => None,
+            CapEntry::Table { element_cap, .. } => element_cap,
         }
     }
 }
@@ -293,6 +335,23 @@ struct RawConfig {
 }
 
 impl RawConfig {
+    /// Every `[defaults]` / `[packages.*]` / `[types.*]` entry with the config
+    /// path it was written at, for diagnostics that are about the KEY rather
+    /// than about any message.
+    fn levels(&self) -> impl Iterator<Item = (String, LevelCaps)> + '_ {
+        std::iter::once(("defaults".to_string(), self.defaults))
+            .chain(
+                self.packages
+                    .iter()
+                    .map(|(k, v)| (format!("packages.{k}"), *v)),
+            )
+            .chain(
+                self.types
+                    .iter()
+                    .map(|(k, v)| (format!("types.\"{k}\""), *v)),
+            )
+    }
+
     /// Deep-merge `over` onto `self`; `over` (the app file) wins.
     fn merge_over(&mut self, over: RawConfig) {
         self.defaults.merge_over(over.defaults);
@@ -333,6 +392,42 @@ pub enum ConfigError {
          accepted)"
     )]
     UnknownStorageMode { token: String },
+    /// phase-403 W7 — `element_cap` on a `string` / `wstring` LEVEL entry.
+    ///
+    /// A level key (`[defaults] string = ...`) sets the default for a field
+    /// whose whole shape is a string. Such a field has no elements, so an
+    /// `element_cap` there can never apply to anything. Reported at parse time
+    /// because it needs no field types to detect — it is wrong about the key it
+    /// is written under, not about the messages it would reach.
+    #[error(
+        "`element_cap` under `{level}.string` in codegen config: a string field \
+         has no elements. Put `element_cap` on the `sequence` key (it bounds one \
+         element of an array/sequence), or on a `[fields]` entry naming an \
+         array/sequence field"
+    )]
+    ElementCapOnStringLevel { level: String },
+}
+
+/// phase-403 W7 — an `element_cap` that names a field it cannot apply to.
+///
+/// Separate from [`ConfigError`] because it is not a parse failure: detecting it
+/// needs the message's FIELD TYPES, which arrive long after the config is read.
+/// A `[defaults]` / `[packages.*]` / `[types.*]` `element_cap` never produces
+/// one — those are defaults, and a default that does not apply to a given field
+/// is how defaults work. Only a `[fields]` entry, which NAMES one field, does.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "`element_cap` in codegen config names `{package}/{message}.{field}`, which is \
+     {shape}. An element bound applies only to an array or sequence whose ELEMENT \
+     is a string (`string[]`, `string[<=N]`, `string[N]`); use `cap` for the \
+     field's own bound"
+)]
+pub struct ElementCapShapeError {
+    pub package: String,
+    pub message: String,
+    pub field: String,
+    /// What the field actually is, as prose ("a string", "a sequence of int32").
+    pub shape: String,
 }
 
 /// Resolves per-field storage from a merged `nros-codegen.toml`. One instance
@@ -361,8 +456,19 @@ impl CapacityResolver {
         if let Some(token) = scan.unknown.into_iter().next() {
             return Err(ConfigError::UnknownStorageMode { token });
         }
+        let raw: RawConfig = toml::from_str(s)?;
+        // phase-403 W7 — an `element_cap` under a `string` LEVEL key can never
+        // apply: the level entry sets the default for fields that ARE strings,
+        // and a string has no elements. Caught here rather than ignored,
+        // because the whole point of the shape error is that a key which cannot
+        // do anything must not look like it did.
+        for (level, caps) in raw.levels() {
+            if caps.string.and_then(|e| e.element_cap()).is_some() {
+                return Err(ConfigError::ElementCapOnStringLevel { level });
+            }
+        }
         Ok(Self {
-            raw: toml::from_str(s)?,
+            raw,
             deprecations: scan.superseded,
         })
     }
@@ -578,6 +684,269 @@ impl CapacityResolver {
         let storage = self.resolve_configured(package, message, field, kind)?;
         storage.mode.cap_bounds_the_wire().then_some(storage.cap)
     }
+
+    /// phase-403 W7 — the bound a config `element_cap` STATES for ONE ELEMENT of
+    /// an array or sequence field, or `None`.
+    ///
+    /// # Why a second dimension at all
+    ///
+    /// A `cap` bounds the field. For a `string[]` that is the sequence LENGTH,
+    /// and a length alone bounds nothing: 16 unbounded strings are still
+    /// unbounded. Five stock ROS Humble types have exactly this shape and were
+    /// the only ones the phase-403 measurement could not bound
+    /// (`sensor_msgs/JointState.name` and four siblings). `.msg` has always had
+    /// both dimensions — ROS 2's parser strips the array suffix and then parses
+    /// the base type, so `string<=10[<=5]` bounds each — and this is the same
+    /// two numbers in the config.
+    ///
+    /// # The rules, all four of them
+    ///
+    /// 1. **Shape.** Only an array/sequence whose element is an UNBOUNDED
+    ///    `string`/`wstring` has an element dimension to bound. Anything else
+    ///    answers `None`; a `[fields]` entry that names such a field is an
+    ///    error, reported by [`Self::element_cap_shape_errors`] rather than here
+    ///    (this method is called from paths that have no error channel, and a
+    ///    silently ignored key is what the error exists to prevent).
+    /// 2. **The `.msg` wins, per dimension.** `string<=10[]` capped with
+    ///    `element_cap = 32` keeps 10, exactly as a `.msg`-bounded field keeps
+    ///    its own `cap`. Enforced by construction: an already-bounded element is
+    ///    not an unbounded string, so rule 1 answers `None` first.
+    /// 3. **Only a bounding mode bounds.** The mode is the FIELD's — a `view`
+    ///    field aliases the receive buffer and a `heap` field's cap is a hint,
+    ///    so neither can hold an element to a size either
+    ///    ([`StorageMode::cap_bounds_the_wire`]). A `.msg`-bounded sequence and
+    ///    a fixed array are not configurable shapes at all, so their mode is
+    ///    `inline` by construction.
+    /// 4. **Its own level chain.** `element_cap` resolves through `[fields]` →
+    ///    `[types]` → `[packages]` → `[defaults]` INDEPENDENTLY of `cap`, so
+    ///    `[defaults] sequence = { cap = 16, element_cap = 32 }` still supplies
+    ///    the element bound for a field whose length a `[fields]` entry
+    ///    overrides. Folding both into one resolved entry would make capping one
+    ///    field's length silently delete the element default.
+    pub fn declared_element_bound(
+        &self,
+        package: &str,
+        message: &str,
+        field: &str,
+        field_type: &rosidl_parser::ast::FieldType,
+    ) -> Option<usize> {
+        // 1 — shape.
+        if !element_is_unbounded_string(field_type) {
+            return None;
+        }
+        // 3 — mode. Only a plain `type[]` is a configurable shape; a fixed array
+        // and a `.msg`-bounded sequence keep an inline container whatever the
+        // config says, so nothing can move their mode off `inline`.
+        let mode = match field_type {
+            rosidl_parser::ast::FieldType::Sequence { .. } => self
+                .resolve_configured(package, message, field, FieldKind::Sequence)
+                .map(|s| s.mode)
+                .unwrap_or_default(),
+            _ => StorageMode::Inline,
+        };
+        if !mode.cap_bounds_the_wire() {
+            return None;
+        }
+        // 4 — the element level chain, walked separately from `cap`'s.
+        self.configured_element_cap(package, message, field)
+    }
+
+    /// `field_type` with any configured element bound applied -- the ONE call an
+    /// emitter makes.
+    ///
+    /// Borrowed when nothing applies, so the overwhelmingly common field costs
+    /// no clone. See [`with_element_bound`] for why this is a rewrite of the
+    /// field's shape rather than a number passed alongside it.
+    pub fn element_capped<'t>(
+        &self,
+        package: &str,
+        message: &str,
+        field: &str,
+        field_type: &'t rosidl_parser::ast::FieldType,
+    ) -> std::borrow::Cow<'t, rosidl_parser::ast::FieldType> {
+        with_element_bound(
+            field_type,
+            self.declared_element_bound(package, message, field, field_type),
+        )
+    }
+
+    /// The `element_cap` a config FILE states for this field, before the shape
+    /// and mode rules of [`Self::declared_element_bound`] are applied.
+    ///
+    /// Level entries are read off the `sequence` key: an element belongs to a
+    /// sequence/array, and `[defaults] string` is rejected at parse time
+    /// ([`ConfigError::ElementCapOnStringLevel`]) precisely so there is only one
+    /// place to look.
+    fn configured_element_cap(&self, package: &str, message: &str, field: &str) -> Option<usize> {
+        let field_key = format!("{package}/{message}.{field}");
+        if let Some(e) = self
+            .raw
+            .fields
+            .get(&field_key)
+            .and_then(|e| e.element_cap())
+        {
+            return Some(e);
+        }
+        let type_key = format!("{package}/{message}");
+        if let Some(e) = self
+            .raw
+            .types
+            .get(&type_key)
+            .and_then(|l| l.sequence)
+            .and_then(|e| e.element_cap())
+        {
+            return Some(e);
+        }
+        if let Some(e) = self
+            .raw
+            .packages
+            .get(package)
+            .and_then(|l| l.sequence)
+            .and_then(|e| e.element_cap())
+        {
+            return Some(e);
+        }
+        self.raw.defaults.sequence.and_then(|e| e.element_cap())
+    }
+
+    /// phase-403 W7 — every `[fields]` `element_cap` in this config that names a
+    /// field of `message` it cannot apply to.
+    ///
+    /// A `Vec` and not the first offender, for the reason
+    /// `TypeBound::Unbounded` carries all its members: one build should name
+    /// everything the user has to fix.
+    ///
+    /// Only `[fields]` entries are checked. A `[defaults]`/`[packages]`/`[types]`
+    /// `element_cap` reaching a plain `string` field is a default that does not
+    /// apply, which is how a default is supposed to behave; a `[fields]` entry
+    /// is a user pointing at one field and stating something about it, and if
+    /// nothing can come of that they have to be told.
+    pub fn element_cap_shape_errors(
+        &self,
+        package: &str,
+        message: &str,
+        fields: &[rosidl_parser::ast::Field],
+    ) -> Vec<ElementCapShapeError> {
+        fields
+            .iter()
+            .filter(|f| {
+                self.raw
+                    .fields
+                    .get(&format!("{package}/{message}.{}", f.name))
+                    .and_then(|e| e.element_cap())
+                    .is_some()
+            })
+            .filter(|f| !element_is_unbounded_string(&f.field_type))
+            .map(|f| ElementCapShapeError {
+                package: package.to_string(),
+                message: message.to_string(),
+                field: f.name.clone(),
+                shape: describe_shape(&f.field_type),
+            })
+            .collect()
+    }
+}
+
+/// The element of an array/sequence field, or `None` for any other shape.
+fn element_of(ty: &rosidl_parser::ast::FieldType) -> Option<&rosidl_parser::ast::FieldType> {
+    use rosidl_parser::ast::FieldType as F;
+    match ty {
+        F::Array { element_type, .. }
+        | F::Sequence { element_type }
+        | F::BoundedSequence { element_type, .. } => Some(element_type),
+        _ => None,
+    }
+}
+
+/// Whether `ty` is an array/sequence whose element is an UNBOUNDED string --
+/// the one shape an `element_cap` can bound.
+///
+/// An already-bounded element (`string<=10[]`) answers `false`, which is how the
+/// "`.msg` wins per dimension" rule is enforced: there is no second precedence
+/// table to keep in step, the interface bound simply removes the dimension the
+/// config could have spoken about.
+fn element_is_unbounded_string(ty: &rosidl_parser::ast::FieldType) -> bool {
+    use rosidl_parser::ast::FieldType as F;
+    matches!(element_of(ty), Some(F::String | F::WString))
+}
+
+/// What a field is, as prose for [`ElementCapShapeError`].
+fn describe_shape(ty: &rosidl_parser::ast::FieldType) -> String {
+    use rosidl_parser::ast::FieldType as F;
+    let base = |t: &F| -> String {
+        match t {
+            F::Primitive(p) => format!("{p:?}").to_lowercase(),
+            F::String => "string".into(),
+            F::WString => "wstring".into(),
+            F::BoundedString(n) => format!("string<={n}"),
+            F::BoundedWString(n) => format!("wstring<={n}"),
+            F::NamespacedType { package, name } => match package {
+                Some(p) => format!("{p}/{name}"),
+                None => name.clone(),
+            },
+            other => format!("{other:?}"),
+        }
+    };
+    match ty {
+        F::Array { element_type, .. } => format!("an array of {}", base(element_type)),
+        F::Sequence { element_type } => format!("a sequence of {}", base(element_type)),
+        F::BoundedSequence { element_type, .. } => {
+            format!("a bounded sequence of {}", base(element_type))
+        }
+        other => format!("a {}", base(other)),
+    }
+}
+
+/// phase-403 W7 — rewrite an array/sequence field so its ELEMENT carries
+/// `bound`, exactly as if the `.msg` had spelled `string<=N[...]`.
+///
+/// # Why a rewrite and not a parameter
+///
+/// Every emitter in the tree -- the Rust container
+/// (`heapless::String<N>`, whose `try_from` returns `CapacityExceeded` above
+/// `N`), the C `char[N]` that `nros_cdr_read_string` sizes with `sizeof`, the
+/// C++ `nros::FixedString<N>`, the schema value, and the emitted
+/// `Message::FIELDS` -- ALREADY handles a bounded element correctly, because a
+/// `.msg` has always been able to say `string<=10[]`. Threading a separate
+/// "element cap" parameter through all five would be a second way to spell a
+/// thing they can already spell, and the two spellings would drift.
+///
+/// So the config's element dimension is lowered into the SAME shape the
+/// interface uses, once, and nothing downstream needs to know a config was
+/// involved. This is also why the claim is honest: the bound is enforced at
+/// deserialize by the container the rewrite produces, which is the test
+/// phase-403 applied to `cap` (`StorageMode::cap_bounds_the_wire`).
+///
+/// `None`, and any shape without an unbounded string element, returns the input
+/// unchanged.
+pub fn with_element_bound(
+    ty: &rosidl_parser::ast::FieldType,
+    bound: Option<usize>,
+) -> std::borrow::Cow<'_, rosidl_parser::ast::FieldType> {
+    use rosidl_parser::ast::FieldType as F;
+    use std::borrow::Cow;
+    let Some(n) = bound else {
+        return Cow::Borrowed(ty);
+    };
+    let bounded = match element_of(ty) {
+        Some(F::String) => F::BoundedString(n),
+        Some(F::WString) => F::BoundedWString(n),
+        _ => return Cow::Borrowed(ty),
+    };
+    Cow::Owned(match ty {
+        F::Array { size, .. } => F::Array {
+            element_type: Box::new(bounded),
+            size: *size,
+        },
+        F::Sequence { .. } => F::Sequence {
+            element_type: Box::new(bounded),
+        },
+        F::BoundedSequence { max_size, .. } => F::BoundedSequence {
+            element_type: Box::new(bounded),
+            max_size: *max_size,
+        },
+        _ => return Cow::Borrowed(ty),
+    })
 }
 
 /// What one walk of a config body found in its `mode` keys.
@@ -1138,5 +1507,292 @@ mod tests {
         assert_eq!(r.declared_bound("any", "M", "f", STR), Some(16));
         // ...and it is kind-specific: nothing was said about sequences.
         assert_eq!(r.declared_bound("any", "M", "f", SEQ), None);
+    }
+
+    // ========================================================================
+    // phase-403 W7 — `element_cap`, the second dimension
+    // ========================================================================
+
+    use rosidl_parser::ast::FieldType as F;
+
+    fn string_seq() -> F {
+        F::Sequence {
+            element_type: Box::new(F::String),
+        }
+    }
+
+    /// The headline: one key carries two numbers, and they land on the two
+    /// dimensions `.msg` already distinguishes.
+    #[test]
+    fn one_entry_states_the_length_and_the_element_bound_separately() {
+        let r = CapacityResolver::from_toml_str(
+            "[fields]\n\"pkg/M.name\" = { cap = 16, element_cap = 32 }\n",
+        )
+        .unwrap();
+        assert_eq!(r.declared_bound("pkg", "M", "name", SEQ), Some(16));
+        assert_eq!(
+            r.declared_element_bound("pkg", "M", "name", &string_seq()),
+            Some(32)
+        );
+    }
+
+    /// The `.msg` wins PER DIMENSION. `string<=10[]` capped with
+    /// `element_cap = 32` keeps 10 — and it keeps it without a precedence rule,
+    /// because a bounded element is no longer a dimension the config can name.
+    #[test]
+    fn a_msg_element_bound_wins_over_element_cap() {
+        let r = CapacityResolver::from_toml_str(
+            "[fields]\n\"pkg/M.name\" = { cap = 16, element_cap = 32 }\n",
+        )
+        .unwrap();
+        let already_bounded = F::Sequence {
+            element_type: Box::new(F::BoundedString(10)),
+        };
+        assert_eq!(
+            r.declared_element_bound("pkg", "M", "name", &already_bounded),
+            None,
+            "the interface bound removes the dimension the config could speak about"
+        );
+        // The rewrite is therefore a no-op, and the shape keeps the .msg's 10.
+        assert!(matches!(
+            r.element_capped("pkg", "M", "name", &already_bounded).as_ref(),
+            F::Sequence { element_type } if **element_type == F::BoundedString(10)
+        ));
+        // The LENGTH dimension is untouched by any of this.
+        assert_eq!(r.declared_bound("pkg", "M", "name", SEQ), Some(16));
+    }
+
+    /// Only a mode whose cap is ENFORCED may bound, and that governs the element
+    /// dimension exactly as it governs the field's own — a `view` field aliases
+    /// the receive buffer, so nothing checks an element length there either.
+    #[test]
+    fn only_a_bounding_mode_bounds_the_element() {
+        for (mode, want) in [("inline", Some(32)), ("heap", None), ("view", None)] {
+            let r = CapacityResolver::from_toml_str(&format!(
+                "[fields]\n\"pkg/M.name\" = {{ cap = 16, element_cap = 32, mode = \"{mode}\" }}\n"
+            ))
+            .unwrap();
+            assert_eq!(
+                r.declared_element_bound("pkg", "M", "name", &string_seq()),
+                want,
+                "mode {mode}"
+            );
+        }
+    }
+
+    /// A fixed array and a `.msg`-bounded sequence are not configurable shapes,
+    /// so no `mode` key can reach them and their element bound is always
+    /// enforced by the inline container they are emitted as. A `heap` entry
+    /// naming one must not silently disable its element bound.
+    #[test]
+    fn a_non_configurable_shape_keeps_its_element_bound_whatever_the_mode_says() {
+        let r = CapacityResolver::from_toml_str(
+            "[fields]\n\"pkg/M.name\" = { cap = 16, element_cap = 32, mode = \"heap\" }\n",
+        )
+        .unwrap();
+        for ty in [
+            F::Array {
+                element_type: Box::new(F::String),
+                size: 4,
+            },
+            F::BoundedSequence {
+                element_type: Box::new(F::String),
+                max_size: 4,
+            },
+        ] {
+            assert_eq!(
+                r.declared_element_bound("pkg", "M", "name", &ty),
+                Some(32),
+                "{ty:?}"
+            );
+        }
+    }
+
+    /// The two dimensions walk the level chain INDEPENDENTLY. Naming a field to
+    /// override its length must not silently delete the element default set
+    /// once at `[defaults]` — that would make the layering a trap rather than a
+    /// convenience.
+    #[test]
+    fn a_per_field_cap_does_not_shadow_a_defaults_element_cap() {
+        let r = CapacityResolver::from_toml_str(
+            "[defaults]\n\
+             sequence = { cap = 8, element_cap = 32 }\n\
+             [fields]\n\
+             \"pkg/M.name\" = 64\n",
+        )
+        .unwrap();
+        assert_eq!(
+            r.declared_bound("pkg", "M", "name", SEQ),
+            Some(64),
+            "the field entry wins the LENGTH"
+        );
+        assert_eq!(
+            r.declared_element_bound("pkg", "M", "name", &string_seq()),
+            Some(32),
+            "and the default still supplies the ELEMENT"
+        );
+    }
+
+    /// Every level supplies an element default, closest wins — the same chain
+    /// `cap` walks.
+    #[test]
+    fn the_element_bound_resolves_through_every_level() {
+        let r = CapacityResolver::from_toml_str(
+            "[defaults]\n\
+             sequence = { cap = 8, element_cap = 4 }\n\
+             [packages.pkg]\n\
+             sequence = { cap = 8, element_cap = 8 }\n\
+             [types.\"pkg/M\"]\n\
+             sequence = { cap = 8, element_cap = 16 }\n\
+             [fields]\n\
+             \"pkg/M.named\" = { cap = 8, element_cap = 32 }\n",
+        )
+        .unwrap();
+        let e = |msg: &str, f: &str| r.declared_element_bound("pkg", msg, f, &string_seq());
+        assert_eq!(e("M", "named"), Some(32), "field");
+        assert_eq!(e("M", "other"), Some(16), "type");
+        assert_eq!(e("N", "other"), Some(8), "package");
+        assert_eq!(
+            r.declared_element_bound("elsewhere", "N", "other", &string_seq()),
+            Some(4),
+            "defaults"
+        );
+    }
+
+    /// A `[fields]` `element_cap` on a field with no element dimension is an
+    /// ERROR naming the field. Silence here is the failure mode the key exists
+    /// to remove: the user believes they bounded a type that codegen still
+    /// reports unbounded.
+    #[test]
+    fn element_cap_on_a_field_with_no_elements_is_an_error_naming_it() {
+        let r = CapacityResolver::from_toml_str(
+            "[fields]\n\
+             \"pkg/M.label\" = { cap = 16, element_cap = 32 }\n\
+             \"pkg/M.counts\" = { cap = 16, element_cap = 32 }\n\
+             \"pkg/M.name\" = { cap = 16, element_cap = 32 }\n",
+        )
+        .unwrap();
+        let fields = vec![
+            rosidl_parser::ast::Field {
+                name: "label".into(),
+                field_type: F::String,
+                default_value: None,
+            },
+            rosidl_parser::ast::Field {
+                name: "counts".into(),
+                field_type: F::Sequence {
+                    element_type: Box::new(F::Primitive(rosidl_parser::ast::PrimitiveType::Int32)),
+                },
+                default_value: None,
+            },
+            rosidl_parser::ast::Field {
+                name: "name".into(),
+                field_type: string_seq(),
+                default_value: None,
+            },
+        ];
+        let errs = r.element_cap_shape_errors("pkg", "M", &fields);
+        // EVERY offender, not the first: fixing a config one build at a time is
+        // the loop phase-403 W0 removed for unbounded members.
+        assert_eq!(errs.len(), 2, "{errs:?}");
+        assert_eq!(errs[0].field, "label");
+        assert!(errs[0].to_string().contains("pkg/M.label"), "{}", errs[0]);
+        assert!(errs[0].to_string().contains("a string"), "{}", errs[0]);
+        assert_eq!(errs[1].field, "counts");
+        assert!(
+            errs[1].to_string().contains("a sequence of int32"),
+            "{}",
+            errs[1]
+        );
+    }
+
+    /// A LEVEL entry is a default, and a default that does not apply to a given
+    /// field is how defaults work. Only a `[fields]` entry NAMES one field, so
+    /// only it can be wrong about that field.
+    #[test]
+    fn a_level_element_cap_reaching_a_string_field_is_not_an_error() {
+        let r = CapacityResolver::from_toml_str(
+            "[defaults]\nsequence = { cap = 8, element_cap = 32 }\n",
+        )
+        .unwrap();
+        let fields = vec![rosidl_parser::ast::Field {
+            name: "label".into(),
+            field_type: F::String,
+            default_value: None,
+        }];
+        assert!(r.element_cap_shape_errors("pkg", "M", &fields).is_empty());
+        assert_eq!(
+            r.declared_element_bound("pkg", "M", "label", &F::String),
+            None
+        );
+    }
+
+    /// `element_cap` under a `string` LEVEL key can never apply — a string field
+    /// has no elements — so it is rejected at parse time, where it needs no
+    /// message to detect.
+    #[test]
+    fn element_cap_under_a_string_level_key_is_rejected_at_parse() {
+        for body in [
+            "[defaults]\nstring = { cap = 16, element_cap = 32 }\n",
+            "[packages.pkg]\nstring = { cap = 16, element_cap = 32 }\n",
+            "[types.\"pkg/M\"]\nstring = { cap = 16, element_cap = 32 }\n",
+        ] {
+            match CapacityResolver::from_toml_str(body) {
+                Err(ConfigError::ElementCapOnStringLevel { level }) => {
+                    assert!(!level.is_empty())
+                }
+                other => panic!("expected ElementCapOnStringLevel for {body:?}, got {other:?}"),
+            }
+        }
+        // The same key on `sequence` is exactly where it belongs.
+        assert!(
+            CapacityResolver::from_toml_str(
+                "[defaults]\nsequence = { cap = 16, element_cap = 32 }\n"
+            )
+            .is_ok()
+        );
+    }
+
+    /// The rewrite produces the shape the `.msg` would have produced, and
+    /// nothing else — the claim `with_element_bound`'s doc makes, checked
+    /// against every shape it can be handed.
+    #[test]
+    fn the_rewrite_spells_the_bound_the_msg_would_have() {
+        assert_eq!(
+            *with_element_bound(&string_seq(), Some(32)),
+            F::Sequence {
+                element_type: Box::new(F::BoundedString(32))
+            }
+        );
+        assert_eq!(
+            *with_element_bound(
+                &F::BoundedSequence {
+                    element_type: Box::new(F::WString),
+                    max_size: 5
+                },
+                Some(32)
+            ),
+            F::BoundedSequence {
+                element_type: Box::new(F::BoundedWString(32)),
+                max_size: 5
+            },
+            "the array suffix survives untouched -- the dimensions are independent"
+        );
+        // No bound, a non-string element, and a non-array shape are all no-ops.
+        for (ty, bound) in [
+            (string_seq(), None),
+            (
+                F::Sequence {
+                    element_type: Box::new(F::Primitive(rosidl_parser::ast::PrimitiveType::Int32)),
+                },
+                Some(32),
+            ),
+            (F::String, Some(32)),
+        ] {
+            assert!(matches!(
+                with_element_bound(&ty, bound),
+                std::borrow::Cow::Borrowed(_)
+            ));
+        }
     }
 }

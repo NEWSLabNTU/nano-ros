@@ -57,6 +57,17 @@ pub enum GeneratorError {
         field: String,
         element: String,
     },
+
+    /// phase-403 W7 — an `element_cap` that names a field with no element
+    /// dimension.
+    ///
+    /// An ERROR and not a warning, and not silence, because the whole point of
+    /// the key is to REPLACE a built-in 256 that nobody chose with a number
+    /// somebody did. A key that quietly does nothing leaves the user believing
+    /// they bounded a type that codegen still reports unbounded, and sends them
+    /// looking at the derivation instead of at their config.
+    #[error("codegen config: {details}")]
+    ElementCapShape { details: String },
 }
 
 /// Resolve the borrowed-view field type + full `CdrReader` read expression for
@@ -369,6 +380,8 @@ pub(super) fn build_c_fields(
         &msg.fields,
         resolver,
     );
+    let package = current_package.unwrap_or("");
+    ensure_element_caps_apply(package, message, &msg.fields, resolver)?;
     msg.fields
         .iter()
         .zip(store.iter())
@@ -385,6 +398,36 @@ pub(super) fn build_c_fields(
         .collect()
 }
 
+/// phase-403 W7 — reject a `[fields]` `element_cap` that names a field with no
+/// element dimension, rather than ignoring it.
+///
+/// Called from each language's field funnel (`build_c_fields`,
+/// `build_nros_fields`, and the C++ builder's loop) because those are the three
+/// places a message's field TYPES and the resolver are in scope at once. Every
+/// generator entry point reaches one of them, so a misdirected key cannot be
+/// generated past in any language.
+pub(super) fn ensure_element_caps_apply(
+    package: &str,
+    message: &str,
+    fields: &[rosidl_parser::Field],
+    resolver: &CapacityResolver,
+) -> Result<(), GeneratorError> {
+    let offenders = resolver.element_cap_shape_errors(package, message, fields);
+    if offenders.is_empty() {
+        return Ok(());
+    }
+    // Every offender, for the reason `TypeBound::Unbounded` names every
+    // unbounded member: fixing a config one build at a time is the loop W0
+    // removed.
+    Err(GeneratorError::ElementCapShape {
+        details: offenders
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join("; "),
+    })
+}
+
 pub(super) fn field_to_nros_field_with_mode(
     field: &rosidl_parser::Field,
     package_name: &str,
@@ -399,9 +442,17 @@ pub(super) fn field_to_nros_field_with_mode(
 ) -> Result<NrosField, GeneratorError> {
     let name = escape_keyword(&field.name);
 
+    // phase-403 W7 — fold any configured ELEMENT bound into the shape first, so
+    // the container spells `heapless::Vec<heapless::String<32>, N>` and the
+    // element's `String::try_from` is what ENFORCES the bound the derived
+    // number claims. Every branch below reads this, not `field.field_type`.
+    let capped =
+        resolver.element_capped(package_name, message_name, &field.name, &field.field_type);
+    let field_type: &FieldType = capped.as_ref();
+
     // Resolve per-field capacity for the two configurable shapes: an unbounded
     // string and an unbounded sequence. Everything else keeps default rendering.
-    let cap_kind = match &field.field_type {
+    let cap_kind = match field_type {
         FieldType::String | FieldType::WString => Some(CapFieldKind::String),
         FieldType::Sequence { .. } => Some(CapFieldKind::Sequence),
         _ => None,
@@ -430,7 +481,7 @@ pub(super) fn field_to_nros_field_with_mode(
             StorageMode::View => {
                 is_borrowed = true;
                 let (bt, expr) = nros_borrowed_view_for_field(
-                    &field.field_type,
+                    field_type,
                     package_name,
                     message_name,
                     &field.name,
@@ -442,50 +493,49 @@ pub(super) fn field_to_nros_field_with_mode(
     }
 
     // Determine field properties
-    let (is_primitive, primitive_method) = match &field.field_type {
+    let (is_primitive, primitive_method) = match field_type {
         FieldType::Primitive(prim) => (true, primitive_to_cdr_method(prim)),
         _ => (false, String::new()),
     };
 
     let is_string = matches!(
-        &field.field_type,
+        field_type,
         FieldType::String
             | FieldType::BoundedString(_)
             | FieldType::WString
             | FieldType::BoundedWString(_)
     );
 
-    let (is_array, array_size) = match &field.field_type {
+    let (is_array, array_size) = match field_type {
         FieldType::Array { size, .. } => (true, *size),
         _ => (false, 0),
     };
 
     let is_sequence = matches!(
-        &field.field_type,
+        field_type,
         FieldType::Sequence { .. } | FieldType::BoundedSequence { .. }
     );
 
-    let is_nested = matches!(&field.field_type, FieldType::NamespacedType { .. });
+    let is_nested = matches!(field_type, FieldType::NamespacedType { .. });
 
     // Element type info for arrays and sequences
-    let (is_primitive_element, is_string_element, element_primitive_method) =
-        match &field.field_type {
-            FieldType::Array { element_type, .. }
-            | FieldType::Sequence { element_type }
-            | FieldType::BoundedSequence { element_type, .. } => match element_type.as_ref() {
-                FieldType::Primitive(prim) => (true, false, primitive_to_cdr_method(prim)),
-                FieldType::String
-                | FieldType::BoundedString(_)
-                | FieldType::WString
-                | FieldType::BoundedWString(_) => (false, true, String::new()),
-                _ => (false, false, String::new()),
-            },
+    let (is_primitive_element, is_string_element, element_primitive_method) = match field_type {
+        FieldType::Array { element_type, .. }
+        | FieldType::Sequence { element_type }
+        | FieldType::BoundedSequence { element_type, .. } => match element_type.as_ref() {
+            FieldType::Primitive(prim) => (true, false, primitive_to_cdr_method(prim)),
+            FieldType::String
+            | FieldType::BoundedString(_)
+            | FieldType::WString
+            | FieldType::BoundedWString(_) => (false, true, String::new()),
             _ => (false, false, String::new()),
-        };
+        },
+        _ => (false, false, String::new()),
+    };
 
     Ok(NrosField {
         name,
-        field_type: field.field_type.clone(),
+        field_type: field_type.clone(),
         is_configurable,
         cap,
         mode,
@@ -542,6 +592,7 @@ pub(super) fn build_nros_fields(
     mode: NrosCodegenMode,
 ) -> Result<Vec<NrosField>, GeneratorError> {
     let store = lowered_storages(package, message, &msg.fields, resolver);
+    ensure_element_caps_apply(package, message, &msg.fields, resolver)?;
     msg.fields
         .iter()
         .zip(store.iter())
@@ -563,6 +614,18 @@ pub(super) fn build_c_field(
     pre_storage: Option<FieldStorage>,
 ) -> Result<CField, GeneratorError> {
     let escaped_name = escape_keyword(name);
+
+    // phase-403 W7 — fold any configured ELEMENT bound into the shape before
+    // anything reads it, so every branch below sees the `string<=N[]` the `.msg`
+    // could have spelled. `char name[16][32]` and its `sizeof`-bounded
+    // `nros_cdr_read_string` then fall out of the existing bounded-element arms.
+    let capped = resolver.element_capped(
+        current_package.unwrap_or(""),
+        message_name,
+        name,
+        field_type,
+    );
+    let field_type: &FieldType = capped.as_ref();
 
     // Resolve per-field capacity for the two configurable shapes.
     let cap_kind = match field_type {
@@ -1343,6 +1406,24 @@ impl<'a> SchemaCaps<'a> {
         self.resolver
             .declared_bound(package, self.message, &field.name, kind)
     }
+
+    /// phase-403 W7 — the field's shape with any configured ELEMENT bound
+    /// folded in, so a `string[]` capped `element_cap = 32` renders the
+    /// `BoundedString(32)` element the `.msg` spelling `string<=32[]` would
+    /// have produced.
+    ///
+    /// The rewrite has to happen HERE, on the same resolver and the same
+    /// `self.message` key the struct field is built from, or the emitted
+    /// `Message::FIELDS` and the derived bound in `schema_value` would describe
+    /// different types — the exact drift W0 fixed for the `cap` dimension.
+    fn element_capped<'t>(
+        &self,
+        package: &str,
+        field: &'t rosidl_parser::Field,
+    ) -> std::borrow::Cow<'t, FieldType> {
+        self.resolver
+            .element_capped(package, self.message, &field.name, &field.field_type)
+    }
 }
 
 /// Build the [`NrosMessageSchema`] for a Rust struct whose identifier
@@ -1407,7 +1488,7 @@ pub fn build_nros_schema_for_struct_with_path(
         let access_name = escape_keyword(raw_name);
         let ty_expr = render_field_type_expr(
             raw_name,
-            &field.field_type,
+            caps.element_capped(package_name, field).as_ref(),
             caps.declared(package_name, field),
             package_name,
             const_prefix,

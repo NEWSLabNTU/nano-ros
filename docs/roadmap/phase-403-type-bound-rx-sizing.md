@@ -626,7 +626,108 @@ element is not one; the emitter spells such an element
 `heapless::String<NROS_DEFAULT_STRING_CAPACITY>` from a built-in constant nobody
 chose, so claiming a bound from it would be claiming 256 bytes per element that
 no config states. **`string[]` therefore cannot be bounded by cap today** -- only
-by a `.msg` bound. Open: whether the config gains an element key.
+by a `.msg` bound. Open: whether the config gains an element key. **Answered by
+W7 below: it does, and the five are bounded.**
+
+### W7 LANDED 2026-08-31 -- a cap has TWO dimensions, because a `.msg` has two
+
+`cap` bounds the field. For a `string[]` that is the sequence LENGTH, and a
+length alone bounds nothing -- 16 unbounded strings are still unbounded. The
+config now carries the second number in the same entry:
+
+```toml
+[fields]
+"sensor_msgs/JointState.name" = { cap = 16, element_cap = 32, mode = "inline" }
+
+[defaults]                       # or once, at any level
+sequence = { cap = 16, element_cap = 32 }
+```
+
+**This is not a new idea, it is the `.msg`'s own.** ROS 2's parser strips the
+array suffix and THEN parses the base type, so the two bounds have always been
+independent dimensions of one field; ours agrees, and now says so in a test
+(`parser::tests::a_string_bound_and_an_array_suffix_are_independent_dimensions`,
+all four combinations).
+
+| `.msg` | shape |
+| --- | --- |
+| `string<=10[<=5]` | `BoundedSequence { element_type: BoundedString(10), max_size: 5 }` |
+| `string[<=5]` | `BoundedSequence { element_type: String, max_size: 5 }` |
+| `string<=10[5]` | `Array { element_type: BoundedString(10), size: 5 }` |
+| `string<=10` | `BoundedString(10)` |
+
+**`element_cap` is lowered by REWRITING the shape, not by threading a number.**
+`CapacityResolver::element_capped` returns the field type the `.msg` spelling
+would have produced, and every emitter -- the Rust `heapless::String<N>` whose
+`try_from` returns `CapacityExceeded`, the C `char[N]` that
+`nros_cdr_read_string` sizes with `sizeof`, the C++ `nros::FixedString<N>`, the
+schema value, the emitted `Message::FIELDS` -- already handled a bounded
+element, because a `.msg` has always been able to state one. So there is one
+spelling of "a bounded element", not two that can drift, and the claim is
+enforced by the container the rewrite produces rather than asserted. The corpus
+pins the identity directly: `Bounded.labels` spells `string<=8[<=4]` in its
+`.msg` and `Capped.tags` gets `{ cap = 4, element_cap = 8 }` from
+`nros-codegen.toml`, and the two emit the same container in all three languages.
+
+Four rules, all tested:
+
+* **Shape.** Only an array/sequence whose element is an unbounded
+  `string`/`wstring` has the dimension. A `[fields]` `element_cap` naming
+  anything else is a BUILD ERROR naming the field and what it actually is
+  (`GeneratorError::ElementCapShape`), raised from all three language funnels;
+  `element_cap` under a `string` LEVEL key is a parse error, since a string has
+  no elements whatever field it reaches.
+* **The `.msg` wins, per dimension.** `string<=10[]` with `element_cap = 32`
+  keeps 10 -- by construction, not by precedence: a bounded element is not an
+  unbounded string, so there is no dimension left for the config to name.
+* **Only a bounding mode bounds**, `StorageMode::cap_bounds_the_wire`, the same
+  rule as `cap` and for the same reason. A fixed array and a `.msg`-bounded
+  sequence are not configurable shapes, so their mode is `inline` by
+  construction and no `mode` key can turn their element bound off.
+* **Its own level chain.** `element_cap` resolves through `[fields]` ->
+  `[types]` -> `[packages]` -> `[defaults]` INDEPENDENTLY of `cap`, so naming a
+  field to override its length does not silently delete an element default set
+  once.
+
+Measured over the same 12 packages, 126 types, resolving nested types across
+`/opt/ros/humble/share`:
+
+| config | bounded |
+| --- | ---: |
+| none (the `.msg` alone) | 40 |
+| per-package + per-field caps (the row above) | 121 |
+| the same, plus `[defaults] sequence.element_cap = 32` | **126** |
+
+The five, derived (TX = XCDR1, RX = max of the two encodings):
+
+| type | TX | RX |
+| --- | ---: | ---: |
+| `sensor_msgs/JointState` | 4204 | 4208 |
+| `sensor_msgs/MultiDOFJointState` | 12396 | 14704 |
+| `trajectory_msgs/JointTrajectory` | 9564 | 9564 |
+| `trajectory_msgs/MultiDOFJointTrajectory` | 40156 | 49320 |
+| `visualization_msgs/InteractiveMarkerUpdate` | 34158429 | 34234821 |
+
+The last row is issue 0939 made concrete rather than a W7 regression: its
+`markers` chain is the five-deep `InteractiveMarker -> controls -> markers ->
+points` nesting, and `element_cap` contributes a few hundred bytes to `erases`.
+W7 cannot deepen such a chain -- a string is a leaf -- which is pinned by
+`an_element_cap_cannot_deepen_a_bounded_sequence_chain`; the observation and why
+no diagnostic was added are recorded in 0939.
+
+**Found while landing it: the C sequence-of-strings struct had its dimensions
+transposed.** All three emission sites spelled
+`{elem} data{elem_suffix}[{cap}]`, so a `string[]` under the built-in 256/64 came
+out `char data[256][64]` -- which C reads as 256 slots of `char[64]`, i.e. 256
+strings of 63 characters where the config said 64 strings of 255. The total byte
+count is identical either way, which is why it survived: the struct was the right
+SIZE and the wrong SHAPE, and `nros_cdr_read_string(..., sizeof(data[i]))` then
+enforced the sequence cap on the string and no cap at all on the count. Latent
+while a bounded element could only come from a `.msg`; W7 makes the two numbers
+CLAIMED, so a transposed struct is the inventory disagreeing with the storage in
+the same header. Fixed in one shared `c_sequence_struct` helper rather than a
+fourth copy of the format string. Moves `expected/{inline,configured}/Shapes.h`
+and `Probe.srv.h`.
 
 Also found while measuring: `nros_serdes::size::size_bound` WALKS a bounded
 sequence element by element, so a capped sequence nested three deep costs the

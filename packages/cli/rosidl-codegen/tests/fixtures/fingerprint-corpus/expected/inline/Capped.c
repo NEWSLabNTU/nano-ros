@@ -51,6 +51,10 @@ int32_t fingerprint_corpus_msg_capped_serialize_inline(const fingerprint_corpus_
     for (size_t i = 0; i < msg->samples.size; ++i) {
         if (nros_cdr_write_i64(&ptr, end, origin, msg->samples.data[i]) < 0) return -1;
     }
+    if (nros_cdr_write_u32(&ptr, end, origin, msg->tags.size) < 0) return -1;
+    for (size_t i = 0; i < msg->tags.size; ++i) {
+        if (nros_cdr_write_string(&ptr, end, origin, msg->tags.data[i]) < 0) return -1;
+    }
     if (nros_cdr_end_dheader(__dh, &ptr, end, origin) < 0) return -1;
     *ptr_ref = ptr;
     return 0;
@@ -97,6 +101,15 @@ int32_t fingerprint_corpus_msg_capped_deserialize_inline(fingerprint_corpus_msg_
         if (len > 64) return -1;
         for (size_t i = 0; i < len; ++i) {
             if (nros_cdr_read_i64(&ptr, end, origin, &msg->samples.data[i]) < 0) return -1;
+        }
+    }
+    {
+        uint32_t len;
+        if (nros_cdr_read_u32(&ptr, end, origin, &len) < 0) return -1;
+        msg->tags.size = len;
+        if (len > 64) return -1;
+        for (size_t i = 0; i < len; ++i) {
+            if (nros_cdr_read_string(&ptr, end, origin, msg->tags.data[i], sizeof(msg->tags.data[i])) < 0) return -1;
         }
     }
     if (nros_cdr_end_dheader_read(__dh, &ptr, end, origin) < 0) return -1;

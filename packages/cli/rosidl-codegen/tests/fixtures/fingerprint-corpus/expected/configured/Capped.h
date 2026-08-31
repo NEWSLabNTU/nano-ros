@@ -23,6 +23,7 @@ extern "C" {
 typedef struct fingerprint_corpus_msg_capped {
     char label[24];
     struct { uint32_t size; int64_t data[6]; } samples;
+    struct { uint32_t size; char data[4][8]; } tags;
 } fingerprint_corpus_msg_capped;
 
 /// Get the ROS type name for Capped
@@ -83,8 +84,8 @@ const nros_message_type_t* fingerprint_corpus_msg_capped_get_type_support(void);
 /// aligns 8-byte primitives to 4 instead of 8. This stack WRITES XCDR1, so the
 /// publish helper below uses that one; a RECEIVE buffer must hold either, so a
 /// subscription wants the larger.
-#define FINGERPRINT_CORPUS_MSG_CAPPED_TX_MAX_SERIALIZED_SIZE 92
-#define FINGERPRINT_CORPUS_MSG_CAPPED_RX_MAX_SERIALIZED_SIZE 92
+#define FINGERPRINT_CORPUS_MSG_CAPPED_TX_MAX_SERIALIZED_SIZE 157
+#define FINGERPRINT_CORPUS_MSG_CAPPED_RX_MAX_SERIALIZED_SIZE 157
 
 
 /// Typed publish helper. Serializes `msg` into a stack buffer sized from the

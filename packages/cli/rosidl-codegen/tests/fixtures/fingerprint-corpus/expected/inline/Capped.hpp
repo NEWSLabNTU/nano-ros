@@ -28,11 +28,12 @@ namespace fingerprint_corpus { namespace msg {
 struct Capped {
     nros::FixedString<256> label = {};
     nros::FixedSequence<int64_t, 64> samples = {};
+    nros::FixedSequence<nros::FixedString<256>, 64> tags = {};
 
     // Type metadata
     static constexpr const char* TYPE_NAME = "fingerprint-corpus::msg::dds_::Capped_";
     static constexpr const char* TYPE_HASH = "h";
-    static constexpr size_t SERIALIZED_SIZE_MAX = 1232;
+    static constexpr size_t SERIALIZED_SIZE_MAX = 18132;
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {
