@@ -159,6 +159,7 @@ Registration should be one command, not a wiki page.
 | `scripts/ci/runner-provision.sh <labels…>` | make the labels true — install the Zephyr SDK, QEMU, ROS 2, toolchains — reusing `nros setup` so a runner and a contributor provision the same way |
 | `scripts/ci/runner-doctor.sh` | assert every label's claim actually holds; refuse to register a runner that lies about what it has |
 | `scripts/ci/runner-sweep.sh` | reap orphaned process groups and stale build dirs between jobs |
+| `just runner-up <labels…>` | the whole procedure in one verb — resolve the repo and mint a token via `gh`, build, start, verify labels. Falls back to `--repo` / `--token -` when `gh` is absent or the operator is not an admin |
 | `just runner-container <labels…>` | build and start the runner in an unprivileged container — the whole procedure in two steps, and it refuses `--privileged` / a Docker socket mount rather than trusting the operator to remember |
 
 `runner-doctor.sh` matters more than it looks: a runner labelled

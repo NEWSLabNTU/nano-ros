@@ -142,7 +142,23 @@ ENTRYEOF
 chmod +x "$CONTEXT/entrypoint.sh"
 
 run_or_echo() {
-    if [ "$CHECK" -eq 1 ]; then printf '  would run: %s\n' "$*"; else "$@"; fi
+    if [ "$CHECK" -eq 1 ]; then
+        # REDACT the token. A --check is the command an operator runs first,
+        # often piping it somewhere or pasting it into an issue, and echoing a
+        # live registration token there is a leak the dry-run itself caused.
+        # Short-lived (~1h) is not harmless: it is enough to attach a runner.
+        local shown=()
+        local arg
+        for arg in "$@"; do
+            case "$arg" in
+                RUNNER_TOKEN=*) shown+=("RUNNER_TOKEN=<redacted>") ;;
+                *)              shown+=("$arg") ;;
+            esac
+        done
+        printf '  would run: %s\n' "${shown[*]}"
+    else
+        "$@"
+    fi
 }
 
 if [ "$DO_BUILD" -eq 1 ]; then
