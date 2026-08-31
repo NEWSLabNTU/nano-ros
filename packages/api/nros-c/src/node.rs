@@ -29,10 +29,29 @@ use crate::{
 ///
 /// Keeping the decode in one place is the point: this was the same mistake at
 /// two call sites, and a third would have made it three.
-fn resolve_domain_from_c_abi(raw: u8, session_domain: u32) -> u32 {
+fn resolve_domain_from_c_abi(raw: u8, session_domain: u32) -> Option<u32> {
     match nros_node::baked_domain_from_c_abi(raw) {
-        Some(explicit) => explicit,
-        None => session_domain,
+        None => Some(session_domain),
+        // The ROS domain space caps at 232 (`DOMAIN_ID_MAX`). `baked_domain_
+        // from_c_abi` deliberately does NOT range-check — its docstring defers
+        // that to `ExecutorConfig::try_resolve`, which is right for the boot
+        // path but not for here: this resolver feeds entity keyexprs directly
+        // and never goes through `try_resolve`, so 233..=254 would be ASSIGNED
+        // as a domain. An out-of-spec domain is not a smaller problem than a
+        // wrong one — it is unroutable, and silent, because a domain is just
+        // the first element of the discovery key (issue 0801).
+        Some(d) if d > nros_node::DOMAIN_ID_MAX => {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros-c"),
+                "domain id {} exceeds the ROS maximum of {}; refusing to create \
+                 the entity rather than keying it on an unroutable domain \
+                 (issue 0972)",
+                d,
+                nros_node::DOMAIN_ID_MAX
+            );
+            None
+        }
+        Some(explicit) => Some(explicit),
     }
 }
 
@@ -743,7 +762,7 @@ pub(crate) unsafe fn resolve_session_and_domain(
             node.domain_id_override
         } else if !support_ptr.is_null() {
             // issue 0972 — decode, do not read the raw byte.
-            resolve_domain_from_c_abi((*support_ptr).domain_id, session.domain_id())
+            resolve_domain_from_c_abi((*support_ptr).domain_id, session.domain_id())?
         } else {
             session.domain_id()
         };
@@ -765,7 +784,7 @@ pub(crate) unsafe fn resolve_session_and_domain(
         let raw_domain = support_mut.domain_id;
         let session = support_mut.get_session_mut()?;
         // issue 0972 — decode, do not read the raw byte.
-        let domain_id = resolve_domain_from_c_abi(raw_domain, session.domain_id());
+        let domain_id = resolve_domain_from_c_abi(raw_domain, session.domain_id())?;
         Some((session, domain_id))
     }
 }
@@ -787,7 +806,7 @@ mod node_ref_tests {
         // The session is on a different domain, so a fallback would be visible.
         assert_eq!(
             resolve_domain_from_c_abi(crate::support::NROS_DOMAIN_ID_EXPLICIT_ZERO, 7),
-            0,
+            Some(0),
             "explicit-zero must mean domain 0, not the sentinel's own value"
         );
     }
@@ -797,15 +816,44 @@ mod node_ref_tests {
     /// meanings back together.
     #[test]
     fn unset_defers_to_the_session_domain() {
-        assert_eq!(resolve_domain_from_c_abi(0, 7), 7);
-        assert_eq!(resolve_domain_from_c_abi(0, 0), 0);
+        assert_eq!(resolve_domain_from_c_abi(0, 7), Some(7));
+        assert_eq!(resolve_domain_from_c_abi(0, 0), Some(0));
     }
 
     /// An ordinary domain passes through unchanged.
     #[test]
     fn an_explicit_domain_wins_over_the_session() {
-        assert_eq!(resolve_domain_from_c_abi(5, 7), 5);
-        assert_eq!(resolve_domain_from_c_abi(232, 7), 232);
+        assert_eq!(resolve_domain_from_c_abi(5, 7), Some(5));
+        assert_eq!(resolve_domain_from_c_abi(232, 7), Some(232));
+    }
+
+    /// issue 0972 follow-up — the ROS domain space caps at 232, so a byte above
+    /// it is not a domain and must not become one.
+    ///
+    /// `baked_domain_from_c_abi` deliberately does not range-check (its
+    /// docstring defers that to `ExecutorConfig::try_resolve`), and this
+    /// resolver does not go through `try_resolve` — it feeds entity keyexprs
+    /// directly. Without this guard 233..=254 were ASSIGNED as domains:
+    /// unroutable, and silent, because the domain is just the first element of
+    /// the discovery key (issue 0801). Refusing is the loud option available
+    /// here; the caller turns `None` into a failed entity creation.
+    #[test]
+    fn a_domain_above_the_ros_maximum_is_refused_not_assigned() {
+        for raw in [233u8, 240, 254] {
+            assert_eq!(
+                resolve_domain_from_c_abi(raw, 7),
+                None,
+                "domain {raw} exceeds the ROS maximum and must not be assigned"
+            );
+        }
+        // The boundary itself is legal and must still pass.
+        assert_eq!(resolve_domain_from_c_abi(232, 7), Some(232));
+        // 255 is the explicit-zero SENTINEL, not an out-of-range domain — it
+        // must keep decoding to 0 rather than being caught by the range guard.
+        assert_eq!(
+            resolve_domain_from_c_abi(crate::support::NROS_DOMAIN_ID_EXPLICIT_ZERO, 7),
+            Some(0)
+        );
     }
 
     /// The two meanings of "zero" are distinguishable — which is the whole
