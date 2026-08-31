@@ -38,8 +38,14 @@
 #                            [SOURCES <extra-c-files…>]
 #                            [COMPILE_DEFS <defs…>]
 #                            [LINK_INTERFACES <codegen-libs…>])
-#       Schedules a `cargo build --release` of the FFI crate at
-#       `FFI_CRATE_DIR`, with env vars wiring the user's main +
+#       Schedules a `cargo build` of the FFI crate at `FFI_CRATE_DIR` at
+#       the `nuttx-rust` CARVE-OUT profile — NOT `--release`, which this
+#       docstring claimed after issue 0820 changed the code beneath it.
+#       Cargo's built-in `release` is `lto = "off"`, and at `lto = off` a
+#       cross-CGU miscompile corrupts std's `lang_start` closure and the
+#       image reboots before `main` with no console output
+#       (phase-177.8.c). The carve-out exists to prevent exactly that.
+#       Env vars wire the user's main +
 #       includes + extra sources + compile defs + FFI staticlibs into
 #       the crate's build.rs. Produces an ELF at
 #       <build>/<NAME>. Each LINK_INTERFACES entry's
