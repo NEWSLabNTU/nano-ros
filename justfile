@@ -2347,6 +2347,21 @@ runner-container labels *ARGS:
 runner-up labels *ARGS:
     @scripts/ci/runner-up.sh {{labels}} {{ARGS}}
 
+# Keep an ephemeral runner AVAILABLE: register, take one job, sweep, repeat.
+#
+# Not a convenience wrapper. `--ephemeral` retires the runner after every job,
+# and `L3 (cross build + link)` is a REQUIRED check only a self-hosted runner
+# can satisfy — so with nothing re-registering, the second queue entry waits on
+# a verdict from a runner that no longer exists. A required check that never
+# reports blocks forever instead of failing, and it reads as GitHub being slow
+# rather than as breakage. This is the "something must re-register" that
+# `runner-register` tells you to supply.
+#
+# Foreground and long-lived: run it under tmux/systemd. --once / --max N bound it.
+[group("setup")]
+runner-loop labels *ARGS:
+    @scripts/ci/runner-loop.sh {{labels}} {{ARGS}}
+
 # Between jobs: reap orphaned process groups and run budgeted disk GC.
 # On a shared runner one leaked peer is every later job's flake. Takes --check.
 [group("setup")]
