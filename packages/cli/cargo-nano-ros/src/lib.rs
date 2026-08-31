@@ -79,6 +79,93 @@ fn write_if_changed<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, contents: C) -> std
 /// These are shipped with nros so codegen works without a ROS 2 environment.
 const BUNDLED_INTERFACES_DIR: &str = "interfaces";
 
+/// The interface index, loaded once per process.
+///
+/// `load_index_with_fallback` scans `NROS_INTERFACE_SEARCH_PATH`, the ament env
+/// index and the bundled `interfaces/` tree. Every C/C++ generation entry point
+/// needs it now (phase-403 W6 resolves nested types through it), and each one is
+/// invoked per PACKAGE, so a per-call scan would be paid once per interface
+/// package in the closure. `nros-cli-core`'s `ws` module already caches it the
+/// same way.
+fn shared_interface_index() -> Option<&'static AmentIndex> {
+    static INDEX: std::sync::OnceLock<Option<AmentIndex>> = std::sync::OnceLock::new();
+    INDEX
+        .get_or_init(|| load_index_with_fallback(false).ok())
+        .as_ref()
+}
+
+/// phase-403 W6 — the ONE nested-type lookup the C and C++ generation paths use.
+///
+/// A message's size bound cannot be derived without reaching every nested type.
+/// Before this existed the C path resolved SAME-PACKAGE nested types only, so
+/// any type carrying a `std_msgs/Header` — which is most of the interesting ones
+/// — reported `Unresolved` and got no bound at all, and the C++ path resolved
+/// nothing and used an ESTIMATE instead. `Unresolved` is a SEARCH-PATH problem,
+/// not a property of the message (issue 0896), and this is the search path.
+///
+/// Resolution order mirrors what the rest of codegen already does: the
+/// package's own interface directories first (a workspace package is the
+/// authority on its own types), then the shared interface index.
+///
+/// A type this cannot reach still reports `Unresolved` and still gets NO number.
+/// Widening the search never invents a bound; it only stops discarding one.
+fn nested_msg_lookup(
+    package_name: &str,
+    local_dirs: Vec<PathBuf>,
+) -> impl Fn(&str) -> Option<rosidl_parser::Message> + use<> {
+    let package_name = package_name.to_string();
+    move |fqn: &str| -> Option<rosidl_parser::Message> {
+        let mut parts = fqn.split('/');
+        let first = parts.next()?;
+        let name = parts.next_back().unwrap_or(first);
+        // A bare name (`Header`) or an explicit same-package reference is a
+        // sibling of the files we were handed.
+        if first == name || first == package_name {
+            for dir in &local_dirs {
+                let candidate = dir.join(format!("{name}.msg"));
+                if let Ok(body) = std::fs::read_to_string(&candidate)
+                    && let Ok(m) = rosidl_parser::parse_message(&body)
+                {
+                    return Some(m);
+                }
+            }
+            if first == name {
+                // A bare name names THIS package by ROS rules; do not go
+                // looking for a same-named type in some other package.
+                return None;
+            }
+        }
+        let idx = shared_interface_index()?;
+        let package = idx.packages().get(first)?;
+        let body = std::fs::read_to_string(package.get_message_path(name)).ok()?;
+        rosidl_parser::parse_message(&body).ok()
+    }
+}
+
+/// phase-403 W6 — write the derived-bound inventory beside the generated code.
+///
+/// Two files, one model (`rosidl_codegen::bounds`): the JSON is the artifact,
+/// the `.cmake` is its projection for the CMake/Kconfig lane — the same shape
+/// `nros codegen resolve-deps --output-cmake` already hands CMake.
+///
+/// Written UNCONDITIONALLY, even for a package with no message types, because
+/// `nros_generate_interfaces()` lists both paths as `add_custom_command` outputs
+/// and ninja fails a build whose declared output was not created.
+fn write_bound_inventory(
+    output_dir: &Path,
+    inventory: &rosidl_codegen::BoundInventory,
+) -> Result<()> {
+    write_if_changed(
+        output_dir.join(rosidl_codegen::INVENTORY_JSON_NAME),
+        inventory.to_json(),
+    )?;
+    write_if_changed(
+        output_dir.join(rosidl_codegen::INVENTORY_CMAKE_NAME),
+        inventory.to_cmake(),
+    )?;
+    Ok(())
+}
+
 /// Parse `--rename old=new` argument.
 pub fn parse_rename(s: &str) -> Result<(String, String), String> {
     let parts: Vec<&str> = s.splitn(2, '=').collect();
@@ -867,36 +954,30 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
     let mut srv_headers = Vec::new();
     let mut action_headers = Vec::new();
 
-    // issue 0896 — nested-type resolver for the size bound. SAME-PACKAGE only:
-    // the interface files handed to this entry point are siblings, so a bare or
-    // same-package reference resolves off their directory. Cross-package
-    // (`std_msgs/Header`) needs the ament index, which this args-file path does
-    // not carry — those report `Unresolved` and emit NO constant, which is the
-    // honest answer. Never a guessed bound.
+    // issue 0896 — nested-type resolver for the size bound.
+    //
+    // phase-403 W6: this used to be SAME-PACKAGE only, with a comment saying a
+    // cross-package `std_msgs/Header` "needs the ament index, which this
+    // args-file path does not carry". It carries one now (`nested_msg_lookup`),
+    // and it must: a type whose bound is discarded because the search path was
+    // narrow reports `Unresolved`, which is a search-path problem and not a
+    // property of the message. That was most of the real types — every one
+    // stamped with a `std_msgs/Header` — so an inventory built on the old lookup
+    // would have been almost entirely empty.
+    //
+    // What it is NOT: a wider search never invents a number. A nested type that
+    // is still unreachable still reports `Unresolved` and still emits no
+    // constant.
     let msg_dirs: Vec<PathBuf> = args
         .interface_files
         .iter()
         .filter_map(|p| p.parent().map(PathBuf::from))
         .collect();
-    let pkg_for_lookup = args.package_name.clone();
-    let nested_lookup = move |fqn: &str| -> Option<rosidl_parser::Message> {
-        let mut parts = fqn.split('/');
-        let first = parts.next()?;
-        let name = parts.next_back().unwrap_or(first);
-        // A qualified reference to another package cannot be answered here.
-        if first != name && first != pkg_for_lookup {
-            return None;
-        }
-        for dir in &msg_dirs {
-            let candidate = dir.join(format!("{name}.msg"));
-            if let Ok(body) = std::fs::read_to_string(&candidate)
-                && let Ok(m) = rosidl_parser::parse_message(&body)
-            {
-                return Some(m);
-            }
-        }
-        None
-    };
+    let nested_lookup = nested_msg_lookup(&args.package_name, msg_dirs);
+    // phase-403 W6 — the inventory is built from the SAME lookup and the SAME
+    // rule as the header constants above it, so the exported fact and the
+    // emitted `#define` can never disagree.
+    let mut inventory = rosidl_codegen::BoundInventory::new(&args.package_name);
 
     // Process each interface file
     for file_path in &args.interface_files {
@@ -935,6 +1016,11 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                 write_if_changed(&source_path, &generated.source)?;
 
                 msg_headers.push(generated.header_name);
+                inventory.record_message(
+                    &format!("{}/msg/{}", args.package_name, file_name),
+                    &parsed,
+                    &nested_lookup,
+                );
 
                 if config.verbose {
                     println!("  Generated message: {}", file_name);
@@ -1014,6 +1100,16 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
 
     if config.verbose {
         println!("  Generated umbrella header: {}.h", args.package_name);
+    }
+
+    // phase-403 W6 — the derived bounds leave codegen here.
+    write_bound_inventory(&args.output_dir, &inventory)?;
+    if config.verbose {
+        println!(
+            "  Generated bound inventory: {} ({} types)",
+            rosidl_codegen::INVENTORY_JSON_NAME,
+            inventory.len()
+        );
     }
 
     println!(
@@ -1156,6 +1252,19 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
             vec![]
         };
 
+        // phase-403 W6 — same lookup and same rule as the args-file path, so a
+        // package generated through `package.xml` and one generated through
+        // CMake carry the same bounds. `generate_c_message_package` (no
+        // `_with_lookup`) resolved NO nested type at all here, which is why the
+        // headers this path emits carry a poison token for most real types; the
+        // lookup below is what the inventory needs and what the header wanted.
+        let msg_dirs: Vec<PathBuf> = interface_files
+            .iter()
+            .filter_map(|p| p.parent().map(PathBuf::from))
+            .collect();
+        let nested_lookup = nested_msg_lookup(pkg_name, msg_dirs);
+        let mut inventory = rosidl_codegen::BoundInventory::new(pkg_name);
+
         for file_path in &interface_files {
             let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
             let file_name = file_path
@@ -1170,12 +1279,22 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                 "msg" => {
                     let parsed = rosidl_parser::parse_message(&content)
                         .wrap_err_with(|| format!("Failed to parse message: {}", file_name))?;
-                    let generated = rosidl_codegen::generate_c_message_package(
-                        pkg_name, file_name, &parsed, type_hash, &resolver,
+                    let generated = rosidl_codegen::generate_c_message_package_with_lookup(
+                        pkg_name,
+                        file_name,
+                        &parsed,
+                        type_hash,
+                        &resolver,
+                        &nested_lookup,
                     )?;
                     write_if_changed(msg_dir.join(&generated.header_name), &generated.header)?;
                     write_if_changed(msg_dir.join(&generated.source_name), &generated.source)?;
                     msg_headers.push(generated.header_name);
+                    inventory.record_message(
+                        &format!("{pkg_name}/msg/{file_name}"),
+                        &parsed,
+                        &nested_lookup,
+                    );
                 }
                 "srv" => {
                     let parsed = rosidl_parser::parse_service(&content)
@@ -1210,6 +1329,9 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
             &pkg_deps,
         );
         write_if_changed(pkg_output.join(format!("{}.h", pkg_name)), umbrella)?;
+
+        // phase-403 W6 — the derived bounds leave codegen here.
+        write_bound_inventory(&pkg_output, &inventory)?;
 
         println!(
             "  ✓ {} ({} messages, {} services, {} actions)",
@@ -1499,6 +1621,26 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     let mut action_headers = Vec::new();
     let mut ffi_rs_files = Vec::new();
 
+    // phase-403 W6 — the derived bound leaves codegen on this path too, and it
+    // is the path that matters most: the embedded C++ component images
+    // (RFC-0043) are what a human was reading `Control 2052` / `Odometry 1804`
+    // out of by eye.
+    //
+    // The number here is DERIVED (`nros_serdes::size::max_serialized_size`). It
+    // is deliberately NOT the C++ header's own `SERIALIZED_SIZE_MAX`, which
+    // `rosidl_codegen::types::compute_serialized_size_max` ESTIMATES — flat 512
+    // per nested message, flat default capacity per string, and never able to
+    // say "unbounded". For a nested type larger than 512 that estimate is
+    // SMALLER than the real bound, so exporting it would publish a number that
+    // under-sizes a receive buffer. See `rosidl_codegen::bounds`.
+    let msg_dirs: Vec<PathBuf> = args
+        .interface_files
+        .iter()
+        .filter_map(|p| p.parent().map(PathBuf::from))
+        .collect();
+    let nested_lookup = nested_msg_lookup(&args.package_name, msg_dirs);
+    let mut inventory = rosidl_codegen::BoundInventory::new(&args.package_name);
+
     // Process each interface file
     for file_path in &args.interface_files {
         let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -1553,6 +1695,11 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 msg_headers.push(generated.header_name);
                 ffi_rs_files.push(format!("msg/{}", generated.ffi.types_rs_name));
                 ffi_rs_files.push(format!("msg/{}", generated.ffi.exports_rs_name));
+                inventory.record_message(
+                    &format!("{}/msg/{}", args.package_name, file_name),
+                    &parsed,
+                    &nested_lookup,
+                );
 
                 if config.verbose {
                     println!("  Generated message: {}", file_name);
@@ -1667,9 +1814,17 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
     let mod_rs_path = args.output_dir.join("mod.rs");
     write_if_changed(&mod_rs_path, mod_rs)?;
 
+    // phase-403 W6 — the derived bounds leave codegen here.
+    write_bound_inventory(&args.output_dir, &inventory)?;
+
     if config.verbose {
         println!("  Generated umbrella header: {}.hpp", args.package_name);
         println!("  Generated FFI mod.rs ({} modules)", ffi_rs_files.len());
+        println!(
+            "  Generated bound inventory: {} ({} types)",
+            rosidl_codegen::INVENTORY_JSON_NAME,
+            inventory.len()
+        );
     }
 
     println!(

@@ -203,6 +203,14 @@ pub fn generate_package(
         }
     };
 
+    // phase-403 W6 — the derived per-type bound leaves codegen as build
+    // metadata instead of stopping inside the generated code. `self_resolve`
+    // above is the CLOSED nested-type resolver the REP-2011 type hash already
+    // demands, so this path can bound every type it can hash: same-package
+    // types from this package's own share dir, everything else from the
+    // caller's cross-package resolver.
+    let mut inventory = rosidl_codegen::BoundInventory::new(&package.name);
+
     // Generate messages
     for msg_name in &package.interfaces.messages {
         let msg_path = package.get_message_path(msg_name);
@@ -233,6 +241,7 @@ pub fn generate_package(
         // Write message file
         let msg_file = msg_dir.join(format!("{}.rs", to_snake_case(msg_name)));
         write_if_changed(&msg_file, &generated.message_rs)?;
+        inventory.record_message(&fqn, &parsed_msg, &self_resolve);
         message_count += 1;
     }
 
@@ -384,6 +393,28 @@ pub fn generate_package(
         &all_dependencies,
         !package.interfaces.actions.is_empty(),
     )?;
+
+    // phase-403 W6 — the Cargo half of the export. Three files, one model:
+    //
+    // * `nros_message_bounds.json` — the canonical artifact, readable by
+    //   anything that can read a file (this is what a Kconfig generator or a
+    //   `mem-report` style tool wants);
+    // * `build.rs` — prints the same document as `cargo:` metadata;
+    // * `links = "nros_msgs_<pkg>"` in the manifest — which is what makes cargo
+    //   hand that metadata to a DEPENDENT's build script, as
+    //   `DEP_NROS_MSGS_<PKG>_BOUNDS_JSON`.
+    //
+    // That is the channel `nros-c`'s build script already reads
+    // `DEP_NROS_NODE_MAX_CBS` / `DEP_NROS_NODE_RX_BUF_SIZE` on. A message crate
+    // links no native library; `links` is used here purely as the metadata
+    // channel cargo makes it, which is also how `nros-node` uses it.
+    //
+    // Cost, stated rather than discovered: every generated message crate now
+    // has a build script, so a cold build compiles and runs one more tiny crate
+    // per interface package. There is no other cargo mechanism that delivers a
+    // value INTO a dependent's build script without that dependent shelling out
+    // to `cargo metadata`.
+    write_bound_inventory(&package_output, &inventory)?;
 
     Ok(GeneratedRustPackage {
         name: package.name.clone(),
@@ -537,6 +568,25 @@ fn nros_dep_line(crate_name: &str, package_output: &Path) -> String {
     format!(r#"{crate_name} = {{ path = "{spec}", default-features = false }}"#)
 }
 
+/// phase-403 W6 -- write the derived-bound inventory into a generated Rust
+/// message crate, and the `build.rs` that puts it on the Cargo `links` channel.
+///
+/// The JSON file is the canonical artifact; `build.rs` republishes the same
+/// document (compacted, because a `cargo:` value may not contain a newline) so
+/// a dependent's build script can read it without knowing where the crate lives
+/// on disk.
+fn write_bound_inventory(
+    package_output: &Path,
+    inventory: &rosidl_codegen::BoundInventory,
+) -> Result<()> {
+    write_if_changed(
+        package_output.join(rosidl_codegen::INVENTORY_JSON_NAME),
+        inventory.to_json(),
+    )?;
+    write_if_changed(package_output.join("build.rs"), inventory.to_build_rs())?;
+    Ok(())
+}
+
 fn generate_cargo_toml(
     output_dir: &Path,
     package_name: &str,
@@ -575,11 +625,20 @@ fn generate_cargo_toml(
     //
     // Consumers depend on these crates by PATH through `[patch.crates-io]` and
     // declare `version = "*"`, so the constant costs nothing at resolution time.
+    // phase-403 W6 — `links` is declared here purely as cargo's METADATA
+    // channel: it is what makes the `cargo:` lines this crate's `build.rs`
+    // prints reach a dependent's build script as `DEP_NROS_MSGS_<PKG>_*`. No
+    // native library is linked. `nros-node` uses `links = "nros_node"` the same
+    // way, and `nros-c` reads `DEP_NROS_NODE_RX_BUF_SIZE` off it.
+    //
+    // Cargo requires `links` to be unique across a dependency graph; a
+    // generated crate is named after its ament package, which already is.
     let mut cargo_toml = format!(
         r#"[package]
 name = "{}"
 version = "0.0.0"
 edition = "2021"
+links = "{links_key}"
 
 # Version of the interface package this was generated FROM. Informational: it
 # varies by host (ROS install vs vendored interfaces) and must never reach the
@@ -597,6 +656,7 @@ heapless = "0.8"
 "#,
         package_name,
         ament_version,
+        links_key = rosidl_codegen::BoundInventory::links_key(package_name),
         nros_core_dep = nros_dep_line("nros-core", output_dir),
         nros_serdes_dep = nros_dep_line("nros-serdes", output_dir),
     );
@@ -996,8 +1056,24 @@ mod tests {
                 .exists()
         );
 
-        // Check there's no build.rs (no C library linking)
-        assert!(!pkg_dir.join("build.rs").exists());
+        // phase-403 W6 — a generated crate DOES carry a `build.rs` now, and it
+        // still links no C library. The assertion here used to be
+        // `!build.rs.exists()` with the comment "no C library linking", which
+        // conflated two things: the build script exists solely because `links`
+        // is cargo's metadata channel, and `links` is how the derived per-type
+        // size bounds reach a DEPENDENT's build script. Nothing native is
+        // linked, which is what that comment was really guarding.
+        let build_rs = std::fs::read_to_string(pkg_dir.join("build.rs")).unwrap();
+        assert!(build_rs.contains("cargo:bounds_json="));
+        assert!(
+            !build_rs.contains("rustc-link-lib") && !build_rs.contains("rustc-link-search"),
+            "a generated message crate must still link no native library"
+        );
+
+        // The inventory itself, and the `links` key that carries it.
+        assert!(pkg_dir.join("nros_message_bounds.json").exists());
+        let cargo_toml = std::fs::read_to_string(pkg_dir.join("Cargo.toml")).unwrap();
+        assert!(cargo_toml.contains("links = \"nros_msgs_test_pkg\""));
     }
 
     // REP-2011 TYPE_HASH wiring (phase-304 W1b c). Reference values captured

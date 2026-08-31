@@ -1,6 +1,9 @@
 // Capacity/storage config relocated to the Lower stage (RFC-0068 / phase-335
 // W1.b); re-exported so `rosidl_codegen::config::…` paths are unchanged.
 pub use rosidl_lower::config;
+/// phase-403 W6 — the derived per-type size bound leaves codegen as build
+/// metadata, instead of stopping at a `#define` in a generated header.
+pub mod bounds;
 // RFC-0061 / phase-318 W1 — the tool answers "would I emit different bytes?"
 pub mod fingerprint;
 pub mod generator;
@@ -19,6 +22,10 @@ pub mod templates;
 pub mod types;
 pub mod utils;
 
+pub use bounds::{
+    BoundInventory, BoundState, INVENTORY_CMAKE_NAME, INVENTORY_JSON_NAME,
+    INVENTORY_SCHEMA_VERSION, TypeBoundEntry,
+};
 pub use config::{
     CODEGEN_CONFIG_FILENAME, CapacityResolver, ConfigError, FieldKind, FieldStorage, StorageMode,
 };

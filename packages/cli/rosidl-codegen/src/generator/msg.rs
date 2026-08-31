@@ -464,28 +464,33 @@ pub fn generate_c_message_package_with_lookup(
                 .collect();
             format!("NROS_UNRESOLVED__{struct_name}__nested_type_{ident}")
         };
-        match (&x1, &x2) {
+        // phase-403 W6 — the TX/RX classification lives in `bounds::BoundState`
+        // so this header and the exported inventory cannot drift into
+        // disagreeing about which encoding feeds which direction. The poison
+        // TOKENS stay here: they are C identifiers, which only this emitter
+        // needs.
+        //
+        // Unbounded and Unresolved BOTH mean "no constant", and the reason says
+        // which — "we looked and there is no bound" licenses bounding the field,
+        // "we could not look" licenses fixing the search path. Collapsing them
+        // into one message is the confusion issue 0896 is about.
+        match crate::bounds::BoundState::classify(&x1, &x2) {
             // TX writes XCDR1; RX must hold either encoding, so it takes the max.
-            (TypeBound::Bounded(a), TypeBound::Bounded(b)) => {
-                (Some(*a), Some(*a.max(b)), None, None)
+            crate::bounds::BoundState::Bounded { tx, rx } => (Some(tx), Some(rx), None, None),
+            crate::bounds::BoundState::Unbounded { reason } => {
+                let member = match (&x1, &x2) {
+                    (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => w.clone(),
+                    _ => unreachable!("classify only reports Unbounded from an Unbounded input"),
+                };
+                (None, None, Some(reason), Some(token(&member)))
             }
-            // Unbounded and Unresolved BOTH mean "no constant", and the reason
-            // says which — "we looked and there is no bound" licenses bounding
-            // the field, "we could not look" licenses fixing the search path.
-            // Collapsing them into one message is the confusion issue 0896 is
-            // about.
-            (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => (
-                None,
-                None,
-                Some(format!("unbounded member: {w}")),
-                Some(token(w)),
-            ),
-            (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => (
-                None,
-                None,
-                Some(format!("nested type `{t}` could not be resolved")),
-                Some(unresolved_token(t)),
-            ),
+            crate::bounds::BoundState::Unresolved { reason } => {
+                let nested = match (&x1, &x2) {
+                    (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => t.clone(),
+                    _ => unreachable!("classify only reports Unresolved from an Unresolved input"),
+                };
+                (None, None, Some(reason), Some(unresolved_token(&nested)))
+            }
         }
     };
 

@@ -380,9 +380,22 @@ function(nros_generate_interfaces target)
     OUTPUT_DIR "${_output_dir}"
     INTERFACE_FILES ${_interface_files})
 
+  # ---- Derived size bounds (phase-403 W6) ----
+  # Codegen writes these unconditionally, for every language and even for a
+  # package with no message types, so they are safe as declared OUTPUTs. They
+  # are what W4 (exact zenoh payload classes) and W5 (arena from the entities
+  # actually registered) need, and what a `.conf` author currently produces by
+  # reading a generated header by eye. See nros_message_bounds_files().
+  nros_message_bounds_files("${_output_dir}" _bounds_json _bounds_cmake)
+  set(${target}_MESSAGE_BOUNDS_JSON "${_bounds_json}" CACHE INTERNAL
+      "phase-403 W6: derived per-type serialized-size bounds for ${target}")
+  set(${target}_MESSAGE_BOUNDS_CMAKE "${_bounds_cmake}" CACHE INTERNAL
+      "phase-403 W6: include() this to read ${target}'s bounds as CMake variables")
+
   # ---- Custom command ----
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources} ${_generated_rs_files}
+           "${_bounds_json}" "${_bounds_cmake}"
     COMMAND "${_NANO_ROS_CODEGEN_TOOL}" codegen --language "${_lang_flag}" --args-file "${_args_file}"
     DEPENDS ${_interface_files} "${_args_file}" "${_NANO_ROS_CODEGEN_TOOL}"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
