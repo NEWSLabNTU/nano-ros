@@ -2025,6 +2025,7 @@ impl Session for CffiSession {
             can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
             supports_in_place: false,
+            pending_status: None,
         };
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
@@ -3218,6 +3219,21 @@ pub struct CffiSubscription {
     /// Phase 231 (RFC-0038) — cached `subscription_supports_in_place` capability,
     /// queried once at creation so `supports_process_in_place(&self)` is cheap.
     supports_in_place: bool,
+    /// Issue 0971 — a status that happened where it could not be returned.
+    ///
+    /// `try_recv_sequence` is contractually a COUNT: a partial drain reports
+    /// what it got rather than erroring (`rmw_vtable.h`). So when the drain
+    /// stops because a message did not fit the caller's slot, there is nowhere
+    /// to put `BufferTooSmall` — and this loop used to answer it with `?`,
+    /// throwing away the count for the messages it HAD delivered, while the
+    /// native Cyclone path answered the same condition with `Ok(count)`.
+    ///
+    /// The status is parked here and returned by the next call instead. That is
+    /// the shape `nros-verification`'s `try_recv_post_fix` already proves for
+    /// the single take — check the flag first, clear it, return the error, take
+    /// nothing — moved one call later because that is where the contract leaves
+    /// room for it.
+    pending_status: Option<TransportError>,
 }
 
 impl CffiSubscription {
@@ -3427,6 +3443,14 @@ impl nros_rmw::Subscription for CffiSubscription {
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+        // Issue 0971 — a status parked by an earlier `try_recv_sequence` is
+        // delivered here too, so a caller that mixes the two entry points still
+        // hears about it rather than having it silently outlive the batch that
+        // produced it. Cyclone's native flag is checked at both of its take
+        // entry points for the same reason.
+        if let Some(status) = self.pending_status.take() {
+            return Err(status);
+        }
         let mut view = self.make_view();
         // Phase 376 W3.b/W3.d step A — `take` reports through out-parameters.
         // Three arms collapse into one: NO_DATA, a negative error, and the
@@ -3534,6 +3558,12 @@ impl nros_rmw::Subscription for CffiSubscription {
         if per_msg_cap == 0 || max_msgs == 0 {
             return Ok(0);
         }
+        // Issue 0971 — a status parked by an earlier drain is delivered before
+        // any new take, and taking nothing this call is the point: the caller
+        // has to be able to act on it before it asks for more.
+        if let Some(status) = self.pending_status.take() {
+            return Err(status);
+        }
         let limit = max_msgs.min(out_lens.len());
         if buf.len() < limit.saturating_mul(per_msg_cap) {
             return Err(TransportError::BufferTooSmall);
@@ -3541,12 +3571,26 @@ impl nros_rmw::Subscription for CffiSubscription {
         let mut count = 0;
         for i in 0..limit {
             let slot = &mut buf[i * per_msg_cap..(i + 1) * per_msg_cap];
-            match self.try_recv_raw(slot)? {
-                Some(len) => {
+            match self.try_recv_raw(slot) {
+                Ok(Some(len)) => {
                     out_lens[i] = len;
                     count += 1;
                 }
-                None => break,
+                Ok(None) => break,
+                // Issue 0971 — this arm used to be `?`, which discarded `count`
+                // and reported the error, so a caller could not tell how many
+                // of the slots it can see are valid. The messages already
+                // written are real and are reported; the status is parked for
+                // the next call. With nothing delivered yet there is no count
+                // worth protecting, so it goes out immediately — which is also
+                // what makes the single-message case identical to `try_recv_raw`.
+                Err(e) => {
+                    if count == 0 {
+                        return Err(e);
+                    }
+                    self.pending_status = Some(e);
+                    break;
+                }
             }
         }
         Ok(count)

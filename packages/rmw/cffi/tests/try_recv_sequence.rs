@@ -21,12 +21,12 @@ use core::{
     sync::atomic::{AtomicUsize, Ordering},
 };
 
-use nros_rmw::{Session, SessionMode, Subscription, TopicInfo};
+use nros_rmw::{Session, SessionMode, Subscription, TopicInfo, TransportError};
 use nros_rmw_cffi::{
-    EMPTY_VTABLE, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback,
-    NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService,
-    NrosRmwSession, NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable,
-    nros_rmw_cffi_register_named,
+    EMPTY_VTABLE, NROS_RMW_RET_BUFFER_TOO_SMALL, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
+    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
+    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
+    NrosRmwSubscription, NrosRmwVtable, nros_rmw_cffi_register_named,
 };
 
 const PER_MSG_CAP: usize = 32;
@@ -51,6 +51,9 @@ static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 static SEQ_CALLS_NATIVE: AtomicUsize = AtomicUsize::new(0);
 static RAW_CURSOR: AtomicUsize = AtomicUsize::new(0);
+/// Issue 0971 — cursor for the too-small stub, separate from `RAW_CURSOR` so
+/// the existing tests keep their exact call counts.
+static TOO_SMALL_CURSOR: AtomicUsize = AtomicUsize::new(0);
 
 unsafe extern "C" fn stub_open(
     _: *const core::ffi::c_char,
@@ -137,6 +140,40 @@ unsafe extern "C" fn stub_take_no_data(
 ) -> NrosRmwRet {
     unsafe { *taken = false };
     NROS_RMW_RET_OK
+}
+/// Issue 0971 — two messages, then a sample that does not fit, then empty.
+///
+/// This is what a backend does when `buf_len` cannot hold the next sample:
+/// `BUFFER_TOO_SMALL`, never a truncated success (the `take` slot's phase-403
+/// W1 rule). The message is consumed, so a second call moves past it.
+unsafe extern "C" fn stub_take_too_small(
+    _: *const NrosRmwSubscription,
+    buf: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
+    taken: *mut bool,
+) -> NrosRmwRet {
+    let out_len = unsafe { &raw mut (*buf).len };
+    let (data, buf_len) = unsafe { ((*buf).data, (*buf).capacity) };
+    let cursor = TOO_SMALL_CURSOR.fetch_add(1, Ordering::SeqCst);
+    match cursor {
+        0 | 1 => {
+            let msg = QUEUE[cursor];
+            let copy = msg.len().min(buf_len);
+            unsafe {
+                core::ptr::copy_nonoverlapping(msg.as_ptr(), data, copy);
+                *out_len = copy;
+                *taken = true;
+            }
+            NROS_RMW_RET_OK
+        }
+        2 => {
+            unsafe { *taken = false };
+            NROS_RMW_RET_BUFFER_TOO_SMALL
+        }
+        _ => {
+            unsafe { *taken = false };
+            NROS_RMW_RET_OK
+        }
+    }
 }
 unsafe extern "C" fn stub_has_data(
     _: *mut NrosRmwSubscription,
@@ -268,6 +305,16 @@ fn make_vtable(native_batch: bool) -> NrosRmwVtable {
             None
         },
         ..EMPTY_VTABLE
+    }
+}
+
+static VTABLE_TOO_SMALL: NrosRmwVtable = make_vtable_too_small();
+
+/// Issue 0971 — the fallback loop, with a backend whose third take does not fit.
+const fn make_vtable_too_small() -> NrosRmwVtable {
+    NrosRmwVtable {
+        take: Some(stub_take_too_small),
+        ..make_vtable_fallback()
     }
 }
 
@@ -469,4 +516,72 @@ fn try_recv_sequence_rejects_zero_per_msg_cap() {
 #[allow(dead_code)]
 fn _make_vtable_smoke() -> NrosRmwVtable {
     make_vtable(false)
+}
+
+/// Issue 0971 — a fallback drain that stops because a message did not fit
+/// reports the count it earned, and the NEXT call reports why it stopped.
+///
+/// Before this, the loop was `self.try_recv_raw(slot)?`: the error went out
+/// immediately and `count` went on the floor, so a caller could not tell how
+/// many of the slots it can see are valid. The native Cyclone path answered the
+/// same condition with `Ok(count)` and no reason. Neither could be acted on, and
+/// they disagreed with each other — which is what made the vtable's "identical
+/// observable behaviour" claim about this fallback untrue.
+#[test]
+fn try_recv_sequence_fallback_parks_the_status() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    TOO_SMALL_CURSOR.store(0, Ordering::SeqCst);
+    let mut sub = open_subscriber("tb_seq_too_small", &VTABLE_TOO_SMALL);
+
+    let mut buf = [0u8; 8 * PER_MSG_CAP];
+    let mut lens = [0usize; 8];
+
+    // The two that fit are delivered and REPORTED, not lost to the failure of
+    // the one behind them.
+    let count = sub
+        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .expect("a partial drain reports its count, it does not error out");
+    assert_eq!(count, 2, "expected the two messages that fit");
+    for (i, expected) in QUEUE.iter().take(2).enumerate() {
+        assert_eq!(lens[i], expected.len(), "lens[{i}] mismatch");
+        assert_eq!(
+            &buf[i * PER_MSG_CAP..i * PER_MSG_CAP + lens[i]],
+            *expected,
+            "payload[{i}] mismatch"
+        );
+    }
+
+    // ...and the reason the drain stopped arrives on the next call.
+    let err = sub
+        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .expect_err("the parked status must be delivered");
+    assert_eq!(err, TransportError::BufferTooSmall);
+
+    // The status is consumed by the call that reported it, so the subscription
+    // is usable again rather than pinned to one error forever.
+    let after = sub
+        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .expect("the status is cleared once reported");
+    assert_eq!(
+        after, 0,
+        "the stub queue is empty past the oversized sample"
+    );
+}
+
+/// Issue 0971 — with nothing delivered yet there is no count worth protecting,
+/// so the status goes out immediately. This is what keeps a one-message drain
+/// answering exactly as `try_recv_raw` would.
+#[test]
+fn try_recv_sequence_fallback_errors_when_nothing_was_taken() {
+    let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
+    // Start the stub AT the oversized sample.
+    TOO_SMALL_CURSOR.store(2, Ordering::SeqCst);
+    let mut sub = open_subscriber("tb_seq_too_small_first", &VTABLE_TOO_SMALL);
+
+    let mut buf = [0u8; 8 * PER_MSG_CAP];
+    let mut lens = [0usize; 8];
+    let err = sub
+        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .expect_err("nothing was delivered, so the status is not deferred");
+    assert_eq!(err, TransportError::BufferTooSmall);
 }
