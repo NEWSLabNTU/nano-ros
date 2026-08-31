@@ -28,6 +28,28 @@
 // safety MCUs run well under the headroom. A future zero-copy fast
 // path can replace this once Cyclone exposes
 // `dds_writer_lookup_serdatatype` upstream.
+//
+// --------------------------------------------------------------------------
+// AMENDED — issues 0969 and 0970. The text above is kept because it still
+// describes what this builder does and where it is still used, but two of its
+// claims were wrong, and both are now settled in the tree.
+//
+//   * "the raw-CDR API needs a real ddsi_sertype" is true of `dds_writecdr`
+//     and NOT of `dds_takecdr`, which takes a reader entity and nothing else —
+//     the reader already owns its sertype from `dds_create_topic`. The receive
+//     side was never blocked. Issue 0969 rewrote `subscription_take`.
+//
+//   * "once Cyclone exposes `dds_writer_lookup_serdatatype` upstream" was
+//     never the gate. That API recovers a sertype you do not own;
+//     `rmw_cyclonedds_cpp` never calls it, because it registers its own with
+//     `dds_create_topic_sertype` — public, and present in our vendored 0.10.5.
+//     Issue 0970 does the same in `nros_sertype.{hpp,cpp}`; the message
+//     publisher and subscriber now use it and neither builds a typed sample.
+//
+// `service.cpp` is what still uses this builder. Its request/reply path reads
+// typed samples for several action types, and moving it belongs with the work
+// that retires those adapters rather than with the data-path change.
+// --------------------------------------------------------------------------
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>

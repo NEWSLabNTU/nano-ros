@@ -50,6 +50,14 @@ STEADY = {
     "publisher_publish_raw",
     "publisher_publish_streamed",
     "subscription_take",
+    # Issue 0970 — the sertype's serdata constructors. Not named for an RMW
+    # entry point because Cyclone calls them, but they are per message on both
+    # sides: `from_ser`/`from_ser_iov` build the received sample, `from_sample`
+    # builds the published one.
+    "serdata_from_ser",
+    "serdata_from_ser_iov",
+    "serdata_from_sample",
+    "serdata_alloc",
     "write_typed",
     "write_fibonacci_get_result_response",
     "service_take_request",
@@ -68,22 +76,31 @@ STEADY = {
 # Measured 2026-08-26. Cyclone is the whole list; XRCE reached zero when issue
 # 0782 landed, and uORB never had one.
 DECLARED = {
-    ("packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/publisher.cpp", "publisher_publish_raw"): (
-        "TWO per publish. `ddsrt_malloc(body_len)` is message-sized and strips the "
-        "4-byte CDR encapsulation header; it looks droppable — `dds_istream_init` "
-        "takes a `const void *`, so the stream could point at `data + 4` — and it "
-        "is NOT. `dds_cdr_alignto` aligns the stream INDEX and reads at "
-        "`m_buffer + m_index`, so an 8-aligned index only yields an 8-aligned "
-        "address when the BASE is 8-aligned. `ddsrt_malloc` gives that; `data + 4` "
-        "gives 4-byte alignment at best, which is an unaligned 64-bit read for any "
-        "message with an int64/double. The copy is load-bearing. "
-        "`ddsrt_calloc(1, desc->m_size)` is the typed sample: fixed size, known at "
-        "create time, and removable by holding one per publisher"
-    ),
-    ("packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/subscriber.cpp", "subscription_take"): (
-        "`ddsrt_calloc(1, desc->m_size)` per take. Fixed size, known at create "
-        "time — the one issue 0777 called out as mattering to a real-time budget, "
-        "and removable the same way as the publisher's"
+    # Issues 0969 and 0970 removed the publish and take entries that stood
+    # here. `publisher_publish_raw` had TWO per message — a message-sized
+    # `ddsrt_malloc` for the body and a `ddsrt_calloc` of the typed sample —
+    # and `subscription_take` had the typed sample plus the ostream's
+    # growth-by-realloc. None of them exist now: neither direction decodes.
+    #
+    # What replaced them is ONE allocation per message per direction, below,
+    # and the count alone would understate that. Cyclone was ALREADY
+    # allocating a serdata and its payload on the receive path, inside
+    # libddsc where this scanner cannot see it; the sites below are that same
+    # allocation, moved into our sertype. So the honest reading of this table
+    # across the two issues is not "3 became 2" but "the typed sample, its
+    # per-member allocations, the body copy and the ostream are gone, and what
+    # remains is what Cyclone was doing anyway".
+    ("packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/nros_sertype.cpp", "serdata_alloc"): (
+        "ONE `ddsrt_malloc` per message, in EACH direction: `serdata_from_ser` / "
+        "`serdata_from_ser_iov` call it for a received sample, `serdata_from_sample` "
+        "for a published one. It is sized by the message and holds the CDR the "
+        "serdata carries. Cyclone's own `serdata_default` did exactly this before "
+        "and still does for every topic this backend has not taken over, so what "
+        "issue 0970 did was move the allocation rather than add one. Removable only "
+        "by borrowing the receive buffer instead of owning it — the loan model, "
+        "which RFC-0038 records as not porting to a network DDS backend — and on "
+        "the publish side not at all, since `dds_write` returns before the network "
+        "does and the bytes have to be owned by then"
     ),
     ("packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp", "write_typed"): (
         "TWO per request and per reply — the request/reply analogue of the publish "
