@@ -256,87 +256,52 @@ a board rung applies (`max_sc = 23`), the env front-end still wins over both
 `NROS_PLATFORM_NAME` — a bare `cargo build` with no lane — nothing changes:
 with no board named there IS no platform rung to resolve.
 
-### Remaining tenants
+### Remaining tenants — re-ordered from the census, 2026-09-01
 
-The zenoh pools, then the per-entity caps.
+The wave opened with "then the zenoh pools, then the per-entity caps", ordered
+by an estimate. The census orders it by measurement, and the estimate was
+right about zenoh being next and wrong about it being a separate thing from the
+caps — **the caps ARE zenoh's**:
 
----
+| family | sizing knobs | note |
+| --- | --- | --- |
+| `ZPICO_*` | **15** | entity caps (publishers, subscribers, queryables, sessions, liveliness, pending gets), wire batch buffers, fragmentation, reply staging, two transport-band priorities |
+| `NROS_MAX_*` | 5 | message and parameter bounds |
+| `NROS_RUNTIME_*` | 4 | component caps |
+| platform heap/stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB` |
+| singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
 
-## W7 — core's exclusive features — DONE, and the premise was wrong
+Plus 85 `CONFIG_NROS_*` Kconfig declarations, whose largest family is also
+zenoh (24), then XRCE (8), `NROS_MAX` (7), RMW (5), Zephyr (4).
 
-**Audited 2026-08-30. No work outstanding.** This wave was scoped from a claim
-that did not survive checking, and the correction is recorded here rather than
-quietly dropped.
+**So: the zenoh tenant next, and it is one tenant, not two.**
 
-The claim: `nros-node`'s `scheduler-fifo` / `-edf` / `-bucketed` / `-sporadic`
-is a pick-one family expressed in an additive mechanism, guarded by five
-`compile_error!` calls standing in for the constraint Cargo cannot express.
+### Five knobs must NOT be migrated
 
-What the tree actually says, three lines above those declarations:
+`NROS_SUBSCRIPTION_BUFFER_SIZE`, `ZPICO_SUBSCRIBER_BUFFER_SIZE`,
+`ZPICO_SUBSCRIBER_LARGE_SIZE`, `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` and
+`ZPICO_PUBLISHER_TX_BUFFER_SIZE` are receive/transmit buffer sizes that
+[phase-403](phase-403-type-bound-rx-sizing.md) and
+[phase-408](phase-408-cpp-message-derived-buffers.md) are making **derived from
+the message type**. A ladder rung would give each a per-platform default —
+entrenching the global those phases exist to remove. The census classifies them
+`derived` so nobody migrates one by following the backlog count.
 
-> Each flag is independent; multiple may be on simultaneously when runtime
-> selection across classes is needed.
+`NROS_SUBSCRIPTION_BUFFER_SIZE` is the awkward one: it is ALREADY on the
+ladder, from this wave's executor tenant, and that is fine — it stays as the
+fallback for a type with no declared bound. It just must not be treated as
+finished business.
 
-The `cfg` sites agree — they gate scheduler classes in, additively. The five
-`compile_error!` guards are feature IMPLICATIONS (`param-services` needs
-`alloc`), not exclusivity. Every `cfg(not(feature = …))` in core is the correct
-no_std shape. And `packages/api/nros/src/lib.rs` records that a platform
-mutual-exclusion `compile_error!` was deliberately *removed* — the tree has
-already learned this lesson.
+### Two corrections to earlier numbers here
 
-The error was inferring exclusivity from a naming family without reading the
-comment above it.
-
-**What survives.** RFC-0086 D5's rule stands on its own footing: Cargo features
-are additive by contract, so they cannot express "off over an on-default",
-which RFC-0049 requires of a front-end. That is a constraint on new knobs,
-enforced at review. It simply has no backlog attached.
-
-**Gate.** Satisfied on audit: no `compile_error!` in core stands in for an
-exclusivity constraint, and no core feature encodes a negative.
-
----
-
-## W8 — retire the old paths
-
-Retirement is a wave, not a side effect, because a mechanism that still
-resolves is a mechanism people still use.
-
-* A migrated knob's old reader is **deleted**, not left as a fallback. A
-  fallback that silently wins is how issue 0135/0316 happened: two consumers
-  disagreeing about one value with no diagnostic.
-* Env vars that were the *only* home for a knob before nano-ros #0749/#0752
-  keep their names as front-ends. Env vars that duplicated a ladder knob are
-  removed.
-* `config/<name>/nros-platform.toml` stops being read after W1's grace period.
-* A gate asserts no knob has two readers.
-
-**Gate.** For every migrated knob, exactly one reader exists, and
-`nros config explain` is the only way to learn its value.
-
----
-
-## Risks, and the ones already realised
-
-* **A fallback left in place wins silently.** Realised twice: issue 0135 and
-  issue 0316, both "two consumers disagreed about a struct's size with no
-  diagnostic". W8's one-reader gate exists for this.
-* **A drift test that mirrors nothing.** RFC-0049's mirror test is only as good
-  as its coverage; W5 must extend it to the new `depends on`, or the Kconfig
-  projection silently diverges.
-* **Migrating a knob without its coupling.** A sizing knob moved into the
-  ladder with its implications left in a `.conf` file is worse than not moving
-  it — the value looks authoritative and is not. Move the rule with the knob.
-* **`implies` implemented as `select`.** The single most likely wrong turn, and
-  the one the surveyed prior art most clearly warns against.
-
-## What this phase does NOT do
-
-* It does not change the four-rung ladder or its order. RFC-0049's precedence
-  is correct.
-* It does not touch the runtime seam (`nros_rmw_vtable_t`, RFC-0035).
-* It does not introduce a constraint solver. `requires` validates and `implies`
-  enforces; picking a satisfying assignment reintroduces the opacity W4 exists
-  to prevent.
-* It does not migrate RFC-0045's boot-config resolution, which is the runtime
-  half of the same story and lands separately.
+* **The census scanned only `build.rs`.** A build script that grew past a few
+  lines moved its body into a helper crate and the knobs went with it: 21
+  `ZPICO_*` names live in `nros-zpico-build/src/`. Both this doc's original
+  "`ZPICO_*` env | 9" and the census's first "6" undercounted the zenoh surface
+  roughly fourfold. It now scans `*-build` crates and `packages/tooling/` too.
+* **The env row counted things that are not knobs.** 19 of the 64 names are
+  paths, flags, or the ladder's own inputs — including `NROS_PLATFORM_NAME`,
+  which this wave ADDED, so the raw count rose while the backlog fell. Names
+  are classified explicitly now, and an unclassified name FAILS the gate: a new
+  knob has to be decided about (ladder? derived? infra?) rather than guessed at
+  by a heuristic, which is how a backlog number stops meaning anything.
