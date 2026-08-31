@@ -18,6 +18,7 @@
 // short timeout), then take it back and assert the same bytes.
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <thread>
 #include <chrono>
@@ -98,6 +99,48 @@ int main() {
     // peer, so spin briefly before publishing so the writer doesn't
     // pre-empt subscription matching.
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // Issues 0969 / 0970 — `NROS_ROUNDTRIP_ITERS` repeats the publish/take pair
+    // so the DATA PATH can be priced apart from session and entity setup, which
+    // otherwise dominate a one-shot run. Two runs at different counts give the
+    // per-message cost as a slope rather than an intercept:
+    //
+    //   valgrind --tool=memcheck ./nros_rmw_cyclonedds_data_roundtrip
+    //   NROS_ROUNDTRIP_ITERS=200 valgrind ... ; per-message = (a200 - a1) / 199
+    //
+    // Default 1, so the test's meaning is unchanged when nobody sets it.
+    long iters = 1;
+    if (const char* s = std::getenv("NROS_ROUNDTRIP_ITERS")) {
+        const long parsed = std::strtol(s, nullptr, 10);
+        if (parsed > 0) {
+            iters = parsed;
+        }
+    }
+    for (long it = 1; it < iters; ++it) {
+        if (g_vt->publish(&pub, rmw_byte_span_t{cdr, cdr_len}) != NROS_RMW_RET_OK) {
+            std::fprintf(stderr, "warmup publish %ld failed\n", it);
+            return 5;
+        }
+        uint8_t scratch[256];
+        size_t sn = 0;
+        bool stook = false;
+        // Drain it, so the reader's history does not grow with `iters` and turn
+        // a per-message measurement into a per-backlog one.
+        for (int spin = 0; spin < 100 && !stook; ++spin) {
+            if (nros_test_take(g_vt, &sub, scratch, sizeof(scratch), &sn, &stook) !=
+                NROS_RMW_RET_OK) {
+                std::fprintf(stderr, "warmup take %ld failed\n", it);
+                return 5;
+            }
+            if (!stook) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        }
+        if (!stook) {
+            std::fprintf(stderr, "warmup take %ld never arrived\n", it);
+            return 5;
+        }
+    }
 
     rmw_ret_t pr = g_vt->publish(&pub, rmw_byte_span_t{cdr, cdr_len});
     if (pr != NROS_RMW_RET_OK) {
