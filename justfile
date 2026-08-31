@@ -1378,10 +1378,17 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
         # `in_lane … && run_stage …` would abort the recipe under `set -e` when
         # the module is filtered OUT (a false compound command is a failure), so
         # the skip is an explicit `if`.
-        if in_lane zephyr; then run_stage zephyr just zephyr build-fixtures; fi
+        #
+        # phase-407 W2 — `NROS_LANE_INCLUDED` is what makes a skip legitimate
+        # here: the operator asked for a LANE, not for these platforms by name,
+        # so an unprovisioned one is reported (78 -> SKIPPED) rather than failed.
+        # It is set per stage rather than exported once, so it names the platform
+        # in the child's environment and cannot leak to an unrelated `just` this
+        # recipe might later run. Unset is NAMED — see scripts/build/lane-skip.sh.
+        if in_lane zephyr; then run_stage zephyr env NROS_LANE_INCLUDED=zephyr just zephyr build-fixtures; fi
         for platform in native qemu freertos nuttx threadx_linux threadx_riscv64 esp32 px4; do
             in_lane "$platform" || continue
-            run_stage "$platform" just "$platform" build-fixtures
+            run_stage "$platform" env "NROS_LANE_INCLUDED=$platform" just "$platform" build-fixtures
         done
         exit 0
     fi
@@ -1500,8 +1507,16 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
             # printing it as OK is what hid an unprovisioned Zephyr workspace
             # until `_lane-gate` failed on artifacts twenty minutes later. The
             # reason comes back through the lane log's `NROS_LANE_SKIP:` marker.
-            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env %s NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
-                "$platform" "$NROS_STAGE_ENV" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform"
+            #
+            # phase-407 W2 — `NROS_LANE_INCLUDED=<platform>` is what ENTITLES
+            # this stage to that third verdict. These platforms were selected by
+            # a lane, not typed by the operator, so an absent SDK is reported and
+            # not failed. A direct `just <plat> build-fixtures` leaves the
+            # variable unset, is therefore NAMED, and fails instead. Unset =
+            # NAMED is the deliberate default: a driver that forgets this
+            # assignment goes red rather than quietly staying green.
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env %s NROS_LANE_INCLUDED=%q NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
+                "$platform" "$NROS_STAGE_ENV" "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform"
         done
     } > "$makefile"
     # issue 0762 — run the fan-out under ONE process group, so killing this

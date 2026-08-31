@@ -122,7 +122,7 @@ fast-serial: \
     export-f-closure peer-sweep-lanes \
     activate-shells build-root fixture-groups rmw-descriptors artifact-identity-budget \
     cargo-target-spelling example-leaf-target-dirs example-leaf-build-dirs fixture-binary-names manifests-parse build-rs-rerun-paths \
-    lane-skip-protocol skip-marker-matching \
+    lane-skip-protocol named-lane-fails skip-marker-matching \
     package-xml-comments provider-announcements provider-index \
     zephyr-knob-agreement workspace-rmw-agreement site-config lane-scope-consumers \
     interlock-visibility fixture-stamp-honesty \
@@ -3101,6 +3101,16 @@ manifests-parse:
 [private]
 lane-skip-protocol:
     @python3 scripts/check-lane-skip-protocol.py
+
+# phase-407 W2 — 0599/0650 gave a lane the SKIPPED verdict; this says WHO MAY
+# HAVE IT. A platform reached by a preset or the broad default may skip and is
+# reported; a platform the operator NAMED (`just zephyr build-fixtures`) must
+# work, because naming it is the whole specification. Runs the protocol both
+# directions on every invocation — a named skip regressing to a pass is
+# invisible to a grep, so the gate makes the call instead of reading it.
+[private]
+named-lane-fails:
+    @python3 scripts/check-named-lane-fails.py
 
 # issue 0658 — `[SKIPPED:<class>]` does not contain `[SKIPPED]`, so a hand-rolled
 # literal match reclassifies every CLASSED skip as a FAILURE. Five matrix

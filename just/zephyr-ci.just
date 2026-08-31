@@ -28,6 +28,11 @@ build-fixtures:
     # nothing, and the four west-owned compile-check fixtures went missing
     # twenty minutes downstream instead of being reported here.
     source scripts/build/lane-skip.sh
+    # phase-407 W2 — this recipe IS the zephyr platform lane, so `just zephyr
+    # build-fixtures` on an unprovisioned host FAILS with the remedy below
+    # instead of reporting SKIPPED. Reached through the fixture fan-out
+    # (`NROS_LANE_INCLUDED` set) it still skips, and is still reported.
+    nros_lane_platform zephyr
     trap 'for pid in $(jobs -pr); do kill "$pid" 2>/dev/null || true; done; wait; exit 130' INT TERM
     # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.
     source scripts/build/zephyr-python.sh

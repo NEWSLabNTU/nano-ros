@@ -49,7 +49,9 @@ SCAN_DIR = os.path.join(ROOT, "just")
 ANNOUNCES = re.compile(r"^\s*(echo|printf)\b[^\n]*\bskip", re.IGNORECASE)
 SAME_LINE_EXIT = re.compile(r";\s*exit\s+0\s*$")
 BARE_EXIT_0 = re.compile(r"^\s*exit\s+0\s*$")
-PROTOCOL = re.compile(r"\bnros_(lane|check)_skip(_note|_flush|_reset|_report)?\b")
+PROTOCOL = re.compile(
+    r"\bnros_(lane|check)_(skip(_note|_flush|_reset|_report)?|scope|scope_note)\b"
+)
 
 # Sites that are NOT a lane precondition, with the reason. A skip line here is
 # about a case inside an already-running step, not about a lane that cannot run.
