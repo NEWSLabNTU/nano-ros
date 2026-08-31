@@ -2,10 +2,11 @@
 id: 951
 title: "`[deploy.*]` is three unrelated facts in one table — site config keyed
   on the deploy name, not the board, is the half that duplicates"
-status: open
+status: resolved
 type: tech-debt
 area: orchestration, tooling
 related: [rfc-0065, rfc-0072, phase-383, issue-0842, issue-0606]
+resolved_in: ae3e2aa47
 ---
 
 ## Problem
@@ -148,15 +149,12 @@ regression pin, at the layer where the fact lives.
   out-of-tree users still author it, and the deprecation warnings are what move
   them.
 
-Still open:
-* **the last `[deploy.*]` block per bringup** — one `kind = "self"` each, the
-  implicit machine the system runs on. It is a machine, so it belongs in
-  `[host.*]`; moving it empties the table and gives `target = None` by
-  construction, which is the shape issue 0356 wanted. It stays for now because
-  it is the block that currently makes placement HAPPEN, and deleting the
-  embedded blocks around it already flipped every placed node to
-  `target: linux` (see below) — one measured change at a time.
-* `DEPRECATED_DEPLOY_FIELDS` now records a DESTINATION per field, because the
+Also landed:
+* **the last `[deploy.*]` block per bringup is gone too.** Each was a
+  `kind = "self"` machine and became an unscoped `[host.<name>]`, which gives
+  `target = None` by construction — the shape issue 0356 wanted. Tree-wide the
+  count is now `deploy=0`, against 96 when this issue was filed.
+* `DEPRECATED_DEPLOY_FIELDS` records a DESTINATION per field, because the
   destination is not uniform — the first version sent `domain_id` and `locator`
   to `[image.*]`, a table with no such keys.
 
