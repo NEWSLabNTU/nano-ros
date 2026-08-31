@@ -223,10 +223,43 @@ pub const fn subscription_rx_bytes<M: nros_serdes::schema::Message>(
     rx_buf: usize,
 ) -> Option<usize> {
     match nros_serdes::size::max_serialized_bound::<M>() {
-        Some(bound) if bound < rx_buf => Some(bound),
-        Some(_) => Some(rx_buf),
+        Some(bound) => {
+            let framed = transport_framed(bound);
+            Some(if framed < rx_buf { framed } else { rx_buf })
+        }
         None => None,
     }
+}
+
+/// Round a serialized size up to the 4-byte multiple a receive buffer must be
+/// able to hold.
+///
+/// The message is `bound` bytes. What a transport DELIVERS can be up to three
+/// bytes more, and a buffer sized to `bound` exactly refuses those bytes rather
+/// than truncating them — correctly, and with the message lost.
+///
+/// Measured, not assumed. A 25-byte `std_msgs/String` published by ROS 2 Humble
+/// over stock `rmw_cyclonedds` arrives at the Cyclone backend as
+/// `len:28 hdr:00010000 cdr:25` — three bytes of RTPS submessage alignment added
+/// by the SENDER, with the encapsulation options reading `0000` rather than
+/// `0003`, so the pad is not discoverable from the header either. The backend
+/// hands back exactly what the wire gave it (issues 0969 / 0970), which is why
+/// the pad reaches buffer sizing now instead of being absorbed by a re-encode.
+///
+/// Deliberately NOT folded into `max_serialized_bound`. That answers "how big is
+/// this message", and issue 0964 exists because that number had been fudged
+/// before — it stays exact. Framing is the transport's, so it is applied where a
+/// RECEIVE BUFFER is sized and nowhere else.
+///
+/// Four is not a Cyclone number: RTPS aligns submessages to 4, so it is the
+/// alignment any DDS peer can impose. A transport that framed more coarsely
+/// would need its own allowance, which is why this is a named function and not
+/// a `+ 3`.
+///
+/// `rosidl_codegen::bounds::transport_framed` is the same rule for the C and C++
+/// constants; the two cite each other so they cannot drift apart.
+const fn transport_framed(bound: usize) -> usize {
+    bound.next_multiple_of(4)
 }
 
 /// Phase 380 W4 — can a default-sized receive buffer hold every message of `M`?
