@@ -5,8 +5,8 @@
 #   breadth  which coordinates a run visits   tier1 tier2 nightly full   low cost
 #   depth    what it does with each           build+link | build+run     HIGH cost
 #
-# MEASURED 2026-08-31: `just ci l3` — cross build + link plus ELF symbol
-# interrogation, no QEMU and no tests — is 46 s. The tier-2 RUN over the same
+# MEASURED 2026-08-31: `just ci matrix build` — cross build + link plus ELF
+# symbol interrogation, no QEMU and no tests — is 27-46 s. The tier-2 RUN over the same
 # tree is 9.5 min on top of an 11 min warm fixture rebuild. Depth is ~25x
 # breadth, so build depth can afford to gate every merge and run depth cannot.
 #
@@ -21,7 +21,7 @@
 #
 # WHY cancel-in-progress IS correct here and is NOT correct for run-depth
 #
-# A newer commit's answer subsumes an older one's, and at 46 s this run
+# A newer commit's answer subsumes an older one's, and at well under a minute this run
 # FINISHES before the next merge arrives. A 20-minute run-depth lane under the
 # same setting starves: with ten agents landing through a queue that batches
 # four, each merge cancels the last and the tier completes never — a lane that
@@ -62,10 +62,13 @@ jobs:
         run: |
           source ./activate.sh
           just setup tier2
-      - name: just ci l3
+      # `ci matrix build` — the (breadth, depth) pair, not a lane letter.
+      # phase-410 W4: `l3` survives as the implementation; this spelling says
+      # WHICH breadth at WHICH depth, which is what the file is for.
+      - name: just ci matrix build
         run: |
           source ./activate.sh
-          just ci l3
+          just ci matrix build
       - name: Sweep orphans and disk
         if: always()
         run: ./scripts/ci/runner-sweep.sh || true
