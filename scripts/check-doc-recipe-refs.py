@@ -58,6 +58,7 @@ import argparse
 import importlib.util
 import re
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -67,13 +68,39 @@ BASELINE = REPO / ".config" / "doc-recipe-refs-baseline.txt"
 # `just --help`. A flag that takes a value swallows the token after it, which
 # would otherwise read as the recipe name.
 VALUE_FLAGS = {
-    "--alias-style", "-c", "--ceiling", "--chooser", "--color", "--command",
-    "--command-color", "--completions", "--cygpath", "-d", "--dotenv-command",
-    "--dotenv-filename", "--dotenv-path", "--dump-format", "-E",
-    "--evaluate-format", "-f", "-F", "--group", "--indentation", "--jobs",
-    "--justfile", "--justfile-name", "--list-heading", "--list-prefix", "-s",
-    "--shell", "--shell-arg", "--show", "--tempdir", "--timestamp-format",
-    "--usage", "--working-directory",
+    "--alias-style",
+    "-c",
+    "--ceiling",
+    "--chooser",
+    "--color",
+    "--command",
+    "--command-color",
+    "--completions",
+    "--cygpath",
+    "-d",
+    "--dotenv-command",
+    "--dotenv-filename",
+    "--dotenv-path",
+    "--dump-format",
+    "-E",
+    "--evaluate-format",
+    "-f",
+    "-F",
+    "--group",
+    "--indentation",
+    "--jobs",
+    "--justfile",
+    "--justfile-name",
+    "--list-heading",
+    "--list-prefix",
+    "-s",
+    "--shell",
+    "--shell-arg",
+    "--show",
+    "--tempdir",
+    "--timestamp-format",
+    "--usage",
+    "--working-directory",
 }
 TWO_VALUE_FLAGS = {"--set"}
 
@@ -81,9 +108,24 @@ TWO_VALUE_FLAGS = {"--set"}
 # name — `just --list          215 lines, opening with a wall of check-*` is a
 # code block annotating output, and read `215` as the recipe.
 TERMINAL_FLAGS = {
-    "--list", "-l", "--summary", "--help", "-h", "--version", "-V", "--dump",
-    "--edit", "-e", "--evaluate", "--fmt", "--init", "--variables",
-    "--changelog", "--choose", "--groups", "--man",
+    "--list",
+    "-l",
+    "--summary",
+    "--help",
+    "-h",
+    "--version",
+    "-V",
+    "--dump",
+    "--edit",
+    "-e",
+    "--evaluate",
+    "--fmt",
+    "--init",
+    "--variables",
+    "--changelog",
+    "--choose",
+    "--groups",
+    "--man",
 }
 
 # A shape rather than a name. Three spellings, all found in the tree:
@@ -167,7 +209,11 @@ def invocation(snippet: str):
             else:
                 i += 1
             continue
-        nxt = toks[i + 1] if i + 1 < len(toks) and not toks[i + 1].startswith("-") else None
+        nxt = (
+            toks[i + 1]
+            if i + 1 < len(toks) and not toks[i + 1].startswith("-")
+            else None
+        )
         return t, nxt
     return None
 
@@ -179,7 +225,9 @@ def resolves(recipe, second, roots, mods) -> bool:
         return True
     if recipe in mods:
         # `just <mod>` alone lists it; `just <mod> <recipe>` must resolve.
-        return second is None or second in mods[recipe] or bool(PLACEHOLDER.search(second))
+        return (
+            second is None or second in mods[recipe] or bool(PLACEHOLDER.search(second))
+        )
     return False
 
 
@@ -198,8 +246,20 @@ def doc_groups():
             root_docs.add(REPO / name)
 
     cli_root = REPO / "packages" / "cli"
-    cli_docs = {p for p in cli_root.glob("**/*.md")
-                if "third-party" not in p.parts and "target" not in p.parts}
+    # `git ls-files`, not a glob: these are TRACKED docs, and a recursive walk
+    # under `packages/cli` stats the whole vendored `third-party/play_launch`
+    # tree and every `target/` to throw the results away
+    # (`check-no-tracked-file-find`; measured 7m36s -> 0.8s for the same set).
+    cli_docs = {
+        cli_root / rel
+        for rel in subprocess.run(
+            ["git", "-C", str(cli_root), "ls-files", "*.md"],
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.split()
+        if "third-party" not in Path(rel).parts and "target" not in Path(rel).parts
+    }
     return [
         (REPO / "justfile", sorted(root_docs)),
         (cli_root / "justfile", sorted(cli_docs)),
@@ -240,25 +300,35 @@ def read_baseline():
 
 def self_test() -> int:
     roots = {"ci", "format"}
-    mods = {"check": {"fast", "default"}, "native": {"build"},
-            "zephyr": {"build-one", "ci-both"}}
+    mods = {
+        "check": {"fast", "default"},
+        "native": {"build"},
+        "zephyr": {"build-one", "ci-both"},
+    }
     cases = [
-        ("just ci", True), ("just format", True),
-        ("just check fast", True), ("just check", True),
-        ("just check nope", False), ("just nope", False),
+        ("just ci", True),
+        ("just format", True),
+        ("just check fast", True),
+        ("just check", True),
+        ("just check nope", False),
+        ("just nope", False),
         # flag arguments are not recipes
-        ("just --group main --list", True), ("just --list", True),
+        ("just --group main --list", True),
+        ("just --list", True),
         ("just -f other/justfile ci", True),
         # placeholders are shapes, not names
-        ("just test-<name>", True), ("just check <gate>", True),
+        ("just test-<name>", True),
+        ("just check <gate>", True),
         # env prefix, prompt, trailing comment
-        ("NROS_X=1 just ci", True), ("$ just ci", True),
+        ("NROS_X=1 just ci", True),
+        ("$ just ci", True),
         ("just ci  # the tier the queue runs", True),
         # prose is not a command — `just` is an English word
         ("just the thing", False),
         # terminal flags ACT; what follows annotates output, it is not a recipe
         ("just --list          215 lines, opening with a wall of check-*", True),
-        ("just --summary", True), ("just -l", True),
+        ("just --summary", True),
+        ("just -l", True),
         # enumerations and globs are shapes, not names
         ("just zephyr build-one/ci-both/check-copy-out", True),
         ("just zephyr test*", True),
@@ -277,7 +347,10 @@ def self_test() -> int:
     # `just the thing` is the one that must be caught, and it is caught as an
     # OFFENDER rather than skipped — the gate reports it and a reviewed baseline
     # is where a sentence gets rejected, not a silent regex.
-    if snippets("prose `just ci` more\n```\njust check fast\n```\ntail") != ["just ci", "just check fast"]:
+    if snippets("prose `just ci` more\n```\njust check fast\n```\ntail") != [
+        "just ci",
+        "just check fast",
+    ]:
         print("  self-test FAIL: snippets() did not read inline + fenced code")
         failures += 1
     if snippets("plain prose with just the word in it\n") != []:
@@ -294,8 +367,11 @@ def self_test() -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--self-test", action="store_true")
-    ap.add_argument("--write-baseline", action="store_true",
-                    help="rewrite the baseline from the current tree (review the diff)")
+    ap.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="rewrite the baseline from the current tree (review the diff)",
+    )
     args = ap.parse_args()
 
     if args.self_test:
@@ -346,15 +422,21 @@ def main() -> int:
 
     rc = 0
     if new:
-        print(f"check-doc-recipe-refs: {len(new)} document(s) name a recipe that does not exist:")
+        print(
+            f"check-doc-recipe-refs: {len(new)} document(s) name a recipe that does not exist:"
+        )
         for path, recipe in new:
             print(f"  {path}: just {recipe}")
         print()
         print("  A reader copies these. Name the recipe that exists, or drop the line.")
-        print("  `just --list` shows every recipe; module recipes are `just <mod> <name>`.")
+        print(
+            "  `just --list` shows every recipe; module recipes are `just <mod> <name>`."
+        )
         rc = 1
     if fixed:
-        print(f"check-doc-recipe-refs: {len(fixed)} baseline entr(ies) no longer offend — delete them:")
+        print(
+            f"check-doc-recipe-refs: {len(fixed)} baseline entr(ies) no longer offend — delete them:"
+        )
         for path, recipe in fixed:
             print(f"  {path}\t{recipe}")
         print()
@@ -362,7 +444,9 @@ def main() -> int:
         print("  no longer describes anything is one nobody can act on.")
         rc = 1
     if rc == 0:
-        print(f"check-doc-recipe-refs: OK — {len(baseline)} known dead reference(s), no new ones.")
+        print(
+            f"check-doc-recipe-refs: OK — {len(baseline)} known dead reference(s), no new ones."
+        )
     return rc
 
 
