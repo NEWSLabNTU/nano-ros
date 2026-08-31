@@ -82,12 +82,29 @@ MOD_DEF = re.compile(r"^mod\s+([A-Za-z0-9_-]+)\s+'([^']+)'", re.M)
 IMPORT_DEF = re.compile(r'^import\s+[\'"]([^\'"]+)[\'"]', re.M)
 
 
-def names_in(path):
-    """Recipe + alias names defined by one justfile."""
+def names_in(path, _seen=None):
+    """Recipe + alias names defined by one justfile, following its `import`s.
+
+    A module file may `import` siblings — `just/zephyr.just` pulls in
+    `zephyr-setup`, `zephyr-ci` and `zephyr-dev` — and `import` is a namespace
+    MERGE, so those names belong to the importing file. Reading only the named
+    file returned `{default}` for the zephyr module, which is 1 of its ~40
+    recipes.
+
+    Import paths are relative to the importing FILE, not the repo root.
+    """
     if not path.is_file():
         return set()
+    _seen = _seen if _seen is not None else set()
+    resolved = path.resolve()
+    if resolved in _seen:
+        return set()
+    _seen.add(resolved)
     body = path.read_text()
-    return set(RECIPE_DEF.findall(body)) | set(ALIAS_DEF.findall(body))
+    names = set(RECIPE_DEF.findall(body)) | set(ALIAS_DEF.findall(body))
+    for rel in IMPORT_DEF.findall(body):
+        names |= names_in(path.parent / rel, _seen)
+    return names
 
 
 def recipe_namespace():
