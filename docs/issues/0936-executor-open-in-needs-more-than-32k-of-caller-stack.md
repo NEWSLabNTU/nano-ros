@@ -67,12 +67,71 @@ neither the cost nor the thread that owns it. phase-403 makes receive buffers
 type-sized, which took this image's arena from 86108 B to 24516 B -- and none of
 that helps, because the stack requirement is independent of it.
 
-## What would resolve it
+## Located (2026-08-31): `Executor` is a ~16 KiB VALUE, moved twice
 
-1. Find what `open_in` zeroes on the caller's stack and whether it can be
-   constructed in place instead. `nros_cpp_init` already carves the executor
-   from caller-owned storage precisely to avoid a large value transiting the
-   stack, so a stack-resident temporary in `open_in` defeats that intent.
-2. Failing that, STATE the number. A boot-time check like the heap gate
-   (`nros: the executor arena cannot fit in the platform heap`) that names the
-   required stack would have turned four bring-up sessions into one build error.
+Frame sizes read from the linked image with `objdump`, largest first:
+
+```
+19840  ZenohSession::names_and_types_filtered   (not on the boot path)
+16000  Executor::open_in                        (sub.w sp, sp, #16000)
+15104  nros_cpp_init
+11712  Executor::register_action_server_raw
+```
+
+`open_in` and `nros_cpp_init` are the same call chain, so roughly 31 KiB of
+prologue is committed before either function does any work. Both frames are one
+value: `open_in` builds an `Executor` on its stack and returns it BY VALUE, and
+`nros_cpp_init` holds the returned value before `ptr::write`ing it into the
+caller's storage. `size_of::<Executor>()` is about 16 KiB, cross-checked against
+the generated `NROS_EXECUTOR_SIZE`: it moved by exactly the arena delta (90112 B)
+across two builds, leaving Executor plus tables at 22888 B.
+
+**What is inline in a struct whose tables were supposedly moved out.**
+phase-271 (issue 0110) moved six sized tables to borrowed storage and left
+others behind. The dominant one:
+
+```rust
+group_sched_table: heapless::Vec<
+    (String<64>, String<64>, String<32>, SchedContextId),
+    { crate::config::MAX_CBS },
+>
+```
+
+about 168 bytes per slot, INLINE, scaled by `MAX_CBS`. Also inline:
+`extra_sessions: heapless::Vec<ConcreteSession, MAX_NODES>` (6 x 524 B here),
+the `SessionStore` itself, `nodes`, `dispatch_slots`, `component_slots`.
+
+**So `MAX_CBS` costs stack, not just arena.** Raising it from 14 to 36 to fit
+this image's 33 handles added roughly 3.7 KiB to the frame of every function
+that moves an `Executor`. That coupling is invisible at the knob: nothing in
+`NROS_EXECUTOR_MAX_CBS`'s help says it grows the main thread's stack, and the
+failure it produces is a stack overflow in a function the knob does not name.
+Same shape as `NROS_ZEPHYR_TASK_STACK_SIZE` inheriting `MAIN_STACK_SIZE`.
+
+## The fix, and one that does NOT work
+
+**Rejected: boxing the table.** Tried and reverted. `alloc` is optional in
+`nros-node` (`#[cfg(feature = "alloc")] extern crate alloc`), and the `params`
+field that looks like a precedent is behind `param-services`. A `Box` compiles
+on the std lane and breaks any `no_std` target without alloc -- which is most of
+the targets this crate exists for. It also trades stack for heap on parts where
+both are scarce.
+
+**The fix is to finish phase-271:** move the remaining `MAX_CBS`- and
+`MAX_NODES`-scaled members into the carved `backing` alongside the six tables
+already there. That works with no allocator, puts the storage where the CALLER
+chose (`.bss` for a static holder, and it is already sized by
+`ExecutorSizing`), and removes the coupling rather than relocating it. It
+touches `executor/storage.rs`'s `carve` + `ExecutorSizing`, which the C FFI
+sizes `_opaque` from, so the generated sizes move with it -- deliberate, and
+covered by the existing size-probe gates.
+
+**Independently, STATE the number.** A boot-time check like the heap gate
+(`nros: the executor arena cannot fit in the platform heap`) naming the required
+main-thread stack would have turned four bring-up sessions into one build error.
+
+## Also found
+
+`ZenohSession::names_and_types_filtered` carries a 19840-byte frame -- larger
+than `open_in`. It is not on the boot path, so it did not cause this, but any
+image that calls graph introspection on a small part will hit the same wall.
