@@ -12,3 +12,16 @@
 "fingerprint-corpus/Shapes.text"       = { cap = 32, mode = "view" }
 "fingerprint-corpus/Probe_Request.items" = { cap = 8, mode = "heap" }
 "fingerprint-corpus/Probe_Goal.waypoints" = { cap = 8, mode = "view" }
+
+# phase-403 W0 -- the arm where a cap BECOMES the bound. Both entries are
+# `inline`, which is the only mode whose cap is enforced at deserialize
+# (`heapless::*::try_from(..) -> CapacityExceeded`), so a sample above it cannot
+# be decoded into the type at all. The `heap` and `view` entries above are caps
+# too and deliberately do NOT bound: RFC-0033 calls a heap cap a hint and gives
+# a view field "no fixed capacity", so promoting either would put a number
+# nothing enforces underneath a receive buffer.
+#
+# Capped.msg therefore appears unbounded in `expected/inline/` and bounded in
+# `expected/configured/`, from one .msg. Shapes.text stays unbounded in BOTH.
+"fingerprint-corpus/Capped.label"   = 24
+"fingerprint-corpus/Capped.samples" = { cap = 6, mode = "inline" }

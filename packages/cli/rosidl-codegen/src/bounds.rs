@@ -70,9 +70,9 @@ pub const INVENTORY_CMAKE_NAME: &str = "nros_message_bounds.cmake";
 pub enum BoundState {
     /// A bound exists. Bytes, encapsulation header included.
     Bounded { tx: usize, rx: usize },
-    /// No bound EXISTS. Carries the member that costs it, as `nros_serdes`
-    /// names it. Fix by bounding the field (`string<=64`) or capping it in
-    /// `nros-codegen.toml`.
+    /// No bound EXISTS. Carries EVERY member that costs it, as `nros_serdes`
+    /// names them. Fix by bounding the field (`string<=64`) or capping it
+    /// `inline` in `nros-codegen.toml`.
     Unbounded { reason: String },
     /// The bound was not COMPUTED, because a nested type was not reachable
     /// through the resolver. A search-path problem, not a property of the
@@ -96,13 +96,27 @@ impl BoundState {
             // bound" is a fact about the message, and it stays true however the
             // search path is fixed.
             (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => BoundState::Unbounded {
-                reason: format!("unbounded member: {w}"),
+                reason: Self::unbounded_reason(w),
             },
             (TypeBound::Unresolved(t), _) | (_, TypeBound::Unresolved(t)) => {
                 BoundState::Unresolved {
                     reason: format!("nested type `{t}` could not be resolved"),
                 }
             }
+        }
+    }
+
+    /// The one spelling of "why this type has no bound", shared by the exported
+    /// inventory and the generated C header.
+    ///
+    /// Singular for one member so the common case reads as prose, plural with a
+    /// comma list otherwise. The list is ordered by declaration, which is the
+    /// order the user reads their `.msg` in, not sorted — a sorted list of
+    /// members is harder to walk against the file you are editing.
+    pub fn unbounded_reason(members: &[String]) -> String {
+        match members {
+            [one] => format!("unbounded member: {one}"),
+            many => format!("unbounded members: {}", many.join(", ")),
         }
     }
 
@@ -156,16 +170,23 @@ impl BoundInventory {
     ///
     /// `lookup` resolves nested types. A lookup that cannot reach a nested type
     /// yields `Unresolved`, never a number.
+    ///
+    /// `caps` is the SAME `nros-codegen.toml` resolver the emitters were handed.
+    /// It is a required argument rather than an optional refinement because the
+    /// inventory and the generated header must agree: a field capped `inline`
+    /// bounds the type in both, or the exported number and the `#define` say
+    /// different things about one type and nothing in the build compares them.
     pub fn record_message(
         &mut self,
         type_name: &str,
         message: &rosidl_parser::Message,
+        caps: &crate::CapacityResolver,
         lookup: &crate::schema_value::MsgLookup<'_>,
     ) {
         use crate::schema_value::bound_message;
         use nros_serdes::cdr::EncodingVersion;
-        let x1 = bound_message(type_name, message, EncodingVersion::Xcdr1, lookup);
-        let x2 = bound_message(type_name, message, EncodingVersion::Xcdr2, lookup);
+        let x1 = bound_message(type_name, message, EncodingVersion::Xcdr1, caps, lookup);
+        let x2 = bound_message(type_name, message, EncodingVersion::Xcdr2, caps, lookup);
         self.insert(type_name, BoundState::classify(&x1, &x2));
     }
 
@@ -369,6 +390,7 @@ fn rust_string_literal_body(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CapacityResolver;
     use rosidl_parser::{Message, parse_message};
 
     fn no_lookup(_: &str) -> Option<Message> {
@@ -378,11 +400,26 @@ mod tests {
     fn inv() -> BoundInventory {
         let mut i = BoundInventory::new("test_msgs");
         let flat = parse_message("int64 b\n").unwrap();
-        i.record_message("test_msgs/msg/Flat", &flat, &no_lookup);
+        i.record_message(
+            "test_msgs/msg/Flat",
+            &flat,
+            &CapacityResolver::empty(),
+            &no_lookup,
+        );
         let open = parse_message("string s\n").unwrap();
-        i.record_message("test_msgs/msg/Open", &open, &no_lookup);
+        i.record_message(
+            "test_msgs/msg/Open",
+            &open,
+            &CapacityResolver::empty(),
+            &no_lookup,
+        );
         let nested = parse_message("other_pkg/Thing t\n").unwrap();
-        i.record_message("test_msgs/msg/Nested", &nested, &no_lookup);
+        i.record_message(
+            "test_msgs/msg/Nested",
+            &nested,
+            &CapacityResolver::empty(),
+            &no_lookup,
+        );
         i
     }
 
@@ -517,10 +554,10 @@ mod tests {
         let mut b = BoundInventory::new("p");
         let m = parse_message("int32 x\n").unwrap();
         for n in ["p/msg/C", "p/msg/A", "p/msg/B"] {
-            a.record_message(n, &m, &no_lookup);
+            a.record_message(n, &m, &CapacityResolver::empty(), &no_lookup);
         }
         for n in ["p/msg/B", "p/msg/C", "p/msg/A"] {
-            b.record_message(n, &m, &no_lookup);
+            b.record_message(n, &m, &CapacityResolver::empty(), &no_lookup);
         }
         assert_eq!(a.to_json(), b.to_json());
         assert_eq!(a.to_cmake(), b.to_cmake());
@@ -569,7 +606,7 @@ mod tests {
         };
 
         let mut i = BoundInventory::new("p");
-        i.record_message("p/msg/Outer", &outer, &lookup);
+        i.record_message("p/msg/Outer", &outer, &CapacityResolver::empty(), &lookup);
         let derived = match i.entries()[0].bound {
             BoundState::Bounded { rx, .. } => rx,
             ref other => panic!("expected a derived bound, got {other:?}"),
@@ -600,6 +637,71 @@ mod tests {
             "phase-403 W6 finding: the C++ pack estimates {estimate} where the \
              derived bound is {derived}. If this ever stops holding, the C++ \
              pack was fixed -- delete the test and say so, do not relax it."
+        );
+    }
+
+    // -- phase-403 W0 -- a cap reaches the inventory, and BOTH transports agree --
+
+    /// The exported inventory and the generated C header must say the same thing
+    /// about the same type, because W6 made `BoundState::classify` shared
+    /// between them precisely so they could not drift. Handing one a resolver
+    /// and the other none would have reintroduced the drift through the
+    /// argument list instead of through a second implementation, so the
+    /// agreement is asserted over a type whose bound EXISTS ONLY BECAUSE OF THE
+    /// CONFIG.
+    #[test]
+    fn a_capped_type_gets_the_same_number_in_the_inventory_and_the_header() {
+        let m = parse_message("string label\nint64 v\n").unwrap();
+        let caps = CapacityResolver::from_toml_str("[fields]\n\"p/M.label\" = 24\n").unwrap();
+
+        let mut i = BoundInventory::new("p");
+        i.record_message("p/msg/M", &m, &caps, &no_lookup);
+        let (tx, rx) = match i.entries()[0].bound {
+            BoundState::Bounded { tx, rx } => (tx, rx),
+            ref other => panic!("a capped type must be bounded, got {other:?}"),
+        };
+
+        let header = crate::generate_c_message_package("p", "M", &m, "h", &caps)
+            .unwrap()
+            .header;
+        let read = |suffix: &str| -> usize {
+            header
+                .lines()
+                .find_map(|l| l.split(&format!("_{suffix}_MAX_SERIALIZED_SIZE ")).nth(1))
+                .and_then(|t| t.trim().parse().ok())
+                .unwrap_or_else(|| panic!("the header states a {suffix} bound:\n{header}"))
+        };
+        assert_eq!(read("TX"), tx);
+        assert_eq!(read("RX"), rx);
+
+        // Control: with no config the same `.msg` gets a number from NEITHER, so
+        // the agreement above is about the cap and not about a type that was
+        // bounded all along.
+        let mut plain = BoundInventory::new("p");
+        plain.record_message("p/msg/M", &m, &CapacityResolver::empty(), &no_lookup);
+        assert_eq!(plain.entries()[0].bound.tag(), "unbounded");
+        assert!(
+            !crate::generate_c_message_package("p", "M", &m, "h", &CapacityResolver::empty())
+                .unwrap()
+                .header
+                .contains("_TX_MAX_SERIALIZED_SIZE 3")
+        );
+    }
+
+    /// One member reads as prose, several read as a list. The plural form is
+    /// what makes a stock ROS type actionable in ONE build.
+    #[test]
+    fn the_reason_names_one_member_or_all_of_them() {
+        assert_eq!(
+            BoundState::unbounded_reason(&["a (string)".to_string()]),
+            "unbounded member: a (string)"
+        );
+        assert_eq!(
+            BoundState::unbounded_reason(&[
+                "header.frame_id (string)".to_string(),
+                "child_frame_id (string)".to_string(),
+            ]),
+            "unbounded members: header.frame_id (string), child_frame_id (string)"
         );
     }
 }

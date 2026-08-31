@@ -1,6 +1,6 @@
 use super::common::{
-    GeneratorError, PayloadLang, build_c_fields, build_nros_fields, build_nros_schema_for_struct,
-    determine_field_kind, ensure_supported_storage_for_payload,
+    GeneratorError, PayloadLang, SchemaCaps, build_c_fields, build_nros_fields,
+    build_nros_schema_for_struct, determine_field_kind, ensure_supported_storage_for_payload,
 };
 use crate::{
     config::CapacityResolver,
@@ -276,6 +276,7 @@ pub fn generate_nros_service_package(
         &format!("{}/srv/{}_Request", package_name, service_name),
         "REQ_",
         &service.request.fields,
+        &SchemaCaps::new(&request_msg, resolver),
     );
     let resp_schema = build_nros_schema_for_struct(
         package_name,
@@ -283,6 +284,7 @@ pub fn generate_nros_service_package(
         &format!("{}/srv/{}_Response", package_name, service_name),
         "RESP_",
         &service.response.fields,
+        &SchemaCaps::new(&response_msg, resolver),
     );
 
     let service_template = ServiceNrosTemplate {
@@ -399,6 +401,7 @@ pub fn generate_nros_inline_service(
         &format!("{}/srv/{}_Request", package_name, service_name),
         "REQ_",
         &service.request.fields,
+        &SchemaCaps::new(&request_msg, resolver),
     );
     let resp_schema = build_nros_schema_for_struct(
         package_name,
@@ -406,6 +409,7 @@ pub fn generate_nros_inline_service(
         &format!("{}/srv/{}_Response", package_name, service_name),
         "RESP_",
         &service.response.fields,
+        &SchemaCaps::new(&response_msg, resolver),
     );
 
     let template = ServiceNrosTemplate {

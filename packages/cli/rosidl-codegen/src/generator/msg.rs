@@ -1,5 +1,5 @@
 use super::common::{
-    GeneratorError, build_c_fields, build_nros_fields, build_nros_message_schema,
+    GeneratorError, SchemaCaps, build_c_fields, build_nros_fields, build_nros_message_schema,
     determine_field_kind,
 };
 use crate::{
@@ -225,7 +225,12 @@ pub fn generate_nros_message_package(
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
     let has_borrowed = fields.iter().any(|f| f.is_borrowed);
-    let schema = build_nros_message_schema(package_name, message_name, &message.fields);
+    let schema = build_nros_message_schema(
+        package_name,
+        message_name,
+        &message.fields,
+        &SchemaCaps::new(message_name, resolver),
+    );
     let message_template = MessageNrosTemplate {
         package_name,
         message_name,
@@ -284,7 +289,12 @@ pub fn generate_nros_inline_message(
     let has_fields = !fields.is_empty();
     let has_large_array = fields.iter().any(|f| f.is_large_array);
     let has_borrowed = fields.iter().any(|f| f.is_borrowed);
-    let schema = build_nros_message_schema(package_name, message_name, &message.fields);
+    let schema = build_nros_message_schema(
+        package_name,
+        message_name,
+        &message.fields,
+        &SchemaCaps::new(message_name, resolver),
+    );
 
     let template = MessageNrosTemplate {
         package_name,
@@ -441,8 +451,8 @@ pub fn generate_c_message_package_with_lookup(
     let (tx_bound, rx_bound, unbounded_reason, unbounded_token) = {
         use crate::schema_value::{TypeBound, bound_message};
         use nros_serdes::cdr::EncodingVersion;
-        let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, lookup);
-        let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, lookup);
+        let x1 = bound_message(&fqn, message, EncodingVersion::Xcdr1, resolver, lookup);
+        let x2 = bound_message(&fqn, message, EncodingVersion::Xcdr2, resolver, lookup);
         // issue 0896 Q2 — the compiler error must name the TYPE and the FIELD,
         // not just say "no bound". A C identifier cannot hold `.` or `(`, so
         // the path is flattened; the prose reason sits above it in the header
@@ -478,11 +488,20 @@ pub fn generate_c_message_package_with_lookup(
             // TX writes XCDR1; RX must hold either encoding, so it takes the max.
             crate::bounds::BoundState::Bounded { tx, rx } => (Some(tx), Some(rx), None, None),
             crate::bounds::BoundState::Unbounded { reason } => {
-                let member = match (&x1, &x2) {
+                // The prose reason names EVERY offending member (phase-403 W0);
+                // the poison TOKEN can only name one, because it is a C
+                // identifier. The FIRST is the one it names, matching the order
+                // the reason lists them in, so the identifier the compiler
+                // prints is the first line of the reason above it.
+                let members = match (&x1, &x2) {
                     (TypeBound::Unbounded(w), _) | (_, TypeBound::Unbounded(w)) => w.clone(),
                     _ => unreachable!("classify only reports Unbounded from an Unbounded input"),
                 };
-                (None, None, Some(reason), Some(token(&member)))
+                let first = members
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string());
+                (None, None, Some(reason), Some(token(&first)))
             }
             crate::bounds::BoundState::Unresolved { reason } => {
                 let nested = match (&x1, &x2) {

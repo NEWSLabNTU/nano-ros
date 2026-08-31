@@ -241,7 +241,7 @@ pub fn generate_package(
         // Write message file
         let msg_file = msg_dir.join(format!("{}.rs", to_snake_case(msg_name)));
         write_if_changed(&msg_file, &generated.message_rs)?;
-        inventory.record_message(&fqn, &parsed_msg, &self_resolve);
+        inventory.record_message(&fqn, &parsed_msg, resolver, &self_resolve);
         message_count += 1;
     }
 

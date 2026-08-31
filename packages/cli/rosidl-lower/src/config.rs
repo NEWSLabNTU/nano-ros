@@ -160,6 +160,41 @@ impl StorageMode {
             _ => None,
         }
     }
+
+    /// phase-403 W0 — whether a `cap` in this mode is an upper bound on what
+    /// this build can ever hold for the field, and may therefore be read as the
+    /// field's serialized-size bound.
+    ///
+    /// This is NOT a policy choice made here. It is RFC-0033's own
+    /// "What each mode GUARANTEES" table, which already answers it:
+    ///
+    /// | mode     | RFC-0033 says | cap bounds the wire |
+    /// | -------- | ------------- | ------------------- |
+    /// | `inline` | "bounded, statically provable, analysable — the size is in the type" | YES |
+    /// | `heap`   | "`alloc::Vec<T>` (cap = hint)"; "nothing in the type says how much memory the field will want" | no |
+    /// | `view`   | "a slice into the CDR receive buffer (no copy, NO FIXED CAPACITY)" | no |
+    ///
+    /// Read off the emitters rather than off the prose, because the prose could
+    /// drift: an `inline` field deserializes through
+    /// `heapless::String::try_from(s).map_err(|_| DeserError::CapacityExceeded)`
+    /// (`packs/nros/nros_field.jinja`), so a sample above `cap` cannot be
+    /// decoded into this type at all — the cap is CHECKED, every time, and the
+    /// overrun is reported rather than truncated. A `heap` field decodes through
+    /// `nros_core::heap::String::from(s)`, and `nros_type_for_field_heap` does
+    /// not even take `cap`. A `view` field decodes through
+    /// `reader.read_string()?` into a `&'a str` aliasing the receive buffer,
+    /// with no length check anywhere on the path.
+    ///
+    /// So for `heap` and `view` a cap is a sizing HINT for local storage, and
+    /// promoting it to a bound would put a number nothing enforces underneath a
+    /// receive buffer. Unbounded is the safe answer there, and it fails at build
+    /// time rather than on the wire.
+    pub fn cap_bounds_the_wire(self) -> bool {
+        match self {
+            StorageMode::Inline => true,
+            StorageMode::Heap | StorageMode::View => false,
+        }
+    }
 }
 
 /// Which kind of field is being resolved — selects the built-in default.
@@ -462,29 +497,86 @@ impl CapacityResolver {
         field: &str,
         kind: FieldKind,
     ) -> FieldStorage {
+        self.resolve_configured(package, message, field, kind)
+            // 6 — built-in
+            .unwrap_or(FieldStorage {
+                cap: kind.builtin_default(),
+                mode: StorageMode::Inline,
+            })
+    }
+
+    /// The storage a config FILE states for this field, or `None` when nothing
+    /// in the chain matched and [`Self::resolve`] would fall through to the
+    /// built-in constant.
+    ///
+    /// # Why the provenance has to be separable (phase-403 W0)
+    ///
+    /// [`Self::resolve`] always answers, which is right for an emitter — every
+    /// field needs a container size. It is exactly wrong for the question
+    /// "is this field bounded?", because the built-in 256/64 would answer YES
+    /// for every unbounded string and sequence in the tree and quietly bound
+    /// the whole world at a number nobody chose. phase-403 W0 made an unbounded
+    /// type a build error precisely so that a bound is something a human
+    /// STATED; a fallback silently satisfying that rule would delete the rule.
+    ///
+    /// `[defaults]` counts as stated: it is a line in a config file somebody
+    /// wrote. The level-6 constant does not: it is what codegen does when told
+    /// nothing.
+    pub fn resolve_configured(
+        &self,
+        package: &str,
+        message: &str,
+        field: &str,
+        kind: FieldKind,
+    ) -> Option<FieldStorage> {
         // 2 — per-field
         let field_key = format!("{package}/{message}.{field}");
         if let Some(e) = self.raw.fields.get(&field_key) {
-            return e.resolve();
+            return Some(e.resolve());
         }
         // 3 — per-type
         let type_key = format!("{package}/{message}");
         if let Some(e) = self.raw.types.get(&type_key).and_then(|l| l.pick(kind)) {
-            return e.resolve();
+            return Some(e.resolve());
         }
         // 4 — per-package
         if let Some(e) = self.raw.packages.get(package).and_then(|l| l.pick(kind)) {
-            return e.resolve();
+            return Some(e.resolve());
         }
         // 5 — global defaults
         if let Some(e) = self.raw.defaults.pick(kind) {
-            return e.resolve();
+            return Some(e.resolve());
         }
-        // 6 — built-in
-        FieldStorage {
-            cap: kind.builtin_default(),
-            mode: StorageMode::Inline,
-        }
+        None
+    }
+
+    /// phase-403 W0 — the serialized-size bound a config `cap` STATES for one
+    /// unbounded field, or `None` when the config states none this build can
+    /// hold itself to.
+    ///
+    /// Two ways to get `None`, and they are the same answer here: nothing in the
+    /// config named the field (so the built-in default applies, and a default is
+    /// not a stated bound — see [`Self::resolve_configured`]), or the config
+    /// named it in a mode whose cap is a hint rather than a limit (see
+    /// [`StorageMode::cap_bounds_the_wire`]).
+    ///
+    /// `package` / `message` are the DECLARING type, never the top-level message
+    /// being generated. That is what makes one entry for
+    /// `std_msgs/Header.frame_id` bound the `header` of every message that
+    /// nests a `Header`, instead of needing one entry per containing type.
+    ///
+    /// A `.msg` bound never reaches here: a bounded field is resolved from the
+    /// interface by the caller and does not consult the resolver at all, so the
+    /// interface stays authoritative and a config cap cannot widen or narrow it.
+    pub fn declared_bound(
+        &self,
+        package: &str,
+        message: &str,
+        field: &str,
+        kind: FieldKind,
+    ) -> Option<usize> {
+        let storage = self.resolve_configured(package, message, field, kind)?;
+        storage.mode.cap_bounds_the_wire().then_some(storage.cap)
     }
 }
 
@@ -959,5 +1051,92 @@ mod tests {
             "#,
         );
         assert!(err.is_err());
+    }
+
+    // ── phase-403 W0 — a stated cap vs the built-in fallback ────────────────
+
+    /// `resolve` and `resolve_configured` must answer the same thing wherever a
+    /// config entry matches — one precedence chain, not two — and differ ONLY
+    /// at the level-6 fallthrough.
+    #[test]
+    fn a_configured_cap_and_the_resolved_cap_are_the_same_answer() {
+        let r = CapacityResolver::from_toml_str(
+            r#"
+            [defaults]
+            string = 16
+            [packages.pkg]
+            sequence = 32
+            [types."pkg/M"]
+            string = 48
+            [fields]
+            "pkg/M.f" = 64
+            "#,
+        )
+        .unwrap();
+        for (msg, field, kind) in [
+            ("M", "f", STR),
+            ("M", "g", STR),
+            ("Other", "g", SEQ),
+            ("Other", "g", STR),
+        ] {
+            assert_eq!(
+                r.resolve_configured("pkg", msg, field, kind),
+                Some(r.resolve("pkg", msg, field, kind)),
+                "{msg}.{field}"
+            );
+        }
+    }
+
+    /// The one case where they differ, and the reason the split exists: nothing
+    /// matched, so `resolve` hands back the built-in constant and
+    /// `resolve_configured` says so.
+    #[test]
+    fn nothing_configured_is_reported_as_nothing_not_as_the_builtin() {
+        let r = CapacityResolver::from_toml_str("[fields]\n\"other/T.x\" = 8\n").unwrap();
+        assert_eq!(r.resolve_configured("pkg", "M", "f", STR), None);
+        assert_eq!(
+            r.resolve("pkg", "M", "f", STR).cap,
+            NROS_DEFAULT_STRING_CAPACITY
+        );
+        // And therefore no bound: the fallback is what codegen does when told
+        // nothing, never a claim about the wire.
+        assert_eq!(r.declared_bound("pkg", "M", "f", STR), None);
+    }
+
+    /// RFC-0033's guarantee table, as code. `inline` promises the size is in the
+    /// type; `heap` calls its cap a hint; `view` has no fixed capacity at all.
+    #[test]
+    fn only_an_inline_cap_is_a_bound() {
+        assert!(StorageMode::Inline.cap_bounds_the_wire());
+        assert!(!StorageMode::Heap.cap_bounds_the_wire());
+        assert!(!StorageMode::View.cap_bounds_the_wire());
+
+        for (mode, want) in [("inline", Some(24)), ("heap", None), ("view", None)] {
+            let r = CapacityResolver::from_toml_str(&format!(
+                "[fields]\n\"pkg/M.f\" = {{ cap = 24, mode = \"{mode}\" }}\n"
+            ))
+            .unwrap();
+            // The STORAGE cap is 24 in every mode — that is unchanged, and it
+            // is what makes this a bound question rather than a cap question.
+            assert_eq!(r.resolve("pkg", "M", "f", STR).cap, 24);
+            assert_eq!(r.declared_bound("pkg", "M", "f", STR), want, "mode {mode}");
+        }
+    }
+
+    /// The int shorthand is `{ cap = n, mode = "inline" }`, so it bounds.
+    #[test]
+    fn the_integer_shorthand_bounds_because_it_means_inline() {
+        let r = CapacityResolver::from_toml_str("[fields]\n\"pkg/M.f\" = 24\n").unwrap();
+        assert_eq!(r.declared_bound("pkg", "M", "f", STR), Some(24));
+    }
+
+    /// A `[defaults]` line is a stated bound — someone wrote it. Only the
+    /// built-in constant is not.
+    #[test]
+    fn a_defaults_entry_states_a_bound() {
+        let r = CapacityResolver::from_toml_str("[defaults]\nstring = 16\n").unwrap();
+        assert_eq!(r.declared_bound("any", "M", "f", STR), Some(16));
+        // ...and it is kind-specific: nothing was said about sequences.
+        assert_eq!(r.declared_bound("any", "M", "f", SEQ), None);
     }
 }

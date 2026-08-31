@@ -606,7 +606,8 @@ pub use nros_macros::main;
 /// bound cannot be in the message: const evaluation does not format, so a
 /// `panic!` there takes a literal only. The member is named by the codegen
 /// diagnostic for the same type -- `unbounded_reason` in the generated C header
-/// (`packs/c/message.h.jinja`), or `nros_serdes::size::first_unbounded` over its
+/// (`packs/c/message.h.jinja`), which names EVERY member that costs the bound in
+/// one build (phase-403 W0), or `nros_serdes::size::visit_unbounded` over its
 /// `FIELDS`.
 #[macro_export]
 macro_rules! rx_buffer_for {
@@ -622,12 +623,14 @@ macro_rules! rx_buffer_for {
                      member that costs it, either:\n\
                      \x20 - in the `.msg`: `string<=64`, `wstring<=64`, \
                      `sequence<T, N>`, `T[<=N]`; or\n\
-                     \x20 - as a `cap` in `nros-codegen.toml`: under `[fields]`, \
-                     `\"pkg/Msg.field\" = 64`.\n\
-                     WHICH member costs the bound is named by the codegen \
-                     diagnostic for this same type: `unbounded_reason` in the \
-                     generated C header, or `nros_serdes::size::first_unbounded` \
-                     over its `FIELDS`. The type itself is named by the \
+                     \x20 - as an INLINE `cap` in `nros-codegen.toml`: under \
+                     `[fields]`, `\"pkg/Msg.field\" = 64`. A `heap` or `view` cap \
+                     is a sizing hint that nothing enforces (RFC-0033), so it \
+                     deliberately does NOT bound.\n\
+                     WHICH members cost the bound -- all of them, not just the \
+                     first -- are named by the codegen diagnostic for this same \
+                     type: `unbounded_reason` in the generated C header, or \
+                     `nros_serdes::size::visit_unbounded` over its `FIELDS`. The type itself is named by the \
                      `rx_buffer_for!` invocation rustc points at.\n\
                      Phase 380: `None` means no bound EXISTS, never \"unknown\", and \
                      a buffer sized from a fallback is the failure that rule was \

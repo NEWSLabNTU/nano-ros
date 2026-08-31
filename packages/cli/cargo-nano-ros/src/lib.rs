@@ -1019,6 +1019,7 @@ pub fn generate_c_from_args_file(config: GenerateCConfig) -> Result<()> {
                 inventory.record_message(
                     &format!("{}/msg/{}", args.package_name, file_name),
                     &parsed,
+                    &resolver,
                     &nested_lookup,
                 );
 
@@ -1293,6 +1294,7 @@ pub fn generate_c_from_package_xml(config: GenerateCStandaloneConfig) -> Result<
                     inventory.record_message(
                         &format!("{pkg_name}/msg/{file_name}"),
                         &parsed,
+                        &resolver,
                         &nested_lookup,
                     );
                 }
@@ -1698,6 +1700,7 @@ pub fn generate_cpp_from_args_file(config: GenerateCppConfig) -> Result<()> {
                 inventory.record_message(
                     &format!("{}/msg/{}", args.package_name, file_name),
                     &parsed,
+                    &resolver,
                     &nested_lookup,
                 );
 

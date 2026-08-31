@@ -35,6 +35,8 @@
 //! right is worthless — see `size_tests.rs`, which checks it against the bytes
 //! the writer actually produced.
 
+use core::ops::ControlFlow;
+
 use crate::{
     cdr::EncodingVersion,
     schema::{Field, FieldType},
@@ -272,75 +274,89 @@ impl core::fmt::Display for UnboundedField {
     }
 }
 
-/// Find the first member that makes `fields` unbounded, if any.
+/// Report EVERY member that makes `fields` unbounded, in declaration order.
 ///
-/// Returns `None` exactly when [`size_bound`] reports `bounded` — the two walk
-/// the same schema by the same rules, so a type that has a bound has no
-/// offender to name and vice versa. That agreement is asserted by test, not
-/// assumed: two walks of one schema is the shape the sizes-header mirror defect
-/// keeps taking (issues 0088 -> 0268), so the second one exists only because it
-/// answers a question the first cannot (WHICH member) and must be checked
-/// against it.
+/// [`first_unbounded`] answers "which member costs the bound" one member at a
+/// time, and that is the wrong shape for the caller that actually asks.
+/// phase-403 W0 made an unbounded type a BUILD ERROR, and a stock ROS type is
+/// routinely unbounded in several places at once — `nav_msgs/Odometry` has
+/// `header.frame_id` and `child_frame_id`, and `sensor_msgs/PointCloud2` has
+/// four. Naming only the first turns "bound your types" into cap, rebuild,
+/// discover the next one, repeat, once per member, with a whole codegen run
+/// between each step. One build should name everything that needs a bound.
 ///
-/// Not `const`: it recurses through `&'static NestedType`, and the array
-/// bookkeeping is not worth expressing in a const walk when every caller is a
-/// diagnostic path.
-pub fn first_unbounded(fields: &'static [Field]) -> Option<UnboundedField> {
+/// THE walk. [`first_unbounded`] is expressed on top of this rather than beside
+/// it: two walks of one schema is the shape the sizes-header mirror defect keeps
+/// taking (issues 0088 -> 0268), and "the first thing this reports" is exactly
+/// what "the first unbounded member" means, so there is nothing left for a
+/// second implementation to say.
+///
+/// `visit` returns [`ControlFlow`] so a caller that wants only the first can
+/// stop the walk rather than let it enumerate a whole type and discard all but
+/// one answer. The return value is `Break` iff the visitor broke.
+///
+/// `&mut dyn FnMut` rather than `impl FnMut`: the walk recurses, and a recursive
+/// generic function cannot name the closure type it would instantiate itself
+/// with. `no_std` and allocation-free either way — nothing is collected here,
+/// which is what lets an all-members form exist at all on a target with no
+/// allocator. The COLLECTING is the caller's, and only codegen (`std`) does it.
+pub fn visit_unbounded(
+    fields: &'static [Field],
+    visit: &mut dyn FnMut(UnboundedField) -> ControlFlow<()>,
+) -> ControlFlow<()> {
     fn walk(
         fields: &'static [Field],
         prefix: &mut [&'static str; MAX_FIELD_PATH_DEPTH],
         depth: usize,
-    ) -> Option<UnboundedField> {
+        visit: &mut dyn FnMut(UnboundedField) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
         for field in fields {
             let truncated = depth >= MAX_FIELD_PATH_DEPTH;
             if !truncated {
                 prefix[depth] = field.name;
             }
-            let here = |kind: UnboundedKind| {
-                Some(UnboundedField {
-                    path: *prefix,
-                    depth: if truncated {
-                        MAX_FIELD_PATH_DEPTH
-                    } else {
-                        depth + 1
-                    },
-                    truncated,
-                    kind,
-                })
+            let here = |kind: UnboundedKind| UnboundedField {
+                path: *prefix,
+                depth: if truncated {
+                    MAX_FIELD_PATH_DEPTH
+                } else {
+                    depth + 1
+                },
+                truncated,
+                kind,
             };
-            let found = match &field.ty {
-                FieldType::String => here(UnboundedKind::String),
-                FieldType::WString => here(UnboundedKind::WString),
-                FieldType::Sequence(_) => here(UnboundedKind::Sequence),
+            match &field.ty {
+                FieldType::String => visit(here(UnboundedKind::String))?,
+                FieldType::WString => visit(here(UnboundedKind::WString))?,
+                FieldType::Sequence(_) => visit(here(UnboundedKind::Sequence))?,
                 // A fixed array or a bounded sequence is bounded only if its
                 // ELEMENT is, and the element can itself be an unbounded
                 // string — `string[4]` has no bound. The element carries no
-                // name of its own, so it reports at the field's own path.
+                // name of its own, so it reports at the field's own path, and
+                // ONCE: several offenders inside one unnamed element would all
+                // print the same path, which reads as a repeated line rather
+                // than as more information.
                 FieldType::Array(_, inner) | FieldType::BoundedSequence(_, inner) => {
-                    match element_unbounded(inner) {
-                        Some(kind) => here(kind),
-                        None => None,
+                    if let Some(kind) = element_unbounded(inner) {
+                        visit(here(kind))?;
                     }
                 }
                 FieldType::Nested(nested) => {
                     if truncated {
                         // Cannot record another segment; report the deepest
                         // path we can name rather than descending silently.
-                        walk(nested.fields, prefix, depth).map(|mut u| {
+                        walk(nested.fields, prefix, depth, &mut |mut u| {
                             u.truncated = true;
-                            u
-                        })
+                            visit(u)
+                        })?;
                     } else {
-                        walk(nested.fields, prefix, depth + 1)
+                        walk(nested.fields, prefix, depth + 1, visit)?;
                     }
                 }
-                _ => None,
-            };
-            if found.is_some() {
-                return found;
+                _ => {}
             }
         }
-        None
+        ControlFlow::Continue(())
     }
 
     /// An element type is not a field, so it has no name — report only its kind.
@@ -361,7 +377,34 @@ pub fn first_unbounded(fields: &'static [Field]) -> Option<UnboundedField> {
     }
 
     let mut prefix = [""; MAX_FIELD_PATH_DEPTH];
-    walk(fields, &mut prefix, 0)
+    walk(fields, &mut prefix, 0, visit)
+}
+
+/// Find the first member that makes `fields` unbounded, if any.
+///
+/// Returns `None` exactly when [`size_bound`] reports `bounded` — the two walk
+/// the same schema by the same rules, so a type that has a bound has no
+/// offender to name and vice versa. That agreement is asserted by test, not
+/// assumed: two walks of one schema is the shape the sizes-header mirror defect
+/// keeps taking (issues 0088 -> 0268), so the second one exists only because it
+/// answers a question the first cannot (WHICH member) and must be checked
+/// against it.
+///
+/// The walk is [`visit_unbounded`]; this is its "stop at the first one" caller.
+/// Reach for [`visit_unbounded`] when the diagnostic should name every member a
+/// user has to fix, which is what codegen wants now that an unbounded type is a
+/// build error (phase-403 W0).
+///
+/// Not `const`: it recurses through `&'static NestedType`, and the array
+/// bookkeeping is not worth expressing in a const walk when every caller is a
+/// diagnostic path.
+pub fn first_unbounded(fields: &'static [Field]) -> Option<UnboundedField> {
+    let mut found = None;
+    let _ = visit_unbounded(fields, &mut |u| {
+        found = Some(u);
+        ControlFlow::Break(())
+    });
+    found
 }
 
 /// The whole payload a publisher hands the transport: encapsulation header plus
@@ -674,6 +717,117 @@ mod tests {
             core::str::from_utf8(&buf.bytes[..buf.len]).unwrap(),
             "header.frame_id (string)"
         );
+    }
+
+    // ========================================================================
+    // phase-403 W0 — naming EVERY member, not the first
+    // ========================================================================
+
+    /// Collect a whole type's offenders. `heapless` rather than `Vec` because
+    /// this crate is `no_std`; that is also the point of the visitor shape.
+    fn all(fields: &'static [Field]) -> heapless::Vec<UnboundedField, 16> {
+        let mut out = heapless::Vec::new();
+        let _ = visit_unbounded(fields, &mut |u| {
+            let _ = out.push(u);
+            ControlFlow::Continue(())
+        });
+        out
+    }
+
+    fn names(fields: &'static [Field]) -> heapless::Vec<&'static str, 16> {
+        let mut out = heapless::Vec::new();
+        for u in all(fields) {
+            let _ = out.push(u.path[u.depth - 1]);
+        }
+        out
+    }
+
+    /// An unbounded type is a build error now, and a stock ROS type is unbounded
+    /// in several places at once, so one build has to name all of them —
+    /// otherwise bounding a package is one cap and one full codegen run per
+    /// member.
+    #[test]
+    fn every_unbounded_member_is_visited_in_declaration_order() {
+        static FIELDS: &[Field] = &[
+            f("a", FieldType::String),
+            f("keep", FieldType::Int32),
+            f("b", FieldType::Sequence(&FieldType::Int64)),
+            f("c", FieldType::WString),
+        ];
+        assert_eq!(names(FIELDS).as_slice(), &["a", "b", "c"]);
+    }
+
+    /// Nested members are visited too, and a bounded sibling does not stop the
+    /// walk from continuing past the struct that contained one.
+    #[test]
+    fn the_walk_continues_past_a_nested_offender_to_its_siblings() {
+        static INNER: &[Field] = &[f("frame_id", FieldType::String)];
+        static INNER_TY: NestedType = NestedType {
+            type_name: "std_msgs/msg/Header",
+            fields: INNER,
+        };
+        static FIELDS: &[Field] = &[
+            f("header", FieldType::Nested(&INNER_TY)),
+            f("child_frame_id", FieldType::String),
+        ];
+        assert_eq!(names(FIELDS).as_slice(), &["frame_id", "child_frame_id"]);
+        // The path, not just the leaf name, so a diagnostic can be acted on.
+        assert_eq!(all(FIELDS)[0].path[0], "header");
+        assert_eq!(all(FIELDS)[0].depth, 2);
+    }
+
+    /// `first_unbounded` is now expressed on top of this walk, so it must still
+    /// answer exactly what the walk reports first — and must still stop, rather
+    /// than enumerating a type and discarding all but one answer.
+    #[test]
+    fn the_first_offender_is_the_first_one_visited() {
+        static INNER: &[Field] = &[f("frame_id", FieldType::String)];
+        static INNER_TY: NestedType = NestedType {
+            type_name: "std_msgs/msg/Header",
+            fields: INNER,
+        };
+        static FLAT: &[Field] = &[f("a", FieldType::String), f("b", FieldType::String)];
+        static NESTED: &[Field] = &[
+            f("header", FieldType::Nested(&INNER_TY)),
+            f("tail", FieldType::String),
+        ];
+        static CLEAN: &[Field] = &[f("only", FieldType::Int32)];
+        for fields in [FLAT, NESTED, CLEAN] {
+            assert_eq!(first_unbounded(fields), all(fields).first().copied());
+        }
+    }
+
+    /// A visitor that breaks stops the walk where it broke — which is the
+    /// mechanism `first_unbounded` uses, asserted rather than assumed.
+    #[test]
+    fn a_visitor_that_breaks_stops_the_walk() {
+        static FIELDS: &[Field] = &[
+            f("a", FieldType::String),
+            f("b", FieldType::String),
+            f("c", FieldType::String),
+        ];
+        let mut seen = 0usize;
+        let flow = visit_unbounded(FIELDS, &mut |_| {
+            seen += 1;
+            if seen == 2 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        assert_eq!(seen, 2);
+        assert_eq!(flow, ControlFlow::Break(()));
+    }
+
+    /// A bounded type has nothing to report, from either form.
+    #[test]
+    fn a_bounded_type_visits_nothing() {
+        static FIELDS: &[Field] = &[
+            f("a", FieldType::BoundedString(8)),
+            f("b", FieldType::Int32),
+        ];
+        assert!(all(FIELDS).is_empty());
+        assert!(first_unbounded(FIELDS).is_none());
     }
 
     /// Serialize a MAXIMAL instance of a schema with the real `CdrWriter`, and

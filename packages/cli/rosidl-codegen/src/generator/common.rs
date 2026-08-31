@@ -1262,9 +1262,87 @@ pub fn build_nros_message_schema(
     package_name: &str,
     message_name: &str,
     fields: &[rosidl_parser::Field],
+    caps: &SchemaCaps<'_>,
 ) -> NrosMessageSchema {
     let nros_type_name = format!("{}/msg/{}", package_name, message_name);
-    build_nros_schema_for_struct(package_name, message_name, &nros_type_name, "", fields)
+    build_nros_schema_for_struct(
+        package_name,
+        message_name,
+        &nros_type_name,
+        "",
+        fields,
+        caps,
+    )
+}
+
+/// Where the fields of ONE emitted schema read their `nros-codegen.toml` caps.
+///
+/// # Why the schema needs this at all (phase-403 W0)
+///
+/// The emitted `Message::FIELDS` is what `M::MAX_SERIALIZED_SIZE_XCDR*` — and
+/// therefore `rx_buffer_for!(M)` — is computed from at compile time. It used to
+/// render an unbounded `string` as `FieldType::String` whatever the config said,
+/// while the STRUCT FIELD beside it was already `heapless::String<cap>`. So the
+/// schema described a container the type does not have: a capped field was
+/// storage-bounded and schema-unbounded at once, and with an unbounded type now
+/// a build error, capping a field fixed the C header and left `rx_buffer_for!`
+/// still refusing to compile. The knob the diagnostic names has to work.
+///
+/// # Why the message name is carried and not derived
+///
+/// A config key is `<package>/<Message>.<field>`, and `<Message>` is the string
+/// the FIELD BUILDERS already resolve storage with — `Probe_Request`, not the
+/// Rust ident `ProbeRequest` the schema emitter is otherwise named after. Two
+/// spellings of one key is how a cap reaches the container and misses the
+/// schema, which is the defect being fixed; carrying the field builders' own
+/// string is what keeps the two from drifting.
+pub struct SchemaCaps<'a> {
+    message: &'a str,
+    resolver: &'a CapacityResolver,
+}
+
+/// The resolver a schema with no configuration reads: none.
+///
+/// A `static` and not a per-call `CapacityResolver::empty()` so
+/// [`SchemaCaps::unconfigured`] can hand out a borrow.
+static NO_CAPS: std::sync::LazyLock<CapacityResolver> =
+    std::sync::LazyLock::new(CapacityResolver::empty);
+
+impl<'a> SchemaCaps<'a> {
+    /// Read caps for the type the field builders call `message`.
+    pub fn new(message: &'a str, resolver: &'a CapacityResolver) -> Self {
+        Self { message, resolver }
+    }
+
+    /// No configuration: every field keeps the shape its `.msg` gives it.
+    ///
+    /// This is the honest spelling for a caller that genuinely has no resolver
+    /// (the unit tests, and the action ENVELOPE structs, whose fields are
+    /// rosidl-generated `uuid`/`status`/`stamp` members that no user config
+    /// names). It is byte-identical to the pre-phase-403 emitter.
+    pub fn unconfigured() -> SchemaCaps<'static> {
+        SchemaCaps {
+            message: "",
+            resolver: &NO_CAPS,
+        }
+    }
+
+    /// The bound the config STATES for one field of this schema, or `None`.
+    ///
+    /// Only the two shapes the resolver is keyed on are asked about, and only at
+    /// the field's own level — the same set `field_to_nros_field_with_mode`
+    /// treats as configurable, so the schema and the struct field are decided by
+    /// one question asked once. A `.msg`-bounded shape is not asked at all: the
+    /// interface is authoritative.
+    fn declared(&self, package: &str, field: &rosidl_parser::Field) -> Option<usize> {
+        let kind = match &field.field_type {
+            FieldType::String | FieldType::WString => CapFieldKind::String,
+            FieldType::Sequence { .. } => CapFieldKind::Sequence,
+            _ => return None,
+        };
+        self.resolver
+            .declared_bound(package, self.message, &field.name, kind)
+    }
 }
 
 /// Build the [`NrosMessageSchema`] for a Rust struct whose identifier
@@ -1288,6 +1366,7 @@ pub fn build_nros_schema_for_struct(
     nros_type_name: &str,
     const_prefix: &str,
     fields: &[rosidl_parser::Field],
+    caps: &SchemaCaps<'_>,
 ) -> NrosMessageSchema {
     build_nros_schema_for_struct_with_path(
         package_name,
@@ -1295,6 +1374,7 @@ pub fn build_nros_schema_for_struct(
         nros_type_name,
         const_prefix,
         fields,
+        caps,
         &default_nested_type_path,
     )
 }
@@ -1313,6 +1393,7 @@ pub fn build_nros_schema_for_struct_with_path(
     nros_type_name: &str,
     const_prefix: &str,
     fields: &[rosidl_parser::Field],
+    caps: &SchemaCaps<'_>,
     nested_path_resolver: &dyn Fn(Option<&str>, &str, &str) -> String,
 ) -> NrosMessageSchema {
     let mut helper_consts = String::new();
@@ -1327,6 +1408,7 @@ pub fn build_nros_schema_for_struct_with_path(
         let ty_expr = render_field_type_expr(
             raw_name,
             &field.field_type,
+            caps.declared(package_name, field),
             package_name,
             const_prefix,
             &mut helper_consts,
@@ -1357,9 +1439,18 @@ pub fn build_nros_schema_for_struct_with_path(
 ///
 /// `const_prefix` namespaces the emitted helper-const idents so multiple
 /// schemas in the same module don't collide on shared field names.
+///
+/// `declared` is the bound the codegen config states for THIS field
+/// ([`SchemaCaps::declared`]), or `None`. It applies to the field's own
+/// top-level shape only — the recursion into an element type passes `None`,
+/// because a config key names a field and an element is not one, and because
+/// the emitter spells an element string from a built-in default rather than
+/// from the config (`nros_type_for_field_with_mode`). Claiming a bound for it
+/// would be claiming a number nobody stated.
 pub(crate) fn render_field_type_expr(
     field_name: &str,
     field_type: &FieldType,
+    declared: Option<usize>,
     package_name: &str,
     const_prefix: &str,
     helper_consts: &mut String,
@@ -1367,8 +1458,14 @@ pub(crate) fn render_field_type_expr(
 ) -> String {
     match field_type {
         FieldType::Primitive(prim) => primitive_field_type_expr(prim).to_string(),
-        FieldType::String => "::nros_serdes::FieldType::String".to_string(),
-        FieldType::WString => "::nros_serdes::FieldType::WString".to_string(),
+        FieldType::String => match declared {
+            Some(n) => format!("::nros_serdes::FieldType::BoundedString({})", n),
+            None => "::nros_serdes::FieldType::String".to_string(),
+        },
+        FieldType::WString => match declared {
+            Some(n) => format!("::nros_serdes::FieldType::BoundedWString({})", n),
+            None => "::nros_serdes::FieldType::WString".to_string(),
+        },
         FieldType::BoundedString(n) => {
             format!("::nros_serdes::FieldType::BoundedString({})", n)
         }
@@ -1413,7 +1510,13 @@ pub(crate) fn render_field_type_expr(
                 helper_consts,
                 nested_path_resolver,
             );
-            format!("::nros_serdes::FieldType::Sequence(&{})", elem_const)
+            match declared {
+                Some(n) => format!(
+                    "::nros_serdes::FieldType::BoundedSequence({}, &{})",
+                    n, elem_const
+                ),
+                None => format!("::nros_serdes::FieldType::Sequence(&{})", elem_const),
+            }
         }
         FieldType::BoundedSequence {
             element_type,
@@ -1453,6 +1556,9 @@ fn emit_element_const(
     let inner_expr = render_field_type_expr(
         field_name,
         element_type,
+        // An element is not a field, so no config key names it. See
+        // `render_field_type_expr`'s `declared`.
+        None,
         package_name,
         const_prefix,
         helper_consts,
@@ -1542,6 +1648,14 @@ pub fn build_action_envelope_schemas(
     let result_struct = format!("{}Result", action_name);
     let feedback_struct = format!("{}Feedback", action_name);
 
+    // The five envelope structs have no configurable field: every member below
+    // is a rosidl-fixed `goal_id`/`accepted`/`stamp`/`status` or a nested
+    // reference to the user's own Goal/Result/Feedback, whose caps are read
+    // where THAT struct's schema is emitted. So there is nothing here for a
+    // config key to name, and saying so is more honest than threading a
+    // resolver that can never match.
+    let envelope_caps = SchemaCaps::unconfigured();
+
     // Action-self struct path resolver: when the nested package matches
     // this action's host package AND the struct name matches one of the
     // three user-facing structs, reach it as a bare ident (same module).
@@ -1584,6 +1698,7 @@ pub fn build_action_envelope_schemas(
         &format!("{}/action/{}_SendGoal_Request", package_name, action_name),
         "SG_REQ_",
         &[uuid_field(), self_field("goal", &goal_struct)],
+        &envelope_caps,
         &resolver,
     );
 
@@ -1608,6 +1723,7 @@ pub fn build_action_envelope_schemas(
                 default_value: None,
             },
         ],
+        &envelope_caps,
         &resolver,
     );
 
@@ -1618,6 +1734,7 @@ pub fn build_action_envelope_schemas(
         &format!("{}/action/{}_GetResult_Request", package_name, action_name),
         "GR_REQ_",
         &[uuid_field()],
+        &envelope_caps,
         &resolver,
     );
 
@@ -1635,6 +1752,7 @@ pub fn build_action_envelope_schemas(
             },
             self_field("result", &result_struct),
         ],
+        &envelope_caps,
         &resolver,
     );
 
@@ -1645,6 +1763,7 @@ pub fn build_action_envelope_schemas(
         &format!("{}/action/{}_FeedbackMessage", package_name, action_name),
         "FB_",
         &[uuid_field(), self_field("feedback", &feedback_struct)],
+        &envelope_caps,
         &resolver,
     );
 
@@ -1697,6 +1816,7 @@ mod schema_tests {
             "std_msgs",
             "Int32",
             &[prim_field("data", PrimitiveType::Int32)],
+            &SchemaCaps::unconfigured(),
         );
         assert_eq!(schema.nros_type_name, "std_msgs/msg/Int32");
         assert_eq!(schema.helper_consts, "");
@@ -1726,6 +1846,7 @@ mod schema_tests {
                     default_value: None,
                 },
             ],
+            &SchemaCaps::unconfigured(),
         );
         assert!(
             schema
@@ -1762,6 +1883,7 @@ mod schema_tests {
                 },
                 default_value: None,
             }],
+            &SchemaCaps::unconfigured(),
         );
         assert!(
             schema
@@ -1790,6 +1912,7 @@ mod schema_tests {
                 field_type: FieldType::BoundedString(32),
                 default_value: None,
             }],
+            &SchemaCaps::unconfigured(),
         );
         assert!(schema.helper_consts.is_empty());
         assert!(
@@ -1815,6 +1938,7 @@ mod schema_tests {
                 },
                 default_value: None,
             }],
+            &SchemaCaps::unconfigured(),
         );
         // Array hoists FT_POINTS_ELEM; the nested type hoists NESTED_POINTS
         // (named after the parent field, since we scope inner consts under
@@ -1842,6 +1966,7 @@ mod schema_tests {
             "local_msgs",
             "Outer",
             &[nested_field("inner", "local_msgs", "Inner")],
+            &SchemaCaps::unconfigured(),
         );
         assert!(
             schema
@@ -1859,6 +1984,7 @@ mod schema_tests {
             "test_msgs",
             "Sample",
             &[prim_field("type", PrimitiveType::Int32)],
+            &SchemaCaps::unconfigured(),
         );
         assert!(schema.fields_block.contains("name: \"type\","));
         assert!(schema.fields_block.contains("offset_of!(Sample, type_)"));
@@ -1882,6 +2008,7 @@ mod schema_tests {
                 prim_field("a", PrimitiveType::Int64),
                 prim_field("b", PrimitiveType::Int64),
             ],
+            &SchemaCaps::unconfigured(),
         );
         // Primitive-only schema needs no helper consts.
         assert_eq!(schema.helper_consts, "");
@@ -1919,6 +2046,7 @@ mod schema_tests {
             "demo/srv/Move_Request",
             "REQ_",
             &[nested_field("header", "std_msgs", "Header")],
+            &SchemaCaps::unconfigured(),
         );
         let resp = build_nros_schema_for_struct(
             "demo",
@@ -1926,6 +2054,7 @@ mod schema_tests {
             "demo/srv/Move_Response",
             "RESP_",
             &[nested_field("header", "std_msgs", "Header")],
+            &SchemaCaps::unconfigured(),
         );
         assert!(req.helper_consts.contains("pub const REQ_NESTED_HEADER:"));
         assert!(resp.helper_consts.contains("pub const RESP_NESTED_HEADER:"));
@@ -1951,6 +2080,7 @@ mod schema_tests {
             "example_interfaces/action/Fibonacci_Goal",
             "GOAL_",
             &[prim_field("order", PrimitiveType::Int32)],
+            &SchemaCaps::unconfigured(),
         );
         let result = build_nros_schema_for_struct(
             "example_interfaces",
@@ -1964,6 +2094,7 @@ mod schema_tests {
                 },
                 default_value: None,
             }],
+            &SchemaCaps::unconfigured(),
         );
         let feedback = build_nros_schema_for_struct(
             "example_interfaces",
@@ -1977,6 +2108,7 @@ mod schema_tests {
                 },
                 default_value: None,
             }],
+            &SchemaCaps::unconfigured(),
         );
         assert_eq!(
             goal.nros_type_name,
@@ -2179,6 +2311,7 @@ mod schema_tests {
             "std_srvs/srv/Trigger_Request",
             "REQ_",
             &[],
+            &SchemaCaps::unconfigured(),
         );
         assert_eq!(schema.helper_consts, "");
         assert_eq!(schema.fields_block, "");

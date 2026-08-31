@@ -41,6 +41,7 @@ const CORPUS: &str = "fingerprint-corpus";
 const SHAPES_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Shapes.msg");
 const NESTED_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Nested.msg");
 const BOUNDED_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Bounded.msg");
+const CAPPED_MSG: &str = include_str!("../tests/fixtures/fingerprint-corpus/msg/Capped.msg");
 const PROBE_SRV: &str = include_str!("../tests/fixtures/fingerprint-corpus/srv/Probe.srv");
 const PROBE_ACTION: &str = include_str!("../tests/fixtures/fingerprint-corpus/action/Probe.action");
 const CODEGEN_TOML: &str = include_str!("../tests/fixtures/fingerprint-corpus/nros-codegen.toml");
@@ -93,6 +94,10 @@ pub fn emit_corpus() -> BTreeMap<String, String> {
         ("Nested", NESTED_MSG),
         // issue 0896 — covers the arm that EMITS a size constant.
         ("Bounded", BOUNDED_MSG),
+        // phase-403 W0 — covers the arm where the size constant comes from a
+        // codegen-config CAP rather than from the `.msg`. Unbounded under the
+        // `inline` resolver, bounded under `configured`, from the same source.
+        ("Capped", CAPPED_MSG),
     ];
 
     for (mode, r) in resolvers() {
