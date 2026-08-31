@@ -14,14 +14,12 @@ pkg  = "listener_pkg"
 class = "listener_pkg::listener"
 name = "listener"
 
-[deploy.qemu-arm-nuttx]
-kind = "nuttx"
+# Issue 0951 — a BOARD BUILD is an image, not a placement. `kind` here named a
+# platform family, which `[image.*]` reads off the board, and `target` restated
+# the rustc triple the board descriptor already states. `launch` loses its
+# `launch/` prefix: an image's value is resolved against that directory.
+[image.qemu-arm-nuttx]
 board = "qemu-armv7a-nsh"
-target = "armv7a-nuttx-eabihf"
-launch = "launch/system.launch.xml"
-
-# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
-# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
-# name, because that is what the fact is about (issue 0951).
+launch = "system.launch.xml"
 [board_config."qemu-armv7a-nsh"]
 sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

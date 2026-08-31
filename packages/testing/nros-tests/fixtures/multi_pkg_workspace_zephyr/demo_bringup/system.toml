@@ -14,8 +14,10 @@ pkg  = "listener_pkg"
 class = "listener_pkg::listener"
 name = "listener"
 
-[deploy.zephyr_native_sim]
-kind   = "zephyr"
-target = "x86_64-unknown-linux-gnu"
-board  = "native_sim/native/64"
-launch = "launch/system.launch.xml"
+# Issue 0951 — a BOARD BUILD is an image, not a placement. `kind` here named a
+# platform family, which `[image.*]` reads off the board, and `target` restated
+# the rustc triple the board descriptor already states. `launch` loses its
+# `launch/` prefix: an image's value is resolved against that directory.
+[image.zephyr_native_sim]
+board = "native_sim/native/64"
+launch = "system.launch.xml"

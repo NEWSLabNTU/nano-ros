@@ -15,12 +15,9 @@ pkg = "demo_cond"
 class = "demo_cond::demo_cond_logger"
 name = "logger"
 
-# The LAST `[deploy.*]` block: the implicit machine this system runs on.
-#
-# Everything else has moved — placement to `[host.<name>]`, board builds to
-# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
-# machine too, so it belongs in `[host.*]`; it stays here until that move is
-# measured, because it is the block that currently makes placement HAPPEN
-# (issue 0951).
-[deploy.native]
-kind = "self"
+
+# Issue 0951 — the implicit machine this system runs on. A host says WHERE a
+# node runs; what it is built as comes from `[image.*]`. Unscoped and with no
+# `nodes`, so it governs every launch file and every node — which is what the
+# `kind = "self"` deploy block it replaces already meant.
+[host.native]

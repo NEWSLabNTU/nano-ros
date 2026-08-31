@@ -38,26 +38,12 @@ pkg = "c_fib_client_pkg"
 class = "c_fib_client_pkg::FibClient"
 name = "fib_client"
 
-# The LAST `[deploy.*]` block: the implicit machine this system runs on.
-#
-# Everything else has moved — placement to `[host.<name>]`, board builds to
-# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
-# machine too, so it belongs in `[host.*]`; it stays here until that move is
-# measured, because it is the block that currently makes placement HAPPEN
-# (issue 0951).
-[deploy.native]
-kind = "self"
-# phase-326 (issue 0364) — per-host deploy targets for the multi-host launch
-# (`launch/multihost.launch.xml`: C talker + Rust heartbeat on robot1, C++ listener on robot2, chosen at RESOLVE time by the `host`
-# launch argument). Each per-host model (`config/multihost_robot<N>_model.yaml`,
-# resolved with `host:=robot<N>`) contains only that host's nodes;
-# `native_entry_robot{1,2}` consume those models via `nano_ros_entry(MODEL …)`.
-# The explicit `nodes = [..]` below places them — with `machine=` gone there is
-# no launch-derived placement fact, so every node needs a list entry.
-# Issue 0951 — MACHINES live in `[host.*]`. A host says WHERE a node runs;
-# what it is built as comes from `[image.*]`. The old blocks carried
-# `kind`/`target`, which are build facts: per-host models are board-agnostic
-# and each entry's own board supplies the target.
+
+# Issue 0951 — the implicit machine this system runs on. A host says WHERE a
+# node runs; what it is built as comes from `[image.*]`. Unscoped and with no
+# `nodes`, so it governs every launch file and every node — which is what the
+# `kind = "self"` deploy block it replaces already meant.
+[host.native]
 [host.robot1]
 launch = "multihost.launch.xml"
 nodes = ["/talker", "/heartbeat"]

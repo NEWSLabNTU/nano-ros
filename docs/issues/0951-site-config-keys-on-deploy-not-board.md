@@ -127,7 +127,28 @@ declaration — and only when unambiguous (`[build].target`, else exactly one
 `[target.*]` key). `shipped_boards_resolve_their_rustc_triple` is the
 regression pin, at the layer where the fact lives.
 
-Still open — the build half:
+* **`[deploy.*]` is GONE from the tree** — 0 blocks, against 96 at the start.
+  The 4 misfiled fixture blocks (whose `kind` named a platform family, not a
+  placement) became `[image.*]`; the 20 `kind = "self"` machines became
+  unscoped `[host.<name>]` with no `nodes`, which is what a sole governing
+  self-block already meant. Two templates carried `board` on the machine block
+  and were split — a board is a build fact, and a machine is not a build.
+
+  Model effect, measured across all 20 resolving workspaces: `deploy_name` +
+  `kind` become `host_name`, and `target` disappears (a host says WHERE a node
+  runs; the entry's `--board` decides what it is built as). Two fixtures lose
+  their `execution:` section entirely, because their sole block was a platform
+  family acting as placement by accident — nothing live reads per-node
+  `domain`/`rmw` from a model, and `keep()`'s empty-map arm keeps every node.
+  Verified the way that matters: `nros codegen entry` for
+  freertos/nuttx/zephyr/native, before and after, is byte-identical for every
+  board.
+
+  The SCHEMA keeps `[deploy.*]` and every reader keeps its deploy fallback —
+  out-of-tree users still author it, and the deprecation warnings are what move
+  them.
+
+Still open:
 * **the last `[deploy.*]` block per bringup** — one `kind = "self"` each, the
   implicit machine the system runs on. It is a machine, so it belongs in
   `[host.*]`; moving it empties the table and gives `target = None` by

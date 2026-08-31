@@ -24,19 +24,12 @@ pkg = "cpp_lifecycle_talker_pkg"
 class = "cpp_lifecycle_talker_pkg::ManagedTalker"
 name = "managed_talker"
 
-# The LAST `[deploy.*]` block: the implicit machine this system runs on.
-#
-# Everything else has moved — placement to `[host.<name>]`, board builds to
-# `[image.<id>]`, site config to `[board_config.<board>]`. This one is a
-# machine too, so it belongs in `[host.*]`; it stays here until that move is
-# measured, because it is the block that currently makes placement HAPPEN
-# (issue 0951).
-[deploy.native]
-kind = "self"
 
-# --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
-# Derived from the entry packages that existed at migration time; each
-# entry's `deploy` token picked its board, and its `launch` its topology.
+# Issue 0951 — the implicit machine this system runs on. A host says WHERE a
+# node runs; what it is built as comes from `[image.*]`. Unscoped and with no
+# `nodes`, so it governs every launch file and every node — which is what the
+# `kind = "self"` deploy block it replaces already meant.
+[host.native]
 [image_defaults]
 rmw = "zenoh"
 
