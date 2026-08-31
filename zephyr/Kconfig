@@ -938,21 +938,42 @@ endif # NROS_RMW_XRCE
 # =============================================================================
 
 config NROS_EXECUTOR_MAX_CBS
-    int "Maximum executor callback slots"
-    default 4
+    int "Maximum executor callback slots (-1 = derive)"
+    default -1
     help
       Maximum number of callback slots in the executor
-      (subscriptions + timers + services). Controls both Rust and C APIs.
+      (subscriptions + timers + services + service clients + action
+      entities + guard conditions). Controls both Rust and C APIs.
       Arena size is derived automatically from this value and the
       subscription buffer size.
 
-      Defaults to 4 to match nros-node/build.rs. This option was never
+      A PUBLISHER IS NOT ONE OF THEM. Every registration that claims a slot
+      calls Executor::next_entry_slot(); create_publisher does not — it writes
+      an RmwPublisher into caller-owned storage and there is no
+      nros_executor_add_publisher on the C path. The mr-canhubk344 bring-up
+      counted 33 "handles" for the island and set 36 here; 14 of those 33 are
+      publishers and the slot demand is 19.
+
+      -1 means DERIVE it from this image's ENTITY inventory (phase-403 W9 /
+      issue 0965): the sum of every `nano_ros_node_register(... ENTITIES ...)`
+      declaration in the image, counted by kind. It is derived only when EVERY
+      component declared; one that did not makes the whole image refuse, so a
+      partial answer can never be published as a whole one. Any value other
+      than -1 is yours and WINS; the crate default when nothing is stated and
+      nothing is derivable is 4.
+
+      The derived value carries NO headroom, which makes the running image a
+      checker of its own declaration: one entity past the table and
+      registration returns ExecutorFull naming this knob, and the entry halts
+      boot naming the node. Raise it deliberately if you want slack — the
+      arena scales with it.
+
+      4 is the crate default in nros-node/build.rs. This option was never
       forwarded to Cargo before issue 0316, so every Zephyr C image compiled
-      the crate default of 4 regardless of what was configured here; the old
-      default of 16 had therefore never been built. Honouring it as-is would
-      have grown a native_sim listener's .bss by 219 KB (+35%) as a side
-      effect of repairing the plumbing. Raise it deliberately — the arena
-      scales with it.
+      that default regardless of what was configured here; the old default of
+      16 had therefore never been built. Honouring it as-is would have grown a
+      native_sim listener's .bss by 219 KB (+35%) as a side effect of repairing
+      the plumbing.
 
 config NROS_SUBSCRIPTION_BUFFER_SIZE
     int "Per-subscription receive buffer size in bytes (-1 = derive)"

@@ -102,7 +102,7 @@ fast-serial: \
     ci-image-python-deps kconfig-overridden-values \
     platform-abi-mirror abi-bindings board-abi-mirror board-manifest-drift profile-board-mirror example-matrix \
     no-direct-kernel-alloc no-allow-multiple-def no-board-init weak-symbols \
-    infra-queryable-counts \
+    infra-queryable-counts entity-slot-costs \
     rmw-force-link-anchor rmw-required-slots rmw-slot-table board-tiers tier-priority-plan \
     subtree-guard \
     leaf-lockfiles submodule-pinned-locks msg-dep-is-path cargo-locked no-tracked-models no-tracked-workspace-roots host-platform-vocabulary posix-platform-purity orphan-generated-stamp generated-schema-coverage \
@@ -142,7 +142,7 @@ fast-serial: \
     interface-glob-configure-depends \
     wait-evidence-discarded \
     path-env-fingerprints retired-platform-clock-symbols \
-    cmake-support-library message-bound-knobs action-client-arena-budget \
+    cmake-support-library message-bound-knobs action-client-arena-budget entity-inventory-knobs \
     tests-can-fail
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
@@ -916,6 +916,27 @@ action-client-arena-budget:
         exit 0
     fi
     exit "$_rc"
+# phase-403 W9 (issue 0965) -- the READER for the ENTITY inventory, the second
+# source `NanoRosMessageBounds.cmake` says by name that it needs.
+#
+# The derivation itself is unit-tested in `nros_cli_core::entity_inventory`
+# (`cargo test -p nros-cli-core`), including the island's 33-entities /
+# 19-slots case. This gates what CMAKE owns: a refusal publishes NO number, an
+# unknown schema FATALs rather than being read field-by-field, a missing input
+# refuses rather than breaking a clean-tree configure, and a broken declaration
+# is fatal and names the component. The CLI is STUBBED, so this needs cmake and
+# nothing else -- no cargo build, which is what keeps it affordable on the fast
+# line beside its sibling above.
+entity-inventory-knobs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip entity-inventory-knobs "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-entity-inventory-tests.sh
 
 abi-bindings:
     #!/usr/bin/env bash
@@ -3480,6 +3501,21 @@ zenoh:
 [private]
 infra-queryable-counts:
     @python3 scripts/check-infra-queryable-counts.py
+
+# phase-403 W9 (issue 0965) — the per-kind CALLBACK SLOT cost has ONE
+# definition, tied to the registration sites that actually claim a slot.
+#
+# `nros ws entity-inventory` derives NROS_EXECUTOR_MAX_CBS by summing
+# `EntityKind::callback_slots()`, and that function is a MIRROR: the CLI is a
+# host binary and nros-node is no_std and built for the target, so it restates
+# what `Executor::next_entry_slot()` decides. Same rule as the queryable counts
+# above — a mirror is acceptable only while something holds it to the
+# definition. The specific claim it defends is that a PUBLISHER claims no slot,
+# which is why the island's 33 declared entities want 19 and why the bring-up's
+# hand-count of "33 handles" over-sized by 14.
+[private]
+entity-slot-costs:
+    @python3 scripts/check-entity-slot-costs.py
 
 # phase-383 W10.c — an example workspace ROOT is generated, never tracked.
 #

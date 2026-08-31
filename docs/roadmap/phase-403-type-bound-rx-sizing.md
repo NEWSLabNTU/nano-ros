@@ -975,6 +975,147 @@ codegen). It pins the derived VALUES, the composition across packages, the
 refusal and its negative control, the per-fragment schema check, and the
 write-if-changed.
 
+### W9 LANDED 2026-08-31 (issue 0965) -- the ENTITY inventory, and the number the bring-up got wrong
+
+W8's boundary was honest and it was also the end of what a BOUND inventory can
+do. It prices a TYPE; three consumers need to know WHICH ENTITIES AN IMAGE
+CREATES, and until something said, `NROS_EXECUTOR_MAX_CBS` stayed hand-counted,
+the arena stayed six bisections deep, and W4's payload classes derived over the
+LINKED closure at a measured cost of 2176 bytes instead of a 27392-byte saving.
+
+**The design fork, and why the choice is not a matter of taste.** Issue 0965
+named two producers -- a descriptor emitted from the registration macros, or an
+author-stated manifest -- and a hybrid. The macros DO know the entity kind and
+the type `M`; that is how W3 got the per-type bound to the arena. But anything
+they emit is a LINK-SECTION fact and exists only after linking, while
+`NROS_EXECUTOR_MAX_CBS` is a `const` compiled into `nros-node` before a single
+component TU is compiled. Emitted evidence can VERIFY a count and can never
+SUPPLY one. That is the direction of the build graph, not a gap in the tooling,
+so the declaration supplies and the running image verifies -- the hybrid, with
+the halves assigned by what each can actually do.
+
+**Where the author states it.** `nano_ros_node_register(... ENTITIES ...)`,
+beside `CLASS`, `SHAPE` and `CALLBACK_GROUPS`, travelling the channel that
+declaration already travels: `nros-metadata.json`. Each spec is
+`<kind>[:<type>[:<name>]]` with an optional `*N` repeat, and the type name is
+the `pkg/msg/Name` spelling the bound inventory already keys on, so the two
+inventories join without a second naming convention.
+
+**One data model, three transports** -- `nros_cli_core::entity_inventory`,
+shaped after `rosidl_codegen::bounds` rather than as a second mechanism: the
+canonical JSON, the `include()`able CMake fragment, and `KEY=VALUE` env lines.
+The env line IS the cargo transport here, because the knob it feeds is read
+from the environment by `nros-node/build.rs` and there is no generated crate to
+hang a `links` key on; it is the same carrier `nros ws entity-facts` already
+publishes through `corrosion_set_env_vars`.
+
+**A publisher claims NO callback slot, and this is the wave's real finding.**
+`MAX_CBS` sizes the executor's callback-entry table. Every registration that
+claims an entry calls `Executor::next_entry_slot()`; the 24 sites that do are
+subscriptions, timers, services, service clients, action servers, action
+clients and guard conditions. `create_publisher` is not one -- on the C++ path
+it writes an `RmwPublisher` into caller-owned storage, and on the C path there
+is no `nros_executor_add_publisher` to increment `handle_count`.
+
+So the bring-up log's table is wrong in a way nobody could see. It records "33
+handles" for the island and sets `MAX_CBS=36` from it; 33 is the ENTITY count
+and 14 of those are publishers. The slot demand is 19. (Its per-node columns
+are also mis-attributed -- it reads 6 timers and 2 services where the source
+has 4 timers, 2 service servers and 2 service clients. The TOTAL happens to
+come out right, which is exactly why a hand-count is not evidence.)
+
+Gate: `just check entity-slot-costs`
+(`scripts/check-entity-slot-costs.py`). `EntityKind::callback_slots()` is a
+MIRROR -- the CLI is a host binary and `nros-node` is `no_std` and built for the
+target -- so it is held to the `next_entry_slot()` sites, the same way
+`ACTION_SERVER_QUERYABLES` is held to its creation sites. Five self-test
+mutations, including "a publisher started claiming a slot" in both the Rust and
+the C accounting.
+
+**An under-report cannot be silent, in three layers.**
+
+1. **Composition REFUSES on incomplete data.** One component in the image with
+   no `ENTITIES` and nothing is derived for the WHOLE image -- the same rule
+   `nros_derive_message_bound_knobs` holds when any type in the closure is
+   unbounded, and for the same reason. `ENTITIES NONE` is how a component that
+   really creates nothing says so, so ABSENCE always means "nobody said". An
+   `ENTITIES` list that is present and empty reads as absent too.
+2. **The derived value carries NO headroom**, deliberately. It is exactly the
+   declared demand, which makes the running image a checker of its own
+   declaration.
+3. **A short declaration is a NAMED boot failure.** Registration past the table
+   returns `NodeError::ExecutorFull`, which names the knob, and
+   `ComponentNode`'s `ok()` flag halts boot naming the failing node. This is
+   why `MAX_CBS` is the right FIRST consumer and the arena is not: an
+   under-sized arena halts DURING entity creation, before the first spin, which
+   is exactly why issue 0900 W1's advisory cannot cover it.
+
+**Precedence, unchanged from W8.** `NROS_EXECUTOR_MAX_CBS` moved from the plain
+`_nros_resolve_knob` to `_nros_resolve_derivable_knob` and its Kconfig default
+became the `-1` sentinel. Environment > Kconfig / board `.conf` > derived >
+crate default. Every image built before this wave declares no entities, so its
+inventory refuses, so it falls to rung 4 and the crate default of 4 -- exactly
+where it was.
+
+**Measured on the reference image**, the mr-canhubk344 island entry, over the
+`nros-metadata.json` its own board configure wrote (`build-board/`, 4 C++
+components):
+
+| | source | value |
+| --- | --- | ---: |
+| hand-set today | `boards/mr_canhubk3_s32k344.conf` | 36 |
+| the bring-up log's hand-count | `phase-3-canhubk344-real-silicon.md` | 33 |
+| DERIVED, entities declared | `NROS_ENTITY_INVENTORY_ENTITY_TOTAL` | 33 |
+| DERIVED, callback slots | `NROS_DERIVED_EXECUTOR_MAX_CBS` | **19** |
+
+Per component, as the fragment records it:
+
+| component | entities | slots |
+| --- | ---: | ---: |
+| `mrm_handler` | 15 | 10 |
+| `stop_mode_operator` | 8 | 4 |
+| `mrm_emergency_stop_operator` | 5 | 3 |
+| `mrm_comfortable_stop_operator` | 5 | 2 |
+| **total** | **33** | **19** |
+
+and by kind: 14 publishers, 11 subscriptions, 4 timers, 2 service servers, 2
+service clients, 0 actions, 0 guard conditions.
+
+Run against the SAME metadata with no declarations -- which is the island's
+tree as it stands -- the inventory refuses, names all four components, and
+publishes no number. That is the before/after: the refusal is the current
+state, and 19 is what the declaration buys.
+
+**What 17 slots are worth, and what is NOT claimed.** The arena is
+`max_cbs * (3 * SUBSCRIPTION_BUFFER_SIZE + 512) + 2048` when nothing pins it,
+so 36 -> 19 is 17 slots of arena the island stops reserving. The island PINS
+`CONFIG_NROS_EXECUTOR_ARENA_SIZE=40960`, so that saving is not automatic there
+and this wave does not claim it: the two knobs must move together, which is
+what W8's own Kconfig help already says. What IS claimed is the 17 slots'
+worth of `group_sched_table` (~168 B per slot, phase-409's measurement) and
+`entries`, which scale with `MAX_CBS` with no second knob to pin them.
+
+**Not measured on hardware.** The island was not flashed for this wave. The
+number is a DEFAULT under a `.conf` that still states 36, so adopting it is a
+deliberate act by whoever next brings the board up; the code claim -- that a
+publisher claims no slot -- is verified by reading all 24 registration sites
+and by the gate, not by a boot.
+
+**What W9 does NOT derive, and why it is not one more patch.** The arena and
+the zenoh payload classes need the two inventories JOINED per subscription:
+this wave's per-entity list against W8's per-type size. A total taken from
+either half alone is the same confident wrong number the campaign exists to
+remove, so the join is named as its own work rather than bolted onto either
+reader. `NROS_MAX_SUBSCRIBERS` / `NROS_MAX_PUBLISHERS` are a straight read of
+`NROS_ENTITY_COUNT_SUBSCRIPTION` / `_PUBLISHER` and were left out only for
+scope discipline -- one consumer, wired end to end, was the brief.
+
+Gate: `just check entity-inventory-knobs`
+(`tests/cmake-entity-inventory-tests.sh`, 24 assertions, `cmake -P` with a
+STUBBED CLI so it needs cmake and no cargo build) plus 19 unit tests in
+`nros_cli_core::entity_inventory` and `cmd::entity_inventory`, including the
+island case above.
+
 ## Relationship to phase-408 (PR #130)
 
 phase-408, "a C/C++ subscription sizes its buffer from its own message type",

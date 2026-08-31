@@ -111,6 +111,25 @@ pub enum Sub {
     #[command(name = "entity-facts")]
     EntityFacts(crate::cmd::entity_facts::EntityFactsArgs),
 
+    /// phase-403 W9 (issue 0965) — compose this image's
+    /// `nano_ros_node_register(... ENTITIES …)` declarations into the ENTITY
+    /// inventory, and derive `NROS_EXECUTOR_MAX_CBS` from it.
+    ///
+    /// The sibling question to `entity-facts`, asked of a source that can
+    /// answer it. `entity-facts` reads the resolved SystemModel and abstains on
+    /// every one in this tree, because a launch file names a node and never
+    /// says what that node wires; the register call does.
+    ///
+    /// Prints the env transport (`KEY=VALUE`) on stdout — the same carrier and
+    /// the same reason as `board-facts` / `entity-facts` — and optionally
+    /// writes the canonical JSON and the `include()`able CMake projection.
+    ///
+    /// REFUSES, printing nothing, when any component in the image declared no
+    /// entities: a partial inventory derives a slot count smaller than the
+    /// image needs, and a short `MAX_CBS` fails entity creation at boot.
+    #[command(name = "entity-inventory")]
+    EntityInventory(crate::cmd::entity_inventory::EntityInventoryArgs),
+
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
     /// across the search path: the nano-ros tree, then this workspace.
@@ -388,6 +407,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::CheckBoardProjections(a) => run_check_board_projections(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
+        Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
     }

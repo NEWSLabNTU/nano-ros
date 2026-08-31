@@ -116,8 +116,27 @@ nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
 nros_components_register_node(talker_lib
     PLUGIN talker_pkg::Talker      # any qualified name — upstream namespaces port verbatim
     EXECUTABLE talker
-    SHAPE configure)               # this walkthrough uses the configure(Node&) shape
+    SHAPE configure                # this walkthrough uses the configure(Node&) shape
+    ENTITIES pub:std_msgs/msg/Int32:/chatter timer)
 ```
+
+`ENTITIES` (optional) states what this component's constructor creates, so the
+build can size the executor instead of a human counting call sites. Each entry
+is `<kind>[:<type>[:<topic>]]`, with an optional `*N` repeat on the kind
+(`pub*5`); the kinds are `publisher`, `subscription`, `timer`,
+`service_server`, `service_client`, `action_server`, `action_client` and
+`guard_condition`. Write `ENTITIES NONE` for a component that creates none.
+
+It is worth stating even though it is optional: `NROS_EXECUTOR_MAX_CBS` is
+derived from it, and the derivation is all-or-nothing. **If any component in an
+image omits `ENTITIES`, nothing is derived for that image** — a count taken over
+only the components that answered is smaller than the image needs, and a short
+`MAX_CBS` fails entity creation at boot. Inspect the composed answer with
+`nros ws entity-inventory --metadata <build>/nros-metadata.json`.
+
+Note that a publisher is inventoried but claims no callback slot, so the
+declared entity count and the derived `MAX_CBS` are legitimately different
+numbers.
 
 ```cpp
 // src/talker_pkg/include/talker_pkg/Talker.hpp
