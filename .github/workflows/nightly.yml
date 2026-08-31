@@ -804,7 +804,7 @@ jobs:
       - name: Run bootstrap probe
         run: PROBE_BRANCH=probe-under-test ./scripts/probe/run-bootstrap-probe.sh
 
-  # phase-407 — tier 2 NIGHTLY, actually invoked.
+  # phase-411 — tier 2 NIGHTLY, actually invoked.
   #
   # This file's header has said "the 07:00 cron is also where
   # `just ci-matrix-nightly` lives" since RFC-0061, and three places echo that

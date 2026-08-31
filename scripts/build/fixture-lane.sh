@@ -329,7 +329,7 @@ nros_fixtures_stamp_clear() {
 # `<stage>\t<start>\t<end>\t<dur>\t<status>` row per module, status 78 being
 # `nros_lane_skip` ("a precondition is missing"), issue 0599.
 #
-# phase-407 W1. The stamp used to record the lane's NOMINAL coordinates, from
+# phase-411 W1. The stamp used to record the lane's NOMINAL coordinates, from
 # the manifest, regardless of what the build achieved — so a module that skipped
 # for a missing toolchain still read as covered, `nros_fixtures_stamp_require`
 # answered "yes, covered", and the run proceeded to skip its tests. The skip was
@@ -369,7 +369,7 @@ nros_fixtures_stamp_write() {
             echo "started_at=$(cat "${NROS_FIXTURE_STAMP}.started")"
         fi
         echo "lane=$lane"
-        # phase-407 W1 — what the build ACHIEVED, not only what it was asked
+        # phase-411 W1 — what the build ACHIEVED, not only what it was asked
         # for. A consumer that reads `lane=` alone is reading an intention.
         local m
         for m in $skipped; do echo "skipped_module=$m"; done
@@ -391,7 +391,7 @@ nros_fixtures_stamp_write() {
     fi
 }
 
-# Echo the modules the recorded build did NOT achieve (phase-407 W1).
+# Echo the modules the recorded build did NOT achieve (phase-411 W1).
 # Empty for a legacy stamp, which is why the caller must treat absence as
 # "cannot tell", never as "nothing was skipped".
 nros_fixtures_stamp_skipped() {
@@ -517,7 +517,7 @@ nros_fixtures_stamp_require() {
     # present, an unnarrowed run is fine, and `NROS_FIXTURE_LANE=tier2` on top
     # of a full build is a legitimate combination (scope the FRESHNESS gate,
     # keep the run wide).
-    # phase-407 W1 — a build of everything covers every lane ONLY if it built
+    # phase-411 W1 — a build of everything covers every lane ONLY if it built
     # everything. This early return is where a skip became a coverage claim:
     # `lane=all` with an unprovisioned module skipped still answered "covered",
     # so the run proceeded and its tests skipped for absent binaries, and the

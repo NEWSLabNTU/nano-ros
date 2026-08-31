@@ -21,7 +21,7 @@
 # ten agents landing through a merge queue that batches four, merges arrive
 # faster than that, so every run is cancelled by the next merge and the tier
 # COMPLETES NEVER — a lane that always cancels looks busy while reporting
-# nothing, which is worse than the skipped job phase-407 made visible.
+# nothing, which is worse than the skipped job phase-411 made visible.
 #
 # What stays here is `dep-chain`: hosted, 158 s, genuinely per-merge.
 #

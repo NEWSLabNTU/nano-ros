@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every declared CI tier must be RUN by something — phase-407.
+"""Every declared CI tier must be RUN by something — phase-411.
 
 RFC-0061 declares four tiers and `CiTier::just_recipe()` names the command for
 each. A tier nothing invokes is a promise with no owner: the ladder says "host

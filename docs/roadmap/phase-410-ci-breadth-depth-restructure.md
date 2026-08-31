@@ -3,12 +3,12 @@
 **Status (2026-08-31). W2, W3 and W4 landed; W1 deferred with reasons.**
 
 Restructures the CI workflows so a tier's file keeps the promise the tier makes.
-Consumes phase-407 (`just <verb> <scope>`) and phase-395 (the event design);
+Consumes phase-411 (`just <verb> <scope>`) and phase-395 (the event design);
 amends RFC-0061's tier ladder rather than replacing it.
 
 ## The defect this fixes
 
-phase-407 gave every RFC-0061 tier a CI owner. That exposed the next question:
+phase-411 gave every RFC-0061 tier a CI owner. That exposed the next question:
 the owners are correct but the SHAPE is wrong, in three ways that only appear
 under load.
 
@@ -61,7 +61,7 @@ queueing.
 With ten agents landing through a merge queue that batches up to four, merges
 arrive faster than that. Each cancels the last, so **tier 2 completes never** —
 and a lane that always cancels looks busy while reporting nothing, which is
-strictly worse than the skipped job phase-407 just made visible.
+strictly worse than the skipped job phase-411 just made visible.
 
 So run-depth tiers move to a CLOCK, not to `push(main)`. A scheduled run always
 finishes.
@@ -98,7 +98,7 @@ run-nightly.yml   build+run, pairwise      on: schedule 07:00
 run-full.yml      build+run, everything    on: dispatch
 ```
 
-Each file is phase-407 shaped: `just setup <scope>` then one tier command.
+Each file is phase-411 shaped: `just setup <scope>` then one tier command.
 Filename ↔ tier ↔ local command, 1:1.
 
 `cancel-in-progress: true` ONLY where a newer answer subsumes an older one AND

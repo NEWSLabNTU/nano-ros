@@ -1,4 +1,4 @@
-# phase-407 — the scope you name IS the specification
+# phase-411 — the scope you name IS the specification
 
 **Status (2026-08-31). W1–W4 landed.**
 

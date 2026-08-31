@@ -52,7 +52,7 @@ through.
 - `scripts/bootstrap.sh base`: first-time native/ROS/zenoh quick-start setup.
 - `scripts/bootstrap.sh all`: contributor/full-matrix setup; pulls and installs every supported SDK tier.
 - `scripts/bootstrap.sh platform <platform>`: first-time focused setup for one platform.
-**One verb, one scope, one position (phase-407 W3).** `setup`, `doctor`, `build`
+**One verb, one scope, one position (phase-411 W3).** `setup`, `doctor`, `build`
 and `test` all take the same word in their first argument: a PLATFORM (`native
 zephyr freertos nuttx threadx_linux threadx_riscv64 esp32 esp_idf qemu px4 xrce
 cyclonedds`) or a PRESET, which today is exactly the fixture lanes (`all native
@@ -79,7 +79,7 @@ still is the implementation — it prints a deprecation for one release.
   `just <platform> build-fixtures` (which does not).
 - `just test <scope>`: that scope's tests. Verbosity is a FLAG now (`verbose` /
   `-v` / `--verbose`, anywhere in the arguments) — `just test 1` no longer means
-  verbose, which is the incompatibility phase-407 accepts.
+  verbose, which is the incompatibility phase-411 accepts.
 - `just build`: build the workspace plus generated bindings and transport artifacts.
 - `just build-examples`: build the workspace and example matrix.
 - `just build-test-fixtures`: prebuild binaries required by the full test matrix.
