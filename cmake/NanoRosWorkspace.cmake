@@ -246,6 +246,27 @@ function(nano_ros_workspace)
     get_filename_component(_NRW_WORKSPACE_ROOT "${_NRW_WORKSPACE_ROOT}"
         ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
+    # issue 0949 — PUBLISH it. `nros_resolve_board_facts` looks for the
+    # workspace in this order:
+    #
+    #     NROS_WORKSPACE_DIR -> APPLICATION_SOURCE_DIR -> CMAKE_SOURCE_DIR
+    #
+    # and NOTHING SET THE FIRST ONE. So a GENERATED root fell through to
+    # `CMAKE_SOURCE_DIR`, which for RFC-0065 D8 is `build/<coord>/` — a
+    # directory with no `system.toml`. Board facts were therefore never
+    # delivered for a migrated workspace: no NROS_BOARD, no NROS_BOARD_TOML, no
+    # NROS_NETSTACK, for embedded images too. The resolution above already knew
+    # the right answer; it just kept it to itself.
+    #
+    # CACHE INTERNAL because board-facts resolves in a different scope, and a
+    # plain `set()` here dies with this function's frame — the `_NROS_ENTRY_DIR`
+    # pitfall.
+    #
+    # NB the near-homonym above: `_NROS_WORKSPACE_DIR` (underscore) is the cmake
+    # MODULE directory, unrelated to this. Pre-existing, and worth reading twice.
+    set(NROS_WORKSPACE_DIR "${_NRW_WORKSPACE_ROOT}"
+        CACHE INTERNAL "issue 0949: the workspace root board-facts resolves from")
+
     # Defaults: backend = zenoh, platform = posix, ROS edition = humble.
     if(NOT _NRW_BACKEND)
         set(_NRW_BACKEND zenoh)
