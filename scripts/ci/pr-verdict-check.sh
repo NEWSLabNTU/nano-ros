@@ -27,7 +27,7 @@
 # undispatched one creates nothing at all.
 #
 # PR #71 sat this way for thirteen hours. It was STACKED — opened against
-# another PR's branch — and `pr-checks.yml` filtered `pull_request` on
+# another PR's branch — and `gate.yml` filtered `pull_request` on
 # `branches: [main]`, so its `opened` and `synchronize` events were dropped.
 # Retargeting it to main afterwards emitted `pull_request.edited`, which is not
 # one of the default event types, so that dispatched nothing either. The filter

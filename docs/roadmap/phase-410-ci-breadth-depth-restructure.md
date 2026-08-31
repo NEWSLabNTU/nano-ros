@@ -1,6 +1,6 @@
 # phase-410 — CI is BREADTH × DEPTH, and only depth is expensive
 
-**Status (2026-08-31). W2, W3 and W4 landed; W1 deferred with reasons.**
+**Status (2026-09-01). W1–W4 landed. The phase is complete.**
 
 Restructures the CI workflows so a tier's file keeps the promise the tier makes.
 Consumes phase-411 (`just <verb> <scope>`) and phase-395 (the event design);
@@ -16,7 +16,7 @@ under load.
 `host-tests.yml`, tier 2 in `post-submit.yml`, tier-2-nightly in `nightly.yml`,
 tier 3 nowhere. "Where does tier 2 run?" needed a gate to answer.
 
-**2. `pr-checks.yml` does different work for five events in 850 lines.**
+**2. `gate.yml` does different work for five events in 850 lines.**
 Deliberate (phase-395's economics) and unreadable: a developer cannot answer
 "what runs on my PR?" without reading all of it. `nightly.yml` is another 851.
 
@@ -68,7 +68,7 @@ finishes.
 
 ## Caching is a REPOSITORY-wide budget, not a per-job one
 
-`pr-checks.yml` already records why sccache is used over caching `target/`, and
+`gate.yml` already records why sccache is used over caching `target/`, and
 the constraint that matters here: **the GitHub Actions Cache limit is 10 GB per
 REPOSITORY**, and GitHub evicts entries "created and deleted at a high
 frequency" (hence `SCCACHE_CACHE_SIZE=2G`).
@@ -109,7 +109,7 @@ perpetually superseded.
 ## THE MIGRATION CONSTRAINT — read before touching anything
 
 The required status check is the job **named `CI`** (`ci-ok` in
-`pr-checks.yml`), and CLAUDE.md records that a required check producing no
+`gate.yml`), and CLAUDE.md records that a required check producing no
 verdict **deadlocked two pull requests**: a check that never reports blocks
 forever rather than failing.
 
@@ -123,23 +123,41 @@ else moves.
 
 ## Work items
 
-**W1 — DEFERRED, deliberately. `pr-checks.yml` keeps its name for now.**
+**W1 LANDED — the inference was right, and PROBING it found three things it
+would have broken.**
 
-The plan was to rename it `gate.yml`. The inference that this is safe is
-strong: the ruleset requires the bare context `CI`, which cannot come from the
-file name or from the workflow's `name: pr-checks` — so GitHub is matching the
-JOB name, `ci-ok`'s `name: CI`, and a rename preserves it.
+The rename was deferred because the required status check is the context `CI`,
+and CLAUDE.md records a required check with no verdict DEADLOCKING two pull
+requests. The inference — that GitHub matches the JOB name, so a rename
+preserves it — was strong but not observable from a shell: `gh pr checks`
+reports no contexts for a branch even when a run has succeeded.
 
-Strong is not verified. `gh pr checks` reports no contexts for this branch even
-though a `pr-checks` run succeeded, so the association cannot be observed from
-here. CLAUDE.md records that a required check producing no verdict DEADLOCKED
-two pull requests — with ten agents landing through a merge queue, that blocks
-everyone, and the benefit on offer is a better filename.
+So it was tested rather than reasoned about. A throwaway branch, a real PR, and
+a look:
 
-So the rename is its own change, made when someone can watch the context report
-on a real PR. W2 and W3 add NEW files and touch no required context; they carry
-the substance of this phase — the breadth/depth split, the starvation fix and
-the cache rule — without betting the queue on an inference.
+```
+CI     pass   4s
+check  pass   8m42s
+```
+
+The context survives. Filename and workflow `name:` moved together, because a
+partial rename leaves the workflow name matching and proves nothing.
+
+**Three load-bearing references would have broken silently**, and none of them
+is prose:
+
+* the workflow's own `paths:` filter listed `.github/workflows/pr-checks.yml`,
+  so after the rename it would have stopped triggering on edits to ITSELF;
+* `check-ros-env-spelling.py` keys its allow-list on the path, so the renamed
+  file would have lost its exemption and gone red for an unrelated reason;
+* `queue-notify.yml` triggers on `workflow_run` with
+  `workflows: ["pr-checks", "queue"]` — keyed on the workflow NAME, so the
+  notifier would simply have stopped firing, with nothing to notice.
+
+The third is the one that justifies the whole exercise: a `workflow_run`
+trigger that no longer matches produces no error, no red, and no runs. It is
+the same silent-skip class this phase and phase-407 spent their time on, and it
+was one grep away from shipping.
 
 **W2 — `build-wide.yml`.** The mandatory build+link lane on `push(main)`.
 

@@ -43,7 +43,7 @@ check_manifest() {
     #
     # on every run: a FAILING verdict whose stated reason was false, about a
     # crate that was never checked at all. The guard is advisory
-    # (`continue-on-error` in pr-checks.yml, and deliberately outside
+    # (`continue-on-error` in gate.yml, and deliberately outside
     # `just check` since RFC-0031 superseded the goal it guards), so nothing was
     # gated on the lie — it just made the one output nobody could trust.
     #

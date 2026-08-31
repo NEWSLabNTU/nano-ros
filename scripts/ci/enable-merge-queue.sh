@@ -68,7 +68,7 @@ RULESET="${NROS_QUEUE_RULESET:-main-rules}"
 # that cannot REPORT is the same freeze as one that cannot START.
 #
 # So `check (fast on push; full on PR/nightly)` is NOT here despite being the
-# obvious candidate: `pr-checks.yml` triggers on push/pull_request/schedule and
+# obvious candidate: `gate.yml` triggers on push/pull_request/schedule and
 # NOT on merge_group. It still runs on every PR and its failures are still
 # visible; it just cannot be the thing that gates a queue. `just ci-l1` covers
 # the same ground inside the queue (check-fast + check-build + test-unit).
@@ -167,7 +167,7 @@ if [ "$READINESS" = 1 ]; then
     # observation: five dispatches fired to measure a flake showed up here as
     # `absent,absent,cancelled`.
     runs=""; _seen=0
-    for _rid in $(gh run list --workflow pr-checks.yml --branch "$BRANCH" --limit 12 \
+    for _rid in $(gh run list --workflow gate.yml --branch "$BRANCH" --limit 12 \
                     --json databaseId --jq '.[].databaseId' 2>/dev/null); do
         [ "$_seen" -ge 5 ] && break
         _c="$(gh run view "$_rid" --json jobs --jq \

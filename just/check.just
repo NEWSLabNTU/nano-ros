@@ -228,7 +228,7 @@ build: \
 # AND no `cargo tree`/metadata (which would need the workspace — i.e. every `-sys`
 # source submodule — to resolve). So it needs neither the nros CLI nor any
 # provisioned source, finishes in ~1 min, and survives the per-push cadence. This
-# is the per-push CI gate (`pr-checks.yml`).
+# is the per-push CI gate (`gate.yml`).
 #
 # That description is now TRUE, and was not (issue 0466): `check-cli-fresh` and
 # `check-test-targets` both lived here and both needed what the paragraph says
@@ -278,7 +278,7 @@ workspace-fmt:
 #
 # Issue 0466 — this is a check-BUILD gate, and used to sit in `check-fast`.
 # Compiling the workspace needs the `-sys` SOURCE submodules, which the push
-# lane deliberately does not provision (pr-checks.yml gates that on
+# lane deliberately does not provision (gate.yml gates that on
 # `event_name != 'push'`), so on every push it died:
 #
 #     error: failed to run custom build command for `zpico-sys`
@@ -2446,7 +2446,7 @@ no-std:
     echo "no-std OK."
 
 # Verify nros-sdk-index.toml + the QEMU configure flags
-# (the `sdk-index` job in .github/workflows/pr-checks.yml). Buildless + fast.
+# (the `sdk-index` job in .github/workflows/gate.yml). Buildless + fast.
 [group("ci")]
 sdk-index:
     python3 scripts/sdk/verify-index.py nros-sdk-index.toml

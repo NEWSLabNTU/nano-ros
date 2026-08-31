@@ -180,7 +180,7 @@ per-workflow minutes low and failures isolated to one platform:
 
 | Workflow | What it shows |
 |----------|---------------|
-| `pr-checks.yml` | the fast gate: path-filtered jobs, container image + credentials, build-CLI-from-source, `nros setup --source` provisioning |
+| `gate.yml` | the fast gate: path-filtered jobs, container image + credentials, build-CLI-from-source, `nros setup --source` provisioning |
 | `host-tests.yml` | ROS on the runner, and installing a package rather than assuming it |
 | `nightly.yml` | the broad matrix, and lanes too expensive to gate a merge |
 | `queue.yml` | `merge_group`, `cancel-in-progress: false`, and a self-hosted job interlocked on a repo variable |
@@ -194,9 +194,9 @@ lessons were learned from them; do not go looking for them.
 
 | Historical | Replaced by |
 |------------|-------------|
-| `ci.yml` | `pr-checks.yml` (fast gate) + `nightly.yml` (matrix) — phase-253 |
+| `ci.yml` | `gate.yml` (fast gate) + `nightly.yml` (matrix) — phase-253 |
 | `dep-chain.yml` | `nightly.yml`; the check itself is `scripts/ci/dep-chain-check.sh` |
 | `zephyr-dual-line.yml` | `nightly.yml` |
-| `codegen-convention.yml` | `pr-checks.yml`; the lint is `scripts/ci/codegen-invocation-check.sh` |
-| `sdk-index-gate.yml` | `pr-checks.yml`, job `sdk-index` |
+| `codegen-convention.yml` | `gate.yml`; the lint is `scripts/ci/codegen-invocation-check.sh` |
+| `sdk-index-gate.yml` | `gate.yml`, job `sdk-index` |
 | `host-integration-tests.yml` | `host-tests.yml` |
