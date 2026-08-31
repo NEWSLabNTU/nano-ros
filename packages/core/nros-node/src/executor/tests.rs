@@ -144,6 +144,229 @@ fn encode_test_msg(value: i32) -> ([u8; 256], usize) {
 }
 
 // ====================================================================
+// Phase 403 W2 -- the type's bound sizes the receive buffer
+//
+// These MEASURE, they do not merely compile: `arena_used()` is the exact
+// claimed total, so the delta across one registration IS the subscription's
+// receive-buffer footprint. The phase's own rule is that no wave is done
+// until a before/after exists on something that RUNS the changed code, and
+// the buffered registration path is what runs it -- a backend advertising
+// `supports_process_in_place` (zenoh) returns before allocating any buffer
+// at all and is therefore NOT a site where this saves anything.
+// ====================================================================
+
+/// A message with no bound at any size, for the fallback arm. `TestMsg` is
+/// bounded (one `Int32`), so it cannot exercise it.
+#[derive(Debug, Clone, PartialEq)]
+struct UnboundedTestMsg {
+    data: heapless::String<8>,
+}
+
+impl RosMessage for UnboundedTestMsg {
+    const TYPE_NAME: &'static str = "test/msg/UnboundedTestMsg";
+    const TYPE_HASH: &'static str = "test_hash_unbounded";
+}
+
+impl nros_serdes::schema::Message for UnboundedTestMsg {
+    const TYPE_NAME: &'static str = "test/msg/UnboundedTestMsg";
+    const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
+        name: "data",
+        ty: nros_serdes::schema::FieldType::String,
+        offset: 0,
+    }];
+}
+
+impl Serialize for UnboundedTestMsg {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_string(self.data.as_str())
+    }
+}
+
+impl Deserialize for UnboundedTestMsg {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        let s = reader.read_string()?;
+        let mut data = heapless::String::new();
+        // Truncation is fine: nothing here inspects the payload.
+        for ch in s.chars() {
+            if data.push(ch).is_err() {
+                break;
+            }
+        }
+        Ok(Self { data })
+    }
+}
+
+/// Arena bytes one `TestMsg` subscription registration claims.
+fn arena_delta(
+    executor: &mut Executor<'_>,
+    nid: super::node_record::NodeId,
+    topic: &str,
+    qos: QoSProfile,
+    from_type: bool,
+) -> usize {
+    let before = executor.arena_used();
+    if from_type {
+        executor
+            .node_mut(nid)
+            .subscription(topic)
+            .typed::<TestMsg>()
+            .qos(qos)
+            .rx_buffer_from_type()
+            .build(|_: &TestMsg| {})
+            .unwrap();
+    } else {
+        executor
+            .node_mut(nid)
+            .subscription(topic)
+            .typed::<TestMsg>()
+            .qos(qos)
+            .build(|_: &TestMsg| {})
+            .unwrap();
+    }
+    executor.arena_used() - before
+}
+
+fn qos_with_depth(depth: u32) -> QoSProfile {
+    QoSProfile {
+        depth,
+        ..QoSProfile::default()
+    }
+}
+
+/// The compatibility gate, the sibling of issue 0900's
+/// `the_default_derivation_is_unchanged`: the knob exists so an image CAN
+/// shrink its receive buffers, not so every image silently does.
+///
+/// Two depths rather than one absolute number, because the entry STRUCT's size
+/// is a target detail this test has no business asserting while the SLOT size is
+/// exactly what it must pin. `region_size` is linear in the slot size with a
+/// depth-dependent slot count, so the difference between two depths isolates the
+/// slot size: it comes out right only if a non-opted-in subscription is still
+/// charged `DEFAULT_RX_BUF_SIZE` per slot. Sizing it from `TestMsg` (12 bytes)
+/// instead fails here by 8128 bytes.
+#[test]
+fn the_default_subscription_buffer_is_unchanged() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("default_sizing").build().unwrap();
+
+    let shallow = arena_delta(&mut executor, nid, "/shallow", qos_with_depth(2), false);
+    let deep = arena_delta(&mut executor, nid, "/deep", qos_with_depth(10), false);
+
+    let default = crate::config::DEFAULT_RX_BUF_SIZE;
+    let (_s, shallow_region) = super::arena::buffered_region_size(2, default);
+    let (_d, deep_region) = super::arena::buffered_region_size(10, default);
+
+    assert_eq!(
+        deep - shallow,
+        deep_region - shallow_region,
+        "a subscription that does not opt in must still be charged {default} \
+         bytes per slot; depth 2 claimed {shallow} and depth 10 claimed {deep}"
+    );
+}
+
+/// The saving, measured. A bounded type's slots shrink to its own bound.
+///
+/// Measured on this executor at the shipped defaults (`DEFAULT_RX_BUF_SIZE`
+/// 1024, `QoSProfile::default().depth` 10, so an 11-slot `SpscRing`):
+/// `TestMsg`'s bound is 12 bytes, the buffer region falls 11352 -> 220, and the
+/// registration's total arena claim falls **13632 -> 2500 bytes**, i.e. 11132
+/// recovered -- 15% of the 74240-byte default arena, from one subscription.
+#[test]
+fn a_bounded_type_shrinks_its_own_receive_buffer() {
+    let bound = nros_serdes::size::max_serialized_bound::<TestMsg>()
+        .expect("a single Int32 is a bounded type");
+    assert!(
+        bound < crate::config::DEFAULT_RX_BUF_SIZE,
+        "this fixture is only meaningful while the bound ({bound}) is under the \
+         default ({}) -- otherwise the assertion below passes for the wrong reason",
+        crate::config::DEFAULT_RX_BUF_SIZE
+    );
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("bound_sizing").build().unwrap();
+
+    let depth = QoSProfile::default().depth;
+    let default_delta = arena_delta(&mut executor, nid, "/plain", qos_with_depth(depth), false);
+    let bound_delta = arena_delta(&mut executor, nid, "/sized", qos_with_depth(depth), true);
+
+    let (_s, default_region) =
+        super::arena::buffered_region_size(depth, crate::config::DEFAULT_RX_BUF_SIZE);
+    let (_s2, bound_region) = super::arena::buffered_region_size(depth, bound);
+
+    assert_eq!(
+        default_delta - bound_delta,
+        default_region - bound_region,
+        "opting in must recover exactly the region difference: \
+         default {default_delta} bytes vs bound-sized {bound_delta}"
+    );
+    assert!(
+        bound_delta < default_delta,
+        "the whole point is that it is smaller: {bound_delta} vs {default_delta}"
+    );
+}
+
+/// An unbounded type yields NO number at all -- not the configured default.
+///
+/// Every message type is required to carry a bound (`.msg` `string<=64`, or a
+/// `cap` in `nros-codegen.toml`), so `.rx_buffer_from_type()` on a type without
+/// one is a BUILD error, and this is the predicate that error keys on. Phase
+/// 380's rule is unchanged and is what makes erroring correct: `None` means "no
+/// bound EXISTS", never "unknown", and inventing a number from a fallback is
+/// what it forbids. There is no compile-fail harness in this workspace, so the
+/// refusal is proved at the value the `const assert!` reads rather than by
+/// compiling the rejected program.
+#[test]
+fn an_unbounded_type_yields_no_receive_buffer_size() {
+    assert_eq!(
+        nros_serdes::size::max_serialized_bound::<UnboundedTestMsg>(),
+        None,
+        "the fixture must actually be unbounded"
+    );
+    assert_eq!(
+        crate::rmw_type_registry::subscription_rx_bytes::<UnboundedTestMsg>(
+            crate::config::DEFAULT_RX_BUF_SIZE
+        ),
+        None,
+        "an unbounded type must yield no size; falling back to the configured \
+         default is the substitution phase 380 forbids"
+    );
+
+    // The non-opted-in path is untouched: an unbounded type still registers at
+    // the configured default, because that path never claimed to size from the
+    // type. Making an unbounded type impossible in the first place is a codegen
+    // change, not this wave's.
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("unbounded_sizing").build().unwrap();
+    let before = executor.arena_used();
+    executor
+        .node_mut(nid)
+        .subscription("/unbounded_plain")
+        .typed::<UnboundedTestMsg>()
+        .build(|_: &UnboundedTestMsg| {})
+        .unwrap();
+    let (_slots, region) = super::arena::buffered_region_size(
+        QoSProfile::default().depth,
+        crate::config::DEFAULT_RX_BUF_SIZE,
+    );
+    assert!(
+        executor.arena_used() - before > region,
+        "an unbounded type that does not opt in still claims the default region"
+    );
+}
+
+/// A type whose bound EXCEEDS the ceiling keeps the ceiling. Growing here would
+/// spend arena the caller never budgeted.
+#[test]
+fn a_bound_larger_than_the_ceiling_never_grows_the_buffer() {
+    let bound = nros_serdes::size::max_serialized_bound::<TestMsg>().unwrap();
+    assert_eq!(
+        crate::rmw_type_registry::subscription_rx_bytes::<TestMsg>(bound - 1),
+        Some(bound - 1),
+        "the caller's ceiling wins; the bound may only shrink the buffer"
+    );
+}
+
+// ====================================================================
 // Arena callback tests
 // ====================================================================
 

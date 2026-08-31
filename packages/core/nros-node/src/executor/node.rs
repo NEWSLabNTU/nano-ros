@@ -1460,6 +1460,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
                 QoSProfile::default(),
                 callback,
                 None, // no group — node default
+                None, // phase-403 W2: the configured default, unchanged
             )
     }
 
@@ -1534,6 +1535,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
                 QoSProfile::default(),
                 callback,
                 Some(group.name()),
+                None, // phase-403 W2: the configured default, unchanged
             )
     }
 
@@ -2052,6 +2054,78 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
         }
     }
 
+    /// Phase 403 W2 -- size the receive buffer from `M`'s OWN serialized bound
+    /// instead of the configured default.
+    ///
+    /// ```ignore
+    /// node.subscription("/chatter")
+    ///     .typed::<Int32>()
+    ///     .rx_buffer_from_type()   // 12 bytes per slot, not 1024
+    ///     .build(on_msg)?;
+    /// ```
+    ///
+    /// **Opt-in, and that is the design.** A subscription that does not call
+    /// this claims exactly the bytes it claimed before the knob existed, so an
+    /// image that does not opt in is byte-identical -- the same rule issue 0900's
+    /// arena knob keeps (`the_default_derivation_is_unchanged`). Sizing every
+    /// subscription from its type by default would move every image's arena
+    /// occupancy at once, which is a decision, not a refactor.
+    ///
+    /// **What it costs and what it buys.** The buffered path stores `depth <= 1
+    /// ? 3 : depth+1` slots of this size in the executor arena, so a bounded
+    /// type recovers `slots * (default - bound)` bytes per subscription. The
+    /// number is the LARGER of the type's XCDR1 and XCDR2 bounds, because the
+    /// stack writes XCDR1 but a peer may send XCDR2 (see
+    /// [`subscription_rx_bytes`](crate::rmw_type_registry::subscription_rx_bytes)).
+    ///
+    /// **An unbounded `M` fails the BUILD.** Every message type is required to
+    /// carry a bound -- stated in the `.msg` (`string<=64`) or capped in
+    /// `nros-codegen.toml` -- so "this type has no bound" is a defect to report,
+    /// not a case to absorb. The alternative, quietly keeping the configured
+    /// default, is precisely the substitution phase 380 forbids: `None` means
+    /// "no bound EXISTS", never "unknown", and a buffer sized from a fallback is
+    /// the failure that rule was written to prevent. The C header already refuses
+    /// the same thing the same way -- naming an unbounded type's
+    /// `{PREFIX}_RX_MAX_SERIALIZED_SIZE` expands to a deliberate compile error
+    /// carrying the member that costs the bound (`unbounded_token`) -- and this
+    /// is that refusal on the Rust path. rustc names `M` in the instantiation
+    /// note; the member comes from the codegen diagnostic for the same type.
+    ///
+    /// **The bound never GROWS the buffer.** A type larger than `RX` keeps `RX`;
+    /// spending unbudgeted arena silently is the worse failure, and the
+    /// too-small case already reports itself (`report_dropped_take`).
+    ///
+    /// Returns a builder without `.message_info()` / `.safety()` on purpose:
+    /// those entries hold a real `[u8; RX]` array, so their size can only come
+    /// from a const generic -- `nros::rx_buffer_for!(M)` at the call site -- and
+    /// carrying the flag into them would silently drop it.
+    pub fn rx_buffer_from_type(self) -> TypedSubBoundBuilder<'c, 'e, 't, 's, M, RX>
+    where
+        M: nros_serdes::schema::Message,
+    {
+        // The diagnostic lives HERE, at the opt-in, rather than in `build()`:
+        // this is the call that asserts the type has a bound, so it is the call
+        // the error should point at.
+        const {
+            assert!(
+                crate::rmw_type_registry::subscription_rx_bytes::<M>(RX).is_some(),
+                "this message type has NO maximum serialized size, so its receive \
+                 buffer cannot be sized from it. Every message type must carry a \
+                 bound: give the unbounded member one in the `.msg` \
+                 (`string<=64`, `int32[<=8]`) or a `cap` in `nros-codegen.toml`. \
+                 The generated C header for this type names the member that costs \
+                 it the bound (`NROS_UNBOUNDED__<type>__field_<member>`)."
+            )
+        }
+        TypedSubBoundBuilder {
+            ctx: self.ctx,
+            topic: self.topic,
+            qos: self.qos,
+            sched: self.sched,
+            _phantom: PhantomData,
+        }
+    }
+
     /// Surface per-message [`MessageInfo`](nros_core::MessageInfo) (seq,
     /// publisher GID, timestamps) to the callback — `FnMut(&M, Option<&MessageInfo>)`,
     /// the rclrs shape. Distinct from the generic builder's `.message_info()`
@@ -2092,6 +2166,69 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
                 self.qos,
                 callback,
                 None, // group threaded via create_subscription_in; builder uses sched override
+                None, // phase-403 W2: `RX` verbatim, the pre-knob behaviour
+            )?;
+        if let Some(sc) = self.sched {
+            self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;
+        }
+        Ok(handle)
+    }
+}
+
+/// Phase 403 W2 -- a typed subscription whose buffer is sized by `M`'s own
+/// serialized bound (`.typed::<M>().rx_buffer_from_type()`).
+///
+/// Terminal by construction: `.message_info()` and `.safety()` are absent
+/// because their entries store `[u8; RX]` and cannot take a runtime size. `RX`
+/// survives as the CEILING -- an unbounded `M`, or one whose bound exceeds `RX`,
+/// gets `RX` unchanged.
+pub struct TypedSubBoundBuilder<
+    'c,
+    'e,
+    't,
+    's,
+    M,
+    const RX: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+> {
+    ctx: &'c mut NodeCtx<'e, 's>,
+    topic: &'t str,
+    qos: QoSProfile,
+    sched: Option<super::sched_context::SchedContextId>,
+    _phantom: PhantomData<M>,
+}
+
+impl<'c, 'e, 't, 's, M: MessageForRmw + nros_serdes::schema::Message + 'static, const RX: usize>
+    TypedSubBoundBuilder<'c, 'e, 't, 's, M, RX>
+{
+    pub fn qos(mut self, qos: QoSProfile) -> Self {
+        self.qos = qos;
+        self
+    }
+
+    /// Bind the subscription's callback to a scheduling context.
+    pub fn sched_context(mut self, sc: super::sched_context::SchedContextId) -> Self {
+        self.sched = Some(sc);
+        self
+    }
+
+    pub fn build<F: FnMut(&M) + 'static>(
+        self,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError> {
+        // Unreachable: `rx_buffer_from_type` is the only constructor of this
+        // builder and its `const` assert already refused an unbounded `M`.
+        let rx_bytes = crate::rmw_type_registry::subscription_rx_bytes::<M>(RX)
+            .expect("rx_buffer_from_type asserts the bound exists at build time");
+        let handle = self
+            .ctx
+            .executor
+            .register_subscription_buffered_on::<M, F, RX>(
+                self.ctx.node_id,
+                self.topic,
+                self.qos,
+                callback,
+                None,
+                Some(rx_bytes),
             )?;
         if let Some(sc) = self.sched {
             self.ctx.executor.bind_handle_to_sched_context(handle, sc)?;

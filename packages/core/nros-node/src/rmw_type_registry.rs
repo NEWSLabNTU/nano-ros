@@ -179,6 +179,56 @@ pub const fn subscription_rx_hint<M: MessageForRmw>(default: usize) -> usize {
     default
 }
 
+/// Phase 403 W2 -- the number of BYTES a buffered subscription's arena slot
+/// needs for `M`, given the caller's own ceiling `rx_buf`, or `None` when `M`
+/// has NO BOUND.
+///
+/// Distinct from [`subscription_rx_hint`] on purpose, and the difference is the
+/// whole point: the hint describes the MESSAGE and is handed to the backend, so
+/// it is the bound alone. This describes OUR STORAGE, so it is clamped by what
+/// the caller asked for. A type whose bound EXCEEDS `rx_buf` keeps `rx_buf` --
+/// growing it here would silently spend arena the caller budgeted elsewhere and
+/// can exhaust it (`report_arena_exhausted`), and the too-small case is already
+/// diagnosed by `report_dropped_take` and refused at build time on the
+/// declarative path by `subscription_buffer_ok`.
+///
+/// `max_serialized_bound` takes the LARGER of XCDR1 and XCDR2, which is the
+/// rule a RECEIVE buffer needs: this stack WRITES XCDR1, but a peer chooses the
+/// encoding, and XCDR2 adds a 4-byte DHEADER and aligns differently. The C
+/// constants say the same thing (`{PREFIX}_RX_MAX_SERIALIZED_SIZE` in
+/// `packs/c/message.h.jinja`); sizing from XCDR1 alone is a trap.
+///
+/// # Why `Option` and not a fallback
+///
+/// Every message type is REQUIRED to carry a bound -- stated in the `.msg`
+/// (`string<=64`) or as a `cap` in `nros-codegen.toml` -- so a type without one
+/// is an error to be reported, not a case to be absorbed. Returning `rx_buf`
+/// here would be exactly the substitution phase 380 forbids: `None` from
+/// `max_serialized_bound` means "no bound EXISTS", never "unknown", and a buffer
+/// sized from a fallback is the failure that rule was written to prevent.
+/// Propagating the `None` makes the fallback impossible to write by accident and
+/// leaves the caller to raise a diagnostic naming the type -- the same shape the
+/// C header takes, where naming an unbounded type's size constant is a
+/// deliberate compile error (`unbounded_token` / `unbounded_reason`).
+///
+/// Unlike its two neighbours this takes `nros_serdes::schema::Message` DIRECTLY
+/// rather than `MessageForRmw`, so it needs no `rmw_needs_type_descriptors`
+/// split: the caller that opts in supplies the schema bound itself. That is
+/// deliberate -- the bound is a property of the TYPE, not of the backend, and
+/// the non-descriptor arm of `MessageForRmw` deliberately does not require a
+/// schema (a hand-written message type must keep working, phase-380 W4). Under
+/// that arm the two neighbours can only answer "no opinion"; this one is simply
+/// not reachable without a schema, which is the honest shape.
+pub const fn subscription_rx_bytes<M: nros_serdes::schema::Message>(
+    rx_buf: usize,
+) -> Option<usize> {
+    match nros_serdes::size::max_serialized_bound::<M>() {
+        Some(bound) if bound < rx_buf => Some(bound),
+        Some(_) => Some(rx_buf),
+        None => None,
+    }
+}
+
 /// Phase 380 W4 — can a default-sized receive buffer hold every message of `M`?
 ///
 /// `true` when it can, when `M` is unbounded (nothing to prove), AND on backends
