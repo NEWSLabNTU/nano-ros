@@ -899,15 +899,29 @@ impl SystemToml {
     /// Phase 256 — the deploy target a target-agnostic caller (the planner) should
     /// resolve per-target values against, when no explicit target was selected:
     /// `cli` (a `--target` flag) → `[system].default_target` → the sole
-    /// `[deploy.<t>]` key when exactly one is declared → `None`. This is the
-    /// shared "which deploy am I?" key the per-target classes (RMW override,
-    /// build tuning, domain/locator override) resolve through.
+    /// `[image.<t>]` key, then the sole `[deploy.<t>]` key, when exactly one is
+    /// declared → `None`. This is the shared "which target am I?" key the
+    /// per-target classes (RMW override, build tuning, domain/locator override)
+    /// resolve through.
+    ///
+    /// Issue 0951 — the IMAGE rung is what lets a workspace finish migrating
+    /// off `[deploy.*]`. Without it, deleting the last deploy block does not
+    /// fail: this returns `None`, every per-target lookup misses, and the plan
+    /// silently reverts to the `x86_64` / `native` / `debug` defaults. A build
+    /// for the wrong target that reports success is the failure mode this
+    /// whole table is arranged to prevent.
+    ///
+    /// Images are tried BEFORE deploys because a workspace carrying both is
+    /// mid-migration, and the image is the half that survives.
     pub fn resolve_target(&self, cli: Option<&str>) -> Option<String> {
         if let Some(c) = cli {
             return Some(c.to_string());
         }
         if let Some(t) = &self.system.default_target {
             return Some(t.clone());
+        }
+        if self.image.len() == 1 {
+            return self.image.keys().next().cloned();
         }
         if self.deploy.len() == 1 {
             return self.deploy.keys().next().cloned();
@@ -942,8 +956,22 @@ impl SystemToml {
     /// `nros build` cannot drift apart on the same workspace (issue 0938).
     #[must_use]
     pub fn image_rmw_for(&self, id: &str) -> Option<String> {
+        self.image_for(id).and_then(|img| img.rmw)
+    }
+
+    /// `[image.<id>]` folded over `[image_defaults]` — the one place that
+    /// performs the merge.
+    ///
+    /// Every per-image reader goes through this rather than reaching into
+    /// `self.image` directly, because forgetting the base is a silent wrong
+    /// answer: the block parses, the field is `None`, and the caller falls
+    /// through to a default the author already overrode workspace-wide.
+    /// `image_rmw_for` was the only image reader on this type and it hardcoded
+    /// one field; this is that function with the field removed.
+    #[must_use]
+    pub fn image_for(&self, id: &str) -> Option<ImageBlock> {
         let base = self.image_defaults.clone().unwrap_or_default();
-        self.image.get(id).and_then(|img| img.with_base(&base).rmw)
+        self.image.get(id).map(|img| img.with_base(&base))
     }
 
     /// The RMW backend name for `target`: the CLI `--rmw` flag, then
@@ -1809,6 +1837,56 @@ board = "native"
         )
         .unwrap();
         assert_eq!(sole.resolve_target(None).as_deref(), Some("only"));
+
+        // Issue 0951 — the sole IMAGE resolves the same way, so a workspace
+        // that has finished migrating off `[deploy.*]` still has a target.
+        // Without this rung, deleting the last deploy block does not fail: the
+        // plan quietly falls back to the x86_64 / native / debug defaults.
+        let sole_image: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image.firmware]\nboard=\"mps2-an385-freertos\"\n",
+        )
+        .unwrap();
+        assert_eq!(sole_image.resolve_target(None).as_deref(), Some("firmware"));
+
+        // Two images are as ambiguous as two deploys.
+        let two_images: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
+        )
+        .unwrap();
+        assert_eq!(two_images.resolve_target(None), None);
+
+        // Mid-migration: one image and one deploy. The IMAGE is the half that
+        // survives, so it decides — picking the deploy would resolve to a name
+        // that is about to stop existing.
+        let both: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image.firmware]\nboard=\"native\"\n[deploy.legacy]\nkind=\"self\"\n",
+        )
+        .unwrap();
+        assert_eq!(both.resolve_target(None).as_deref(), Some("firmware"));
+    }
+
+    /// `image_for` folds `[image_defaults]` under the block. Forgetting the
+    /// base is a silent wrong answer — the field reads `None` and the caller
+    /// falls through to a default the author already overrode workspace-wide.
+    #[test]
+    fn image_for_folds_the_defaults_table() {
+        let sys: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             [image_defaults]\nrmw=\"cyclonedds\"\nprofile=\"release\"\n\
+             [image.a]\nboard=\"native\"\n\
+             [image.b]\nboard=\"native\"\nprofile=\"debug\"\n",
+        )
+        .unwrap();
+        let a = sys.image_for("a").expect("declared");
+        assert_eq!(a.rmw.as_deref(), Some("cyclonedds"), "inherited");
+        assert_eq!(a.profile.as_deref(), Some("release"), "inherited");
+        let b = sys.image_for("b").expect("declared");
+        assert_eq!(b.profile.as_deref(), Some("debug"), "the block wins");
+        assert_eq!(b.rmw.as_deref(), Some("cyclonedds"), "still inherited");
+        assert!(sys.image_for("nope").is_none());
     }
 
     /// Phase 256 Wave 8 — `[deploy.<t>].domain_id`/`.locator` override the

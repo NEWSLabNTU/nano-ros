@@ -376,8 +376,37 @@ fn check_deploy_targets(config: &Path) -> Result<Option<usize>> {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."));
 
-    eprintln!("nros doctor: deploy targets ({})", config.display());
+    // Issue 0951 — IMAGES are the buildable unit (RFC-0065 D6), so they get
+    // their own section rather than being folded into the deploy display: the
+    // two tables answer different questions, and a workspace that has finished
+    // migrating has an empty deploy table and everything to say here.
+    //
+    // The launch check delegates to `validate_image_launch` rather than
+    // re-deriving the path. That function already knows an image's `launch` is
+    // relative to the bringup's `launch/` directory — a second implementation
+    // of that join is how doctor would come to disagree with the builder about
+    // whether a workspace is healthy — and its message lists the launch files
+    // that DO exist, which is the thing a reader needs at that moment.
     let mut problems = 0usize;
+    if !system.image.is_empty() {
+        eprintln!("nros doctor: images ({})", config.display());
+        for id in system.image.keys() {
+            let img = system.image_for(id).expect("key just enumerated");
+            let board = img.board.as_deref().unwrap_or("(derived)");
+            match crate::orchestration::image::validate_image_launch(id, &img, &bringup_dir) {
+                Ok(()) => eprintln!("  [OK] {id}: board={board}"),
+                Err(e) => {
+                    eprintln!("  [!!] {id}: board={board} — {e}");
+                    problems += 1;
+                }
+            }
+        }
+    }
+
+    if system.deploy.is_empty() {
+        return Ok(Some(problems));
+    }
+    eprintln!("nros doctor: deploy targets ({})", config.display());
     for (name, deploy) in &system.deploy {
         let kind = deploy.kind.as_deref().unwrap_or("(derived)");
         let target = deploy.target.as_deref().unwrap_or("(derived)");
@@ -608,6 +637,36 @@ mod tests {
         assert_eq!(check_deploy_targets(&system_toml).unwrap(), None);
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Issue 0951 — images get their own section, and their launch check is
+    /// `validate_image_launch`, so doctor and the builder cannot disagree
+    /// about whether a workspace is healthy. Note the path base differs from
+    /// the deploy side: an image's `launch` is relative to `launch/`.
+    #[test]
+    fn images_are_checked_against_their_launch_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("system.toml");
+        let head = "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n";
+
+        // No launch key at all — nothing to verify, no problem.
+        std::fs::write(&cfg, format!("{head}[image.a]\nboard=\"native\"\n")).unwrap();
+        assert_eq!(check_deploy_targets(&cfg).unwrap(), Some(0));
+
+        // Names a file that does not exist.
+        std::fs::write(
+            &cfg,
+            format!("{head}[image.a]\nboard=\"native\"\nlaunch=\"gone.launch.xml\"\n"),
+        )
+        .unwrap();
+        assert_eq!(check_deploy_targets(&cfg).unwrap(), Some(1));
+
+        // The same name, present — under `launch/`, which is the base an
+        // image's value is relative to. A copy of the deploy side's join
+        // (bringup_dir/<value>) would report this one missing.
+        std::fs::create_dir_all(dir.path().join("launch")).unwrap();
+        std::fs::write(dir.path().join("launch/gone.launch.xml"), "<launch/>").unwrap();
+        assert_eq!(check_deploy_targets(&cfg).unwrap(), Some(0));
     }
 
     #[test]

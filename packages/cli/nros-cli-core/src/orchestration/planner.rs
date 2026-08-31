@@ -738,30 +738,61 @@ fn schema_build_json(
     if let Some(rmw) = resolved_rmw {
         obj.insert("rmw".to_string(), json!(rmw));
     }
-    // Phase 256 Wave 3 / W3-tail — the build shape from the selected `[deploy.<t>]`
-    // (target / board / profile / optimize / features) drives the plan. Build shape
-    // is per-deploy (a system targets native AND an MCU from one `system.toml`), so
-    // its home is the deploy block. `target`/`board` drive the codegen board-crate +
-    // entry-kind selection (the bake's `--target` overrides the cargo `--target` at
-    // build time, but `generate` must pick the right board from the plan).
-    if let Some(dt) = selected_target
-        .as_deref()
-        .and_then(|t| sys.as_ref().and_then(|s| s.deploy.get(t)))
+    // Phase 256 Wave 3 / W3-tail — the build shape for the selected target
+    // (board / profile / features) drives the plan. Build shape is per-target
+    // (a system targets native AND an MCU from one `system.toml`), so its home
+    // is the per-target block. `board` drives the codegen board-crate +
+    // entry-kind selection (the bake's `--target` overrides the cargo
+    // `--target` at build time, but `generate` must pick the right board from
+    // the plan).
+    //
+    // Issue 0951 — `[image.<t>]` first, then the DEPRECATED `[deploy.<t>]`,
+    // per field rather than per block: mid-migration a workspace legitimately
+    // has the board on the image and nothing else anywhere, and taking the
+    // whole block from whichever table won would drop the other's fields.
+    //
+    // `target` and `optimize` are deliberately deploy-only. `target` is the
+    // rustc triple, which `[image.*]` does not carry because the board
+    // descriptor derives it; `optimize` has an `[image.*]` counterpart nowhere
+    // and is authored NOWHERE in this tree — zero occurrences across every
+    // `system.toml` — so it is carried for the deploy path only rather than
+    // given a new home it has no user for.
+    if let Some(t) = selected_target.as_deref()
+        && let Some(s) = sys.as_ref()
     {
-        if let Some(t) = &dt.target {
-            obj.insert("target".to_string(), json!(t));
-        }
-        if let Some(b) = &dt.board {
+        let img = s.image_for(t);
+        let dep = s.deploy.get(t);
+
+        let board = img
+            .as_ref()
+            .and_then(|i| i.board.clone())
+            .or_else(|| dep.and_then(|d| d.board.clone()));
+        if let Some(b) = board {
             obj.insert("board".to_string(), json!(b));
         }
-        if let Some(p) = &dt.profile {
+        let profile = img
+            .as_ref()
+            .and_then(|i| i.profile.clone())
+            .or_else(|| dep.and_then(|d| d.profile.clone()));
+        if let Some(p) = profile {
             obj.insert("profile".to_string(), json!(p));
         }
-        if let Some(o) = &dt.optimize {
-            obj.insert("optimize".to_string(), json!(o));
+        let features = img
+            .as_ref()
+            .filter(|i| !i.features.is_empty())
+            .map(|i| i.features.clone())
+            .or_else(|| {
+                dep.filter(|d| !d.features.is_empty())
+                    .map(|d| d.features.clone())
+            });
+        if let Some(f) = features {
+            obj.insert("features".to_string(), json!(f));
         }
-        if !dt.features.is_empty() {
-            obj.insert("features".to_string(), json!(dt.features));
+        if let Some(t) = dep.and_then(|d| d.target.clone()) {
+            obj.insert("target".to_string(), json!(t));
+        }
+        if let Some(o) = dep.and_then(|d| d.optimize.clone()) {
+            obj.insert("optimize".to_string(), json!(o));
         }
     }
     // Phase 255 Wave 5 — cross-RMW `[[bridge]]`s make a single binary link the
@@ -3765,6 +3796,67 @@ mod tests {
         assert_eq!(nat["profile"], "debug");
         assert!(nat.get("optimize").is_none());
         assert_eq!(nat["features"], json!([]));
+    }
+
+    /// Issue 0951 — the same tuning, read from `[image.<t>]`, which is where a
+    /// migrated workspace keeps it.
+    #[test]
+    fn schema_build_json_reads_build_tuning_from_the_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             default_target=\"embedded\"\n\
+             [image_defaults]\nprofile=\"release\"\n\
+             [image.embedded]\nboard=\"mps2-an385-freertos\"\nfeatures=[\"safety\"]\n",
+        )
+        .unwrap();
+        let v = schema_build_json(Some(&st), None, None);
+        let o = v.as_object().expect("object");
+        assert_eq!(
+            o.get("board").and_then(|b| b.as_str()),
+            Some("mps2-an385-freertos")
+        );
+        // Folded from `[image_defaults]`, not from the block itself.
+        assert_eq!(o.get("profile").and_then(|p| p.as_str()), Some("release"));
+        assert_eq!(
+            o.get("features").and_then(|f| f.as_array()).map(Vec::len),
+            Some(1)
+        );
+        // Neither has an `[image.*]` counterpart, and neither is authored
+        // anywhere in the tree.
+        assert!(o.get("optimize").is_none(), "{o:?}");
+    }
+
+    /// Mid-migration a workspace has the board on the image and the rustc
+    /// triple only on the deploy. Taking the whole block from whichever table
+    /// "won" would drop the other's fields, so the merge is per-FIELD.
+    #[test]
+    fn schema_build_json_merges_image_and_deploy_per_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let st = dir.path().join("system.toml");
+        std::fs::write(
+            &st,
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
+             default_target=\"embedded\"\n\
+             [image.embedded]\nboard=\"mps2-an385-freertos\"\n\
+             [deploy.embedded]\nkind=\"embedded\"\n\
+             target=\"thumbv7m-none-eabi\"\nboard=\"stale-board\"\n",
+        )
+        .unwrap();
+        let v = schema_build_json(Some(&st), None, None);
+        let o = v.as_object().expect("object");
+        assert_eq!(
+            o.get("board").and_then(|b| b.as_str()),
+            Some("mps2-an385-freertos"),
+            "the image outranks the deploy on a field both carry"
+        );
+        assert_eq!(
+            o.get("target").and_then(|t| t.as_str()),
+            Some("thumbv7m-none-eabi"),
+            "and the deploy still supplies one the image cannot carry"
+        );
     }
 
     #[cfg(feature = "play-launch-parser")]

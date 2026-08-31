@@ -109,13 +109,31 @@ pub fn resolve_system_tiers(
     )
 }
 
-/// Best-effort RTOS name for tier resolution from the selected deploy target.
-/// Defaults to `posix` (native); embedded targets refine it from the deploy
-/// `board`/`kind` hint.
+/// Best-effort RTOS name for tier resolution from the selected target.
+///
+/// Defaults to `posix` (native); embedded targets refine it from a board hint.
+///
+/// Issue 0951 — the hint comes from `[image.<t>].board` first, then the
+/// DEPRECATED `[deploy.<t>].board`, then `[deploy.<t>].kind`. Images are the
+/// buildable unit, so a workspace that has migrated has its board only there;
+/// the `kind` rung is last because it is the coarsest — it was only ever a
+/// stand-in for a board name, and the two boards it has to separate
+/// (`nuttx-qemu-arm` vs `nuttx-qemu-riscv`) it cannot.
+///
+/// Still a SUBSTRING match on the hint rather than a board-catalog lookup. The
+/// catalog would answer properly — `BoardDescriptor::platform` is exactly this
+/// axis — but taking one here means threading a `&BoardCatalog` through
+/// `codegen_system`, which is a larger change than this rung deserves; see the
+/// issue.
 pub fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
     target
-        .and_then(|t| system.deploy.get(t))
-        .and_then(|d| d.board.as_deref().or(d.kind.as_deref()))
+        .and_then(|t| {
+            system
+                .image_for(t)
+                .and_then(|img| img.board)
+                .or_else(|| system.deploy.get(t).and_then(|d| d.board.clone()))
+                .or_else(|| system.deploy.get(t).and_then(|d| d.kind.clone()))
+        })
         .map(|hint| {
             for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
                 if hint.contains(rtos) {
@@ -130,6 +148,68 @@ pub fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 0951 — `derive_target_rtos` had NO direct test for two phases.
+    /// It decides which `[tiers.<name>.<rtos>]` sub-table is read, so a wrong
+    /// answer silently applies another RTOS's scheduling parameters.
+    mod target_rtos {
+        use super::*;
+
+        fn sys(body: &str) -> SystemToml {
+            toml::from_str(&format!(
+                "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n{body}"
+            ))
+            .expect("fixture parses")
+        }
+
+        #[test]
+        fn an_image_board_decides() {
+            let s = sys("[image.fw]\nboard=\"mps2-an385-freertos\"\n");
+            assert_eq!(derive_target_rtos(&s, Some("fw")), "freertos");
+        }
+
+        #[test]
+        fn the_image_outranks_a_deploy_naming_another_board() {
+            // Mid-migration a workspace carries both. The image is the half
+            // that survives, so it decides — reading the deploy would resolve
+            // the RTOS of a block that is about to be deleted.
+            let s = sys("[image.fw]\nboard=\"nuttx-qemu-arm\"\n\
+                 [deploy.fw]\nkind=\"embedded\"\nboard=\"mps2-an385-freertos\"\n");
+            assert_eq!(derive_target_rtos(&s, Some("fw")), "nuttx");
+        }
+
+        #[test]
+        fn a_deploy_board_still_answers_when_no_image_exists() {
+            let s = sys("[deploy.fw]\nkind=\"embedded\"\nboard=\"threadx-linux\"\n");
+            assert_eq!(derive_target_rtos(&s, Some("fw")), "threadx");
+        }
+
+        /// The coarsest rung, and the reason it is last: `kind` was only ever a
+        /// stand-in for a board name.
+        #[test]
+        fn kind_is_the_last_resort() {
+            let s = sys("[deploy.fw]\nkind=\"zephyr\"\n");
+            assert_eq!(derive_target_rtos(&s, Some("fw")), "zephyr");
+        }
+
+        #[test]
+        fn an_unknown_or_absent_target_is_posix() {
+            let s = sys("[image.fw]\nboard=\"native\"\n");
+            assert_eq!(derive_target_rtos(&s, Some("fw")), "posix");
+            assert_eq!(derive_target_rtos(&s, Some("nope")), "posix");
+            assert_eq!(derive_target_rtos(&s, None), "posix");
+        }
+
+        /// `[image_defaults]` folds under the block here as everywhere else —
+        /// reaching into `system.image` directly would miss it.
+        #[test]
+        fn the_defaults_table_supplies_a_board_the_block_omits() {
+            let s = sys(
+                "[image_defaults]\nboard=\"nuttx-qemu-riscv\"\n[image.fw]\nprofile=\"release\"\n",
+            );
+            assert_eq!(derive_target_rtos(&s, Some("fw")), "nuttx");
+        }
+    }
     use crate::orchestration::{
         cargo_metadata_schema::{SystemComponentEntry, SystemToml},
         nros_config::NrosConfig,

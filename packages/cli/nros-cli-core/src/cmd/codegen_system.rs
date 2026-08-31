@@ -885,6 +885,30 @@ fn render_plan_json(
     let launch_file: Option<String> = resolved_launch
         .map(|s| s.to_string())
         .or_else(|| {
+            // Issue 0951 — the SELECTED target's launch, from `[image.<t>]`
+            // first, then the DEPRECATED `[deploy.<t>]`.
+            //
+            // Two differences from what this used to do, both improvements
+            // that come free with the target being known here:
+            //
+            //  * it is scoped to the target rather than "the first deploy
+            //    block that has a `launch`, in BTreeMap order" — arbitrary
+            //    whenever several were declared;
+            //  * an image's `launch` is relative to the bringup's `launch/`
+            //    directory (`validate_image_launch` joins it that way), while
+            //    a deploy's is authored both ways in this tree. So the image
+            //    value gets the prefix and the deploy value is carried
+            //    verbatim, which is what each already means.
+            let t = target?;
+            let sys = &bringup.system;
+            sys.image_for(t)
+                .and_then(|img| img.launch)
+                .map(|l| format!("launch/{l}"))
+                .or_else(|| sys.deploy.get(t).and_then(|d| d.launch.clone()))
+        })
+        .or_else(|| {
+            // Any deploy block's launch, as before — the pre-0951 behaviour,
+            // kept for a workspace whose target does not resolve.
             bringup
                 .system
                 .deploy
