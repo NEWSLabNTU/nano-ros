@@ -108,6 +108,37 @@ typedef bool (*rmw_names_and_types_visit_fn)(void *ctx, const char *name,
 typedef bool (*rmw_topic_endpoint_info_visit_fn)(void *ctx,
     const rmw_topic_endpoint_info_t *info);
 
+/** An opaque per-loan handle — phase-406 W3.
+ *
+ *  Was a bare `void *`. The type says nothing a reader can use, and nothing
+ *  stops a caller returning a publisher's loan token to a subscription, or a
+ *  token from one backend to another: both compile, and both are undefined
+ *  behaviour discovered at run time on a target with no allocator to notice.
+ *
+ *  An INCOMPLETE type costs nothing at the ABI — it is still a pointer — and
+ *  makes those two mistakes a compile error. The backend defines the struct
+ *  privately; nobody outside it may dereference one, which was already the
+ *  contract and is now enforced rather than documented.
+ *
+ *  Issue 0781 asked whether the subscription-side loan slots earn their place
+ *  given nothing implements them. The answer taken here is KEEP AND TYPE: a
+ *  slot nobody can use safely is worse than one nobody uses. */
+typedef struct rmw_loan_token_t rmw_loan_token_t;
+
+/** An event callback and the data it needs — phase-406 W2.
+ *
+ *  Same argument as the visitor one slot up: the function and its `user_data`
+ *  are meaningless apart, so they travel together. Upstream keeps them as two
+ *  parameters; upstream also has an allocator and a heap, and pays for a
+ *  mistake here with a wild pointer rather than a compile error.
+ *
+ *  `callback == NULL` is how a caller CLEARS the callback — that is upstream's
+ *  contract too, and unlike the visitor case it is not an error. */
+typedef struct rmw_event_callback_reg_t {
+    rmw_event_callback_t callback;
+    const void *user_data;
+} rmw_event_callback_reg_t;
+
 /** A visitor: the function and the context it needs — phase-406 W2.
  *
  *  Upstream fills a heap-owning out-parameter the caller must `fini`
@@ -515,7 +546,7 @@ typedef struct nros_rmw_vtable_t {
                                 size_t                requested_len,
                                 uint8_t             **out_buf,
                                 size_t               *out_cap,
-                                void                **out_token);
+                                rmw_loan_token_t   **out_token);
 
     /** Phase 124.A — commit a previously loaned slot.
      *
@@ -526,7 +557,7 @@ typedef struct nros_rmw_vtable_t {
      *
      *  NULL = paired NULL with `pub_loan`. */
     rmw_ret_t (*publish_loaned_message)(const rmw_publisher_t *publisher,
-                                  void                 *token,
+                                  rmw_loan_token_t     *token,
                                   size_t                actual_len);
 
     /** Phase 124.A — abandon a previously loaned slot.
@@ -535,7 +566,7 @@ typedef struct nros_rmw_vtable_t {
      *  returned from a prior `pub_loan` on the same publisher.
      *
      *  NULL = paired NULL with `pub_loan`. */
-    rmw_ret_t (*return_loaned_message_from_publisher)(const rmw_publisher_t *publisher, void *token);
+    rmw_ret_t (*return_loaned_message_from_publisher)(const rmw_publisher_t *publisher, rmw_loan_token_t *token);
 
     /** Phase 124.A — zero-copy subscription borrow.
      *
@@ -580,7 +611,7 @@ typedef struct nros_rmw_vtable_t {
     rmw_ret_t (*take_loaned_message)(const rmw_subscription_t *subscription,
                            const uint8_t        **out_buf,
                            size_t                *out_len,
-                           void                 **out_token,
+                           rmw_loan_token_t    **out_token,
                            bool                  *taken);
 
     /** Phase 124.A — release a previously borrowed view.
@@ -590,7 +621,7 @@ typedef struct nros_rmw_vtable_t {
      *  the buffer.
      *
      *  NULL = paired NULL with `sub_borrow`. */
-    rmw_ret_t (*return_loaned_message_from_subscription)(const rmw_subscription_t *subscription, void *token);
+    rmw_ret_t (*return_loaned_message_from_subscription)(const rmw_subscription_t *subscription, rmw_loan_token_t *token);
 
     /** Phase 124.C.1 — service-server availability probe.
      *
@@ -999,11 +1030,11 @@ typedef struct nros_rmw_vtable_t {
      *  our DDS status-event callback had to give the name back
      *  (`rmw_status_event_callback_t`). */
     rmw_ret_t (*service_set_on_new_request_callback)(rmw_service_t *service,
-        rmw_event_callback_t callback, const void *user_data);
+        rmw_event_callback_reg_t cb);
 
     /** Upstream `rmw_client_set_on_new_response_callback`. Exact parity. */
     rmw_ret_t (*client_set_on_new_response_callback)(rmw_client_t *client,
-        rmw_event_callback_t callback, const void *user_data);
+        rmw_event_callback_reg_t cb);
 
     /** Upstream `rmw_subscription_set_on_new_message_callback`. Exact parity.
      *
@@ -1013,7 +1044,7 @@ typedef struct nros_rmw_vtable_t {
      *  identically. */
     rmw_ret_t (*subscription_set_on_new_message_callback)(
         rmw_subscription_t *subscription,
-        rmw_event_callback_t callback, const void *user_data);
+        rmw_event_callback_reg_t cb);
 
     /* ---- Phase 376 W4 — graph introspection (all optional) ----
      *
@@ -1142,7 +1173,7 @@ typedef struct nros_rmw_vtable_t {
      *  honest name for this shape is `set_on_graph_change_callback` — flagged
      *  for W5 rather than decided quietly here. */
     rmw_ret_t (*node_get_graph_guard_condition)(rmw_session_t *session,
-        rmw_event_callback_t callback, const void *user_data);
+        rmw_event_callback_reg_t cb);
 
     /* ---- Phase 376 W4 — graph node lifecycle (optional) ----
      *
