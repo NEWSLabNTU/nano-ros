@@ -256,27 +256,57 @@ a board rung applies (`max_sc = 23`), the env front-end still wins over both
 `NROS_PLATFORM_NAME` — a bare `cargo build` with no lane — nothing changes:
 with no board named there IS no platform rung to resolve.
 
-### Remaining tenants — re-ordered from the census, 2026-09-01
+### The zenoh tenant is NOT W6's — re-scoped 2026-09-01
 
-The wave opened with "then the zenoh pools, then the per-entity caps", ordered
-by an estimate. The census orders it by measurement, and the estimate was
-right about zenoh being next and wrong about it being a separate thing from the
-caps — **the caps ARE zenoh's**:
+Going to migrate it revealed that most of it belongs to a different campaign,
+and this is the second family in a row where that is true.
 
-| family | sizing knobs | note |
+`ZPICO_MAX_QUERYABLES` is already a CHECKED OVERRIDE over a derived default
+(phase-392 W5.f: "stops being an independent opinion"). `ZPICO_MAX_SESSIONS`
+is posed by that phase explicitly — "either it joins the model or it stays a
+knob and this phase says so". `SERVICE_BUFFERS` is a product of the two. So the
+zenoh entity caps and pools are phase-392's question, and giving them a
+platform/board rung now would answer it the wrong way: a rung gives a global a
+per-platform default, and phase-392 is deciding whether these stop being
+globals at all.
+
+Same shape as the buffers one family over (phase-403). The census marks both
+`derived` and names the owning campaign, so the backlog count stops inviting
+the mistake.
+
+**W6's own backlog is therefore 23, not 31**, and its largest families are:
+
+| family | knobs | note |
 | --- | --- | --- |
-| `ZPICO_*` | **15** | entity caps (publishers, subscribers, queryables, sessions, liveliness, pending gets), wire batch buffers, fragmentation, reply staging, two transport-band priorities |
-| `NROS_MAX_*` | 5 | message and parameter bounds |
-| `NROS_RUNTIME_*` | 4 | component caps |
-| platform heap/stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB` |
+| `NROS_MAX_*` | 5 | PARAMETER value bounds, in `nros-params/build.rs`. Not message bounds — that mislabel is corrected in the census. |
+| `NROS_RUNTIME_*` | 4 | component caps. Worth asking whether these are derivable from the declared component set before migrating — the same question phase-392 asks of the zenoh caps. |
+| platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
+| `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
 
-Plus 85 `CONFIG_NROS_*` Kconfig declarations, whose largest family is also
-zenoh (24), then XRCE (8), `NROS_MAX` (7), RMW (5), Zephyr (4).
+**The lesson for the wave, stated once:** "migrate the long tail into the
+ladder" was the right instinct for the executor tenant and is the wrong default
+for the rest. A number that can be DERIVED from what the image declares should
+be, and the ladder is for the ones that genuinely vary by platform or board.
+Check for an owning campaign before migrating a family.
 
-**So: the zenoh tenant next, and it is one tenant, not two.**
+### Ordering, from the census
 
-### Five knobs must NOT be migrated
+The wave opened with "then the zenoh pools, then the per-entity caps", by
+estimate. The census contradicts it twice over: the caps are not separate from
+the pools (they are all zenoh's), and zenoh is not W6's to migrate at all — see
+the section above. What is left after removing the derivation campaigns' work
+is the table there, and the clearest tenant in it is the platform heap/stack
+trio, which no campaign is deriving and which genuinely varies by platform.
+
+Kconfig is unchanged by this: 85 declarations, largest family zenoh (24), then
+XRCE (8), `NROS_MAX` (7), RMW (5), Zephyr (4). Whether those follow their env
+counterparts into another campaign has not been checked.
+
+### Thirteen knobs must NOT be migrated
+
+Five are receive/transmit buffers (phase-403 / phase-408) and eight are the
+zenoh entity caps and pools (phase-392) — see the re-scope above.
 
 `NROS_SUBSCRIPTION_BUFFER_SIZE`, `ZPICO_SUBSCRIBER_BUFFER_SIZE`,
 `ZPICO_SUBSCRIBER_LARGE_SIZE`, `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` and

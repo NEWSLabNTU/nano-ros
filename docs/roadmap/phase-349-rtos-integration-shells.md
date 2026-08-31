@@ -1,7 +1,9 @@
 # Phase 349 — RTOS integration: make FreeRTOS an imported library like the rest
 
-**Status (2026-08-13). W1 LANDED — with it, [phase-348](archived/phase-348-source-time-provider-discovery.md)
-is complete. W2–W6 open.**
+**Status (2026-09-01). W1 LANDED — with it,
+[phase-348](archived/phase-348-source-time-provider-discovery.md) is complete.
+W2 is UNBLOCKED (its prerequisite exists now; see its note) but not started.
+W3–W6 open.**
 
 **Implements:** [RFC-0072](../design/0072-rtos-integration-nano-ros-is-a-guest.md).
 
@@ -49,11 +51,37 @@ continuing to address the platform by its alias, which is why that test still
 does so on purpose. The claim that `chain()` was the single funnel was written
 in a comment before it was checked; it is true of three lookups out of four.
 
-## W2 — The stack becomes a declared fact — **BLOCKED**
+## W2 — The stack becomes a declared fact — **UNBLOCKED (2026-09-01), not started**
 
-> **Blocked on a prerequisite that does not exist: there is no channel carrying
-> a BOARD fact to a build script.** Investigated 2026-08-13, before writing any
-> W2 code.
+> **The prerequisite now exists. The note below is kept because its reasoning
+> was right and its central claim has since become false.**
+>
+> It says "nothing anywhere sets that variable (`git grep NROS_BOARD_TOML`
+> outside docs finds only the reader)". `cmd/board_facts.rs` sets it, phase-351
+> built the cmake-side delivery (`NanoRosBoardFacts.cmake` +
+> `corrosion_set_env_vars`, which attaches to the target's own build command —
+> the reason `set(ENV{...})` was not enough), and W2.0 was superseded by that
+> wave. phase-400 W6 then proved the channel end to end in a different build
+> script: `nros-node/build.rs` reads `NROS_BOARD_TOML` and resolves the board
+> rung of the knob ladder, using exactly the `watch_path` hazard this note
+> names.
+>
+> `NROS_NETSTACK` is emitted too (`board_facts.rs:210`) and **nothing reads it**
+> — the same declared-but-unread shape, now with a writer and no consumer
+> rather than a reader and no writer.
+>
+> **What W2 still needs, and where to start.** Not the channel: the SELECTION
+> SITE. `LinkPolicy::freertos_lwip()` (`runner.rs:1011`) hardcodes FreeRTOS ⇒
+> lwIP, and the upstream port row exists
+> (`zenoh-pico/src/system/freertos/freertos_plus_tcp/`). But the C sources for
+> a port are not chosen from a Rust source list — `add_common_c_sources` adds
+> only `system/common` and has no caller for the platform dir — so the netstack
+> selection is reached through zenoh-pico's own CMake, driven by compile
+> definitions. Locate that before writing code; this was checked on 2026-09-01
+> and is where the previous investigation would otherwise restart from the
+> wrong end.
+
+> Original note, 2026-08-13, before writing any W2 code:
 >
 > Every bullet below needs `netstack` to be readable by
 > `nros-zpico-build/src/runner.rs` at build time, so it can pick the
