@@ -80,5 +80,6 @@ fails if this block drifts.
 - **#0947** (build) — NuttX has two ROS-edition surfaces that cannot express each other, and `jazzy` is unreachable on one See `0947-*`.
 - **#0949** (build) — For a migrated workspace, board facts are never delivered — `_ws` resolves to the generated root, which has no `system.toml` See `0949-*`.
 - **#0950** (build) — `macro_deploy_token` hands an mps2 image `DEPLOY freertos`, and `--deploy` outranks `--board`, so it resolves a boardless target See `0950-*`.
+- **#0955** (build) — Six lane guards can never fire — they test `-z` on a variable `sdk-env.just` always exports See `0955-*`.
 
 <!-- END GENERATED open-issue list -->
