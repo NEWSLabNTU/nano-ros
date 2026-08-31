@@ -155,7 +155,7 @@ fn write_bound_inventory(
     output_dir: &Path,
     inventory: &rosidl_codegen::BoundInventory,
 ) -> Result<()> {
-    // phase-403 W7b (issue 0939) -- a stated `max_serialized` budget is checked
+    // phase-403 W7b (issue 0961) -- a stated `max_serialized` budget is checked
     // once per package, here, because this is the one point every driver reaches
     // after recording every type. Checking per message would report one
     // violation per build and make fixing a config a rebuild loop; this names

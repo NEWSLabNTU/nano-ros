@@ -297,7 +297,7 @@ struct LevelCaps {
     sequence: Option<CapEntry>,
     #[serde(default)]
     string: Option<CapEntry>,
-    /// phase-403 W7b (issue 0939) — a TOTAL, not a capacity.
+    /// phase-403 W7b (issue 0961) — a TOTAL, not a capacity.
     ///
     /// Legal only under `[types."pkg/Msg"]`, because it is an assertion about
     /// ONE type's deployment: "whatever the caps add up to, this type must fit
@@ -419,7 +419,7 @@ pub enum ConfigError {
          array/sequence field"
     )]
     ElementCapOnStringLevel { level: String },
-    /// phase-403 W7b (issue 0939) — `max_serialized` outside `[types.*]`.
+    /// phase-403 W7b (issue 0961) — `max_serialized` outside `[types.*]`.
     ///
     /// `sequence` / `string` at a level are per-field CAPACITIES: they compose,
     /// and the closest one wins. A budget is a TOTAL for one type, and totals do
@@ -792,7 +792,7 @@ impl CapacityResolver {
         self.configured_element_cap(package, message, field)
     }
 
-    /// phase-403 W7b (issue 0939) — the total serialized size the config says
+    /// phase-403 W7b (issue 0961) — the total serialized size the config says
     /// this type may reach, or `None`.
     ///
     /// # A ceiling to check against, NEVER a value to substitute
@@ -1865,7 +1865,7 @@ mod tests {
     }
 
     // ========================================================================
-    // phase-403 W7b (issue 0939) -- the per-type serialized-size budget
+    // phase-403 W7b (issue 0961) -- the per-type serialized-size budget
     // ========================================================================
 
     /// `max_serialized` is read per TYPE, keyed the same way the capacity

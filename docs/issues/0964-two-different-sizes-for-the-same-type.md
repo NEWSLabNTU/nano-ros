@@ -1,5 +1,5 @@
 ---
-id: 941
+id: 964
 title: "The C++ header states an ESTIMATED size for every type, including types that have no bound"
 status: open
 area: codegen

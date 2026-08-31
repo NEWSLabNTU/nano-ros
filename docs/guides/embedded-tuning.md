@@ -430,7 +430,7 @@ CONFIG_NROS_SERVICE_BUFFER_SIZE=1024
 
 # NOT set here on purpose. The four SIZE knobs default to -1, which means
 # "derive it from this image's message-bound inventory" (phase-403 W8 /
-# issue 0940):
+# issue 0963):
 #
 #   CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE     the small zenoh payload class
 #   CONFIG_NROS_SUBSCRIBER_LARGE_SIZE      the large zenoh payload class

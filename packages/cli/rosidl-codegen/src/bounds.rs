@@ -139,7 +139,7 @@ pub struct TypeBoundEntry {
     /// second naming convention.
     pub type_name: String,
     pub bound: BoundState,
-    /// phase-403 W7b (issue 0939) — the NESTED repeated chains this type's
+    /// phase-403 W7b (issue 0961) — the NESTED repeated chains this type's
     /// total is a product over, worst first.
     ///
     /// Exported so the number is legible: a reader sees
@@ -159,7 +159,7 @@ pub struct TypeBoundEntry {
     pub budget: Option<usize>,
 }
 
-/// phase-403 W7b (issue 0939) — a derived bound that exceeds the budget its
+/// phase-403 W7b (issue 0961) — a derived bound that exceeds the budget its
 /// type declared.
 ///
 /// Carries both numbers and the chain, because "too big" alone does not tell a
@@ -200,7 +200,7 @@ impl std::fmt::Display for BudgetExceeded {
             f,
             ".\n  The total is a PRODUCT: `nros_serdes::size` walks a bounded \
              sequence and a fixed array element by element, so nesting \
-             MULTIPLIES (issue 0939). Cap ONE level of the worst chain and the \
+             MULTIPLIES (issue 0961). Cap ONE level of the worst chain and the \
              whole product divides:"
         )?;
         for c in &self.chains {
@@ -308,7 +308,7 @@ impl BoundInventory {
         }
     }
 
-    /// phase-403 W7b (issue 0939) — every recorded type whose derived bound
+    /// phase-403 W7b (issue 0961) — every recorded type whose derived bound
     /// exceeds the budget it declared.
     ///
     /// A `Vec` and not the first, for the reason `TypeBound::Unbounded` names
@@ -361,7 +361,7 @@ impl BoundInventory {
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(type_name, message, EncodingVersion::Xcdr1, caps, lookup);
         let x2 = bound_message(type_name, message, EncodingVersion::Xcdr2, caps, lookup);
-        // phase-403 W7b (issue 0939) — the chains and the budget travel with the
+        // phase-403 W7b (issue 0961) — the chains and the budget travel with the
         // bound. The chain is a property of the SHAPE, so it is encoding-
         // independent and computed once; the budget is read with the same
         // `pkg/Msg` key the capacity entries beside it use.
@@ -419,7 +419,7 @@ impl BoundInventory {
                         m.insert("reason".into(), reason.clone().into());
                     }
                 }
-                // phase-403 W7b (issue 0939) — the factor chain, so a total with
+                // phase-403 W7b (issue 0961) — the factor chain, so a total with
                 // five factors in it is legible instead of opaque. Omitted
                 // entirely when the type nests nothing, which is almost all of
                 // them: an empty key on every row is noise, and its absence
@@ -509,7 +509,7 @@ impl BoundInventory {
                     ));
                 }
             }
-            // phase-403 W7b (issue 0939) — two PARALLEL cmake lists rather than
+            // phase-403 W7b (issue 0961) — two PARALLEL cmake lists rather than
             // one packed string: `;` is cmake's list separator, so
             // `foreach(p ${..._CHAIN_PATHS})` iterates them natively and a
             // consumer never parses a delimiter by hand. Indices line up.
@@ -971,7 +971,7 @@ mod tests {
     }
 
     // ========================================================================
-    // phase-403 W7b (issue 0939) -- the budget and the factor chain
+    // phase-403 W7b (issue 0961) -- the budget and the factor chain
     // ========================================================================
 
     /// Three nested messages, each level a bounded sequence, so the total is a

@@ -1,5 +1,5 @@
 ---
-id: 939
+id: 962
 title: "A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate"
 status: open
 area: codegen, memory
@@ -126,7 +126,7 @@ visualization_msgs/InteractiveMarkerInit: derived serialized-size bound 682297
 bytes (RX; TX 606101) exceeds the `max_serialized = 8192` budget stated for this
 type in nros-codegen.toml.
   The total is a PRODUCT: `nros_serdes::size` walks a bounded sequence and a
-  fixed array element by element, so nesting MULTIPLIES (issue 0939). Cap ONE
+  fixed array element by element, so nesting MULTIPLIES (issue 0962). Cap ONE
   level of the worst chain and the whole product divides:
     markers.controls.markers.colors = 8 x 8 x 8 x 8 = 4096 elements
     markers.controls.markers.mesh_file.data = 8 x 8 x 8 x 8 = 4096 elements

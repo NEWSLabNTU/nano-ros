@@ -1,5 +1,5 @@
 ---
-id: 942
+id: 965
 title: "Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set"
 status: open
 area: codegen, memory, build

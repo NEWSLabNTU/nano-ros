@@ -71,13 +71,10 @@ fails if this block drifts.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
 - **#0956** (rmw) — Four W4 parity slots are declared, unfilled, and undecided: content filtering and network flow endpoints See `0956-*`.
 - **#0960** (rmw) — The per-entity readiness callback trio is declared, unfilled, and undecided — and `set_wake_callback` does not answer it See `0960-*`.
-- **#0933** (ci) — 28 CI steps invoke `just`/`nros` without sourcing `./activate.sh`, and nothing gates the class See `0933-*`.
-- **#0935** (tooling, cli) — Every `.launch.py` ABORTS through the shipped resolver — `exec_file`'s inputs and outputs travel by a thread-local the dlopen split duplicated See `0935-*`.
-- **#0936** (tooling) — `check-just-recipe-refs` never reads a document, so 129 `just <recipe>` call sites in docs/ and book/ name recipes that do not exist See `0936-*`.
-- **#0938** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0938-*`.
-- **#0939** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0939-*`.
-- **#0940** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0940-*`.
-- **#0941** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0941-*`.
-- **#0942** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0942-*`.
+- **#0961** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0961-*`.
+- **#0962** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0962-*`.
+- **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
+- **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
+- **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
 
 <!-- END GENERATED open-issue list -->

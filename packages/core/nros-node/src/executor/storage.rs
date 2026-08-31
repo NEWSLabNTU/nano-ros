@@ -1,4 +1,4 @@
-//! phase-271 / phase-405 — per-entry [`Executor`](super::spin::Executor)
+//! phase-271 / phase-409 — per-entry [`Executor`](super::spin::Executor)
 //! storage (issues 0110, 0563, 0936).
 //!
 //! The executor's sized tables (callback table + arena + scheduling-context
@@ -59,7 +59,7 @@ pub(crate) type GroupName = heapless::String<32>;
 /// A push-only vector over CARVED storage: the elements live in the caller's
 /// backing, the `Executor` holds only a fat pointer and a fill cursor.
 ///
-/// phase-405 (issue 0936) — this is the shape phase-271 gave the six sized
+/// phase-409 (issue 0961) — this is the shape phase-271 gave the six sized
 /// tables, generalised so the other nine can use it too. It exists because
 /// `heapless::Vec<T, N>` puts `N * size_of::<T>()` bytes INSIDE the struct, so
 /// every knob that sets an `N` also sets the stack frame of every function that
@@ -70,7 +70,7 @@ pub(crate) type GroupName = heapless::String<32>;
 /// Deliberately `MaybeUninit<T>` rather than `Option<T>`, for three reasons:
 /// [`as_slice`](Self::as_slice) can hand back the `&[T]` the public
 /// `Executor::nodes()` accessor already returns; `carve` writes NOTHING at open
-/// (the `memclr` in issue 0936's fault was the executor's tables being zeroed);
+/// (the `memclr` in issue 0961's fault was the executor's tables being zeroed);
 /// and the layout matches `heapless::Vec`'s, so the storage cost is the same
 /// bytes in a different place.
 ///
@@ -178,7 +178,7 @@ pub(crate) struct ExecutorStorage<
     #[cfg(feature = "alloc")]
     sporadic_atomic_states: [Option<SporadicAtomic>; SC],
     remaps: [Option<RemapRule>; MAX_REMAPS],
-    // phase-405 — the nine that phase-271 left inline.
+    // phase-409 — the nine that phase-271 left inline.
     nodes: [MaybeUninit<NodeRecord>; NODES],
     extra_sessions: [MaybeUninit<ConcreteSession>; NODES],
     extra_session_ids: [MaybeUninit<ExtraSessionId>; NODES],
@@ -214,7 +214,7 @@ pub(crate) struct ExecutorSlices<'s> {
     /// same bytes, but that lands in the caller's STATIC buffer instead of on
     /// the stack, which is the entire point.
     pub(crate) remaps: &'s mut [Option<RemapRule>],
-    // phase-405 (issue 0936) — the remaining nine, same reasoning one campaign
+    // phase-409 (issue 0961) — the remaining nine, same reasoning one campaign
     // later. `MAX_CBS` 14 -> 36 put ~3.7 KiB of `group_sched_table` on the stack
     // of every function that moves an `Executor`.
     pub(crate) nodes: CarvedVec<'s, NodeRecord>,
@@ -358,7 +358,7 @@ pub struct ExecutorSizing {
     pub sc: usize,
     /// Bump-allocator arena size in bytes.
     pub arena: usize,
-    /// phase-405 — Node slots. One worst-case extra session, extra-session id,
+    /// phase-409 — Node slots. One worst-case extra session, extra-session id,
     /// node-sched binding, dispatch slot, component slot and callback-group
     /// filter entry per Node, so ONE count covers all seven tables (that is the
     /// upper bound each of them already assumed under `MAX_NODES`).
@@ -397,7 +397,7 @@ impl ExecutorSizing {
 /// its `_opaque` array, and reinterprets `_opaque` as `*mut ExecutorInlineStorage`
 /// (the executor stays at offset 0, so existing offset-0 accessors are unchanged).
 ///
-/// phase-405 — moving the last nine tables into the backing moves bytes from
+/// phase-409 — moving the last nine tables into the backing moves bytes from
 /// `exec` to `backing` and leaves this total roughly where it was; what changes
 /// is the STACK, because the header is what `open_in` builds and returns by
 /// value.
@@ -559,7 +559,7 @@ mod tests {
         assert_eq!(got.align(), want.align(), "align");
     }
 
-    /// phase-405 — and the FIELD offsets, one by one. The size/align check above
+    /// phase-409 — and the FIELD offsets, one by one. The size/align check above
     /// is the one phase-271 shipped, and it does not distinguish a REORDER that
     /// happens to pad the same: with sixteen regions instead of seven, "the
     /// totals agree" stopped being adequate evidence that `carve` hands out the
@@ -603,7 +603,7 @@ mod tests {
         assert!(align_of::<Option<SchedContext>>() <= 8);
         assert!(align_of::<SchedContextId>() <= 8);
         assert!(align_of::<Option<SporadicState>>() <= 8);
-        // phase-405 — the nine that moved. A type whose alignment exceeds 8
+        // phase-409 — the nine that moved. A type whose alignment exceeds 8
         // would make the `u64` backing insufficient for the whole carve, not
         // just for its own table.
         assert!(align_of::<NodeRecord>() <= 8);
@@ -618,7 +618,7 @@ mod tests {
         assert!(executor_storage_layout(DEFAULT).align() <= 8);
     }
 
-    /// phase-405 (issue 0936) — every knob-scaled table's per-slot cost is
+    /// phase-409 (issue 0961) — every knob-scaled table's per-slot cost is
     /// charged to the BACKING, which is where the caller put it, and not to the
     /// `Executor` value, which is what `open_in` builds on the stack and
     /// returns by value.
@@ -667,7 +667,7 @@ mod tests {
         );
     }
 
-    /// The other half of the same claim, and the one issue 0936 is about: the
+    /// The other half of the same claim, and the one issue 0961 is about: the
     /// VALUE does not move.
     ///
     /// A CEILING rather than an equality, because the header's exact size is a
@@ -712,7 +712,7 @@ mod tests {
             value <= ceiling,
             "`Executor` is {value} B at MAX_CBS={CBS} / MAX_NODES={NODES}, over \
              the {ceiling} B this value is budgeted; a table that scales with a \
-             knob has come back inline (issue 0936)."
+             knob has come back inline (issue 0961)."
         );
     }
 
@@ -739,7 +739,7 @@ mod tests {
         assert_eq!(s.sporadic_states.len(), SC);
         assert!(s.entries.iter().all(|e| e.is_none()));
         assert!(s.sched_context_bindings.iter().all(|b| b.0 == 0));
-        // phase-405 — the CarvedVecs come back empty at their carved capacity.
+        // phase-409 — the CarvedVecs come back empty at their carved capacity.
         assert_eq!(s.nodes.capacity(), NODES);
         assert_eq!(s.extra_sessions.capacity(), NODES);
         assert_eq!(s.extra_session_ids.capacity(), NODES);
