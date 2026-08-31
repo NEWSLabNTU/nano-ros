@@ -682,7 +682,27 @@ typedef struct nros_rmw_vtable_t {
      *  the COUNT moves to `*taken`, matching upstream's
      *  `size_t *taken`, and the return carries only a status.
      *  `*taken` is written only on `NROS_RMW_RET_OK`; a partial
-     *  drain reports what it got rather than erroring. */
+     *  drain reports what it got rather than erroring.
+     *
+     *  Issue 0971 — which leaves a question the count alone cannot
+     *  answer: WHY the drain stopped. A batch that ends because a
+     *  message did not fit `per_msg_cap` returns the same shape as
+     *  one that drained the reader, and the message that stopped it
+     *  is consumed — deliberately, for the reason the single take
+     *  consumes it too: a sample left behind that no caller can
+     *  ever take is a stuck subscription
+     *  (`nros-verification`'s `try_recv_post_fix` /
+     *  `no_silent_truncation`).
+     *
+     *  So a backend that stops a drain for a reason the caller must
+     *  hear PARKS that status on the subscription and returns it
+     *  from the NEXT `take` or `take_sequence`, which takes nothing
+     *  else that call. That rule is what makes the fallback note
+     *  above true rather than aspirational: without it the runtime's
+     *  `try_recv_raw` loop and a native batch answer the same
+     *  condition differently — the loop erroring out and discarding
+     *  the count it had already earned, the native path reporting a
+     *  count and no reason. */
     rmw_ret_t (*take_sequence)(const rmw_subscription_t *subscription,
                                   uint8_t              *buf,
                                   size_t                per_msg_cap,

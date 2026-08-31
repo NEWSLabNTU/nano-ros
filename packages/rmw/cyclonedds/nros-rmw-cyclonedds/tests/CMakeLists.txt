@@ -186,6 +186,26 @@ add_test(
     COMMAND nros_rmw_cyclonedds_data_roundtrip
 )
 
+# Issue 0971 — the batch drain reports the count it earned, and the NEXT take
+# reports why it stopped. First coverage `take_sequence` has in this backend.
+add_executable(nros_rmw_cyclonedds_take_sequence_pending_status
+    take_sequence_pending_status.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_take_sequence_pending_status
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_take_sequence_pending_status
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_take_sequence_pending_status
+    COMMAND nros_rmw_cyclonedds_take_sequence_pending_status
+)
+
 # Phase 117.X.3 service test fixtures: drive `.srv` through the
 # 117.X.1 codegen helper so the typed IDLs include the in-payload
 # `cdds_request_header_t` (rmw_writer_guid + rmw_sequence_number)
@@ -539,6 +559,7 @@ set_tests_properties(
     nros_rmw_cyclonedds_codegen_smoke
     nros_rmw_cyclonedds_pubsub_smoke
     nros_rmw_cyclonedds_data_roundtrip
+    nros_rmw_cyclonedds_take_sequence_pending_status
     PROPERTIES
         ENVIRONMENT "${_nros_rmw_test_env}"
 )
