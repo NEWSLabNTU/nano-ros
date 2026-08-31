@@ -600,8 +600,8 @@ impl SessionHandle {
 /// every group); `Some` = accept only listed groups. Backs
 /// [`Executor::group_active`]; split out so the logic is unit-testable without a
 /// live session.
-pub(crate) fn group_filter_accepts<const N: usize, const M: usize>(
-    active: &Option<heapless::Vec<heapless::String<N>, M>>,
+pub(crate) fn group_filter_accepts<const N: usize>(
+    active: Option<&[heapless::String<N>]>,
     group: &str,
 ) -> bool {
     match active {
@@ -614,23 +614,35 @@ pub(crate) fn group_filter_accepts<const N: usize, const M: usize>(
 mod group_filter_tests {
     use super::group_filter_accepts;
 
-    type Groups = heapless::Vec<heapless::String<32>, { crate::config::MAX_NODES }>;
+    type Group = heapless::String<32>;
+
+    fn group(s: &str) -> Group {
+        let mut g = Group::new();
+        g.push_str(s).unwrap();
+        g
+    }
 
     #[test]
     fn wildcard_accepts_all() {
-        let none: Option<Groups> = None;
-        assert!(group_filter_accepts(&none, "anything"));
+        assert!(group_filter_accepts::<32>(None, "anything"));
     }
 
     #[test]
     fn set_accepts_only_listed_groups() {
-        let mut v: Groups = heapless::Vec::new();
-        let mut s = heapless::String::new();
-        s.push_str("ctrl").unwrap();
-        v.push(s).unwrap();
-        let active = Some(v);
-        assert!(group_filter_accepts(&active, "ctrl"));
-        assert!(!group_filter_accepts(&active, "telem"));
+        let active = [group("ctrl")];
+        assert!(group_filter_accepts(Some(&active[..]), "ctrl"));
+        assert!(!group_filter_accepts(Some(&active[..]), "telem"));
+    }
+
+    /// phase-405 — the wildcard and an EMPTY filter are different answers, and
+    /// the carved table cannot tell them apart on its own (the old
+    /// `Option<Vec>` could). `Executor::active_groups_filtering` is what keeps
+    /// them apart; this pins the distinction at the decision itself.
+    #[test]
+    fn an_empty_filter_is_not_the_wildcard() {
+        let empty: [Group; 0] = [];
+        assert!(!group_filter_accepts(Some(&empty[..]), "anything"));
+        assert!(group_filter_accepts::<32>(None, "anything"));
     }
 }
 
@@ -1116,12 +1128,20 @@ pub struct Executor<'s> {
     /// Node name for entities created via `register_subscription`/`register_service`.
     /// Empty means unset — no liveliness tokens will be declared.
     pub(crate) node_name: heapless::String<64>,
-    /// Phase 228.C — per-tier callback-group filter. `None` = wildcard (register
-    /// every callback — the single-tier degenerate case + today's behaviour).
-    /// `Some(groups)` = this tier's executor accepts only callbacks whose
-    /// `.callback_group()` is in the set; others are skipped at registration.
-    pub(crate) active_groups:
-        Option<heapless::Vec<heapless::String<32>, { crate::config::MAX_NODES }>>,
+    /// Phase 228.C — per-tier callback-group filter. Wildcard (register every
+    /// callback — the single-tier degenerate case + today's behaviour) until
+    /// [`set_active_groups`](Self::set_active_groups) names a non-empty set;
+    /// after that this tier's executor accepts only callbacks whose
+    /// `.callback_group()` is in it, and skips the others at registration.
+    ///
+    /// phase-405 — CARVED, and the wildcard is a separate flag rather than an
+    /// `Option` around the table, because the table itself no longer lives in
+    /// the value. "Filtering with an empty set" and "not filtering" stay
+    /// distinguishable, which is the whole content of the old `Option`.
+    pub(crate) active_groups: super::storage::CarvedVec<'s, super::storage::GroupName>,
+    /// Whether [`active_groups`](Self::active_groups) is a filter at all.
+    /// `false` = wildcard (the old `None`).
+    pub(crate) active_groups_filtering: bool,
     /// Node namespace (default: "/").
     pub(crate) namespace: heapless::String<64>,
     /// Phase 104.C.2 — rclcpp-style `add_node` table. Holds the
@@ -1129,34 +1149,30 @@ pub struct Executor<'s> {
     /// SchedContext) for every Node attached to this Executor. The
     /// implicit "primary" Node (NodeId(0)) mirrors `node_name` +
     /// `namespace` above and is auto-populated on first use.
-    pub(crate) nodes: heapless::Vec<super::node_record::NodeRecord, { crate::config::MAX_NODES }>,
+    ///
+    /// phase-405 — CARVED. `NodeId` IS an index into this table, so the
+    /// carved vector must keep push order and never gain a `swap_remove`.
+    pub(crate) nodes: super::storage::CarvedVec<'s, super::node_record::NodeRecord>,
     /// Phase 272 (RFC-0047) — config-seeded node → sched-context bindings, keyed by the node's
     /// fully-qualified `(name, namespace)` pair. `NodeBuilder::build` consults this table to set a
     /// node's `default_sched` when no explicit `.sched()` was given. Empty ⇒ every node stays
     /// `SchedContextId(0)` (byte-identical to pre-272 behaviour). Sized by `MAX_NODES` (at most
     /// one tier per node — RFC-0047 OQ1).
-    pub(crate) node_sched_table: heapless::Vec<
-        (
-            heapless::String<64>,
-            heapless::String<64>,
-            super::sched_context::SchedContextId,
-        ),
-        { crate::config::MAX_NODES },
-    >,
+    ///
+    /// phase-405 — CARVED.
+    pub(crate) node_sched_table: super::storage::CarvedVec<'s, super::storage::NodeSchedEntry>,
     /// Phase 273 (RFC-0047) — config-seeded per-callback-group sched bindings, keyed by the node's
     /// fully-qualified `(name, namespace)` pair PLUS the callback-group name. Overrides the node
     /// default for a callback created in that group. Empty ⇒ no per-group binding (node default
     /// stands). Sized by `MAX_CBS` — an upper bound on distinct callback-group bindings (you can
     /// never have more distinct group bindings than max callbacks).
-    pub(crate) group_sched_table: heapless::Vec<
-        (
-            heapless::String<64>,
-            heapless::String<64>,
-            heapless::String<32>,
-            super::sched_context::SchedContextId,
-        ),
-        { crate::config::MAX_CBS },
-    >,
+    ///
+    /// phase-405 (issue 0936) — CARVED, and it is the reason the phase exists:
+    /// at ~168 B per slot this was `MAX_CBS` * 168 bytes INSIDE the value, so
+    /// raising the handle limit from 14 to 36 — a fix for an unrelated failure —
+    /// added ~3.7 KiB to the stack frame of every function that moves an
+    /// `Executor`, and overflowed a 320 KiB part's main thread.
+    pub(crate) group_sched_table: super::storage::CarvedVec<'s, super::storage::GroupSchedEntry>,
     /// Phase 305 W3 (issue 0255) — launch-baked per-node remap rules, keyed by
     /// the declaring node's `(name, namespace)` identity. Entries store the
     /// rule RAW (as written in launch); [`Self::resolve_entity_name`] expands
@@ -1186,7 +1202,10 @@ pub struct Executor<'s> {
     /// themselves explicitly via the `register_dispatch_slot` API.
     /// The fallback shape avoids the `linkme` hazard on bare-metal
     /// Cortex-M / RISC-V (see `DispatchSlot` doc).
-    pub(crate) dispatch_slots: heapless::Vec<DispatchSlot, { crate::config::MAX_NODES }>,
+    ///
+    /// phase-405 — CARVED (sized by `ExecutorSizing::nodes`, which is what
+    /// `MAX_NODES` now seeds).
+    pub(crate) dispatch_slots: super::storage::CarvedVec<'s, DispatchSlot>,
     /// Phase 258 (Track 2, 2a) — executor-owned component tick registry.
     /// Enrolled by [`Executor::enroll_component`] (from `nros`'s
     /// `install`/`register_node_borrowed`); each slot's `tick` runs at the
@@ -1194,15 +1213,21 @@ pub struct Executor<'s> {
     /// `Executor::drop`. Bounded `MAX_NODES` (matches `dispatch_slots` /
     /// `nodes`). See [`ComponentSlot`] for why it's separate from
     /// `dispatch_slots`.
-    pub(crate) component_slots: heapless::Vec<ComponentSlot, { crate::config::MAX_NODES }>,
+    ///
+    /// phase-405 — CARVED.
+    pub(crate) component_slots: super::storage::CarvedVec<'s, ComponentSlot>,
     /// Phase 104.C.3 — extra sessions opened by `node_builder.rmw()`
     /// calls that named a backend different from the Executor's
     /// primary session. Indexed by `NodeRecord.session_idx`
     /// (1..=N maps to `extra_sessions[N-1]`; idx 0 is the primary
     /// `self.session`). Sized by `NROS_EXECUTOR_MAX_NODES` since one
     /// extra session per Node is the worst case.
-    pub(crate) extra_sessions:
-        heapless::Vec<session::ConcreteSession, { crate::config::MAX_NODES }>,
+    ///
+    /// phase-405 — CARVED, and the biggest single win: `ConcreteSession` is
+    /// 524 B on the island, so this table alone was ~3.1 KiB of the value.
+    /// Declared AFTER `session` so field-order drop still closes the primary
+    /// session before the extras (`CarvedVec` owns its elements' drop).
+    pub(crate) extra_sessions: super::storage::CarvedVec<'s, session::ConcreteSession>,
     /// Issue 0436 — `(rmw_name, locator)` for each entry of `extra_sessions`,
     /// the extras' equivalent of `primary_rmw_name` / `primary_locator`.
     ///
@@ -1221,9 +1246,10 @@ pub struct Executor<'s> {
     /// workspace's `-D dead_code` is right to say so. Allow it exactly
     /// there rather than blanket-allowing a field that must stay live in
     /// every configuration that can reach the reader.
+    ///
+    /// phase-405 — CARVED.
     #[cfg_attr(not(feature = "rmw-cffi"), allow(dead_code))]
-    pub(crate) extra_session_ids:
-        heapless::Vec<(heapless::String<32>, heapless::String<128>), { crate::config::MAX_NODES }>,
+    pub(crate) extra_session_ids: super::storage::CarvedVec<'s, super::storage::ExtraSessionId>,
     /// Phase 156 — primary session's rmw name + locator, captured
     /// at `open*` time so `NodeBuilder::resolve_session_slot`'s
     /// cache lookup can detect when a `.rmw(name).locator(loc)`
@@ -1372,8 +1398,10 @@ pub struct Executor<'s> {
     /// [`Executor::drain_violations`] working unchanged for
     /// applications that report violations themselves.
     pub(crate) report_violations: bool,
-    pub(crate) monitor_violations:
-        heapless::Vec<super::monitor::Violation, { super::monitor::MAX_VIOLATIONS }>,
+    /// phase-405 — CARVED, at the fixed `MAX_VIOLATIONS` count (the same
+    /// reasoning issue 0563 used for `remap_table`: the capability is unchanged,
+    /// so it needs no new `ExecutorSizing` knob).
+    pub(crate) monitor_violations: super::storage::CarvedVec<'s, super::monitor::Violation>,
     /// Issue 0790 — hooks that run BEFORE the session is closed, while every
     /// entity still works. The load-bearing half: a device releasing a bus or
     /// parking an actuator has to publish its final state / answer its last
@@ -1409,6 +1437,15 @@ impl<'s> Executor<'s> {
             #[cfg(feature = "alloc")]
             sporadic_atomic_states,
             remaps,
+            nodes,
+            extra_sessions,
+            extra_session_ids,
+            node_sched_table,
+            dispatch_slots,
+            component_slots,
+            active_groups,
+            group_sched_table,
+            monitor_violations,
         } = slices;
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
@@ -1441,16 +1478,17 @@ impl<'s> Executor<'s> {
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
-            active_groups: None,
-            nodes: heapless::Vec::new(),
-            node_sched_table: heapless::Vec::new(),
-            group_sched_table: heapless::Vec::new(),
+            active_groups,
+            active_groups_filtering: false,
+            nodes,
+            node_sched_table,
+            group_sched_table,
             remap_table: remaps,
             remap_len: 0,
-            dispatch_slots: heapless::Vec::new(),
-            component_slots: heapless::Vec::new(),
-            extra_sessions: heapless::Vec::new(),
-            extra_session_ids: heapless::Vec::new(),
+            dispatch_slots,
+            component_slots,
+            extra_sessions,
+            extra_session_ids,
             primary_rmw_name: heapless::String::new(),
             primary_locator: heapless::String::new(),
             namespace: {
@@ -1511,7 +1549,7 @@ impl<'s> Executor<'s> {
             spin_quantization_checked: false,
             monitor_violations_dropped: 0,
             report_violations: true,
-            monitor_violations: heapless::Vec::new(),
+            monitor_violations,
             // Issue 0790 — both phase tables start empty. An image that
             // registers nothing pays these `None`s and a two-slot scan at
             // teardown, and nothing else.
@@ -1534,7 +1572,7 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Self {
-        let slices = unsafe { super::storage::carve(backing, sizing.cbs, sizing.sc, sizing.arena) };
+        let slices = unsafe { super::storage::carve(backing, sizing) };
         Self::assemble(SessionStore::Owned(session), slices)
     }
 
@@ -1551,7 +1589,7 @@ impl<'s> Executor<'s> {
         backing: &'s mut [MaybeUninit<u64>],
         sizing: super::storage::ExecutorSizing,
     ) -> Self {
-        let slices = unsafe { super::storage::carve(backing, sizing.cbs, sizing.sc, sizing.arena) };
+        let slices = unsafe { super::storage::carve(backing, sizing) };
         Self::assemble(SessionStore::Borrowed(session_ptr), slices)
     }
 }
@@ -1717,24 +1755,32 @@ impl<'s> Executor<'s> {
     /// An empty slice (or never calling it) leaves the wildcard — register all
     /// callbacks (the single-tier degenerate case + today's behaviour).
     pub fn set_active_groups(&mut self, groups: &[&str]) {
+        // phase-405 — the table is CARVED and reused, so clear before refilling;
+        // the old `Option<heapless::Vec>` got a fresh empty vector each call.
+        self.active_groups.clear();
         if groups.is_empty() {
-            self.active_groups = None;
+            self.active_groups_filtering = false;
             return;
         }
-        let mut v = heapless::Vec::new();
         for g in groups {
             let mut s = heapless::String::new();
             if s.push_str(g).is_ok() {
-                let _ = v.push(s);
+                let _ = self.active_groups.push(s);
             }
         }
-        self.active_groups = Some(v);
+        self.active_groups_filtering = true;
+    }
+
+    /// The current callback-group filter, or `None` for the wildcard.
+    fn active_group_filter(&self) -> Option<&[super::storage::GroupName]> {
+        self.active_groups_filtering
+            .then(|| self.active_groups.as_slice())
     }
 
     /// Phase 228.C — whether a callback in `group` should register in this
-    /// executor under the current filter. Wildcard (`None`) accepts everything.
+    /// executor under the current filter. The wildcard accepts everything.
     pub fn group_active(&self, group: &str) -> bool {
-        group_filter_accepts(&self.active_groups, group)
+        group_filter_accepts(self.active_group_filter(), group)
     }
 
     /// Set the node name and namespace used for liveliness tokens.
@@ -7916,7 +7962,7 @@ mod dispatch_registry_tests {
             "every registered slot must be invoked — linear scan, \
              no self-filter at the registry layer"
         );
-        // heapless::Vec iterates in insertion order.
+        // The carved dispatch table iterates in insertion order.
         assert_eq!(captured[0].0, state_a_ptr as usize, "slot A's state");
         assert_eq!(captured[1].0, state_b_ptr as usize, "slot B's state");
         for (idx, capture) in captured.iter().enumerate() {

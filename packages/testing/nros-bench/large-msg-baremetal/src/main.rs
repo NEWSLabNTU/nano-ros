@@ -20,6 +20,14 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
     cbs: 2,
     sc: 2,
     arena: nros::arena_size_for(2),
+    // phase-405 — the Node-scaled tables are carved from this backing now.
+    // Held at the build-time default rather than trimmed to the one Node this
+    // bench creates: those tables were sized by `MAX_NODES` when they were
+    // INLINE, so keeping the count is what leaves the capacity unchanged. The
+    // bytes move from the executor's stack temporary to this static, which is
+    // the point. Trimming it is a separate decision, and one no host lane here
+    // can check.
+    nodes: nros::ExecutorSizing::DEFAULT.nodes,
 };
 static mut EXEC_BACKING: [core::mem::MaybeUninit<u64>; EXEC_SIZING.u64_len()] =
     [const { core::mem::MaybeUninit::uninit() }; EXEC_SIZING.u64_len()];

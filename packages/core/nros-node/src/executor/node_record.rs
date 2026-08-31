@@ -429,7 +429,8 @@ impl<'a, 'cfg, 's> NodeBuilder<'a, 'cfg, 's> {
             .map_err(|_| NodeError::NodeTableFull)?;
         let idx = self.executor.nodes.len() - 1;
         if idx > u8::MAX as usize {
-            // heapless cap is far below u8::MAX; defensive only.
+            // The carved table's capacity (`ExecutorSizing::nodes`) is far
+            // below u8::MAX; defensive only.
             return Err(NodeError::NodeTableFull);
         }
         Ok(NodeId(idx as u8))
