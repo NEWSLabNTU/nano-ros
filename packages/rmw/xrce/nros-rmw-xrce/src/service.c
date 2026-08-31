@@ -85,10 +85,17 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
 
 /* ---- Service server -------------------------------------------------- */
 
-rmw_ret_t xrce_service_create(const rmw_node_t* node, const char* service_name,
-                                          const char* type_name, const char* type_hash,
+rmw_ret_t xrce_service_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
+                                const char* service_name,
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_service_t* out) {
+    /* phase-406 W1 — one argument in, two locals out, so the body below is
+       unchanged. A NULL type support is INVALID_ARGUMENT rather than an
+       empty type: the identity is what the entity is keyed on, and one
+       created without it matches nothing and reports nothing. */
+    if (type_support == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    const char* type_name = type_support->type_name;
+    (void)type_name;
     /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
      * The node carries the route to its session (our `context`). */
     if (node == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -496,10 +503,17 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client, uint8_t* reply_
 
 /* ---- Service client -------------------------------------------------- */
 
-rmw_ret_t xrce_client_create(const rmw_node_t* node, const char* service_name,
-                                          const char* type_name, const char* type_hash,
+rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
+                                const char* service_name,
                                           uint32_t domain_id, const rmw_qos_profile_t* qos,
                                           rmw_client_t* out) {
+    /* phase-406 W1 — one argument in, two locals out, so the body below is
+       unchanged. A NULL type support is INVALID_ARGUMENT rather than an
+       empty type: the identity is what the entity is keyed on, and one
+       created without it matches nothing and reports nothing. */
+    if (type_support == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
+    const char* type_name = type_support->type_name;
+    (void)type_name;
     /* Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
      * The node carries the route to its session (our `context`). */
     if (node == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;

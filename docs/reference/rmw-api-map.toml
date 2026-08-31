@@ -149,7 +149,7 @@ reason = "get_node_names — W4. A VISITOR (`rmw_node_visit_fn`), not an out-arr
 [rmw_get_node_names_with_enclaves]
 where = "vtable"
 nano = "get_node_names"
-reason = "get_node_names — grouped, and HOLLOW: nothing in this ABI accepts an enclave, so the visitor argument is structurally always NULL (issue 0785). The slot is also inert (issue 0800)"
+reason = "get_node_names — grouped, and HOLLOW: nothing in this ABI accepts an enclave, so the visitor argument is structurally always NULL (issue 0785, RESOLVED — the enclave argument was ADDED to the visitor there, and it is still structurally NULL because nothing in this ABI accepts an enclave to put in it). The slot is also inert — issue 0800 (RESOLVED) is where `produced` stopped being read as `working`, and this is one of the rows that distinction exists for"
 
 [rmw_get_publisher_names_and_types_by_node]
 where = "vtable"
@@ -214,7 +214,7 @@ reason = "upstream needs the init/copy/fini trio because its options OWN heap an
 
 [rmw_init_publisher_allocation]
 where = "declined"
-reason = "upstream's first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`, both declined ABI-wide, so the symbol cannot cross this seam whatever the third holds. TWO earlier reasons here were wrong: 'pools are baked' (issue 0777 — false for four backends of five) and then 'upstream pre-sizes an `rcutils_allocator_t` the caller owns' (also false — `rmw_publisher_allocation_t` is `{const char *implementation_identifier; void *data;}`, verified against Humble's `rmw/types.h`). The CAPABILITY question is separate and live for cyclonedds alone; it belongs to issue 0777, not to this parameter list"
+reason = "upstream's first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`. The sequence bound is declined ABI-wide (it is a rosidl runtime type), and the third parameter is an `rmw_publisher_allocation_t`, whose body is `{const char *implementation_identifier; void *data;}` — an opaque handle whose contents only the implementation that made it can read. Nothing crosses this seam usefully. THREE earlier reasons here were wrong, and the corrections are the record worth keeping: 'pools are baked' (false for four backends of five — issue 0777, now RESOLVED with the finding that every deviation reason built on that clause was false); 'upstream pre-sizes an rcutils_allocator_t the caller owns' (false — verified against Humble's rmw/types.h); and, until phase-406, a tail deferring the capability question to 0777 as though it were still open. It is not: 0777 closed, and the pre-sizing CAPABILITY for cyclonedds is a separate question that needs its own issue if anyone wants it, not a citation here."
 
 [rmw_init_subscription_allocation]
 where = "declined"

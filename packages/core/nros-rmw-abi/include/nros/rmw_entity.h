@@ -123,6 +123,55 @@ typedef int64_t rmw_time_point_value_t;
  *  from `get_gid_for_publisher` without a documented mapping — and the narrower
  *  one truncates. The ABI takes upstream's width; reconciling `MessageInfo` is
  *  its own change and is NOT done here. */
+/** A message type's identity — phase-406 W1.
+ *
+ *  Upstream passes `const rosidl_message_type_support_t *`: a runtime-dispatch
+ *  handle carrying `{typesupport_identifier, data, func}`, where `func` walks a
+ *  type description at run time. This ABI resolves types at BUILD time, so
+ *  there is nothing for `func` to do and the handle's contents do not cross.
+ *
+ *  What DOES cross is the identity, and it was crossing as two loose
+ *  `const char *` wedged between `topic_name` and `qos` — so the argument order
+ *  did not even line up with upstream's, and every create slot took two
+ *  arguments where ROS 2 takes one. Grouping them costs nothing: codegen emits
+ *  one `static const rmw_message_type_support_t` per type, exactly as
+ *  `ROSIDL_GET_MSG_TYPE_SUPPORT(...)` already hands back a pointer to a static.
+ *
+ *  NAMED `rmw_`, NOT `rosidl_`, and not `nros_`. This ABI is a standard
+ *  interface, so a vendor prefix would say the interface is ours — but
+ *  `rosidl_message_type_support_t` belongs to `rosidl_runtime_c`, a package we
+ *  do not implement, and redefining it would collide with a host build that
+ *  legitimately has it in scope. Reusing `rmw_publisher_t` is safe because we
+ *  ARE the rmw implementation and own that name; `rmw_` is ours to spend and
+ *  neutral to a reader.
+ *
+ *  Future type-carried data (a serialize/deserialize pair, a bounded-size hint)
+ *  lands here without changing any slot's arity again — which matters, because
+ *  appending to a hand-mirrored FFI struct is what `check-ffi-struct-mirrors`
+ *  exists for. */
+typedef struct rmw_message_type_support_t {
+    /** Fully-qualified ROS type, e.g. `"std_msgs/msg/String"`. Borrowed;
+     *  must outlive every entity created with it, which a codegen `static`
+     *  satisfies by construction. */
+    const char *type_name;
+    /** RIHS type hash, e.g. `"RIHS01_..."`, or NULL where the backend does not
+     *  carry one. NULL is "not supplied", never "empty". */
+    const char *type_hash;
+} rmw_message_type_support_t;
+
+/** A service type's identity. See @ref rmw_message_type_support_t.
+ *
+ *  Separate from the message form for the reason upstream separates them:
+ *  `rosidl_service_type_support_t` and `rosidl_message_type_support_t` are
+ *  distinct types there, and collapsing them here would let a service type be
+ *  passed where a message type is required with no diagnostic. */
+typedef struct rmw_service_type_support_t {
+    /** Fully-qualified ROS service type, e.g. `"example_interfaces/srv/AddTwoInts"`. */
+    const char *type_name;
+    /** RIHS type hash, or NULL. */
+    const char *type_hash;
+} rmw_service_type_support_t;
+
 typedef struct rmw_gid_t {
     /** Which backend produced this gid; gids from different backends are not
      *  comparable. Borrowed, static for the life of the image. */

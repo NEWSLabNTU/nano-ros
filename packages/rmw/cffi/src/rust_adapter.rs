@@ -492,14 +492,23 @@ unsafe extern "C" fn drive_io_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_publisher_trampoline<R: RustBackend>(
     node: *const NrosRmwNode,
+    // phase-406 W1 — the identity arrives as ONE argument, in upstream's
+    // position. Unpacked immediately below so the body is unchanged.
+    type_support: *const crate::generated::rmw_message_type_support_t,
     topic_name: *const core::ffi::c_char,
-    type_name: *const core::ffi::c_char,
-    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     options: *const rmw_publisher_options_t,
     out: *mut NrosRmwPublisher,
 ) -> NrosRmwRet {
+    // phase-406 W1 — unpack once, so the body below is untouched. A NULL
+    // `type_support` is INVALID_ARGUMENT rather than a silent empty type: the
+    // identity is what the backend keys its entity on, and an entity created
+    // with no type is a subscription that matches nothing and reports nothing.
+    let Some(ts) = (unsafe { type_support.as_ref() }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (type_name, type_hash) = (ts.type_name, ts.type_hash);
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -573,14 +582,23 @@ unsafe extern "C" fn publish_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_subscription_trampoline<R: RustBackend>(
     node: *const NrosRmwNode,
+    // phase-406 W1 — the identity arrives as ONE argument, in upstream's
+    // position. Unpacked immediately below so the body is unchanged.
+    type_support: *const crate::generated::rmw_message_type_support_t,
     topic_name: *const core::ffi::c_char,
-    type_name: *const core::ffi::c_char,
-    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     options: *const rmw_subscription_options_t,
     out: *mut NrosRmwSubscription,
 ) -> NrosRmwRet {
+    // phase-406 W1 — unpack once, so the body below is untouched. A NULL
+    // `type_support` is INVALID_ARGUMENT rather than a silent empty type: the
+    // identity is what the backend keys its entity on, and an entity created
+    // with no type is a subscription that matches nothing and reports nothing.
+    let Some(ts) = (unsafe { type_support.as_ref() }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (type_name, type_hash) = (ts.type_name, ts.type_hash);
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -783,13 +801,22 @@ unsafe extern "C" fn process_raw_in_place_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_service_trampoline<R: RustBackend>(
     node: *const NrosRmwNode,
+    // phase-406 W1 — the identity arrives as ONE argument, in upstream's
+    // position. Unpacked immediately below so the body is unchanged.
+    type_support: *const crate::generated::rmw_service_type_support_t,
     service_name: *const core::ffi::c_char,
-    type_name: *const core::ffi::c_char,
-    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     out: *mut NrosRmwService,
 ) -> NrosRmwRet {
+    // phase-406 W1 — unpack once, so the body below is untouched. A NULL
+    // `type_support` is INVALID_ARGUMENT rather than a silent empty type: the
+    // identity is what the backend keys its entity on, and an entity created
+    // with no type is a subscription that matches nothing and reports nothing.
+    let Some(ts) = (unsafe { type_support.as_ref() }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (type_name, type_hash) = (ts.type_name, ts.type_hash);
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -931,13 +958,22 @@ unsafe extern "C" fn send_response_trampoline<R: RustBackend>(
 
 unsafe extern "C" fn create_client_trampoline<R: RustBackend>(
     node: *const NrosRmwNode,
+    // phase-406 W1 — the identity arrives as ONE argument, in upstream's
+    // position. Unpacked immediately below so the body is unchanged.
+    type_support: *const crate::generated::rmw_service_type_support_t,
     service_name: *const core::ffi::c_char,
-    type_name: *const core::ffi::c_char,
-    type_hash: *const core::ffi::c_char,
     domain_id: u32,
     qos: *const NrosRmwQos,
     out: *mut NrosRmwClient,
 ) -> NrosRmwRet {
+    // phase-406 W1 — unpack once, so the body below is untouched. A NULL
+    // `type_support` is INVALID_ARGUMENT rather than a silent empty type: the
+    // identity is what the backend keys its entity on, and an entity created
+    // with no type is a subscription that matches nothing and reports nothing.
+    let Some(ts) = (unsafe { type_support.as_ref() }) else {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    };
+    let (type_name, type_hash) = (ts.type_name, ts.type_hash);
     if out.is_null() || qos.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }

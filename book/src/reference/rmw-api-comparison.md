@@ -223,9 +223,8 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_client</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
+  <span class='ty add'>const rmw_service_type_support_t *type_support</span><span class=pu>,</span>
   <span class='ty'>const char *service_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_hash</span><span class=pu>,</span>
   <span class='ty add'>uint32_t domain_id</span><span class=pu>,</span>
   <span class='ty'>const rmw_qos_profile_t *qos</span><span class=pu>,</span>
   <span class='ty add'>rmw_client_t *out</span>
@@ -266,9 +265,8 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_publisher</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
+  <span class='ty add'>const rmw_message_type_support_t *type_support</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_hash</span><span class=pu>,</span>
   <span class='ty add'>uint32_t domain_id</span><span class=pu>,</span>
   <span class='ty'>const rmw_qos_profile_t *qos</span><span class=pu>,</span>
   <span class='ty'>const rmw_publisher_options_t *options</span><span class=pu>,</span>
@@ -287,9 +285,8 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_service</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
+  <span class='ty add'>const rmw_service_type_support_t *type_support</span><span class=pu>,</span>
   <span class='ty'>const char *service_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_hash</span><span class=pu>,</span>
   <span class='ty add'>uint32_t domain_id</span><span class=pu>,</span>
   <span class='ty'>const rmw_qos_profile_t *qos</span><span class=pu>,</span>
   <span class='ty add'>rmw_service_t *out</span>
@@ -308,9 +305,8 @@ white-space:pre-wrap;overflow-wrap:anywhere}
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class=pu>(*</span><span class='fn'>create_subscription</span><span class=pu>)</span><span class=pu>(</span>
   <span class='ty'>const rmw_node_t *node</span><span class=pu>,</span>
+  <span class='ty add'>const rmw_message_type_support_t *type_support</span><span class=pu>,</span>
   <span class='ty'>const char *topic_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_name</span><span class=pu>,</span>
-  <span class='ty'>const char *type_hash</span><span class=pu>,</span>
   <span class='ty add'>uint32_t domain_id</span><span class=pu>,</span>
   <span class='ty'>const rmw_qos_profile_t *qos</span><span class=pu>,</span>
   <span class='ty'>const rmw_subscription_options_t *options</span><span class=pu>,</span>
@@ -699,7 +695,7 @@ white-space:pre-wrap;overflow-wrap:anywhere}
   <span class='ty'>rmw_publisher_allocation_t *</span>
 <span class=pu>)</span></pre></td>
 <td class=c><span class=none>rejected</span></td>
-<td class=why>upstream&#x27;s first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`, both declined ABI-wide, so the symbol cannot cross this seam whatever the third holds. TWO earlier reasons here were wrong: &#x27;pools are baked&#x27; (issue 0777 — false for four backends of five) and then &#x27;upstream pre-sizes an `rcutils_allocator_t` the caller owns&#x27; (also false — `rmw_publisher_allocation_t` is `{const char *implementation_identifier; void *data;}`, verified against Humble&#x27;s `rmw/types.h`). The CAPABILITY question is separate and live for cyclonedds alone; it belongs to issue 0777, not to this parameter list</td>
+<td class=why>upstream&#x27;s first two parameters are a `rosidl_message_type_support_t *` and a `rosidl_runtime_c__Sequence__bound *`. The sequence bound is declined ABI-wide (it is a rosidl runtime type), and the third parameter is an `rmw_publisher_allocation_t`, whose body is `{const char *implementation_identifier; void *data;}` — an opaque handle whose contents only the implementation that made it can read. Nothing crosses this seam usefully. THREE earlier reasons here were wrong, and the corrections are the record worth keeping: &#x27;pools are baked&#x27; (false for four backends of five — issue 0777, now RESOLVED with the finding that every deviation reason built on that clause was false); &#x27;upstream pre-sizes an rcutils_allocator_t the caller owns&#x27; (false — verified against Humble&#x27;s rmw/types.h); and, until phase-406, a tail deferring the capability question to 0777 as though it were still open. It is not: 0777 closed, and the pre-sizing CAPABILITY for cyclonedds is a separate question that needs its own issue if anyone wants it, not a citation here.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
