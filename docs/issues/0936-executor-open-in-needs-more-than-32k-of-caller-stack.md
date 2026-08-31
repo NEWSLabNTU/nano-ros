@@ -5,7 +5,7 @@ status: open
 area: core, memory
 severity: high
 found: 2026-08-31
-related: [0900, 0271, 0739, phase-403, phase-3]
+related: [0900, 0271, 0563, 0739, phase-403, phase-405, phase-3]
 ---
 
 # The init path costs more stack than a small part can give it
@@ -135,3 +135,27 @@ main-thread stack would have turned four bring-up sessions into one build error.
 `ZenohSession::names_and_types_filtered` carries a 19840-byte frame -- larger
 than `open_in`. It is not on the boot path, so it did not cause this, but any
 image that calls graph introspection on a small part will hit the same wall.
+
+## phase-405 landed the fix (2026-08-31); still open on the board
+
+All nine members are carved now (`CarvedVec<'s, T>` in `executor/storage.rs`).
+Measured on the host, not inferred:
+
+* `size_of::<Executor>()` 5072 -> 1016 at the shipped knobs, and 12768 -> 1016 at
+  this image's `MAX_CBS=36` / `MAX_NODES=6`. The SAME number at both, which is
+  the coupling this issue is about being gone.
+* `Executor::open_in`'s prologue 9544 -> 3368 bytes and `nros_cpp_init`'s
+  7992 -> 1816, read with `objdump` from a linked x86_64 image over
+  `libnros_cpp.a`. At this image's knobs the two together were 35040 bytes and
+  are now 5184. x86_64, so not the Cortex-M numbers above; the ratio is.
+
+Two things this did NOT do, and they are why the issue stays open:
+
+1. **The board has not booted it.** `MAIN_STACK_SIZE` on `mr_canhubk3/s32k344`
+   is the acceptance, and it needs the part.
+2. **Nothing STATES the number yet.** The boot-time check this issue asks for --
+   a gate naming the main-thread stack an image requires, the way the heap gate
+   names the arena -- is not written. The requirement is smaller now; it is still
+   unnamed, and that is the half of this issue that cost four bring-up sessions.
+
+`ZenohSession::names_and_types_filtered` (19840 bytes) is untouched.
