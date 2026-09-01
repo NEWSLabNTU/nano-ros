@@ -244,6 +244,39 @@ pub const EXECUTOR_KNOBS: &[&str] = &[
 /// It lives HERE so the env-pointer dance has ONE spelling — two build scripts
 /// resolving the same rungs differently is the drift
 /// `check-knob-single-reader` exists to catch, one level up.
+/// The platform search path a BUILD SCRIPT should use.
+///
+/// issue 0979 — this was `default_search_path(&std::env::current_dir(), …)`,
+/// and a build script's cwd is its OWN package directory, not the repo root.
+/// So `<pkg>/packages/platform` and `<pkg>/config` were the roots searched,
+/// neither exists, the tree came back empty with `root: ""`, and the first
+/// lookup failed as
+///
+/// ```text
+/// NROS_PLATFORM_NAME=posix: unknown platform `posix`: no /posix/nros-platform.toml
+/// ```
+///
+/// — a platform that does exist, named by the CALLER's request rather than by
+/// anything missing, with a leading slash as the only hint that the root was
+/// blank. Every Rust fixture in the native lane died this way.
+///
+/// It is a phase-400 W6 regression with a reason: `nros-node/build.rs` used
+/// `nros_build_paths::repo_root()`, and when its copy of the env-pointer dance
+/// moved here, the root moved with it to something `nros-board-common` could
+/// reach. `current_dir()` was reachable and wrong. `nros-build-paths` is in
+/// fact reachable — it is already a dependency of this crate under the same
+/// `build-helpers` feature this module lives behind — so the correct resolver
+/// comes back, and "where is the repo" keeps its one spelling.
+///
+/// `try_repo_root` rather than `repo_root`: an out-of-tree consumer has no
+/// `nros-sdk-index.toml` to find and must reach the `NROS_PLATFORMS_DIR` arm
+/// below instead of panicking on the walk. If neither yields a real directory,
+/// [`PlatformsTree::load_search_path`] now says so where the path is resolved.
+pub fn build_search_path() -> Vec<PathBuf> {
+    let repo = nros_build_paths::try_repo_root().unwrap_or_default();
+    PlatformsTree::default_search_path(&repo, std::env::var("NROS_PLATFORMS_DIR").ok().as_deref())
+}
+
 pub struct BuildRungs {
     pub platform: String,
     pub tree: PlatformsTree,
@@ -271,10 +304,7 @@ impl BuildRungs {
                     .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
             });
 
-        let search = PlatformsTree::default_search_path(
-            &std::env::current_dir().unwrap_or_default(),
-            std::env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
-        );
+        let search = build_search_path();
         let tree = PlatformsTree::load_search_path(&search)
             .unwrap_or_else(|e| panic!("platform search path {search:?}: {e}"));
         Some(Self {
@@ -616,6 +646,13 @@ pub enum ConfigError {
         source: toml::de::Error,
     },
     Manifest(ManifestError),
+    /// issue 0979 — every root in the search path was missing, so the tree
+    /// would be EMPTY and no platform could ever resolve from it. Reported
+    /// where the path is resolved rather than several frames later as
+    /// `UnknownPlatform` for a platform that does exist.
+    NoSearchRoot {
+        tried: String,
+    },
     UnknownPlatform {
         name: String,
         root: String,
@@ -656,6 +693,13 @@ impl std::fmt::Display for ConfigError {
             ConfigError::Io { path, source } => write!(f, "{path}: {source}"),
             ConfigError::Parse { path, source } => write!(f, "{path}: {source}"),
             ConfigError::Manifest(e) => write!(f, "{e}"),
+            ConfigError::NoSearchRoot { tried } => write!(
+                f,
+                "no platform descriptor root exists; tried {tried}. \
+                 Every root in the search path is missing, so the tree is empty \
+                 and no platform can resolve from it — this is a wrong ROOT, not \
+                 a missing platform (issue 0979)."
+            ),
             ConfigError::UnknownPlatform { name, root } => write!(
                 f,
                 "unknown platform `{name}`: no {root}/{name}/{PLATFORM_CONFIG_FILENAME}"
@@ -724,7 +768,28 @@ impl PlatformsTree {
                 }
             }
         }
-        Ok(merged.unwrap_or_default())
+        // issue 0979 — an all-missing search path is an ERROR here, not an
+        // empty tree returned to a caller that will look something up in it.
+        //
+        // "Missing roots are skipped" is right for a search PATH: a porter
+        // prepends their own tree and the in-tree ones may or may not be
+        // there. It is not right for ALL of them being absent, which means the
+        // ROOT was computed wrong. The empty tree that used to be returned
+        // carries `root: ""`, so the failure surfaced later as
+        // `unknown platform \`posix\`: no /posix/nros-platform.toml` — a
+        // message naming a platform that exists, with a leading slash as the
+        // only clue that the root was blank.
+        merged.ok_or_else(|| ConfigError::NoSearchRoot {
+            tried: if roots.is_empty() {
+                "(an empty search path)".to_string()
+            } else {
+                roots
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            },
+        })
     }
 
     /// The default search path: `$NROS_PLATFORM_PATH` entries first (colon
@@ -1919,5 +1984,64 @@ serial = true
         let manifest = tree.as_platform_manifest();
         let resolved = manifest.for_platform("child").unwrap();
         assert_eq!(resolved.defines, vec!["A".to_string(), "B".to_string()]);
+    }
+
+    /// Issue 0979 — the regression, and it needs no env and no cwd fiddling.
+    ///
+    /// Cargo runs a test binary with cwd set to its own PACKAGE directory,
+    /// exactly as it runs a build script. So this test executes from
+    /// `packages/boards/nros-board-common`, where neither `packages/platform`
+    /// nor `config` exists — which is precisely the state that made the old
+    /// `current_dir()`-derived path resolve to nothing. A path with no
+    /// existing root is a tree with no platforms in it.
+    #[test]
+    fn the_build_search_path_is_rooted_at_the_repo_not_the_calling_package() {
+        let search = build_search_path();
+        let existing: Vec<_> = search.iter().filter(|p| p.is_dir()).collect();
+        assert!(
+            !existing.is_empty(),
+            "no root in the build search path exists, so the tree would be \
+             empty and every platform lookup would fail: {search:?}"
+        );
+        assert!(
+            existing.iter().any(|p| p.ends_with("packages/platform")),
+            "the in-tree descriptor home must be reachable from a build \
+             script's cwd: {search:?}"
+        );
+    }
+
+    /// Issue 0979's other half: a wrong root must fail WHERE IT IS RESOLVED.
+    ///
+    /// Returning an empty tree is what turned this into `unknown platform
+    /// \`posix\`` several frames later — a message about a platform that
+    /// exists, whose only clue was a leading slash where the root should be.
+    #[test]
+    fn a_search_path_with_no_existing_root_is_an_error_naming_what_was_tried() {
+        let missing = [PathBuf::from("/nonexistent-nros-0979/a")];
+        let err = PlatformsTree::load_search_path(&missing)
+            .expect_err("an all-missing search path must not yield an empty tree");
+        assert!(
+            matches!(err, ConfigError::NoSearchRoot { .. }),
+            "expected NoSearchRoot, got {err:?}"
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("/nonexistent-nros-0979/a"),
+            "the error must name every root it tried: {msg}"
+        );
+    }
+
+    /// ...but SOME roots missing is still fine — that is what a search path is
+    /// for, and tightening the all-missing case must not break a porter who
+    /// prepends a tree of their own to the in-tree ones.
+    #[test]
+    fn a_search_path_keeps_skipping_individual_missing_roots() {
+        let tmp = write_tree(&[("generic", "[build.zenoh]\ndefines = [\"A\"]\n")]);
+        let tree = PlatformsTree::load_search_path(&[
+            PathBuf::from("/nonexistent-nros-0979/b"),
+            tmp.path().to_path_buf(),
+        ])
+        .expect("one existing root is enough");
+        assert!(tree.files.contains_key("generic"));
     }
 }
