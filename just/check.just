@@ -100,7 +100,6 @@ fast:
 [group("main")]
 fast-serial: \
     abi-bindings \
-    cyclone-domain-not-pinned \
     absolute-paths \
     action-client-arena-budget \
     activate-shells \
@@ -142,6 +141,7 @@ fast-serial: \
     cpp-fmt \
     cpp-freestanding-includes \
     cpp-no-std-stdio \
+    cyclone-domain-not-pinned \
     deploy-board-resolves \
     doc-recipe-refs \
     doc-refs \
