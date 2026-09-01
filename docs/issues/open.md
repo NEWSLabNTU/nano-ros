@@ -78,5 +78,6 @@ fails if this block drifts.
 - **#0971** ([rmw, api]) — `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it See `0971-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
+- **#0985** (cmake, build) — The C++ side never writes `nros_config_generated.h` to the shared target dir, so issue 0978's mirror falls back to the leaf copy every time — and the leaf copy is a museum See `0985-*`.
 
 <!-- END GENERATED open-issue list -->
