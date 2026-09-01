@@ -518,7 +518,25 @@ is load-bearing and `rx_buffer_for!` is the right answer. The BUFFERED entries
 are trailing-allocated. Two entry shapes in one tree — a claim about "the arena
 buffer" that does not say which is not a claim about anything.
 
-**W3f — Cyclone consumes the hint, or records that it will not.** Filed as
+**W3f — Cyclone consumes the hint, or records that it will not. DELIVERED
+2026-09-02, by the second arm.** It records that it will not, in the RMW's own
+docs (`docs/reference/cyclonedds-known-limitations.md`, "`rx_buffer_hint` is
+inapplicable here") and at the parameter itself in `subscription_create`.
+
+The wave offered "either wire it or state that the hint is zenoh-only". Reading
+the backend showed the first arm has nothing to reach: there is no receive buffer
+in this backend to size. The sample arrives in a serdata sized by the sample, and
+the destination is the caller's buffer, whose capacity arrives on every `take`.
+The one candidate consumer — the `dds_ostream` that re-serialised the typed
+sample and grew by `realloc` — went with the CDR round trip in
+[issue 0969](../issues/0969-cyclone-take-cdr-round-trip.md). So the hint is
+INAPPLICABLE here rather than unimplemented, and the ordering note below is
+correspondingly wrong: W3f does not make W3c/W3d/W3e observable on a Cyclone
+image, because nothing in this backend was ever going to route on the hint. What
+IS observable there is the executor arena, which nano-ros sizes itself from the
+same bound. Measure the arena, not the backend.
+
+Original text follows. Filed as
 [issue 0958](../issues/0958-cyclonedds-ignores-rx-buffer-hint.md), which carries
 the evidence: `subscription_create` takes the options struct and names none of
 it, so the parameter is discarded at a comment. `grep
@@ -536,6 +554,13 @@ change that must land before caps are honoured anywhere.
 consumer on Cyclone sees nothing from W3c/W3d/W3e until W3f exists. If the
 motivating consumer is a Cyclone image (the an536 lane is), W3f is not the
 last wave; it is the first one that makes any of the others observable there.
+
+**Amended 2026-09-02 — the second sentence was wrong.** W3f closed by recording
+that the hint is inapplicable, so it does not make W3c/W3d/W3e observable on
+Cyclone; nothing there was ever going to route on the hint. The an536 lane's
+saving comes from the arena, which nano-ros sizes itself, so W3c/W3d/W3e reach
+that consumer without W3f at all. What W3f bought is that nobody spends a
+measurement looking for a backend effect that cannot occur.
 
 **W4 — drop the network stack from serial images.** 27,760 B.
 
