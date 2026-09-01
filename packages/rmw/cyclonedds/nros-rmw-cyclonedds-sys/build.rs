@@ -124,6 +124,10 @@ fn vendored_build() {
         "graph.cpp",
         "qos.cpp",
         "sertype_min.cpp",
+        // issue 0984 — added by #0970 to the CMake list and NOT to this one, so
+        // the cmake path linked and the cargo path did not. `check-cyclone-backend-sources`
+        // now compares the two.
+        "nros_sertype.cpp",
     ];
     // Phase 212.K.7.7 — bridge TUs that define the C++ entry points called
     // by the Rust `nros-rmw-cyclonedds` crate (descriptor builder + type

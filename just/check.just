@@ -142,6 +142,7 @@ fast-serial: \
     cpp-fmt \
     cpp-freestanding-includes \
     cpp-no-std-stdio \
+    cyclone-backend-sources \
     cyclone-domain-not-pinned \
     deploy-board-resolves \
     doc-recipe-refs \
@@ -504,6 +505,18 @@ codegen-size-bound-golden:
     @cargo test --manifest-path packages/cli/Cargo.toml -p rosidl-codegen \
         --test codegen_golden --test message_size_bound_parity --quiet
     @echo "codegen size-bound golden + C/C++/Rust parity: OK"
+
+# Issue 0984 — `libnros_rmw_cyclonedds.a` is built from TWO authored source
+# lists (the cmake target, and `let cpp_files` in the sys crate's build.rs), and
+# #0970 added `nros_sertype.cpp` to only one. The cmake path kept linking, so
+# nothing looked wrong; every RUST fixture that reached the link stage died on
+# an undefined `create_nros_sertype` referenced from inside the archive.
+#
+# `build.rs` already carried a comment warning about this exact drift. A comment
+# is not a check.
+[private]
+cyclone-backend-sources:
+    @python3 scripts/check-cyclone-backend-sources.py
 
 [private]
 cli-tests:
