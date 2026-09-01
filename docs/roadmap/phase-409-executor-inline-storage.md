@@ -1,4 +1,4 @@
-# Phase 405 — finish phase-271: every knob-scaled member leaves the `Executor` value
+# Phase 409 — finish phase-271: every knob-scaled member leaves the `Executor` value
 
 **Status (2026-08-31). Opened from issue 0961.** phase-271 externalised SIX
 sized arrays and said so deliberately: "`Executor` keeps every field except the
@@ -167,9 +167,57 @@ fallback snapshots (`nros_config_generated_nuttx.h`,
 `nros_cpp_config_generated_nuttx.h`) are hand-maintained UPPER BOUNDS at 98296
 and still cover the new value; they were deliberately left alone.
 
-### Not done here
+### Acceptance 3 -- MET on silicon (2026-09-01)
 
-Acceptance 3 -- the island boot on `mr_canhubk3/s32k344` -- needs the board, which
-this work did not have. `ZenohSession::names_and_types_filtered` (19840 bytes,
-the largest frame in the image and larger than `open_in` ever was) is untouched;
-it is not on the boot path, and issue 0961 files it separately.
+The board arrived after the section above was written. All three acceptance
+criteria now hold, and 2 has been re-measured on the target rather than inferred
+from an x86_64 ratio.
+
+**Acceptance 2, on Cortex-M.** Frames read with `arm-zephyr-eabi-objdump -d` from
+the linked island image (`build-z4rtt/zephyr/zephyr.elf`), against the numbers
+issue 0961 reported for the same two functions before the carve:
+
+| function | 0961, before | island image, after |
+| --- | ---: | ---: |
+| `Executor::open_in` | 16000 | 2244 |
+| `nros_cpp_init` | 15104 | 1396 |
+
+31104 bytes of prologue on that call chain becomes 3640. The x86_64 table above
+predicted the ratio; this is the part number the phase was actually opened for.
+
+A parser note, because it cost a wrong answer before it cost a right one: on
+Thumb-2 the wide form is `subw sp, sp, #N`, which does NOT match a pattern
+written for `sub.w`. A scan that misses it reports a frame of ZERO for a function
+that has a real 2244-byte one, and zero reads as success. Match all three of
+`sub`, `sub.w` and `subw`.
+
+**Acceptance 3.** The island entry boots on `mr_canhubk3/s32k344` with
+`CONFIG_MAIN_STACK_SIZE=16384`, half the 32768 that was the smallest workable
+value before the carve, and every value in that board `.conf` is now traceable to
+a failure the board produced. Recorded in the superproject at commit 8d586b2,
+"feat(island): the configuration that boots, measured on silicon": four MRM nodes
+and 22 topics visible from a stock ROS 2 Humble graph over zenoh-pico on serial.
+Final image RAM 99.16%, DTCM 71.52%, FLASH 9.82%.
+
+phase-271 is finished. Every knob-scaled member is charged to the backing, and
+the value no longer scales with a knob at either the defaults or the island's.
+
+### Residual, not this phase
+
+`ZenohSession::names_and_types_filtered` measures 19876 bytes on the island image
+(19840 on x86_64) and is still the largest frame there, larger than `open_in`
+ever was. Not on the boot path; issue 0961 files it separately.
+
+Two frames the carve did not touch, surfaced by the same scan and worth a look
+before anyone enables actions on a small part:
+
+| function | island image |
+| --- | ---: |
+| `Executor::register_action_server_raw` | 11764 |
+| `Executor::register_action_client_raw` | 9036 |
+
+The island sets `NROS_EXECUTOR_ACTION_CLIENTS=0` and registers no action entity,
+so neither is on its boot path today. They are per-entity registration frames
+rather than knob-scaled `Executor` members, so they are a different shape of
+problem from the one this phase solved, and they should be measured before they
+are assumed to be one.
