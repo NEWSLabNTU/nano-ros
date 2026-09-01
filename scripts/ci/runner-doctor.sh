@@ -134,6 +134,70 @@ _nros_runner_fix()     { printf '            %s\n' "$*" >&2; }
 #   4. a toolchain binary is actually THERE. A half-unpacked or interrupted
 #      download leaves the directory and the registration behind, so checking
 #      for the directory alone is the check that passes on the broken case.
+# Where cmake says the Zephyr SDK for <want> is — issue 0980.
+#
+# `find_package(Zephyr-sdk)` consults the CMake USER PACKAGE REGISTRY,
+# `~/.cmake/packages/Zephyr-sdk/<hash>`, each file holding the directory that
+# contains `Zephyr-sdkConfig.cmake` — i.e. `<sdk>/cmake`. `scripts/zephyr/
+# setup.sh` writes it, and per `scripts/build/zephyr-toolchain.sh` it is the
+# branch every SDK-toolchain board in this tree actually takes.
+#
+# Prints the SDK ROOT (the `cmake` component stripped) for an entry naming
+# `zephyr-sdk-<want>`, or nothing. An entry whose directory EXISTS wins over one
+# whose does not, so a stale registration left behind by a deleted SDK cannot
+# shadow a live one — while a stale entry alone is still printed, because the
+# caller reports that as its own diagnosis rather than as "unregistered".
+_nros_runner_zephyr_sdk_registry_path() {
+    local want="$1" reg dir best="" stale=""
+    for reg in "$HOME"/.cmake/packages/Zephyr-sdk/*; do
+        [ -f "$reg" ] || continue
+        dir="$(tr -d '\r\n' < "$reg" 2>/dev/null || true)"
+        [ -n "$dir" ] || continue
+        case "$dir" in *"zephyr-sdk-$want"*) ;; *) continue ;; esac
+        # The registry records `<sdk>/cmake`; tolerate an entry that records the
+        # SDK root itself, which older setup scripts wrote.
+        [ "$(basename "$dir")" = "cmake" ] && dir="$(dirname "$dir")"
+        if [ -d "$dir" ]; then
+            best="$dir"
+            break
+        fi
+        [ -n "$stale" ] || stale="$dir"
+    done
+    printf '%s' "${best:-$stale}"
+}
+
+# Where THIS host's Zephyr SDK <want> is, and what said so.
+#
+# Prints `<path><TAB><origin>`. Precedence mirrors `FindZephyr-sdk.cmake`:
+# the explicit env var, then the cmake user package registry, then the
+# checkout-relative location `scripts/zephyr/setup.sh` uses on a dev box.
+#
+# The last of those is a FALLBACK and nothing more. It cannot be the primary:
+# see the long note in `_nros_runner_check_sdk_zephyr` — `actions/checkout`
+# git-cleans ignored files, so a self-hosted runner's SDK is necessarily
+# outside the checkout.
+_nros_runner_zephyr_sdk_path() {
+    local want="$1" root="$2" from_registry=""
+
+    if [ -n "${ZEPHYR_SDK_INSTALL_DIR:-}" ]; then
+        # Both spellings are in the wild: the SDK itself, or its parent.
+        case "$(basename "$ZEPHYR_SDK_INSTALL_DIR")" in
+            zephyr-sdk-*) printf '%s\tZEPHYR_SDK_INSTALL_DIR' "$ZEPHYR_SDK_INSTALL_DIR" ;;
+            *)            printf '%s/zephyr-sdk-%s\tZEPHYR_SDK_INSTALL_DIR' \
+                              "${ZEPHYR_SDK_INSTALL_DIR%/}" "$want" ;;
+        esac
+        return 0
+    fi
+
+    from_registry="$(_nros_runner_zephyr_sdk_registry_path "$want")"
+    if [ -n "$from_registry" ]; then
+        printf '%s\tcmake package registry' "$from_registry"
+        return 0
+    fi
+
+    printf '%s/scripts/zephyr/sdk/zephyr-sdk-%s\tcheckout default' "$root" "$want"
+}
+
 _nros_runner_check_sdk_zephyr() {
     local root fail=0
     root="$(_nros_runner_repo_root)"
@@ -195,25 +259,51 @@ _nros_runner_check_sdk_zephyr() {
         return 1
     fi
 
-    # Where the SDK was unpacked. `scripts/zephyr/setup.sh` puts it at
-    # `<repo>/scripts/zephyr/sdk/zephyr-sdk-<ver>`; an operator who exported
-    # ZEPHYR_SDK_INSTALL_DIR may have pointed it at either the SDK itself or its
-    # parent, and both spellings are in the wild, so accept both.
-    local sdk_parent="$root/scripts/zephyr/sdk" sdk_path=""
-    if [ -n "${ZEPHYR_SDK_INSTALL_DIR:-}" ]; then
-        case "$(basename "$ZEPHYR_SDK_INSTALL_DIR")" in
-            zephyr-sdk-*) sdk_path="$ZEPHYR_SDK_INSTALL_DIR"
-                          sdk_parent="$(dirname "$ZEPHYR_SDK_INSTALL_DIR")" ;;
-            *)            sdk_parent="$ZEPHYR_SDK_INSTALL_DIR" ;;
-        esac
-    fi
-    [ -n "$sdk_path" ] || sdk_path="$sdk_parent/zephyr-sdk-$want"
+    # Where the SDK is, resolved the way the BUILD resolves it — issue 0980.
+    #
+    # This used to be a path derived from the checkout
+    # (`<root>/scripts/zephyr/sdk/zephyr-sdk-<ver>`, where `scripts/zephyr/
+    # setup.sh` puts it on a dev box) with `ZEPHYR_SDK_INSTALL_DIR` as the only
+    # override. That is not where a self-hosted runner's SDK can be. Both
+    # `scripts/zephyr/sdk/` and `/zephyr-workspace` are gitignored, and
+    # `actions/checkout` defaults to `git clean -ffdx` — `-x` removes IGNORED
+    # files — so anything provisioned inside the job checkout is deleted at the
+    # top of the next job. A runner's 9.2 GB SDK must live outside the checkout,
+    # which made the derived path wrong by construction and the doctor failed a
+    # host that builds fine. That is the exact failure mode this file's header
+    # says it exists to prevent (issue 0654).
+    #
+    # `scripts/build/zephyr-toolchain.sh` already states where the build looks:
+    #
+    #   With `ZEPHYR_SDK_INSTALL_DIR` still unset the lookup takes the same
+    #   `else()` search branch as before, and the in-tree SDK is found the way
+    #   it always was — through the CMake user package registry
+    #   (`~/.cmake/packages/Zephyr-sdk/*`, written by `scripts/zephyr/setup.sh`)
+    #
+    # So the registry is not a fallback here, it is the normal answer, and this
+    # function's own registration check three blocks down was already reading
+    # it — printing the true path in an `[OK]` line while the checks above
+    # called the SDK missing from a path nothing uses. One fact, two
+    # derivations, and the disagreement reported as a diagnosis.
+    #
+    # Precedence mirrors `FindZephyr-sdk.cmake`: the env var first, then the
+    # registry, then the checkout default for a plain dev box with neither.
+    local resolved sdk_path sdk_origin
+    resolved="$(_nros_runner_zephyr_sdk_path "$want" "$root")"
+    sdk_path="${resolved%%	*}"
+    sdk_origin="${resolved#*	}"
 
     if [ -d "$sdk_path" ]; then
-        _nros_runner_ok "Zephyr SDK $want unpacked: $sdk_path"
+        _nros_runner_ok "Zephyr SDK $want unpacked: $sdk_path (via $sdk_origin)"
     else
-        _nros_runner_missing "Zephyr SDK $want is not at $sdk_path"
+        _nros_runner_missing "Zephyr SDK $want is not at $sdk_path (via $sdk_origin)"
         _nros_runner_fix "this workspace's zephyr/SDK_VERSION demands exactly $want."
+        if [ "$sdk_origin" = "checkout default" ]; then
+            _nros_runner_fix "nothing points anywhere else: ZEPHYR_SDK_INSTALL_DIR is unset and"
+            _nros_runner_fix "no ~/.cmake/packages/Zephyr-sdk/ entry names zephyr-sdk-$want."
+            _nros_runner_fix "On a self-hosted runner the SDK must live OUTSIDE the job checkout —"
+            _nros_runner_fix "actions/checkout git-cleans ignored files, and scripts/zephyr/sdk/ is one."
+        fi
         _nros_runner_fix "scripts/ci/runner-provision.sh nros-sdk-zephyr"
         fail=1
     fi
@@ -226,23 +316,36 @@ _nros_runner_check_sdk_zephyr() {
         _nros_runner_ok "arm-zephyr-eabi toolchain present (SDK is unpacked, not just downloaded)"
     else
         _nros_runner_missing "no arm-zephyr-eabi-gcc under $sdk_path"
-        _nros_runner_fix "the SDK directory exists but its toolchains are not unpacked —"
-        _nros_runner_fix "an interrupted install leaves exactly this state."
+        # Only claim the interrupted-install story when the directory is
+        # actually there. It was printed unconditionally, so the commonest case
+        # — no SDK at that path at all — was reported as a half-unpacked one,
+        # which sends the reader to the wrong remedy.
+        if [ -d "$sdk_path" ]; then
+            _nros_runner_fix "the SDK directory exists but its toolchains are not unpacked —"
+            _nros_runner_fix "an interrupted install leaves exactly this state."
+        else
+            _nros_runner_fix "there is no SDK at that path — see the line above."
+        fi
         _nros_runner_fix "scripts/ci/runner-provision.sh nros-sdk-zephyr"
         fail=1
     fi
 
     # Registration is what cmake actually consults. Unregistered = a configure
     # failure that names neither the version nor the remedy.
-    local reg have=""
-    for reg in "$HOME"/.cmake/packages/Zephyr-sdk/*; do
-        [ -f "$reg" ] || continue
-        case "$(cat "$reg" 2>/dev/null || true)" in
-            *"zephyr-sdk-$want"*) have="$(cat "$reg" 2>/dev/null || true)" ;;
-        esac
-    done
-    if [ -n "$have" ]; then
-        _nros_runner_ok "Zephyr SDK $want registered with cmake ($have)"
+    #
+    # The registered path must EXIST, not merely be named. A registry entry
+    # outlives the SDK it points at (the directory is deleted, the entry is
+    # not), and grepping the file's text alone reports `[OK]` for an SDK that
+    # is gone — the same "named is not present" mistake one layer up.
+    local have=""
+    have="$(_nros_runner_zephyr_sdk_registry_path "$want")"
+    if [ -n "$have" ] && [ -d "$have" ]; then
+        _nros_runner_ok "Zephyr SDK $want registered with cmake ($have/cmake)"
+    elif [ -n "$have" ]; then
+        _nros_runner_missing "cmake's registry names $have for SDK $want, but nothing is there"
+        _nros_runner_fix "a stale ~/.cmake/packages/Zephyr-sdk/ entry outlived its SDK."
+        _nros_runner_fix "Re-register from the SDK that IS installed:  (cd <sdk> && ./setup.sh -h -c)"
+        fail=1
     else
         _nros_runner_missing "Zephyr SDK $want is not registered with cmake"
         _nros_runner_fix "find_package(Zephyr-sdk) reads ~/.cmake/packages/Zephyr-sdk/;"
@@ -561,6 +664,152 @@ nros_runner_doctor() {
     return 0
 }
 
+# --- self-test ---------------------------------------------------------------
+#
+# Issue 0980. The SDK resolver is the one part of this file that can be checked
+# without a provisioned host, and it is the part that was wrong: it answered
+# "where is the SDK?" from the checkout while the build answers it from the
+# cmake user package registry, so a runner whose SDK lives outside the checkout
+# — which is every self-hosted runner, since `actions/checkout` git-cleans
+# ignored files — was told it was broken while building fine.
+#
+# Temp dirs only: no cmake, no cargo, no SDK, no network. `just check
+# runner-doctor-sdk-resolution` runs it on the fast line.
+_nros_runner_self_test() {
+    local tmp fails=0 saved_home="${HOME}" saved_env="${ZEPHYR_SDK_INSTALL_DIR:-}"
+    tmp="$(mktemp -d)"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$tmp'; HOME='$saved_home'" RETURN
+
+    _st_ok()  { printf '  ok   %s\n' "$1"; }
+    _st_bad() { printf '  FAIL %s: %s\n' "$1" "$2" >&2; fails=$((fails + 1)); }
+
+    # <case> -> a HOME with a registry, and a checkout root, both empty.
+    _st_stage() {
+        local d="$tmp/$1"
+        mkdir -p "$d/home/.cmake/packages/Zephyr-sdk" "$d/root/scripts/zephyr/sdk"
+        printf '%s' "$d"
+    }
+    # _st_register <case-dir> <entry-name> <sdk-dir> <create|absent>
+    _st_register() {
+        [ "$4" = "create" ] && mkdir -p "$3/cmake"
+        printf '%s\n' "$3/cmake" > "$1/home/.cmake/packages/Zephyr-sdk/$2"
+    }
+    # _st_resolve <case-dir> -> "<path>\t<origin>"
+    _st_resolve() { HOME="$1/home" _nros_runner_zephyr_sdk_path 0.16.8 "$1/root"; }
+    _st_expect() { # <label> <got> <want>
+        [ "$2" = "$3" ] && _st_ok "$1" || _st_bad "$1" "got '$2'"
+    }
+
+    unset ZEPHYR_SDK_INSTALL_DIR
+
+    # Issue 0980 — the regression. The SDK is outside the checkout and only the
+    # registry knows where; the checkout path must NOT win merely by being the
+    # default. This is the case that failed every merge-group L3 job.
+    local d got
+    d="$(_st_stage outside)"
+    _st_register "$d" aaa "$tmp/elsewhere/zephyr-sdk-0.16.8" create
+    got="$(_st_resolve "$d")"
+    _st_expect "an SDK outside the checkout is found via the cmake registry" \
+        "$got" "$tmp/elsewhere/zephyr-sdk-0.16.8	cmake package registry"
+
+    # A live entry beats a stale one whatever order the glob yields them in —
+    # `aaa` sorts first and points at nothing.
+    d="$(_st_stage stale_and_live)"
+    _st_register "$d" aaa "$tmp/gone/zephyr-sdk-0.16.8" absent
+    _st_register "$d" bbb "$tmp/live/zephyr-sdk-0.16.8" create
+    got="$(_st_resolve "$d")"
+    _st_expect "a live registry entry beats a stale one" \
+        "$got" "$tmp/live/zephyr-sdk-0.16.8	cmake package registry"
+
+    # A stale entry ALONE is still returned, so the caller can report "cmake
+    # names this path and nothing is there" instead of the misleading
+    # "not registered with cmake".
+    d="$(_st_stage stale_only)"
+    _st_register "$d" aaa "$tmp/gone2/zephyr-sdk-0.16.8" absent
+    got="$(_st_resolve "$d")"
+    _st_expect "a stale-only entry is reported, not silently discarded" \
+        "$got" "$tmp/gone2/zephyr-sdk-0.16.8	cmake package registry"
+
+    # An entry for a DIFFERENT version must not be mistaken for this one —
+    # `zephyr/SDK_VERSION` demands an exact version.
+    d="$(_st_stage wrong_version)"
+    _st_register "$d" aaa "$tmp/other/zephyr-sdk-0.17.4" create
+    got="$(_st_resolve "$d")"
+    _st_expect "an entry for another SDK version is ignored" \
+        "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8	checkout default"
+
+    # Neither env nor registry: the dev-box default, preserved.
+    d="$(_st_stage bare)"
+    got="$(_st_resolve "$d")"
+    _st_expect "with no env and no registry the checkout default is used" \
+        "$got" "$d/root/scripts/zephyr/sdk/zephyr-sdk-0.16.8	checkout default"
+
+    # The explicit override wins over the registry, in both spellings.
+    d="$(_st_stage env_sdk)"
+    _st_register "$d" aaa "$tmp/live/zephyr-sdk-0.16.8" create
+    got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/chosen/zephyr-sdk-0.16.8" _st_resolve "$d")"
+    _st_expect "ZEPHYR_SDK_INSTALL_DIR naming the SDK beats the registry" \
+        "$got" "$tmp/chosen/zephyr-sdk-0.16.8	ZEPHYR_SDK_INSTALL_DIR"
+
+    d="$(_st_stage env_parent)"
+    _st_register "$d" aaa "$tmp/live/zephyr-sdk-0.16.8" create
+    got="$(ZEPHYR_SDK_INSTALL_DIR="$tmp/parent" _st_resolve "$d")"
+    _st_expect "ZEPHYR_SDK_INSTALL_DIR naming the parent appends the version" \
+        "$got" "$tmp/parent/zephyr-sdk-0.16.8	ZEPHYR_SDK_INSTALL_DIR"
+
+
+    # The whole zephyr check, on a host shaped like the runner that failed:
+    # workspace and SDK outside the checkout, registry pointing at the SDK,
+    # ZEPHYR_SDK_INSTALL_DIR unset. Every sub-check must agree. Before the fix
+    # this printed two `[MISSING]` lines and an `[OK]` naming the very path it
+    # had just called missing — one fact, two derivations, the disagreement
+    # reported as a diagnosis.
+    local self e2e out
+    self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+    e2e="$tmp/e2e"
+    mkdir -p "$e2e"/{home/.cmake/packages/Zephyr-sdk,root,ws/zephyr,bin} \
+             "$e2e"/sdk/zephyr-sdk-0.16.8/{cmake,arm-zephyr-eabi/bin}
+    printf '0.16.8\n' > "$e2e/ws/zephyr/SDK_VERSION"
+    printf '#!/bin/sh\necho "West version: v1.5.0"\n' > "$e2e/bin/west"
+    printf '#!/bin/sh\nexit 0\n' > "$e2e/sdk/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+    chmod +x "$e2e/bin/west" "$e2e/sdk/zephyr-sdk-0.16.8/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc"
+    printf '%s\n' "$e2e/sdk/zephyr-sdk-0.16.8/cmake" > "$e2e/home/.cmake/packages/Zephyr-sdk/aaa"
+
+    _st_doctor() { # <home> -> runs the label check in a clean environment
+        PATH="$e2e/bin:$PATH" HOME="$1" NROS_RUNNER_REPO_ROOT="$e2e/root" \
+        NROS_ZEPHYR_WORKSPACE="$e2e/ws" NROS_RUNNER_NO_ACTIVATE=1 \
+        ZEPHYR_SDK_INSTALL_DIR= bash "$self" nros-sdk-zephyr 2>&1
+    }
+
+    if out="$(_st_doctor "$e2e/home")" && ! printf '%s' "$out" | grep -q MISSING; then
+        _st_ok "a runner with its SDK outside the checkout verifies clean"
+    else
+        _st_bad "a runner with its SDK outside the checkout verifies clean" \
+            "$(printf '%s' "$out" | grep -E 'MISSING|FAIL' | head -2 | tr '\n' ';')"
+    fi
+
+    # ...and it can still FAIL. With no registry entry and no SDK anywhere, the
+    # check must go red — a doctor that cannot fail is the vacuous gate this
+    # file's header is about.
+    mkdir -p "$e2e/empty-home/.cmake/packages/Zephyr-sdk"
+    if _st_doctor "$e2e/empty-home" >/dev/null 2>&1; then
+        _st_bad "a host with no SDK at all still fails" "exited 0"
+    else
+        _st_ok "a host with no SDK at all still fails"
+    fi
+
+    [ -n "$saved_env" ] && export ZEPHYR_SDK_INSTALL_DIR="$saved_env"
+    HOME="$saved_home"
+
+    if [ "$fails" -ne 0 ]; then
+        echo "runner-doctor self-test: FAIL ($fails)" >&2
+        return 1
+    fi
+    echo "runner-doctor self-test OK"
+    return 0
+}
+
 # --- standalone entry point --------------------------------------------------
 #
 # Guarded so `. scripts/ci/runner-doctor.sh` defines the functions and runs
@@ -579,9 +828,15 @@ _nros_runner_doctor_main() {
                 # runner scripts take the same one.
                 ;;
             --quiet) NROS_RUNNER_QUIET=1 ;;
+            --self-test)
+                # Probes nothing on this host; see `_nros_runner_self_test`.
+                _nros_runner_self_test
+                return $?
+                ;;
             -h|--help)
                 cat <<EOF
 usage: scripts/ci/runner-doctor.sh <labels> [--check] [--quiet]
+       scripts/ci/runner-doctor.sh --self-test
 
   <labels>   comma- or space-separated, e.g. nros-qemu,nros-sdk-zephyr,nros-big
              GitHub's own labels (self-hosted, linux, X64) are accepted and
@@ -589,6 +844,9 @@ usage: scripts/ci/runner-doctor.sh <labels> [--check] [--quiet]
 
   --check    accepted and inert — this script never changes anything.
   --quiet    print only failures.
+
+  --self-test  check this file's own SDK-location resolver against temp dirs.
+               Probes nothing on this host; needs no SDK. Issue 0980.
 
 Known labels: $NROS_RUNNER_LABELS
 

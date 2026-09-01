@@ -228,6 +228,7 @@ fast-serial: \
     rmw-vtable-order \
     roadmap-status \
     ros-env-spelling \
+    runner-doctor-sdk-resolution \
     rust-stdio-on-zephyr \
     rust-targets-covered \
     scope-namespace \
@@ -990,6 +991,21 @@ platform-abi-mirror:
 [private]
 mirror-header-precedence:
     @bash scripts/build/mirror-generated-header.sh --self-test
+
+
+# Issue 0980 — `runner-doctor` answered "where is the Zephyr SDK?" from the job
+# CHECKOUT while the build answers it from the CMake user package registry.
+# `scripts/zephyr/sdk/` is gitignored and `actions/checkout` runs
+# `git clean -ffdx`, so a self-hosted runner's SDK is necessarily somewhere
+# else — which made the derived path wrong by construction and failed every
+# merge-group `L3` job on a host that builds fine.
+#
+# Same shape as the gate above, for the same reason: the self-test lives in the
+# script so the rule and its cases cannot drift apart, and it stages temp dirs
+# only (no SDK, no cmake, no network), so it belongs on the fast line.
+[private]
+runner-doctor-sdk-resolution:
+    @bash scripts/ci/runner-doctor.sh --self-test
 
 
 # RFC-0054 (phase-299 W3) — the committed bindgen output must match a fresh
