@@ -121,4 +121,9 @@ def self_test() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(self_test() if "--self-test" in sys.argv else main())
+    # The selftest runs on the NORMAL path, not only behind the flag: a negative
+    # control nobody runs decays into a comment, which is what
+    # `check-gate-selftests` enforces. `--self-test` stays as a way to run ONLY
+    # the control.
+    rc = self_test()
+    sys.exit(rc if rc or "--self-test" in sys.argv else main())

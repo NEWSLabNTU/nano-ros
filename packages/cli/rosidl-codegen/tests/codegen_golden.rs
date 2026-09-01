@@ -208,3 +208,118 @@ fn corpus_emits_every_language_and_entity() {
         assert!(!v.trim().is_empty(), "{k} emitted an empty artifact");
     }
 }
+
+/// The COMMITTED goldens must agree across languages about one type's bound.
+///
+/// This is the check whose absence let issue 0896's own regression ship. The C
+/// and C++ packs share one derivation (`generator::common::derive_message_bound`)
+/// precisely so a bound cannot differ by language — the sizes-header mirror
+/// class, 0088 → 0114 → 0122 → 0123 → 0245 → 0268, wearing a language axis. But
+/// nothing compared the two GOLDEN FILES:
+///
+/// * `message_size_bound_parity.rs` cross-checks C, C++ and Rust — by
+///   GENERATING headers. It passed, because the generator was right.
+/// * `generated_output_matches_the_committed_golden` compares generated against
+///   committed, per file. It failed, correctly — but only in `cli-tests`, which
+///   is in `check-build` and not on the required set, so the red landed on main
+///   and sat there.
+///
+/// So the C++ goldens were captured before the emitter learned to tell RX from
+/// TX and never re-captured: three of them stated `RX == TX` while the C golden
+/// beside them said `RX == TX + 3`. `Bounded.msg` exists to make exactly that
+/// visible — "the XCDR1/XCDR2 numbers must DIFFER here, so a regression that
+/// emits one value for both is visible in the golden diff" — and the golden
+/// diff did show it. Nothing was comparing the pair.
+///
+/// Reading the committed files rather than the emitter is the point: a stale
+/// capture is invisible to any check that regenerates first.
+#[test]
+fn the_committed_c_and_cpp_goldens_state_the_same_bound() {
+    /// `..._TX_MAX_SERIALIZED_SIZE 133` in a C header → ("TX", 133).
+    fn c_bounds(src: &str) -> Vec<(String, String)> {
+        src.lines()
+            .filter_map(|l| {
+                let (head, val) = l.rsplit_once(' ')?;
+                let which = if head.ends_with("_TX_MAX_SERIALIZED_SIZE") {
+                    "TX"
+                } else if head.ends_with("_RX_MAX_SERIALIZED_SIZE") {
+                    "RX"
+                } else {
+                    return None;
+                };
+                if !head.starts_with("#define") {
+                    return None;
+                }
+                val.trim().parse::<usize>().ok()?;
+                Some((which.to_string(), val.trim().to_string()))
+            })
+            .collect()
+    }
+
+    /// `static constexpr size_t RX_MAX_SERIALIZED_SIZE = 136;` → ("RX", 136).
+    fn cpp_bounds(src: &str) -> Vec<(String, String)> {
+        src.lines()
+            .filter_map(|l| {
+                let l = l.trim();
+                let rest = l.strip_prefix("static constexpr size_t ")?;
+                let (name, val) = rest.split_once(" = ")?;
+                let which = match name {
+                    "TX_MAX_SERIALIZED_SIZE" => "TX",
+                    "RX_MAX_SERIALIZED_SIZE" => "RX",
+                    _ => return None,
+                };
+                let val = val.trim_end_matches(';').trim();
+                val.parse::<usize>().ok()?;
+                Some((which.to_string(), val.to_string()))
+            })
+            .collect()
+    }
+
+    let mut compared = 0;
+    let mut problems = Vec::new();
+    for h in walk(&golden_dir()).expect("walk goldens") {
+        if h.extension().and_then(|e| e.to_str()) != Some("h") {
+            continue;
+        }
+        let hpp = h.with_extension("hpp");
+        if !hpp.exists() {
+            continue;
+        }
+        let (c_src, cpp_src) = (
+            std::fs::read_to_string(&h).expect("read C golden"),
+            std::fs::read_to_string(&hpp).expect("read C++ golden"),
+        );
+        let cpp = cpp_bounds(&cpp_src);
+        for (which, c_val) in c_bounds(&c_src) {
+            let Some((_, cpp_val)) = cpp.iter().find(|(w, _)| *w == which) else {
+                problems.push(format!(
+                    "{}: C states {which}_MAX_SERIALIZED_SIZE {c_val}, the C++ golden states none",
+                    h.file_name().unwrap().to_string_lossy()
+                ));
+                continue;
+            };
+            compared += 1;
+            if *cpp_val != c_val {
+                problems.push(format!(
+                    "{}: {which}_MAX_SERIALIZED_SIZE — C golden {c_val}, C++ golden {cpp_val}",
+                    h.file_name().unwrap().to_string_lossy()
+                ));
+            }
+        }
+    }
+
+    assert!(
+        compared > 0,
+        "compared no bounds at all — the corpus lost its bounded types, or the \
+         patterns stopped matching. A cross-check that silently examines nothing \
+         is the vacuous-test shape this repo gates against."
+    );
+    assert!(
+        problems.is_empty(),
+        "the committed goldens disagree across languages about a bound derived \
+         in ONE place:\n  {}\n\nRegenerate with NROS_UPDATE_GOLDEN=1 and read the \
+         diff: if the two languages really do differ, the shared derivation is \
+         broken, not the golden.",
+        problems.join("\n  ")
+    );
+}
