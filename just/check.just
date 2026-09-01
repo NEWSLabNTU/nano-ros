@@ -181,6 +181,7 @@ fast-serial: \
     leaf-lockfiles \
     manifests-parse \
     message-bound-knobs \
+    mirror-header-precedence \
     msg-dep-is-path \
     named-lane-fails \
     nested-workspace-excludes \
@@ -967,6 +968,27 @@ dep-chain:
 [private]
 platform-abi-mirror:
     @bash scripts/check-platform-abi-mirror.sh
+
+# Issue 0978 — the generated config header a leaf compiles against must be the
+# CURRENT one, not merely a PRESENT one.
+#
+# `mirror-generated-header.sh` chooses between the leaf's own corrosion copy and
+# the leaf-independent copy in the shared cargo target dir. Issue 0805 made it
+# prefer the leaf's and fall back only when that was ABSENT, on the grounds that
+# the two are "the same bytes" — true only when one build-script run wrote both.
+# Once leaves share a cargo target dir the script runs for ONE of them, so every
+# other leaf keeps its copy from whenever it last ran: present, and arbitrarily
+# old. Measured 19 of 20 native leaves six days stale, caught by the 0369 size
+# anchor as `undefined reference to nros_config_variant_sz_<hash>` — a link
+# error that names a hash and no file.
+#
+# The self-test is in the script so the rule and its cases live together; it
+# stages temp dirs only (no cargo, no cmake, milliseconds), so it belongs on the
+# fast line.
+[private]
+mirror-header-precedence:
+    @bash scripts/build/mirror-generated-header.sh --self-test
+
 
 # RFC-0054 (phase-299 W3) — the committed bindgen output must match a fresh
 # regeneration from the C-header SSoT packages. Loud skip when bindgen-cli
