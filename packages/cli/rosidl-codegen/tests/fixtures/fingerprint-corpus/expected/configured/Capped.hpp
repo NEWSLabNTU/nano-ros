@@ -63,7 +63,7 @@ struct Capped {
     /// so a transmit buffer wants TX; a RECEIVE buffer must hold whichever
     /// encoding a peer negotiated, so it wants RX.
     static constexpr size_t TX_MAX_SERIALIZED_SIZE = 157;
-    static constexpr size_t RX_MAX_SERIALIZED_SIZE = 157;
+    static constexpr size_t RX_MAX_SERIALIZED_SIZE = 160;
 
     /// The two constants above, reachable UNIFORMLY across bounded and unbounded
     /// types — see the unbounded arm, where these are the poison. A generic
@@ -71,7 +71,7 @@ struct Capped {
     /// one spelling works for every message type and a type with no bound
     /// reports so at the point the number is actually needed.
     template <class = void> struct tx_size_bound { static constexpr size_t value = 157; };
-    template <class = void> struct rx_size_bound { static constexpr size_t value = 157; };
+    template <class = void> struct rx_size_bound { static constexpr size_t value = 160; };
 
     /// Publish via FFI (called by Publisher<M>::publish)
     static int ffi_publish(void* handle, const void* msg) {

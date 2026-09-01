@@ -128,8 +128,20 @@ fn the_cpp_header_states_the_same_bound_as_the_c_header_and_the_rust_const() {
             let (x1, x2) = rust_consts(name, &msg, &caps, lookup);
             // TX writes XCDR1; RX must hold whichever encoding arrives.
             let want_tx = x1;
+            // RX is `transport_framed(max(xcdr1, xcdr2))`, not the bare max.
+            // The framing round-up is `BoundState::classify`'s, and BOTH
+            // emitters call it — so a test that recomputed the max by hand was
+            // asserting a number no emitter produces. It went red on main when
+            // the allowance landed, and stayed red because a `just` lane stops
+            // at the first failure and `check::build` (which runs these) sits
+            // behind `check::fast`.
+            //
+            // Calling the real function rather than writing `+ 3` or another
+            // `next_multiple_of(4)`: a second copy of the rule is what this
+            // issue is about along the language axis, and it would be the same
+            // defect along the test axis.
             let want_rx = match (x1, x2) {
-                (Some(a), Some(b)) => Some(a.max(b)),
+                (Some(a), Some(b)) => Some(rosidl_codegen::bounds::transport_framed(a.max(b))),
                 _ => None,
             };
 
