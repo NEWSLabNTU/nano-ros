@@ -126,10 +126,23 @@ fn the_cpp_header_states_the_same_bound_as_the_c_header_and_the_rust_const() {
             let lookup: &MsgLookup<'_> = &corpus_lookup;
 
             let (x1, x2) = rust_consts(name, &msg, &caps, lookup);
-            // TX writes XCDR1; RX must hold whichever encoding arrives.
+            // TX writes XCDR1, exactly: we write what we serialise.
             let want_tx = x1;
+            // RX must hold whichever encoding arrives, AND the framing the
+            // transport adds on top of it — `transport_framed`, which is the
+            // sender's RTPS 4-byte submessage alignment (issues 0969/0970), not
+            // padding anyone chose.
+            //
+            // Called, not restated. This expectation was written as a bare
+            // `a.max(b)` one commit AFTER `ec63d4ed9` introduced the framing, so
+            // it asserted the pre-framing number and went red the moment the C++
+            // pack started emitting a bound at all. An open-coded `+ 4` here
+            // would be a THIRD implementation of the same rounding — there are
+            // already two, `rosidl_codegen::bounds::transport_framed` and
+            // `nros_node::rmw_type_registry::transport_framed`, which cite each
+            // other precisely so they cannot drift.
             let want_rx = match (x1, x2) {
-                (Some(a), Some(b)) => Some(a.max(b)),
+                (Some(a), Some(b)) => Some(rosidl_codegen::bounds::transport_framed(a.max(b))),
                 _ => None,
             };
 
