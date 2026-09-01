@@ -1473,9 +1473,28 @@ pub fn is_local_tcp_listener_available() -> bool {
 /// }
 /// ```
 pub fn require_zenohd() -> bool {
+    match zenohd_unavailable_reason() {
+        Some(why) => {
+            eprintln!("Skipping test: {why}");
+            false
+        }
+        None => true,
+    }
+}
+
+/// Why the zenoh router is unusable here, or `None` if it is usable.
+///
+/// The reason-returning half of [`require_zenohd`], added for issue 0982: a
+/// caller that turns "unavailable" into a SKIP must be able to put the cause in
+/// the skip message. `require_zenohd`'s `eprintln!` goes to stderr, which
+/// nextest suppresses under `--failure-output never` — so the CI log recorded
+/// that a precondition was unmet and never which one.
+///
+/// `require_zenohd` keeps its `bool` signature: it has ~190 call sites, and the
+/// ones that merely gate an early return do not need the text.
+pub fn zenohd_unavailable_reason() -> Option<String> {
     if !is_local_tcp_listener_available() {
-        eprintln!("Skipping test: local TCP listeners unavailable in this environment");
-        return false;
+        return Some("local TCP listeners unavailable in this environment".to_string());
     }
 
     if !is_zenohd_available() {
@@ -1483,17 +1502,18 @@ pub fn require_zenohd() -> bool {
         // package but an unsourced one, and `rmw_zenohd` is invisible to
         // `command -v` even when present, so "is it installed?" is the question
         // a reader cannot answer from the shell.
-        eprintln!(
-            "Skipping test: no ROS zenoh router. Source your ROS setup \
+        // Names SOURCING first (issue 0653) — see above.
+        return Some(
+            "no ROS zenoh router. Source your ROS setup \
              (`source /opt/ros/<distro>/setup.bash`) — that exports \
              AMENT_PREFIX_PATH, which is how the router is found; note \
              `rmw_zenohd` is NOT on PATH even when installed. Otherwise install \
              `ros-<distro>-rmw-zenoh-cpp`, or set NROS_RMW_ZENOHD to its path. \
              No ROS on this host? `--rmw cyclonedds` needs no router (phase-362)"
+                .to_string(),
         );
-        return false;
     }
-    true
+    None
 }
 
 /// Check if cmake is available in PATH

@@ -14,7 +14,7 @@ use nros_tests::{
     TestError, TestResult, count_pattern,
     fixtures::{
         QemuProcess, ZenohRouter, freertos, is_qemu_available, is_qemu_riscv64_available, nuttx,
-        require_zenohd, threadx_linux, threadx_riscv64,
+        threadx_linux, threadx_riscv64, zenohd_unavailable_reason,
     },
     platform,
     process::{ManagedProcess, kill_process_group},
@@ -172,90 +172,82 @@ impl Platform {
         }
     }
 
-    fn require_e2e(self) -> bool {
+    /// `Ok(())` when this platform can run an e2e test here, else the reason.
+    ///
+    /// Issue 0982 — this returned `bool` and printed the reason with
+    /// `eprintln!`. nextest runs these lanes with `--failure-output never`, so
+    /// stderr is suppressed and the CI log said only `require_e2e check failed
+    /// for freertos`: the gate, never the missing tool. Five nightly cells
+    /// reported that for nine tests each. The messages were always here; they
+    /// just could not reach the skip.
+    fn require_e2e(self) -> Result<(), String> {
         match self {
             Platform::Freertos => {
                 if !freertos::is_freertos_available() {
-                    eprintln!("Skipping test: FREERTOS_DIR not set or invalid");
-                    return false;
+                    return Err("FREERTOS_DIR not set or invalid".to_string());
                 }
                 if !freertos::is_lwip_available() {
-                    eprintln!("Skipping test: LWIP_DIR not set or invalid");
-                    return false;
+                    return Err("LWIP_DIR not set or invalid".to_string());
                 }
                 if !freertos::is_arm_gcc_available() {
-                    eprintln!("Skipping test: arm-none-eabi-gcc not found");
-                    return false;
+                    return Err("arm-none-eabi-gcc not found".to_string());
                 }
                 if !is_qemu_available() {
-                    eprintln!("Skipping test: qemu-system-arm not found");
-                    return false;
+                    return Err("qemu-system-arm not found".to_string());
                 }
-                require_zenohd()
+                zenohd_unavailable_reason().map_or(Ok(()), Err)
             }
             Platform::Nuttx => {
                 if !nuttx::is_nuttx_available() {
-                    eprintln!("Skipping test: NUTTX_DIR not set or invalid");
-                    return false;
+                    return Err("NUTTX_DIR not set or invalid".to_string());
                 }
                 if !nuttx::is_nuttx_configured() {
-                    eprintln!("Skipping test: NuttX not configured");
-                    return false;
+                    return Err("NuttX not configured".to_string());
                 }
                 if !nuttx::is_arm_gcc_available() {
-                    eprintln!("Skipping test: arm-none-eabi-gcc not found");
-                    return false;
+                    return Err("arm-none-eabi-gcc not found".to_string());
                 }
                 if !nuttx::is_nuttx_toolchain_available() {
-                    eprintln!(
-                        "Skipping test: nightly toolchain missing rust-src for armv7a-nuttx-eabihf"
+                    return Err(
+                        "nightly toolchain missing rust-src for armv7a-nuttx-eabihf".to_string()
                     );
-                    return false;
                 }
                 // Issue 0743 — ask for the ARM kernel specifically. The old
                 // `.is_none()` check passed on a riscv image, because the two
                 // configurations share the one filename.
                 if let Err(why) = nuttx::nuttx_kernel_path_for(nuttx::NuttxArch::Arm) {
-                    eprintln!("Skipping test: {why}");
-                    return false;
+                    return Err(why.to_string());
                 }
                 if !is_qemu_available() {
-                    eprintln!("Skipping test: qemu-system-arm not found");
-                    return false;
+                    return Err("qemu-system-arm not found".to_string());
                 }
-                require_zenohd()
+                zenohd_unavailable_reason().map_or(Ok(()), Err)
             }
             Platform::ThreadxLinux => {
                 if !threadx_linux::is_threadx_available() {
-                    eprintln!("Skipping test: THREADX_DIR not set or invalid");
-                    return false;
+                    return Err("THREADX_DIR not set or invalid".to_string());
                 }
                 if !threadx_linux::is_nsos_netx_available() {
-                    eprintln!(
-                        "Skipping test: nsos-netx not found at packages/drivers/net/nsos-netx/"
+                    return Err(
+                        "nsos-netx not found at packages/drivers/net/nsos-netx/".to_string()
                     );
-                    return false;
                 }
-                require_zenohd()
+                zenohd_unavailable_reason().map_or(Ok(()), Err)
             }
             Platform::ThreadxRiscv64 => {
                 if !threadx_riscv64::is_threadx_available() {
-                    eprintln!("Skipping test: THREADX_DIR not set or invalid");
-                    return false;
+                    return Err("THREADX_DIR not set or invalid".to_string());
                 }
                 if !threadx_riscv64::is_netx_available() {
-                    eprintln!("Skipping test: NETX_DIR not set or invalid");
-                    return false;
+                    return Err("NETX_DIR not set or invalid".to_string());
                 }
                 if !threadx_riscv64::is_riscv_gcc_available() {
-                    eprintln!("Skipping test: riscv64-unknown-elf-gcc not found");
-                    return false;
+                    return Err("riscv64-unknown-elf-gcc not found".to_string());
                 }
                 if !is_qemu_riscv64_available() {
-                    eprintln!("Skipping test: qemu-system-riscv64 not found");
-                    return false;
+                    return Err("qemu-system-riscv64 not found".to_string());
                 }
-                require_zenohd()
+                zenohd_unavailable_reason().map_or(Ok(()), Err)
             }
         }
     }
@@ -512,8 +504,14 @@ fn maybe_skip(platform: Platform, lang: Lang, variant: Variant) -> bool {
         eprintln!("[SKIP] {} {} {:?}: {}", platform, lang, variant, reason);
         return true;
     }
-    if !platform.require_e2e() {
-        nros_tests::skip!("require_e2e check failed for {}", platform);
+    if let Err(why) = platform.require_e2e() {
+        // The site's OWN text, unchanged — those messages already name the
+        // remedy, and rewording here would put the remedy in two places.
+        // `<platform>: <reason>` rather than `<platform> needs <reason>`: the
+        // reasons are a mix of noun phrases ("arm-none-eabi-gcc not found") and
+        // full sentences ("the NuttX kernel at … is a RiscV image, but this
+        // lane needs Arm"), and only the colon reads correctly for both.
+        nros_tests::skip!("{}: {}", platform, why);
     }
     false
 }
