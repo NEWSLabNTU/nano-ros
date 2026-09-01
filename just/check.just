@@ -148,6 +148,7 @@ fast-serial: \
     emitter-just-spelling \
     entity-inventory-knobs \
     entity-slot-costs \
+    entry-locator-ssot \
     example-fmt \
     example-leaf-build-dirs \
     example-leaf-target-dirs \
@@ -264,7 +265,6 @@ fast-serial: \
     zenohd-router-skips \
     zenohd-spawn-sites \
     zephyr-knob-agreement
-    entry-locator-ssot \
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
     # depend on a root recipe, so it is called rather than depended on. It must
@@ -291,11 +291,11 @@ fast-serial: \
 build: \
     borrowed-e2e \
     c \
-    cli-fresh required-features-reachable host-triple-literals literal-domain-id launch-resolve-builds test-targets workspace-all workspace-features nros-log-riscv32 source-gates staticlib-symbols borrowed-e2e embedded-feature-unification c cpp rmw-cyclonedds rmw-xrce rmw-uorb cli-tests node-std-tests required-features-tests feature-set-ssot no-tracked-file-find pool-inventory config-surface mem-report claim-protocol flake-quarantine \
     ci-doc-workflow-refs \
     claim-protocol \
     cli-fresh \
     cli-tests \
+    config-surface \
     cpp \
     embedded-feature-unification \
     feature-set-ssot \
