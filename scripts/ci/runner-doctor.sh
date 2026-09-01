@@ -638,12 +638,36 @@ nros_runner_labels_split() {
 # machine wants the whole list of what is missing, not the first item; the
 # one-at-a-time shape is what makes provisioning a machine an afternoon of
 # round trips. Same reasoning as `just doctor`'s `set +e`.
+# Run this file's own selftest on the NORMAL path, not only behind
+# `--self-test` — `check-gate-selftests`, and the reason it gives: a negative
+# control nobody runs decays into a comment.
+#
+# Output is DISCARDED on success. An operator ran this to be told about the
+# HOST, and nine `ok` lines about temp directories would bury that. On failure
+# it is printed in full and the run STOPS: a broken SDK resolver means every
+# verdict below it is about a path nobody uses, which is issue 0980 itself.
+#
+# Costs ~50 ms (temp dirs and two re-invocations of this script; the child skips
+# this guard via `_NROS_RUNNER_SELFTEST_CHILD`, or it would recurse forever).
+_nros_runner_selftest_guard() {
+    [ "${_NROS_RUNNER_SELFTEST_CHILD:-0}" = "1" ] && return 0
+    local out
+    if ! out="$(_nros_runner_self_test 2>&1)"; then
+        printf '%s\n' "$out" >&2
+        echo "runner-doctor: its OWN selftest failed, so the SDK resolver is broken —" >&2
+        echo "  nothing this run would report about the host can be trusted." >&2
+        return 1
+    fi
+    return 0
+}
+
 nros_runner_doctor() {
     local labels="$1" label fail=0 n=0
     if [ -z "$labels" ]; then
         echo "runner-doctor: no labels given" >&2
         return 2
     fi
+    _nros_runner_selftest_guard || return 1
     _nros_runner_activate
     while read -r label; do
         [ -n "$label" ] || continue
@@ -765,7 +789,7 @@ _nros_runner_self_test() {
     # this printed two `[MISSING]` lines and an `[OK]` naming the very path it
     # had just called missing — one fact, two derivations, the disagreement
     # reported as a diagnosis.
-    local self e2e out
+    local self e2e out st
     self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
     e2e="$tmp/e2e"
     mkdir -p "$e2e"/{home/.cmake/packages/Zephyr-sdk,root,ws/zephyr,bin} \
@@ -777,12 +801,23 @@ _nros_runner_self_test() {
     printf '%s\n' "$e2e/sdk/zephyr-sdk-0.16.8/cmake" > "$e2e/home/.cmake/packages/Zephyr-sdk/aaa"
 
     _st_doctor() { # <home> -> runs the label check in a clean environment
+        # `_NROS_RUNNER_SELFTEST_CHILD` stops the child re-entering the
+        # normal-path selftest that invoked it — this case IS that selftest.
         PATH="$e2e/bin:$PATH" HOME="$1" NROS_RUNNER_REPO_ROOT="$e2e/root" \
         NROS_ZEPHYR_WORKSPACE="$e2e/ws" NROS_RUNNER_NO_ACTIVATE=1 \
+        _NROS_RUNNER_SELFTEST_CHILD=1 \
         ZEPHYR_SDK_INSTALL_DIR= bash "$self" nros-sdk-zephyr 2>&1
     }
 
-    if out="$(_st_doctor "$e2e/home")" && ! printf '%s' "$out" | grep -q MISSING; then
+    # A `case` glob, not `grep -q` — issue 0726: a forked grep that fails to
+    # START is exit >= 2, indistinguishable from "no match" to `grep -q`, and
+    # this runs under a 32-way gate fan-out. Bash pattern matching forks
+    # nothing and cannot fail this way.
+    out="$(_st_doctor "$e2e/home")" && st=0 || st=1
+    case "$st$out" in
+        0*MISSING*) st=1 ;;
+    esac
+    if [ "$st" -eq 0 ]; then
         _st_ok "a runner with its SDK outside the checkout verifies clean"
     else
         _st_bad "a runner with its SDK outside the checkout verifies clean" \
