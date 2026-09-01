@@ -90,7 +90,7 @@ fn fixture_workspace_plans_and_checks() {
         manifests: vec![demo_pkg.join("manifest/system.launch.yaml")],
         launch_args: Vec::new(),
         rmw: None,
-        target: None,
+        image: None,
     })
     .expect("plan command parses launch and writes checked artifacts");
 

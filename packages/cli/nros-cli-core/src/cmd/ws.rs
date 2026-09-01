@@ -2170,7 +2170,7 @@ fn generate_bridge_configs(
                 manifest_files: Vec::new(),
                 launch_args: Vec::new(),
                 rmw: None,
-                target: None,
+                image: None,
                 // Issue 0951 — this bridge plan runs inside the user's
                 // workspace, not a nano-ros checkout, so the resolver's own
                 // ladder (NROS_REPO_DIR, then an autodetect walk) is the right

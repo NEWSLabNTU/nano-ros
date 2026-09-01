@@ -77,9 +77,11 @@ pub struct Args {
     /// deprecated `[deploy.<t>]` → target-agnostic.
     ///
     /// `--target` is kept as an ALIAS, not a second flag: it named the deploy
-    /// era's concept, and the value callers pass is now an image id.
+    /// era's concept, and the value callers pass is now an image id. The FIELD
+    /// is `image` for the same reason `PlanOptions`' is — `target` in this tree
+    /// is the rustc triple, and the flag has been `--image` since 0951.
     #[arg(long = "image", alias = "target")]
-    pub target: Option<String>,
+    pub image: Option<String>,
 
     /// nano-ros checkout holding `packages/boards`, used to derive the selected
     /// image's rustc triple from its board descriptor. Defaults to
@@ -166,7 +168,7 @@ pub fn run(args: Args) -> Result<()> {
             manifest_files: args.manifests,
             launch_args: args.launch_args,
             rmw: args.rmw,
-            target: args.target,
+            image: args.image,
         })?;
         drop(tmp);
         eprintln!(
@@ -215,7 +217,7 @@ pub fn run(args: Args) -> Result<()> {
             manifest_files: args.manifests,
             launch_args: args.launch_args,
             rmw: args.rmw,
-            target: args.target,
+            image: args.image,
         })?;
         drop(tmp);
         eprintln!(
@@ -256,7 +258,7 @@ pub fn run(args: Args) -> Result<()> {
         manifest_files: args.manifests,
         launch_args: args.launch_args,
         rmw: args.rmw,
-        target: args.target,
+        image: args.image,
     })?;
 
     eprintln!(

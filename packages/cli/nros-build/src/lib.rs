@@ -244,7 +244,7 @@ pub fn generate_run_plan_with(opts: &Options) -> Result<PathBuf> {
         // Phase 255 — RMW resolved from the bringup's `system.toml`; build.rs has
         // no `--rmw` override.
         rmw: None,
-        target: None,
+        image: None,
     };
     let planning = plan_system(plan_options).wrap_err("nros-build: planner failed")?;
     println!("cargo:rerun-if-changed={}", model_path.display());

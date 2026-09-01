@@ -42,7 +42,7 @@ fn orchestration_metadata_plan_check_commands_share_artifacts() {
         manifests: vec![root.join("manifest.launch.yaml")],
         launch_args: Vec::new(),
         rmw: None,
-        target: None,
+        image: None,
     })
     .expect("plan command consumes preserved metadata");
 
