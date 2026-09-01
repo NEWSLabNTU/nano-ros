@@ -2,10 +2,11 @@
 id: 958
 title: "The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no
   per-type receive sizing reaches a Cyclone image"
-status: open
+status: resolved
 type: bug
 area: rmw
-related: [issue-0896, issue-0917, issue-0969, issue-0970, phase-392, phase-408]
+related: [issue-0896, issue-0917, issue-0969, issue-0970, issue-0976, phase-392, phase-408]
+resolved_in: "phase-392 W3f"
 ---
 
 ## What was measured
@@ -113,3 +114,25 @@ That is about routing a hint. This is about a backend that never sees one.
 
 Issue **0917** — the an536 fragment cliff, which is an RX FIFO capacity limit in
 the emulated NIC and is unrelated to buffer sizing above the driver.
+
+## Resolved 2026-09-02 — via option 2, and the amendment above is why
+
+Closed by SAYING SO, in both places a reader looks:
+
+* `docs/reference/cyclonedds-known-limitations.md`, section "`rx_buffer_hint` is
+  inapplicable here, not unimplemented" — which is phase-392 W3f's literal ask,
+  "state in the RMW's own docs that the hint is zenoh-only, so a consumer stops
+  looking for an effect that cannot occur";
+* `subscription_create` in `src/subscriber.cpp`, at the discarded parameter —
+  which is what THIS issue asked for: "a backend that ignores a field should say
+  so where the field is read, not leave the reader to `grep` for the absence".
+
+Option 1 was closed off rather than declined. The only site a hint could have
+sized was the `dds_ostream` in the take path, and issue 0969 deleted it along
+with the CDR round trip. After that the backend owns no receive buffer at all:
+the serdata is Cyclone's, sized by the arriving sample, and the destination is
+the caller's arena slot, already derived from the type on the nano-ros side.
+
+The original complaint stands exactly as written — a backend that ignores a
+shared-ABI field must say so where it ignores it. What changed is that the answer
+to "what should it do instead" is now known, and it is "nothing".

@@ -17,29 +17,48 @@ integration time.
   distribution; Cyclone does not commit to wire compat across `0.x`
   minor releases.
 
-## Data plane: 2× CDR round-trip per message
+## Data plane: RESOLVED — the backend carries CDR
 
-`publish_raw` and `try_recv_raw` deserialize the runtime's CDR bytes
-into a typed sample buffer via `dds_stream_read_sample`, then call
-`dds_write` (which re-serializes onto the wire). Take is the inverse.
-See `src/sertype_min.{hpp,cpp}` for the rationale.
+**This section used to describe a 2× CDR round-trip per message, and a
+blocker that turned out not to exist.** Both are gone; the history is kept
+because the retracted reasoning is the useful part.
 
-**Why:** Cyclone 0.10.5's public API does not expose
-`dds_writer_lookup_serdatatype()` — there is no way to fish a
-`ddsi_sertype *` out of a writer/reader, so the zero-copy path
-(`ddsi_serdata_from_ser_iov` + `dds_writecdr`) is unreachable
-without vendoring private headers.
+`publish_raw` hands the caller's bytes to `dds_write` as an `NrosCdrBlob`, and
+`subscription_take` returns the serdata's own bytes via `dds_takecdr` +
+`ddsi_serdata_to_ser`. Neither direction builds a typed C sample, so nothing is
+decoded or re-encoded. See `src/nros_sertype.{hpp,cpp}`.
 
-**Cost:** one extra encode + decode on each side of every message.
-Acceptable for control-loop rates (≤1 kHz) on safety MCUs;
-unacceptable for high-throughput streams (camera frames, lidar
-scans).
+**What the old text got wrong.** It said the zero-copy path was unreachable
+because Cyclone 0.10.5 does not expose `dds_writer_lookup_serdatatype()`, and
+pointed at upstream
+[cyclonedds#1342](https://github.com/eclipse-cyclonedds/cyclonedds/issues/1342)
+as the thing to wait for. Two corrections
+([#0969](../issues/0969-cyclone-take-cdr-round-trip.md),
+[#0970](../issues/0970-cyclone-rmw-should-own-its-sertype.md)):
 
-**Path forward:** wait for upstream to expose the writer→sertype
-lookup (currently being discussed in
-[cyclonedds#1342](https://github.com/eclipse-cyclonedds/cyclonedds/issues/1342))
-or vendor the small subset of `dds/ddsi/ddsi_serdata_default.h` +
-`ddsi_domaingv.h` needed to reach `gv->serpool`.
+* `dds_takecdr` takes a reader entity and nothing else, so the RECEIVE side was
+  never blocked on any sertype lookup.
+* That API recovers a sertype you do not own. `rmw_cyclonedds_cpp` never calls
+  it, because it registers its own with `dds_create_topic_sertype` — public,
+  and present in our vendored 0.10.5. Owning the sertype makes the question
+  moot rather than answering it.
+
+**What a consumer sees now.** The bytes handed back are the WIRE bytes. Two
+consequences that are not obvious:
+
+* An XCDR2 publisher's framing survives instead of being flattened to XCDR1.
+* A big-endian peer is no longer normalised. `nros-serdes` decodes
+  little-endian unconditionally, so a BE peer was never supported end to end;
+  this backend was the only one papering over that.
+* The length is the wire length. RTPS pads a submessage's payload to 4 bytes at
+  the SENDER, so a 25-byte message arrives as 28 (`WIRE=len:28 hdr:00010000
+  cdr:25`, measured against ROS 2 Humble). A receive buffer sized to a type's
+  exact bound is up to 3 bytes short — which is why the derived RX bound is
+  rounded up to 4 (`rosidl_codegen::bounds::transport_framed`).
+
+**Still round-tripping:** `src/service.cpp`, which is why `sertype_min.{hpp,cpp}`
+still exists. Blocked, and not on effort — see
+[#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md).
 
 ## Phase 108 status events: NULL slots
 
@@ -212,19 +231,38 @@ this in any external integration guide.
 
 ## Heap allocations on the data path
 
-Each `publish_raw` allocates and frees a `desc->m_size`-byte sample
-buffer. `try_recv_raw` calls `dds_take` with NULL pre-init, so
-Cyclone allocates the typed sample internally and the backend
-returns the loan after extracting bytes.
+**Measured, and 5× lower than this section used to describe.** Per publish+take
+round trip, on the same harness before and after
+[#0969](../issues/0969-cyclone-take-cdr-round-trip.md) /
+[#0970](../issues/0970-cyclone-rmw-should-own-its-sertype.md):
 
-For embedded targets where this allocation traffic matters,
-either:
-- Re-use a per-publisher / per-subscriber sample buffer (small
-  refactor, ~30 LOC).
-- Move to the zero-copy fast path once the sertype lookup lands.
+| | allocs @1 msg | allocs @200 msgs | per message |
+| --- | ---: | ---: | ---: |
+| before | 984 | 2,960 | **9.93** |
+| after | 968 | 1,366 | **2.00** |
 
-The smoke tests don't measure allocation pressure; profile before
-deploying on Cortex-R52 with strict heap budgets.
+The remaining two are one serdata object and its payload buffer. On the loopback
+path Cyclone hands the same serdata to the local reader by reference, so one
+message costs one serdata.
+
+The before figure is not an integer, and that is the part worth keeping: the old
+path's `dds_ostream` grew by `realloc`, so its allocation count depended on the
+sample. Part of what the round trip cost VARIED WITH THE MESSAGE — the property
+a real-time budget most dislikes. The after figure is exactly 2.00 across 199
+messages.
+
+The payload buffer comes from `ddsrt_malloc`, not `new[]`: on ThreadX and
+FreeRTOS the libc heap is separate from the ddsrt heap Cyclone was given.
+`scripts/rmw-alloc-sites.py` accounts for it.
+
+**Reproduce it:** `data_roundtrip` takes `NROS_ROUNDTRIP_ITERS`; two runs at
+different counts under valgrind cancel session and entity setup and give the
+per-message cost as a slope. The claim that "the smoke tests don't measure
+allocation pressure" is no longer true, which is why it is no longer here.
+
+**Still allocating per message:** `src/service.cpp` — three sites, one per
+request and two per reply. See
+[#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md).
 
 ## Boards
 
@@ -278,6 +316,38 @@ message types the participant will publish or subscribe to.
 See section 212.K.7 of
 `docs/roadmap/phase-212-ux-cargo-native-and-file-consolidation.md`
 for the full design + work-item ledger.
+
+## `rx_buffer_hint` is inapplicable here, not unimplemented
+
+`rmw_subscription_options_t::rx_buffer_hint` tells a backend how many bytes a
+receive buffer needs for a type, so a size-classing backend (zenoh-pico) can pick
+a class. **This backend ignores it, deliberately, and there is nothing to wire
+up.** phase-392 W3f asked for either the wiring or this statement; this is the
+statement.
+
+There is no receive buffer here to size:
+
+* the sample arrives in a serdata, sized by the sample, allocated when it
+  arrives;
+* the destination is the CALLER's buffer, whose capacity arrives on every `take`
+  and is authoritative there.
+
+Before [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) there was exactly
+one candidate consumer — the `dds_ostream` that re-serialised the typed sample
+grew by `realloc`, and an initial size would have saved those reallocs. That
+ostream went with the round trip, and with it the last thing a hint could have
+sized.
+
+**So do not measure the backend for an effect from the sizing campaign.** A
+Cyclone consumer can set the hint, do everything phase-392 asks, and correctly
+observe nothing change here. What DOES change is the executor's arena, which
+nano-ros sizes itself from the same bound. Measure the arena, not the backend.
+
+The ABI declares the field advisory and permits a backend to ignore it
+(`rmw_entity.h`). [Issue 0958](../issues/0958-cyclonedds-ignores-rx-buffer-hint.md)
+was not that it was ignored — it was that it was ignored *silently*, discarded at
+a bare `/*options*/` with nothing for a reader to find. `subscription_create`
+now carries the same explanation at the parameter itself.
 
 ## No E2E message-integrity (safety-e2e / CRC)
 
