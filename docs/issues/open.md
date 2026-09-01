@@ -80,5 +80,6 @@ fails if this block drifts.
 - **#0975** (ci) — `--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue See `0975-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
+- **#0981** (codegen, ci) — `codegen_golden` has been red on `main` since 5f3c08545 — the C++ pack's REAL bound moved `RX_MAX_SERIALIZED_SIZE` by 3 and the golden was not regenerated See `0981-*`.
 
 <!-- END GENERATED open-issue list -->
