@@ -71,9 +71,6 @@ fails if this block drifts.
 - **#0954** (api-c, boards) — The committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale again See `0954-*`.
 - **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
 - **#0958** (rmw) — The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no per-type receive sizing reaches a Cyclone image See `0958-*`.
-- **#0956** (rmw) — Four W4 parity slots are declared, unfilled, and undecided: content filtering and network flow endpoints See `0956-*`.
-- **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
-- **#0960** (rmw) — The per-entity readiness callback trio is declared, unfilled, and undecided — and `set_wake_callback` does not answer it See `0960-*`.
 - **#0961** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0961-*`.
 - **#0962** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0962-*`.
 - **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
