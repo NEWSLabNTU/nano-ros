@@ -79,6 +79,6 @@ fails if this block drifts.
 - **#0971** ([rmw, api]) — `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it See `0971-*`.
 - **#0975** (ci) — `--self-hosted-ready` requires a merge_group-only check, so no PR can enter the queue See `0975-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
-- **#0978** (cmake, build) — The corrosion config header is a BUILD-SCRIPT side effect, so a shared cargo group refreshes it in exactly one leaf — the other 19 fail to link against an archive whose sizes moved See `0978-*`.
+- **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
 
 <!-- END GENERATED open-issue list -->
