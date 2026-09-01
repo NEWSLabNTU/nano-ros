@@ -896,11 +896,20 @@ impl SystemToml {
         blocks
     }
 
-    /// Phase 256 / issue 0951 — which per-target block a target-agnostic caller
-    /// (the planner) resolves values against when none was named:
+    /// Which IMAGE a caller that was given no image resolves values against:
     /// `cli` (`--image`, alias `--target`) → the sole image
     /// [`select_default_images`] picks → the sole DEPRECATED `[deploy.<t>]` →
     /// `None`.
+    ///
+    /// Phase 256 / issue 0951. It was `resolve_target` until the name was the
+    /// last thing here still asserting the retired concept: what it returns is
+    /// an image id, `[system].default_target` no longer decides anything, and
+    /// `--target` survives only as an alias. A function whose name says
+    /// "target" and whose body says "image" is how the two came to be read as
+    /// synonyms, which is what issue 0938 cost — `nros build` resolving RMW
+    /// from `[image.*]` while `plan` read `[deploy.<t>]`. The tree already
+    /// spelled it `selected_image` / `cli_image` in `build.rs` and `image.rs`;
+    /// this is the last holdout adopting the vocabulary its callers use.
     ///
     /// The image rung DELEGATES to `select_default_images` rather than
     /// reimplementing "explicit list, else the only one". That function is what
@@ -923,7 +932,7 @@ impl SystemToml {
     /// `deny_unknown_fields`, so deleting it would turn an unused key into a
     /// hard parse error for an out-of-tree user — and
     /// [`Self::deprecated_default_target_warning`] is what tells them.
-    pub fn resolve_target(&self, cli: Option<&str>) -> Option<String> {
+    pub fn resolve_image(&self, cli: Option<&str>) -> Option<String> {
         if let Some(c) = cli {
             return Some(c.to_string());
         }
@@ -933,6 +942,14 @@ impl SystemToml {
         {
             return Some(only.clone());
         }
+        // The DEPRECATED rung, and the only one left that reads `[deploy.*]`.
+        // Unreachable for anything this tree authors — 0951 left zero deploy
+        // blocks in any `system.toml`, and a synthesised bringup now projects
+        // an image for the same row, so the image rung above answers first
+        // (`nros_config.rs`'s synthesis test pins exactly that). It stays for
+        // an out-of-tree workspace written before 0951, and retires with the
+        // rest of `[deploy.*]` parsing at 0.6.0 — phase-383 W10.b, which is
+        // waiting on the version boundary, not on this.
         if self.deploy.len() == 1 {
             return self.deploy.keys().next().cloned();
         }
@@ -941,9 +958,9 @@ impl SystemToml {
 
     /// `default_images` names only declared images, or say which it does not.
     ///
-    /// [`Self::resolve_target`] must return an `Option`, so it can only IGNORE
+    /// [`Self::resolve_image`] must return an `Option`, so it can only IGNORE
     /// a bad `default_images` — and ignoring it means a typo silently
-    /// downgrades a plan to target-agnostic instead of failing. Callers with an
+    /// downgrades a plan to image-agnostic instead of failing. Callers with an
     /// error channel call this first; `select_default_images` is the one
     /// implementation of the rule, so this cannot drift from what
     /// `nros build` enforces.
@@ -1895,10 +1912,10 @@ board = "native"
         assert_eq!(bare.resolved_rmw(None, None), "zenoh");
     }
 
-    /// Phase 256 / issue 0951 — `resolve_target`: `--image` → the sole image
+    /// Phase 256 / issue 0951 — `resolve_image`: `--image` → the sole image
     /// `default_images` picks → the sole `[deploy.<t>]` → `None`.
     #[test]
-    fn resolve_target_precedence() {
+    fn resolve_image_precedence() {
         // CLI flag wins.
         let two: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n\
@@ -1906,9 +1923,9 @@ board = "native"
              [image.native]\nboard=\"native\"\n[image.qemu]\nboard=\"native\"\n",
         )
         .unwrap();
-        assert_eq!(two.resolve_target(Some("qemu")).as_deref(), Some("qemu"));
+        assert_eq!(two.resolve_image(Some("qemu")).as_deref(), Some("qemu"));
         // No flag → the one image `default_images` names.
-        assert_eq!(two.resolve_target(None).as_deref(), Some("native"));
+        assert_eq!(two.resolve_image(None).as_deref(), Some("native"));
 
         // `default_images` naming SEVERAL is not an answer to "which one".
         // A bringup that builds three images has no single "the" target, and
@@ -1920,7 +1937,7 @@ board = "native"
              [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
         )
         .unwrap();
-        assert_eq!(many.resolve_target(None), None);
+        assert_eq!(many.resolve_image(None), None);
 
         // `[system].default_target` is RETIRED — it named the deploy era's
         // concept. The field still parses (deleting it from a
@@ -1932,7 +1949,7 @@ board = "native"
              [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
         )
         .unwrap();
-        assert_eq!(retired.resolve_target(None), None, "it must not decide");
+        assert_eq!(retired.resolve_image(None), None, "it must not decide");
         let w = retired
             .deprecated_default_target_warning()
             .expect("set, so warned");
@@ -1951,14 +1968,14 @@ board = "native"
              [deploy.a]\nkind=\"self\"\n[deploy.b]\nkind=\"self\"\n",
         )
         .unwrap();
-        assert_eq!(ambiguous.resolve_target(None), None);
+        assert_eq!(ambiguous.resolve_image(None), None);
 
         // Sole deploy → that one (the deprecated rung, still live).
         let sole: SystemToml = toml::from_str(
             "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[deploy.only]\nkind=\"self\"\n",
         )
         .unwrap();
-        assert_eq!(sole.resolve_target(None).as_deref(), Some("only"));
+        assert_eq!(sole.resolve_image(None).as_deref(), Some("only"));
 
         // Issue 0951 — the sole IMAGE resolves the same way, so a workspace
         // that has finished migrating off `[deploy.*]` still has a target.
@@ -1969,7 +1986,7 @@ board = "native"
              [image.firmware]\nboard=\"mps2-an385-freertos\"\n",
         )
         .unwrap();
-        assert_eq!(sole_image.resolve_target(None).as_deref(), Some("firmware"));
+        assert_eq!(sole_image.resolve_image(None).as_deref(), Some("firmware"));
 
         // Two images are as ambiguous as two deploys.
         let two_images: SystemToml = toml::from_str(
@@ -1977,7 +1994,7 @@ board = "native"
              [image.a]\nboard=\"native\"\n[image.b]\nboard=\"native\"\n",
         )
         .unwrap();
-        assert_eq!(two_images.resolve_target(None), None);
+        assert_eq!(two_images.resolve_image(None), None);
 
         // Mid-migration: one image and one deploy. The IMAGE is the half that
         // survives, so it decides — picking the deploy would resolve to a name
@@ -1987,7 +2004,7 @@ board = "native"
              [image.firmware]\nboard=\"native\"\n[deploy.legacy]\nkind=\"self\"\n",
         )
         .unwrap();
-        assert_eq!(both.resolve_target(None).as_deref(), Some("firmware"));
+        assert_eq!(both.resolve_image(None).as_deref(), Some("firmware"));
     }
 
     /// `image_for` folds `[image_defaults]` under the block. Forgetting the

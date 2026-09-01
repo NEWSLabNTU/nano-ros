@@ -657,7 +657,7 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
         );
     }
 
-    // Issue 0951 — project the same rows as images. `resolve_target`'s image
+    // Issue 0951 — project the same rows as images. `resolve_image`'s image
     // rung and every `image_for` reader see a synthesised bringup exactly as
     // they see an authored one.
     let image: BTreeMap<String, crate::orchestration::image::ImageBlock> = nros
@@ -1052,7 +1052,7 @@ locator = "tcp/127.0.0.1:7447"
         assert_eq!(img.board.as_deref(), Some("native_sim/native/64"));
         // Placement stays on the deploy side — an image has no `kind`.
         assert_eq!(
-            entry.system.resolve_target(None).as_deref(),
+            entry.system.resolve_image(None).as_deref(),
             Some("native"),
             "the sole image resolves the target"
         );

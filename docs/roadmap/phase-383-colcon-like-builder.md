@@ -700,7 +700,7 @@ found only because these trees are not uniform the way ours are.
       | "a `[deploy.<n>.nros]` site layer — 30 `sdk` + 17 `netstack` — with no `[image.*]` counterpart" | 24 `[board_config.<board>]` blocks. The 30 held 3 distinct value-sets; keying on the board removed 25 duplicates. |
       | "`board_facts.rs` hard-ERRORS when `.board` is absent" | It selects candidates from `[image.*] ∪ [deploy.*]` and matches `--board` through the board catalog. |
       | "`check-deploy-board-resolves.py` errors if it finds zero deploy values" | It reads `[image.*]` and `[image_defaults]` too. Run today: `deploy boards resolve: OK (20 distinct value(s))`. |
-      | "13 production reader sites … the build fields are NOT inert" | Every one migrated to `[image.*]`-first with a deploy fallback: `resolve_target`, `derive_target_rtos`, `schema_build_json`, the `codegen_system` launch fallback, `doctor`, `board_facts`, and `synthesise_self_bringup`. |
+      | "13 production reader sites … the build fields are NOT inert" | Every one migrated to `[image.*]`-first with a deploy fallback: `resolve_target` (now `resolve_image`, W10.e), `derive_target_rtos`, `schema_build_json`, the `codegen_system` launch fallback, `doctor`, `board_facts`, and `synthesise_self_bringup`. |
       | "`nros build --dry-run` cannot see any of this" | Still true, and it is why 0951 verified with regenerated SystemModels plus `nros codegen entry` before/after, not with dry-runs. |
 
       The one claim that stands is the first: `[deploy.*]` is upstream's type
@@ -742,6 +742,35 @@ found only because these trees are not uniform the way ours are.
       tracks. The gate matches exactly one level below `examples/workspaces/`,
       so package manifests are untouched, and it runs its own negative control
       on every invocation (2 shapes that must flag, 5 that must not).
+- [x] **W10.e** Retire `resolve_target` — the last identifier asserting the
+      concept 0951 removed.
+
+      **Done.** `[system].default_target` was already retired and `--target`
+      already only an alias, but the resolver was still called
+      `resolve_target` while returning an IMAGE id, and the field it flowed
+      through was `PlanOptions.target`. That is the shape issue 0938 cost:
+      `nros build` resolving RMW from `[image.*]` while `plan` read
+      `[deploy.<t>]`, because "target" and "image" read as synonyms.
+
+      `resolve_target` → `resolve_image`, `PlanOptions.target` → `.image`,
+      `plan::Args.target` → `.image`, and the planner's `selected_target` /
+      `cli_target` → `selected_image` / `cli_image`. The names converge on what
+      `build.rs` and `image.rs` already spelled. **`target` now means the rustc
+      triple, and nothing else** — `plan.build.target` still does, which is why
+      the field rename mattered: the two sat one struct apart under one word.
+
+      The rename was driven by the COMPILER, not by sed, and that was load-
+      bearing: `target: None` appears in several unrelated option structs where
+      it IS the triple, so a textual pass would have renamed the wrong ones.
+      The compiler named all 21 sites across 9 files, in four rounds — and the
+      lines it did NOT name are the proof, being `target: None` in structs
+      where target is the triple.
+
+      No behaviour change: `--image` and its `--target` alias parse as before,
+      and the deprecated `[deploy.*]` sole-block rung stays (it retires with the
+      rest of the table at 0.6.0, W10.b) — now with a comment saying it is
+      unreachable for anything this tree authors and why.
+
 - [x] **W10.d** Book sweep: `examples/workspaces/*/README.md` still print the
       six-command ritual this phase deletes.
 

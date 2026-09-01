@@ -36,8 +36,12 @@ pub struct PlanOptions {
     /// `[image.<id>]` the planner resolves per-target values against (RMW
     /// override, build tuning). `None` ⇒ the sole image `default_images` picks
     /// → the sole deprecated `[deploy.<t>]` → target-agnostic. See
-    /// `SystemToml::resolve_target`.
-    pub target: Option<String>,
+    /// `SystemToml::resolve_image`.
+    ///
+    /// Named `image`, not `target`: in this tree `target` is the rustc triple
+    /// (`plan.build.target`), and this field selects an `[image.<id>]`. The two
+    /// sat one struct apart under one word.
+    pub image: Option<String>,
     /// nano-ros checkout holding `packages/boards`, for deriving the selected
     /// image's rustc triple from its board descriptor.
     ///
@@ -202,7 +206,7 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     let build_json = schema_build_json(
         system_toml_path.as_deref(),
         options.rmw.as_deref(),
-        options.target.as_deref(),
+        options.image.as_deref(),
         catalog.as_ref(),
     )?;
     let build: PlanBuildOptions = serde_json::from_value(build_json.clone())
@@ -739,7 +743,7 @@ fn schema_plan_json(
 fn schema_build_json(
     system_toml: Option<&Path>,
     cli_rmw: Option<&str>,
-    cli_target: Option<&str>,
+    cli_image: Option<&str>,
     catalog: Option<&super::board_descriptor::BoardCatalog>,
 ) -> Result<Value> {
     let mut build = json!({
@@ -753,7 +757,7 @@ fn schema_build_json(
     });
     let obj = build.as_object_mut().expect("build is an object");
     // Phase 255/256 — `[system].rmw` (resolved) is the SSoT; `--rmw` tops the
-    // ladder. The planner resolves the selected target (`--image`, alias
+    // ladder. The planner resolves the selected IMAGE (`--image`, alias
     // `--target` → the sole image `default_images` picks → the sole deprecated
     // `[deploy.<t>]`) and feeds it to `resolved_rmw`. With no system.toml,
     // `--rmw` alone still drives the plan.
@@ -761,15 +765,15 @@ fn schema_build_json(
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<super::cargo_metadata_schema::SystemToml>(&s).ok());
     // A bad `default_images` must FAIL, not quietly downgrade the plan to
-    // target-agnostic. `resolve_target` returns an `Option` and can only ignore
+    // image-agnostic. `resolve_image` returns an `Option` and can only ignore
     // it; this is the rung with an error channel.
     if let Some(s) = &sys {
         s.validate_default_images().map_err(|e| eyre!("{e}"))?;
     }
-    // The selected deploy target (phase-256 W3a): shared by RMW + build-tuning.
-    let selected_target = sys.as_ref().and_then(|s| s.resolve_target(cli_target));
+    // The selected image (phase-256 W3a): shared by RMW + build-tuning.
+    let selected_image = sys.as_ref().and_then(|s| s.resolve_image(cli_image));
     let resolved_rmw = match &sys {
-        Some(s) => Some(s.resolved_rmw(selected_target.as_deref(), cli_rmw)),
+        Some(s) => Some(s.resolved_rmw(selected_image.as_deref(), cli_rmw)),
         None => cli_rmw.map(str::to_string),
     };
     if let Some(rmw) = resolved_rmw {
@@ -794,7 +798,7 @@ fn schema_build_json(
     // and is authored NOWHERE in this tree — zero occurrences across every
     // `system.toml` — so it is carried for the deploy path only rather than
     // given a new home it has no user for.
-    if let Some(t) = selected_target.as_deref()
+    if let Some(t) = selected_image.as_deref()
         && let Some(s) = sys.as_ref()
     {
         let img = s.image_for(t);
@@ -3938,7 +3942,7 @@ mod tests {
 
     /// A `default_images` naming no declared image must FAIL the plan.
     ///
-    /// `resolve_target` returns an `Option`, so it can only ignore the bad
+    /// `resolve_image` returns an `Option`, so it can only ignore the bad
     /// value — and ignoring it downgrades the plan to target-agnostic, which
     /// looks like success and silently drops every per-image value. That is the
     /// silent-skip shape, so the rung with an error channel refuses it.
@@ -4140,7 +4144,7 @@ mod tests {
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -4205,7 +4209,7 @@ mod tests {
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -4631,7 +4635,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -4787,7 +4791,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -5020,7 +5024,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -5136,7 +5140,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -5237,7 +5241,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let raw = fs::read_to_string(output.plan_path).unwrap();
@@ -5302,7 +5306,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -5387,7 +5391,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let raw = fs::read_to_string(output.plan_path).unwrap();
@@ -5466,7 +5470,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
         .unwrap();
         let plan: Value =
@@ -5669,7 +5673,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
     }
 
@@ -5702,7 +5706,7 @@ topics:
             manifest_files: vec![],
             launch_args: vec![],
             rmw: None,
-            target: None,
+            image: None,
         })
     }
 
