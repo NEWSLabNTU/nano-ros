@@ -530,12 +530,16 @@ jobs:
       # fixture: no SDK, no cross toolchain, no QEMU — the
       # `check-lane-contracts` rule for a merge-gating lane.
       #
-      # WHAT IT COSTS, measured on this runner rather than extrapolated from a
-      # warm local tree: 6 m 15 s for the tests plus 2 m 07 s to provision
-      # `nros-launch-resolve`. The local figure was 34 s, and quoting it here
-      # would have been wrong by an order of magnitude — a warm incremental
-      # `cargo test` is not what a runner does. The CLI build two steps up does
-      # NOT amortise this: that builds `--bin nros`, while this compiles the
+      # WHAT IT COSTS, measured on this runner in both cache states, because a
+      # single number is what made the first two estimates wrong:
+      #
+      #   cold (empty sccache):  6 m 15 s tests + 2 m 07 s provisioning
+      #   warm:                  1 m 32 s tests +    17 s provisioning
+      #
+      # The local warm-tree figure was 34 s; quoting THAT here would have been
+      # an order of magnitude out, and quoting only the cold one would have
+      # over-stated the steady state by four. The CLI build two steps up does
+      # NOT amortise either: it builds `--bin nros`, while this compiles the
       # sub-workspace's test targets.
       #
       # That is real latency on the path to landing, and it buys the guarantee
