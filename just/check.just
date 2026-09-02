@@ -136,6 +136,7 @@ fast-serial: \
     cmake-support-library \
     codegen-invocation \
     codegen-size-bound-golden \
+    config-header-single-writer \
     config-knob-census \
     core-only-predicate \
     cpp-ffi-error-mapping \
@@ -514,6 +515,24 @@ codegen-size-bound-golden:
 #
 # `build.rs` already carried a comment warning about this exact drift. A comment
 # is not a check.
+# Issue 0985 — the per-build sizes header must have ONE writer, the mirror
+# script, which since issue 0978 knows that the leaf's own copy is present and
+# arbitrarily old once leaves share a cargo target dir.
+#
+# A second writer does not merely duplicate that precedence, it DEFEATS it:
+# `nros-cpp/CMakeLists.txt` healed the mirror at configure time with a plain
+# `file(COPY_FILE)` from the leaf's binary dir, wrote a museum header over a
+# correct one, and stamped it with a new mtime — so ninja found the mirror's
+# OUTPUT newer than its trigger and skipped the command that would have fixed
+# it. A repair for drift that caused drift and suppressed its own fix.
+#
+# Static, no build. The whole 0088 -> 0114 -> 0122 -> 0123 -> 0245 -> 0268 ->
+# 0978 -> 0985 family is one shape: two ways to answer "which bytes are the
+# current sizes header".
+[private]
+config-header-single-writer:
+    @python3 scripts/check-config-header-single-writer.py
+
 [private]
 cyclone-backend-sources:
     @python3 scripts/check-cyclone-backend-sources.py

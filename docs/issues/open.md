@@ -77,7 +77,6 @@ fails if this block drifts.
 - **#0970** ([rmw]) — The Cyclone backend borrows Cyclone's generated sertype instead of registering its own, and that — not an upstream gap — is what forces the CDR round trip on publish See `0970-*`.
 - **#0971** ([rmw, api]) — `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it See `0971-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
-- **#0985** (cmake, build) — The C++ side never writes `nros_config_generated.h` to the shared target dir, so issue 0978's mirror falls back to the leaf copy every time — and the leaf copy is a museum See `0985-*`.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 
