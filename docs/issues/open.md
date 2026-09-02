@@ -80,5 +80,6 @@ fails if this block drifts.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
 - **#0985** (cmake, build) — The C++ side never writes `nros_config_generated.h` to the shared target dir, so issue 0978's mirror falls back to the leaf copy every time — and the leaf copy is a museum See `0985-*`.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
+- **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 
 <!-- END GENERATED open-issue list -->
