@@ -609,6 +609,52 @@ hold — but it is not proven here, and if it does not hold the remedy is guardi
 that include in zenoh-pico, which is VENDORED and must be reported rather than
 patched in place.
 
+### MEASURED 2026-09-02 — 38,334 B on mps2/an385, and the caveat is settled
+
+Two images built from one tree, differing ONLY in networking:
+
+| | `.bss`+`.data` | FLASH |
+| --- | ---: | ---: |
+| zenoh over TCP (`mps2-an385.conf`) | 1,212,854 B | 362,956 B |
+| zenoh over serial (`+ mps2-an385-serial.conf`) | 1,174,520 B | 284,260 B |
+| **saving** | **38,334 B** | 78,696 B |
+
+103 symbols disappear (38,917 B); the serial path adds 1,080 B back
+(`_z_serial_rx_storage` and its ring). The config diff outside networking is two
+lines, `CONFIG_PIPES` and `CONFIG_POSIX_HOST_NAME_MAX`, both selected BY
+networking.
+
+**Larger than this wave's own estimates** — 27,760 B reported for mr_canhubk3,
+22,580 B cross-checked here — because those counted symbols matching `net_*`
+patterns. The stack also drags in `work_q_stack` (4,160), `rx_stack` (1,600),
+`mgmt_stack` (896) and `contexts` (2,752), which no `net_` grep finds.
+
+**The open caveat is settled, favourably.** zenoh-pico's unguarded
+`#include <zephyr/net/net_if.h>` COMPILES cleanly with `CONFIG_NETWORKING=n` —
+the headers are declaration-only, as predicted. **No vendored change is needed.**
+What the image does need is two symbols the net stack was supplying implicitly,
+found by LINKING rather than reading: `ring_buf_get` (zenoh-pico
+`src/system/zephyr/network.c:941`) and `z_impl_sys_rand_get` (`zpico.c`), so the
+fragment names `CONFIG_RING_BUFFER` and `CONFIG_TEST_RANDOM_GENERATOR`.
+
+**The fix is a BOARD fragment, not a leaf conf — the triage above is wrong on
+that point.** Zephyr merges last-wins and `mps2-an385.conf` is appended after
+every leaf conf while setting `CONFIG_NET_NATIVE=y` / `NET_DRIVERS=y` /
+`NET_CONFIG_SETTINGS=y` unconditionally, so a `CONFIG_NETWORKING=n` written in
+the leaf is DEAD and looks like it should work. Issue 0876 exactly, one wave
+over. `cmake/zephyr/mps2-an385-serial.conf` is a DELTA listed after the board
+fragment, never in place of it.
+
+**One wrong measurement, recorded so it is not repeated.** The first version of
+that fragment REPLACED the board conf instead of delta-ing it, which also
+dropped `MAIN_STACK_SIZE` (131072 -> 16384), `HW_STACK_PROTECTION` and
+`MPU_STACK_GUARD`. It reported a 613,034-byte "saving" of which ~29,000 was
+networking. A saving measured against a differently-configured image is not a
+saving.
+
+**Still not measured:** the mr_canhubk3 board itself, for the reason below. The
+38,334 B is mps2/an385 with a C talker, and it is this wave's number.
+
 **NOT MEASURED, and deliberately not guessed.** The mr_canhubk3/s32k344 board is
 not in this tree — no board directory, no conf, no `build-board/` — so its image
 cannot be built or measured here. `scripts/nros-mem-report.py` and
