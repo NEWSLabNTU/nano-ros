@@ -80,6 +80,7 @@ fails if this block drifts.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
+- **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0991** (cmake) — A clean build of an entity-declaring image derives the WRONG payload basis and does not link See `0991-*`.
 
 <!-- END GENERATED open-issue list -->
