@@ -1115,7 +1115,7 @@ The line now prints on `mixed`:
     nano-ros: queryable table sized from the declaration — infrastructure none,
     application count undeclared (no model here describes wiring)
 
-**Delivery is PARTIAL, and that is not a saving yet.** After a full rebuild the
+**Delivery is PARTIAL, and NO SAVING IS MEASURED.** After a full rebuild the
 `ZPICO_MAX_QUERYABLES` the units actually compiled are:
 
 | cargo root | value |
@@ -1124,7 +1124,13 @@ The line now prints on `mixed`:
 | `nros_ws_runtime_*` (a second unit) | 32 |
 | `nano-ros_*` (repo-root dir, 4 units) | 32 |
 
-So one unit fell 32 -> 8 slots and five did not. The env reaches the umbrella's
+So one unit sits at 8 and five at 32. **Whether the 8 is the env's doing is NOT
+established** — 8 is also the non-hosted default, and the attempted before/after
+build measured the same configuration twice (the revert silently did not apply,
+so both halves ran WITH the fix and both reported `SERVICE_BUFFERS` = 36,032).
+The causal claim is withdrawn rather than repaired here; what IS verified is that
+the status line was absent on every configure before the fix and present after,
+which is the ordering defect itself. The env reaches the umbrella's
 `zpico-sys` and not the other instantiations, which are separate cargo units
 under a different workspace root (issue 0616's shape: a `--target-dir` serves one
 root, and `-C metadata` keys a unit by the path it was reached by). Sizing one of
