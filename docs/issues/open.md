@@ -76,6 +76,7 @@ fails if this block drifts.
 - **#0969** ([rmw, memory]) — The Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a decode, an encode and two heap allocations per take See `0969-*`.
 - **#0970** ([rmw]) — The Cyclone backend borrows Cyclone's generated sertype instead of registering its own, and that — not an upstream gap — is what forces the CDR round trip on publish See `0970-*`.
 - **#0971** ([rmw, api]) — `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it See `0971-*`.
+- **#0973** (orchestration) — No resolved SystemModel describes endpoint wiring — 0 of 119 carry topics, services or actions See `0973-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
