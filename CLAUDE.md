@@ -97,7 +97,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     stamp only if the lane BUILDS it (~13 s); a runtime fixture is banned
     outright.
     **CI runs a SUBSET of it, deliberately** (phase-396/399): the required `CI`
-    context is `check-fast` + `test-unit`; `ci-l1` also runs `check-build` +
+    context is `check-fast` + `test-unit` + `check-cli-tests` (the last added
+    2026-09-02 — it lived only in `check-build`, which no merge-gating event
+    runs, so issue 0896's two reds landed and stayed; 34 s, no fixture/SDK/ROS,
+    on `pull_request` AND `merge_group`); `ci-l1` also runs `check-build` +
     `check-api-parity`. Your local tier is STRONGER than the gate, so you catch
     compile-tier breakage before the queue does and the queue stays cheap and
     always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only —
