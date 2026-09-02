@@ -252,7 +252,6 @@ fast-serial: \
     runner-doctor-sdk-resolution \
     rust-stdio-on-zephyr \
     rust-targets-covered \
-    sched-dim-arms \
     scope-namespace \
     sdk-guard-can-fire \
     sdk-store-not-enumerated \
@@ -349,6 +348,7 @@ build: \
     rmw-cyclonedds \
     rmw-uorb \
     rmw-xrce \
+    sched-dim-arms \
     source-gates \
     staticlib-symbols \
     test-targets \

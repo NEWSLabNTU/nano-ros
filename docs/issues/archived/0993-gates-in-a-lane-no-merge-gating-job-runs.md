@@ -51,8 +51,8 @@ $ git worktree add --detach <tmp> HEAD
 $ cd <tmp> && just check <gate>
 ```
 
-Of 21 candidates that looked pure, **20 pass with no build artifacts at all**,
-in 47–1360 ms each. They moved to the fast line: measured 189 gates at -P32,
+Of 21 candidates that looked pure, 20 pass with no build artifacts at all, in
+47–1360 ms each. They moved to the fast line: measured 189 gates at -P32,
 slowest still 11.6 s — the additions cost no measurable wall clock.
 
 The 21st, `borrowed-e2e`, fails there:
@@ -95,6 +95,28 @@ where the event names are DOUBLE-quoted inside a single-quoted string, and the
 event regex matched only `'schedule'`. Seeing no events, it concluded the step
 was unguarded. Fixed to accept both quote styles, with that exact guard kept as
 a self-test case.
+
+## The pristine-worktree test is necessary and NOT sufficient
+
+Nineteen of the twenty moved gates are green in CI. The twentieth,
+`sched-dim-arms`, passed the pristine worktree and then failed CI's container:
+
+```
+== freertos core-pin arm (vTaskCoreAffinitySet) ==
+  FAIL: the accept arm does not compile — this IS the call site.
+      .../freertos_run_tiers.c:20:10: fatal error: FreeRTOS.h: No such file or directory
+```
+
+It compiles a probe against the FreeRTOS submodule sources. A pristine WORKTREE
+has no build artifacts, but it still runs on a HOST with the submodules checked
+out, the SDK store populated and `activate.sh` on PATH — so the test proves
+"needs nothing BUILT" and says nothing about "needs nothing INSTALLED". CI's
+bare container is the oracle for the second question, and it is the one that
+matters for a gate that must run there.
+
+`sched-dim-arms` is back in the build tier with that reason recorded in the
+baseline. The remaining nineteen are confirmed by a green CI run rather than by
+my host.
 
 ## Left open
 
