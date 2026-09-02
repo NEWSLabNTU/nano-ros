@@ -718,7 +718,7 @@ function(nano_ros_node_register)
             endif()
             if(_nros_cfg_hdrs)
                 # issue 0740 — local stamp, not the cross-directory mirror path.
-                _nros_config_header_stamp(_nros_cfg_stamp ${_nros_cfg_hdrs})
+                _nros_config_header_stamp(_nros_cfg_stamp "${PROJECT_NAME}" ${_nros_cfg_hdrs})
                 set_source_files_properties(${_NRC_SOURCES} PROPERTIES
                     OBJECT_DEPENDS "${_nros_cfg_stamp}")
             endif()
@@ -840,7 +840,7 @@ function(nano_ros_node_register)
         endif()
         if(_nros_cfg_hdrs)
             # issue 0740 — local stamp, not the cross-directory mirror path.
-            _nros_config_header_stamp(_nros_cfg_stamp ${_nros_cfg_hdrs})
+            _nros_config_header_stamp(_nros_cfg_stamp "${PROJECT_NAME}" ${_nros_cfg_hdrs})
             set_source_files_properties("${_entry_src}" "${_appcfg_src}" ${_NRC_SOURCES}
                 PROPERTIES OBJECT_DEPENDS "${_nros_cfg_stamp}")
         endif()
@@ -1069,7 +1069,8 @@ endfunction()
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntry.cmake")
 
 # ---------------------------------------------------------------------------
-# _nros_config_header_stamp(<out-var> <header>...)  — issue 0740
+# _nros_config_header_stamp(<out-var> <owner-target> <header>...)  — issue 0740,
+#                                                          keyed per target by 0990
 #
 # A LOCAL proxy for cross-directory generated headers, so a file-level
 # `OBJECT_DEPENDS` works under the Unix Makefiles generator.
@@ -1101,7 +1102,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntry.cmake")
 #     build, which is how a correctness fix becomes a build-time regression.
 #
 # Idempotent per directory: several entries in one CMakeLists share one stamp.
-function(_nros_config_header_stamp _out_var)
+function(_nros_config_header_stamp _out_var _owner)
     set(_stamps "")
     # The stamp must go stale EXACTLY when the mirror does, in BOTH generators.
     #
@@ -1133,7 +1134,26 @@ function(_nros_config_header_stamp _out_var)
         # `copy_if_different`'s exact semantics — a header that did not change
         # does not touch its stamp.
         get_filename_component(_stem "${_hdr}" NAME_WE)
-        set(_stamp "${CMAKE_CURRENT_BINARY_DIR}/_nros_cfg_stamp/${_stem}.stamp")
+        # Per CONSUMING TARGET, not per directory — issue 0990.
+        #
+        # A custom command whose OUTPUT is reached through `OBJECT_DEPENDS` has
+        # no owning target, so the Makefile generator emits its rule into the
+        # build.make of EVERY target that consumes it. That duplication is what
+        # makes issue 0740's fix work (the consumer's own directory gets a rule
+        # for the prerequisite), and it cannot be removed without reintroducing
+        # 0740 — but with a shared OUTPUT path it also gives N independent make
+        # rules writing ONE file. Measured in
+        # `examples/workspaces/features/build/posix-zenoh-native/cmake`: 16
+        # targets each declaring `_nros_cfg_stamp/nros_config_generated.stamp`.
+        # Under `make -j` several can run `copy_if_different` on it at once, and
+        # a failure in any one makes GNU make delete the file the others just
+        # wrote.
+        #
+        # Keying the path by target keeps every property that mattered — a rule
+        # local to the consumer, and `copy_if_different` so the stamp's mtime
+        # still moves only when the header CONTENT does — while giving each rule
+        # an output nothing else writes. The cost is one small copy per entry.
+        set(_stamp "${CMAKE_CURRENT_BINARY_DIR}/_nros_cfg_stamp/${_owner}/${_stem}.stamp")
         list(APPEND _stamps "${_stamp}")
         # Idempotent per (directory, header): several entries in one
         # CMakeLists.txt share one rule, and declaring it twice is an error.
@@ -1142,7 +1162,7 @@ function(_nros_config_header_stamp _out_var)
             add_custom_command(
                 OUTPUT "${_stamp}"
                 COMMAND ${CMAKE_COMMAND} -E make_directory
-                        "${CMAKE_CURRENT_BINARY_DIR}/_nros_cfg_stamp"
+                        "${CMAKE_CURRENT_BINARY_DIR}/_nros_cfg_stamp/${_owner}"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_hdr}" "${_stamp}"
                 DEPENDS ${_deps}
                 COMMENT "nano-ros: config-header stamp ${_stem} (issue 0740)"

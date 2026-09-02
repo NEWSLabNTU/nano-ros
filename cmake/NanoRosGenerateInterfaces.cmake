@@ -690,7 +690,7 @@ function(nros_generate_interfaces target)
         # `_nros_config_header_stamp`). Guarded: this module is reachable in
         # configurations where NanoRosNodeRegister.cmake was not included.
         if(COMMAND _nros_config_header_stamp)
-          _nros_config_header_stamp(_nrgi_cfg_stamp "${_nrgi_c_hdr}")
+          _nros_config_header_stamp(_nrgi_cfg_stamp "${_lib_target}" "${_nrgi_c_hdr}")
         else()
           set(_nrgi_cfg_stamp "${_nrgi_c_hdr}")
         endif()
