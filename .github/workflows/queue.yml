@@ -68,6 +68,40 @@ jobs:
       # lands on the author's change looking like a code failure. Assert first.
       - name: Verify this runner's labels are true
         run: ./scripts/ci/runner-doctor.sh nros-sdk-zephyr,nros-big
+      # L3 cross-builds three example leaves, and every one of them carries a
+      # `.cargo/config.toml` whose `include` names the GITIGNORED
+      # `nros-patch.toml` that only `nros sync` writes. Cargo treats a missing
+      # include as a HARD error during manifest parse (issue 0463), so without
+      # this the lane dies before compiling anything:
+      #
+      #   error: 54 unresolved `include` target(s) across 54 of 73 tracked
+      #          .cargo/config.toml files
+      #
+      # That is what this job had been failing on since it was enabled — NOT the
+      # Zephyr SDK. The doctor step above passes; `ac0c8cd96` fixed the SDK
+      # lookup, and the red simply moved one step later, which is easy to read
+      # as "the runner is still broken".
+      #
+      # `nros sync` needs the CLI built and `nros-launch-resolve` sitting BESIDE
+      # it (issues 0285 / 0797 — resolved by absolute path, never $PATH, and
+      # `--bin nros` does not build it). Same chain `host-tests.yml` and
+      # `nightly.yml` already run, for the same reason.
+      - name: Build nros CLI (nros sync needs it)
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          source ./activate.sh
+          just setup-cli
+
+      - name: Build nros-launch-resolve (nros sync shells out to it)
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
+      - name: nros sync (writes the leaf `nros-patch.toml` includes)
+        run: |
+          source ./activate.sh
+          nros sync
+
       - name: just ci l3
         run: |
           source ./activate.sh
