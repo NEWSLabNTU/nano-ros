@@ -546,6 +546,27 @@ jobs:
       # (phase-396 W1), so for this suite the queue would otherwise run nothing.
       # Cheap and deterministic is exactly what that lane is documented to
       # accept.
+      # `cli-tests`' `plan_pipeline_e2e` shells out to `nros-launch-resolve`, and
+      # `--bin nros` does NOT build it — it is a separate workspace beside the
+      # CLI (issue 0797), so nothing earlier in this job produces it.
+      #
+      # This is the `check-lane-contracts` rule applied to the step below: a lane
+      # may resolve a compile-stage artifact only if the lane BUILDS it. Same
+      # provisioning `host-tests.yml` does for the same reason.
+      #
+      # Found by RUNNING it, not by reading: the local run that justified this
+      # step passed with ROS unset, which proved env independence and said
+      # nothing about artifact preconditions — the helper was already built in
+      # that tree. CI had no such tree and failed with
+      # `nros-launch-resolve not built at … — run just setup-launch-resolve`.
+      - name: Build nros-launch-resolve (cli-tests' plan pipeline shells out to it)
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just setup-launch-resolve
+
       - name: just check cli-tests
         if: >-
           ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
