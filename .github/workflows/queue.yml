@@ -97,9 +97,24 @@ jobs:
           source ./activate.sh
           just setup-launch-resolve
 
-      - name: nros sync (writes the leaf `nros-patch.toml` includes)
+      # Run from a WORKSPACE, not the repo root. `nros sync` at the root fails —
+      #
+      #   Error: sync: no `src/<pkg>/package.xml` and no `package.xml` at root
+      #          … expected colcon-style workspace or single-pkg dir
+      #
+      # — which is what the first attempt at this step did, because the remedy
+      # the leaf-include gate prints is `nros sync` with no directory. The
+      # CENTRAL patch is written to `<checkout>/nros-patch.toml` by ANY
+      # workspace's sync (`ws.rs` CENTRAL_PATCH_FILE), so one workspace suffices
+      # and every one of the 54 leaves then resolves its include.
+      #
+      # Verified locally: with the root file deleted, `cd examples/workspaces/
+      # rust && nros sync` recreated it BYTE-IDENTICAL to the committed-era one,
+      # `leaf-config-includes.py` went green, and no tracked file changed.
+      - name: nros sync (writes the central `nros-patch.toml` the leaves include)
         run: |
           source ./activate.sh
+          cd examples/workspaces/rust
           nros sync
 
       - name: just ci l3
