@@ -1,0 +1,47 @@
+# Gates that live in a lane NO pull_request or merge_group job runs.
+#
+# A RATCHET, not an allowlist: this file may only shrink.
+# `check-gate-visibility` fails when a gate here becomes reachable from a
+# gating lane (delete its line) and when one appears that is not here (either
+# move it, or add a line and say why) — so the invisible set cannot silently
+# grow and cannot silently go stale.
+#
+# Every gate below was checked in a PRISTINE worktree (`git worktree add
+# --detach`, then `just check <gate>`): each one FAILS with no build artifacts,
+# which is what makes the build tier the right home. Twenty others passed that
+# test and moved to the fast line (issue 0993) — "it has always been here" is
+# not a reason, and the pristine run is what tells the two apart.
+#
+# Why this matters: `just check build` is invoked once, in `gate.yml`, behind a
+# `schedule`/`workflow_dispatch` guard. Nothing here gates a merge, so a red is
+# invisible until somebody reads a nightly — issue 0981 sat red on `main` for a
+# day behind a green required `CI`.
+#
+# Regenerate the list (NOT the reasons): python3 scripts/check-gate-visibility.py
+
+# --- compile a crate and read what it generates ---
+borrowed-e2e
+c
+cpp
+node-std-tests
+nros-log-riscv32
+staticlib-symbols
+test-targets
+workspace-all
+
+# --- need the in-tree CLI built, or build it ---
+cli-fresh
+cli-tests
+launch-resolve-builds
+required-features-tests
+source-gates
+
+# --- need an RMW backend or its vendored sources to resolve ---
+embedded-feature-unification
+rmw-cyclonedds
+rmw-uorb
+rmw-xrce
+
+# --- need a linked image to measure ---
+mem-report
+no-alloc-image
