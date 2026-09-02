@@ -1056,13 +1056,22 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       bytes. Read by nros-rmw-cffi build.rs.
 
 config NROS_EXECUTOR_ACTION_CLIENTS
-    int "Callback slots to budget at ActionClient size"
-    default 4
+    int "Callback slots to budget at ActionClient size (-1 = derive)"
+    default -1
     help
       How many of NROS_EXECUTOR_MAX_CBS slots the arena derivation budgets at
       ACTION CLIENT size (~18 KiB each) rather than pub/sub size (~3.5 KiB).
-      Defaults to MAX_CBS, which reproduces the historical arithmetic exactly,
-      so leaving it alone changes nothing.
+
+      -1 DERIVES it from the image's entity inventory, the same way MAX_CBS is
+      derived: the count is the action clients AND action servers the image's
+      components declare. An image whose inventory refuses -- any component
+      that declared no ENTITIES -- falls through to MAX_CBS, which reproduces
+      the historical arithmetic exactly, so nothing built before this moves.
+
+      Action SERVERS count too, though the option is named for clients: the
+      arena stores ActionServerArenaEntry, so a server image occupies the same
+      heavy slots and zeroing this on one would trade the saving for a runtime
+      BufferTooSmall.
 
       Set it to 0 on an image with no action client: at the defaults that takes
       the arena from 74240 bytes to 16384. The arena is INLINE ON THE TASK

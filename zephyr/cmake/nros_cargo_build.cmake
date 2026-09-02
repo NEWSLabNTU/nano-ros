@@ -251,7 +251,8 @@ function(_nros_load_derived_entity_inventory)
         NROS_ENTITY_INVENTORY_STATUS
         NROS_ENTITY_INVENTORY_REASON
         NROS_ENTITY_INVENTORY_ENTITY_TOTAL
-        NROS_DERIVED_EXECUTOR_MAX_CBS)
+        NROS_DERIVED_EXECUTOR_MAX_CBS
+        NROS_DERIVED_EXECUTOR_ACTION_CLIENTS)
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
@@ -504,6 +505,13 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_CBS
         "${CONFIG_NROS_EXECUTOR_MAX_CBS}" NROS_DERIVED_EXECUTOR_MAX_CBS
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    # Issue 0900 -- the same inventory answers how many of those slots must be
+    # budgeted at the ACTION entry size. Derivable for the same reason and with
+    # the same fallback: an image whose inventory refuses gets MAX_CBS, which is
+    # the historical arithmetic, so no existing image moves.
+    _nros_resolve_derivable_knob(NROS_EXECUTOR_ACTION_CLIENTS
+        "${CONFIG_NROS_EXECUTOR_ACTION_CLIENTS}" NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # Issue 0316's fix listed ONE of nros-node's six build.rs knobs; the other
     # five stayed unreachable on Zephyr (the curated cargo environment drops
     # any knob not resolved here, and shell exports do not survive it), so a
@@ -523,11 +531,6 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
         "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}"
         NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
-    # issue 0900 — how many slots the arena derivation charges at ActionClient
-    # size. Read by nros-node/build.rs through the derived CONFIG_<name> lookup,
-    # like its siblings above.
-    _nros_resolve_knob(NROS_EXECUTOR_ACTION_CLIENTS
-        "${CONFIG_NROS_EXECUTOR_ACTION_CLIENTS}")
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SC "${CONFIG_NROS_EXECUTOR_MAX_SC}")
     _nros_resolve_knob(NROS_EXECUTOR_MAX_NODES "${CONFIG_NROS_EXECUTOR_MAX_NODES}")
     # issue 0790 — shutdown-hook slots per phase. Read by nros-node/build.rs

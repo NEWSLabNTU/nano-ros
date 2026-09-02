@@ -239,7 +239,12 @@ mod tests {
         let k = inv.derive().knobs().expect("derived").clone();
         assert_eq!(k.entity_total, 3);
         assert_eq!(k.max_cbs, 2, "the publisher claims no slot");
-        assert_eq!(inv.to_env(), "NROS_EXECUTOR_MAX_CBS=2\n");
+        // Issue 0900 — `NROS_EXECUTOR_ACTION_CLIENTS` rides the same carrier,
+        // clamped by build.rs to the MAX_CBS emitted beside it.
+        assert_eq!(
+            inv.to_env(),
+            "NROS_EXECUTOR_MAX_CBS=2\nNROS_EXECUTOR_ACTION_CLIENTS=0\n"
+        );
     }
 
     /// A row with no `entities` KEY is the pre-W9 shape every existing
