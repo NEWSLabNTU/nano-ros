@@ -327,8 +327,7 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     # current one would fire at the end of whichever scope called first, which
     # is the bug rather than a smaller version of it.
     include("${NANO_ROS_ROOT}/cmake/NanoRosEntityFacts.cmake")
-    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-        CALL nros_entity_facts_env nros_ws_runtime-static)
+    nros_entity_facts_env_deferred(nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR
             "nros_synth_runtime_umbrella: Corrosion did not create "

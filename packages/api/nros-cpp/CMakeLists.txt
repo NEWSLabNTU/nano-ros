@@ -70,6 +70,26 @@ nros_riscv64_rustflags_env(nros_cpp-static)
 # phase-372 W1 — the cortex-r52 FPU cflags, same class one arch over.
 nros_armv8r_cflags_env(nros_cpp-static)
 
+# phase-392 W5.g follow-up — the entity figures the RMW sizes its queryable
+# table and payload classes from.
+#
+# HERE, and not only on the workspace umbrella, because `zpico-sys` is compiled
+# once per CARGO ROOT and this staticlib imports from the REPO ROOT while the
+# umbrella imports from its own synthesised one. Measured on
+# `examples/workspaces/mixed`: 6 `zpico-sys` units, of which only the umbrella's
+# could ever see the env. A pure-C/C++ workspace never even reaches the umbrella
+# call site (`nros_synth_runtime_umbrella` returns early for it), so no unit was
+# reachable at all — which is why W5.g found the delivery missing in every
+# workspace it checked.
+#
+# DEFERRED: the accumulator is filled by `nano_ros_add_entry()`, which runs long
+# after this file. Applying it inline reads an empty set, which is the W5.g
+# defect itself.
+# Relative to THIS file, not ${NANO_ROS_ROOT} — see the note above.
+include("${CMAKE_CURRENT_LIST_DIR}/../../../cmake/NanoRosEntityFacts.cmake")
+nros_entity_facts_env_deferred(nros_cpp-static)
+
+
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)
 add_library(NanoRos::NanoRosCpp ALIAS nros-cpp-headers)
