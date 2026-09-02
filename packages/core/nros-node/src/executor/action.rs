@@ -45,6 +45,27 @@ use super::{
 /// gate instead of silently under-sizing every image that declares an action.
 pub const ACTION_SERVER_QUERYABLES: usize = 3;
 
+/// Publishers an action SERVER creates, per action, beyond anything the author
+/// declares: the feedback topic and the status topic (`create_publisher` calls
+/// below). A consumer sizing the backend's publisher table from a declaration
+/// must add these, because an `ENTITIES action_server:...` spec declares ONE
+/// entity and costs two publisher slots.
+///
+/// Same rule as [`ACTION_SERVER_QUERYABLES`], and defined for the same reason:
+/// the number lives next to the calls that decide it, so it cannot drift from
+/// them without failing the gate that ties the two together.
+pub const ACTION_SERVER_PUBLISHERS: usize = 2;
+
+/// Subscriptions an action CLIENT creates, per action: the feedback topic.
+/// Status is polled through the result client rather than subscribed, so this
+/// is one and not two -- check the `create_subscription` calls below before
+/// changing it, not this comment.
+///
+/// The same under-sizing hazard as the two above: `ENTITIES action_client:...`
+/// is one declared entity and one subscriber slot that nothing else accounts
+/// for.
+pub const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
+
 // ============================================================================
 // Raw action registration specs
 // ============================================================================

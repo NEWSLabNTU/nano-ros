@@ -650,25 +650,67 @@ config NROS_ZENOH_RAWETH_TRANSPORT
 # =============================================================================
 
 config NROS_MAX_PUBLISHERS
-    int "Maximum concurrent publishers"
-    default 8
+    int "Maximum concurrent publishers (-1 = derive)"
+    default -1
     help
       Maximum number of concurrent zenoh publishers in the shim layer.
       Maps to ZPICO_MAX_PUBLISHERS.
 
+      phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
+
 config NROS_MAX_SUBSCRIBERS
-    int "Maximum concurrent subscribers"
-    default 8
+    int "Maximum concurrent subscribers (-1 = derive)"
+    default -1
     help
       Maximum number of concurrent zenoh subscribers in the shim layer.
       Maps to ZPICO_MAX_SUBSCRIBERS.
 
+      phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
+
 config NROS_MAX_QUERYABLES
-    int "Maximum concurrent queryables"
-    default 8
+    int "Maximum concurrent queryables (-1 = derive)"
+    default -1
     help
       Maximum number of concurrent zenoh queryables (service servers) in the shim.
       Maps to ZPICO_MAX_QUERYABLES.
+
+      phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
 
 config NROS_MAX_LIVELINESS
     int "Maximum concurrent liveliness tokens"
@@ -1045,8 +1087,8 @@ config NROS_PARAM_SERVICE_BUFFER_SIZE
       PARAM_SERVICE_BUFFER_SIZE).
 
 config NROS_RMW_SUBSCRIBER_SLOTS
-    int "Static subscription-handle slots (no_std targets)"
-    default 8
+    int "Static subscription-handle slots (no_std targets) (-1 = derive)"
+    default -1
     help
       nros-rmw-cffi keeps subscription handles in a static slot pool on
       no_std targets, since there is no allocator to Box them into. The
@@ -1054,6 +1096,20 @@ config NROS_RMW_SUBSCRIBER_SLOTS
       it as an opaque SubscriberCreationFailed, so this must be at least the
       number of subscriptions the image creates. Pool size is this x 1024
       bytes. Read by nros-rmw-cffi build.rs.
+
+      phase-412 W1 -- `-1` DERIVES this from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`). Stating a number here WINS
+      and suppresses the derivation, which is a fine thing to do deliberately
+      and a silent cost otherwise.
+
+      The derived value counts what the SESSION opens, which is not what the
+      author declares: a declared action server is one entity that costs three
+      queryables and two publishers, and an action client one subscription.
+      Those multipliers live beside the calls that decide them.
+
+      NOT counted, because a feature enables them and the inventory cannot see
+      it: the parameter (6) and lifecycle (5) service families. An image
+      carrying either must state this knob.
 
 config NROS_EXECUTOR_ACTION_CLIENTS
     int "Callback slots to budget at ActionClient size (-1 = derive)"

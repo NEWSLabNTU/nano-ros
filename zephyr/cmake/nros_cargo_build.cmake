@@ -344,11 +344,49 @@ function(nros_resolve_knobs)
             "a Kconfig or environment value still wins")
     endif()
 
-    # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines)
+    # phase-412 W1 -- the SESSION pools, on the same ladder and with the same
+    # fallback. These are what the ZENOH SESSION sizes its tables from, not what
+    # the executor sizes its slots from, so they count publishers (which claim
+    # no callback slot) and they add the entities a declared action opens
+    # without declaring.
+    #
+    # Verified against the shim before wiring, not assumed: ZenohSubscriber::new
+    # has exactly ONE caller, and the graph cache and liveliness tokens have
+    # their own storage rather than sharing the subscriber pool -- so there is
+    # no shim addend to carry here.
+    # Written out rather than looped: the knob is NROS_MAX_SUBSCRIBERS and the
+    # derived variable is NROS_DERIVED_MAX_SUBSCRIBERS, so a loop that builds
+    # `NROS_DERIVED_${_pool}` produces NROS_DERIVED_NROS_MAX_SUBSCRIBERS, which
+    # names nothing. It resolves EMPTY rather than failing, the empty reaches
+    # zpico.c, and the diagnostic is
+    #     error: flexible array member not at end of struct
+    # on a struct nobody edited. Spelling both names in full is the point.
+    _nros_resolve_derivable_knob(NROS_MAX_SUBSCRIBERS
+        "${CONFIG_NROS_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_RMW_SUBSCRIBER_SLOTS
+        "${CONFIG_NROS_RMW_SUBSCRIBER_SLOTS}" NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_PUBLISHERS
+        "${CONFIG_NROS_MAX_PUBLISHERS}" NROS_DERIVED_MAX_PUBLISHERS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_QUERYABLES
+        "${CONFIG_NROS_MAX_QUERYABLES}" NROS_DERIVED_MAX_QUERYABLES
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+
+    # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines).
+    #
+    # phase-412 W1 -- the three pool defines read NROS_RESOLVED_*, NOT the raw
+    # CONFIG_ value. Those knobs default to the `-1` DERIVE sentinel now, and a
+    # sentinel reaching zpico.c sizes a C array negative:
+    #     error: size of array 'subscribers' is negative
+    # which names neither the knob nor the sentinel. The resolution above must
+    # therefore stay ABOVE this block; it was written below it first, and this
+    # is what that cost.
     if(CONFIG_NROS_RMW_ZENOH)
-        _nros_resolve_knob(ZPICO_MAX_PUBLISHERS "${CONFIG_NROS_MAX_PUBLISHERS}")
-        _nros_resolve_knob(ZPICO_MAX_SUBSCRIBERS "${CONFIG_NROS_MAX_SUBSCRIBERS}")
-        _nros_resolve_knob(ZPICO_MAX_QUERYABLES "${CONFIG_NROS_MAX_QUERYABLES}")
+        _nros_resolve_knob(ZPICO_MAX_PUBLISHERS "${NROS_RESOLVED_NROS_MAX_PUBLISHERS}")
+        _nros_resolve_knob(ZPICO_MAX_SUBSCRIBERS "${NROS_RESOLVED_NROS_MAX_SUBSCRIBERS}")
+        _nros_resolve_knob(ZPICO_MAX_QUERYABLES "${NROS_RESOLVED_NROS_MAX_QUERYABLES}")
         _nros_resolve_knob(ZPICO_MAX_LIVELINESS "${CONFIG_NROS_MAX_LIVELINESS}")
         _nros_resolve_knob(ZPICO_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
         _nros_resolve_knob(ZPICO_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
