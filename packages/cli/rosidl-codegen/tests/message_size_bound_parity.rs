@@ -251,8 +251,15 @@ fn rust_nested_expectation(
     let x2 = nros_serdes::size::max_serialized_size(fields, EncodingVersion::Xcdr2);
     (
         x1,
+        // `transport_framed`, not a hand-rolled `a.max(b)` — the SECOND site of
+        // the defect e8a091b96 fixed one function up, and the reason it was
+        // missed: this one PASSES. `Inner{i64,f64} + i32` is already 4-aligned,
+        // so the framing is a no-op for exactly this type and the bare max
+        // agrees with the emitter by coincidence. It stops agreeing the moment
+        // the corpus gains a field of odd width, and then it fails as a
+        // mismatched NUMBER rather than as the rule it actually encodes.
         match (x1, x2) {
-            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), Some(b)) => Some(rosidl_codegen::bounds::transport_framed(a.max(b))),
             _ => None,
         },
     )
