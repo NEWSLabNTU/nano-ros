@@ -718,6 +718,30 @@ function(_nros_bounds_join_subscribed _frag _ceiling
     # The image registered components but at least one declared no `ENTITIES`,
     # so W9 refused for the whole image. Nothing was declared that this join can
     # narrow to; the pre-W9 state, and it keeps the pre-W9 answer.
+    #
+    # Issue 0991 -- SAY SO when the refusal is the FIRST-CONFIGURE placeholder
+    # rather than a real one. The producer (`nano_ros_entry()`) runs later in
+    # this configure than this reader, so on a clean build dir the fragment is
+    # always the placeholder and the basis is always `closure`. That is a safe
+    # over-approximation for correctness and NOT safe for a part that is nearly
+    # full: on the mr-canhubk344 island it sets the small class from a linked-
+    # only type and the image overflows RAM by 103160 bytes at LINK, naming a
+    # byte count and no knob. The recovery is one more configure, which no
+    # error message used to state.
+    if(NOT NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived"
+       AND DEFINED NROS_ENTITY_INVENTORY_REASON
+       AND NROS_ENTITY_INVENTORY_REASON STREQUAL "no entity inventory composed yet")
+        message(STATUS
+            "nros: the entity inventory has not been composed in this build dir "
+            "yet, so the payload classes derive over the LINKED CLOSURE this "
+            "pass -- an over-approximation.\n"
+            "  This is expected on a CLEAN build dir and resolves itself: the "
+            "fragment is written at the end of this configure and the NEXT "
+            "configure derives over the SUBSCRIBED set instead.\n"
+            "  If this image is memory-tight, that first over-approximation can "
+            "fail to LINK (issue 0991). Configure again before reading a link "
+            "error as a sizing problem.")
+    endif()
     if(NOT NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived")
         set(${_o_basis} "closure" PARENT_SCOPE)
         return()
