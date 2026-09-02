@@ -118,7 +118,7 @@ matters for a gate that must run there.
 baseline. The remaining nineteen are confirmed by a green CI run rather than by
 my host.
 
-## The rest, gated too — and why it was cheaper than it looked
+## The rest: tried, measured, reverted
 
 The first pass left 20 gates ungated and called closing that a latency decision.
 Measuring it changed the answer.
@@ -131,29 +131,37 @@ that same job, merely guarded `schedule`/`workflow_dispatch`. So gating the
 lane is widening three `if:` guards inside an existing job. Nothing is added to
 the required set, which is the constraint that froze this repo four times.
 
-Cost was the real obstacle, and it was self-inflicted: `build` was a plain
-serial dependency list while `fast` had a parallel runner. Timed per gate on a
-warm tree, the lane sums to ~386 s (documented ~587 s cold) with one gate,
-`cli-tests`, at 148 s. Giving it the same runner — `NROS_GATE_LANE` picks which
-dependency line to fan out, and the list moved to `build-serial` exactly as
-`fast`'s did — took it to **190 s wall at -P32** on the first (cold-ish) run and
-70 s warm, against a job that already takes 17–18 minutes.
+The lane also gained a parallel runner, which it should have had anyway:
+`build` was a plain serial dependency list while `fast` fanned out.
+`NROS_GATE_LANE` picks which dependency line to run, the list moved to
+`build-serial` exactly as `fast`'s did, and the runner's summary label is
+derived from the lane instead of the literal "check-fast". **Those parts stay.**
 
-`.config/ungated-gates.txt` is now EMPTY, and stays in the tree so the next gate
-that lands off the pull-request path has to add a line.
+**The gating itself was reverted, on the measurement.** Locally the parallel
+lane was 190 s wall — on a 32-core box. CI fans out at **-P4**, where the same
+lane took ~37 minutes (16:27 → 17:05, run 33654481082), `source-gates` alone
+496 s. The `check` job went from 18 minutes to 42. That is ~25 minutes added to
+every pull request, not the ~3 the local number implied.
 
-**Deliberately not on `merge_group`.** `check-build` was on the merge group once
-and could never pass there (phase-396), and a red in the queue EJECTS pull
-requests rather than failing one. A pull request is the recoverable place to
-learn that a gate needs something the job does not build. Widening to the queue
-afterwards is a one-word change; doing both at once would make a freeze
-indistinguishable from a real red.
+**A 32-core dev box says nothing useful about a four-core runner**, and the
+estimate that justified the change came from one. The number that decides a CI
+cost has to be measured at CI's parallelism.
+
+The attempt also surfaced three gates that FAIL in the container —
+`borrowed-e2e`, `sched-dim-arms`, `source-gates` — and the nightly had been red
+on `borrowed-e2e` since at least 2026-09-01 with nobody noticing. That is this
+issue's own thesis arriving on schedule, and it is filed as issue 0995. A lane
+that is already red cannot start gating pull requests regardless of cost.
+
+So `.config/ungated-gates.txt` keeps its 20 entries, and the ratchet keeps doing
+the one thing that is unambiguously right: making the invisible set visible.
 
 ## Acceptance
 
 * [x] Every gate that can run without build artifacts gates a merge.
 * [x] The lane's documented trigger matches the workflows.
-* [x] The ungated set is explicit, reasoned, and may only shrink — and is now
-      empty: every gate runs on a pull request.
-* [x] The build lane runs in parallel, so gating it costs ~190 s rather than
-      ~587 s.
+* [x] The ungated set is explicit, reasoned, and may only shrink.
+* [x] The build lane runs in parallel rather than serially.
+* [ ] Every gate runs on a pull request — attempted, measured at ~25 min added
+      per PR at CI's -P4, and reverted. Blocked on issue 0995 (three gates red)
+      and on `source-gates`' 496 s.

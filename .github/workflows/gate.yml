@@ -642,7 +642,7 @@ jobs:
       # FAILS on those and never reaches the rows the gate asserts. Measured: 2 s
       # filtered vs 428 s for everything.
       - name: build compile-check fixtures (check-source-gates asserts them)
-        if: ${{ contains(fromJSON('["pull_request","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just build-compile-check-fixtures cxx-syntax
@@ -664,7 +664,7 @@ jobs:
       # Affordable because this image HAS ROS: measured 23 s on a humble host for
       # the whole tree, against the ~587 s tier it unblocks.
       - name: generate message bindings (native::check asserts them)
-        if: ${{ contains(fromJSON('["pull_request","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just generate-bindings
@@ -675,26 +675,28 @@ jobs:
       # /opt/ros. The configure-time probe only checks the converter script
       # EXISTS (issue-0196 class: probe narrower than the rule), so an
       # unsourced env fails at 80% of the build rather than at configure.
-      # Issue 0993 — the build tier now gates a PULL REQUEST, and the two steps
-      # above are why it can: they are its prerequisites (`generate-bindings`,
-      # the compile-check fixtures) and they live in THIS job, so the lane
-      # resolves only artifacts the job itself builds — the rule
-      # `check-lane-contracts` enforces.
+      # Issue 0993 — this lane was put on the pull-request path and TAKEN BACK
+      # OFF, and the measurement is why. It is recorded here because the
+      # obvious next person to try it will make the same estimate.
       #
-      # Cost: the lane gained a parallel runner with the same change (it was a
-      # serial dependency list). Measured 190 s wall at -P32 against ~587 s
-      # serial, on a job that already takes 17-18 minutes.
+      # The design was sound: `generate-bindings` and the compile-check fixtures
+      # are its prerequisites, they live in THIS job, so widening three `if:`
+      # guards gates the lane while it still resolves only artifacts the job
+      # itself builds. Nothing joins the required set.
       #
-      # DELIBERATELY NOT ON merge_group. `check-build` was on the merge group
-      # once and could never pass there, and a red in the queue EJECTS pull
-      # requests rather than just failing one — phase-396, one of the four
-      # freezes this file's header is about. A pull request is the recoverable
-      # place to learn that a gate needs something this job does not build. If
-      # it rides green on pull requests, widening it to the queue is a one-word
-      # change; doing both at once would make a freeze indistinguishable from a
-      # real red.
-      - name: just check build + no_std (PR / nightly / manual)
-        if: ${{ contains(fromJSON('["pull_request","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+      # The COST killed it. Measured 190 s wall locally at -P32 — and CI fans
+      # out at **-P4**, where the same lane took ~37 minutes (16:27 -> 17:05 on
+      # run 33654481082), `source-gates` alone 496 s. The `check` job went from
+      # 18 to 42 minutes. A four-core runner is the number that matters, and a
+      # 32-core dev box says nothing useful about it.
+      #
+      # It also surfaced three gates that FAIL in the container — `borrowed-e2e`,
+      # `sched-dim-arms`, `source-gates` — and the nightly had been red on
+      # `borrowed-e2e` since at least 2026-09-01 with nobody noticing, which is
+      # issue 0993's whole thesis arriving on schedule. Filed separately; a lane
+      # cannot start gating pull requests while it is already red.
+      - name: just check build + no_std (nightly / manual only)
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just check build
