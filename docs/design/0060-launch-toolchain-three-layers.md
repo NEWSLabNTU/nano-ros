@@ -213,6 +213,30 @@ directly, so the proc-macro path stays light.
   cannot recur by construction.
 - play_launch gets smaller and its purpose becomes statable in one line.
 
+## Endpoint wiring is AUTHORED, not derived (issue 0973)
+
+A resolved `SystemModel`'s `structure` carries `scopes` and `nodes` from the
+launch tree. It carries `topics`, `services` and `actions` ONLY when a
+`<stem>.contract.yaml` sits beside the launch file: `model_builder` fills those
+three from a `ManifestIndex`, and `manifest_loader` builds that index by reading
+contract files. Nothing derives endpoints from launch XML, because a launch file
+names nodes and does not say what they publish or serve.
+
+Measured in this repo: **93 `*.launch.xml`, 0 `*.contract.yaml`.** So every
+resolved model here describes no wiring, and a consumer asking "how many service
+servers does this system have?" gets an ABSTENTION — which is the designed
+answer, not a failure.
+
+This is written down because the empty maps read exactly like a resolver bug,
+and one instance genuinely was (the loader silently dropped `actions:`, fixed by
+R1-P2). Anyone who finds them empty again should check for contract files before
+searching the resolver.
+
+Consumers that need per-image entity counts without asking users to author 93
+contract files should use the component SIDECAR instead, which records the
+entities a component declares — including action and service clients. That is
+the route issue 0900 took.
+
 ## Invariants to preserve
 
 Two properties, both learned by violating them this week:

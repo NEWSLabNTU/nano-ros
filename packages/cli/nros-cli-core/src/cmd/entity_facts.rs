@@ -108,6 +108,20 @@ pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
 /// The discriminator is whether ANY wiring was described. If it was, an empty
 /// `services` map is a real zero. If nothing was, the question is unanswered
 /// and this verb says nothing rather than guessing.
+///
+/// **Abstaining is the DESIGNED outcome here, not a symptom (issue 0973).**
+/// Endpoint wiring is AUTHORED, not derived: `model_builder` fills
+/// `structure.{topics,services,actions}` from a `ManifestIndex`, which
+/// `manifest_loader` builds by reading a `<stem>.contract.yaml` beside each
+/// launch file. This tree has 93 `*.launch.xml` and 0 `*.contract.yaml`, so the
+/// maps are empty everywhere and always will be until someone authors contracts.
+///
+/// So a caller must not read the abstain as "the resolver lost something".
+/// Nothing is lost; the input does not exist. (There WAS one real instance of
+/// loss — the loader silently dropped `actions:` — and R1-P2 fixed it.) A
+/// consumer that wants per-image entity counts should use the component
+/// SIDECAR, which records action and service clients and needs no contract
+/// file; that is the route issue 0900 took.
 fn describes_wiring(model: &SystemModel) -> bool {
     !model.structure.topics.is_empty()
         || !model.structure.services.is_empty()
