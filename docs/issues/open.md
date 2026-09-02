@@ -78,6 +78,5 @@ fails if this block drifts.
 - **#0971** ([rmw, api]) — `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it See `0971-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
-- **#0983** (build) — `check-action-client-arena-budget` costs 7 s alone and 21 MINUTES inside `check fast` — a filesystem walk against 160 concurrent gates, and it makes the pre-push lane unaffordable See `0983-*`.
 
 <!-- END GENERATED open-issue list -->
