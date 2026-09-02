@@ -133,13 +133,44 @@ if(TARGET cargo-build_nros_cpp)
     # crate. `file(COPY_FILE)` deliberately, NOT `configure_file`: the latter adds a
     # CMAKE_CONFIGURE_DEPENDS edge on a file cargo rewrites mid-build, which would
     # re-trigger configure on every build.
-    foreach(_nros_cpp_hdr "nros_cpp_config_generated.h" "nros_config_generated.h")
-        if(EXISTS "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}")
-            file(COPY_FILE
+    # Issue 0985 — the heal runs the SAME resolver the build-time mirror runs.
+    #
+    # It used to `file(COPY_FILE)` straight from `${CMAKE_CURRENT_BINARY_DIR}`,
+    # i.e. the leaf's OWN corrosion output — which is exactly the "present is
+    # not current" source issue 0978 removed from the mirror script. Once
+    # leaves share a cargo target dir the build script runs once per
+    # (crate, feature set), so that copy is present and arbitrarily old for
+    # every leaf after the first, and this loop wrote a museum header over a
+    # correct one.
+    #
+    # It then made the drift UNREPAIRABLE, which is the half worth spelling out:
+    # the copy stamps the mirror's OUTPUT with a NEW mtime, so ninja finds the
+    # output newer than `$<TARGET_FILE:nros_cpp-static>` and skips the very
+    # custom command that would have written the current bytes. A repair for
+    # drift (issue 0268) that causes drift and then suppresses its own fix.
+    #
+    # Measured 2026-09-02 in examples/native/c/listener/build-zenoh: the C copy
+    # current at 03:12:42, the C++ copy STALE at 03:12:43 — one second later,
+    # same build, same generated content — and `c_listener` failing to link on
+    # issue 0369's size anchor.
+    #
+    # Best-effort by construction: on a tree that has never built, neither
+    # candidate exists and the script exits non-zero saying so. That is not a
+    # configure error — the build-time edge is the real mechanism and this is
+    # only a repair for a tree that is already drifted — so the result is
+    # ignored, exactly as the old `if(EXISTS ...)` guard made it best-effort.
+    foreach(_nros_cpp_heal
+            "nros_cpp_config_generated.h;nros-cpp-generated"
+            "nros_config_generated.h;nros-c-generated")
+        list(GET _nros_cpp_heal 0 _nros_cpp_hdr)
+        list(GET _nros_cpp_heal 1 _nros_cpp_gendir)
+        execute_process(
+            COMMAND bash "${_NROS_CPP_MIRROR_SH}"
                 "${CMAKE_CURRENT_BINARY_DIR}/${_nros_cpp_hdr}"
+                "${CMAKE_BINARY_DIR}" "${_nros_cpp_gendir}" "${_nros_cpp_hdr}"
                 "${_nros_cpp_intree_include_dir}/nros/${_nros_cpp_hdr}"
-                ONLY_IF_DIFFERENT)
-        endif()
+            RESULT_VARIABLE _nros_cpp_heal_rc
+            OUTPUT_QUIET ERROR_QUIET)
     endforeach()
     target_include_directories(nros-cpp-headers BEFORE INTERFACE
         $<BUILD_INTERFACE:${_nros_cpp_intree_include_dir}>)
