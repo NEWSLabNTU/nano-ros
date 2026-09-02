@@ -1,15 +1,60 @@
 ---
 id: 983
-title: "`check-action-client-arena-budget` costs 7 s alone and 21 MINUTES inside
-  `check fast` — a filesystem walk against 160 concurrent gates, and it makes
-  the pre-push lane unaffordable"
-status: open
+title: "RETRACTED — a 21-minute `check fast` was concurrent load from another
+  session, not a slow gate. The lane is ~13 s; recorded so the next person does
+  not re-file it"
+status: wontfix
 type: bug
 area: build
-related: [issue-0900, issue-0196]
+related: [issue-0900, issue-0196, issue-0859]
 ---
 
-## Symptom
+## RETRACTED — read this first
+
+Filed on ONE observation, then refuted by re-measuring. The claim was that
+`check-action-client-arena-budget` costs 21 minutes inside `check fast`
+(1257311 ms) against 7.23 s alone — a 174x contention penalty.
+
+**Two clean re-runs of the same lane on the same tree:**
+
+```
+run 2   13 s      (instrumentation broke sccache; see below)
+run 3   12.88 s   161 gate(s) at -P32, slowest rmw-ret-sign 11601ms
+```
+
+The lane is **~13 seconds**, and the arena gate is not even its slowest member.
+The 21-minute run is not reproducible.
+
+**What actually happened.** Several agent sessions build in this repo
+concurrently. During the 21-minute run another session was compiling (three
+build processes were observed), and a fixture build had just written a ~100 GB
+tree, so the page cache was cold. The lane was measuring someone else's load.
+
+That is the SAME error this repo has recorded before — issues 0859-0862, four
+ghost issues filed from artifacts built against a different tree, each with a
+confident and wrong root cause. A single timing taken under unknown concurrent
+load is not evidence, and the fix is to re-run before filing, not to reason
+harder about the first number.
+
+**A measurement note worth keeping:** the run-2 instrumentation set `TMPDIR` to
+a long scratchpad path, which exceeded `SUN_LEN` for sccache's unix socket
+(`sccache: error: path must be shorter than SUN_LEN`) and failed
+`leaf-lockfiles`. Changing the environment to observe it changed the result.
+
+**What survives, and is the only part worth acting on:** an audit of the fast
+lane found **30 of its 167 gates** use a filesystem-walking primitive —
+19 `find(1)`, 5 `grep -r`, 3 `os.walk`, 4 `rglob`/`glob('**')` — all running
+concurrently at `-P32`. That is a standing sensitivity to I/O pressure rather
+than a defect: at ~13 s the lane is affordable, but it degrades under a loaded
+machine in a way a CPU-bound lane would not. If someone sees a slow lane again,
+measure the machine before blaming a gate.
+
+The original report is kept below, struck, because the reasoning is the useful
+part.
+
+---
+
+## ~~Symptom~~ (original report, refuted above)
 
 `just check fast` took **21 minutes**, essentially all of it one gate:
 
