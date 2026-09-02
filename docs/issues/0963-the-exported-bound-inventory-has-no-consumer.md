@@ -24,7 +24,57 @@ Measured on the island entry: 11 inventories, 84 types, 60 bounded.
 
 ## What consumes it
 
-Nothing.
+**Nothing, when this was filed. That is no longer true — measured 2026-09-02.**
+
+`nros_cargo_build.cmake` loads the fragments (`_nros_load_derived_message_bounds`)
+and resolves `NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE`, `..._SUBSCRIBER_LARGE_SIZE`,
+`..._MAX_LARGE_SUBSCRIBERS` and `..._SUBSCRIPTION_BUFFER_SIZE` through
+`_nros_resolve_derivable_knob`, the same ladder `NROS_EXECUTOR_MAX_CBS` uses.
+phase-403 W8/W9 built that while this issue stayed open.
+
+**The transport works end to end.** On `examples/workspaces/mixed`, after a full
+build, a reconfigure finds 10 `nros_message_bounds.cmake` fragments and reads
+them. The one-configure lag the fragments carry ("still a build-time output ...
+the numbers apply from the next configure") RESOLVES; it is not a permanent
+stall.
+
+## The blocker moved: the data refuses, and the refusal is right
+
+What the consumer now prints on that workspace is not silence but a reasoned
+abstention:
+
+```
+nros: message-bound sizing REFUSED -- every size knob keeps its configured value.
+  16 of 35 types in the linked interface closure carry no bound:
+    action_msgs/msg/GoalStatusArray (unbounded): status_list (sequence<T>)
+    example_interfaces/msg/String (unbounded): data (string)
+    example_interfaces/msg/*MultiArray (unbounded): layout.dim, data
+    ... 16 total
+  Deriving a class size over only the bounded types would publish a maximum a
+  real sample can exceed, which is a SILENT BufferTooSmall drop on the C/C++
+  arena dispatch path.
+```
+
+Fifteen of the sixteen are `example_interfaces` — the `*MultiArray` family,
+`String`, `WString`, `MultiArrayDimension`, `MultiArrayLayout` — plus
+`action_msgs/GoalStatusArray`. These are unbounded in their own `.msg`
+definitions, so no amount of wiring fixes them.
+
+**So the next action is not "wire a consumer".** It is one of:
+
+* **bound them** in `nros-codegen.toml` (RFC-0033 `cap`), which runs into
+  [issue 0962](0962-nested-bounded-sequences-cost-the-product-of-their-caps.md):
+  a bound over nested bounded sequences is the PRODUCT of the caps, so a uniform
+  cap does not terminate at a usable number;
+* **narrow the closure**, so an image pays only for the types it actually links
+  rather than everything `example_interfaces` ships — the `mixed` workspace uses
+  a handful of these and the closure carries all sixteen;
+* or **accept the refusal** for images with unbounded types and let the knobs
+  stay hand-set there, which is what happens today and is at least honest.
+
+Whoever takes it should re-read this section rather than the one above: the
+"nothing consumes it" framing sent this issue's severity to `high` and is now
+the wrong problem.
 
 ## What that costs, measured rather than argued
 
