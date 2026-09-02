@@ -232,8 +232,29 @@ esac
 # trees. This is the sole source: the pre-218 `~/.nros/bin/nros` curl
 # install (`scripts/install-nros.sh`) is retired, and the standalone
 # `NEWSLabNTU/nros-cli` repo was merged in-tree at `packages/cli/`.
+# Prepend UNCONDITIONALLY, whether or not the binary is there yet.
+#
+# This used to be `if [ -x <the binary> ]`, which loses the race a CI job runs
+# every time: `source ./activate.sh` happens BEFORE `just setup <scope>` builds
+# the CLI, so on a fresh checkout the directory was empty, the prepend was
+# skipped, and PATH stayed fixed for the rest of the step. `setup-cli` then
+# built the CLI into a directory that was not on PATH, and `nros` kept
+# resolving to whatever else the host had — on the self-hosted runner, a
+# DIFFERENT checkout at /mnt/evo/aeon/nano-ros. That CLI was stale against its
+# own sources, so `just setup tier2` died with
+#
+#     Error: in-tree nros CLI is STALE — its sources changed since it was built
+#
+# blaming this checkout for another one's state. `build-wide` failed this way on
+# every run once the runner was provisioned.
+#
+# Prepending a not-yet-populated directory is harmless — nothing resolves from
+# it until the build lands — and it makes "this checkout's CLI wins" true
+# regardless of the order the two steps run in. The hint below still fires
+# correctly: `command -v nros` cannot find anything in an empty directory.
+export PATH="$_nros_root/packages/cli/target/release:$PATH"
 if [ -x "$_nros_root/packages/cli/target/release/nros" ]; then
-    export PATH="$_nros_root/packages/cli/target/release:$PATH"
+    :
 elif [ -z "${NROS_QUIET_ACTIVATE:-}" ] && ! command -v nros >/dev/null 2>&1; then
     # Phase 222.F.1 — first-run hint. The checkout has no built CLI AND
     # `nros` is not resolvable from any other PATH entry (e.g. ~/.nros/bin).
