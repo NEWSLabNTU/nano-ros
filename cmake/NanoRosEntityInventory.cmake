@@ -238,6 +238,8 @@ function(nros_derive_entity_inventory_knobs)
     _nros_entity_publish(NROS_ENTITY_INVENTORY_REASON "")
     _nros_entity_publish(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 0)
     foreach(_v NROS_DERIVED_EXECUTOR_MAX_CBS NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
+               NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
+               NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
@@ -334,6 +336,15 @@ function(nros_derive_entity_inventory_knobs)
         _nros_entity_publish(NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
             "${NROS_DERIVED_EXECUTOR_ACTION_CLIENTS}")
     endif()
+    # phase-412 W1 -- the SESSION pools, republished on the same terms: present
+    # only when the whole image declared, absent otherwise, so a consumer reads
+    # a derived value or reads nothing.
+    foreach(_pool NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
+                  NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES)
+        if(DEFINED ${_pool})
+            _nros_entity_publish(${_pool} "${${_pool}}")
+        endif()
+    endforeach()
     foreach(_kind PUBLISHER SUBSCRIPTION TIMER SERVICE_SERVER SERVICE_CLIENT
                   ACTION_SERVER ACTION_CLIENT GUARD_CONDITION)
         if(DEFINED NROS_ENTITY_COUNT_${_kind})
@@ -413,6 +424,10 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_INVENTORY_ENTITY_TOTAL
         NROS_DERIVED_EXECUTOR_MAX_CBS
         NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
+        NROS_DERIVED_MAX_SUBSCRIBERS
+        NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
+        NROS_DERIVED_MAX_PUBLISHERS
+        NROS_DERIVED_MAX_QUERYABLES
         NROS_ENTITY_COUNT_PUBLISHER
         NROS_ENTITY_COUNT_SUBSCRIPTION
         NROS_ENTITY_COUNT_TIMER

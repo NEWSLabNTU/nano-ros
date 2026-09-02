@@ -192,6 +192,29 @@ zephyr_include_directories(${NROS_REPO_DIR}/packages/rmw/zenoh/zpico-zephyr/incl
 # value the cargo build got. Reading CONFIG_* here would reintroduce issue 0135:
 # an environment override would reach the Rust side only, and the two would
 # disagree about a struct's size with no diagnostic (issue 0316).
+# phase-412 W1 -- a C define has NO default of its own, unlike a Rust build
+# script. `_nros_resolve_derivable_knob`'s rung 4 deliberately leaves a knob
+# UNRESOLVED so the reading build script falls to its own literal
+# (`env_usize("ZPICO_MAX_SUBSCRIBERS", 8)`), which is the one place that literal
+# is written. That contract does not reach here: an unresolved knob expands to
+# nothing, `-DZPICO_MAX_SUBSCRIBERS=` reaches the compiler, and zpico.c reports
+#     error: flexible array member not at end of struct
+# on a struct nobody edited.
+#
+# It only bites since these knobs gained the `-1` DERIVE sentinel: before that
+# Kconfig always carried a number. So the sentinel is safe only where the
+# consumer supplies a default, and this consumer is the exception.
+foreach(_zp MAX_PUBLISHERS MAX_SUBSCRIBERS MAX_QUERYABLES)
+    if(NOT DEFINED NROS_RESOLVED_ZPICO_${_zp} OR
+       "${NROS_RESOLVED_ZPICO_${_zp}}" STREQUAL "")
+        set(NROS_RESOLVED_ZPICO_${_zp} 8)
+        message(STATUS
+            "nros: ZPICO_${_zp} left at the zpico literal default 8 -- nothing "
+            "stated it and the entity inventory derived nothing (a first "
+            "configure on a clean build dir always lands here, issue 0991)")
+    endif()
+endforeach()
+
 zephyr_compile_definitions(
     ZPICO_MAX_PUBLISHERS=${NROS_RESOLVED_ZPICO_MAX_PUBLISHERS}
     ZPICO_MAX_SUBSCRIBERS=${NROS_RESOLVED_ZPICO_MAX_SUBSCRIBERS}

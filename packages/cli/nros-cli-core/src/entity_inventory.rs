@@ -407,6 +407,21 @@ pub struct EntityInventory {
     components: Vec<ComponentEntities>,
 }
 
+/// MIRRORS of the action multipliers in
+/// `nros_node::executor::action`. The CLI cannot depend on `nros-node`, so
+/// these are copies, and `check-infra-queryable-counts` holds each to the
+/// creation calls that decide it -- the same arrangement
+/// `ACTION_SERVER_QUERYABLES` already has in `cmd::entity_facts`.
+///
+/// They exist because a declared action is ONE entity that costs SEVERAL
+/// session slots. An author writing `ENTITIES action_server:...` declares one
+/// thing; the backend opens three queryables and two publishers for it. A pool
+/// sized from the raw per-kind count is short for every image with an action,
+/// and short halts the board.
+const ACTION_SERVER_QUERYABLES: usize = 3;
+const ACTION_SERVER_PUBLISHERS: usize = 2;
+const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
+
 /// The knobs an entity inventory can answer, plus how it got there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DerivedEntityKnobs {
@@ -431,6 +446,29 @@ pub struct DerivedEntityKnobs {
     /// it is the number a human counts, and because the gap between the two is
     /// the finding.
     pub entity_total: usize,
+    /// `NROS_MAX_SUBSCRIBERS` / `NROS_RMW_SUBSCRIBER_SLOTS` -- session
+    /// subscriber slots. Declared subscriptions PLUS the feedback subscription
+    /// each action client opens.
+    ///
+    /// Verified against the shim rather than assumed: `ZenohSubscriber::new`
+    /// has exactly one caller (`create_subscription`), and the two things that
+    /// looked like they might share the pool do not -- the graph cache lives in
+    /// its own `graph_cache.sub` field and liveliness tokens in
+    /// `liveliness[ZPICO_MAX_LIVELINESS]`. So there is no shim addend.
+    pub max_subscribers: usize,
+    /// `NROS_MAX_PUBLISHERS` -- declared publishers plus the feedback and
+    /// status topics each action server publishes.
+    pub max_publishers: usize,
+    /// `NROS_MAX_QUERYABLES` -- a service server IS a queryable, and an action
+    /// server is [`ACTION_SERVER_QUERYABLES`] of them.
+    ///
+    /// Does NOT include the parameter or lifecycle service families
+    /// (`PARAM_SERVICE_QUERYABLES` 6, `LIFECYCLE_SERVICE_QUERYABLES` 5): those
+    /// are per-image infrastructure enabled by a feature this inventory cannot
+    /// see, so counting them here would guess. An image carrying them must
+    /// still state the knob, and that is why this is a DEFAULT rather than a
+    /// ceiling.
+    pub max_queryables: usize,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -605,10 +643,25 @@ impl EntityInventory {
             per_component.push((c.pkg.clone(), c.component.clone(), count, slots));
         }
 
+        // phase-412 W1. A declared action is ONE entity that costs SEVERAL
+        // session slots, so the session pools are the per-kind count PLUS the
+        // multipliers held beside the calls that decide them. Reading the raw
+        // count would size every action-carrying image short.
+        let n = |tag: &str| per_kind.get(tag).copied().unwrap_or(0);
+        let max_subscribers = n(EntityKind::Subscription.tag())
+            + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS;
+        let max_publishers = n(EntityKind::Publisher.tag())
+            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS;
+        let max_queryables = n(EntityKind::ServiceServer.tag())
+            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES;
+
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
             heavy_slots,
             entity_total,
+            max_subscribers,
+            max_publishers,
+            max_queryables,
             per_kind,
             per_component,
         }))
@@ -880,6 +933,29 @@ impl EntityInventory {
                 s.push_str(&format!(
                     "set(NROS_DERIVED_EXECUTOR_ACTION_CLIENTS {})\n",
                     k.heavy_slots
+                ));
+                // phase-412 W1 -- the SESSION pools. Separate from the slot
+                // demand above: a publisher claims no callback slot but does
+                // claim a session slot, and a declared action claims several
+                // of these for the one entity it declares.
+                s.push_str(
+                    "# Session pools. A declared action is ONE entity that costs\n                     # SEVERAL session slots: a server opens 3 queryables and 2\n                     # publishers, a client 1 subscription. The multipliers live\n                     # beside the calls that decide them and are held there by\n                     # check-infra-queryable-counts.\n                     # NOT included: the parameter (6) and lifecycle (5) service\n                     # families, which a feature enables and this inventory cannot\n                     # see. An image carrying them must state the knob -- which is\n                     # why these are DEFAULTS and not ceilings.\n",
+                );
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_MAX_SUBSCRIBERS {})\n",
+                    k.max_subscribers
+                ));
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_RMW_SUBSCRIBER_SLOTS {})\n",
+                    k.max_subscribers
+                ));
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_MAX_PUBLISHERS {})\n",
+                    k.max_publishers
+                ));
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_MAX_QUERYABLES {})\n",
+                    k.max_queryables
                 ));
             }
         }

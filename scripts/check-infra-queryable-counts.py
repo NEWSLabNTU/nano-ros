@@ -61,6 +61,26 @@ def action_channels(text):
     return {m.group(1) for m in re.finditer(r"create_service\(&(\w+)_info", text)}
 
 
+def action_server_topics(text):
+    """The DISTINCT topics one action SERVER publishes: feedback and status.
+
+    Counted by the topic each `create_publisher` is handed, not by call sites,
+    for the same reason `action_channels` counts channels: the typed and raw
+    registration arms both appear, so a bare call count doubles.
+    """
+    return {m.group(1) for m in re.finditer(r"create_publisher\(&(\w+)_topic", text)}
+
+
+def action_client_topics(text):
+    """The DISTINCT topics one action CLIENT subscribes to: feedback.
+
+    Same counting rule. If status ever becomes a subscription rather than a
+    poll, this set grows and ACTION_CLIENT_SUBSCRIPTIONS must move with it --
+    which is the whole point of tying them.
+    """
+    return {m.group(1) for m in re.finditer(r"create_subscription\(&(\w+)_topic", text)}
+
+
 def declared(text, name):
     m = re.search(rf"^pub const {name}: usize = (\d+);", text, re.M)
     return int(m.group(1)) if m else None
@@ -220,6 +240,36 @@ def check(root, rmw_dir="packages/rmw"):
                     f"the constant, so the mirror is held here instead "
                     f"(phase-392 W5.d / W5.b2)."
                 )
+    # phase-412 W1 -- an action costs PUBLISHER and SUBSCRIBER slots too, and a
+    # consumer sizing those pools from a declaration has to add them. Same rule
+    # and same failure if they drift: an image declaring an action is sized
+    # short, and under-sizing halts the board rather than warning.
+    try:
+        action_src2 = read(root, ACTION)
+    except OSError as e:
+        problems.append(f"ACTION_SERVER_PUBLISHERS: cannot read {ACTION}: {e}")
+    else:
+        for const, fn in (("ACTION_SERVER_PUBLISHERS", action_server_topics),
+                          ("ACTION_CLIENT_SUBSCRIPTIONS", action_client_topics)):
+            topics = fn(action_src2)
+            want = declared(action_src2, const)
+            if want is None:
+                problems.append(
+                    f"{const} not found in {ACTION} — the count must have exactly "
+                    f"one definition, beside the calls it counts."
+                )
+            elif not topics:
+                problems.append(
+                    f"{const}: found no matching creation calls in {ACTION}; the "
+                    f"pattern this gate counts by has moved."
+                )
+            elif len(topics) != want:
+                problems.append(
+                    f"{const} says {want} but {ACTION} creates {len(topics)} "
+                    f"distinct topic(s): {sorted(topics)}. A pool sized from this "
+                    f"constant would be short for every image declaring an action."
+                )
+
     return problems
 
 
@@ -237,8 +287,17 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     # Written TWICE, as the real file does (typed + raw arms), so the probe
     # for "distinct channels, not call sites" is a real one.
     act = f"pub const ACTION_SERVER_QUERYABLES: usize = {c_action};\n"
+    # phase-412 W1 -- the publisher/subscriber multipliers live in the same
+    # file and are checked by the same run, so the fixture has to carry them
+    # or the clean case reports problems that belong to a missing fixture
+    # rather than to a drifted count.
+    act += "pub const ACTION_SERVER_PUBLISHERS: usize = 2;\n"
+    act += "pub const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;\n"
     for _ in range(2):
         act += "".join(f"    .create_service(&chan{i}_info, qos)\n" for i in range(chans))
+        act += "    .create_publisher(&feedback_topic, qos)\n"
+        act += "    .create_publisher(&status_topic, qos)\n"
+        act += "    .create_subscription(&feedback_topic, qos)\n"
     open(os.path.join(root, ACTION), "w").write(act)
     open(os.path.join(root, "packages/rmw/zenoh/x/src/service.rs"), "w").write(rmw_line + "\n")
     # The CLI mirror lives outside `packages/rmw`, so it is reached by a

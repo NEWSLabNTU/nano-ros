@@ -49,7 +49,7 @@ Of these, one knob is derived: `NROS_DERIVED_EXECUTOR_MAX_CBS` (14 — the
 subscriptions, timers and service servers that claim a callback slot;
 publishers claim none).
 
-## W1 — wire the six
+## W1 — wire the six. LANDED 2026-09-03, five of six
 
 Each is a `_nros_entity_publish` of a value that is already in the file, plus
 W8's precedence ladder (env > Kconfig/board > derived > crate default) and its
@@ -64,25 +64,92 @@ refusal rule (derive nothing when the inventory's own status is not `derived`).
 | `NROS_EXECUTOR_MAX_NODES` | 6 | `INVENTORY_COMPONENT_COUNT` | 4 |
 | `NROS_EXECUTOR_ACTION_CLIENTS` | 0 | `COUNT_ACTION_CLIENT` | 0 |
 
-**Two things to settle before wiring, not after.**
+**Both blocking questions, answered by reading the code.**
 
-`NROS_MAX_SUBSCRIBERS` and `NROS_MAX_QUERYABLES` are ZENOH SESSION limits, not
-executor ones. A session may declare entities the image never registers as
-callbacks — liveliness tokens, an internal queryable for the graph. Read the
-zenoh shim and count what it declares before equating the knob to
-`COUNT_SUBSCRIPTION`; if the shim adds any, the derivation is `count + shim`
-and the shim's contribution must come from the shim rather than from a constant
-written here. Getting this wrong under-counts, which halts the board.
+*Do the session pools need shim headroom?* No addend, verified rather than
+assumed: `ZenohSubscriber::new` has exactly ONE caller (`create_subscription`),
+and the two things that looked like they might share the pool do not -- the
+graph cache lives in its own `graph_cache.sub` field, liveliness tokens in
+`liveliness[ZPICO_MAX_LIVELINESS]`.
 
-`NROS_EXECUTOR_MAX_NODES` is components, and a component is not always a node:
-a multi-node component would break the equality. Check `nros_components` before
-assuming `COMPONENT_COUNT` is the answer.
+But the RAW per-kind count was still the wrong input, which is what made the
+question worth blocking on. A declared ACTION is one entity that costs several
+session slots:
 
-**Derived values carry NO headroom, deliberately** (phase-403's rule). Exact
-demand makes the running image a checker of its own declaration: register past
-the table and `NodeError::ExecutorFull` names the knob. That property is only
-worth having if the count is right, which is why the two questions above are
-blocking rather than advisory.
+    action server -> 3 queryables + 2 publishers
+    action client -> 1 subscription
+
+Wiring `MAX_QUERYABLES = COUNT_SERVICE_SERVER` would have under-sized every
+image with an action. The multipliers now live beside the calls that decide
+them (`ACTION_SERVER_QUERYABLES`, and new here `ACTION_SERVER_PUBLISHERS`,
+`ACTION_CLIENT_SUBSCRIPTIONS`), held there by `check-infra-queryable-counts`.
+
+Deliberately NOT counted: `PARAM_SERVICE_QUERYABLES` (6) and
+`LIFECYCLE_SERVICE_QUERYABLES` (5). A feature enables those and the inventory
+cannot see it, so counting them would guess. An image carrying either states
+the knob, which is what "the derived value is a DEFAULT" is for.
+
+*Is a component always a node?* One `ComponentNode` is one `Node::create` is
+one name, and the executor keys node slots by NAME -- "a repeated name must
+reuse its record". But `nros_create_node_on` (the bridge) creates TWO nodes per
+bridge, OUTSIDE the component model, so `COMPONENT_COUNT` is a lower bound.
+
+**So `NROS_EXECUTOR_MAX_NODES` is NOT wired.** Under-counting halts the board,
+phase-403's rule is refuse rather than under-derive, and the island would save
+6 -> 4. It moves to W2 with the bridge as its blocker.
+
+**Measured on the island**, both configures (issue 0991):
+
+| knob | hand-set | derived |
+| --- | ---: | ---: |
+| `NROS_MAX_SUBSCRIBERS` | 12 | 10 |
+| `NROS_RMW_SUBSCRIBER_SLOTS` | 12 | 10 |
+| `NROS_MAX_PUBLISHERS` | 16 | 14 |
+| `NROS_MAX_QUERYABLES` | 4 | 0 |
+
+    RAM   324834 (99.13%) -> 312088 (95.24%)   -12746 B
+    DTCM   93744 (71.52%) ->  89320 (68.15%)    -4424 B
+
+17170 bytes, and RAM headroom goes from 0.87% to 4.76%.
+
+## THE RULE W1 COST, and it binds the rest of this phase
+
+**The `-1` DERIVE sentinel is safe only where the consumer supplies its own
+default.** `_nros_resolve_derivable_knob`'s rung 4 deliberately leaves a knob
+UNRESOLVED so the reading build script falls to its own literal
+(`env_usize("ZPICO_MAX_SUBSCRIBERS", 8)`) -- "the one place that literal is
+written". A C compile definition has no such literal. An unresolved knob
+expands to nothing, `-DZPICO_MAX_SUBSCRIBERS=` reaches the compiler, and
+`zpico.c` reports `flexible array member not at end of struct` on a struct
+nobody edited.
+
+It only appears once a knob GAINS the sentinel, because before that Kconfig
+always carried a number. Every knob W2 converts must therefore be checked for a
+consumer with no default of its own, and that check belongs before the switch,
+not after.
+
+## THREE DELIVERY FAILURES, and what they say about W4
+
+W1's derived values were RIGHT at every step -- 10, 10, 14, 0 sat correctly in
+the fragment throughout. All three failures were in DELIVERY, and every gate
+stayed green through all three, because the gates check the inventory and the
+resolver and all three failures were downstream of both:
+
+1. **A second consumer.** The zpico C defines read raw `CONFIG_*`, bypassing the
+   resolver, and ran BEFORE it. Symptom: `size of array 'subscribers' is
+   negative`.
+2. **A name that resolved to empty.** A `foreach` building
+   `NROS_DERIVED_${_pool}` produced `NROS_DERIVED_NROS_MAX_SUBSCRIBERS`, which
+   names nothing; CMake yields EMPTY for an unknown name rather than failing.
+3. **A consumer with no default**, the rule above.
+
+W4 as first written -- "every published symbol has a consumer" -- would have
+caught NONE of them. The symbol had a consumer in all three cases; a different
+consumer was reading around it, or the name never matched, or the value was
+legitimately absent. **The gate that catches all three asserts, per knob, that
+the value reaching the COMPILE equals the value the resolver produced.** That is
+the form W4 should take, and it is now backed by three instances rather than by
+the argument that opened this phase.
 
 ## W2 — the ones with no derivation, and what each is blocked on
 
@@ -95,6 +162,7 @@ Named here so nobody re-audits them, with the blocker rather than a shrug.
 | `NROS_ZEPHYR_HEAP_SIZE` | 94208 | runtime allocation. No static model, and the honest first step is a high-water reporter, not a derivation |
 | `NROS_GRAPH_CACHE_SIZE` | 4096 | sized by the PEER graph. Not a property of this image and probably never derivable from it |
 | `NROS_MAX_LIVELINESS` | 32 | same — remote peers |
+| `NROS_EXECUTOR_MAX_NODES` | 6 | the BRIDGE creates two nodes per bridge outside the component model, so `COMPONENT_COUNT` is a lower bound. Needs the bridge to declare, or the derivation to refuse when one is present |
 | `NROS_ZEPHYR_TASK_SLOTS`, `..._TASK_STACK_SIZE` | 5, 8192 | transport tasks, not entities. Derivable in principle from the transport's own declaration; nothing declares it today |
 
 `NROS_SUBSCRIBER_LARGE_SIZE` is a seventh case and a different one: it is
