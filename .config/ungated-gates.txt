@@ -6,51 +6,25 @@
 # move it, or add a line and say why) — so the invisible set cannot silently
 # grow and cannot silently go stale.
 #
-# Every gate below was checked in a PRISTINE worktree (`git worktree add
-# --detach`, then `just check <gate>`): each one FAILS with no build artifacts,
-# which is what makes the build tier the right home. Twenty others passed that
-# test and moved to the fast line (issue 0993) — "it has always been here" is
-# not a reason, and the pristine run is what tells the two apart.
+# EMPTY, as of issue 0993. It held 19, then 20; every one of them now runs on a
+# pull request:
 #
-# Why this matters: `just check build` is invoked once, in `gate.yml`, behind a
-# `schedule`/`workflow_dispatch` guard. Nothing here gates a merge, so a red is
-# invisible until somebody reads a nightly — issue 0981 sat red on `main` for a
-# day behind a green required `CI`.
+#   * 20 gates that need nothing BUILT moved to the fast line.
+#   * The remaining build tier gained its prerequisites on the PR path — the
+#     `generate-bindings` and compile-check-fixture steps that already lived in
+#     the same job, merely guarded `schedule`/`workflow_dispatch` — plus a
+#     parallel runner, which took it from ~587 s serial to 190 s wall at -P32.
 #
-# Regenerate the list (NOT the reasons): python3 scripts/check-gate-visibility.py
-
-# --- need RTOS submodule SOURCES on the host (not just build artifacts) ---
-# sched-dim-arms compiles a probe against FreeRTOS.h. It passed a pristine
-# WORKTREE on a provisioned host and still failed CI's bare container:
-#   FAIL: the accept arm does not compile — this IS the call site.
-#   .../freertos_run_tiers.c:20:10: fatal error: FreeRTOS.h: No such file or directory
-# A pristine worktree proves "no build artifacts"; it does NOT prove "no
-# toolchains, SDKs or submodules". CI is the oracle for that.
-sched-dim-arms
-
-# --- compile a crate and read what it generates ---
-borrowed-e2e
-c
-cpp
-node-std-tests
-nros-log-riscv32
-staticlib-symbols
-test-targets
-workspace-all
-
-# --- need the in-tree CLI built, or build it ---
-cli-fresh
-cli-tests
-launch-resolve-builds
-required-features-tests
-source-gates
-
-# --- need an RMW backend or its vendored sources to resolve ---
-embedded-feature-unification
-rmw-cyclonedds
-rmw-uorb
-rmw-xrce
-
-# --- need a linked image to measure ---
-mem-report
-no-alloc-image
+# It stays here, empty, on purpose. The next gate that lands somewhere no pull
+# request runs has to add a line, and that line is the question "does it need to
+# be there?" asked at the only moment anyone will ask it.
+#
+# Membership, if it is ever non-empty again, is TESTED and not argued — and the
+# test has two halves, because the first one is not sufficient:
+#
+#   1. a pristine worktree (`git worktree add --detach`) proves the gate needs
+#      nothing BUILT;
+#   2. CI's own container proves it needs nothing INSTALLED. `sched-dim-arms`
+#      passed (1) on a provisioned host and still failed (2) on `FreeRTOS.h`.
+#
+# Regenerate: python3 scripts/check-gate-visibility.py

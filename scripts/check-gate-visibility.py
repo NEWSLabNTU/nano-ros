@@ -111,10 +111,13 @@ def main() -> int:
     gated_lanes = lanes_run_by_gating_jobs()
 
     ungated: list[str] = []
-    for lane in ("fast-serial", "build"):
-        if lane == "fast-serial" and ("fast" in gated_lanes or "fast-serial" in gated_lanes):
-            continue
-        if lane in gated_lanes:
+    for lane in ("fast-serial", "build-serial"):
+        # A lane's LIST and its VERB are different names: `fast-serial` holds
+        # the gates and `just check fast` runs them, and since issue 0993 the
+        # same is true of `build-serial` / `build`. The workflows invoke the
+        # verb, so check both spellings or a gated lane reads as ungated.
+        verb = lane.removesuffix("-serial")
+        if lane in gated_lanes or verb in gated_lanes:
             continue
         ungated.extend(lane_members(text, lane))
 
