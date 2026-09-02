@@ -49,6 +49,7 @@ is cargo's to report.
 Exit 0 when every include and every generated path dep resolves, 1 otherwise.
 """
 
+import os
 import re
 import subprocess
 import sys
@@ -66,6 +67,29 @@ STR_RE = re.compile(r'"([^"]*)"')
 # `nros sync` produces. Matches `path = "…/generated/…"` in either the inline
 # table or the expanded form.
 GENERATED_PATH_RE = re.compile(r'path\s*=\s*"([^"]*\bgenerated/[^"]*)"')
+
+# ...with ONE exception, and it is about the PRODUCER rather than the shape.
+# `generated/px4_msgs` is not written by `nros sync` — issue 0510 records that
+# px4_msgs is not an ament package, so only `nros generate-px4-msgs` can emit it,
+# from the PX4 `.msg` tree, and only `just px4 build-fixtures` runs that. That
+# lane SKIPS cleanly when the submodule is absent (`nros_lane_skip`), so on any
+# tree without PX4 provisioned these three leaves can never have the directory,
+# and no amount of `nros sync` will change it — this guard's remedy line would
+# be advice that cannot work.
+#
+# So require it only when the producer could have run. Without the `.msg` tree
+# the leaves are REPORTED as not-required rather than dropped silently; with it,
+# a missing directory is real breakage and still fails. Same reasoning the
+# `packages/cli/testing_workspaces/**` exclusion above rests on: match the gate
+# to the leaves the rule covers.
+PX4_PRODUCED_RE = re.compile(r"\bgenerated/px4_msgs\b")
+
+
+def px4_msg_tree() -> Path:
+    """The PX4 `.msg` tree `just px4 build-fixtures` generates px4_msgs from."""
+    env = os.environ.get("PX4_AUTOPILOT_DIR")
+    base = Path(env) if env else ROOT / "third-party" / "px4" / "PX4-Autopilot"
+    return base / "msg"
 
 
 def includes(text: str):
@@ -100,6 +124,8 @@ def main() -> int:
     # Second shape: a manifest path-deps a crate under `generated/` that sync
     # has not produced yet. Same seam, same remedy, same failure text from cargo.
     gen_missing = []   # (manifest, unresolved_path)
+    gen_unprovisioned = []   # (manifest, path) — producer absent, not required
+    px4_available = px4_msg_tree().is_dir()
     # Scoped to `examples/**` — the leaves the lanes this guard fronts actually
     # walk (`native::format` enumerates exactly this set). `packages/cli/
     # testing_workspaces/**` also path-deps `generated/`, but those are CLI test
@@ -119,8 +145,23 @@ def main() -> int:
             continue
         for dep_path in GENERATED_PATH_RE.findall(text):
             target = (man.parent / dep_path / "Cargo.toml").resolve()
-            if not target.is_file():
-                gen_missing.append((rel, dep_path))
+            if target.is_file():
+                continue
+            if PX4_PRODUCED_RE.search(dep_path) and not px4_available:
+                gen_unprovisioned.append((rel, dep_path))
+                continue
+            gen_missing.append((rel, dep_path))
+
+    if gen_unprovisioned:
+        # Say what was exempted and why. A gate that narrows its own scope has
+        # to report the narrowing, or "OK" overstates what was checked.
+        print(
+            f"note: {len(gen_unprovisioned)} path dep(s) into `generated/px4_msgs` "
+            f"not required — no PX4 `.msg` tree at {px4_msg_tree()}."
+        )
+        print("      They are produced by `just px4 build-fixtures` (via "
+              "`nros generate-px4-msgs`), not by `nros sync`.")
+        print("      Provision it with `just setup px4` if you need those leaves.")
 
     if not missing and not gen_missing:
         print(
