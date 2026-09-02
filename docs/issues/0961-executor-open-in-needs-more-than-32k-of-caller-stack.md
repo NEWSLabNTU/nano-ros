@@ -159,3 +159,40 @@ Two things this did NOT do, and they are why the issue stays open:
    unnamed, and that is the half of this issue that cost four bring-up sessions.
 
 `ZenohSession::names_and_types_filtered` (19840 bytes) is untouched.
+
+## Where the "state the number" check can and cannot live (2026-09-03)
+
+Scoped but NOT implemented. Recording the constraints, because the obvious two
+placements are both wrong and finding that out costs a build each.
+
+**It cannot go inside `Executor::open_in`.** The overflow happens in that
+function's PROLOGUE — `sub.w sp, sp, #16000` before phase-409, and the named
+fault above points at `__aeabi_memclr8` with `lr = open_in`. Any check written
+in the body runs after the stack has already been claimed, so it cannot fire on
+the image it is meant to protect. The same argument rules out `nros_cpp_init`,
+which is the other half of the same call chain and commits its own frame first.
+A runtime check has to sit in the CALLER, before the call — which means the
+board's entry, per platform.
+
+**The configure-time route needs a probe that does not exist yet.** The heap
+gate this issue asks to imitate works because both of its numbers are knobs
+resolved at configure. The stack requirement is not: it derives from
+`size_of::<Executor>()`, which is only knowable by compiling the crate. There IS
+a probe of that shape — `nros-build-helpers::c` reads a compiled rlib and emits
+`EXECUTOR_OPAQUE_U64S` — but that constant is `size_of::<ExecutorInlineStorage>()`,
+the executor value PLUS its carved backing. The backing is not on the stack, so
+reusing it would overstate the requirement, and on a part where the overstatement
+is a build error that is not a safe direction to be wrong in.
+
+So the work is: add a probe for `size_of::<Executor>()` alone, emit it beside
+the existing macros, and compare `2 x` it (the issue's own "one value, moved
+twice" finding) against `CONFIG_MAIN_STACK_SIZE` — as a NECESSARY condition, not
+a sufficient one. The frames hold locals besides the executor: measured on
+x86_64 after phase-409, `open_in` is 3368 and `nros_cpp_init` 1816 against a
+1016-byte `Executor`, so `2 x size_of` is a floor and roughly a third of the
+real cost.
+
+Being explicit about that ratio matters: a gate that claims to state THE number
+while checking a third of it is the shape this campaign keeps finding — a value
+that reads as applied and is not. Either it says "necessary minimum" in its own
+message, or it waits for a measured frame budget.
