@@ -59,11 +59,17 @@ if [ -z "$list" ]; then
     # `check-abi-bindings`). Parsing the root justfile would silently derive an
     # EMPTY list, which is why the emptiness check below is a hard refusal
     # rather than a warning.
-    awk '/^fast-serial:/{f=1} f{print; if ($0 !~ /\\$/) exit}' just/check.just \
+    # `NROS_GATE_LANE` picks WHICH dependency line to fan out — issue 0993.
+    # `build` gained a parallel runner when it moved onto the pull-request
+    # path: serial it is ~587 s, and its slowest single gate is ~148 s, so the
+    # fan-out is the difference between a tolerable PR and an intolerable one.
+    # Defaulting to `fast-serial` keeps every existing caller unchanged.
+    lane="${NROS_GATE_LANE:-fast-serial}"
+    awk -v pat="^${lane}:" '$0 ~ pat {f=1} f{print; if ($0 !~ /\\$/) exit}' just/check.just \
         | tr -s ' \\' '\n' \
         | sed 's/:$//' \
         | grep -E '^[a-z][a-z0-9-]*$' \
-        | grep -vE '^(fast|fast-serial)$' \
+        | grep -vE '^(fast|fast-serial|build|build-serial)$' \
         | sort -u > "$list"
 fi
 [ -s "$list" ] || {
@@ -71,6 +77,12 @@ fi
     exit 2
 }
 
+# The lane this run is reporting on. It used to be the literal string
+# "check-fast", which became a lie the moment `build` got a parallel runner
+# too (issue 0993) — a summary naming the wrong lane is how a green build
+# line gets read as a green fast line.
+label="${NROS_GATE_LANE:-fast-serial}"
+label="${label%-serial}"
 out_dir="$(mktemp -d "${TMPDIR:-/tmp}/nros-gates.XXXXXX")"
 trap 'rm -rf "$out_dir"' EXIT
 
@@ -104,7 +116,7 @@ done <"$out_dir/results.tsv"
 total=$(wc -l <"$out_dir/results.tsv")
 slowest=$(sort -k3 -rn "$out_dir/results.tsv" | head -1)
 if [ "$failed" -gt 0 ]; then
-    printf '\ncheck-fast (parallel): %d of %d gate(s) FAILED\n' "$failed" "$total"
+    printf '\ncheck-%s (parallel): %d of %d gate(s) FAILED\n' "$label" "$failed" "$total"
     exit 1
 fi
 # QUALIFY the success line by the gates that did not run.
@@ -139,7 +151,7 @@ if [ -s "$skips" ]; then
 fi
 
 if [ "$skipped" -gt 0 ]; then
-    printf 'check-fast (parallel): %d gate(s) ran at -P%s, %d SKIPPED; slowest %s\n' \
+    printf 'check-%s (parallel): %d gate(s) ran at -P%s, %d SKIPPED; slowest %s\n' "$label" \
         "$((total - skipped))" "$jobs" "$skipped" \
         "$(printf '%s' "$slowest" | awk '{print $1" "$3"ms"}')"
     while IFS=$'\t' read -r gate reason; do
@@ -147,5 +159,5 @@ if [ "$skipped" -gt 0 ]; then
     done <"$skips"
     exit 0
 fi
-printf 'check-fast (parallel): %d gate(s) OK at -P%s; slowest %s\n' \
+printf 'check-%s (parallel): %d gate(s) OK at -P%s; slowest %s\n' "$label" \
     "$total" "$jobs" "$(printf '%s' "$slowest" | awk '{print $1" "$3"ms"}')"

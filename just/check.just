@@ -332,7 +332,14 @@ fast-serial: \
 # `borrowed-e2e` stayed because it compiles `nros-c` and reads the generated
 # config header, and the pristine run is what proved it.
 [group("main")]
-build: \
+build:
+    @NROS_GATE_LANE=build-serial bash scripts/build/run-gates-parallel.sh
+
+# The BUILD gate list, and the serial runner — mirrors `fast-serial` above.
+# `run-gates-parallel.sh` derives its list from this dependency line, so the
+# list has exactly one home.
+[private]
+build-serial: \
     borrowed-e2e \
     c \
     cli-fresh \

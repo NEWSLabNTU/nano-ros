@@ -118,17 +118,42 @@ matters for a gate that must run there.
 baseline. The remaining nineteen are confirmed by a green CI run rather than by
 my host.
 
-## Left open
+## The rest, gated too — and why it was cheaper than it looked
 
-The 19 remaining gates still gate nothing on a pull request. Closing that means
-either paying their prerequisites in the PR job (`generate-bindings` is measured
-at 23 s on a ROS image, but `check::build` as a whole is ~587 s) or splitting
-them further. Both are latency decisions about every PR rather than repairs, so
-they are not made here — the ratchet makes the set visible and shrinking, which
-is what was missing.
+The first pass left 20 gates ungated and called closing that a latency decision.
+Measuring it changed the answer.
+
+`gate.yml`'s `check` job runs in `ghcr.io/newslabntu/nano-ros-ci:humble` — the
+SAME ROS container on a pull request and on a nightly — and `ci-ok` (`CI`, the
+one required context) already has `check` in its `needs`. The build tier's two
+prerequisites, `generate-bindings` and the compile-check fixtures, are steps in
+that same job, merely guarded `schedule`/`workflow_dispatch`. So gating the
+lane is widening three `if:` guards inside an existing job. Nothing is added to
+the required set, which is the constraint that froze this repo four times.
+
+Cost was the real obstacle, and it was self-inflicted: `build` was a plain
+serial dependency list while `fast` had a parallel runner. Timed per gate on a
+warm tree, the lane sums to ~386 s (documented ~587 s cold) with one gate,
+`cli-tests`, at 148 s. Giving it the same runner — `NROS_GATE_LANE` picks which
+dependency line to fan out, and the list moved to `build-serial` exactly as
+`fast`'s did — took it to **190 s wall at -P32** on the first (cold-ish) run and
+70 s warm, against a job that already takes 17–18 minutes.
+
+`.config/ungated-gates.txt` is now EMPTY, and stays in the tree so the next gate
+that lands off the pull-request path has to add a line.
+
+**Deliberately not on `merge_group`.** `check-build` was on the merge group once
+and could never pass there (phase-396), and a red in the queue EJECTS pull
+requests rather than failing one. A pull request is the recoverable place to
+learn that a gate needs something the job does not build. Widening to the queue
+afterwards is a one-word change; doing both at once would make a freeze
+indistinguishable from a real red.
 
 ## Acceptance
 
 * [x] Every gate that can run without build artifacts gates a merge.
 * [x] The lane's documented trigger matches the workflows.
-* [x] The ungated set is explicit, reasoned, and may only shrink.
+* [x] The ungated set is explicit, reasoned, and may only shrink — and is now
+      empty: every gate runs on a pull request.
+* [x] The build lane runs in parallel, so gating it costs ~190 s rather than
+      ~587 s.

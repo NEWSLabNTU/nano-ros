@@ -642,7 +642,7 @@ jobs:
       # FAILS on those and never reaches the rows the gate asserts. Measured: 2 s
       # filtered vs 428 s for everything.
       - name: build compile-check fixtures (check-source-gates asserts them)
-        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["pull_request","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just build-compile-check-fixtures cxx-syntax
@@ -664,7 +664,7 @@ jobs:
       # Affordable because this image HAS ROS: measured 23 s on a humble host for
       # the whole tree, against the ~587 s tier it unblocks.
       - name: generate message bindings (native::check asserts them)
-        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["pull_request","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just generate-bindings
@@ -675,8 +675,26 @@ jobs:
       # /opt/ros. The configure-time probe only checks the converter script
       # EXISTS (issue-0196 class: probe narrower than the rule), so an
       # unsourced env fails at 80% of the build rather than at configure.
-      - name: just check build + no_std (nightly / manual only)
-        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+      # Issue 0993 — the build tier now gates a PULL REQUEST, and the two steps
+      # above are why it can: they are its prerequisites (`generate-bindings`,
+      # the compile-check fixtures) and they live in THIS job, so the lane
+      # resolves only artifacts the job itself builds — the rule
+      # `check-lane-contracts` enforces.
+      #
+      # Cost: the lane gained a parallel runner with the same change (it was a
+      # serial dependency list). Measured 190 s wall at -P32 against ~587 s
+      # serial, on a job that already takes 17-18 minutes.
+      #
+      # DELIBERATELY NOT ON merge_group. `check-build` was on the merge group
+      # once and could never pass there, and a red in the queue EJECTS pull
+      # requests rather than just failing one — phase-396, one of the four
+      # freezes this file's header is about. A pull request is the recoverable
+      # place to learn that a gate needs something this job does not build. If
+      # it rides green on pull requests, widening it to the queue is a one-word
+      # change; doing both at once would make a freeze indistinguishable from a
+      # real red.
+      - name: just check build + no_std (PR / nightly / manual)
+        if: ${{ contains(fromJSON('["pull_request","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just check build

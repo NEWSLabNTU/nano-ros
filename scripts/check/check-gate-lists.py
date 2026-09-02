@@ -35,7 +35,10 @@ JUSTFILE = REPO / "just" / "check.just"
 # The lane recipes whose dependencies are a gate REGISTRY. A lane with a
 # handful of names on one line (`default: cli-fresh fast build api-parity`) is
 # not one: nobody appends to it, so it is not a conflict site.
-REGISTRIES = ("fast-serial", "build")
+# `build` gained a parallel runner (issue 0993), so its LIST moved to
+# `build-serial` exactly as `fast`'s did — the registry is the dependency line,
+# not the verb.
+REGISTRIES = ("fast-serial", "build-serial")
 
 
 def dep_block(lines: list[str], name: str) -> tuple[int, int]:
