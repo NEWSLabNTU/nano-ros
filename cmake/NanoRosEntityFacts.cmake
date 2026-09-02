@@ -96,6 +96,64 @@ function(nros_record_entity_facts _model)
     endif()
 endfunction()
 
+# nros_entity_facts_env_deferred(<target>)
+#
+# Schedule `nros_entity_facts_env` for the END of the top-level scope, once per
+# target. Use this from anywhere that imports a Corrosion crate; call the
+# immediate form only if you can prove every `nano_ros_add_entry()` has already
+# run, which almost nothing can.
+#
+# WHY DEFERRED (phase-392 W5.g). The facts are accumulated by
+# `nros_record_entity_facts`, which runs inside `nano_ros_add_entry()` — and an
+# entry is declared LAST in a configure by design ("the first point guaranteed
+# to be AFTER every nano_ros_node_register()"). Every caller that applies the env
+# inline therefore reads an EMPTY accumulator. Traced on
+# `examples/workspaces/mixed`: the consumer logged `seen=<empty>` before all
+# seven producers, so the mechanism had never delivered anything anywhere.
+#
+# WHY EVERY CORROSION TARGET AND NOT JUST THE UMBRELLA (phase-392 W5.g follow-up).
+# `zpico-sys` is compiled once per CARGO ROOT, and a workspace has two: the
+# synthesised umbrella (`nros_ws_runtime`) and the repo root that
+# `nros_cpp-static` / `nros_c-static` import from. Measured on `mixed`: 6
+# `zpico-sys` units, and only the 1 under the umbrella could ever see the env.
+# A pure-C/C++ workspace is worse — `nros_synth_runtime_umbrella` returns early
+# for it, so the umbrella call site does not exist and NO unit was reachable.
+#
+# The DEFER target is the TOP-LEVEL scope, for the reason
+# `_nano_ros_support_schedule_flush` states one module over: deferring to the
+# CURRENT directory fires at the end of whichever package called first, which is
+# the bug rather than a smaller version of it.
+# The target list travels through a GLOBAL property and the deferred call takes
+# NO arguments, which is the shape `_nano_ros_support_flush` uses one module
+# over. That is not a style preference: passing the name as a deferred CALL
+# argument was tried first and the callee received an EMPTY string, so the
+# mapper resolved nothing and `corrosion_set_env_vars` was invoked with one
+# argument ("incorrect arguments for function named"). A global carries the
+# value across the scope boundary intact.
+function(nros_entity_facts_env_deferred _target)
+    get_property(_queued GLOBAL PROPERTY NROS_ENTITY_FACTS_TARGETS)
+    if("${_target}" IN_LIST _queued)
+        return()
+    endif()
+    set_property(GLOBAL APPEND PROPERTY NROS_ENTITY_FACTS_TARGETS "${_target}")
+    get_property(_scheduled GLOBAL PROPERTY NROS_ENTITY_FACTS_FLUSH_SCHEDULED)
+    if(_scheduled)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_ENTITY_FACTS_FLUSH_SCHEDULED TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _nros_entity_facts_flush)
+endfunction()
+
+function(_nros_entity_facts_flush)
+    get_property(_targets GLOBAL PROPERTY NROS_ENTITY_FACTS_TARGETS)
+    foreach(_t IN LISTS _targets)
+        if(TARGET "${_t}")
+            nros_entity_facts_env("${_t}")
+        endif()
+    endforeach()
+endfunction()
+
 # nros_entity_facts_env(<target>)
 #
 # Attach this configure's accumulated entity facts to a Corrosion target's cargo
