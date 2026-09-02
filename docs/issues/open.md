@@ -79,7 +79,6 @@ fails if this block drifts.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
 - **#0985** (cmake, build) — The C++ side never writes `nros_config_generated.h` to the shared target dir, so issue 0978's mirror falls back to the leaf copy every time — and the leaf copy is a museum See `0985-*`.
-- **#0972** (api-c, rmw) — ROS domain 0 is both a legal domain and the `unset` marker, so asking for domain 0 explicitly is silently overridden See `0972-*`.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 
 <!-- END GENERATED open-issue list -->
