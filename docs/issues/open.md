@@ -81,5 +81,6 @@ fails if this block drifts.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 - **#0991** (cmake) — A clean build of an entity-declaring image derives the WRONG payload basis and does not link See `0991-*`.
+- **#0995** (ci) — The build tier is red on three gates, and has been for days — nothing runs it, so nothing said so See `0995-*`.
 
 <!-- END GENERATED open-issue list -->
