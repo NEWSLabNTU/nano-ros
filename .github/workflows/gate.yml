@@ -516,6 +516,44 @@ jobs:
           source ./activate.sh
           just check compile-smoke
 
+      # The CLI sub-workspace's own tests, on BOTH merge-gating events.
+      #
+      # `cli-tests` lived only in `check-build`, which is `schedule` /
+      # `workflow_dispatch` only — so nothing on the path to `main` ran it, and a
+      # red could land and stay. It did: issue 0896's C++ RX bound shipped with a
+      # golden and a parity expectation that both contradicted the emitter, and
+      # `main` carried those two reds until someone ran `just ci l1` locally.
+      # A test suite no merge-gating lane runs is the issue-0319 shape (a backend
+      # suite with no lane, red on main for two days) one workspace over.
+      #
+      # It belongs here rather than in the build tier because it is affordable
+      # here, which is the only argument this job accepts: 34 s warm, and the
+      # step above already built the CLI, so the compile is incremental. It
+      # resolves NO fixture, needs no SDK, no cross toolchain and no QEMU — the
+      # `check-lane-contracts` rule for a merge-gating lane.
+      #
+      # It needs no ROS either, and that is a property of the suite rather than
+      # an assumption: `cargo-nano-ros`'s integration tests read
+      # `AMENT_PREFIX_PATH` and print `[NO-ROS] … skip` when it is unset, because
+      # this sub-workspace is run with a plain `cargo test`. Verified by running
+      # the whole workspace with `AMENT_PREFIX_PATH`, `ROS_DISTRO`,
+      # `CMAKE_PREFIX_PATH` and `LD_LIBRARY_PATH` unset and a minimal `PATH`:
+      # zero failures.
+      #
+      # On merge_group as well as pull_request, unlike `compile-smoke`. The
+      # reason `compile-smoke` is PR-only is that `check-build` would do strictly
+      # more in the queue — but `check-build` is NOT on the merge group
+      # (phase-396 W1), so for this suite the queue would otherwise run nothing.
+      # Cheap and deterministic is exactly what that lane is documented to
+      # accept.
+      - name: just check cli-tests
+        if: >-
+          ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
+              && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check cli-tests
+
       # phase-396 W1 — the build tier is NOT on the merge group.
       #
       # It was (phase-395, `197eef4fa`, "PR cheap, batch thorough"), and the
