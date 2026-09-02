@@ -19,6 +19,15 @@
 #
 # Regenerate the list (NOT the reasons): python3 scripts/check-gate-visibility.py
 
+# --- need RTOS submodule SOURCES on the host (not just build artifacts) ---
+# sched-dim-arms compiles a probe against FreeRTOS.h. It passed a pristine
+# WORKTREE on a provisioned host and still failed CI's bare container:
+#   FAIL: the accept arm does not compile — this IS the call site.
+#   .../freertos_run_tiers.c:20:10: fatal error: FreeRTOS.h: No such file or directory
+# A pristine worktree proves "no build artifacts"; it does NOT prove "no
+# toolchains, SDKs or submodules". CI is the oracle for that.
+sched-dim-arms
+
 # --- compile a crate and read what it generates ---
 borrowed-e2e
 c
