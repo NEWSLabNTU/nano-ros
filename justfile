@@ -242,6 +242,11 @@ build *scope:
     # shellcheck source=scripts/build/scope.sh
     source scripts/build/scope.sh
     scoped=({{scope}})
+    # CODEGEN FIRST, for every scope (issue 0992). `colcon build` generates
+    # messages; so does this. It used to be reachable only from the unscoped
+    # path below, so `just build <scope>` — the spelling every CI job uses —
+    # built against whatever `generated/` the tree happened to carry.
+    just _codegen
     if [ "${#scoped[@]}" -gt 0 ]; then
         nros_scope_validate_all "${scoped[@]}" || exit 2
         nros_scope_report build "${scoped[@]}"
@@ -253,7 +258,7 @@ build *scope:
     # The pre-407 dependency list, called rather than depended on: a recipe
     # with a variadic parameter still runs its dependencies unconditionally,
     # and a scoped `just build zephyr` must not first rebuild the workspace.
-    just generate-bindings build-workspace build-workspace-embedded
+    just build-workspace build-workspace-embedded
     just qemu build-zenoh-pico
     echo 'Workspace + transports built. Run "just build-examples" for example crates, "just build <scope>" for `test-all` fixture staging, or "just build-all" for everything.'
     echo ""
@@ -1416,7 +1421,7 @@ build-compile-check-fixtures builder="":
 # `test-all` to mean anything, so the honest order is build-then-test, which
 # puts the expensive step first by construction.
 [group("full-matrix")]
-build-test-fixtures lane="all": check::fast _require-build-sources _clear-fixture-stamp generate-bindings setup-launch-resolve build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
+build-test-fixtures lane="all": check::fast _require-build-sources _clear-fixture-stamp _codegen build-zenoh-posix-fixture (build-test-fixtures-leaves lane)
     #!/usr/bin/env bash
     set -e
     source scripts/build/fixture-lane.sh
@@ -1826,6 +1831,35 @@ _require-leaf-includes:
     fi
     python3 scripts/build/leaf-config-includes.py
 
+# The codegen stage of the build verb (issue 0992).
+#
+# `colcon build` generates messages, which is why a ROS user never types a
+# separate codegen command. Our equivalent must do the same, or the step is
+# mandatory and reachable from no verb in the documented
+# `setup -> build -> test` chain.
+#
+# It was reachable from ONE build lane and not the other. `build-test-fixtures`
+# listed the generators itself; `rust-rtos-link-check` listed only the
+# `_require-leaf-includes` preflight — which asserts codegen has ALREADY run.
+# On a developer tree the leaves were synced by some earlier run and the
+# omission is invisible; on a fresh checkout the preflight is unsatisfiable,
+# because the only thing that would satisfy it is downstream of itself. That is
+# what `build-wide` failed on every run: 54 unresolved `include` targets, from
+# a lane whose whole job is to build the leaves that would resolve them.
+#
+# ORDER IS THE POINT, and the old dependency list had it backwards: it ran
+# `generate-bindings` BEFORE `setup-launch-resolve`. `nros sync` refuses to
+# resolve a SystemModel without that helper (issue 0409 — it errors rather than
+# reusing a museum model), so on a tree that lacks the binary codegen dies
+# naming a helper the very next dependency would have built. Provision, then
+# generate, then verify the generated tree resolves.
+#
+# The verify step stays a CHECK, not a repair: after codegen has run, an
+# unresolved `include` means something is wrong with the generated tree, and
+# 0463's message is the right one to print.
+[private]
+_codegen: setup-launch-resolve generate-bindings _require-leaf-includes
+
 # issue 0390 — preflight: the repo's build stage needs the UNION of vendored
 # `[source.*]` (every RMW's `-sys` source + the platform sources the workspace
 # graph path-deps), NOT the per-board slice `nros setup <board>` provisions. Fail
@@ -2138,7 +2172,7 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
 # Best-effort: each RTOS's build skips cleanly if its cross
 # toolchain or board crate prerequisites are absent.
 [private]
-rust-rtos-link-check: _require-leaf-includes
+rust-rtos-link-check: _codegen
     #!/usr/bin/env bash
     set -e
     source scripts/build/cargo.sh
@@ -3742,7 +3776,7 @@ setup target="" tier="":
             # deliberately NOT scope tokens (see scripts/build/scope.sh) but
             # they do have `setup`, and `just setup workspace` predates 407.
             workspace | verification | rmw_zenoh)
-                just setup-cli
+                just _setup-common
                 exec just "$target" setup
                 ;;
             *)
@@ -3751,8 +3785,8 @@ setup target="" tier="":
                 if nros_scope_is_platform "$target" \
                    && nros_scope_module_has_verb "$target" setup; then
                     # Focused platform setup may still shell `nros setup …`;
-                    # build the CLI first so the binary is on disk.
-                    just setup-cli
+                    # provision the CLI + resolver first so the binaries exist.
+                    just _setup-common
                     exec just "$target" setup
                 fi
                 # phase-411 W4 — a PRESET provisions the set it names.
@@ -3785,7 +3819,7 @@ setup target="" tier="":
                         exit 1
                     fi
                     printf 'setup: preset %s -> %s\n' "$target" "$(echo $mods)"
-                    just setup-cli
+                    just _setup-common
                     for m in $mods; do
                         if nros_scope_module_has_verb "$m" setup; then
                             printf '\n=== just setup %s ===\n' "$m"
@@ -3800,20 +3834,14 @@ setup target="" tier="":
                 ;;
         esac
     fi
-    # Phase 218.D.2 — Tier 0: build the in-tree nros CLI before any
-    # provisioning step. Downstream module recipes shell `nros setup
-    # --source …`; that command requires the binary to exist.
-    just setup-cli
+    # Phase 218.D.2 — Tier 0: build the in-tree nros CLI (and the launch
+    # resolver) before any provisioning step. Downstream module recipes shell
+    # `nros setup --source …`; that command requires the binary to exist.
+    just _setup-common
     # phase-263 — pin clang-format (every tier): `just format` / `just ci`'s
     # check-{c,cpp}-fmt drift across clang-format major versions, so a consistent
     # pinned binary (`.clang-format-version`) is part of base dev setup. Idempotent.
     just setup-clang-format || echo "  (clang-format provisioning skipped — python3 venv unavailable)"
-    # `nros sync` REQUIRES this helper to refresh a stale SystemModel, and
-    # since it now errors instead of degrading, a tree without it cannot sync a
-    # workspace whose launch files moved. It was never in any tier — the fixture
-    # sweep hit the absent-helper path and used museum models. Idempotent; SKIPs
-    # cleanly when the submodule is not initialised.
-    just setup-launch-resolve
     just _orchestrate setup "$chosen_tier"
     echo ""
     echo "✅ nano-ros setup complete."
@@ -3822,6 +3850,34 @@ setup target="" tier="":
     echo "     source ./activate.sh     # bash / zsh"
     echo "     source ./activate.fish   # fish"
     echo ""
+
+# Provisioning every `just setup <arg>` needs, whichever arm it takes (issue 0992).
+#
+# These two ran only on the TIER path. A PRESET (`just setup tier2`) and a
+# PLATFORM (`just setup zephyr`) each `exit 0`/`exec` before reaching them, so
+# the spelling phase-411 W4 tells every CI job to use provisioned the CLI and
+# nothing else. `build-wide` runs exactly `just setup tier2`, and its build
+# step needs the launch resolver — `nros sync` refuses to resolve a SystemModel
+# without it rather than reusing a museum model (issue 0409). The gap was
+# invisible on a developer machine, which had built the resolver months ago.
+#
+# The submodule init is the same guarded, NON-recursive step `bootstrap.sh`'s
+# `ensure_cli_submodules` performs for `base` (RFC-0060: play_launch's layer-3
+# runtime submodules are never built here). `setup-launch-resolve` fails loud
+# without it and prints this exact command; a provisioning verb should run it
+# rather than print it. It is a no-op once the tree is populated, so a
+# developer never sees it.
+[private]
+_setup-common:
+    #!/usr/bin/env bash
+    set -e
+    sub="packages/cli/third-party/play_launch"
+    if [ ! -f "$sub/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
+        echo "setup: initialising in-tree CLI submodule ($sub)"
+        git submodule update --init "$sub"
+    fi
+    just setup-cli
+    just setup-launch-resolve
 
 # Focused platform setup. Equivalent to `just <platform> setup`.
 [group("setup")]

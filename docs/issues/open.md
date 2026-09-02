@@ -81,6 +81,5 @@ fails if this block drifts.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 - **#0991** (cmake) — A clean build of an entity-declaring image derives the WRONG payload basis and does not link See `0991-*`.
-- **#0992** (ci, tooling) — CI does not run the user process it is supposed to simulate: codegen has no home and its preflight is circular, and 5 of 8 workflows never converted See `0992-*`.
 
 <!-- END GENERATED open-issue list -->
