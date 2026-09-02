@@ -1,0 +1,59 @@
+# Issue 0994 — sweep for pull requests that can never merge because nothing
+# ever ran on them.
+#
+# `scripts/ci/pr-verdict-check.sh` answers this exactly, and has since PR #71
+# sat thirteen hours with auto-merge armed against a check that was never
+# requested. What it lacked was a caller: it is `just pr-verdicts`, in the
+# `setup` group, run only when a human thinks to ask. On 2026-09-02 PR #207 sat
+# silently ineligible — zero check suites for its head sha — and was found by
+# eye, with a working detector one command away.
+#
+# WHY A SCHEDULE AND NOT A GATE
+#
+# The script needs the network and an authenticated `gh`, so it cannot be a
+# gate: gates are buildless, offline and deterministic. It also asks a question
+# about OTHER pull requests, which is not a property of the diff under review.
+# A schedule is the right shape — the failure it looks for is silence, and
+# silence has no event to hook.
+#
+# WHY ITS OWN WORKFLOW RATHER THAN A JOB IN `nightly.yml`
+#
+# nightly is the L3/L4 cross-build matrix: it provisions SDKs and runs QEMU. A
+# 20-second `gh` sweep that must run whether or not that matrix is healthy does
+# not belong inside it — a red build there would take this with it, and this is
+# the check that notices when nothing is reporting.
+#
+# NOT A REQUIRED CHECK, deliberately. It runs on `schedule` and never on
+# `pull_request`, so it can never become a context a PR must satisfy. Adding a
+# scheduled job to the required set is the #0975 deadlock: a check that produces
+# no verdict for a PR blocks it forever.
+name: pr-verdicts
+
+on:
+  schedule:
+    # Twice daily. The failure mode is a PR sitting ineligible, which costs
+    # hours rather than minutes, so this does not need to be frequent — and
+    # each run is one `gh` call per open PR.
+    - cron: "0 9 * * *"
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sweep for no-verdict pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # `--min-age 15`: a PR opened seconds ago legitimately has no checks
+        # yet. The script's own default is smaller; on a schedule there is no
+        # reason to be impatient, and a false "stuck" would teach people to
+        # ignore this.
+        run: bash scripts/ci/pr-verdict-check.sh --min-age 15
