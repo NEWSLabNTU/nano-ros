@@ -117,7 +117,38 @@ jobs:
           cd examples/workspaces/rust
           nros sync
 
+      # ...and the THREE leaves this lane actually cross-builds. Each example
+      # leaf is its own consumer: its manifest path-deps `generated/<msg pkg>`,
+      # which `nros sync` produces per leaf and `.gitignore` excludes, so a
+      # clone has none of them.
+      - name: nros sync the leaves L3 builds
+        run: |
+          source ./activate.sh
+          for leaf in examples/qemu-arm-freertos/rust/talker \
+                      examples/qemu-arm-nuttx/rust/talker \
+                      examples/threadx-linux/rust/talker; do
+            nros sync "$leaf"
+          done
+
+      # NROS_SKIP_LEAF_INCLUDE_CHECK, deliberately and narrowly.
+      #
+      # `_require-leaf-includes` is a REPO-WIDE precondition: it walks all 73
+      # tracked `.cargo/config.toml` and 110 manifests and fails if ANY leaf
+      # lacks its gitignored `generated/`. That is right for `just format` and
+      # `build-test-fixtures`, which touch the whole tree (issues 0463/0474).
+      #
+      # L3 cross-builds THREE leaves. Demanding a fully-synced tree to link
+      # three talkers means syncing ~108 unrelated leaves per merge group, and
+      # the guard's whole purpose — turning a cryptic cargo manifest-parse error
+      # into a sentence naming sync — is already served for the leaves that
+      # matter by the step above, which syncs exactly them.
+      #
+      # So the scope of the check is wrong for this lane, not the check. If L3
+      # ever reaches a leaf outside that list, the raw cargo error is the cost,
+      # which is what the bypass documents.
       - name: just ci l3
+        env:
+          NROS_SKIP_LEAF_INCLUDE_CHECK: "1"
         run: |
           source ./activate.sh
           just ci l3
