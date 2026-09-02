@@ -100,8 +100,8 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     context is `check-fast` + `test-unit` + `check-cli-tests` (the last added
     2026-09-02 — it lived only in `check-build`, which no merge-gating event
     runs, so issue 0896's two reds landed and stayed; no fixture/SDK/ROS, on
-    `pull_request` AND `merge_group`, ~8 min of runner time including the
-    `nros-launch-resolve` it must build first); `ci-l1` also runs `check-build` +
+    `pull_request` AND `merge_group`, ~2 min warm / ~8 min cold, including
+    the `nros-launch-resolve` it must build first); `ci-l1` also runs `check-build` +
     `check-api-parity`. Your local tier is STRONGER than the gate, so you catch
     compile-tier breakage before the queue does and the queue stays cheap and
     always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only —
