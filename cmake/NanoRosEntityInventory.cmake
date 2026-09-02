@@ -237,7 +237,8 @@ function(nros_derive_entity_inventory_knobs)
     _nros_entity_publish(NROS_ENTITY_INVENTORY_STATUS "refused")
     _nros_entity_publish(NROS_ENTITY_INVENTORY_REASON "")
     _nros_entity_publish(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 0)
-    foreach(_v NROS_DERIVED_EXECUTOR_MAX_CBS NROS_ENTITY_INVENTORY_ENTITY_TOTAL)
+    foreach(_v NROS_DERIVED_EXECUTOR_MAX_CBS NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
+               NROS_ENTITY_INVENTORY_ENTITY_TOTAL)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -326,6 +327,13 @@ function(nros_derive_entity_inventory_knobs)
         _nros_entity_publish(NROS_DERIVED_EXECUTOR_MAX_CBS
             "${NROS_DERIVED_EXECUTOR_MAX_CBS}")
     endif()
+    # Issue 0900 — how many of those slots the arena budgets at the ACTION
+    # entry size. Published beside MAX_CBS because the two are only meaningful
+    # together: build.rs clamps this to that.
+    if(DEFINED NROS_DERIVED_EXECUTOR_ACTION_CLIENTS)
+        _nros_entity_publish(NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
+            "${NROS_DERIVED_EXECUTOR_ACTION_CLIENTS}")
+    endif()
     foreach(_kind PUBLISHER SUBSCRIPTION TIMER SERVICE_SERVER SERVICE_CLIENT
                   ACTION_SERVER ACTION_CLIENT GUARD_CONDITION)
         if(DEFINED NROS_ENTITY_COUNT_${_kind})
@@ -356,7 +364,9 @@ function(nros_derive_entity_inventory_knobs)
             "${NROS_ENTITY_INVENTORY_COMPONENT_COUNT} components -- "
             "${NROS_ENTITY_INVENTORY_ENTITY_TOTAL} entities, "
             "${NROS_DERIVED_EXECUTOR_MAX_CBS} executor callback slots "
-            "-> NROS_EXECUTOR_MAX_CBS")
+            "-> NROS_EXECUTOR_MAX_CBS, "
+            "${NROS_DERIVED_EXECUTOR_ACTION_CLIENTS} of them action-sized "
+            "-> NROS_EXECUTOR_ACTION_CLIENTS")
         if(DEFINED NROS_ENTITY_COUNT_PUBLISHER AND
            NROS_ENTITY_COUNT_PUBLISHER GREATER 0)
             message(STATUS
@@ -402,6 +412,7 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_INVENTORY_COMPONENT_COUNT
         NROS_ENTITY_INVENTORY_ENTITY_TOTAL
         NROS_DERIVED_EXECUTOR_MAX_CBS
+        NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
         NROS_ENTITY_COUNT_PUBLISHER
         NROS_ENTITY_COUNT_SUBSCRIPTION
         NROS_ENTITY_COUNT_TIMER

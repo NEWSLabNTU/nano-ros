@@ -412,6 +412,21 @@ pub struct EntityInventory {
 pub struct DerivedEntityKnobs {
     /// `NROS_EXECUTOR_MAX_CBS` -- the total callback-entry slot demand.
     pub max_cbs: usize,
+    /// `NROS_EXECUTOR_ACTION_CLIENTS` (issue 0900) -- how many of those slots
+    /// the arena must budget at the HEAVY entry size rather than the pub/sub
+    /// one. At the defaults that is 18,048 bytes against 3,584, and the arena
+    /// is inline on the TASK STACK, so budgeting every slot heavy is 74,240
+    /// bytes where a talker needs 16,384.
+    ///
+    /// Counts action SERVERS as well as clients, though the knob is named for
+    /// clients. The knob's real meaning is "slots budgeted at the worst case",
+    /// and `build.rs` picked the action client as that worst case when nothing
+    /// else was measured. It is not the worst case: the arena demonstrably
+    /// stores `ActionServerArenaEntry`, so an action-server image occupies
+    /// heavy slots too, and counting only clients would advise it into exactly
+    /// the `BufferTooSmall` this derivation exists to avoid. Counting both is
+    /// conservative in the safe direction.
+    pub heavy_slots: usize,
     /// Every declared entity, slot-claiming or not. NOT the knob: kept because
     /// it is the number a human counts, and because the gap between the two is
     /// the finding.
@@ -572,6 +587,7 @@ impl EntityInventory {
         }
         let mut per_component = Vec::new();
         let mut max_cbs = 0usize;
+        let mut heavy_slots = 0usize;
         let mut entity_total = 0usize;
         for c in self.components() {
             let mut slots = 0usize;
@@ -579,6 +595,9 @@ impl EntityInventory {
             for e in c.declaration.entities() {
                 *per_kind.entry(e.kind.tag()).or_insert(0) += 1;
                 slots += e.kind.callback_slots();
+                if matches!(e.kind, EntityKind::ActionClient | EntityKind::ActionServer) {
+                    heavy_slots += e.kind.callback_slots();
+                }
                 count += 1;
             }
             max_cbs += slots;
@@ -588,6 +607,7 @@ impl EntityInventory {
 
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
+            heavy_slots,
             entity_total,
             per_kind,
             per_component,
@@ -849,6 +869,18 @@ impl EntityInventory {
                     "set(NROS_DERIVED_EXECUTOR_MAX_CBS {})\n",
                     k.max_cbs
                 ));
+                // Issue 0900 -- of those slots, how many the arena must budget
+                // at the ACTION entry size (18,048 B at the defaults) rather
+                // than the pub/sub one (3,584 B). A talker derives 0 here and
+                // stops carrying 74,240 bytes of task stack for an entity it
+                // never constructs.
+                s.push_str(
+                    "# Action clients AND action servers: the knob is named for\n                     # clients because build.rs picked one as the worst case, but\n                     # the arena stores ActionServerArenaEntry too (issue 0900).\n",
+                );
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_EXECUTOR_ACTION_CLIENTS {})\n",
+                    k.heavy_slots
+                ));
             }
         }
 
@@ -886,7 +918,14 @@ impl EntityInventory {
     /// rung 4 of the precedence ladder and the correct outcome for "no answer".
     pub fn to_env(&self) -> String {
         match self.derive() {
-            Derivation::Derived(k) => format!("NROS_EXECUTOR_MAX_CBS={}\n", k.max_cbs),
+            // Issue 0900 -- both, or neither. `NROS_EXECUTOR_ACTION_CLIENTS`
+            // is only meaningful against the `MAX_CBS` it is clamped to, and
+            // emitting one without the other would size an arena against a
+            // slot count from a different rung.
+            Derivation::Derived(k) => format!(
+                "NROS_EXECUTOR_MAX_CBS={}\nNROS_EXECUTOR_ACTION_CLIENTS={}\n",
+                k.max_cbs, k.heavy_slots
+            ),
             Derivation::Refused { .. } => String::new(),
         }
     }
@@ -1001,6 +1040,46 @@ mod tests {
         assert_eq!(inv.to_env(), "");
     }
 
+    /// Issue 0900 — the heavy-slot count is what stops a talker carrying an
+    /// arena sized for an entity it does not have.
+    ///
+    /// Asserted through `to_env`, not just the struct field: the env projection
+    /// is the only thing a build ever reads, and the derivation was correct for
+    /// two phases while nothing lowered it.
+    #[test]
+    fn only_action_entities_claim_a_heavy_arena_slot() {
+        // A talker: publisher (no slot at all) + timer. Nothing heavy.
+        let mut talker = EntityInventory::new("test");
+        talker.insert(stated("a", "talker", &["publisher", "timer"]));
+        assert_eq!(
+            talker.to_env(),
+            "NROS_EXECUTOR_MAX_CBS=1\nNROS_EXECUTOR_ACTION_CLIENTS=0\n",
+            "a pub/sub-only image must budget no slot at the action size"
+        );
+
+        // An action CLIENT is heavy.
+        let mut client = EntityInventory::new("test");
+        client.insert(stated("a", "client", &["timer", "action_client"]));
+        assert_eq!(client.derive().knobs().expect("derived").heavy_slots, 1);
+
+        // So is an action SERVER, though the knob is named for clients: the
+        // arena stores `ActionServerArenaEntry`, so advising a server image to
+        // zero the knob would trade the saving for `BufferTooSmall`.
+        let mut server = EntityInventory::new("test");
+        server.insert(stated("a", "server", &["action_server"]));
+        assert_eq!(
+            server.derive().knobs().expect("derived").heavy_slots,
+            1,
+            "an action server occupies a heavy slot too"
+        );
+
+        // A service client/server is NOT heavy — the nearest miss, and the one
+        // a name-based rule would get wrong.
+        let mut svc = EntityInventory::new("test");
+        svc.insert(stated("a", "svc", &["service_client", "service_server"]));
+        assert_eq!(svc.derive().knobs().expect("derived").heavy_slots, 0);
+    }
+
     /// "Creates nothing" and "did not say" are different claims, and only the
     /// first one lets the image derive.
     #[test]
@@ -1102,7 +1181,12 @@ mod tests {
     fn the_env_transport_is_empty_on_a_refusal() {
         let mut inv = EntityInventory::new("test");
         inv.insert(stated("a", "one", &["sub", "timer", "service_server"]));
-        assert_eq!(inv.to_env(), "NROS_EXECUTOR_MAX_CBS=3\n");
+        // Issue 0900 — both knobs travel together; none of these three kinds
+        // is heavy, so the arena budgets no slot at the action size.
+        assert_eq!(
+            inv.to_env(),
+            "NROS_EXECUTOR_MAX_CBS=3\nNROS_EXECUTOR_ACTION_CLIENTS=0\n"
+        );
         inv.insert(ComponentEntities {
             pkg: "b".into(),
             component: "two".into(),
