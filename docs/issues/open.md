@@ -70,7 +70,6 @@ fails if this block drifts.
 - **#0953** (tooling) — A panic in the Python half crosses `extern \"C\"` and ABORTS the resolver — 0897 removed the loader abort and left this one See `0953-*`.
 - **#0954** (api-c, boards) — The committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale again See `0954-*`.
 - **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
-- **#0958** (rmw) — The Cyclone RMW discards `rmw_subscription_options_t` entirely, so no per-type receive sizing reaches a Cyclone image See `0958-*`.
 - **#0961** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0961-*`.
 - **#0962** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0962-*`.
 - **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
@@ -83,7 +82,5 @@ fails if this block drifts.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0979** (build, boards) — `just build native`'s Rust stage panics `unknown platform \\`posix\\`: no /posix/nros-platform.toml` — the descriptor root resolves EMPTY, and only under the fixture lane See `0979-*`.
 - **#0981** (codegen, ci) — `codegen_golden` has been red on `main` since 5f3c08545 — the C++ pack's REAL bound moved `RX_MAX_SERIALIZED_SIZE` by 3 and the golden was not regenerated See `0981-*`.
-- **#0978** (cmake, build) — The corrosion config header is a BUILD-SCRIPT side effect, so a shared cargo group refreshes it in exactly one leaf — the other 19 fail to link against an archive whose sizes moved See `0978-*`.
-- **#0972** (api-c, rmw) — ROS domain 0 is both a legal domain and the `unset` marker, so asking for domain 0 explicitly is silently overridden See `0972-*`.
 
 <!-- END GENERATED open-issue list -->
