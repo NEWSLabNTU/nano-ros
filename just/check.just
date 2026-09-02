@@ -126,9 +126,11 @@ fast-serial: \
     cbindgen-headers \
     cbindgen-pin \
     cc-build-policy \
+    ci-doc-workflow-refs \
     ci-image-python-deps \
     ci-no-fixture-tolerance \
     ci-no-verb-fallback \
+    claim-protocol \
     cli-fmt \
     cli-source-dirs \
     cmake-find-program-shadowed \
@@ -158,19 +160,26 @@ fast-serial: \
     export-f-closure \
     eyre-context-alias \
     feature-contract \
+    feature-set-ssot \
     ffi-struct-mirrors \
     fixture-binary-names \
     fixture-groups \
     fixture-id-guard \
     fixture-stamp-honesty \
     fixtures-manifest \
+    flake-quarantine \
     flavour-lanes \
     gate-lists \
+    gate-selftests \
+    gate-visibility \
     generated-leaf-regenerable \
     generated-schema-coverage \
     goal-cdr-stripped \
+    grep-q-error-conflation \
     host-platform-vocabulary \
+    host-triple-literals \
     image-panic-policy \
+    image-paths-apply-policy \
     infra-queryable-counts \
     interface-glob-configure-depends \
     interlock-visibility \
@@ -180,9 +189,12 @@ fast-serial: \
     kconfig-knob-forwarding \
     kconfig-overridden-values \
     knob-single-reader \
+    lane-contracts \
     lane-scope-consumers \
+    lane-skip-class \
     lane-skip-protocol \
     leaf-lockfiles \
+    literal-domain-id \
     manifests-parse \
     message-bound-knobs \
     mirror-header-precedence \
@@ -194,7 +206,9 @@ fast-serial: \
     no-allow-multiple-def \
     no-board-init \
     no-direct-kernel-alloc \
+    no-silent-sample-drop \
     no-std-stdio \
+    no-tracked-file-find \
     no-tracked-models \
     no-tracked-workspace-roots \
     no-vacuous-tests \
@@ -209,13 +223,17 @@ fast-serial: \
     peer-sweep-lanes \
     platform-abi-mirror \
     platform-provider-features \
+    pool-inventory \
     posix-platform-purity \
     prelude-tiers \
     profile-board-mirror \
     provider-announcements \
     provider-index \
+    ps-zombie-blind \
     python \
     readiness-marker-literals \
+    required-contexts-reportable \
+    required-features-reachable \
     retired-platform-clock-symbols \
     retired-submodule-refs \
     rmw-abi-shape \
@@ -234,6 +252,7 @@ fast-serial: \
     runner-doctor-sdk-resolution \
     rust-stdio-on-zephyr \
     rust-targets-covered \
+    sched-dim-arms \
     scope-namespace \
     sdk-guard-can-fire \
     sdk-store-not-enumerated \
@@ -242,6 +261,7 @@ fast-serial: \
     site-config \
     sizes-header-mirrors \
     skip-marker-matching \
+    skippable-tests-tolerant \
     source-manifest \
     staleness-probe-exemptions \
     std-census \
@@ -259,6 +279,7 @@ fast-serial: \
     wait-evidence-discarded \
     weak-symbols \
     workflow-repo-env \
+    workflow-runner-isolation \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
@@ -287,48 +308,50 @@ fast-serial: \
 # embedded clippy, feature combos, riscv32 no_std, nros-tests source gates,
 # staticlib link-proof, dep-chain codegen, the example-matrix clippy, and the
 # embedded feature-unification `cargo tree` — which needs every `-sys` source
-# submodule present to resolve). Minutes + source/CLI prereqs; runs on PR + nightly
-# (`default.yml` non-push), not on every direct push to main.
+# submodule present to resolve). Minutes + source/CLI prereqs.
+#
+# WHERE THIS ACTUALLY RUNS, and why the line above used to lie about it.
+#
+# This comment read "runs on PR + nightly (`default.yml` non-push)" for long
+# enough to mislead. It does NOT run on a pull request and it does not run on a
+# merge group: `gate.yml`'s only invocation is guarded
+# `schedule`/`workflow_dispatch`, because the lane needs generated message
+# bindings and prebuilt `.compile-ok` artifacts that no PR job produces
+# (phase-396 — it was on the merge group once and could never pass there).
+#
+# So NOTHING in this list gates a merge, and a red here is invisible until
+# somebody reads a nightly. Issue 0981 is what that costs: `codegen_golden` sat
+# red on `main` for a day while the required `CI` context stayed green, and two
+# separate changes reached a green pull request while failing `just ci gate`
+# locally.
+#
+# The fix is not to make this lane cheaper — it is to keep only the gates that
+# genuinely NEED it. Issue 0993 moved 20 gates to the fast line after measuring
+# each in a PRISTINE worktree: all 20 pass with no build artifacts at all, and
+# cost ~1.4 s of wall clock at -P32. A gate belongs here only if it cannot run
+# without something built, which is a property you can TEST rather than assume —
+# `borrowed-e2e` stayed because it compiles `nros-c` and reads the generated
+# config header, and the pristine run is what proved it.
 [group("main")]
 build: \
     borrowed-e2e \
     c \
-    ci-doc-workflow-refs \
-    claim-protocol \
     cli-fresh \
     cli-tests \
     cpp \
     embedded-feature-unification \
-    feature-set-ssot \
-    flake-quarantine \
-    gate-selftests \
-    grep-q-error-conflation \
-    host-triple-literals \
-    image-paths-apply-policy \
-    lane-contracts \
-    lane-skip-class \
     launch-resolve-builds \
-    literal-domain-id \
     mem-report \
     no-alloc-image \
-    no-silent-sample-drop \
-    no-tracked-file-find \
     node-std-tests \
     nros-log-riscv32 \
-    pool-inventory \
-    ps-zombie-blind \
-    required-contexts-reportable \
-    required-features-reachable \
     required-features-tests \
     rmw-cyclonedds \
     rmw-uorb \
     rmw-xrce \
-    sched-dim-arms \
-    skippable-tests-tolerant \
     source-gates \
     staticlib-symbols \
     test-targets \
-    workflow-runner-isolation \
     workspace-all \
     workspace-features
     # `native::check`, which was a DEPENDENCY at the root. A module cannot name
@@ -2146,6 +2169,22 @@ required-contexts-reportable:
 # A gate must exercise its own failure path EVERY time it runs, not once behind
 # a flag on the day it was written. A baseline ratchet: the debt may only
 # shrink, and a script that gains a selftest must leave the baseline.
+# Issue 0993 — a gate no pull_request or merge_group job runs is a gate that
+# rots. `just check build` is invoked once, in `gate.yml`, behind a
+# `schedule`/`workflow_dispatch` guard, so nothing in it gates a merge and a red
+# there is invisible until somebody reads a nightly (issue 0981: a red sat on
+# `main` for a day behind a green required `CI`, and two changes reached a green
+# pull request while failing `just ci gate` locally).
+#
+# The ungated set is written down in `.config/ungated-gates.txt` and may only
+# SHRINK — same ratchet as the selftest baseline. Membership is TESTED, not
+# argued: a pristine worktree, then `just check <gate>`. Twenty gates passed
+# that with no build artifacts and moved to this line; the nineteen that remain
+# each fail it for a stated reason.
+[private]
+gate-visibility:
+    @python3 scripts/check-gate-visibility.py
+
 [private]
 gate-selftests:
     @python3 scripts/check-gate-selftests.py
