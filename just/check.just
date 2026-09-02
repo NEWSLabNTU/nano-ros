@@ -135,6 +135,7 @@ fast-serial: \
     cmake-image-policy \
     cmake-support-library \
     codegen-invocation \
+    codegen-size-bound-golden \
     config-knob-census \
     core-only-predicate \
     cpp-ffi-error-mapping \
@@ -482,6 +483,28 @@ launch-resolve-builds:
 # silent-lane class). The metadata-mode tests compile tiny probe crates at
 # runtime BY DESIGN (the verb under test is a compile-driver; see
 # nros-cli-core/tests/plan_pipeline_e2e.rs).
+# Issue 0981 — the two codegen tests that pin the derived size bound, lifted out
+# of `cli-tests` and onto the FAST line so they gate a merge.
+#
+# `cli-tests` below runs the whole `packages/cli` workspace, including a
+# plan-pipeline e2e that compiles probe crates at runtime; it costs minutes and
+# needs the play_launch submodule, so it lives on `check::build` — which is
+# `schedule`/`workflow_dispatch` only in CI. No pull request and no merge group
+# runs it. That is how `codegen_golden` sat red on `main` for a day: the
+# required `CI` context is `check-fast` + `test-unit`, and both were green on
+# the commit that broke it.
+#
+# These two need none of that. They are pure functions of the corpus and the
+# emitters — measured 8.1 s from a COLD target dir, 0.1 s warm, inside the fast
+# line's existing spread. So the narrow thing moves and the expensive suite
+# stays put; promoting `cli-tests` wholesale would put a runtime-compiling e2e
+# on the merge-gating lane, which `check-lane-contracts` exists to forbid.
+[private]
+codegen-size-bound-golden:
+    @cargo test --manifest-path packages/cli/Cargo.toml -p rosidl-codegen \
+        --test codegen_golden --test message_size_bound_parity --quiet
+    @echo "codegen size-bound golden + C/C++/Rust parity: OK"
+
 [private]
 cli-tests:
     #!/usr/bin/env bash
