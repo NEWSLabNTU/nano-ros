@@ -306,11 +306,29 @@ nros_armv8r_cflags_env(nros_ws_runtime-static)
     # cargo from the workspace root).
     nros_board_facts_env(nros_ws_runtime-static)
     # phase-392 W5.c — and the entity figures the RMW sizes its queryable table
-    # from. Applied HERE, once, because this staticlib is shared by every entry
-    # in the configure and the accumulation is complete only after the SUBDIRS
-    # loop above has processed them all.
+    # from.
+    #
+    # DEFERRED to the end of the TOP-LEVEL scope (phase-392 W5.g), because the
+    # comment this replaced was wrong about the ordering and the mechanism has
+    # therefore never run anywhere. It said the accumulation "is complete only
+    # after the SUBDIRS loop above has processed them all" — true of the NODE
+    # packages, false of the ENTRY, which `nano_ros_add_entry` declares LAST by
+    # design ("the first point in a configure that is guaranteed to be AFTER
+    # every nano_ros_node_register()"). `nros_record_entity_facts` runs there.
+    #
+    # MEASURED on `examples/workspaces/mixed`: the consumer logged
+    # `seen=<empty>` at configure line 17 and the seven models were recorded at
+    # lines 19-85. It read the accumulator before anything filled it, every
+    # time, in every workspace — which is why W5.g found no status line in any
+    # of the three it checked and could not explain `mixed`.
+    #
+    # Same fix and same reasoning as `_nano_ros_support_schedule_flush`: DEFER
+    # to `CMAKE_SOURCE_DIR`, not to the current directory. Deferring to the
+    # current one would fire at the end of whichever scope called first, which
+    # is the bug rather than a smaller version of it.
     include("${NANO_ROS_ROOT}/cmake/NanoRosEntityFacts.cmake")
-    nros_entity_facts_env(nros_ws_runtime-static)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL nros_entity_facts_env nros_ws_runtime-static)
     if(NOT TARGET nros_ws_runtime-static)
         message(FATAL_ERROR
             "nros_synth_runtime_umbrella: Corrosion did not create "

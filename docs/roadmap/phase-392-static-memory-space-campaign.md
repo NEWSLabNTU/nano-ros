@@ -1079,9 +1079,65 @@ the same function. It still prints nothing. Either the call is not reached for
 a reason not yet found, or the status line is suppressed. **Not diagnosed;
 recorded as the next action rather than guessed at.**
 
+### W5.g DIAGNOSED AND FIXED 2026-09-02 — an ORDERING inversion, not a workspace quirk
+
+`mixed` is explained, and the explanation covers all three rows: the consumer ran
+BEFORE any producer, everywhere.
+
+`nros_synth_runtime_umbrella` called `nros_entity_facts_env` inline, under a
+comment asserting "the accumulation is complete only after the SUBDIRS loop
+above has processed them all". That is true of the NODE packages and false of the
+ENTRY, which `nano_ros_add_entry` declares LAST by design — `NanoRosEntry.cmake`
+says so in its own words, "the first point in a configure that is guaranteed to
+be AFTER every `nano_ros_node_register()`". `nros_record_entity_facts` runs
+there.
+
+Measured by tracing a `mixed` reconfigure:
+
+```
+line 17:  facts_env(nros_ws_runtime-static) seen=<empty>   <- consumer
+lines 19-85: model OK: system_model.yaml, ... (7 models)   <- producers
+```
+
+The accumulator was read before anything filled it, on every configure. No
+workspace could ever have printed the status line, which is why W5.g found none
+in three and could not explain the third.
+
+**Fixed** by deferring to the top-level scope —
+`cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL nros_entity_facts_env
+…)` — the same idiom and the same reasoning as
+`_nano_ros_support_schedule_flush` one module over, including its warning that
+deferring to the CURRENT directory would fire at the end of whichever scope
+called first and so be the bug rather than a smaller version of it.
+
+The line now prints on `mixed`:
+
+    nano-ros: queryable table sized from the declaration — infrastructure none,
+    application count undeclared (no model here describes wiring)
+
+**Delivery is PARTIAL, and that is not a saving yet.** After a full rebuild the
+`ZPICO_MAX_QUERYABLES` the units actually compiled are:
+
+| cargo root | value |
+| --- | ---: |
+| `nros_ws_runtime_*` (the unit that got the env) | **8** |
+| `nros_ws_runtime_*` (a second unit) | 32 |
+| `nano-ros_*` (repo-root dir, 4 units) | 32 |
+
+So one unit fell 32 -> 8 slots and five did not. The env reaches the umbrella's
+`zpico-sys` and not the other instantiations, which are separate cargo units
+under a different workspace root (issue 0616's shape: a `--target-dir` serves one
+root, and `-C metadata` keys a unit by the path it was reached by). Sizing one of
+six is not a shipped number, and no byte figure is claimed from it.
+
+**And the application half is still absent** — "application count undeclared (no
+model here describes wiring)" is issue 0973: `describes_wiring()` is false for
+every resolved model in the tree, so only the INFRA figure is ever delivered.
+
 **So the honest state of W5:** the sizing logic, the exhaustion diagnostic and
-the checked override all landed and are unit-tested, and the figure they consume
-reaches no image that was checked. The 143,456 B in W5.d remains a measurement
+the checked override all landed and are unit-tested; the figure they consume now
+REACHES a build for the first time, on one of six compiled units, carrying the
+infra half only. The 143,456 B in W5.d remains a measurement
 of what the mechanism WOULD save, on a leaf where the mechanism does not run.
 Nothing in this wave should be quoted as a shipped saving until the `mixed` case
 is explained and a before/after `mem-report` exists.
