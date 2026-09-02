@@ -22,6 +22,21 @@
 
 set -euo pipefail
 
+# git runs a hook with GIT_DIR set (and, in a worktree or submodule, often
+# GIT_WORK_TREE / GIT_INDEX_FILE too). Those override BOTH a path argument and
+# `git -C`, so every command this hook invokes -- the gate tier, the selftests
+# that build throwaway repositories -- gets silently redirected at the repo
+# being pushed. Observed: `git init <tmp>` rewrote this repo's config with
+# core.bare=true, which then broke `rev-parse --show-toplevel` below for every
+# later push, and `update-index --add --cacheinfo 160000,...` staged a bogus
+# submodule pin into this repo's index -- from the hook whose job is to refuse
+# bogus submodule pins (issue 0986).
+#
+# Everything below resolves from the working tree, so clear them here. This is
+# also why running this hook by hand never reproduced the failure: an
+# interactive shell has no GIT_DIR.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR
+
 repo_root="$(git rev-parse --show-toplevel)"
 check="$repo_root/scripts/ci/issue-ids-check.sh"
 
