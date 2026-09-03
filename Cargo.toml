@@ -26,6 +26,7 @@ members = [
     # repo-relative paths without `just`/`.envrc`. Lets bare `cargo
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/tooling/nros-build-paths",
+    "packages/tooling/nros-platform-config",
     # phase-336 — the build-profile table (CMAKE_BUILD_TYPE mapping, cargo
     # flags, artifact dir, env-injected preset definitions). One implementation
     # behind `nros profile`, so bash/cmake/just/Rust stop each spelling their

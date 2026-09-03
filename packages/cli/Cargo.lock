@@ -751,6 +751,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-platform-config",
  "serde",
  "toml",
 ]
@@ -874,6 +875,15 @@ dependencies = [
  "serde",
  "serde_json",
  "walkdir",
+]
+
+[[package]]
+name = "nros-platform-config"
+version = "0.5.0"
+dependencies = [
+ "nros-build-paths",
+ "serde",
+ "toml",
 ]
 
 [[package]]

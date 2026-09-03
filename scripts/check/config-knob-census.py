@@ -243,7 +243,12 @@ def _struct_fields(src, struct):
 
 def ladder_knobs():
     """Fields on the typed `[knobs.*]` structs — the migrated knobs."""
-    src = read(os.path.join(ROOT, "packages/boards/nros-board-common/src/platform_config.rs"))
+    # phase-400 W6 — the ladder reader MOVED to a leaf crate so a driver build
+    # script can read it without the `nros-board-common -> nros-platform ->
+    # ... -> driver` cycle. `nros-board-common` re-exports it, so consumers are
+    # unchanged; this path is not, and a stale one here reports "the ladder
+    # holds 0 knobs" rather than "I cannot find the file".
+    src = read(os.path.join(ROOT, "packages/tooling/nros-platform-config/src/platform_config.rs"))
     total = {}
     for struct in (
         "TxKnobs",

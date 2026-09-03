@@ -533,7 +533,12 @@ pub fn interpolate(input: &str, ctx: &InterpContext<'_>) -> Result<String, Inter
         } else if token == "nuttx_include" {
             let dir = std::env::var("NUTTX_DIR")
                 .map_err(|_| InterpError::MissingEnv("NUTTX_DIR".to_string()))?;
-            crate::nuttx_export::include_root(Path::new(&dir))
+            // `nros_build_paths` directly, not the board crate's re-export:
+            // `nuttx_export::include_root` is a one-line delegator to exactly
+            // this, and its own comment says the shared SPELLING is the point.
+            // Calling the shared one is what lets this module live in a leaf
+            // crate (phase-400 W6).
+            nros_build_paths::nuttx_include_root(Path::new(&dir))
                 .display()
                 .to_string()
         } else if let Some(var) = token.strip_prefix("env:") {

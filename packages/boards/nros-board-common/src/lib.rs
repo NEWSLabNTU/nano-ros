@@ -62,8 +62,14 @@ pub use nros_build_paths;
 /// phase-337 W5.d — shared `build.rs` helpers for the FreeRTOS + lwIP family.
 #[cfg(feature = "build-helpers")]
 pub mod freertos_build;
+/// The manifest parser, re-exported from `nros-platform-config`.
+///
+/// phase-400 W6 — it MOVED to a leaf crate so a driver build script can read
+/// the ladder. Re-exported rather than relocated in the callers because the
+/// spelling `nros_board_common::manifest::…` is correct either way and a
+/// nine-file rename would bury the one change that matters.
 #[cfg(feature = "build-helpers")]
-pub mod manifest;
+pub use nros_platform_config::manifest;
 /// phase-339 — the per-arch export snapshot a NuttX consumer links against.
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_export;
@@ -74,8 +80,10 @@ pub mod nuttx_image_link;
 #[cfg(feature = "build-helpers")]
 pub mod nuttx_platform_build;
 /// RFC-0049 / phase-290 — per-package platform/board knob configuration.
+///
+/// phase-400 W6 — re-exported from `nros-platform-config`; see `manifest` above.
 #[cfg(feature = "build-helpers")]
-pub mod platform_config;
+pub use nros_platform_config::platform_config;
 #[cfg(feature = "build-helpers")]
 pub mod policy;
 #[cfg(feature = "build-helpers")]
