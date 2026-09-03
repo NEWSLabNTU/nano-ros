@@ -1,7 +1,14 @@
 # Phase 356 — Test evidence: a sweep you can read afterwards, and numbers you can believe
 
-**Status (2026-08-17). W1 and W2 DONE; W3's available half DONE, its remainder
-unblocked and specified.** Three issues about the same failure: a test run that
+**Status (2026-09-04). W1, W2 and W3 all DONE — the phase is complete.** The
+2026-08-17 line described W3 as having a remainder "unblocked and specified";
+that remainder has since landed. Issue 0260 is `status: resolved` and archived
+(`d97b79484` — "the SMP core-pin arm RUNS and is observed"), which was exactly
+the fixture question this doc identified when it corrected its own
+phase-162 blocker claim. Nothing here is owed.
+
+**Previously (2026-08-17): W1 and W2 DONE; W3's available half DONE, its
+remainder unblocked and specified.** Three issues about the same failure: a test run that
 reports something which cannot be checked, or which is not what it appears to
 be.
 

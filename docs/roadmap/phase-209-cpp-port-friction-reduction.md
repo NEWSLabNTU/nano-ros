@@ -16,7 +16,18 @@ glue + one or two `#include`s**, not by rewriting the source. The three survey
 candidates (`autoware_external_cmd_selector`, `topic_state_monitor`,
 `autoware_steer_offset_estimator`) are concrete fixtures to validate against.
 
-**Status.** **MVP RUNS AGAIN — issue 0465 fixed 2026-08-07.** The rclcpp shim was
+**Status (2026-09-04). MVP RUNS, and the acceptance is now EXECUTED — the
+"STILL OPEN" clause below is stale.** It said "none of this phase's three port
+templates is in any fixture row, test or recipe". Measured today: `examples/
+fixtures.toml` carries **nine** template rows (issue 0469 — the block is
+commented there as phase 209's acceptance), and
+`packages/testing/nros-tests/tests/port_templates_e2e.rs` RUNS the publisher
+rather than only building it, which is the distinction that clause called for
+("a build-only row would not have caught this"). The gap that let 0465 hide for
+ten weeks is closed; what follows is the record of it, kept because the reason
+it stayed hidden is the reusable part.
+
+**Previously (2026-08-07): MVP RUNS AGAIN — issue 0465 fixed.** The rclcpp shim was
 opening a SECOND RMW session (`rclcpp::init()` builds the global executor, then
 `rclcpp::Node` created its own); a non-bridge app has exactly one, and the second
 open exhausted the default 1-entry pool and surfaced as `Transport(ConnectionFailed)`.
