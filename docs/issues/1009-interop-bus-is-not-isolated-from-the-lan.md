@@ -115,5 +115,54 @@ clean domain, and that fixing it could not have caught 0741 anyway because
 `ros2 service list` collapses a service to one NAME however many servers offer
 it. Nothing to do here.
 
-Directions 1 (loopback isolation for every DDS lane AND the Agent) and 3 (state
-0707's local-probe blindness) remain open, and 1 is the one that survives the LAN.
+Direction 3 (state
+0707's local-probe blindness) remains open. Direction 1 landed the same day --
+see the section below.
+
+## Direction 1 LANDED 2026-09-04 — loopback isolation, both sides, both RMWs
+
+`packages/testing/nros-tests/src/dds_isolation.rs` generates the two config
+files and hands them to both halves of a pair:
+
+* **The ROS peer** — `ros2_env_setup_rmw_with_domain` is the single chokepoint
+  every DDS lane's env string flows through (14 call sites), so the export is
+  added once there.
+* **The XRCE Agent** — `XrceAgent::start` sets `FASTRTPS_DEFAULT_PROFILES_FILE`
+  on the `Command` itself. This is the half `ROS_LOCALHOST_ONLY` could never
+  reach, and the reason batch F scored 0 of 15.
+
+Escape hatch `NROS_DDS_ALLOW_LAN=1`; an operator's own
+`FASTRTPS_DEFAULT_PROFILES_FILE` / `CYCLONEDDS_URI` is never overwritten.
+
+### Measured, with a negative control
+
+Delivery-preservation alone proves nothing — an INERT profile also delivers.
+So each config was run beside a copy identical but for the whitelisted address,
+`10.255.255.254`. `demo_nodes_cpp talker` -> `ros2 topic echo`, 12 s:
+
+| RMW | no config | loopback config | bogus-address control |
+| --- | ---: | ---: | ---: |
+| `rmw_fastrtps_cpp`   | 11 | **11** | **0** |
+| `rmw_cyclonedds_cpp` | 11 | **11** | **0** |
+
+The control failing is what makes the middle column mean something: the file IS
+read, and the loopback value does not cost discovery. That is the property
+`ROS_LOCALHOST_ONLY` lacked.
+
+**The Cyclone config is now measured too**, which the earlier note said was not
+yet written. `AllowMulticast=false` plus an explicit localhost `Peer` — the
+interface alone leaves SPDP announcing to a multicast group a LAN participant
+can still join.
+
+### What is NOT verified
+
+**The acceptance itself.** "With the 35 foreign participants still live, the
+XRCE service interop cell passes on a poisoned domain (1 or 5), repeatedly."
+Those orphans are GONE from this host as of 2026-09-04 — domain 1 now answers
+`ros2 service call /add_two_ints` with "waiting for service", not the 28-byte
+history error — so the poisoned condition cannot be reproduced here. What is
+shown is that the mechanism works and costs nothing; that it defeats a live
+foreign peer is inherited from the issue's own batch G (15/15) for Fast-DDS and
+is untested for Cyclone.
+
+Directions 2 (landed earlier) and 3 (documentation) are unaffected.

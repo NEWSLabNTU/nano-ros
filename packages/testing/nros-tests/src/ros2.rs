@@ -1271,10 +1271,19 @@ pub fn ros2_env_setup_dds_with_domain(distro: &str, domain_id: u8) -> String {
 /// DDS RMWs use multicast discovery on the local network. The `rmw` string
 /// selects the ROS 2 middleware (`rmw_fastrtps_cpp`, `rmw_cyclonedds_cpp`, …).
 pub fn ros2_env_setup_rmw_with_domain(distro: &str, rmw: &str, domain_id: u8) -> String {
+    // Issue 1009 — pin the bus to loopback. Every DDS lane's env string funnels
+    // through here, and every one of them pairs two processes on THIS host, so
+    // there is nothing for a LAN peer to legitimately be. Opt out with
+    // `NROS_DDS_ALLOW_LAN=1`.
+    //
+    // Deliberately NOT `ROS_LOCALHOST_ONLY=1`, which was measured at 0 of 15:
+    // it isolates the ROS side and the XRCE Agent ignores it, so the pair stops
+    // discovering each other. See `crate::dds_isolation`.
+    let isolation = crate::dds_isolation::env_exports_for_rmw(rmw);
     format!(
         "source /opt/ros/{distro}/setup.bash && \
          export RMW_IMPLEMENTATION={rmw} && \
-         export ROS_DOMAIN_ID={domain_id}"
+         export ROS_DOMAIN_ID={domain_id}{isolation}"
     )
 }
 

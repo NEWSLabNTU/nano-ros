@@ -77,6 +77,12 @@ impl XrceAgent {
             );
         }
         cmd.args(&agent_args);
+        // Issue 1009 — the Agent is the half `ROS_LOCALHOST_ONLY` cannot reach.
+        // It is a bare Fast-DDS application, not a ROS process, so it ignores
+        // that variable; isolating only the ROS peer left the two unable to
+        // discover each other at all (0 of 15, empty client output). The
+        // profile file reaches it because it is plain Fast-DDS configuration.
+        crate::dds_isolation::apply_fastdds_profile(&mut cmd);
         // Opt-in log capture into the unified dir (test-logs/fixtures/) — enabled
         // by NROS_XRCE_AGENT_VERBOSE or NROS_TEST_LOGS. Default: null sink, so a
         // normal run leaves no xrce-agent-*.log behind (was: always written to
