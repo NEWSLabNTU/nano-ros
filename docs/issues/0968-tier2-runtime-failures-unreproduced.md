@@ -157,6 +157,29 @@ worth following — CLAUDE.md records the neighbouring shapes (the picolibc
 backing that needs ~75 KB; issue 0460's queryable-slot exhaustion) — but it is
 not a diagnosis and nothing here claims one.
 
+### RETRACTED: the zephyr results are about STALE images
+
+Issue 1003. Every zephyr entry in `nano-ros-workspace` is generated
+**2026-07-24**; the images built from them are from today. A full tier-2 build
+reported `== zephyr == OK` and recompiled the images from six-week-old generated
+sources.
+
+So the nine zephyr failures above are measurements of stale entry code. They may
+still be true of HEAD; they are not EVIDENCE about HEAD until the entries are
+regenerated and the cases re-run.
+
+**The freshness check that let this through was mine, and it was too narrow.** I
+compared the fixture stamp (`started_at=04:52:19Z`) with HEAD (`04:24:23Z`) and
+concluded the results were about this tree. The stamp covers the FIXTURE build;
+it says nothing about a generated file inside the zephyr west workspace, which
+is a different artifact on a different path — and that is the one that did not
+regenerate. Checking one artifact and generalising is issue 0196's class, done
+while quoting the rule against it.
+
+The threadx, esp32 and qemu-rtic results are NOT known to be affected — they do
+not build through the west workspace — but neither have they been checked the
+same way, and after this they should be before anyone acts on them.
+
 ### A real defect found on the way, which is NOT the cluster's cause
 
 The generated zephyr C++ entry never passes a session name:

@@ -81,6 +81,6 @@ fails if this block drifts.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 - **#0991** (cmake) — A clean build of an entity-declaring image derives the WRONG payload basis and does not link See `0991-*`.
-- **#1003** (codegen, api, rmw) — The generated C++ entry never passes a session name, so every C++ image registers with the XRCE agent as `node` See `1003-*`.
+- **#1003** (build, codegen, testing) — Zephyr images are compiled from SIX-WEEK-OLD generated entries — the entry is never regenerated when the emitter changes See `1003-*`.
 
 <!-- END GENERATED open-issue list -->
