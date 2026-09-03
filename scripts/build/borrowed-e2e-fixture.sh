@@ -42,7 +42,16 @@ mkdir -p "$out_dir"
 # so the header's variant hash matches the archive's (stub) sizing.
 echo "borrowed-e2e: building nros-c (platform-posix)…"
 # phase-361 W3 — `std` explicit (host build; nros-c `default = []` now).
-( cd "$repo_root" && cargo build -p nros-c --features std,platform-posix >/dev/null )
+#
+# `rmw-cffi` is REQUIRED, not decorative — issue 0995. Every `export_size!` in
+# `nros::sizes` lives in `mod rmw_sizes`, gated `#[cfg(feature = "rmw-cffi")]`.
+# Without it the nested size probe builds an `nros` with NO `__NROS_SIZE_*`
+# symbols at all, every size reads 0, and `generate_config` takes its
+# "`cargo check --no-default-features` / `cargo doc` — no probe result, skip
+# writing" branch. The per-build config header is then never written and this
+# fixture fails on the header it is about to link against — which is what the
+# build script's own warning means by "do not link the resulting rlib".
+( cd "$repo_root" && cargo build -p nros-c --features std,platform-posix,rmw-cffi >/dev/null )
 # profile-literal-ok: unprofiled: the line above is a plain `cargo build`, so
 # `target/debug/` IS the derived output dir for it.
 lib="$repo_root/target/debug/libnros_c.a"

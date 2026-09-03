@@ -70,8 +70,20 @@ fi
 
 # --- freertos: vTaskCoreAffinitySet ----------------------------------------
 head2 "freertos core-pin arm (vTaskCoreAffinitySet)"
-if [ -z "${FREERTOS_DIR:-}" ] || [ ! -d "${FREERTOS_DIR}" ]; then
-    nros_check_skip "sched-dim-arms(freertos)" "FREERTOS_DIR unset/absent (source ./activate.sh)"
+# Issue 0995 — guard on the HEADER this arm includes, not on the top directory.
+#
+# `-d "$FREERTOS_DIR"` passes for a submodule path that exists and is EMPTY,
+# which is exactly what an uninitialised submodule looks like. CI has the
+# directory and not the sources, so the guard admitted the arm and the compile
+# died on `FreeRTOS.h: No such file or directory` — a red that reads as a code
+# failure, in a lane nothing runs, for two days.
+#
+# The sibling arms already do this: nuttx guards on `$NUTTX_DIR/include` and
+# again on a specific `nuttx/config.h`, threadx on `$THREADX_DIR/common_smp/inc`.
+# This one checked a level too shallow. Issue 0196's class — a probe narrower
+# than the rule it enforces.
+if [ -z "${FREERTOS_DIR:-}" ] || [ ! -f "${FREERTOS_DIR}/include/FreeRTOS.h" ]; then
+    nros_check_skip "sched-dim-arms(freertos)" "FREERTOS_DIR unset, or no include/FreeRTOS.h (source ./activate.sh)"
 elif [ -z "$arm_gcc_usable" ]; then
     nros_check_skip "sched-dim-arms(freertos)" "$arm_gcc_unusable_why"
 else
