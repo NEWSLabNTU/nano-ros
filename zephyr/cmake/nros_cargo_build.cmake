@@ -500,7 +500,19 @@ function(nros_resolve_knobs)
         # The small payload class is DERIVABLE (phase-403 W8): it is the largest
         # bound at or under the class split, which the inventory knows exactly.
         # A service request is not a message type, so SERVICE_BUFFER_SIZE is not.
-        _nros_resolve_derivable_knob(ZPICO_SUBSCRIBER_BUFFER_SIZE
+        # phase-403 -- ONE name, the backend-agnostic one, which is also what
+        # the Kconfig symbol has always been called. This resolved under
+        # `ZPICO_SUBSCRIBER_BUFFER_SIZE`, and the mismatch was not cosmetic: it
+        # is what let a live delivery bug hide. `check-knob-delivery` pairs
+        # NROS_DERIVED_<x> with NROS_RESOLVED_NROS_<x>, so a derived value
+        # landing in a ZPICO_-spelled slot was outside every check, and the
+        # island shipped the CLOSURE class (1496) while the inventory derived
+        # the SUBSCRIBED one (880) -- over-sized, therefore silent.
+        #
+        # The concept is not zenoh's: it is the largest bound among the types
+        # this IMAGE subscribes to. zenoh sizes a payload pool from it and the
+        # executor sizes its receive regions from it; both consume one fact.
+        _nros_resolve_derivable_knob(NROS_SUBSCRIBER_BUFFER_SIZE
             "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}"
             NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
         _nros_resolve_knob(ZPICO_SERVICE_BUFFER_SIZE

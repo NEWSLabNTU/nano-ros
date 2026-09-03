@@ -81,5 +81,6 @@ fails if this block drifts.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
+- **#1002** (cmake) — A derived knob converges after THREE configures, not the two 0991 documents See `1002-*`.
 
 <!-- END GENERATED open-issue list -->
