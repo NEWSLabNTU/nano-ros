@@ -39,6 +39,7 @@ import collections
 import json
 import os
 import subprocess
+import re
 import sys
 
 REPO = os.environ.get("NROS_QUEUE_REPO", "NEWSLabNTU/nano-ros")
@@ -57,6 +58,10 @@ INFRA_MARKERS = (
     "set up", "setup", "provision", "install", "checkout", "cache",
     "reclaim disk", "register", "fetch", "unblock", "log in", "login",
     "free disk", "apt", "rustup", "submodule",
+    # A host asserting it is what its labels claim. `runner-doctor.sh` exits 1
+    # when the label lies, BEFORE the lane runs a thing — the textbook
+    # no-verdict, and the one this tool was scoring as a real failure.
+    "labels", "doctor",
 )
 
 # A step whose failure IS the verdict the lane exists to produce.
@@ -86,13 +91,26 @@ def classify(job):
     step = failed[0].get("name", "") or ""
     low = step.lower()
 
+    # WORD BOUNDARIES, not substrings. The comment above these lists says they
+    # are chosen "rather than to anything that could appear mid-sentence", and
+    # `in` broke that promise on the very first real case: `run` matched inside
+    # `Verify this RUNner's labels are true`, so a host failing its own label
+    # check — nothing built, nothing tested — was reported as a verdict failure.
+    # This tool exists to separate exactly those two, so a substring hit here is
+    # not a cosmetic bug: it makes the tool answer the opposite of its purpose.
+    def hit(markers):
+        return any(re.search(rf"\b{re.escape(m)}\b", low) for m in markers)
+
     # VERDICT wins ties. "Build nros CLI" contains both "build" and "install"-ish
     # language in places; a step that names the thing under test is a verdict
     # even when it also prepares something.
-    if any(m in low for m in VERDICT_MARKERS):
+    if hit(VERDICT_MARKERS):
         return "verdict", step
-    if any(m in low for m in INFRA_MARKERS):
+    if hit(INFRA_MARKERS):
         return "no-verdict", step
+    # Unmatched defaults to VERDICT on purpose: under-reporting a real failure
+    # is worse than over-reporting one, and an unrecognised step name is a
+    # reason to look, not to dismiss.
     return "verdict", step
 
 
@@ -226,6 +244,30 @@ def selftest(verbose=False):
     chk("the FIRST failing step decides, not the last",
         classify(job("failure", ("Set up Zephyr workspace", "failure"),
                      ("Build zephyr/c/talker", "failure")))[0] == "no-verdict")
+
+    # The case that motivated word boundaries — phase-413 W2. `run` matched
+    # inside `runner`, so a host failing its own label check scored as a real
+    # failure. Measured: this step is the ONLY failing step in every
+    # `run-matrix` run to date and in the tier-2 nightly job.
+    chk("`Verify this runner's labels are true` is NO VERDICT (not `run` in `runner`)",
+        classify(job("failure", ("Verify this runner's labels are true", "failure")))[0]
+        == "no-verdict")
+    # The sharp one: this step has an INFRA marker ("set up") and the letters
+    # `run` inside `runner`. Under substring matching the VERDICT list hit
+    # first and won the tie, so an infra step was reported as a real failure.
+    chk("an infra step containing `runner` is not stolen by the `run` marker",
+        classify(job("failure", ("Set up the runner workspace", "failure")))[0]
+        == "no-verdict")
+    chk("`run` as its own word is still a verdict",
+        classify(job("failure", ("just ci run matrix", "failure")))[0] == "verdict")
+    # KNOWN LIMITATION, asserted so it is a decision and not a surprise: this
+    # classifies by step NAME, so a `Test / e2e` step that failed with "0 ran,
+    # 9 skipped" still reads as a verdict. Only the log knows the difference,
+    # and `check-skip-budget` is what prints it ("ERROR: 9 skip(s) and NOT ONE
+    # test actually ran"). Do not "fix" this by demoting test steps — that
+    # would hide real failures to catch a reporting nuance.
+    chk("a Test step is a verdict even when its failure was all-skips (see note)",
+        classify(job("failure", ("Test / e2e (threadx_linux)", "failure")))[0] == "verdict")
 
     kinds, nv = summarise([
         job("failure", ("Set up Zephyr 3.7 workspace", "failure")),
