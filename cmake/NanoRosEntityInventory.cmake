@@ -204,7 +204,12 @@ endfunction()
 # that does not exist and has no rule producing it is a hard `missing and no
 # known rule to make it` at LOAD, before any rule runs. Seeding makes the
 # dependency well-formed on the first configure; the real answer overwrites it
-# later in that same configure and the next build picks it up.
+# later in that same configure.
+#
+# Issue 0991 -- "and the next build picks it up" used to stand here, and was
+# false. That registration never makes `build.ninja` stale, because
+# `build.ninja` is written after this file. `nros_reconfigure_on_change` at
+# `nano_ros_entry()` is what actually re-runs cmake.
 #
 # Does NOT overwrite an existing file: the point is that it may already hold an
 # answer.
@@ -219,7 +224,8 @@ function(nros_entity_inventory_seed_knobs_file _path)
         "#\n"
         "# Placeholder: no entity inventory had been composed when this configure\n"
         "# first needed one. It is rewritten with the real answer by\n"
-        "# nros_derive_entity_inventory_knobs(), and its rewrite re-runs cmake.\n"
+        "# nros_derive_entity_inventory_knobs(); that rewrite arms a re-configure\n"
+        "# (issue 0991) so the readers that already ran this pass see it.\n"
         "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION ${NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED})\n"
         "set(NROS_ENTITY_INVENTORY_STATUS \"refused\")\n"
         "set(NROS_ENTITY_INVENTORY_REASON \"no entity inventory composed yet\")\n")

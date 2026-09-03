@@ -23,6 +23,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosMessageBounds.cmake")
 # ladder: a bound inventory prices a TYPE and this one counts the ENTITIES, and
 # `NROS_EXECUTOR_MAX_CBS` is a question only the second can answer.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosEntityInventory.cmake")
+# Issue 0991 -- `nros_reconfigure_settle`, for both loaders below. They are the
+# EARLIEST readers of either fragment in a Zephyr configure, which is what makes
+# them the right place to clear a date a previous pass armed. FILE scope, same
+# reason as the two above.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosReconfigure.cmake")
 
 # =============================================================================
 # nros_detect_rust_target()
@@ -192,17 +197,26 @@ set(NROS_KNOB_DERIVE_SENTINEL -1)
 # ORDERING, stated rather than assumed. A Zephyr module's CMakeLists is
 # processed during `find_package(Zephyr)`, so this runs BEFORE the application
 # reaches its own `nros_find_interfaces()` call -- the file being read is the
-# one the PREVIOUS configure wrote. That is why it is registered with
-# `CMAKE_CONFIGURE_DEPENDS`: when the interfaces lane later writes it (or
-# writes different bytes into it), ninja re-runs cmake by itself and this read
-# picks the new answer up on the next build, with no second command from the
-# user. The write is write-if-changed for exactly this reason -- rewriting
-# identical bytes every configure would re-arm the reconfigure forever.
+# one the PREVIOUS configure wrote.
+#
+# Issue 0991 -- `CMAKE_CONFIGURE_DEPENDS` was described here as closing that
+# lag by itself ("ninja re-runs cmake"). MEASURED: it never did. `build.ninja`
+# is written at the END of the generate step, AFTER any file the configure
+# wrote, and ninja's regeneration rule fires only on an input that is NEWER
+# than `build.ninja`. So the lag did not close slowly; it did not close at all
+# until someone re-configured by hand -- which is how a memory-tight image came
+# to fail at LINK on a clean build dir, naming 103160 bytes and no knob.
+#
+# The dependency is still registered (it is what makes a hand re-configure pick
+# the file up, and what keeps the ninja input well-formed), but the closing is
+# now done by `nros_reconfigure_on_change` at the producer. See
+# `cmake/NanoRosReconfigure.cmake`.
 #
 # So the honest statement of the lag is: an image whose interface closure has
-# just changed builds once at its previous sizes, re-configures, and builds
-# again at the derived ones. It is never SILENT: the status line below says
-# which of the two happened.
+# just changed configures once at its previous sizes, re-configures inside the
+# same build, and builds at the derived ones. It is never SILENT: the status
+# line below says which of the two happened, and the re-configure announces
+# itself.
 function(_nros_load_derived_message_bounds)
     nros_message_bounds_knobs_file(_knobs)
     if(NOT EXISTS "${_knobs}")
@@ -215,6 +229,11 @@ function(_nros_load_derived_message_bounds)
         nros_message_bounds_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
+    # Issue 0991 -- clear a date a previous pass armed. This runs during
+    # `find_package(Zephyr)`, which is the EARLIEST reader in the whole
+    # configure, and that is why settling belongs here: a configure that fails
+    # after this point leaves nothing future-dated behind.
+    nros_reconfigure_settle("${_knobs}")
     include("${_knobs}")
     foreach(_v
         NROS_MESSAGE_BOUNDS_STATUS
@@ -238,14 +257,17 @@ endfunction()
 # `nano_ros_entry()` rather than `nros_find_interfaces()` -- an entity count is
 # a property of the registered COMPONENTS, so it is composed at the point every
 # `nano_ros_node_register()` has run -- but from this module's seat both are
-# "later in this configure than I am", and the `CMAKE_CONFIGURE_DEPENDS` +
-# write-if-changed pair is what closes that.
+# "later in this configure than I am", and issue 0991's
+# `nros_reconfigure_on_change` at those producers is what closes it. The
+# `CMAKE_CONFIGURE_DEPENDS` registration is NOT that mechanism and never was;
+# see the note on the loader above.
 function(_nros_load_derived_entity_inventory)
     nros_entity_inventory_knobs_file(_knobs)
     if(NOT EXISTS "${_knobs}")
         nros_entity_inventory_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
+    nros_reconfigure_settle("${_knobs}")
     include("${_knobs}")
     foreach(_v
         NROS_ENTITY_INVENTORY_STATUS

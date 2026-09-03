@@ -98,7 +98,7 @@ bridge, OUTSIDE the component model, so `COMPONENT_COUNT` is a lower bound.
 phase-403's rule is refuse rather than under-derive, and the island would save
 6 -> 4. It moves to W2 with the bridge as its blocker.
 
-**Measured on the island**, both configures (issue 0991):
+**Measured on the island**, both configures (issue 0991, since fixed):
 
 | knob | hand-set | derived |
 | --- | ---: | ---: |
@@ -296,16 +296,28 @@ four dropped knobs, and passes on the fixed one.
    blocker instead of re-deriving the audit.
 4. W4's gate fails on a deliberately unread published symbol, proving it can.
 
-## Known: the first configure derives the wrong basis
+## FIXED 2026-09-03: the first configure used to derive the wrong basis
 
-`docs/issues/0991`. On a CLEAN build dir the payload classes derive over the
-linked closure, because W9's producer runs later in the configure than W8's
-reader. On the island that over-approximation overflows RAM by 103160 bytes at
-LINK. Every measurement in this phase must therefore be taken from a build that
-has configured at least twice, and W1's acceptance test must state which.
+`docs/issues/archived/0991`. On a CLEAN build dir the payload classes derived
+over the linked closure, because W9's producer runs later in the configure than
+W8's reader. On the island that over-approximation overflowed RAM by 103160
+bytes at LINK.
 
-Anything in this phase that adds a knob derived from the entity inventory
-inherits that lag. It is worth fixing before W1 multiplies it by six.
+The lag was supposed to close itself — three call sites said
+`CMAKE_CONFIGURE_DEPENDS` made ninja re-run cmake once the producer wrote
+different bytes. **It never did, and measurably so**: `build.ninja` is written
+after the fragment, so the dependency is never stale. Not on that build, not on
+the next; only an explicit re-configure moved it. Every "configure twice"
+instruction in this phase was working around that, without anyone knowing it was
+the whole mechanism rather than a slow one.
+
+`cmake/NanoRosReconfigure.cmake` now closes it inside the same
+`west build`/`cmake --build`, at both producers, gated by
+`just check reconfigure-on-change` (whose control case reproduces the old bug).
+So a measurement no longer has to state how many times its build dir had been
+configured — though a number read off a build dir of unknown history still
+should be re-measured, since the numbers already recorded above were taken under
+the old rule.
 
 ## Issues homed here (survey 2026-09-03)
 Every open issue was checked for a home phase; these had none, or were
@@ -316,5 +328,5 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0991](../issues/0991-a-clean-build-of-an-entity-declaring-image-does-not-link.md) | a clean build of an entity-declaring image derives the WRONG payload basis and does not link |
+| [#0991](../issues/archived/0991-a-clean-build-of-an-entity-declaring-image-does-not-link.md) | a clean build of an entity-declaring image derived the WRONG payload basis and did not link — **RESOLVED 2026-09-03**; the recovery every reader relied on had never fired |
 
