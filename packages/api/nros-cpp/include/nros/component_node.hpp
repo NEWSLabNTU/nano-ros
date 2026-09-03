@@ -62,6 +62,8 @@
 #ifndef NROS_CPP_COMPONENT_NODE_BASE_HPP
 #define NROS_CPP_COMPONENT_NODE_BASE_HPP
 
+#include "nros/log.hpp" // NROS_ERROR -- the OVERRIDABLE sink, so a freestanding
+                        // image can be given a diagnostic (issue 1015)
 #include <cstddef>
 #include <cstdint>
 #include <new>         // placement new for the NROS_COMPONENT factory
@@ -157,6 +159,23 @@ namespace detail {
 /// builds are a no-op (the caller still returns the error code to halt boot).
 /// NOT `[[noreturn]]` — the caller (entry/carrier) decides how to halt.
 inline void report_component_failure(const char* node_name, const char* what, int32_t code) {
+    // Route through the OVERRIDABLE sink first, so a freestanding image can
+    // see this at all. Issue 1015's bisect ran aground here: on Zephyr both
+    // arms below compile to nothing, so a component that failed to register
+    // halted SILENTLY -- the board printed only the Zephyr banner, identical
+    // to a healthy boot, and "is it broken?" had no answer on the target where
+    // it mattered. Issue 0589 fixed exactly this class for the Rust side; the
+    // C++ side still had it.
+    //
+    // `NROS_LOG_SINK` is a no-op by DEFAULT on freestanding too, so this is
+    // not automatically a fix -- it is the hook that lets an image supply one
+    // (`-DNROS_LOG_SINK=...` to printk on Zephyr). That is the difference
+    // between a diagnostic that cannot be enabled and one that is off until
+    // asked for.
+    NROS_ERROR("ComponentNode \"%s\" FAILED: %s (code %d). The node did not "
+               "finish registering; nothing it declares will appear on the graph.",
+               (node_name != nullptr) ? node_name : "?", (what != nullptr) ? what : "?",
+               static_cast<int>(code));
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     ::std::fprintf(stderr,
                    "[nros] FATAL: ComponentNode \"%s\" failed at %s (code=%d) — halting boot\n",
@@ -187,6 +206,12 @@ constexpr int32_t DECLARED_DEPTH_MISMATCH = -403;
 /// still reach a debugger through `error_code()`.
 inline void report_declared_depth_mismatch(const char* node_name, const char* topic, int declared,
                                            int passed) {
+    // Same reasoning as `report_component_failure` above: through the sink so
+    // a freestanding image can be given one.
+    NROS_ERROR("ComponentNode \"%s\": topic \"%s\" DECLARED @depth=%d but the QoS "
+               "passed states %d. Depth multiplies the executor arena, so they must agree.",
+               (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", declared,
+               passed);
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
     ::std::fprintf(stderr,
                    "[nros] FATAL: ComponentNode \"%s\": topic \"%s\" was DECLARED @depth=%d in "
