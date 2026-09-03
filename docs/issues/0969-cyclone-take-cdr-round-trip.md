@@ -549,3 +549,43 @@ becomes linear-and-derivable, on both sides, from the same
 Limits unchanged: two points per size, one type, one transport, allocation BYTES
 only — the CPU cost of the removed decode/encode is still unmeasured, and it is
 the half that does not cross over.
+
+## The CPU cost: ATTEMPTED, NOT MEASURED — and why the instrument failed
+
+The decode and encode this change removes are a saving at every payload size,
+unlike the byte curve, so the number is worth having. `valgrind --tool=callgrind`
+was the right instrument to reach for and it did not produce a trustworthy figure.
+Recorded so the next attempt starts past these two walls rather than into them.
+
+**Wall 1 — process-level instruction counts are dominated by POLLING, and vary
+about 2x run to run.** `call_blocking` spins on `take_response` with a 5 ms
+sleep, so the client's instruction total tracks how long a reply happened to
+take, not what the codec did. Two runs of the identical 100-exchange workload
+collected 3,853,244 and 7,686,322 instructions. A slope taken across iteration
+counts is meaningless against that spread, and the raw per-exchange numbers came
+out non-monotonic in payload size (65,835 at 16 B, 17,835 at 1 KB, 82,011 at
+16 KB), which is the noise showing rather than a trend.
+
+**Wall 2 — the codec functions are not attributable.** `dds_stream_write_sample`
+is present in the binary (`nm` finds it three times) and never appears in
+`callgrind_annotate` output, inclusive or flat: it is reached through
+Cyclone's static, heavily-inlined cdrstream, so its cost is folded into callers
+that annotate as `???`. What IS visible — `write_sample_eot`, `write_sample_gc`,
+`serdata_default_from_ser_nokey` — is Cyclone's own write and serdata path, not
+the re-encode being removed.
+
+So a number here would have to come from differencing two noisy process totals
+whose spread exceeds the effect. That is how a plausible wrong figure gets into
+an issue, and this campaign has enough of those already.
+
+**What would work**, for whoever wants it:
+
+* a bench harness with NO poll loop — call the codec directly on a prepared
+  sample, in-process, N times, so the instruction count is the codec's and
+  nothing else's. `dds_stream_write_sample` against a `SertypeMin` is callable
+  in isolation; that is the shape `nros-bench` exists for;
+* or `perf stat` on a pinned core with the sleep removed, comparing wall
+  instructions across trees, which trades determinism for not needing a harness.
+
+Both are real work. Neither is a five-minute follow-up to this measurement, which
+is why this section says "not measured" instead of estimating.
