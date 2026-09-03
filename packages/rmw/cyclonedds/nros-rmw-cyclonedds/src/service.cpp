@@ -252,7 +252,6 @@ constexpr std::size_t kSeqBytes = 8;                         // request_header s
 constexpr std::size_t kHeaderBytes = kGuidBytes + kSeqBytes; // 16-byte inlined request_header
 constexpr std::size_t kCdrLenPrefix = sizeof(uint32_t); // 4-byte CDR sequence/array length field
 constexpr std::size_t kStatusFieldLen = 4;              // GetResult status int8 + 3 pad
-constexpr std::size_t kGoalUuidLen = 16;                // action goal_id UUID (uuid[16])
 
 // Round @p pos up to the 4-byte CDR member alignment.
 inline std::size_t cdr_align4(std::size_t pos) {
@@ -408,38 +407,6 @@ struct DdsSequenceInt32 {
     int32_t* _buffer;
     bool _release;
 };
-
-bool strip_nested_cdr_at(const uint8_t* in, size_t in_len, size_t nested_off, uint8_t* out,
-                         size_t out_cap, size_t* out_len) {
-    if (in == nullptr || out == nullptr || out_len == nullptr ||
-        nested_off + sizeof(kCdrLeHeader) > in_len || in_len - sizeof(kCdrLeHeader) > out_cap) {
-        return false;
-    }
-    if (std::memcmp(in + nested_off, kCdrLeHeader, sizeof(kCdrLeHeader)) != 0) {
-        return false;
-    }
-    std::memcpy(out, in, nested_off);
-    std::memcpy(out + nested_off, in + nested_off + sizeof(kCdrLeHeader),
-                in_len - nested_off - sizeof(kCdrLeHeader));
-    *out_len = in_len - sizeof(kCdrLeHeader);
-    return true;
-}
-
-bool strip_goal_id_len_at(const uint8_t* in, size_t in_len, size_t len_off, uint8_t* out,
-                          size_t out_cap, size_t* out_len) {
-    if (in == nullptr || out == nullptr || out_len == nullptr || len_off + kCdrLenPrefix > in_len ||
-        in_len - kCdrLenPrefix > out_cap) {
-        return false;
-    }
-    if (in[len_off] != kGoalUuidLen || in[len_off + 1] != 0 || in[len_off + 2] != 0 ||
-        in[len_off + 3] != 0) {
-        return false;
-    }
-    std::memcpy(out, in, len_off);
-    std::memcpy(out + len_off, in + len_off + kCdrLenPrefix, in_len - len_off - kCdrLenPrefix);
-    *out_len = in_len - kCdrLenPrefix;
-    return true;
-}
 
 // Phase 171.0.b: Cyclone 0.10.5's public `dds_stream_read_sample`
 // helper crashes on the generated Fibonacci_GetResult_Response_ dynamic
@@ -608,30 +575,33 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
         wire_len < kEncapLen) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    uint8_t adjusted[kWireScratch];
+    // Issue 0976 — the two write-side CDR corrections are GONE, not disabled.
+    //
+    // `strip_goal_id_len_at` removed a `[16,0,0,0]` length prefix before the
+    // goal UUID and `strip_nested_cdr_at` removed a nested encapsulation header,
+    // both correcting bytes nano-ros used to emit. It no longer emits them: the
+    // runtime writes the fixed `octet[16]` ROS 2 declares (publisher.cpp's 233.6
+    // note records that fix), so the guards had nothing to match.
+    //
+    // MEASURED before deleting, against a stock ROS 2 Humble action server over
+    // `rmw_cyclonedds_cpp`, one client per language:
+    //
+    //     Rust  strip_goal_id_len_at declined x2, strip_nested_cdr_at declined
+    //     C     the same counts
+    //     C++   the same counts
+    //
+    // and each round trip returned the correct Fibonacci sequence. Three
+    // independent serializers reaching this function through the C ABI, none of
+    // them producing a byte either helper would have touched.
+    //
+    // A ROS 2-compatibility correction belongs where nano-ros SERIALIZES, not in
+    // one backend: bytes fixed here would still be wrong for every other
+    // transport. That move already happened; this removes the copy left behind.
+    //
+    // `ros2_action_e2e.rs` is what makes this checkable — both directions, real
+    // peer. Before it, nothing in the tree could tell whether these mattered.
     const uint8_t* read_cdr = wire_cdr;
     size_t read_len = wire_len;
-    size_t adjusted_len = 0;
-    if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_GetResult_Request_")) {
-        if (strip_goal_id_len_at(wire_cdr, wire_len, kEncapLen + kHeaderBytes, adjusted,
-                                 sizeof(adjusted), &adjusted_len)) {
-            read_cdr = adjusted;
-            read_len = adjusted_len;
-        }
-    } else if (type_ends_with(desc, "_GetResult_Response_")) {
-        if (strip_nested_cdr_at(wire_cdr, wire_len, kEncapLen + kHeaderBytes + kStatusFieldLen,
-                                adjusted, sizeof(adjusted), &adjusted_len)) {
-            read_cdr = adjusted;
-            read_len = adjusted_len;
-        }
-    }
-    if (type_ends_with(desc, "_SendGoal_Request_")) {
-        if (strip_nested_cdr_at(read_cdr, read_len, kEncapLen + kHeaderBytes + kGoalUuidLen,
-                                adjusted, sizeof(adjusted), &adjusted_len)) {
-            read_cdr = adjusted;
-            read_len = adjusted_len;
-        }
-    }
 
     if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_SendGoal_Response_") ||
         type_ends_with(desc, "_GetResult_Request_")) {

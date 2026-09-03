@@ -239,6 +239,29 @@ that neither correction has anything to correct.
 ships**, which is what the ROS 2-compatibility-belongs-to-nano-ros call asks for:
 the correction lives at the serializer, and the backend copy is dead.
 
+### DONE — both write-side strips deleted (2026-09-03)
+
+`strip_goal_id_len_at`, `strip_nested_cdr_at`, the `kGoalUuidLen` constant only
+they used, the `adjusted[]` scratch buffer and the three `type_ends_with`
+branches that called them are gone from `service.cpp`.
+
+Acceptance, on fixtures rebuilt against the stripped backend:
+
+| check | result |
+| --- | --- |
+| `ros2_action_e2e` both directions (real ROS 2 peer) | 2 passed |
+| C action client vs stock ROS 2 server | correct Fibonacci(10) |
+| C++ action client vs stock ROS 2 server | correct Fibonacci(10) |
+| `test_native_cyclonedds_rust_action` (nano-ros to nano-ros) | passed |
+
+The last row matters: that lane is the one the adapters actually ran in, and it
+still passes without them — so they were not holding up the in-tree case either.
+
+`sertype_min.hpp`'s note is updated rather than left pointing at deleted symbols:
+its "blocked on a ROS 2 action interop test" paragraph was the reason
+`service.cpp` had not migrated, and that reason is now spent. What remains there
+is the RECEIVE side, which is issue 0969's `dds_takecdr` rewrite.
+
 Also untouched: the three RECEIVE-side adapters
 (`take_fibonacci_get_result_response_wire` and the two `_SendGoal_*` /
 `_GetResult_Request_` memcpy branches). Those are a different question — issue
