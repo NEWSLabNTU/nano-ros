@@ -90,5 +90,6 @@ fails if this block drifts.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
 - **#1004** ([rmw, platform, embedded]) — an536 island stopped booting reliably at pin d2a8955c5: `create_subscription` returns TransportError, sometimes preceded by a stack overflow See `1004-*`.
 - **#1004** ([rmw, platform, embedded]) — an536 island hangs nondeterministically at controller construction — three signatures, both pins, no bracket See `1004-*`.
+- **#1004** ([rmw, platform, embedded]) — an536 boot hang is a LIVELOCK in handle_xevents: an ACKNACK event re-armed to an absolute past time is extracted forever, holding the event-queue lock See `1004-*`.
 
 <!-- END GENERATED open-issue list -->
