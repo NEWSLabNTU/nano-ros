@@ -111,3 +111,27 @@ This issue stays open for the parts that are not the version bump: the config
 generator being 54 knobs behind, the `ZENOH_GENERIC` TU, and the note that fork
 commit `67ee0224`'s INIT-retry must NOT be carried forward because upstream
 never had the flood it fixed.
+
+## Update 2026-09-04 — 1.8.0 landed; this issue stays open for 1.10
+
+Phase 415 moved the patch line to **1.8.0**, the zenoh ROS Humble actually
+ships (`rmw_zenoh_cpp` 0.1.9 → `ZENOH_C "1.8.0"`). That is the version the
+tracking rule names, so it closes the *drift* half of this issue. 1.10 is still
+two minors AHEAD of ROS and remains the wrong target under that rule — this
+issue stays open as the record of what a later move would cost, not as work
+that is queued.
+
+**One row of the table above is wrong and matters, because it is used as an
+argument for 1.10 being special.** `include/zenoh-pico/config.h` is not
+"checked in at our pin, generated at 1.10": **1.7.2 and 1.8.0 both generate it**,
+via `configure_file(config.h.in -> config.h)` writing back into the SOURCE tree
+(`CMakeLists.txt:345` at 1.7.2, `:379` at 1.8.0). It only *looks* checked in
+because the generated file is committed and because `zpico-sys` compiles the
+sources directly and never runs that CMakeLists — so for nano-ros the committed
+`config.h` is the effective config and the generator never fires.
+
+The practical consequence, found by building 1.8.0 the upstream way during the
+port: anything we write into `config.h` alone is erased by the first `cmake`
+configure. Two knobs were in that position and are now in `config.h.in`; the
+`#ifndef` wrapping from `49012370` still is not (118 lines). Details and the
+sweep command are in [phase-415](../roadmap/phase-415-zenoh-pico-1-8-0-patch-line.md).

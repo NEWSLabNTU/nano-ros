@@ -1,12 +1,130 @@
 # Phase 415 — the zenoh-pico patch line moves to 1.8.0
 
-**Status (2026-09-03). SURVEYED, not started.** The backup exists and is pushed;
-the port itself is a merge, not a replay, and the measurement below is why it is
-a phase rather than an afternoon.
+**Status (2026-09-04). DONE.** `nano-ros` is 1.8.0 + 65 of our commits,
+individually preserved; the superproject pin moves with it.
 
-Carries [issue 0910](../issues/0910-zenoh-pico-1-10-migration.md), whose target
-changes here: **1.8.0, not 1.10.** 0910 is written around 1.10 and its blocker
-(the config generator) is a 1.10 problem.
+**The 2026-09-03 survey below was WRONG, and the correction is the useful part
+of this doc.** It reported an orphan line with no upstream ancestry, a keyexpr
+name collision needing a decision, 42 conflicting files, and a 6,448-insertion
+delta over 138 files. None of that held:
+
+| the survey said | measured 2026-09-04 |
+| --- | --- |
+| no upstream ancestry; graft needed | `1.7.2` **is** an ancestor of `nano-ros` |
+| our delta = 138 files / 6,448 ins | **69 files / 7,252 ins** above the true fork point |
+| `session/keyexpr.h` collides — a DECISION | no collision; that file is **upstream's**, inherited |
+| admin space, json encoder are OURS | both **upstream's** (`#1125`, inherited) |
+| a merge, not a replay | a plain `git rebase --onto`, 64 commits, 8 conflicted |
+
+**Root cause of the bad survey: it diffed against the `1.7.2` TAG, but the
+branch forks from upstream `main` EIGHT commits past that tag** — at
+`2bd54691 Refcount clean up (#1146)`. Those eight are upstream's own work
+(including `ea1ecbe9`, the keyexpr move, and `1d9e198f`, the admin space), so
+diffing from the tag attributed them to us and invented the collision. The
+fork point is also an **ancestor of 1.8.0**, which is what makes the whole
+thing a rebase.
+
+The lesson generalises, and CLAUDE.md already carries half of it: *resolve a
+fork's relationship by containment, not by guessing.* One command would have
+saved the afternoon:
+
+```bash
+git merge-base <branch> upstream/main     # the fork point
+git merge-base --is-ancestor <fork-point> <target-tag> && echo "plain rebase"
+```
+
+The survey was probably run against the SUBMODULE checkout, which is
+single-branch and shallow — the exact condition CLAUDE.md warns makes a fork's
+history read as something it is not.
+
+## What actually happened
+
+```
+git rebase --onto 1.8.0 2bd54691 nano-ros    # 64 commits, 8 needed a hand
+```
+
+* **1 commit dropped as obsolete**: `63100545` (Race 1, `_z_get_query_id` under
+  the session mutex). Upstream fixed it independently and better — 1.8.0 folds
+  the id allocation into `_z_unsafe_register_pending_query`, called under the
+  mutex, so the separate helper our commit added has no reason to exist.
+* **2 commits added**, both fixing things the port exposed (see below).
+* Everything else replayed with its message intact.
+
+### Two defects the port exposed
+
+**1. Upstream 1.8.0 does not compile with `Z_FEATURE_MATCHING=0`.**
+`_z_write_filter_clear` is unguarded but calls
+`_z_write_filter_ctx_remove_callbacks`, declared and defined only under
+`#if Z_FEATURE_MATCHING`. That is exactly nano-ros's Zephyr configuration, so
+every Zephyr zenoh image failed to build. Fixed by guarding the call — correct
+rather than expedient, because the state it clears
+(`_z_write_filter_ctx_t::callbacks`) is guarded the same way. **Worth reporting
+upstream.**
+
+**2. Our own knobs were in the generated file, not its template.**
+`CMakeLists.txt` runs `configure_file(config.h.in -> config.h)` into the SOURCE
+tree, so `Z_FEATURE_TX_SPLIT_LOCK` and `Z_TRANSPORT_LEASE_TASK_SLEEP_CHUNK_MS`
+— written only into `config.h` — were erased by the first cmake configure. This
+was equally true at 1.7.2 and never bit, because `zpico-sys` compiles the
+sources directly and never runs that CMakeLists. Both now live in `config.h.in`.
+
+**Still outstanding, deliberately not fixed here:** the whole `#ifndef` wrapping
+from `49012370 fix: allow feature macro overrides` is also generated-file-only —
+regenerating `config.h` drops 118 lines of it. Pre-existing, not a port
+regression, and not a build blocker, so it stays a known gap rather than scope
+creep. Sweep:
+
+```bash
+comm -23 <(grep -oP '^#define \K[A-Z_0-9]+' include/zenoh-pico/config.h    | sort -u) \
+         <(grep -oP '^#define \K[A-Z_0-9]+' include/zenoh-pico/config.h.in | sort -u)
+```
+
+### The one design divergence from upstream
+
+Both lines now carry a `_mutex_transport` on the session, but they use it
+differently, and ours is deliberate:
+
+* **Upstream 1.8.0** holds the lock across `_z_transport_clear` in
+  `_zp_unicast_failed` — and does **not** take it in `_z_send_n_msg` /
+  `_z_send_n_batch`. A mutex only excludes when both sides take it, so the
+  publisher still races the free. Upstream added the writer half only.
+* **Ours (issue 0899)** is a HANDSHAKE: publish `_tp._type = _Z_TRANSPORT_NONE`
+  under the lock, release, then tear down without it — because holding it
+  across `_z_link_free` **deadlocks** in lwIP (measured; the lease task parks
+  and the image goes quiet instead of asserting). Trading a crash for a hang is
+  not a fix. The publisher half is ours and is what actually closes the race.
+
+Our call sites were renamed to upstream's spelling
+(`_z_session_transport_mutex_lock/_unlock`) so there is one vocabulary.
+Issue 0924's `_reconnecting` claim rides on the same lock.
+
+## Verification
+
+* `git rebase --onto` replayed 64 commits; 65 on the branch after the two adds.
+* **Tree superset vs the backup**: the only path present on the old line and
+  absent on the new is `src/collections/seqnumber.c`, which **upstream deleted**
+  in `67fe16c0 Add generic atomics (#1170)`. No patch of ours was lost; all 27
+  files our line ADDS are present, spot-checked byte-identical.
+* **Native**: zenoh-pico's own cmake build, twice — once with the regenerated
+  `config.h`, once with our committed one. Both clean. All four of our link
+  families compile (isotp/can/ivc/custom, 12 objects).
+* **`zpico-sys`**: builds against 1.8.0 — the real nano-ros path.
+* **Zephyr**: `just zephyr build-rust-examples` green. (The two
+  `zephyr_self_pkg_*` `FATAL ERROR` lines in that log are expected: those are
+  `west-configure` fixtures whose gate is the `output` artifact written before
+  the configure gives up.)
+
+## Recovery
+
+`backup/nano-ros-1.7.2-20260903` -> `fa7ad0f5b`, verified on the remote both
+before the port and after the force-push. If anything here proves wrong, that
+ref is the 1.7.2 line intact.
+
+---
+
+# Original survey, 2026-09-03 (superseded — kept for the record)
+
+**Its conclusions are wrong; see the correction above.**
 
 ## Why 1.8.0
 
