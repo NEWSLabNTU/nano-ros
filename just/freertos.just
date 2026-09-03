@@ -320,7 +320,30 @@ test verbose="": build-fixtures
         echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
         exit 1
     fi
-    just _nextest-platform freertos_qemu '{{verbose}}'
+    # `rtos_e2e`'s `Platform__Freertos` cells, NOT the `freertos_qemu` target.
+    #
+    # That target holds exactly two tests and BOTH are `#[ignore]`d — the
+    # cyclonedds fixtures they drove were retired in phase 220.C path B and
+    # phase 214.P, and their own header says where the coverage went: "The
+    # per-role binaries are consumed by the `rtos_e2e` Platform__Freertos
+    # tests." So this lane selected a binary with nothing runnable in it and
+    # nextest ended the job:
+    #
+    #     Starting 0 tests across 1 binary (2 tests skipped)
+    #     error: no tests to run
+    #
+    # It had been VACUOUS since those ignores landed and only became visible
+    # when nextest started treating an empty selection as an error rather than
+    # a silent pass — which is the better default, and is what surfaced this.
+    # A lane that runs nothing while reporting success is the shape this repo
+    # gates against everywhere else.
+    #
+    # Same move the NuttX lane already made, for the same reason and in the
+    # same words (`_nextest-platform`'s `filter` parameter exists for it): the
+    # per-platform target was subsumed by the shared matrix, so select the
+    # platform's cells out of `rtos_e2e` instead. `test(Freertos)` selects 9 —
+    # action / pubsub / service, each in Rust, C and C++.
+    just _nextest-platform rtos_e2e '{{verbose}}' '' 'test(Freertos)'
 
 # Run all FreeRTOS tests including networked E2E
 [group("full-matrix")]
