@@ -264,6 +264,35 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
+    // phase-400 W6 — the smoltcp net tenant. Defaults mirror
+    // `packages/drivers/net/nros-smoltcp/build.rs`, which stays the authority.
+    // `max_udp_sockets` shows 1 here: its builtin is FEATURE-derived (4 with
+    // `rtps`), and a cargo feature is not a fact this command can see.
+    let net_defaults: &[(&str, usize)] = &[
+        ("max_sockets", 1),
+        ("max_udp_sockets", 1),
+        ("buffer_size", 2048),
+        ("connect_timeout_ms", 30_000),
+        ("socket_timeout_ms", 10_000),
+    ];
+    for (name, r) in tree
+        .resolve_net(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.net),
+            &env_get,
+            net_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("net.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
     // phase-400 W6 — the RMW static-pool tenant. Defaults mirror
     // `packages/rmw/cffi/build.rs`, which stays the authority on them.
     // `NROS_RMW_SUBSCRIBER_SLOTS` is absent on purpose: phase-412 W1 derives it.

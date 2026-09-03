@@ -74,3 +74,9 @@ portable-atomic = { version = "1", default-features = false }
 # disables interrupts, which a hosted OS will not permit.
 [target.'cfg(all(target_os = "none", not(target_has_atomic = "ptr")))'.dependencies]
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
+
+[build-dependencies]
+# phase-400 W6 — the `[knobs.net]` platform/board rungs. The LEAF ladder crate,
+# not `nros-board-common`: that one reaches back here through `nros-platform ->
+# nros-platform-esp32-qemu -> nros-smoltcp`, which cargo rejects as a cycle.
+nros-platform-config = { path = "../../../tooling/nros-platform-config" }

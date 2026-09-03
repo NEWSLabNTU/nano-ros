@@ -168,6 +168,9 @@ pub struct Knobs {
     /// phase-400 W6 — the RMW static-pool tenant. See [`RmwKnobs`].
     #[serde(default)]
     pub rmw: RmwKnobs,
+    /// phase-400 W6 — the smoltcp net tenant. See [`NetKnobs`].
+    #[serde(default)]
+    pub net: NetKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -416,6 +419,25 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.net]` RUNGS for this build — platform merged with board,
+    /// board winning. See [`Self::rmw_rungs`].
+    pub fn net_rungs(&self) -> NetKnobs {
+        let plat = self.tree.platform_net_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("net", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.net.clone())
+            .unwrap_or_default();
+        NetKnobs {
+            max_sockets: b.max_sockets.or(plat.max_sockets),
+            max_udp_sockets: b.max_udp_sockets.or(plat.max_udp_sockets),
+            buffer_size: b.buffer_size.or(plat.buffer_size),
+            connect_timeout_ms: b.connect_timeout_ms.or(plat.connect_timeout_ms),
+            socket_timeout_ms: b.socket_timeout_ms.or(plat.socket_timeout_ms),
+        }
+    }
+
     /// The `[knobs.rmw]` RUNGS for this build — platform merged with board,
     /// board winning — with no env rung and no defaults.
     ///
@@ -535,6 +557,66 @@ pub struct RmwKnobs {
     pub max_nodes: Option<usize>,
     #[serde(default)]
     pub message_info_slots: Option<usize>,
+}
+
+/// phase-400 W6 — the smoltcp (bare-metal net) tenant.
+///
+/// Socket pools, the per-socket buffer, and the two timeouts, read by
+/// `packages/drivers/net/nros-smoltcp/build.rs`. Every one is a PLATFORM fact:
+/// a brokered bare-metal client needs one TCP and one UDP socket, an RTPS one
+/// needs four, and until now the only way to say so was an env var on the shell
+/// that happened to run the build.
+///
+/// THIS TENANT IS WHY THE READER IS A LEAF CRATE. `nros-smoltcp` could not
+/// depend on `nros-board-common` — cargo counts an optional dependency when it
+/// looks for cycles, and the board crate reaches back through `nros-platform ->
+/// nros-platform-esp32-qemu -> nros-smoltcp`. Every driver was locked out of
+/// the ladder until the reader moved here.
+///
+/// Note what the rung does NOT replace: the crate's default for
+/// `max_udp_sockets` is FEATURE-derived (1 brokered, 4 with `rtps`), and that
+/// stays the builtin. A descriptor naming the knob outranks it — an explicit
+/// declaration beats a heuristic — but a board that says nothing still gets the
+/// feature-appropriate number rather than a constant.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NetKnobs {
+    #[serde(default)]
+    pub max_sockets: Option<usize>,
+    #[serde(default)]
+    pub max_udp_sockets: Option<usize>,
+    #[serde(default)]
+    pub buffer_size: Option<usize>,
+    #[serde(default)]
+    pub connect_timeout_ms: Option<usize>,
+    #[serde(default)]
+    pub socket_timeout_ms: Option<usize>,
+}
+
+/// Every net knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const NET_KNOBS: &[&str] = &[
+    "max_sockets",
+    "max_udp_sockets",
+    "buffer_size",
+    "connect_timeout_ms",
+    "socket_timeout_ms",
+];
+
+/// The env front-end for a net knob — the EXISTING `NROS_SMOLTCP_*` names.
+///
+/// The `ZPICO_SMOLTCP_*` spellings the build script also accepts are a
+/// DEPRECATED alias, not a second front-end: they rank WITH env, above this
+/// tenant's rungs, and are not listed here because nothing should start using
+/// them.
+pub fn net_env_key(knob: &str) -> &'static str {
+    match knob {
+        "max_sockets" => "NROS_SMOLTCP_MAX_SOCKETS",
+        "max_udp_sockets" => "NROS_SMOLTCP_MAX_UDP_SOCKETS",
+        "buffer_size" => "NROS_SMOLTCP_BUFFER_SIZE",
+        "connect_timeout_ms" => "NROS_SMOLTCP_CONNECT_TIMEOUT_MS",
+        "socket_timeout_ms" => "NROS_SMOLTCP_SOCKET_TIMEOUT_MS",
+        other => panic!("unknown net knob `{other}`"),
+    }
 }
 
 /// Every RMW knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1353,6 +1435,75 @@ impl PlatformsTree {
                     *dst = src;
                 }
             }
+        }
+        Ok(out)
+    }
+
+    fn platform_net_knobs(&self, name: &str) -> Result<NetKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = NetKnobs::default();
+        for file in chain.iter().rev() {
+            let n = &file.knobs.net;
+            for (dst, src) in [
+                (&mut out.max_sockets, n.max_sockets),
+                (&mut out.max_udp_sockets, n.max_udp_sockets),
+                (&mut out.buffer_size, n.buffer_size),
+                (&mut out.connect_timeout_ms, n.connect_timeout_ms),
+                (&mut out.socket_timeout_ms, n.socket_timeout_ms),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.net]` rungs for a platform, inherits chain applied.
+    pub fn platform_net_rungs(&self, platform: &str) -> Result<NetKnobs, ConfigError> {
+        self.platform_net_knobs(platform)
+    }
+
+    /// phase-400 W6 — resolve the net tenant over the RFC-0049 ladder.
+    pub fn resolve_net(
+        &self,
+        platform: &str,
+        board: Option<&NetKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_net_knobs(platform)?;
+        let pick = |k: &NetKnobs, name: &str| match name {
+            "max_sockets" => k.max_sockets,
+            "max_udp_sockets" => k.max_udp_sockets,
+            "buffer_size" => k.buffer_size,
+            "connect_timeout_ms" => k.connect_timeout_ms,
+            "socket_timeout_ms" => k.socket_timeout_ms,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = net_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
         }
         Ok(out)
     }
