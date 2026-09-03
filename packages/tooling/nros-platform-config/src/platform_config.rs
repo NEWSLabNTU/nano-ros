@@ -171,6 +171,9 @@ pub struct Knobs {
     /// phase-400 W6 — the smoltcp net tenant. See [`NetKnobs`].
     #[serde(default)]
     pub net: NetKnobs,
+    /// phase-400 W6 — the component-runtime tenant. See [`RuntimeKnobs`].
+    #[serde(default)]
+    pub runtime: RuntimeKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -419,6 +422,24 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.runtime]` RUNGS for this build — platform merged with board,
+    /// board winning. See [`Self::rmw_rungs`].
+    pub fn runtime_rungs(&self) -> RuntimeKnobs {
+        let plat = self.tree.platform_runtime_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("runtime", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.runtime.clone())
+            .unwrap_or_default();
+        RuntimeKnobs {
+            max_components: b.max_components.or(plat.max_components),
+            component_slot_bytes: b.component_slot_bytes.or(plat.component_slot_bytes),
+            max_class_instances: b.max_class_instances.or(plat.max_class_instances),
+            max_cell_entities: b.max_cell_entities.or(plat.max_cell_entities),
+        }
+    }
+
     /// The `[knobs.net]` RUNGS for this build — platform merged with board,
     /// board winning. See [`Self::rmw_rungs`].
     pub fn net_rungs(&self) -> NetKnobs {
@@ -591,6 +612,49 @@ pub struct NetKnobs {
     pub connect_timeout_ms: Option<usize>,
     #[serde(default)]
     pub socket_timeout_ms: Option<usize>,
+}
+
+/// phase-400 W6 — the component-runtime tenant.
+///
+/// The four static pools `packages/api/nros/build.rs` carves the component
+/// runtime from: how many components an image may register, how big each one's
+/// slot is, how many instances of a class, and how many entities per cell.
+///
+/// phase-391 CONSUMES these (it emits `config::MAX_COMPONENTS` and friends and
+/// sizes the arena from them); it does not own their VALUES, which is the same
+/// relationship `nros-node/build.rs` had with the executor knobs before this
+/// wave. So the rungs are the ladder's to give and the consts stay phase-391's
+/// to emit.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeKnobs {
+    #[serde(default)]
+    pub max_components: Option<usize>,
+    #[serde(default)]
+    pub component_slot_bytes: Option<usize>,
+    #[serde(default)]
+    pub max_class_instances: Option<usize>,
+    #[serde(default)]
+    pub max_cell_entities: Option<usize>,
+}
+
+/// Every runtime knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const RUNTIME_KNOBS: &[&str] = &[
+    "max_components",
+    "component_slot_bytes",
+    "max_class_instances",
+    "max_cell_entities",
+];
+
+/// The env front-end for a runtime knob — the EXISTING names, verbatim.
+pub fn runtime_env_key(knob: &str) -> &'static str {
+    match knob {
+        "max_components" => "NROS_RUNTIME_MAX_COMPONENTS",
+        "component_slot_bytes" => "NROS_RUNTIME_COMPONENT_SLOT_BYTES",
+        "max_class_instances" => "NROS_RUNTIME_MAX_CLASS_INSTANCES",
+        "max_cell_entities" => "NROS_RUNTIME_MAX_CELL_ENTITIES",
+        other => panic!("unknown runtime knob `{other}`"),
+    }
 }
 
 /// Every net knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1455,6 +1519,73 @@ impl PlatformsTree {
                     *dst = src;
                 }
             }
+        }
+        Ok(out)
+    }
+
+    fn platform_runtime_knobs(&self, name: &str) -> Result<RuntimeKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = RuntimeKnobs::default();
+        for file in chain.iter().rev() {
+            let r = &file.knobs.runtime;
+            for (dst, src) in [
+                (&mut out.max_components, r.max_components),
+                (&mut out.component_slot_bytes, r.component_slot_bytes),
+                (&mut out.max_class_instances, r.max_class_instances),
+                (&mut out.max_cell_entities, r.max_cell_entities),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.runtime]` rungs for a platform, inherits chain applied.
+    pub fn platform_runtime_rungs(&self, platform: &str) -> Result<RuntimeKnobs, ConfigError> {
+        self.platform_runtime_knobs(platform)
+    }
+
+    /// phase-400 W6 — resolve the runtime tenant over the RFC-0049 ladder.
+    pub fn resolve_runtime(
+        &self,
+        platform: &str,
+        board: Option<&RuntimeKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_runtime_knobs(platform)?;
+        let pick = |k: &RuntimeKnobs, name: &str| match name {
+            "max_components" => k.max_components,
+            "component_slot_bytes" => k.component_slot_bytes,
+            "max_class_instances" => k.max_class_instances,
+            "max_cell_entities" => k.max_cell_entities,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = runtime_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
         }
         Ok(out)
     }

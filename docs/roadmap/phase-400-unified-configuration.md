@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
-`zenoh.tx`, `memory`, `params`, `rmw` and `net` tenants done, its remaining tenants
+`zenoh.tx`, `memory`, `params`, `rmw`, `net` and `runtime` tenants done, its remaining tenants
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
@@ -340,6 +340,29 @@ census fix below), and its largest families are:
 | platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
+
+### The `runtime` tenant — done
+
+The four static pools the component runtime is carved from —
+`NROS_RUNTIME_MAX_COMPONENTS`, `..._COMPONENT_SLOT_BYTES`,
+`..._MAX_CLASS_INSTANCES`, `..._MAX_CELL_ENTITIES` — now resolve through the
+ladder: `RuntimeKnobs`, `[knobs.runtime]`, `BuildRungs::runtime_rungs()`, and
+one reader in `packages/api/nros/build.rs`.
+
+**phase-391 is a CONSUMER, not the owner.** It emits `config::MAX_COMPONENTS`
+and friends from these numbers and sizes the arena from them; it never decided
+their values. That is the same relationship `nros-node/build.rs` had with the
+executor knobs before this wave, and it is why the ownership check cleared:
+reading a knob is not owning it. phase-412 does not claim them either — its W1
+six and its W2 blocked-list both name other things.
+
+Verified against the emitted constants:
+
+    builtin        4 / 512 / 2 / 8
+    platform rung  9 / 256 / 5 / 3
+    env wins       MAX_COMPONENTS=12, the rest keep the rung
+
+Backlog after this: **15**, from 19.
 
 ### The `net` tenant — done, and the reason the reader moved
 
