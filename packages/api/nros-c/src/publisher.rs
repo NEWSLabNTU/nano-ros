@@ -538,12 +538,21 @@ pub unsafe extern "C" fn nros_publisher_assert_liveliness(
 /// Falls back to a heap-allocated staging buffer when the active
 /// backend's vtable doesn't expose a native loan slot — the wire
 /// payload still takes a single memcpy at commit time. `requested_len`
-/// is the minimum capacity; `*out_cap` may exceed it.
+/// is the minimum capacity; `*out_cap` may exceed it. That fallback
+/// needs a heap: in a build without `alloc` there is nothing to hand
+/// out, and the answer is `NROS_RET_NOT_ALLOWED` (see below).
 ///
 /// # Returns
 /// * `NROS_RET_OK` — slot reserved.
-/// * `NROS_RET_TRY_AGAIN` (`-15`) — backend has no slot available;
-///   retry later or use a non-loan publish path.
+/// * `NROS_RET_TRY_AGAIN` (`-14`) — no slot available *right now*.
+///   TRANSIENT: retry later, or use a non-loan publish path.
+/// * `NROS_RET_NOT_ALLOWED` (`-12`) — this publisher cannot loan at
+///   all. PERMANENT (issue 0814): the backend's vtable exposes no loan
+///   slot and this build has no heap for the staging fallback, and
+///   neither fact can change while the publisher lives. Do NOT retry —
+///   take a non-loan path. `nros_publisher_publish_streamed` is the
+///   better one: it needs no token, no arena and no heap, and the XRCE
+///   and zenoh backends fill it natively.
 /// * `NROS_RET_INVALID_ARGUMENT` on NULL pointers or zero `requested_len`.
 /// * `NROS_RET_NOT_INIT` if publisher isn't initialised.
 ///
@@ -578,11 +587,24 @@ pub unsafe extern "C" fn nros_publisher_loan(
         Ok(Some((buf_ptr, cap, token))) => {
             *out_buf = buf_ptr;
             *out_cap = cap;
-            *out_token = token;
+            // issue 0814 — issue 0812's refactor retyped the backend token
+            // from `*mut c_void` to `*mut rmw_loan_token_t`; the FFI keeps the
+            // `void *` spelling because that is what the C ABI declares, so the
+            // conversion is explicit HERE rather than absent (which is what
+            // stopped this crate compiling under `lending`).
+            *out_token = token as *mut core::ffi::c_void;
             NROS_RET_OK
         }
         Ok(None) => NROS_RET_TRY_AGAIN,
-        Err(_) => NROS_RET_PUBLISH_FAILED,
+        // issue 0814 — through the crate's ONE mapper, not a second
+        // spelling. The blanket `Err(_) => NROS_RET_PUBLISH_FAILED` this
+        // replaces collapsed every backend fault into "the publish
+        // failed", which is exactly wrong for the case that motivated
+        // the fix: a heap-free image whose backend cannot lend now
+        // reports `Unsupported`, and the caller needs to read that as
+        // PERMANENT (`NROS_RET_NOT_ALLOWED`) rather than as a publish
+        // that might work next time.
+        Err(e) => crate::support::transport_error_to_ret(e),
     }
 }
 
@@ -612,7 +634,7 @@ pub unsafe extern "C" fn nros_publisher_commit(
     // SAFETY: `token` is the backend token a prior `nros_publisher_loan`
     // handed out on this publisher; the caller's contract is that it is
     // still outstanding and is consumed here exactly once.
-    match pub_handle.commit_raw(token, actual_len) {
+    match pub_handle.commit_raw(token as *mut _, actual_len) {
         Ok(()) => NROS_RET_OK,
         Err(_) => NROS_RET_PUBLISH_FAILED,
     }
@@ -643,7 +665,7 @@ pub unsafe extern "C" fn nros_publisher_discard(
     // pub_discard (or reclaims the arena staging buffer) — issue 0812
     // retired the per-loan Box this used to reconstitute.
     let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
-    match pub_handle.discard_raw(token) {
+    match pub_handle.discard_raw(token as *mut _) {
         Ok(()) => NROS_RET_OK,
         Err(_) => NROS_RET_ERROR,
     }
