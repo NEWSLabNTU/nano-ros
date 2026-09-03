@@ -14,7 +14,13 @@ nano_ros_auto_add_library(service_client_lib STATIC src/AddClient.cpp)
 nros_components_register_node(service_client_lib
     PLUGIN service_client_pkg::AddClient
     EXECUTABLE add_client
-    SHAPE configure)
+    SHAPE configure
+    # issue 0965 — what this component CREATES, read off its own
+    # source. Absence means "nobody said" and refuses the whole image,
+    # so every component in a workspace declares or none derives.
+    ENTITIES
+             service_client:example_interfaces/srv/AddTwoInts:/add_two_ints
+             timer)
 
 if(TARGET example_interfaces__nano_ros_cpp)
     target_link_libraries(service_client_lib

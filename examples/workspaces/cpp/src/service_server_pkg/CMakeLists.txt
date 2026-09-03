@@ -15,7 +15,12 @@ nano_ros_auto_add_library(service_server_lib STATIC src/AddServer.cpp)
 nros_components_register_node(service_server_lib
     PLUGIN service_server_pkg::AddServer
     EXECUTABLE add_server
-    SHAPE configure)
+    SHAPE configure
+    # issue 0965 — what this component CREATES, read off its own
+    # source. Absence means "nobody said" and refuses the whole image,
+    # so every component in a workspace declares or none derives.
+    ENTITIES
+             service_server:example_interfaces/srv/AddTwoInts:/add_two_ints)
 
 # Guard with if(TARGET) (Zephyr whole-archives the generated interface; see talker_pkg).
 if(TARGET example_interfaces__nano_ros_cpp)
