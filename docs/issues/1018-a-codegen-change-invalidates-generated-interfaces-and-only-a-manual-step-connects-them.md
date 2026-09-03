@@ -1,5 +1,5 @@
 ---
-id: 966
+id: 1018
 title: "A codegen change invalidates every consumer's generated interfaces, and only a manual `setup-cli` connects them"
 status: open
 area: build, codegen

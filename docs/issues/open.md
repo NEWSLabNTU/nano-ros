@@ -65,7 +65,6 @@ fails if this block drifts.
 - **#0963** (codegen, memory, build) — The derived-bound inventory has readers now — what is left is the executor arena alone (was: nothing reads it) See `0963-*`.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
-- **#0966** (build, codegen) — A codegen change invalidates every consumer's generated interfaces, and only a manual `setup-cli` connects them See `0966-*`.
 - **#0968** (testing) — Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time See `0968-*`.
 - **#0969** ([rmw, memory]) — The Cyclone RMW deserializes every received sample and re-serializes it, so `take_serialized` costs a decode, an encode and two heap allocations per take See `0969-*`.
 - **#0973** (orchestration) — No resolved SystemModel describes endpoint wiring — 0 of 119 carry topics, services or actions See `0973-*`.
@@ -85,10 +84,10 @@ fails if this block drifts.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
 - **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 15 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
+- **#1018** (build, codegen) — A codegen change invalidates every consumer's generated interfaces, and only a manual `setup-cli` connects them See `1018-*`.
 - **#1019** (api, docs) — Every `RCLCPP_*` log call in a ported C++ node is discarded on embedded, and `RCLCPP_*_STREAM` drops its message on every target See `1019-*`.
 - **#1020** (docs, api) — The C++ parity lane measures the NATIVE API against rclcpp and cannot see `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured See `1020-*`.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
-- **#0966** (build, codegen) — A codegen change invalidates every consumer's generated interfaces, and only a manual `setup-cli` connects them See `0966-*`.
 
 <!-- END GENERATED open-issue list -->
