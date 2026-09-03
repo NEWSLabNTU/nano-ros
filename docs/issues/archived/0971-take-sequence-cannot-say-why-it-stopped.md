@@ -1,7 +1,7 @@
 ---
 id: 971
 title: "`take_sequence` cannot say why a drain stopped, and its two implementations disagree about it"
-status: open
+status: resolved
 area: [rmw, api]
 severity: high
 related: [0969, 0773, phase-124, phase-376, phase-384]
@@ -214,3 +214,64 @@ named this issue as the place the question belongs.
 [#0964](0964-two-different-sizes-for-the-same-type.md) — how big a receive
 buffer should be. That is about picking `per_msg_cap`; this is about what
 happens when the pick is wrong.
+
+## Resolution — implemented as specified, on both paths, 2026-09-03
+
+Verified against the code rather than the text; the fix had landed and only this
+file was open.
+
+**Cyclone** (`subscriber.cpp`). `SubState::pending_too_small`, set in the drain
+loop when a sample does not fit and delivered at the top of the NEXT call:
+
+* `subscription_take_sequence_count` returns
+  `-static_cast<int32_t>(NROS_RMW_RET_BUFFER_TOO_SMALL)` — negated, per issue
+  0773, because this entry point's success value is a count;
+* `subscription_take` returns it unnegated, because it can return a status
+  inline. Both check, so a caller that mixes the two entry points hears it
+  either way — which is the case the fix would have missed if only the sequence
+  path had the check.
+
+**Runtime fallback** (`CffiSubscriber`, `cffi/src/lib.rs`).
+`pending_status: Option<TransportError>`, with the rule the issue asked for:
+
+```rust
+Err(e) => {
+    if count == 0 { return Err(e); }   // nothing delivered — no count to protect
+    self.pending_status = Some(e);     // park it; the slots already written are real
+    break;
+}
+```
+
+and `pending_status.take()` before any new take. So both paths now emit the same
+SEQUENCE of answers, which is what makes `rmw_vtable.h`'s "identical observable
+behaviour" claim true instead of something to delete.
+
+## Tests, and the mutation that proves they measure
+
+* `nros-rmw-cyclonedds/tests/take_sequence_pending_status.cpp`
+* `nros-rmw-cffi/tests/try_recv_sequence.rs` — six cases, four of them 0971's:
+  two messages then an oversized sample then empty; the fallback loop with a
+  backend whose third take does not fit; the parked status delivered next call;
+  and the `count == 0` arm that returns immediately.
+
+Reverting the fallback's `Err` arm to the pre-0971 `return Err(e)` — the shape
+that discarded the count — fails
+`try_recv_sequence_fallback_parks_the_status` and nothing else. The tests
+distinguish the fix from its absence rather than merely compiling against it.
+
+## What this issue is worth remembering for
+
+Not the flag, which is small, but the two corrections it made to itself while
+open:
+
+1. It first claimed `subscription_take` (single) had the same defect. It does
+   not. Consume-then-refuse is the DESIGN — live zenoh does the identical thing
+   deliberately, and `nros-verification`'s `no_silent_truncation` proves the
+   invariant is "no stuck subscription and no silent truncation", not "the
+   message survives".
+2. The dead `err < 0` branch it found was ALSO the wrong fix. Making it
+   reachable would have traded a silent drop for a contract violation, since
+   erroring out of a partial drain is exactly what `rmw_vtable.h` forbids.
+
+Both corrections narrowed the issue before anyone implemented it. That is the
+issue working as intended.
