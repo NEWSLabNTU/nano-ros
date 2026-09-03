@@ -107,10 +107,19 @@ phase-403's rule is refuse rather than under-derive, and the island would save
 | `NROS_MAX_PUBLISHERS` | 16 | 14 |
 | `NROS_MAX_QUERYABLES` | 4 | 0 |
 
-    RAM   324834 (99.13%) -> 312088 (95.24%)   -12746 B
+    RAM   324834 (99.13%) -> 291144 (88.85%)   -33690 B
     DTCM   93744 (71.52%) ->  89320 (68.15%)    -4424 B
 
-17170 bytes, and RAM headroom goes from 0.87% to 4.76%.
+38114 bytes, and RAM headroom goes from 0.87% to 11.15% -- about 36 KB free
+where the Z4 image had under 3.
+
+An earlier draft of this section said 17170 bytes at 95.24%, measured before W4
+existed. That build had the pools DERIVED correctly and NOT DELIVERED: the
+inventory said 10/14/0 and the zenoh session was compiled with 8/8/8. The
+number understated the saving and, worse, described an image with eight
+subscriber slots for ten subscriptions -- a RUNTIME rejection, invisible at
+link. It is corrected here rather than left standing, and W4 is why it was
+found.
 
 ## THE RULE W1 COST, and it binds the rest of this phase
 
@@ -182,20 +191,52 @@ BEFORE the first spin, so 0900's advisory never prints — the failure cannot
 report itself. `MAX_CBS` was the right first consumer for the mirror-image
 reason: it fails at registration with `ExecutorFull`, which names the knob.
 
-## W4 — a gate that fails when a published number has no consumer
+## W4 — the delivery gate. LANDED 2026-09-03
 
-The reason this phase exists is that eight counts were published and one was
-read, and no test noticed for a month. The gate asserts the inverse of what the
-current ones assert: not "is the derived value right" — they already check that
-— but "is every published input READ by something".
+`scripts/check-knob-delivery.py`. For each knob, the number handed to the
+COMPILER must equal the number the resolver decided. Read from `build.ninja`
+rather than from cmake state, because that is the last artifact before the
+compiler and so cannot agree with cmake while disagreeing with the build.
 
-Concretely: enumerate `NROS_ENTITY_COUNT_*` and `NROS_DERIVED_*` from a fixture
-configure, and fail on a published symbol that no `.cmake` consumes. A new count
-then arrives with either a consumer or a deliberate exemption naming why.
+It asserts two identities: a DERIVED value must survive the trip to the
+resolver (the fragment's number equals `NROS_RESOLVED_*`), and every C define
+must equal its resolved knob, never be empty, and never hold two different
+values in one build.
 
-This is the "correct but unreachable" gate proposed during phase-403 and never
-built. Four instances have now been found by hand (0896, 0963, #152, and this
-one). It should stop being an audit.
+**What it caught, immediately, on work already pushed.** W1 produced SIX
+delivery failures and every other gate stayed green through all of them,
+because the others check the INVENTORY and the RESOLVER and all six were
+downstream of both:
+
+1. a second consumer -- the zpico C defines read raw `CONFIG_*`, before the
+   resolver ran
+2. a name that emptied -- a `foreach` built `NROS_DERIVED_NROS_MAX_SUBSCRIBERS`,
+   which names nothing; cmake yields EMPTY rather than failing
+3. no consumer default -- rung 4 leaves a knob UNRESOLVED for a Rust build
+   script with its own literal; a C define has none
+4. **a loader whitelist** -- `_nros_load_derived_entity_inventory` exports a
+   NAMED list, so a symbol the fragment sets and the list omits dies at the
+   function boundary
+5. **a knob resolved TWICE** -- the second call passed the raw Kconfig value,
+   which is the `-1` DERIVE SENTINEL, and it won as though someone had stated it
+6. the sentinel then reaching the build as `-1`
+
+Numbers 4 and 5 were LIVE IN PUSHED WORK and produced the mis-measurement
+corrected above. The gate names the knob and the mechanism; the compiler named
+a struct nobody edited, or nothing at all.
+
+The gate as this phase FIRST specified it -- "every published symbol has a
+consumer" -- catches none of the six. In every case the symbol had a consumer.
+
+**Self-test only in the fast tier**, because the end-to-end assertion needs a
+CONFIGURED build dir and the fast tier has none. Six cases, one modelled on
+each real failure, and each asserts a failure the gate must catch so a gate
+that stopped matching cannot report success. Point it at a real dir by hand:
+
+    python3 scripts/check-knob-delivery.py <build-dir>
+
+Verified against the island both ways: it FAILS on the pre-fix build naming all
+four dropped knobs, and passes on the fixed one.
 
 ## Acceptance
 
