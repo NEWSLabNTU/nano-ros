@@ -50,6 +50,11 @@
   },
   "c:action_accept_new_goal": {
     "verdict": "divergence",
+    "provides": [
+      "NROS_GOAL_ACCEPT_AND_EXECUTE",
+      "NROS_GOAL_ACCEPT_AND_DEFER",
+      "nros_action_server_accept_goal_raw"
+    ],
     "why": "rcl allocates a goal handle and returns it; ours accepts by RETURN VALUE from the goal callback (`NROS_GOAL_ACCEPT_AND_EXECUTE` / `_AND_DEFER`) or, on the L1 tier, by `nros_action_server_accept_goal_raw(server, goal_id, sequence_number)`. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
   "c:action_cancel_goal": {
@@ -58,10 +63,16 @@
   },
   "c:action_cancel_request_t": {
     "verdict": "divergence",
+    "provides": [
+      "nros_action_server_try_recv_cancel_request_raw"
+    ],
     "why": "rcl's `action_msgs/srv/CancelGoal` request struct. Ours never surfaces the request as a type: `nros_action_server_try_recv_cancel_request_raw` writes the named goal id, the service sequence number and the goal's current status into caller storage. and the payload is CDR bytes (`const uint8_t*, size_t`) rather than rcl's `void* ros_message`, because the C ABI has no runtime typesupport -- the only publish in the whole C surface is `nros_publish_raw`. See the pubsub stage's `c:publish_raw` and `c:message_type_t`."
   },
   "c:action_cancel_response_*": {
     "verdict": "divergence",
+    "provides": [
+      "nros_action_server_send_cancel_reply_raw"
+    ],
     "bucket": "theirs-only",
     "why": "rcl builds the `action_msgs/srv/CancelGoal` response as a heap array of `goal_info` sized by `rcl_action_process_cancel_request`, so it needs an init/fini pair and an allocator. Ours is `nros_action_server_send_cancel_reply_raw(server, sequence_number, return_code, accepted[16][], count)`: the caller names the goals it accepted out of its own storage and the arena writes the reply. No allocator, so the response cannot be a constructed object. Our `nros_cancel_response_t` is a different thing -- the per-goal ACCEPT/REJECT decision; see `c:cancel_return_code_t`."
   },
@@ -185,6 +196,10 @@
   },
   "c:action_get_zero_initialized_*": {
     "verdict": "declined",
+    "provides": [
+      "nros_action_client_get_zero_initialized",
+      "nros_action_server_get_zero_initialized"
+    ],
     "bucket": "theirs-only",
     "why": "rcl's free-function zero-init spelling; ours is the method-style `nros_action_client_get_zero_initialized` / `nros_action_server_get_zero_initialized`. See the pubsub stage's `c:get_zero_initialized_publisher`. The goal-handle, goal-info, cancel-request/response and status-array forms have no counterpart at all because we ship none of those types; see `c:action_goal_handle_*` and `c:action_cancel_response_*`."
   },
@@ -198,6 +213,10 @@
   },
   "c:action_goal_handle_*": {
     "verdict": "divergence",
+    "provides": [
+      "nros_goal_handle_t",
+      "nros_action_get_goal_status"
+    ],
     "bucket": "theirs-only",
     "why": "our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
@@ -207,6 +226,9 @@
   },
   "c:action_goal_state_t": {
     "verdict": "declined",
+    "provides": [
+      "nros_goal_status_t"
+    ],
     "why": "RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). The row's own evidence settles it: rcl is the odd speller. `action_msgs/msg/GoalStatus` is the wire type, and rclcpp_action, our C (`nros_goal_status_t`), our C++ (`nros::GoalStatus`) and our Rust (`GoalStatus`) all say STATUS; `rcl_action_goal_state_t` says STATE alone. `rename` means OURS is the one that should change, which is false here, so the verdict was wrong even though the prose was right. Declined: rcl has this spelling, we deliberately do not, and the reason is that ours follows the message. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rcl's name for what we call `nros_goal_status_t`, and both mirror `action_msgs/msg/GoalStatus`. rclcpp_action and our C++ and Rust all say STATUS (`GoalStatus`), rcl alone says STATE; ours agrees with the majority and with the message. Recorded as a rename so the pair is visible, but this is one where THEIRS is the odd spelling -- see `c:goal_status_t` for our half.",
     "rename": {
       "category": "C",
@@ -229,6 +251,10 @@
   },
   "c:action_process_cancel_request": {
     "verdict": "divergence",
+    "provides": [
+      "nros_cancel_callback_t",
+      "nros_action_server_send_cancel_reply_raw"
+    ],
     "why": "rcl matches a `CancelGoal` request against its goal handles and builds the response array for the caller. Ours splits the same work: the arena matches, the user's `nros_cancel_callback_t` decides per goal, and `nros_action_server_send_cancel_reply_raw` writes the reply on the L1 tier. The matching cannot be a caller-visible step because the goal set lives in the arena, not in caller storage. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
   "c:action_publish_feedback": {
@@ -283,6 +309,9 @@
   },
   "c:action_server_get_goal_handles": {
     "verdict": "declined",
+    "provides": [
+      "nros_action_server_get_active_goal_count"
+    ],
     "why": "returns `rcl_action_goal_handle_t***` -- a borrowed array of pointers to allocator-owned handles. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`. The iteration ours offers is `nros_action_server_get_active_goal_count` plus C++'s `ActionServer::for_each_active_goal`; a user loses random access to the goal set."
   },
   "c:action_server_get_options": {
@@ -376,6 +405,12 @@
   },
   "c:action_update_goal_state": {
     "verdict": "divergence",
+    "provides": [
+      "nros_action_execute",
+      "nros_action_succeed",
+      "nros_action_abort",
+      "nros_action_canceled"
+    ],
     "why": "rcl drives the transition through the goal handle and an EVENT enum. Ours names the transitions directly -- `nros_action_execute`, `nros_action_succeed`, `nros_action_abort`, `nros_action_canceled` -- because there is no handle object to carry a state machine. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
   "c:cancel_callback_t": {
@@ -488,6 +523,10 @@
   },
   "cpp:Client::async_cancel_goal": {
     "verdict": "divergence",
+    "provides": [
+      "nros::ActionClient::cancel_goal",
+      "nros::ActionClient::try_recv_cancel_response"
+    ],
     "why": "cancelling a goal from the callback-tier C++ client. Present since issue 0796 as `nros::ActionClient<A>::cancel_goal(goal_id)` + `try_recv_cancel_response(CancelReturnCode&)`; it was a GAP before that, with C (`nros_action_cancel_goal`) and Rust (`ActionClient::cancel_goal`) both having one and C++ having only the L1 `PollingActionClient::send_cancel_request`. What remains is the SHAPE: rclcpp_action returns a `std::shared_future`, and RFC-0021 has no runtime to await one, so ours is fire-the-request then read the reply when the executor has spun. See `c:action_cancel_goal`. Phase 379 W3."
   },
   "cpp:Client::async_cancel_goals_before": {
@@ -540,6 +579,9 @@
   },
   "cpp:ResultCode": {
     "verdict": "declined",
+    "provides": [
+      "nros::GoalStatus"
+    ],
     "why": "RE-VERDICTED rename -> declined 2026-08-27 (phase-379 W5). The row's last sentence already said it: rclcpp_action is the one that splits the enum in two, and it is recorded 'so the pair is visible rather than because ours should move'. That is `declined`, not `rename` — rclcpp_action has a separate client-side terminal code, we deliberately do not, because one `GoalStatus` covering the active and the terminal states is what `action_msgs/msg/GoalStatus` defines and what all three of our languages already ship. No code change; no target name invented. ORIGINAL ROW (verdict was `rename`): rclcpp_action's client-side terminal code (SUCCEEDED / CANCELED / ABORTED / UNKNOWN). Ours is `nros::GoalStatus` in C++, `nros_goal_status_t` in C and `GoalStatus` in Rust -- one enum covering both the active and the terminal states, as `action_msgs/msg/GoalStatus` does. rclcpp_action is the one that splits the enum in two; recorded so the pair is visible rather than because ours should move.",
     "rename": {
       "category": "C",
@@ -589,6 +631,11 @@
   },
   "cpp:create_server": {
     "verdict": "declined",
+    "provides": [
+      "nros::Node::create_action_server",
+      "nros::ActionServer::set_goal_callback",
+      "nros::ActionServer::set_cancel_callback"
+    ],
     "why": "the free-function factory; ours is the method `Node::create_action_server`. See that row for what a porting user loses, and the service stage's `cpp:create_client` for the same pair one entity over."
   },
   "rust:AcceptedGoal": {

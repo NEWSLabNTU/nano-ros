@@ -245,6 +245,10 @@
   },
   "c:make_node_a_lifecycle_node": {
     "verdict": "declined",
+    "provides": [
+      "nros_lifecycle_init",
+      "nros_executor_register_lifecycle_services"
+    ],
     "why": "theirs `(lifecycle_node_t*, node_t*, lifecycle_state_machine_t*, allocator_t*, bool)`. We shipped a two-argument `nros_make_node_a_lifecycle_node(sm, node)` until issue 0792 REMOVED it. It forwarded to `nros_lifecycle_init`, which only NULL-CHECKED the node and never stored it -- a function named \"make node a lifecycle node\" that did not make a node a lifecycle node. It was removed rather than repaired because storing the node would not have repaired it: rclc's version can bind a node because its state machine OWNS the communication interface, whereas ours is reached the other way round. `Executor::register_lifecycle_services` builds the five REP-2002 servers on the EXECUTOR's session, keeps them in the executor's `LifecycleRuntimeState`, and depends on the executor's spin loop to poll them -- none of which a caller-held `nros_lifecycle_state_machine_t` can obtain from an `nros_node_t *`. So the capability rclc folds into construction (its `bool enable_communication_interface`) is `nros_executor_register_lifecycle_services` here: one explicit call registering all five servers, explicit because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. The `allocator_t*` is covered by the `no-allocator` rule, and the separate `lifecycle_state_machine_t*` by `c:lifecycle_node_t` (rclc keeps the wrapper and the rcl state machine as two objects; our one handle IS the state machine)."
   },
   "c:print_state_machine": {
@@ -257,6 +261,10 @@
   },
   "cpp:LifecycleNode::LifecycleNode": {
     "verdict": "divergence",
+    "provides": [
+      "nros::LifecycleNode::register_services",
+      "nros::LifecycleNode::autostart"
+    ],
     "why": "theirs `(name[, namespace], NodeOptions&, bool)`, ours `()` / `(void* executor_handle)` (plus a deleted copy ctor). Every position is accounted for by a rule or a constraint: `NodeOptions&` is `compile-time-options`; `make_shared`-style construction is `no-shared-ptr` (see `cpp:LifecycleNode::make_shared`); the name and namespace are not construction parameters because the node is created by the executor from baked boot config (RFC-0045), not named at the call site; and the trailing `bool enable_communication_interface` is our explicit `register_services()` / `autostart()` -- `nros_executor_register_lifecycle_services` registers all five REP-2002 servers (`~/change_state`, `~/get_state`, `~/get_available_states`, `~/get_available_transitions`, `~/get_transition_graph`) in ONE call, explicitly, because each server is a zenoh queryable against `ZPICO_MAX_QUERYABLES` (issue 0460) -- see the service stage's `c:executor_register_lifecycle_services`. The `void*` handle rather than an `Executor&` is the house idiom (`Executor::handle()` returns `void*`), not a lifecycle decision. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
   },
   "cpp:LifecycleNode::autostart": {

@@ -78,15 +78,22 @@
   },
   "c:event_liveliness_changed_cb_t": {
     "verdict": "divergence",
-    "why": "the typed per-event callback the entity holds, taking its payload by value. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`."
+    "why": "the typed per-event callback the entity holds, taking its payload by value. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "c:event_set_callback": {
     "verdict": "divergence",
+    "provides": [
+      "nros_subscription_set_liveliness_changed_callback",
+      "nros_subscription_set_requested_deadline_missed_callback",
+      "nros_subscription_set_message_lost_callback",
+      "nros_publisher_set_liveliness_lost_callback",
+      "nros_publisher_set_offered_deadline_missed_callback"
+    ],
     "why": "rcl's listener form: one untyped `rmw_event_callback_t` per event OBJECT, invoked with an unread COUNT so the caller then goes and takes the payload. Ours delivers the payload straight to a typed per-event callback on the entity (`nros_event_liveliness_changed_cb_t`, `nros_event_subscriber_count_cb_t`), so there is no count-then-take round trip and no event object to attach a listener to. rcl makes a QoS event a first-class OBJECT: `rcl_event_t` is initialised from an entity plus an event-type enum, added to a wait set, and drained with `rcl_take_event`. Ours registers a typed callback per event directly on the entity, so there is no event handle to zero-initialise, validate, add to a set or finalise. Constraints: no allocator for the `rcl_event_impl_t` the handle hides, and RFC-0002's executor drives entities through the RMW vtable with no wait set for an event to join. Same decision the pubsub stage recorded for the callbacks themselves -- see `cpp:QOSEventHandler`."
   },
   "c:event_subscriber_count_cb_t": {
     "verdict": "divergence",
-    "why": "the typed per-event callback the entity holds, taking its payload by value. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`."
+    "why": "the typed per-event callback the entity holds, taking its payload by value. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "c:event_t": {
     "verdict": "divergence",
@@ -162,18 +169,30 @@
   },
   "cpp:KeepAll": {
     "verdict": "declined",
+    "provides": [
+      "nros::QoS::keep_all"
+    ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
   },
   "cpp:KeepAll::KeepAll": {
     "verdict": "declined",
+    "provides": [
+      "nros::QoS::keep_all"
+    ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
   },
   "cpp:KeepLast": {
     "verdict": "declined",
+    "provides": [
+      "nros::QoS::keep_last"
+    ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
   },
   "cpp:KeepLast::KeepLast": {
     "verdict": "declined",
+    "provides": [
+      "nros::QoS::keep_last"
+    ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
   },
   "cpp:Node::set_qos_overrides": {
@@ -190,11 +209,15 @@
   },
   "cpp:PublisherEventCallbacks": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "provides": [
+      "nros::Publisher::on_liveliness_lost",
+      "nros::Publisher::on_offered_deadline_missed"
+    ],
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:QOSDeadlineOfferedCallbackType": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:QOSDeadlineOfferedInfo": {
     "verdict": "divergence",
@@ -202,7 +225,7 @@
   },
   "cpp:QOSDeadlineRequestedCallbackType": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:QOSDeadlineRequestedInfo": {
     "verdict": "divergence",
@@ -214,7 +237,7 @@
   },
   "cpp:QOSLivelinessChangedCallbackType": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:QOSLivelinessChangedInfo": {
     "verdict": "divergence",
@@ -222,7 +245,7 @@
   },
   "cpp:QOSLivelinessLostCallbackType": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:QOSLivelinessLostInfo": {
     "verdict": "divergence",
@@ -230,7 +253,7 @@
   },
   "cpp:QOSMessageLostCallbackType": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:QOSMessageLostInfo": {
     "verdict": "divergence",
@@ -345,10 +368,18 @@
   },
   "cpp:QoSInitialization": {
     "verdict": "declined",
+    "provides": [
+      "nros::QoS::keep_last",
+      "nros::QoS::keep_all"
+    ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
   },
   "cpp:QoSInitialization::QoSInitialization": {
     "verdict": "declined",
+    "provides": [
+      "nros::QoS::keep_last",
+      "nros::QoS::keep_all"
+    ],
     "why": "a tag type whose only job is to feed rclcpp's `QoS(const QoSInitialization &, ...)` constructor with a history kind and depth. Ours sets the same two values with `QoS(int depth)` and the chainable `keep_last(n)` / `keep_all()` that rclcpp also has -- both already reconcile (`QoS::keep_last` is systematic, `QoS::keep_all` matches). So the values are reachable and only the construction SPELLING is gone: `rclcpp::QoS(rclcpp::KeepLast(10))` has to be ported to `nros::QoS(10)` or `nros::QoS().keep_last(10)`. Declined rather than added because a tag type per history kind exists to make an overload set resolve, and one constructor plus two setters resolves it with no types at all."
   },
   "cpp:QoSInitialization::from_rmw": {
@@ -401,19 +432,33 @@
   },
   "cpp:SensorDataQoS": {
     "verdict": "divergence",
+    "provides": [
+      "nros::QoS::sensor_data"
+    ],
     "why": "ours is the named constructor `QoS::sensor_data()`. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
   },
   "cpp:SensorDataQoS::SensorDataQoS": {
     "verdict": "divergence",
+    "provides": [
+      "nros::QoS::sensor_data"
+    ],
     "why": "ours is the named constructor `QoS::sensor_data()`. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
   },
   "cpp:ServicesQoS": {
     "verdict": "divergence",
+    "provides": [
+      "nros::QoS::services"
+    ],
     "why": "ours is the named constructor `QoS::services()`, classified in the service stage. rclcpp gives each QoS preset its own TYPE so a preset can be passed where a `QoS` is expected and still be named; ours are named constructors on one `QoS`. See the service stage's `cpp:ServicesQoS::ServicesQoS`."
   },
   "cpp:SubscriptionEventCallbacks": {
     "verdict": "divergence",
-    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity (`nros_subscription_set_liveliness_changed_callback`, `Publisher::on_liveliness_lost`, `Subscription::register_event_callback`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state."
+    "provides": [
+      "nros::Subscription::on_liveliness_changed",
+      "nros::Subscription::on_requested_deadline_missed",
+      "nros::Subscription::on_message_lost"
+    ],
+    "why": "a `std::function` typedef, or the struct bundling one per event, that rclcpp hands to an entity's options. QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event registered on the entity -- five in C (`nros_subscription_set_liveliness_changed_callback`, `nros_subscription_set_requested_deadline_missed_callback`, `nros_subscription_set_message_lost_callback`, `nros_publisher_set_liveliness_lost_callback`, `nros_publisher_set_offered_deadline_missed_callback`) and the same five in C++ (`Publisher::on_liveliness_lost`, `Publisher::on_offered_deadline_missed`, `Subscription::on_liveliness_changed`, `Subscription::on_requested_deadline_missed`, `Subscription::on_message_lost`). Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The whole family was classified in the pubsub stage; see `cpp:QOSEventHandler`. A fn-ptr plus a `void *` context, not a `std::function`: no allocator for the closure's captured state. CORRECTED 2026-09-04 (phase-379 W6): this sentence used to name `Subscription::register_event_callback`, which exists in no header -- there is no one generic registrar on either entity, which is the whole point of the row, so naming one argued against itself. The real spellings are the five per-event methods above (`subscription.hpp:498-513`, `publisher.hpp:228-235`). Fixed in all NINE rows that shared this boilerplate, not just the one it was noticed on."
   },
   "cpp:SystemDefaultsQoS": {
     "verdict": "gap",
@@ -501,7 +546,11 @@
   },
   "rust:IntoPrimitiveOptions::qos": {
     "verdict": "declined",
-    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QoSProfile` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+    "provides": [
+      "nros::PublisherOptions::qos",
+      "nros::SubscriptionOptions::qos"
+    ],
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a `QoSProfile` associated const assigned to `PublisherOptions::qos`/`SubscriptionOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape. CORRECTED 2026-09-04 (phase-379 W6): this row said `SubscriberOptions`, which is not the type -- it is `SubscriptionOptions` (`nros-node/src/node.rs`, re-exported by `nros`) -- and called the presets named CONSTRUCTORS. They are associated CONSTS on `QoSProfile` (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PROFILE_SYSTEM_DEFAULT` and six more, `nros-rmw/src/traits.rs:735-831`); eight of those nine are also re-exported from `nros` as free consts under the same names, `QOS_PROFILE_PX4` being the one that is not. The distinction matters to this row: rclrs's shorthand is a METHOD on an options trait, and a const is not something a blanket impl could be hung off."
   },
   "rust:IntoPrimitiveOptions::reliability": {
     "verdict": "declined",
@@ -509,15 +558,30 @@
   },
   "rust:IntoPrimitiveOptions::sensor_data_qos": {
     "verdict": "declined",
-    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QoSProfile` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+    "provides": [
+      "nros::QoSProfile::QOS_PROFILE_SENSOR_DATA",
+      "nros::PublisherOptions::qos",
+      "nros::SubscriptionOptions::qos"
+    ],
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a `QoSProfile` associated const assigned to `PublisherOptions::qos`/`SubscriptionOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape. CORRECTED 2026-09-04 (phase-379 W6): this row said `SubscriberOptions`, which is not the type -- it is `SubscriptionOptions` (`nros-node/src/node.rs`, re-exported by `nros`) -- and called the presets named CONSTRUCTORS. They are associated CONSTS on `QoSProfile` (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PROFILE_SYSTEM_DEFAULT` and six more, `nros-rmw/src/traits.rs:735-831`); eight of those nine are also re-exported from `nros` as free consts under the same names, `QOS_PROFILE_PX4` being the one that is not. The distinction matters to this row: rclrs's shorthand is a METHOD on an options trait, and a const is not something a blanket impl could be hung off."
   },
   "rust:IntoPrimitiveOptions::system_qos": {
     "verdict": "declined",
-    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QoSProfile` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+    "provides": [
+      "nros::QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT",
+      "nros::PublisherOptions::qos",
+      "nros::SubscriptionOptions::qos"
+    ],
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a `QoSProfile` associated const assigned to `PublisherOptions::qos`/`SubscriptionOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape. CORRECTED 2026-09-04 (phase-379 W6): this row said `SubscriberOptions`, which is not the type -- it is `SubscriptionOptions` (`nros-node/src/node.rs`, re-exported by `nros`) -- and called the presets named CONSTRUCTORS. They are associated CONSTS on `QoSProfile` (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PROFILE_SYSTEM_DEFAULT` and six more, `nros-rmw/src/traits.rs:735-831`); eight of those nine are also re-exported from `nros` as free consts under the same names, `QOS_PROFILE_PX4` being the one that is not. The distinction matters to this row: rclrs's shorthand is a METHOD on an options trait, and a const is not something a blanket impl could be hung off."
   },
   "rust:IntoPrimitiveOptions::topics_qos": {
     "verdict": "declined",
-    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a named constructor on `QoSProfile` assigned to `PublisherOptions::qos`/`SubscriberOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape."
+    "provides": [
+      "nros::QoSProfile::QOS_PROFILE_DEFAULT",
+      "nros::PublisherOptions::qos",
+      "nros::SubscriptionOptions::qos"
+    ],
+    "why": "rclrs's builder shorthand for applying a QoS preset to any entity options; see the service stage's `rust:IntoPrimitiveOptions::services_qos`. Ours is a `QoSProfile` associated const assigned to `PublisherOptions::qos`/`SubscriptionOptions::qos`; the trait needs a blanket impl that buys nothing with one caller shape. CORRECTED 2026-09-04 (phase-379 W6): this row said `SubscriberOptions`, which is not the type -- it is `SubscriptionOptions` (`nros-node/src/node.rs`, re-exported by `nros`) -- and called the presets named CONSTRUCTORS. They are associated CONSTS on `QoSProfile` (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PROFILE_SYSTEM_DEFAULT` and six more, `nros-rmw/src/traits.rs:735-831`); eight of those nine are also re-exported from `nros` as free consts under the same names, `QOS_PROFILE_PX4` being the one that is not. The distinction matters to this row: rclrs's shorthand is a METHOD on an options trait, and a const is not something a blanket impl could be hung off."
   },
   "rust:NodeHandle::qos_overrides": {
     "verdict": "divergence",

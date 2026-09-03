@@ -161,6 +161,10 @@
   },
   "c:send_request": {
     "verdict": "divergence",
+    "provides": [
+      "nros_client_send_request_async",
+      "nros_client_send_request_raw"
+    ],
     "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence, with two factual errors fixed.\n(1) There is no bare `nros_client_send_request` -- the brace spelling `nros_client_send_request{,_async,_raw}` claimed one. Verified word-boundary, repo-wide: the C API ships exactly `nros_client_send_request_async(client, request_data, request_len)` (executor-registered client) and `nros_client_send_request_raw(client, data, len)` (L1 polling-mode client). The `_async` / `_raw` split is two client MODES, not two spellings of one call.\n(2) 'only the free-function shape differs' is wrong the same way `c:publish` was: both of ours ARE free functions taking the client first, exactly rcl's shape. `nros_client_` is a module prefix -- rcl uses the identical construction for `rcl_client_fini` / `rcl_client_request_publisher_get_actual_qos`. And the chain of precedent argues the other way in any case: `c:get_zero_initialized_client` defers to `c:get_zero_initialized_publisher`, which is verdict DECLINED, i.e. it argues for KEEPING our spelling.\nWhat actually differs, and the constraint for each: `rcl_send_request(client, ros_request, sequence_number)` takes a typed `const void *` plus an OUT sequence number. Ours take bytes (`const uint8_t *`, `size_t`) because there is no runtime typesupport dispatch and no allocator to serialize into -- the same reason `c:publish` splits. And neither returns a sequence number because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle, `nros-node/src/executor/handles.rs`) rather than a correlation table; the backend does hand one back since issue 0778 and the raw handle drops it explicitly rather than by omission. Correlating replies across a client restart is the `rust:RequestId` divergence, one layer down.",
     "rename": {
       "category": "B",
@@ -284,6 +288,10 @@
   },
   "c:take_response": {
     "verdict": "declined",
+    "provides": [
+      "nros_client_take_response",
+      "nros_client_take_response_raw"
+    ],
     "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined -- the client side of `c:take_request`. Ours is `nros_client_take_response` (executor-registered client) and `nros_client_take_response_raw` (L1 polling client), renamed from `nros_client_try_recv_response` / `nros_client_try_recv_reply_raw`; `reply` -> `response` moved with the verb because rcl, rclcpp and rclrs all say RESPONSE. Only the module prefix remains."
   },
   "c:take_response_with_info": {
@@ -328,6 +336,12 @@
   },
   "cpp:Client::async_send_request": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Client::send_request",
+      "nros::Future",
+      "nros::Future::wait",
+      "nros::Future::try_take"
+    ],
     "why": "rclcpp returns a `std::shared_future` a caller `get()`s, and `spin_until_future_complete` drives the executor underneath. Ours returns a `Promise` the caller drives explicitly (`promise.wait(&mut executor, timeout)`) -- RFC-0021. needs a future and a runtime to await it. RFC-0021 makes every blocking helper take the executor and drive it (`promise.wait(&mut executor, timeout)`), which is what makes a timeout reliable on a single-threaded transport. The arity matches by coincidence, which is why the correlator files it `arity-only`."
   },
   "cpp:Client::call": {
@@ -456,6 +470,11 @@
   },
   "cpp:Client::take_response": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Client::send_request",
+      "nros::Future::is_ready",
+      "nros::Future::try_take"
+    ],
     "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence. The verb question is settled (`c:take`), but the C++ client never had a `take_response` to rename: a call returns a `Future<Response>` and the reply is polled with `Future::try_take()` / `is_ready()`. That is the no-exceptions, no-allocator shape of rclcpp's `async_send_request` future -- see `cpp:Future::try_take`. The C surface is where the take spelling lives (`c:client_take_response{,_raw}`)."
   },
   "cpp:Client::take_type_erased_response": {
@@ -692,10 +711,18 @@
   },
   "rust:Client": {
     "verdict": "divergence",
+    "provides": [
+      "nros_core::ServiceClient",
+      "nros_rmw::ClientTrait"
+    ],
     "why": "rclrs's `Client` is a handle a node hands back. Ours splits in two: `ServiceClient`, the entity a component DECLARES, and `ClientTrait`, the RMW seam a backend implements. entities are DECLARED by a component rather than created on a live node (RFC-0043/0044); see the node stage's `rust:Node`."
   },
   "rust:Client::call": {
     "verdict": "divergence",
+    "provides": [
+      "nros_rmw::ClientTrait::send_request",
+      "nros_rmw::ClientTrait::take_response"
+    ],
     "why": "rclrs's `call` returns a future. Ours (`ClientTrait::send_request` + `try_recv_reply`, or the C++ `Client::call`) drives the executor. See `cpp:Client::async_send_request`."
   },
   "rust:Client::call_then": {
@@ -968,6 +995,10 @@
   },
   "rust:Service": {
     "verdict": "divergence",
+    "provides": [
+      "nros_core::ServiceServer",
+      "nros_rmw::ServiceTrait"
+    ],
     "why": "see `rust:Client`; ours are `ServiceServer` and `ServiceTrait`."
   },
   "rust:Service::service_name": {

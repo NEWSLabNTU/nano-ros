@@ -110,6 +110,10 @@
   },
   "cpp:Logger": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Node::get_logger",
+      "nros_log::Logger"
+    ],
     "why": "rclcpp's `Logger` is a VALUE type holding a `std::string name_`, copied into every macro call, and `get_child` mints a new one by concatenating `parent.child`. Constraints: no allocator, and no `<string>` on a freestanding C++ build -- `nros-cpp` headers are compiled `-nostdinc++` against Zephyr's minimal libcpp, where the rule (RFC-0018, issue 0112) is to gate a std include on `NROS_CPP_STD` rather than `__STDC_HOSTED__`, because a hosted compiler invoked `-nostdinc++` still reports itself hosted. (`log.hpp` itself still gates its `<cstdio>` on `defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)`; that one is the include 0112 explicitly left on the hosted gate, since minimal libcpp does provide `<cstdio>`.) Ours is an OPAQUE `const void*` returned by `Node::get_logger()` (`packages/api/nros-cpp/include/nros/node.hpp`), pointing at a `&'static nros_log::Logger` in a bounded 32-slot intern table keyed on `&'static str`. `Logger::Logger` and `Logger::get_child` follow from that: a `void*` has no constructor and no allocator to build a child name with. What does NOT follow is that the accessors are missing -- see `cpp:Logger::get_name` and `cpp:Logger::set_level`. A named `nros::Logger` wrapper over the same handle would cost one struct and restore the type without restoring the allocation."
   },
   "cpp:Logger::get_name": {
@@ -138,6 +142,11 @@
   },
   "rust:LogOccurrence": {
     "verdict": "divergence",
+    "provides": [
+      "nros_core::Logger::info_once",
+      "nros_core::Logger::warn_skip_first",
+      "nros_core::OnceFlag"
+    ],
     "why": "rclrs's `All` / `Once` / `SkipFirst` is a runtime field of `LogParams`, and its `log!` macro mints the hidden per-call-site state that makes `Once` work. Ours are separate methods (`info_once`, `warn_skip_first`) taking a CALLER-SUPPLIED `&OnceFlag`. Constraints, both real: a method has no call-site identity to hang a hidden static off, and `OnceFlag` is a single `AtomicBool` using load+store rather than `compare_exchange` because riscv32imc has no CAS -- the source says so. Two consequences worth writing down: the occurrence state is the caller's `static`, and `OnceFlag` is exported by `nros-core` but NOT re-exported by the `nros` facade, so `nros::Logger::info_once` takes a type an `nros` user cannot name without adding a second dependency. Phase 379 W3."
   },
   "rust:LogParams": {
