@@ -70,13 +70,13 @@ Zephyr is exempt from the cmake precedence chain by design (see the exemption co
 
 | symbol | default | class | evidence |
 | --- | --- | --- | --- |
-| `CONFIG_NROS_EXECUTOR_MAX_CBS` | `4` | public | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_EXECUTOR_MAX_CBS` | `-1` | public | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_EXECUTOR_MAX_SC` | `8` | public | forwarded-to-cargo, cmake |
-| `CONFIG_NROS_EXECUTOR_MAX_NODES` | `4` | public | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_EXECUTOR_MAX_NODES` | `-1` | public | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_EXECUTOR_ARENA_SIZE` | `0` | public | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS` | `2` | public | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_EXECUTOR_ACTION_CLIENTS` | `4` | public | forwarded-to-cargo, cmake |
-| `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE` | `1024` | public | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_EXECUTOR_ACTION_CLIENTS` | `-1` | public | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE` | `-1` | public | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE` | `4096` | public | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_MAX_PARAMETERS` | `32` | public | forwarded-to-cargo, cmake, rust-source |
 
@@ -100,20 +100,20 @@ Read by compiled code or forwarded to a build script. On Zephyr the
 | `CONFIG_NROS_GET_POLL_INTERVAL_MS` | `10` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_GET_REPLY_BUF_SIZE` | `4096` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_GRAPH_CACHE_SIZE` | `65536` | cmake |
-| `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | `2` | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_MAX_LARGE_SUBSCRIBERS` | `-1` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_MAX_LIVELINESS` | `16` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_MAX_PENDING_GETS` | `4` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_MAX_PUBLISHERS` | `8` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_MAX_QUERYABLES` | `8` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_MAX_SUBSCRIBERS` | `8` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_RMW_SUBSCRIBER_SLOTS` | `8` | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_MAX_PUBLISHERS` | `-1` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_MAX_QUERYABLES` | `-1` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_MAX_SUBSCRIBERS` | `-1` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_RMW_SUBSCRIBER_SLOTS` | `-1` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_RUST_API` | `NROS_RMW_ZENOH` | cmake, kconfig select/depends |
 | `CONFIG_NROS_SERVICE_BUFFER_SIZE` | `1024` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_SNTP_EPOCH` | — | c-source, rust-source, kconfig select/depends |
 | `CONFIG_NROS_SNTP_SERVER` | `10.0.2.2` | c-source |
 | `CONFIG_NROS_SNTP_TIMEOUT_MS` | `3000` | c-source |
-| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | `1024` | forwarded-to-cargo, cmake, rust-source |
-| `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | `16384` | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | `-1` | forwarded-to-cargo, cmake, rust-source |
+| `CONFIG_NROS_SUBSCRIBER_LARGE_SIZE` | `-1` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_SUBSCRIBER_RING_DEPTH` | `4` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_TRACE_CALLBACKS` | — | cmake |
 | `CONFIG_NROS_TRANSPORT_SERIAL` | — | kconfig select/depends |

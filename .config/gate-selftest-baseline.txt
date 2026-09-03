@@ -1,12 +1,11 @@
-# Gate scripts that do NOT yet run their own selftest on the normal
-# path. A RATCHET, not an allowlist: this file may only shrink.
 #
-# `check-gate-selftests` fails when a script here gains a selftest
 # (remove its line) or disappears (delete its line) — so the debt
+# Gate scripts that do NOT yet run their own selftest on the normal
+# Regenerate: python3 scripts/check-gate-selftests.py --write-baseline
+# `check-gate-selftests` fails when a script here gains a selftest
 # cannot silently grow and cannot silently go stale, which is the
 # issue-0743 class.
-#
-# Regenerate: python3 scripts/check-gate-selftests.py --write-baseline
+# path. A RATCHET, not an allowlist: this file may only shrink.
 scripts/check-activate-shells.sh
 scripts/check-archive-lang-items.sh
 scripts/check-artifact-identity-budget.sh
@@ -81,6 +80,7 @@ scripts/check-rust-targets-covered.py
 scripts/check-sched-dim-arms-compile.sh
 scripts/check-sdk-store-not-enumerated.py
 scripts/check-single-rust-staticlib.py
+scripts/check-site-config.py
 scripts/check-sizes-header-mirrors.sh
 scripts/check-source-manifest.sh
 scripts/check-staleness-probe-exemptions.sh

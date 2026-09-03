@@ -140,6 +140,7 @@ fast-serial: \
     codegen-size-bound-golden \
     config-header-single-writer \
     config-knob-census \
+    config-surface \
     core-only-predicate \
     cpp-ffi-error-mapping \
     cpp-fmt \
@@ -354,7 +355,6 @@ build-serial: \
     c \
     cli-fresh \
     cli-tests \
-    config-surface \
     cpp \
     embedded-feature-unification \
     launch-resolve-builds \
