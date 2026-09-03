@@ -162,9 +162,13 @@ def check(build_dir):
     return problems
 
 
-def self_test():
+def self_test(quiet=False):
     """Each case asserts a failure this gate must catch, plus the clean case,
-    so a gate that stopped matching anything cannot report success."""
+    so a gate that stopped matching anything cannot report success.
+
+    `quiet` suppresses the per-case OK lines, not the failures: the normal path
+    runs this on every invocation and a control that narrates itself there is
+    noise nobody reads."""
     def build(tmp, cache, frag, ninja):
         os.makedirs(os.path.join(tmp, "nros"), exist_ok=True)
         with open(os.path.join(tmp, "CMakeCache.txt"), "w") as fh:
@@ -211,7 +215,7 @@ def self_test():
                 print("  self-test FAIL: %s -- got %d problem(s), want %s"
                       % (name, got, "at least 1" if want else "0"))
                 failures += 1
-            else:
+            elif not quiet:
                 print("  ok    %s" % name)
     if failures:
         print("check-knob-delivery self-test: FAILED (%d)" % failures)
@@ -225,6 +229,16 @@ def main(argv):
     if len(argv) != 2:
         print(__doc__.strip().splitlines()[-3])
         return 2
+    # Always, not only behind the flag: a negative control nobody runs decays
+    # into a comment, and this rule's whole job is to fire. Same shape as
+    # `scripts/check-board-tiers.py`; gated by `check-gate-selftests`.
+    #
+    # It runs BEFORE the real check so a gate that has stopped matching
+    # anything cannot report "every knob reached the compile as resolved" --
+    # which is exactly the sentence this gate exists to make trustworthy.
+    rc = self_test(quiet=True)
+    if rc:
+        return rc
     problems = check(argv[1])
     if problems:
         print("check-knob-delivery: a knob did not arrive as resolved:")
