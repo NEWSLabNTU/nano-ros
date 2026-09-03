@@ -54,8 +54,8 @@ is propagated through the feature chain but does not add any API surface.
 **Two-layer API.** Phase 122 unified the verb discipline:
 
 - **Layer 1 (caller polls)** -- `Node::create_*` returns an owned
-  handle. Caller drives `try_recv` / `call` / `try_accept_goal` /
-  `try_recv_request_raw` itself. Good for RTIC, Embassy,
+  handle. Caller drives `take` / `call` / `try_accept_goal` /
+  `take_request_raw` itself. Good for RTIC, Embassy,
   task-per-entity FreeRTOS.
 - **Layer 2 (executor dispatches)** -- `Executor::register_*`
   takes a closure; `spin_once` fires it on rx / reply / timer.
@@ -65,7 +65,7 @@ Both layers share the same session; mix per entity.
 
 **Publish/Subscribe:**
 - L1 — `node.create_publisher::<M>(topic)`,
-  `node.create_subscription::<M>(topic)` (poll with `try_recv()`)
+  `node.create_subscription::<M>(topic)` (poll with `take()`)
 - L2 — `executor.register_timer(period, || publisher.publish(...))`,
   `executor.register_subscription::<M, _>(topic, |msg| { ... })`
 - `publisher.publish(&msg)` / `publish_raw(&bytes)` — publish messages
@@ -94,7 +94,7 @@ Both layers share the same session; mix per entity.
 **Async:**
 - `executor.spin_async()` -- async spin loop (drives I/O, dispatches callbacks, yields between iterations)
 - `Promise<'a, T, Cli>` -- allocation-free promise, borrows client's reply slot
-- `Promise::try_recv()` -- non-blocking poll for reply
+- `Promise::take()` -- non-blocking poll for reply
 - `Promise: Future` -- implements `core::future::Future` for `.await`
 - Uses only `core::future` and `core::task` -- no external async runtime dependency
 
@@ -175,7 +175,7 @@ nros = { path = "…/nros", default-features = false, features = ["rmw-cffi", "p
 nros-rmw-zenoh = { path = "…/nros-rmw-zenoh", features = ["platform-bare-metal"] }
 ```
 Full pub/sub, services, actions, timers (fn pointers), parameters (local).
-Async: `spin_async()`, `Promise`, `try_recv()`, `.await` -- all available without std or alloc.
+Async: `spin_async()`, `Promise`, `take()`, `.await` -- all available without std or alloc.
 Use `spin_once()` or `spin_period()` in your main loop, or `spin_async()` with an async runtime (Embassy, RTIC v2).
 
 **Embedded with allocator (e.g., Zephyr with heap):**

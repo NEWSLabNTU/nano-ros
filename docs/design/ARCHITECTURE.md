@@ -217,7 +217,7 @@ cannot implement fall back in the runtime or return `RET_UNSUPPORTED` — no obl
   **per-session, not per-entity**, so a poll-backend (XRCE `uxr_run_session_time`)
   and a wake-backend (zenoh-pico MT, Cyclone) converge at the same dispatch path —
   poll-vs-wake only changes *when* `drive_io` returns, never the user API. Poll
-  (`try_recv_*`, `Promise`, `polling_action_*`) is for **user-owned scheduling**
+  (`take_*`, `Promise`, `polling_action_*`) is for **user-owned scheduling**
   (RTIC / Embassy / task-per-entity), not an RMW constraint. To be callback-driven
   an entity must be **arena-registered** (`spin_once` runs its `try_process`); a
   merely-created entity has no pump (the action-client trap → issue-0047).

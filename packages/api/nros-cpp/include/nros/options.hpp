@@ -61,7 +61,7 @@ struct SubscriptionOptions {
     /// bind surfaces as the create call's `Result`.
     ///
     /// NOTE (Phase 189.M3.1): the C++ subscription is a *thin wrapper*
-    /// over a bare `RmwSubscriber` polled via `try_recv_raw` — it does
+    /// over a bare `RmwSubscriber` polled via `take_serialized` — it does
     /// **not** register a callback entry in the executor, so today's
     /// `nros_cpp_subscription_create` exposes no bindable executor
     /// `HandleId`. The lowering therefore only fires when a handle id is
@@ -113,7 +113,7 @@ struct PublisherOptions {
 ///
 /// NOTE: there is intentionally no `ServiceOptions` / `ClientOptions` with a
 /// `sched_context`. C++ services and clients are *poll-style* (a bare
-/// `RmwServiceServer` / `RmwServiceClient` the user drives via `try_recv`),
+/// `RmwServiceServer` / `RmwServiceClient` the user drives via `take`),
 /// so they have no executor-dispatched callback to schedule — a sched
 /// context is N/A by design, not merely unwired. Converting them to a
 /// callback-style (arena-registered) form is a separate feature.

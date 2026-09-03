@@ -11,7 +11,7 @@ This document analyzes the three fairness concerns identified in Phase 37's road
 
 Each subscription and service in nros uses a **single-slot buffer** backed by a static array (`SUBSCRIBER_BUFFERS` / `SERVICE_BUFFERS` in `shim.rs`). The buffer has a boolean ready flag (`has_data` for subscriptions, `has_request` for services) that gates consumption.
 
-**Key invariant:** `try_recv_raw()` and `try_recv_request()` clear the ready flag on **every** code path — success, overflow, and buffer-too-small. This was verified in Phase 37.1 (service fix) and 37.1a (21 buffer state machine tests).
+**Key invariant:** `take_serialized()` and `take_request()` clear the ready flag on **every** code path — success, overflow, and buffer-too-small. This was verified in Phase 37.1 (service fix) and 37.1a (21 buffer state machine tests).
 
 ### spin_once() Control Flow
 
@@ -34,7 +34,7 @@ spin_once(delta_ms)
 
 **Finding: Architecturally impossible.**
 
-The `while` loop calls `try_process()`, which calls `try_recv()`, which calls `try_recv_raw()` (`shim.rs:1259`). Every path through `try_recv_raw()` clears `has_data` (`shim.rs:1270`, `1278`, `1291`). After the first successful receive (or error), `has_data` is `false`, so the next `try_recv_raw()` returns `Ok(None)`, and `try_process()` returns `Ok(false)`, exiting the `while` loop.
+The `while` loop calls `try_process()`, which calls `take()`, which calls `take_serialized()` (`shim.rs:1259`). Every path through `take_serialized()` clears `has_data` (`shim.rs:1270`, `1278`, `1291`). After the first successful receive (or error), `has_data` is `false`, so the next `take_serialized()` returns `Ok(None)`, and `try_process()` returns `Ok(false)`, exiting the `while` loop.
 
 **Result:** Each subscription processes **at most 1 message per `spin_once()`**, regardless of the `while` loop. There is no starvation — all subscriptions get equal opportunity every spin cycle.
 
@@ -72,7 +72,7 @@ Each subscription's data is fetched immediately before its callback (`nros-c/src
 ```
 for each handle:
     if handle is subscription:
-        process_subscription(handle)  // calls try_recv + callback
+        process_subscription(handle)  // calls take + callback
 ```
 
 This is equivalent to the Rust executor — each subscription gets one attempt per spin.

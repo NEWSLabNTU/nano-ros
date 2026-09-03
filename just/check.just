@@ -3215,6 +3215,77 @@ c: c-fmt
         echo "       with no migration warning at all." >&2; \
         exit 1; \
     fi
+    # The active-goal count pair collapsed into ONE function in rcl's shape,
+    # `nros_action_server_get_active_goal_count(server, size_t *out) ->
+    # nros_ret_t`. The old polling-tier spelling
+    # `nros_action_server_active_goal_count_raw` survives one release as an
+    # NROS_DEPRECATED_MSG `static inline` forwarder that must keep its ORIGINAL
+    # `int32_t` tri-state convention. The old callback-tier spelling cannot
+    # survive at all -- it IS the merged name with a different signature -- so
+    # this TU also pins the merged signature, which is what proves the old
+    # `size_t` form is gone. Function POINTERS again, so a forwarder whose
+    # argument list or return type drifted fails here.
+    echo "  - action goal-count merge + deprecated forwarder (phase 379 W6)"
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/action_name_aliases.c
+    # ...and the forwarder must WARN, asserted as the same expected-failure
+    # compile. An expected-failure compile cannot distinguish "the deprecation
+    # attribute fired" from "the file is not there" -- both are a non-zero cc,
+    # and the second reads as a pass. Phase-379 W5 landed two of these checks
+    # without their probes and both gates were silently vacuous. Assert first.
+    test -f packages/api/nros-c/tests/compile/action_deprecation_probe.c || { \
+        echo "ERROR: action_deprecation_probe.c is MISSING -- the expected-failure check below" >&2; \
+        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
+    if cc -fsyntax-only -std=c11 -Werror=deprecated-declarations \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/action_deprecation_probe.c 2>/dev/null; then \
+        echo "ERROR: action_deprecation_probe.c compiled clean under -Werror=deprecated-declarations." >&2; \
+        echo "       The NROS_DEPRECATED_MSG on the active_goal_count_raw forwarder in" >&2; \
+        echo "       nros/action.h is not reaching callers, so the merge ships" >&2; \
+        echo "       with no migration warning at all." >&2; \
+        exit 1; \
+    fi
+    echo "  - receive verb spelling + deprecated forwarders (phase 379 W6)"
+    # `try_recv` -> `take`, and `_raw` -> `_serialized` for the pre-CDR byte
+    # form (ROS 2's word: `rcl_take_serialized_message`). Note which direction
+    # this moves: the RMW vtable one layer down has said `take` / `take_request`
+    # / `take_response` / `take_sequence` since W3.b, so the USER API was the
+    # only layer still spelling it the Rust-channel way. Old spellings survive
+    # one release as NROS_DEPRECATED_MSG `static inline` forwarders. Function
+    # POINTERS again, so a forwarder whose argument list drifted fails here.
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/receive_verb_aliases.c
+    # ...and they must WARN, asserted as the same expected-failure compile.
+    # An expected-failure compile cannot distinguish "the deprecation
+    # attribute fired" from "the file is not there" -- both are a non-zero cc,
+    # and the second reads as a pass. Phase-379 W5 landed two of these checks
+    # without their probes and both gates were silently vacuous. Assert first.
+    test -f packages/api/nros-c/tests/compile/receive_deprecation_probe.c || { \
+        echo "ERROR: receive_deprecation_probe.c is MISSING -- the expected-failure check below" >&2; \
+        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
+    if cc -fsyntax-only -std=c11 -Werror=deprecated-declarations \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/receive_deprecation_probe.c 2>/dev/null; then \
+        echo "ERROR: receive_deprecation_probe.c compiled clean under -Werror=deprecated-declarations." >&2; \
+        echo "       The NROS_DEPRECATED_MSG on the try_recv* forwarders in" >&2; \
+        echo "       nros/subscription.h, nros/service.h and nros/client.h is not" >&2; \
+        echo "       reaching callers, so the rename ships with no migration warning." >&2; \
+        exit 1; \
+    fi
     echo "  - cross-include (nros_cpp_ffi.h + component.h in one TU)"
     # Issue 0160 — the C prototypes and struct typedefs component.h re-declares
     # must stay compatible with cbindgen's canonical nros_cpp_ffi.h (the
@@ -3473,6 +3544,109 @@ cpp: cpp-fmt
         echo "ERROR: qos_deprecation_probe.cpp compiled clean under -Werror=deprecated-declarations." >&2; \
         echo "       The [[deprecated]] attributes on QoS::*_raw() / QoS::*_ms() /" >&2; \
         echo "       QoS::Liveliness in nros/qos.hpp are not reaching callers, so the" >&2; \
+        echo "       rename ships with no migration warning at all." >&2; \
+        exit 1; \
+    fi
+    # phase-403 step 2 — the DECLARED `@depth=` reaches the compiler, and a
+    # disagreement between it and the QoS at the call site FAILS THE BUILD.
+    #
+    # `-std=c++17` and not the c++14 of its neighbours: C++17 is what the
+    # component lane actually compiles with, and the absence of `__VA_OPT__`
+    # there is the reason `NROS_SUBSCRIBE` dispatches on argument count at all.
+    # Checking the macro under a standard no component uses would test a
+    # different preprocessor.
+    #
+    # The fixture dir carries `nros/nros_declared_qos_generated.h` — what
+    # `nros ws entity-inventory --output-header` renders from the
+    # `entities.json` beside it, and what `nano_ros_node_register()` puts on a
+    # real component's include path. Putting it on `-I` here exercises the same
+    # `__has_include` pickup. The header and its input are held together by
+    # `the_committed_compile_fixture_is_what_this_emitter_renders` in
+    # nros-cli-core, so this fixture cannot drift into a table that matches
+    # nothing (which would leave every assertion below vacuous and green).
+    echo "  - declared QoS depth: the three cases COMPILE (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/declared_qos_depth.cpp
+    # ...and a DISAGREEMENT must not. NEGATIVE assertion, and the one that makes
+    # the check reachable rather than merely correct: six mechanisms in this
+    # campaign were right and never ran. The positive TU above is compiled FIRST
+    # so a missing include path or a fixture that matches nothing shows up as a
+    # failure there, not as a silent pass here — an expected-failure compile
+    # cannot tell "the assertion fired" from "the file is not there".
+    test -f packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp || { \
+        echo "ERROR: declared_qos_depth_probe.cpp is MISSING -- the expected-failure check" >&2; \
+        echo "       below would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
+    echo "  - declared QoS depth: a MISMATCH fails the build (c++17, expected failure)"
+    _dq_out="$(c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp 2>&1)" && { \
+        echo "ERROR: declared_qos_depth_probe.cpp COMPILED. The fixture declares" >&2; \
+        echo "       sub:std_msgs/msg/Int32:/chatter@depth=1 and the call site passes" >&2; \
+        echo "       nros::QoS(10); NROS_SUBSCRIBE's static_assert did not fire, so the" >&2; \
+        echo "       declared depth is not reaching the compiler and nothing is checked." >&2; \
+        exit 1; \
+    }
+    # A rejection is not enough: it must be OUR rejection, naming the topic and
+    # BOTH depths. A typo or a missing header would also exit non-zero, and a
+    # diagnostic the reader cannot act on is the same as no diagnostic.
+    for _want in '"/chatter"' 'declared_depth_agrees<1, 10>' 'nano_ros_node_register'; do \
+        case "$_dq_out" in \
+            *"$_want"*) ;; \
+            *) echo "ERROR: the declared-depth diagnostic does not contain: $_want" >&2; \
+               echo "       It must name the TOPIC and BOTH depths, or a reader cannot tell" >&2; \
+               echo "       which subscription is wrong or which of the two numbers to fix." >&2; \
+               echo "--- compiler said ---" >&2; echo "$_dq_out" >&2; \
+               exit 1 ;; \
+        esac; \
+    done
+    # phase-379 W6 decision 1 — the receive verb under its rclcpp name.
+    # `Subscription<M>::take` / `take_serialized` / `take_sequence` /
+    # `take_validated` and `Service<S>::take_request`, with the `try_recv*`
+    # spellings kept as `[[deprecated]]` forwarders. The header `-fsyntax-only`
+    # loop above only PARSES the templates; this TU INSTANTIATES them, so a
+    # forwarder whose argument list drifted from the method it forwards to
+    # fails here. `-Wno-deprecated-declarations` because the TU names the old
+    # spellings deliberately; the probe below is what proves they still warn.
+    echo "  - receive verb aliases + deprecated forwarders (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/receive_verb_aliases.cpp
+    # ...and the old spellings must WARN. NEGATIVE assertion, the C half's shape
+    # one language over. An expected-failure compile cannot distinguish "the
+    # deprecation attribute fired" from "the file is not there" -- both are a
+    # non-zero c++, and the second reads as a pass. Assert first.
+    test -f packages/api/nros-cpp/tests/compile/receive_deprecation_probe.cpp || { \
+        echo "ERROR: receive_deprecation_probe.cpp is MISSING -- the expected-failure check below" >&2; \
+        echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/receive_deprecation_probe.cpp 2>/dev/null; then \
+        echo "ERROR: receive_deprecation_probe.cpp compiled clean under -Werror=deprecated-declarations." >&2; \
+        echo "       The [[deprecated]] attributes on Subscription::try_recv* /" >&2; \
+        echo "       Service::try_recv_request are not reaching callers, so the" >&2; \
         echo "       rename ships with no migration warning at all." >&2; \
         exit 1; \
     fi

@@ -32,7 +32,7 @@ tc qdisc replace dev tap-qemu0 root fq_codel limit 1000 target 500ms interval 2s
 - Per-flow scheduling (deficit round-robin across ~1024 flow buckets) changes
   packet delivery order compared to strict FIFO. This disrupts zenoh-pico's
   timing-sensitive service reply path — the server processes the request and
-  sends a reply, but the client's `try_recv()` returns `ServiceRequestFailed`
+  sends a reply, but the client's `take()` returns `ServiceRequestFailed`
   because the reply arrives too late.
 - ECN marking (enabled by default) is irrelevant since smoltcp doesn't
   negotiate ECN, but the different code path may contribute.

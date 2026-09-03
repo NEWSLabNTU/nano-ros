@@ -676,7 +676,7 @@ fn registry() -> &'static Registry {
 // ============================================================================
 //
 // The stable C subscriber ABI returns only a `(payload, len)` pair from
-// `try_recv_raw`. Rust backends can produce `MessageInfo`, so the generic
+// `take_serialized`. Rust backends can produce `MessageInfo`, so the generic
 // Rust->C adapter stores that metadata keyed by the backend handle pointer
 // immediately before returning the payload length. The Rust CFFI subscriber
 // consumes it after the vtable call. Pure C/C++ backends never write this table
@@ -3317,7 +3317,7 @@ pub struct CffiSubscription {
     supports_in_place: bool,
     /// Issue 0971 — a status that happened where it could not be returned.
     ///
-    /// `try_recv_sequence` is contractually a COUNT: a partial drain reports
+    /// `take_sequence` is contractually a COUNT: a partial drain reports
     /// what it got rather than erroring (`rmw_vtable.h`). So when the drain
     /// stops because a message did not fit the caller's slot, there is nowhere
     /// to put `BufferTooSmall` — and this loop used to answer it with `?`,
@@ -3325,7 +3325,7 @@ pub struct CffiSubscription {
     /// native Cyclone path answered the same condition with `Ok(count)`.
     ///
     /// The status is parked here and returned by the next call instead. That is
-    /// the shape `nros-verification`'s `try_recv_post_fix` already proves for
+    /// the shape `nros-verification`'s `take_post_fix` already proves for
     /// the single take — check the flag first, clear it, return the error, take
     /// nothing — moved one call later because that is where the contract leaves
     /// room for it.
@@ -3451,7 +3451,7 @@ impl nros_rmw::SlotBorrowing for CffiSubscription {
     fn try_borrow(&mut self) -> Result<Option<CffiView<'_>>, TransportError> {
         let Some(borrow) = self.vtable.take_loaned_message else {
             // Phase 124.A — backend doesn't natively borrow; runtime
-            // falls back to `try_recv_raw` into a staging buffer
+            // falls back to `take_serialized` into a staging buffer
             // (124.A.3). `None` lets the caller use the slow path.
             return Ok(None);
         };
@@ -3538,8 +3538,8 @@ impl nros_rmw::Subscription for CffiSubscription {
         rc == NROS_RMW_RET_OK && has
     }
 
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        // Issue 0971 — a status parked by an earlier `try_recv_sequence` is
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+        // Issue 0971 — a status parked by an earlier `take_sequence` is
         // delivered here too, so a caller that mixes the two entry points still
         // hears about it rather than having it silently outlive the batch that
         // produced it. Cyclone's native flag is checked at both of its take
@@ -3576,23 +3576,23 @@ impl nros_rmw::Subscription for CffiSubscription {
         Ok(Some(checked_take_len(out_len, buf.len())?))
     }
 
-    fn try_recv_raw_with_info(
+    fn take_serialized_with_info(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
         let key = self.backend_data as usize;
-        self.try_recv_raw(buf)
+        self.take_serialized(buf)
             .map(|opt| opt.map(|len| (len, take_cffi_message_info(key))))
     }
 
     #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
-    fn try_recv_validated(
+    fn take_validated(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, Self::Error> {
         let key = self.backend_data as usize;
         request_cffi_integrity_status(key);
-        self.try_recv_raw(buf).map(|opt| {
+        self.take_serialized(buf).map(|opt| {
             opt.map(|len| {
                 (
                     len,
@@ -3606,7 +3606,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         })
     }
 
-    fn try_recv_sequence(
+    fn take_sequence(
         &mut self,
         buf: &mut [u8],
         per_msg_cap: usize,
@@ -3614,9 +3614,9 @@ impl nros_rmw::Subscription for CffiSubscription {
         out_lens: &mut [usize],
     ) -> Result<usize, TransportError> {
         // Phase 124.D.2 — runtime fallback. If the backend exposes
-        // `try_recv_sequence` natively, call it in one hop; otherwise
+        // `take_sequence` natively, call it in one hop; otherwise
         // delegate to the trait's default body which loop-drives
-        // `try_recv_raw`. Either way the caller sees the same shape:
+        // `take_serialized`. Either way the caller sees the same shape:
         // contiguous slot block + per-slot length array + count
         // return.
         if let Some(f) = self.vtable.take_sequence {
@@ -3645,10 +3645,10 @@ impl nros_rmw::Subscription for CffiSubscription {
             }
             return Ok(taken);
         }
-        // Phase 124.D.2 — `try_recv_raw` loop fallback. Inlined
+        // Phase 124.D.2 — `take_serialized` loop fallback. Inlined
         // here (rather than dispatching back through the trait
         // default body) so the recursion is structurally
-        // impossible — `Subscription::try_recv_sequence` on
+        // impossible — `Subscription::take_sequence` on
         // `CffiSubscription` is THIS function, and forwarding to
         // the default body would deadlock the override.
         if per_msg_cap == 0 || max_msgs == 0 {
@@ -3667,7 +3667,7 @@ impl nros_rmw::Subscription for CffiSubscription {
         let mut count = 0;
         for i in 0..limit {
             let slot = &mut buf[i * per_msg_cap..(i + 1) * per_msg_cap];
-            match self.try_recv_raw(slot) {
+            match self.take_serialized(slot) {
                 Ok(Some(len)) => {
                     out_lens[i] = len;
                     count += 1;
@@ -3679,7 +3679,7 @@ impl nros_rmw::Subscription for CffiSubscription {
                 // written are real and are reported; the status is parked for
                 // the next call. With nothing delivered yet there is no count
                 // worth protecting, so it goes out immediately — which is also
-                // what makes the single-message case identical to `try_recv_raw`.
+                // what makes the single-message case identical to `take_serialized`.
                 Err(e) => {
                     if count == 0 {
                         return Err(e);
@@ -3801,7 +3801,7 @@ impl ServiceTrait for CffiService {
         rc == NROS_RMW_RET_OK && has
     }
 
-    fn try_recv_request<'a>(
+    fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
@@ -3922,7 +3922,7 @@ impl ClientTrait for CffiClient {
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<i64, TransportError> {
         // Phase-301 (issue 0240) — `send_request_raw` +
-        // `try_recv_reply_raw` is the ONE request/reply path (the
+        // `take_response_raw` is the ONE request/reply path (the
         // blocking `call_raw` slot is gone from the vtable). Backends
         // that omit the slot get `Unsupported`; the executor surfaces
         // the error instead of silently degrading.
@@ -3950,7 +3950,7 @@ impl ClientTrait for CffiClient {
         Ok(sequence_id)
     }
 
-    fn try_recv_reply_raw(
+    fn take_response_raw(
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<(usize, i64)>, TransportError> {
@@ -4773,7 +4773,7 @@ mod tests {
         };
         let mut buf = [0u8; 16];
 
-        assert!(server.try_recv_request(&mut buf).unwrap().is_none());
+        assert!(server.take_request(&mut buf).unwrap().is_none());
     }
 
     #[test]

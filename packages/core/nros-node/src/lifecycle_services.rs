@@ -1240,7 +1240,7 @@ mod tests {
     // wiring: creating the five service-server handles, mounting the
     // state machine on the executor, and draining services during
     // spin_once. With `MockSession` every service server returns
-    // `Ok(None)` from `try_recv_request`, so the tests confirm the
+    // `Ok(None)` from `take_request`, so the tests confirm the
     // plumbing doesn't crash when there's nothing to process and that
     // the state machine accessors behave correctly.
     //

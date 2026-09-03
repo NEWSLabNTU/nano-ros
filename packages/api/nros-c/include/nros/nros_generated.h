@@ -619,7 +619,7 @@ typedef enum nros_subscription_state_t {
   /**
    * Phase 122.3.b — initialized for primitive-mode polling (Layer 1).
    * Subscriber entity created at init time and stored inline in
-   * `_opaque`; caller drains via `nros_subscription_try_recv_raw`.
+   * `_opaque`; caller drains via `nros_subscription_take_serialized`.
    * No executor registration.
    */
   NROS_SUBSCRIPTION_STATE_POLLING = 3,
@@ -699,7 +699,7 @@ typedef enum nros_service_state_t {
   /**
    * Phase 122.3.c.4 — L1 polling-mode: transport entity lives inline
    * in `_opaque`; caller drains via
-   * `nros_service_try_recv_request_raw` and replies via
+   * `nros_service_take_request_raw` and replies via
    * `nros_service_send_response_raw`. No executor registration.
    */
   NROS_SERVICE_STATE_POLLING = 3,
@@ -728,7 +728,7 @@ typedef enum nros_client_state_t {
   /**
    * Phase 122.3.c.5 — L1 polling-mode: transport entity lives inline
    * in `_opaque`; caller drives via `nros_client_send_request_raw`
-   * and `nros_client_try_recv_reply_raw`. No executor registration.
+   * and `nros_client_take_response_raw`. No executor registration.
    */
   NROS_CLIENT_STATE_POLLING = 4,
 } nros_client_state_t;
@@ -2593,7 +2593,7 @@ typedef struct nros_subscription_options_t {
 
 /**
  * Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
- * receive path ([`nros_subscription_try_recv_validated`]). The C analog of the
+ * receive path ([`nros_subscription_take_validated`]). The C analog of the
  * Rust `IntegrityStatus` / `CallbackCtx::integrity()`.
  */
 typedef struct nros_integrity_status_t {
@@ -3935,11 +3935,43 @@ nros_ret_t nros_action_execute(struct nros_action_server_t *server,
 /**
  * Get the number of currently active goals.
  *
- * Reads from the arena via `ActionServerRawHandle::active_goal_count`.
- * Returns `0` if the server isn't registered or has been finalised.
+ * Phase-379 W6 decision 3: ONE function in rcl's shape, serving both
+ * tiers. Upstream ships no count function; its nearest neighbour is
+ * `rcl_action_server_get_goal_handles(server, ***handles, size_t
+ * *num_goals) -> rcl_ret_t`, which reports the count through an
+ * out-param and keeps the return code for "did the query work". This
+ * replaces the pair `nros_action_server_get_active_goal_count(server)
+ * -> size_t` (answered 0 on every error) and
+ * `nros_action_server_active_goal_count_raw(server) -> int32_t`
+ * (negative = error code), each of which collapsed the two channels
+ * into one value.
+ *
+ * The tier is selected by `server->state`, and the two tiers read
+ * DIFFERENT STORAGE — this was never one field behind two names:
+ *
+ * * `NROS_ACTION_SERVER_STATE_INITIALIZED` (L2, callback tier) reads
+ *   the executor arena through `ActionServerRawHandle::active_goal_count`.
+ * * `NROS_ACTION_SERVER_STATE_POLLING` (L1, polling tier) reads the
+ *   `ActionServerCore` living inline in `_opaque`, with no executor and
+ *   no arena indirection, behind `#[cfg(feature = "rmw-cffi")]`.
+ *
+ * Returns:
+ *
+ * * `NROS_RET_OK` — `*out` holds the count, which may legitimately be 0.
+ * * `NROS_RET_INVALID_ARGUMENT` — `server` or `out` is NULL.
+ * * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN; or it
+ *   is INITIALIZED but was never registered with an executor (or has
+ *   been finalised); or it is POLLING in a build without `rmw-cffi`,
+ *   where the inline core was never constructed.
+ *
+ * `*out` is left untouched on every error path, so a caller that ignores
+ * the return code reads back its own initialiser rather than a
+ * fabricated `0` — which is precisely the ambiguity the old `size_t`
+ * spelling could not escape.
  */
 NROS_PUBLIC
-size_t nros_action_server_get_active_goal_count(const struct nros_action_server_t *server);
+nros_ret_t nros_action_server_get_active_goal_count(struct nros_action_server_t *server,
+                                                    size_t *out);
 
 /**
  * Look up a goal's current status in the arena by UUID.
@@ -4134,11 +4166,6 @@ nros_ret_t nros_action_server_set_get_result_wake_callback(struct nros_action_se
                                                            struct nros_wake_state_t *state,
                                                            void (*cb)(void*),
                                                            void *ctx);
-
-/**
- * Phase 122.3.c.6.b — L1 polling: get the number of active goals.
- */
-NROS_PUBLIC int32_t nros_action_server_active_goal_count_raw(struct nros_action_server_t *server);
 
 /**
  * Register a callback for `NROS_EVENT_LIVELINESS_CHANGED`.
@@ -5760,7 +5787,7 @@ NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t *service);
  *
  * Creates the underlying RMW server immediately and stores it inline
  * in the service's `_opaque` field. The caller drains received
- * requests via `nros_service_try_recv_request_raw` and sends replies
+ * requests via `nros_service_take_request_raw` and sends replies
  * via `nros_service_send_response_raw`.
  *
  * # Parameters
@@ -5835,16 +5862,16 @@ nros_ret_t nros_client_set_wake_callback(struct nros_client_t *client,
  * bytes. `sequence_number` writable for `i64`.
  */
 NROS_PUBLIC
-int32_t nros_service_try_recv_request_raw(struct nros_service_t *service,
-                                          uint8_t *buf,
-                                          size_t buf_len,
-                                          int64_t *sequence_number);
+int32_t nros_service_take_request_raw(struct nros_service_t *service,
+                                      uint8_t *buf,
+                                      size_t buf_len,
+                                      int64_t *sequence_number);
 
 /**
  * Phase 122.3.c.4 — send a reply on an L1 polling-mode service.
  *
  * `sequence_number` must equal the value returned by the most recent
- * `nros_service_try_recv_request_raw` for the request being replied
+ * `nros_service_take_request_raw` for the request being replied
  * to.
  *
  * # Safety
@@ -5987,7 +6014,7 @@ NROS_PUBLIC nros_ret_t nros_client_fini(struct nros_client_t *client);
  * Creates the underlying RMW client immediately and stores it inline
  * in the client's `_opaque` field. The caller drives the
  * request/reply cycle via `nros_client_send_request_raw` +
- * `nros_client_try_recv_reply_raw`.
+ * `nros_client_take_response_raw`.
  *
  * # Parameters
  * * `client` - Pointer to a zero-initialized client
@@ -6014,7 +6041,7 @@ nros_ret_t nros_client_init_polling(struct nros_client_t *client,
 /**
  * Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
  * Non-blocking. Poll for the reply via
- * `nros_client_try_recv_reply_raw`.
+ * `nros_client_take_response_raw`.
  *
  * # Safety
  * `client` must be in `POLLING` state. `data` readable for `len`
@@ -6039,9 +6066,9 @@ nros_ret_t nros_client_send_request_raw(struct nros_client_t *client,
  * bytes.
  */
 NROS_PUBLIC
-int32_t nros_client_try_recv_reply_raw(struct nros_client_t *client,
-                                       uint8_t *buf,
-                                       size_t buf_len);
+int32_t nros_client_take_response_raw(struct nros_client_t *client,
+                                      uint8_t *buf,
+                                      size_t buf_len);
 
 /**
  * Set the response callback fired by `nros_executor_spin_some` when an
@@ -6141,10 +6168,10 @@ nros_ret_t nros_client_send_request_async(struct nros_client_t *client,
  * * `NROS_RET_ERROR` on transport failure
  */
 NROS_PUBLIC
-nros_ret_t nros_client_try_recv_response(struct nros_client_t *client,
-                                         uint8_t *response_data,
-                                         size_t response_capacity,
-                                         size_t *response_len);
+nros_ret_t nros_client_take_response(struct nros_client_t *client,
+                                     uint8_t *response_data,
+                                     size_t response_capacity,
+                                     size_t *response_len);
 
 /**
  * Call a service (blocking convenience over the async pair).
@@ -6312,7 +6339,7 @@ nros_ret_t nros_subscription_init_with_options(struct nros_subscription_t *subsc
  *
  * Creates the underlying RMW subscriber immediately and stores it
  * inline in the subscription's `_opaque` field. The caller drains
- * received messages via `nros_subscription_try_recv_raw`.
+ * received messages via `nros_subscription_take_serialized`.
  *
  * Uses default QoS (RELIABLE, KEEP_LAST(10)). For custom QoS, use
  * `nros_subscription_init_polling_with_qos`.
@@ -6394,14 +6421,14 @@ nros_ret_t nros_subscription_set_wake_callback(struct nros_subscription_t *subsc
  * * `buf` must point to writable memory of at least `buf_len` bytes
  */
 NROS_PUBLIC
-int32_t nros_subscription_try_recv_raw(struct nros_subscription_t *subscription,
-                                       uint8_t *buf,
-                                       size_t buf_len);
+int32_t nros_subscription_take_serialized(struct nros_subscription_t *subscription,
+                                          uint8_t *buf,
+                                          size_t buf_len);
 
 /**
  * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E
  * integrity status (CRC + sequence gap/dup) of the received sample. The
- * safety-e2e analog of [`nros_subscription_try_recv_raw`]: it requests
+ * safety-e2e analog of [`nros_subscription_take_serialized`]: it requests
  * validation on the backend (the zenoh shim recomputes + compares the CRC
  * attachment and tracks the sequence) and writes the verdict to `*out_status`.
  *
@@ -6421,10 +6448,10 @@ int32_t nros_subscription_try_recv_raw(struct nros_subscription_t *subscription,
  * * `out_status`, if non-NULL, must point to a writable `nros_integrity_status_t`
  */
 NROS_PUBLIC
-int32_t nros_subscription_try_recv_validated(struct nros_subscription_t *subscription,
-                                             uint8_t *buf,
-                                             size_t buf_len,
-                                             struct nros_integrity_status_t *out_status);
+int32_t nros_subscription_take_validated(struct nros_subscription_t *subscription,
+                                         uint8_t *buf,
+                                         size_t buf_len,
+                                         struct nros_integrity_status_t *out_status);
 
 /**
  * Phase 124.A.6 — borrow a read-only view of the next available message
@@ -6440,7 +6467,7 @@ int32_t nros_subscription_try_recv_validated(struct nros_subscription_t *subscri
  * requesting another borrow on the same subscription — only one
  * outstanding view per subscription at a time.
  *
- * Falls back to a `try_recv_raw` copy into the staging buffer when the
+ * Falls back to a `take_serialized` copy into the staging buffer when the
  * active backend's vtable doesn't expose a native borrow slot.
  *
  * **Requires `alloc` as well as `lending`.** Unlike the publish half —
@@ -6511,11 +6538,11 @@ nros_ret_t nros_subscription_release(struct nros_subscription_t *subscription,
  *   `max_msgs` `size_t` slots.
  */
 NROS_PUBLIC
-int32_t nros_subscription_try_recv_sequence(struct nros_subscription_t *subscription,
-                                            uint8_t *buf,
-                                            size_t per_msg_cap,
-                                            size_t max_msgs,
-                                            size_t *out_lens);
+int32_t nros_subscription_take_sequence(struct nros_subscription_t *subscription,
+                                        uint8_t *buf,
+                                        size_t per_msg_cap,
+                                        size_t max_msgs,
+                                        size_t *out_lens);
 
 /**
  * # Safety

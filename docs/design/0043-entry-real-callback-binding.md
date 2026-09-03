@@ -103,8 +103,8 @@ the RFC must not conflate them:
   `poll()` each spin tick, so the user writes only member callbacks (no naming,
   no poll loop). Validated in QEMU on NuttX (cpp + C) — see
   [issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
-  The **poll** API (`polling_action_client.hpp`, `Promise::try_recv`,
-  `Subscription::try_recv`) is retained for **user-owned scheduling** (RTIC /
+  The **poll** API (`polling_action_client.hpp`, `Promise::take`,
+  `Subscription::take`) is retained for **user-owned scheduling** (RTIC /
   Embassy / task-per-entity), not as the client default.
 
 The subscription receive flavours (none names a callback):

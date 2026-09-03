@@ -185,7 +185,7 @@ fn test_pubsub_loopback() {
 
     // Try to receive
     let mut recv_buf = [0u8; 64];
-    match subscriber.try_recv_raw(&mut recv_buf) {
+    match subscriber.take_serialized(&mut recv_buf) {
         Ok(Some(len)) => {
             assert_eq!(len, 8, "Message length should be 8 bytes");
 
@@ -299,7 +299,7 @@ fn two_sessions_deliver_cross_session_through_router() {
             .publish_raw(&cdr_msg)
             .expect("Failed to publish from session B");
         thread::sleep(Duration::from_millis(500));
-        match subscriber.try_recv_raw(&mut recv_buf) {
+        match subscriber.take_serialized(&mut recv_buf) {
             Ok(Some(len)) => {
                 assert_eq!(len, 8, "cross-session message length should be 8 bytes");
                 received = Some(i32::from_le_bytes([
@@ -578,7 +578,7 @@ fn test_pubsub_loopback_with_scouting_disabled() {
     thread::sleep(Duration::from_secs(2));
 
     let mut recv_buf = [0u8; 64];
-    match subscriber.try_recv_raw(&mut recv_buf) {
+    match subscriber.take_serialized(&mut recv_buf) {
         Ok(Some(len)) => {
             assert_eq!(len, 8, "Message length should be 8 bytes");
             let received_value =

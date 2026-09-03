@@ -204,13 +204,13 @@ fn run_listener() {
 
         // Phase 160.H.1 — drain all queued messages per spin tick.
         // Pair to the XRCE subscriber's N-deep ring (`XRCE_SUBSCRIBER_
-        // RING_DEPTH`): a single `try_recv_raw` per outer iteration
+        // RING_DEPTH`): a single `take_serialized` per outer iteration
         // would only pull the head and the rest of the ring would sit
         // until the next 50ms spin elapsed, which under a 100 Hz
         // publisher (~10 msgs per spin window) means the listener
         // can't keep up with the producer's burst.
         loop {
-            match subscription.try_recv_raw() {
+            match subscription.take_serialized() {
                 Ok(Some(len)) => {
                     let (seq, is_valid) =
                         validate_payload(&subscription.buffer()[..len], actual_size);

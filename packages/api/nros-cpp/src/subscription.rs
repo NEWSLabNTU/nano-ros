@@ -326,7 +326,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register(
 
 /// Phase 189.M3.4 — register a **callback-style** subscription that also delivers
 /// the sample's wire **attachment**. The callback analogue of the poll-side
-/// `nros_cpp_subscription_try_recv_raw_with_attachment` (M3.4b), and the C++
+/// `nros_cpp_subscription_take_serialized_with_attachment` (M3.4b), and the C++
 /// mirror of the C `nros_executor_add_subscription_raw_with_info`: same
 /// arena dispatch + sched binding as `nros_cpp_subscription_register`, but routed
 /// through `add_arena_subscription_c_info_callback` so the trampoline receives
@@ -436,7 +436,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_with_info(
 /// — the C/C++ component-callback analog of Rust's
 /// `register_subscription_buffered_raw_safety_on` / `CallbackCtx::integrity()`.
 ///
-/// The executor validates each sample via `try_recv_validated` and unpacks the
+/// The executor validates each sample via `take_validated` and unpacks the
 /// [`nros_rmw::IntegrityStatus`] into three plain scalars (gap, duplicate,
 /// crc_valid) before invoking the callback:
 /// ```c
@@ -559,13 +559,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_register_validated(
 /// — no runtime scratch. If the message is larger than `out_capacity`
 /// the backend drops it and returns `NROS_CPP_RET_FULL`; callers that need
 /// to handle oversized messages should size `out_data` to the message type's
-/// `SERIALIZED_SIZE_MAX` (exactly what `Subscription<M>::try_recv` does).
+/// `SERIALIZED_SIZE_MAX` (exactly what `Subscription<M>::take` does).
 ///
 /// # Safety
 /// `storage` must be a valid subscription storage. `out_data` must point to
 /// `out_capacity` writable bytes. `out_len` must be a valid pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
+pub unsafe extern "C" fn nros_cpp_subscription_take_serialized(
     storage: *mut c_void,
     out_data: *mut u8,
     out_capacity: usize,
@@ -578,7 +578,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
     let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
     let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
 
-    match sub.try_recv_raw(out_slice) {
+    match sub.take_serialized(out_slice) {
         Ok(Some(len)) => {
             unsafe {
                 *out_len = len;
@@ -604,7 +604,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
 }
 
 /// Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
-/// path ([`nros_cpp_subscription_try_recv_validated`]). The C++ analog of the
+/// path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
 /// Rust `IntegrityStatus` / `nros_integrity_status_t`.
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
@@ -619,7 +619,7 @@ pub struct nros_cpp_integrity_status_t {
 
 /// Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E integrity
 /// status (CRC + sequence gap/dup). The safety-e2e analog of
-/// [`nros_cpp_subscription_try_recv_raw`]; the backend recomputes + compares the
+/// [`nros_cpp_subscription_take_serialized`]; the backend recomputes + compares the
 /// CRC attachment and tracks the sequence. Requires `safety-e2e` on both ends
 /// (else `crc_valid` reports `-1`).
 ///
@@ -629,7 +629,7 @@ pub struct nros_cpp_integrity_status_t {
 /// non-NULL, must point to a writable `nros_cpp_integrity_status_t`.
 #[cfg(feature = "safety-e2e")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_subscription_try_recv_validated(
+pub unsafe extern "C" fn nros_cpp_subscription_take_validated(
     storage: *mut c_void,
     out_data: *mut u8,
     out_capacity: usize,
@@ -643,7 +643,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_validated(
     let sub = unsafe { &mut *(storage as *mut nros::internals::RmwSubscriber) };
     let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
 
-    match sub.try_recv_validated(out_slice) {
+    match sub.take_validated(out_slice) {
         Ok(Some((len, status))) => {
             unsafe {
                 *out_len = len;
@@ -689,7 +689,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_validated(
 /// point to `out_capacity` / `out_att_capacity` writable bytes. `out_len` /
 /// `out_att_len` must be valid pointers.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw_with_attachment(
+pub unsafe extern "C" fn nros_cpp_subscription_take_serialized_with_attachment(
     storage: *mut c_void,
     out_data: *mut u8,
     out_capacity: usize,
@@ -711,7 +711,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw_with_attachment(
     let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
     let att_slice = unsafe { core::slice::from_raw_parts_mut(out_att, out_att_capacity) };
 
-    match sub.try_recv_raw_with_attachment(out_slice, att_slice) {
+    match sub.take_serialized_with_attachment(out_slice, att_slice) {
         Ok(Some((len, att_len))) => {
             unsafe {
                 *out_len = len;
@@ -833,7 +833,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_release(
 /// `out_lens` must point to a writable array of `max_msgs` `size_t`
 /// slots. `out_count` must be a writable `usize` pointer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_subscription_try_recv_sequence(
+pub unsafe extern "C" fn nros_cpp_subscription_take_sequence(
     storage: *mut c_void,
     buf: *mut u8,
     per_msg_cap: usize,
@@ -852,7 +852,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_sequence(
     let buf_slice =
         unsafe { core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap)) };
     let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
-    match sub.try_recv_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
+    match sub.take_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
         Ok(count) => {
             unsafe {
                 *out_count = count;
@@ -880,7 +880,7 @@ pub unsafe extern "C" fn nros_cpp_subscription_destroy(storage: *mut c_void) -> 
 
 /// Relocate an `RmwSubscriber` from `old_storage` to `new_storage`.
 ///
-/// Subscriptions are pull-based (`try_recv_raw`) and register nothing
+/// Subscriptions are pull-based (`take_serialized`) and register nothing
 /// externally that references the storage address — relocation is a
 /// straight `ptr::read` + `ptr::write`.
 ///

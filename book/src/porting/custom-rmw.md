@@ -35,9 +35,9 @@ Most methods have default implementations. The required methods per trait are:
 | `Rmw` | `open()` |
 | `Session` | `create_publisher()`, `create_subscription()`, `create_service()`, `create_client()`, `close()` |
 | `Publisher` | `publish_raw()`, `buffer_error()`, `serialization_error()` |
-| `Subscription` | `try_recv_raw()`, `deserialization_error()` |
-| `ServiceTrait` | `try_recv_request()`, `send_response()` |
-| `ClientTrait` | `send_request_raw()`, `try_recv_reply_raw()` |
+| `Subscription` | `take_serialized()`, `deserialization_error()` |
+| `ServiceTrait` | `take_request()`, `send_response()` |
+| `ClientTrait` | `send_request_raw()`, `take_response_raw()` |
 
 For full trait signatures and associated types, see
 [RMW API Reference](../reference/rmw-api.md).
@@ -116,7 +116,7 @@ impl Publisher for MyProtoPub {
 pub struct MyProtoSub;
 impl Subscription for MyProtoSub {
     type Error = TransportError;
-    fn try_recv_raw(&mut self, buf: &mut [u8])
+    fn take_serialized(&mut self, buf: &mut [u8])
         -> Result<Option<usize>, TransportError> { todo!() }
     fn deserialization_error(&self) -> TransportError { TransportError::DeserializationError }
 }
@@ -124,7 +124,7 @@ impl Subscription for MyProtoSub {
 pub struct MyProtoServer;
 impl ServiceTrait for MyProtoServer {
     type Error = TransportError;
-    fn try_recv_request<'a>(&mut self, buf: &'a mut [u8])
+    fn take_request<'a>(&mut self, buf: &'a mut [u8])
         -> Result<Option<ServiceRequest<'a>>, TransportError> { todo!() }
     fn send_response(&mut self, seq: i64, data: &[u8])
         -> Result<(), TransportError> { todo!() }
@@ -135,7 +135,7 @@ impl ClientTrait for MyProtoClient {
     type Error = TransportError;
     fn send_request_raw(&mut self, req: &[u8])
         -> Result<(), TransportError> { todo!() }
-    fn try_recv_reply_raw(&mut self, buf: &mut [u8])
+    fn take_response_raw(&mut self, buf: &mut [u8])
         -> Result<Option<usize>, TransportError> { todo!() }
 }
 ```
@@ -296,7 +296,7 @@ static rmw_ret_t my_create_subscription(
         const rmw_subscription_options_t *options,  /* hints (rx_buffer_hint); NULL = defaults */
         rmw_subscription_t *out) { /* ... */ }
 static void    my_destroy_subscription(rmw_subscription_t *subscription) { /* ... */ }
-static int32_t my_try_recv_raw(rmw_subscription_t *subscription,
+static int32_t my_take_serialized(rmw_subscription_t *subscription,
         uint8_t *buf, size_t buf_len) {
     /* >= 0 = bytes received (0 = no data),
      * negative rmw_ret_t (e.g. NROS_RMW_RET_NO_DATA, _BUFFER_TOO_SMALL). */
@@ -310,7 +310,7 @@ static rmw_ret_t my_create_service(
         uint32_t domain_id, const rmw_qos_profile_t *qos,
         rmw_service_t *out) { /* ... */ }
 static void    my_destroy_service(rmw_service_t *server) { /* ... */ }
-static int32_t my_try_recv_request(rmw_service_t *server,
+static int32_t my_take_request(rmw_service_t *server,
         uint8_t *buf, size_t buf_len, int64_t *seq_out) { /* ... */ }
 static int32_t my_has_request(rmw_service_t *server) { /* 1 = yes, 0 = no */ }
 static rmw_ret_t my_send_reply(rmw_service_t *server,
@@ -327,7 +327,7 @@ static rmw_ret_t my_send_request_raw(rmw_client_t *client,
         const uint8_t *request, size_t req_len) {
     /* Send without blocking for the reply; return NROS_RMW_RET_OK. */
 }
-static int32_t my_try_recv_reply_raw(rmw_client_t *client,
+static int32_t my_take_response_raw(rmw_client_t *client,
         uint8_t *reply_buf, size_t reply_buf_len) {
     /* >= 0 = reply bytes, NROS_RMW_RET_NO_DATA = no reply yet. */
 }
@@ -341,17 +341,17 @@ static const nros_rmw_vtable_t MY_RMW = {
     .publish         = my_publish_raw,
     .create_subscription = my_create_subscription,
     .destroy_subscription = my_destroy_subscription,
-    .take        = my_try_recv_raw,
+    .take        = my_take_serialized,
     .has_data            = my_has_data,
     .create_service      = my_create_service,
     .destroy_service     = my_destroy_service,
-    .take_request    = my_try_recv_request,
+    .take_request    = my_take_request,
     .has_request         = my_has_request,
     .send_response          = my_send_reply,
     .create_client       = my_create_client,
     .destroy_client      = my_destroy_client,
     .send_request    = my_send_request_raw,
-    .take_response  = my_try_recv_reply_raw,
+    .take_response  = my_take_response_raw,
 };
 ```
 
@@ -397,7 +397,7 @@ slot — the runtime fills metadata fields (`topic_name`, `qos`, …)
 before calling `create_*`; the backend writes `backend_data`. Return
 convention: `NROS_RMW_RET_OK` = success, negative = named
 `rmw_ret_t` constant, positive = byte count (only on
-`try_recv_*`).
+`take_*`).
 
 ---
 
@@ -428,7 +428,7 @@ impl Publisher for EchoPub {
 pub struct EchoSub;
 impl Subscription for EchoSub {
     type Error = TransportError;
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         unsafe {
             if ECHO_LEN == 0 { return Ok(None); }
             let len = ECHO_LEN;

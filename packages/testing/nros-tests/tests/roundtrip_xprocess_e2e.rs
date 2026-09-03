@@ -19,7 +19,7 @@
 //! - **C / C++ / mixed cells** assert on the CLIENT's own stdout (`sum: N`
 //!   ×3 / `result last=55`) after waiting for the server's `server ready`
 //!   marker. These clients use the POLL-model component surfaces
-//!   (`send_request`+`try_recv_reply`, `send_goal_async`/`get_result_async`
+//!   (`send_request`+`take_response`, `send_goal_async`/`get_result_async`
 //!   +`poll`), not Rust's blocking `call_for_name` — a component callback
 //!   must never block the executor.
 //!
@@ -130,7 +130,7 @@ fn exec_for(lang: ML, workload: MW) -> Exec {
             client: || build_native_workspace_c_service_client_entry().map(|p| p.to_path_buf()),
             proof: Proof::ClientSums,
             note: "phase-263 A1 C projection: c_add_server_pkg + c_add_client_pkg over the \
-                   poll-model client (nros_cpp_service_client_send_request + try_recv_reply)",
+                   poll-model client (nros_cpp_service_client_send_request + take_response)",
         },
         (ML::C, MW::Action) => Exec {
             server: || build_native_workspace_c_action_server_entry().map(|p| p.to_path_buf()),

@@ -1,6 +1,6 @@
 ---
 id: 969
-title: "The Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a decode, an encode and two heap allocations per take"
+title: "The Cyclone RMW deserializes every received sample and re-serializes it, so `take_serialized` costs a decode, an encode and two heap allocations per take"
 status: open
 area: [rmw, memory]
 severity: high

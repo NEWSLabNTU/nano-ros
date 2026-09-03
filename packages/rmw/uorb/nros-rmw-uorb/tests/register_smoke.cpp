@@ -21,15 +21,13 @@
  * carry buf / cap / *out_len. This adapter keeps the flat call shape for the
  * assertions below, which are about what uORB delivers, not about how the byte
  * range is spelled at the ABI. */
-static inline rmw_ret_t uorb_test_take(const nros_rmw_vtable_t* vt,
-                                       const rmw_subscription_t* sub, uint8_t* buf, size_t cap,
-                                       size_t* out_len, bool* taken) {
+static inline rmw_ret_t uorb_test_take(const nros_rmw_vtable_t* vt, const rmw_subscription_t* sub,
+                                       uint8_t* buf, size_t cap, size_t* out_len, bool* taken) {
     rmw_mut_byte_span_t span{buf, cap, 0};
     const rmw_ret_t rc = vt->take(sub, &span, taken);
     if (out_len != nullptr) *out_len = span.len;
     return rc;
 }
-
 
 namespace {
 const nros_rmw_vtable_t* g_stashed_vtable = nullptr;
@@ -182,8 +180,8 @@ int main() {
     // optional event hooks; the lifecycle / data-plane slots must
     // resolve to real (stub-returning-UNSUPPORTED) functions.
     const auto* vt = g_stashed_vtable;
-    if (vt->create_session == nullptr || vt->destroy_session == nullptr || vt->create_publisher == nullptr ||
-        vt->create_subscription == nullptr) {
+    if (vt->create_session == nullptr || vt->destroy_session == nullptr ||
+        vt->create_publisher == nullptr || vt->create_subscription == nullptr) {
         std::fprintf(stderr, "required vtable slot is NULL\n");
         return 1;
     }
@@ -200,9 +198,9 @@ int main() {
     // Phase 376 W5/B1 — entities are created ON A NODE now. The node
     // carries its own identity plus the route to its session.
     rmw_node_t node{};
-    node.name       = session.node_name;
+    node.name = session.node_name;
     node.namespace_ = session.namespace_;
-    node.session    = &session;
+    node.session = &session;
     if (session.backend_data == nullptr) {
         std::fprintf(stderr, "open did not populate backend_data\n");
         return 1;
@@ -365,7 +363,7 @@ int main() {
         return 1;
     }
 
-    // First try_recv_raw: the create-time `ready` pin makes us fall
+    // First take_serialized: the create-time `ready` pin makes us fall
     // through to orb_check even before the broker fires anything;
     // orb_check returns no-update, we re-arm. After re-arm,
     // has_data must short-circuit to 0 *without* an extra orb_check
@@ -403,8 +401,7 @@ int main() {
         return 1;
     }
     if (g_orb.check_calls != check_after_first) {
-        std::fprintf(stderr,
-                     "take fast-path missed: orb_check called %d times, expected %d\n",
+        std::fprintf(stderr, "take fast-path missed: orb_check called %d times, expected %d\n",
                      g_orb.check_calls, check_after_first);
         return 1;
     }
@@ -458,8 +455,8 @@ int main() {
     // Retry with full buffer drains.
     rc = uorb_test_take(vt, &subp, rxbuf, sizeof(rxbuf), &n, &took);
     if (rc != NROS_RMW_RET_OK || !took || n != static_cast<size_t>(kFakeMeta.o_size)) {
-        std::fprintf(stderr, "retry take returned rc=%d taken=%d %zu bytes, expected %u\n",
-                     (int)rc, (int)took, n, kFakeMeta.o_size);
+        std::fprintf(stderr, "retry take returned rc=%d taken=%d %zu bytes, expected %u\n", (int)rc,
+                     (int)took, n, kFakeMeta.o_size);
         return 1;
     }
 

@@ -51,7 +51,7 @@ namespace nros {
 /// NROS_TRY(node.create_service(srv, "/add_two_ints"));
 /// typename decltype(srv)::RequestType req;
 /// int64_t seq;
-/// if (srv.try_recv_request(req, seq)) {
+/// if (srv.take_request(req, seq)) {
 ///     typename decltype(srv)::ResponseType resp;
 ///     resp.sum = req.a + req.b;
 ///     srv.send_response(seq, resp);
@@ -77,23 +77,23 @@ template <typename S> class Service {
     ///         ErrorCode::TryAgain if no data is available;
     ///         ErrorCode::NotInitialized or the FFI error code otherwise;
     ///         ErrorCode::Error if deserialization failed.
-    Result try_recv_request(RequestType& req, int64_t& seq_id) {
+    Result take_request(RequestType& req, int64_t& seq_id) {
         return try_recv_request_sized<::nros::rx_buffer_capacity<RequestType>::value>(req, seq_id);
     }
 
-    /// @ref try_recv_request with the receive buffer sized by the CALLER.
+    /// @ref take_request with the receive buffer sized by the CALLER.
     ///
     /// This IS a receive buffer — issue 0964's survey listed the service
     /// request under "transmit", which is true of `Client<S>`'s request and
     /// false here: the server deserializes out of it, so an under-estimate
-    /// truncates. See @ref Subscription::try_recv_sized.
+    /// truncates. See @ref Subscription::take_sized.
     template <size_t Cap> Result try_recv_request_sized(RequestType& req, int64_t& seq_id) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
         int64_t seq = 0;
         nros_cpp_ret_t ret =
-            nros_cpp_service_server_try_recv_raw(storage_, buf, sizeof(buf), &len, &seq);
+            nros_cpp_service_server_take_request_raw(storage_, buf, sizeof(buf), &len, &seq);
         if (ret != 0) return Result(ret);
         if (len == 0) return Result(ErrorCode::TryAgain);
         if (RequestType::ffi_deserialize(buf, len, &req) != 0) return Result(ErrorCode::Error);
@@ -101,9 +101,20 @@ template <typename S> class Service {
         return Result::success();
     }
 
+    /// @deprecated Use `take_request(RequestType&, int64_t&)`.
+    ///
+    /// phase-379 W6 decision 1 (2026-09-03): `take` -> `take`. rcl
+    /// (`rcl_take_request`), rclcpp (`Service::take_request`) and our own RMW
+    /// vtable (`take_request`) already said `take`; only this layer said
+    /// `take`. Header-only forwarder, no ABI cost. Scheduled for removal.
+    [[deprecated("Service::try_recv_request is deprecated; use Service::take_request")]] Result
+    try_recv_request(RequestType& req, int64_t& seq_id) {
+        return take_request(req, seq_id);
+    }
+
     /// Send a typed reply to a previously received request.
     ///
-    /// @param seq_id  Sequence number from try_recv_request().
+    /// @param seq_id  Sequence number from take_request().
     /// @param resp    Response to send.
     /// @return Result indicating success or failure.
     Result send_response(int64_t seq_id, const ResponseType& resp) {

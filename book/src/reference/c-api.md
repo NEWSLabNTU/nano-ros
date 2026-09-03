@@ -25,7 +25,7 @@ public surface a user application needs.
 > **Two-layer API.** Every entity exposes two parallel C entry-point
 > sets: `nros_*_init` (Layer 1, caller polls) and
 > `nros_executor_register_*` (Layer 2, executor callback). Layer 1
-> grew an `_init_polling` + `try_recv_*_raw` / `send_*_raw` family
+> grew an `_init_polling` + `take_*_raw` / `send_*_raw` family
 > for inline-storage callers (no executor arena).
 > Layer 2 keeps the existing `nros_*_init` + executor-register
 > pair. See [Two-Layer API](../concepts/two-layer-api.md) for the

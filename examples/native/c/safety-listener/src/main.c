@@ -1,5 +1,5 @@
 /// @file main.c
-/// @brief C E2E-safety listener — polls `nros_subscription_try_recv_validated`
+/// @brief C E2E-safety listener — polls `nros_subscription_take_validated`
 ///        and prints the per-message integrity status (CRC + sequence gap/dup).
 ///
 /// Issue 0073 — the C analog of the Rust declarative-safety-listener. Pairs with
@@ -58,8 +58,7 @@ int nros_app_main(int argc, char** argv) {
     int count = 0;
     for (;;) {
         nros_integrity_status_t status;
-        int32_t n =
-            nros_subscription_try_recv_validated(&app.subscription, buf, sizeof(buf), &status);
+        int32_t n = nros_subscription_take_validated(&app.subscription, buf, sizeof(buf), &status);
         if (n > 0) {
             std_msgs_msg_int32 msg;
             std_msgs_msg_int32_init(&msg);

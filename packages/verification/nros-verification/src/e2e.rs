@@ -86,9 +86,9 @@ pub open spec fn callback_pre_fix(msg_len: usize, buf_capacity: usize) -> Subscr
     }
 }
 
-/// State after `try_recv_raw` attempts to read from the buffer.
+/// State after `take_serialized` attempts to read from the buffer.
 ///
-/// Models the pre-fix behavior of `try_recv_raw` (shim.rs:1060-1085):
+/// Models the pre-fix behavior of `take_serialized` (shim.rs:1060-1085):
 /// ```ignore
 /// if !buffer.has_data.load(...) { return Ok(None); }
 /// let len = buffer.len.load(...);
@@ -99,7 +99,7 @@ pub open spec fn callback_pre_fix(msg_len: usize, buf_capacity: usize) -> Subscr
 /// buffer.has_data.store(false, ...);
 /// Ok(Some(len))
 /// ```
-pub open spec fn try_recv_pre_fix(
+pub open spec fn take_pre_fix(
     buf: SubscriberBufferGhost,
     rx_buf_len: usize,
 ) -> (SubscriberBufferGhost, bool, bool) // (new_state, got_data, got_error)
@@ -129,8 +129,8 @@ pub open spec fn try_recv_pre_fix(
 /// **Proof 1: `stuck_subscription_bug`**
 ///
 /// Proves that in the pre-fix code, when `stored_len > rx_buf_len`, the
-/// `try_recv_raw` error path leaves `has_data == true`. This means every
-/// subsequent call to `try_recv_raw` hits the same oversized message and
+/// `take_serialized` error path leaves `has_data == true`. This means every
+/// subsequent call to `take_serialized` hits the same oversized message and
 /// returns the same error — the subscription is permanently stuck.
 ///
 /// This is finding F4 from the E2E verification analysis.
@@ -145,14 +145,14 @@ proof fn stuck_subscription_bug(stored_len: usize, rx_buf_len: usize, buf_capaci
         // Pre-fix callback stores the message (truncated or not)
         ({
             let buf = callback_pre_fix(stored_len, buf_capacity);
-            // try_recv_raw returns error AND has_data stays true
-            let (new_state, got_data, got_error) = try_recv_pre_fix(buf, rx_buf_len);
+            // take_serialized returns error AND has_data stays true
+            let (new_state, got_data, got_error) = take_pre_fix(buf, rx_buf_len);
             &&& got_error           // error was returned
             &&& !got_data           // no data was delivered
             &&& new_state.has_data  // has_data still true → STUCK
-            // Calling try_recv again hits the same error (stuck forever)
+            // Calling take again hits the same error (stuck forever)
             &&& ({
-                let (stuck_state, got_data2, got_error2) = try_recv_pre_fix(new_state, rx_buf_len);
+                let (stuck_state, got_data2, got_error2) = take_pre_fix(new_state, rx_buf_len);
                 &&& got_error2          // same error again
                 &&& !got_data2          // still no data
                 &&& stuck_state.has_data // still stuck
@@ -439,17 +439,17 @@ pub open spec fn callback_post_fix(msg_len: usize, buf_capacity: usize) -> Subsc
     }
 }
 
-/// State after the **fixed** `try_recv_raw` reads from the buffer.
+/// State after the **fixed** `take_serialized` reads from the buffer.
 ///
-/// Models `try_recv_raw` after the 31.6 fix (shim.rs:1082-1117).
+/// Models `take_serialized` after the 31.6 fix (shim.rs:1082-1117).
 ///
-/// Key differences from `try_recv_pre_fix`:
+/// Key differences from `take_pre_fix`:
 /// 1. Checks `overflow` flag first → returns `MessageTooLarge`, clears both flags
 /// 2. On `BufferTooSmall` (stored_len > rx_buf_len) → clears `has_data` (no stuck state)
 /// 3. On success → clears `has_data` (same as before)
 ///
 /// Returns `(new_state, got_data, got_overflow_error, got_size_error)`.
-pub open spec fn try_recv_post_fix(
+pub open spec fn take_post_fix(
     buf: SubscriberBufferGhost,
     rx_buf_len: usize,
 ) -> (SubscriberBufferGhost, bool, bool, bool)
@@ -489,7 +489,7 @@ pub open spec fn try_recv_post_fix(
 
 /// **Proof 9: `no_stuck_subscription`**
 ///
-/// Proves that in the post-fix code, after **any** error path in `try_recv_raw`,
+/// Proves that in the post-fix code, after **any** error path in `take_serialized`,
 /// `has_data` is cleared to `false`. This means the next callback can store new
 /// data and the subscription recovers — no permanent stuck state.
 ///
@@ -502,11 +502,11 @@ proof fn no_stuck_subscription(msg_len: usize, buf_capacity: usize, rx_buf_len: 
     requires
         buf_capacity > 0,
     ensures
-        // For ANY message (normal or oversized), after callback + try_recv:
+        // For ANY message (normal or oversized), after callback + take:
         ({
             let buf = callback_post_fix(msg_len, buf_capacity);
             let (new_state, got_data, got_overflow, got_size_error) =
-                try_recv_post_fix(buf, rx_buf_len);
+                take_post_fix(buf, rx_buf_len);
             // has_data is ALWAYS cleared (regardless of which path was taken)
             &&& !new_state.has_data
             // A subsequent callback can store a new message
@@ -522,7 +522,7 @@ proof fn no_stuck_subscription(msg_len: usize, buf_capacity: usize, rx_buf_len: 
 /// **Proof 10: `no_silent_truncation`**
 ///
 /// Proves that in the post-fix code, when `msg_len > buf_capacity`, the
-/// callback sets `overflow = true`, and `try_recv_raw` returns an overflow
+/// callback sets `overflow = true`, and `take_serialized` returns an overflow
 /// error (MessageTooLarge). The consumer **never** receives truncated data.
 ///
 /// Contrast with `silent_truncation_bug` (Proof 2) where the pre-fix code
@@ -539,10 +539,10 @@ proof fn no_silent_truncation(msg_len: usize, buf_capacity: usize, rx_buf_len: u
             let buf = callback_post_fix(msg_len, buf_capacity);
             // Callback sets overflow flag (not silent truncation)
             &&& buf.overflow
-            // try_recv detects the overflow
+            // take detects the overflow
             &&& ({
                 let (new_state, got_data, got_overflow, got_size_error) =
-                    try_recv_post_fix(buf, rx_buf_len);
+                    take_post_fix(buf, rx_buf_len);
                 // Overflow error is returned to the consumer
                 &&& got_overflow
                 // No data is returned (consumer doesn't see truncated bytes)
@@ -778,7 +778,7 @@ pub open spec fn service_callback_spec(req_len: usize, buf_capacity: usize) -> S
     }
 }
 
-/// State after the **pre-fix** `try_recv_request` reads from the service buffer.
+/// State after the **pre-fix** `take_request` reads from the service buffer.
 ///
 /// Models the pre-fix behavior where `BufferTooSmall` does NOT clear `has_request`.
 ///
@@ -791,7 +791,7 @@ pub open spec fn service_callback_spec(req_len: usize, buf_capacity: usize) -> S
 /// buffer.has_request.store(false, ...);
 /// Ok(Some(request))
 /// ```
-pub open spec fn try_recv_request_pre_fix(
+pub open spec fn take_request_pre_fix(
     buf: ServiceBufferGhost,
     rx_buf_len: usize,
 ) -> (ServiceBufferGhost, bool, bool) // (new_state, got_request, got_error)
@@ -813,7 +813,7 @@ pub open spec fn try_recv_request_pre_fix(
     }
 }
 
-/// State after the **post-fix** `try_recv_request` reads from the service buffer.
+/// State after the **post-fix** `take_request` reads from the service buffer.
 ///
 /// Models the post-fix behavior (after 37.1 fix) where `BufferTooSmall`
 /// clears `has_request` to avoid the stuck-service bug.
@@ -828,7 +828,7 @@ pub open spec fn try_recv_request_pre_fix(
 /// buffer.has_request.store(false, ...);
 /// Ok(Some(request))
 /// ```
-pub open spec fn try_recv_request_post_fix(
+pub open spec fn take_request_post_fix(
     buf: ServiceBufferGhost,
     rx_buf_len: usize,
 ) -> (ServiceBufferGhost, bool, bool) // (new_state, got_request, got_error)
@@ -862,7 +862,7 @@ pub open spec fn try_recv_request_post_fix(
 /// **Proof 11: `stuck_service_bug`**
 ///
 /// Proves that in the pre-fix code, when `stored_len > rx_buf_len`, the
-/// `try_recv_request` error path leaves `has_request == true`. This means
+/// `take_request` error path leaves `has_request == true`. This means
 /// every subsequent call hits the same oversized request and returns the
 /// same error — the service is permanently stuck.
 ///
@@ -877,14 +877,14 @@ proof fn stuck_service_bug(stored_len: usize, rx_buf_len: usize, buf_capacity: u
     ensures
         ({
             let buf = service_callback_spec(stored_len, buf_capacity);
-            // try_recv_request returns error AND has_request stays true
-            let (new_state, got_request, got_error) = try_recv_request_pre_fix(buf, rx_buf_len);
+            // take_request returns error AND has_request stays true
+            let (new_state, got_request, got_error) = take_request_pre_fix(buf, rx_buf_len);
             &&& got_error             // error was returned
             &&& !got_request          // no request was delivered
             &&& new_state.has_request // has_request still true → STUCK
-            // Calling try_recv again hits the same error (stuck forever)
+            // Calling take again hits the same error (stuck forever)
             &&& ({
-                let (stuck_state, got_request2, got_error2) = try_recv_request_pre_fix(new_state, rx_buf_len);
+                let (stuck_state, got_request2, got_error2) = take_request_pre_fix(new_state, rx_buf_len);
                 &&& got_error2              // same error again
                 &&& !got_request2           // still no request
                 &&& stuck_state.has_request // still stuck
@@ -900,7 +900,7 @@ proof fn stuck_service_bug(stored_len: usize, rx_buf_len: usize, buf_capacity: u
 /// **Proof 12: `no_stuck_service`**
 ///
 /// Proves that in the post-fix code, after **any** error path in
-/// `try_recv_request`, `has_request` is cleared to `false`. The next
+/// `take_request`, `has_request` is cleared to `false`. The next
 /// callback can store a new request and the service recovers.
 ///
 /// Mirrors `no_stuck_subscription` (Proof 9) for the service buffer.
@@ -911,11 +911,11 @@ proof fn no_stuck_service(req_len: usize, buf_capacity: usize, rx_buf_len: usize
     requires
         buf_capacity > 0,
     ensures
-        // For ANY request (normal or oversized), after callback + try_recv:
+        // For ANY request (normal or oversized), after callback + take:
         ({
             let buf = service_callback_spec(req_len, buf_capacity);
             let (new_state, got_request, got_error) =
-                try_recv_request_post_fix(buf, rx_buf_len);
+                take_request_post_fix(buf, rx_buf_len);
             // has_request is ALWAYS cleared (regardless of which path was taken)
             &&& !new_state.has_request
             // A subsequent callback can store a new request
@@ -974,19 +974,19 @@ pub open spec fn service_callback_post_fix(
     }
 }
 
-/// State after the **full post-fix** `try_recv_request` reads from the buffer.
+/// State after the **full post-fix** `take_request` reads from the buffer.
 ///
-/// Models the production `try_recv_request` (shim.rs:1771-1824) with all three
+/// Models the production `take_request` (shim.rs:1771-1824) with all three
 /// error paths:
 /// 1. No request → None
 /// 2. Overflow → MessageTooLarge, clear both flags
 /// 3. BufferTooSmall (stored_len > rx_buf_len) → clear has_request
 /// 4. Success → copy data, clear has_request
 ///
-/// This supersedes `try_recv_request_post_fix` which lacked the overflow check.
+/// This supersedes `take_request_post_fix` which lacked the overflow check.
 ///
 /// Returns `(new_state, got_request, got_overflow_error, got_size_error)`.
-pub open spec fn try_recv_request_full(
+pub open spec fn take_request_full(
     buf: ServiceBufferGhost,
     rx_buf_len: usize,
 ) -> (ServiceBufferGhost, bool, bool, bool)
@@ -1024,7 +1024,7 @@ pub open spec fn try_recv_request_full(
 /// **Proof 16: `no_silent_service_truncation`**
 ///
 /// Proves that in the post-fix code, when `req_len > buf_capacity`, the
-/// callback sets `overflow = true`, and `try_recv_request` returns an overflow
+/// callback sets `overflow = true`, and `take_request` returns an overflow
 /// error (MessageTooLarge). The consumer **never** receives truncated data.
 ///
 /// Mirrors `no_silent_truncation` (Proof 10) for the service buffer.
@@ -1047,10 +1047,10 @@ proof fn no_silent_service_truncation(
             let buf = service_callback_post_fix(req_len, buf_capacity);
             // Callback sets overflow flag (not silent truncation)
             &&& buf.overflow
-            // try_recv_request detects the overflow
+            // take_request detects the overflow
             &&& ({
                 let (new_state, got_request, got_overflow, got_size_error) =
-                    try_recv_request_full(buf, rx_buf_len);
+                    take_request_full(buf, rx_buf_len);
                 // Overflow error is returned to the consumer
                 &&& got_overflow
                 // No data is returned (consumer doesn't see truncated bytes)
@@ -1066,12 +1066,12 @@ proof fn no_silent_service_truncation(
 /// **Proof 17: `no_stuck_service_post_fix`**
 ///
 /// Proves that with the post-fix callback (overflow detection), after **any**
-/// error path in `try_recv_request`, `has_request` is cleared to `false`.
+/// error path in `take_request`, `has_request` is cleared to `false`.
 /// The next callback can store a new request and the service recovers.
 ///
 /// Supersedes `no_stuck_service` (Proof 12) which used the pre-fix callback
 /// spec. The pre-fix callback always sets `overflow: false`, so the overflow
-/// path in try_recv_request was never exercised.
+/// path in take_request was never exercised.
 ///
 /// This proof uses `service_callback_post_fix` to cover all three paths:
 /// overflow, BufferTooSmall, and success.
@@ -1087,11 +1087,11 @@ proof fn no_stuck_service_post_fix(
     requires
         buf_capacity > 0,
     ensures
-        // For ANY request (normal or oversized), after callback + try_recv:
+        // For ANY request (normal or oversized), after callback + take:
         ({
             let buf = service_callback_post_fix(req_len, buf_capacity);
             let (new_state, got_request, got_overflow, got_size_error) =
-                try_recv_request_full(buf, rx_buf_len);
+                take_request_full(buf, rx_buf_len);
             // has_request is ALWAYS cleared (regardless of which path was taken)
             &&& !new_state.has_request
             // A subsequent callback can store a new request
@@ -1107,7 +1107,7 @@ proof fn no_stuck_service_post_fix(
 /// **Proof 18: `service_overflow_then_normal`**
 ///
 /// Proves the full recovery cycle: an oversized request triggers overflow,
-/// the overflow is consumed by `try_recv_request` (returning an error),
+/// the overflow is consumed by `take_request` (returning an error),
 /// and a subsequent normal-sized request is accepted and delivered
 /// successfully.
 ///
@@ -1138,7 +1138,7 @@ proof fn service_overflow_then_normal(
             // Step 2: Consumer reads — gets overflow error
             &&& ({
                 let (after_overflow, got_request, got_overflow, _got_size_error) =
-                    try_recv_request_full(buf_overflow, rx_buf_len);
+                    take_request_full(buf_overflow, rx_buf_len);
                 &&& got_overflow
                 &&& !got_request
                 &&& !after_overflow.has_request
@@ -1154,7 +1154,7 @@ proof fn service_overflow_then_normal(
                     // Step 4: Consumer reads — gets the normal request
                     &&& ({
                         let (final_state, got_request2, got_overflow2, got_size_error2) =
-                            try_recv_request_full(buf_normal, rx_buf_len);
+                            take_request_full(buf_normal, rx_buf_len);
                         &&& got_request2
                         &&& !got_overflow2
                         &&& !got_size_error2

@@ -52,7 +52,7 @@ Contrast this with the alternatives:
 - **rclc** has no future or promise concept. The only way to receive a service reply is to register a callback that fires from `rclc_executor_spin_some()`. Building request/response chains becomes an explicit state machine.
 - **rclrs** has `impl Future` but no callback-poll path; you must `.await` from a Tokio task. No blocking-with-timeout helper that drives I/O internally.
 
-In nano-ros, the same `Promise` carries a borrow of the standalone service client and a sequence number; `try_recv()` polls it, `wait()` polls it in a loop while spinning the executor, and the `Future` impl integrates with any executor that calls `register_waker(&Waker)` underneath.
+In nano-ros, the same `Promise` carries a borrow of the standalone service client and a sequence number; `take()` polls it, `wait()` polls it in a loop while spinning the executor, and the `Future` impl integrates with any executor that calls `register_waker(&Waker)` underneath.
 
 ## No internal spin
 
@@ -99,7 +99,7 @@ The deeper reason: there is no other thread that can drive I/O. If `Promise::wai
 
 The same Future/Promise + explicit-executor model is preserved in C and C++ wrappers.
 
-**Rust** uses `Promise<'_, T>` directly. It implements `core::future::Future` and exposes `try_recv()` + `wait(&mut executor, ms)`.
+**Rust** uses `Promise<'_, T>` directly. It implements `core::future::Future` and exposes `take()` + `wait(&mut executor, ms)`.
 
 **C++** wraps the promise as `nros::Future<T>`:
 

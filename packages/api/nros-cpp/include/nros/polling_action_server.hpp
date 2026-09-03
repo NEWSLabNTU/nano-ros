@@ -8,7 +8,7 @@
  *
  * Phase 122.3.d.b — typed C++ wrapper over the L1 polling FFI added
  * in 122.3.d.a. Mirrors `ActionServer<A>` but drops the executor
- * registration / callback model: the caller drives `try_recv_*` /
+ * registration / callback model: the caller drives `take_*` /
  * `accept_goal` / `complete_goal` / `try_handle_get_result` from a
  * spin loop. Used by RTIC / embassy / FreeRTOS-task-per-entity
  * patterns where the user owns scheduling.

@@ -1311,7 +1311,7 @@ pub trait Session {
 
     /// Create a service server bound to this session. Replies are
     /// matched to requests by the sequence number returned from
-    /// [`ServiceTrait::try_recv_request`].
+    /// [`ServiceTrait::take_request`].
     ///
     /// `qos` is applied to both the request and reply endpoints (a
     /// service is two DDS topics; rmw uses one profile for both). The
@@ -1868,7 +1868,7 @@ pub trait Publisher {
     ///
     /// `attachment` rides alongside the payload at the wire layer.
     /// Receivers can read it back via
-    /// [`Subscription::try_recv_raw_with_attachment`].
+    /// [`Subscription::take_serialized_with_attachment`].
     ///
     /// Primary use case: cross-RMW bridges stamp a `bridge_origin`
     /// tag (the source backend's RMW name) so a paired return
@@ -2042,7 +2042,7 @@ pub trait Publisher {
 ///
 /// # Threading
 ///
-/// `&mut self` on `try_recv_raw` — the executor takes exclusive
+/// `&mut self` on `take_serialized` — the executor takes exclusive
 /// ownership of the subscriber for the duration of a receive. A
 /// backend that wants to allow concurrent receives must split into
 /// per-thread sub-handles internally.
@@ -2055,10 +2055,10 @@ pub trait Publisher {
 ///
 /// # Blocking
 ///
-/// `try_recv_raw` is **non-blocking**: returns `Ok(None)` (or
+/// `take_serialized` is **non-blocking**: returns `Ok(None)` (or
 /// equivalent for backends that map empty into a zero-length read)
 /// when no message is ready. Use [`Session::drive_io`] to wait for
-/// data; never sleep inside `try_recv_raw`.
+/// data; never sleep inside `take_serialized`.
 pub trait Subscription {
     /// Error type for receive operations
     type Error;
@@ -2080,7 +2080,7 @@ pub trait Subscription {
     /// `Ok(None)` if no message is ready. If `buf` is too small the
     /// backend may either truncate (and document it) or return an
     /// error (preferred).
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 
     /// Phase 128.F.4 — receive with attachment bytes alongside the
     /// payload.
@@ -2091,17 +2091,17 @@ pub trait Subscription {
     /// `att_buf[..attachment_len]`. `attachment_len == 0` means the
     /// incoming sample carried no attachment.
     ///
-    /// Default body falls back to [`try_recv_raw`](Self::try_recv_raw)
+    /// Default body falls back to [`take_serialized`](Self::take_serialized)
     /// and reports a 0-length attachment. Backends with native
     /// attachment support override to populate `att_buf`. Cross-RMW
     /// bridges use the attachment to read the `bridge_origin` tag
     /// stamped by the sending side.
-    fn try_recv_raw_with_attachment(
+    fn take_serialized_with_attachment(
         &mut self,
         buf: &mut [u8],
         _att_buf: &mut [u8],
     ) -> Result<Option<(usize, usize)>, Self::Error> {
-        match self.try_recv_raw(buf)? {
+        match self.take_serialized(buf)? {
             Some(len) => Ok(Some((len, 0))),
             None => Ok(None),
         }
@@ -2115,11 +2115,11 @@ pub trait Subscription {
     /// Returns the number of messages actually delivered. Partial
     /// drains MUST report the count, not error out.
     ///
-    /// Default body loop-drives `try_recv_raw` so callers can
+    /// Default body loop-drives `take_serialized` so callers can
     /// commit to the batched API regardless of backend support.
     /// Concrete backends opt in by overriding with a native batch
     /// take (zenoh queue drain, `dds_take(max_samples)`).
-    fn try_recv_sequence(
+    fn take_sequence(
         &mut self,
         buf: &mut [u8],
         per_msg_cap: usize,
@@ -2133,7 +2133,7 @@ pub trait Subscription {
         let mut count = 0;
         for i in 0..limit {
             let slot = &mut buf[i * per_msg_cap..(i + 1) * per_msg_cap];
-            // Issue 0971 — NOT `try_recv_raw(slot)?`. The `?` propagates the
+            // Issue 0971 — NOT `take_serialized(slot)?`. The `?` propagates the
             // error and DISCARDS `count`, which is precisely what the doc
             // comment above forbids ("Partial drains MUST report the count, not
             // error out") and what `c3af8c1d1` removed from the two concrete
@@ -2149,9 +2149,9 @@ pub trait Subscription {
             // Parking is per-implementation state, which a default body has no
             // place to keep. So it does the half it can do correctly: it
             // returns the partial count and lets the error surface on the
-            // caller's next `try_recv_raw`, which is where an unconsumed
+            // caller's next `take_serialized`, which is where an unconsumed
             // backend error still sits.
-            match self.try_recv_raw(slot) {
+            match self.take_serialized(slot) {
                 Ok(Some(len)) => {
                     out_lens[i] = len;
                     count += 1;
@@ -2169,10 +2169,10 @@ pub trait Subscription {
     }
 
     /// Try to receive a typed message (non-blocking)
-    fn try_recv<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error> {
+    fn take<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error> {
         use nros_core::CdrReader;
 
-        match self.try_recv_raw(buf)? {
+        match self.take_serialized(buf)? {
             Some(len) => {
                 let mut reader = CdrReader::new_with_header(&buf[..len])
                     .map_err(|_| self.deserialization_error())?;
@@ -2199,7 +2199,7 @@ pub trait Subscription {
     /// which broke large messages with no diagnostic. Backends must
     /// override this with a real zero-copy path if they advertise support
     /// for `process_raw_in_place`; callers that hit the default should
-    /// use `try_recv_raw` with a caller-sized buffer instead.
+    /// use `take_serialized` with a caller-sized buffer instead.
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error>
     where
         Self::Error: From<TransportError>,
@@ -2236,7 +2236,7 @@ pub trait Subscription {
     /// **Default body**: returns the unsupported error (mirrors
     /// `process_raw_in_place`). Backends that advertise in-place support override
     /// this with a real zero-copy path; callers that hit the default should use
-    /// the buffered [`try_recv_raw_with_info`](Subscription::try_recv_raw_with_info)
+    /// the buffered [`take_serialized_with_info`](Subscription::take_serialized_with_info)
     /// path instead. (RFC-0038, Phase 231 Wave 0.1.)
     fn process_raw_in_place_with_info(
         &mut self,
@@ -2259,12 +2259,13 @@ pub trait Subscription {
     /// - `len` is the number of bytes written to the buffer
     /// - `info` is the parsed publisher metadata (if attachment was present)
     ///
-    /// Default: delegates to [`try_recv_raw`](Subscription::try_recv_raw) with no info.
-    fn try_recv_raw_with_info(
+    /// Default: delegates to [`take_serialized`](Subscription::take_serialized) with no info.
+    fn take_serialized_with_info(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, Option<nros_core::MessageInfo>)>, Self::Error> {
-        self.try_recv_raw(buf).map(|opt| opt.map(|len| (len, None)))
+        self.take_serialized(buf)
+            .map(|opt| opt.map(|len| (len, None)))
     }
 
     /// Try to receive raw data with E2E safety validation (CRC + sequence tracking).
@@ -2273,13 +2274,13 @@ pub trait Subscription {
     /// - `len` is the number of bytes written to the buffer
     /// - `status` is the integrity validation result
     ///
-    /// Default: delegates to `try_recv_raw` with no CRC info.
+    /// Default: delegates to `take_serialized` with no CRC info.
     #[cfg(feature = "safety-e2e")]
-    fn try_recv_validated(
+    fn take_validated(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, crate::IntegrityStatus)>, Self::Error> {
-        self.try_recv_raw(buf).map(|opt| {
+        self.take_serialized(buf).map(|opt| {
             opt.map(|len| {
                 (
                     len,
@@ -2423,7 +2424,7 @@ pub trait SlotBorrowing: Subscription {
 ///
 /// # Threading
 ///
-/// `&mut self` on `try_recv_request` and `send_response` — the executor
+/// `&mut self` on `take_request` and `send_response` — the executor
 /// owns the server while a request is being handled. Handler bodies
 /// run synchronously on the executor thread; long handlers should
 /// dispatch work to a worker queue and reply later via the recorded
@@ -2431,7 +2432,7 @@ pub trait SlotBorrowing: Subscription {
 ///
 /// # Calling pattern
 ///
-/// 1. Executor calls `try_recv_request(buf)`.
+/// 1. Executor calls `take_request(buf)`.
 /// 2. If `Some(req)` returned, decode, run handler, encode reply.
 /// 3. `send_response(req.sequence_number, &reply_buf)`.
 ///
@@ -2465,7 +2466,7 @@ pub trait ServiceTrait {
     /// `buf`. The borrow is released when the returned struct is
     /// dropped — typically before `send_response` is called, since
     /// `send_response` takes `&mut self`.
-    fn try_recv_request<'a>(
+    fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error>;
@@ -2497,7 +2498,7 @@ pub trait ServiceTrait {
         // would feed the prefix bytes to the CDR deserializer and
         // silently corrupt the request.
         let buf_start = req_buf.as_ptr() as usize;
-        let (data_offset, data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+        let (data_offset, data_len, sequence_number) = match self.take_request(req_buf)? {
             Some(request) => {
                 let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
                 (offset, request.data.len(), request.sequence_number)
@@ -2545,7 +2546,7 @@ pub trait ServiceTrait {
         use nros_core::{CdrReader, CdrWriter};
 
         let buf_start = req_buf.as_ptr() as usize;
-        let (data_offset, data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+        let (data_offset, data_len, sequence_number) = match self.take_request(req_buf)? {
             Some(request) => {
                 let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
                 (offset, request.data.len(), request.sequence_number)
@@ -2619,7 +2620,7 @@ pub trait ServiceTrait {
         use nros_core::{CdrReader, CdrWriter};
 
         let buf_start = req_buf.as_ptr() as usize;
-        let (data_offset, data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+        let (data_offset, data_len, sequence_number) = match self.take_request(req_buf)? {
             Some(request) => {
                 let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
                 (offset, request.data.len(), request.sequence_number)
@@ -2657,11 +2658,11 @@ pub trait ServiceTrait {
 /// 1. `send_request_raw(buf)` — non-blocking; returns once the
 ///    request is queued for transmission.
 /// 2. The executor's `drive_io` runs.
-/// 3. `try_recv_reply_raw(buf)` — non-blocking; returns
+/// 3. `take_response_raw(buf)` — non-blocking; returns
 ///    `Ok(Some(len))` when the reply is back.
 ///
 /// Phase-301 (issue 0240): the deprecated blocking `call_raw` path is
-/// DELETED — `send_request_raw` + `try_recv_reply_raw` is the one
+/// DELETED — `send_request_raw` + `take_response_raw` is the one
 /// request/reply path, and both are required for service-capable
 /// backends.
 pub trait ClientTrait {
@@ -2671,7 +2672,7 @@ pub trait ClientTrait {
     /// Send a service request without waiting for a reply (non-blocking).
     ///
     /// Returns the SEQUENCE ID the backend assigned. The caller must
-    /// subsequently poll [`try_recv_reply_raw`](Self::try_recv_reply_raw) and
+    /// subsequently poll [`take_response_raw`](Self::take_response_raw) and
     /// match that id against the one the reply carries.
     ///
     /// Issue 0778 — this returned `()` until 2026-08-25, and every backend
@@ -2691,7 +2692,7 @@ pub trait ClientTrait {
     ///
     /// It used to say "a reply to the MOST RECENTLY sent request", which was
     /// the single-outstanding-call assumption written into the contract.
-    fn try_recv_reply_raw(
+    fn take_response_raw(
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<(usize, i64)>, Self::Error>;
@@ -2721,8 +2722,8 @@ pub trait ClientTrait {
 
     /// Poll for a typed reply to the most recently sent request (non-blocking).
     ///
-    /// Calls [`try_recv_reply_raw`](Self::try_recv_reply_raw) and deserializes if available.
-    fn try_recv_reply<S: RosService>(
+    /// Calls [`take_response_raw`](Self::take_response_raw) and deserializes if available.
+    fn take_response<S: RosService>(
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<S::Reply>, Self::Error>
@@ -2731,7 +2732,7 @@ pub trait ClientTrait {
     {
         use nros_core::CdrReader;
 
-        match self.try_recv_reply_raw(reply_buf)? {
+        match self.take_response_raw(reply_buf)? {
             Some((len, _seq)) => {
                 let mut reader = CdrReader::new_with_header(&reply_buf[..len])
                     .map_err(|_| TransportError::DeserializationError)?;
@@ -2875,7 +2876,7 @@ pub trait Rmw {
 mod tests {
     use super::*;
 
-    /// Issue 0971 — the DEFAULT `try_recv_sequence` body must report a partial
+    /// Issue 0971 — the DEFAULT `take_sequence` body must report a partial
     /// count rather than discard it, which is what its own doc comment says and
     /// what `?` did not do.
     ///
@@ -2884,7 +2885,7 @@ mod tests {
     /// the `?` threw them away and the caller could not tell two messages had
     /// been consumed — they were gone from the queue and absent from the
     /// result.
-    mod try_recv_sequence_default {
+    mod take_sequence_default {
         use super::*;
 
         #[derive(Debug, PartialEq)]
@@ -2898,7 +2899,7 @@ mod tests {
         impl Subscription for ThenErrors {
             type Error = Boom;
 
-            fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+            fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
                 if self.left == 0 {
                     return Err(Boom);
                 }
@@ -2919,7 +2920,7 @@ mod tests {
             let mut lens = [0usize; 4];
 
             // Two messages are available, the third call errors.
-            let got = sub.try_recv_sequence(&mut buf, 8, 4, &mut lens);
+            let got = sub.take_sequence(&mut buf, 8, 4, &mut lens);
 
             assert_eq!(
                 got,
@@ -2938,7 +2939,7 @@ mod tests {
 
             // No count to protect, so the caller should see the error itself
             // rather than an ambiguous `Ok(0)`.
-            assert_eq!(sub.try_recv_sequence(&mut buf, 8, 4, &mut lens), Err(Boom));
+            assert_eq!(sub.take_sequence(&mut buf, 8, 4, &mut lens), Err(Boom));
         }
     }
 

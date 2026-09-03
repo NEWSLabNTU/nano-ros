@@ -20,7 +20,7 @@ related: [0969, 0958, 0896, phase-391, 0038]
 >
 >     publish_raw  : CDR bytes →  dds_stream_read_sample → typed buf
 >                    → dds_write (Cyclone re-serialises) → wire
->     try_recv_raw : wire → dds_take (typed buf)
+>     take_serialized : wire → dds_take (typed buf)
 >                    → dds_stream_write_sample → CDR bytes → caller
 >
 > […] Cost: a 2× CDR roundtrip per publish + per recv. […] A future zero-copy fast

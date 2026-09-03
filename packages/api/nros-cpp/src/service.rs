@@ -267,7 +267,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_register(
 /// # Safety
 /// All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_service_server_try_recv_raw(
+pub unsafe extern "C" fn nros_cpp_service_server_take_request_raw(
     storage: *mut c_void,
     out_data: *mut u8,
     out_capacity: usize,
@@ -281,7 +281,7 @@ pub unsafe extern "C" fn nros_cpp_service_server_try_recv_raw(
     let server = unsafe { &mut *(storage as *mut nros::internals::RmwServiceServer) };
     let out_slice = unsafe { core::slice::from_raw_parts_mut(out_data, out_capacity) };
 
-    match server.try_recv_request(out_slice) {
+    match server.take_request(out_slice) {
         Ok(Some(request)) => {
             unsafe {
                 *out_len = request.data.len();
@@ -476,7 +476,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
     // Bounded blocking call that NEVER drives the executor (issue 0278 Half B):
-    // send, then poll `try_recv_reply_raw` sleeping `nros_platform_sleep_ms`
+    // send, then poll `take_response_raw` sleeping `nros_platform_sleep_ms`
     // between attempts until `timeout_ms` elapses. Because it does not call
     // `spin_once`, it is safe to invoke from inside a subscription/timer
     // callback (which runs while the executor is exclusively borrowed) — on a
@@ -498,7 +498,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_call_raw(
     const STEP_MS: u32 = 5;
     let mut waited_ms: u32 = 0;
     loop {
-        match client.try_recv_reply_raw(resp_slice) {
+        match client.take_response_raw(resp_slice) {
             // Issue 0778 — one call in flight on this blocking path.
             Ok(Some((len, _seq))) => {
                 unsafe {
@@ -707,7 +707,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_send_request(
 /// # Safety
 /// All pointers must be valid. `resp_data` must point to `resp_capacity` writable bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
+pub unsafe extern "C" fn nros_cpp_service_client_take_response(
     storage: *mut c_void,
     resp_data: *mut u8,
     resp_capacity: usize,
@@ -719,7 +719,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_try_recv_reply(
     let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
     let resp_slice = unsafe { core::slice::from_raw_parts_mut(resp_data, resp_capacity) };
 
-    match client.try_recv_reply_raw(resp_slice) {
+    match client.take_response_raw(resp_slice) {
         Ok(Some((len, _seq))) => {
             unsafe {
                 *resp_len = len;

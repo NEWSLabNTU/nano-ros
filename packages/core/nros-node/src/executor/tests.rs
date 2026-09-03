@@ -2521,7 +2521,7 @@ fn test_trigger_always_fires_without_data() {
 
     // No data, but trigger Always → dispatch phase runs, callback fires
     let _result = executor.spin_once(core::time::Duration::from_millis(0));
-    // Subscription try_recv returns None, so subscriptions_processed stays 0
+    // Subscription take returns None, so subscriptions_processed stays 0
     // but the callback IS invoked (Always invocation) — try_process returns Ok(false)
     // because there's no actual data
     assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
@@ -3010,7 +3010,7 @@ fn test_trigger_allof_empty_set_always_fires() {
 
     // No data loaded, but trigger passes (empty set)
     let result = executor.spin_once(core::time::Duration::from_millis(0));
-    // Subscription still has no data, so callback won't fire (try_recv returns None)
+    // Subscription still has no data, so callback won't fire (take returns None)
     assert_eq!(result.subscriptions_processed, 0);
 }
 
@@ -3255,7 +3255,7 @@ fn test_node_service_client_with_qos() {
 }
 
 /// RFC-0041 / Phase 239.4 — a callback-based service client delivers the reply
-/// to its typed closure at `spin_once` (no `Promise::try_recv`). Drives the full
+/// to its typed closure at `spin_once` (no `Promise::take`). Drives the full
 /// `call` → inject-reply → dispatch → callback path through the executor with the
 /// mock transport.
 #[test]
@@ -3587,7 +3587,7 @@ fn test_promise_try_recv_returns_none_then_some() {
     // Access the mock client through the promise handle
     promise.handle.load_reply(reply_buf, reply_len);
 
-    // Now try_recv should return the reply
+    // Now take should return the reply
     let reply = promise.take().unwrap().unwrap();
     assert_eq!(reply.sum, 99);
 }

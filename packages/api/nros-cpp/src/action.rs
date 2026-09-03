@@ -1723,7 +1723,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
         uuid: unsafe { *goal_id },
     };
 
-    // Reset stashes before sending (so try_recv_*  starts clean)
+    // Reset stashes before sending (so take_*  starts clean)
     unsafe { core::ptr::write(core::ptr::addr_of_mut!(RESULT_STASH_LEN), -1i32) };
     unsafe { core::ptr::write(core::ptr::addr_of_mut!(FEEDBACK_STASH_LEN), -1i32) };
 

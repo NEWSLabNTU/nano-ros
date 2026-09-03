@@ -697,26 +697,83 @@ pub unsafe extern "C" fn nros_action_execute(
 
 /// Get the number of currently active goals.
 ///
-/// Reads from the arena via `ActionServerRawHandle::active_goal_count`.
-/// Returns `0` if the server isn't registered or has been finalised.
+/// Phase-379 W6 decision 3: ONE function in rcl's shape, serving both
+/// tiers. Upstream ships no count function; its nearest neighbour is
+/// `rcl_action_server_get_goal_handles(server, ***handles, size_t
+/// *num_goals) -> rcl_ret_t`, which reports the count through an
+/// out-param and keeps the return code for "did the query work". This
+/// replaces the pair `nros_action_server_get_active_goal_count(server)
+/// -> size_t` (answered 0 on every error) and
+/// `nros_action_server_active_goal_count_raw(server) -> int32_t`
+/// (negative = error code), each of which collapsed the two channels
+/// into one value.
+///
+/// The tier is selected by `server->state`, and the two tiers read
+/// DIFFERENT STORAGE — this was never one field behind two names:
+///
+/// * `NROS_ACTION_SERVER_STATE_INITIALIZED` (L2, callback tier) reads
+///   the executor arena through `ActionServerRawHandle::active_goal_count`.
+/// * `NROS_ACTION_SERVER_STATE_POLLING` (L1, polling tier) reads the
+///   `ActionServerCore` living inline in `_opaque`, with no executor and
+///   no arena indirection, behind `#[cfg(feature = "rmw-cffi")]`.
+///
+/// Returns:
+///
+/// * `NROS_RET_OK` — `*out` holds the count, which may legitimately be 0.
+/// * `NROS_RET_INVALID_ARGUMENT` — `server` or `out` is NULL.
+/// * `NROS_RET_NOT_INIT` — the server is UNINITIALIZED or SHUTDOWN; or it
+///   is INITIALIZED but was never registered with an executor (or has
+///   been finalised); or it is POLLING in a build without `rmw-cffi`,
+///   where the inline core was never constructed.
+///
+/// `*out` is left untouched on every error path, so a caller that ignores
+/// the return code reads back its own initialiser rather than a
+/// fabricated `0` — which is precisely the ambiguity the old `size_t`
+/// spelling could not escape.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
-    server: *const nros_action_server_t,
-) -> usize {
-    if server.is_null() {
-        return 0;
+    server: *mut nros_action_server_t,
+    out: *mut usize,
+) -> nros_ret_t {
+    validate_not_null!(server, out);
+
+    match (*server).state {
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED => {
+            let internal = get_internal(server);
+            if !internal.is_handle_set() {
+                return NROS_RET_NOT_INIT;
+            }
+            let handle = internal.handle;
+            let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+            *out = handle.active_goal_count(executor);
+            NROS_RET_OK
+        }
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_POLLING => {
+            #[cfg(feature = "rmw-cffi")]
+            {
+                match polling_server_core(server) {
+                    Some(core) => {
+                        *out = core.active_goal_count();
+                        NROS_RET_OK
+                    }
+                    // Unreachable: `polling_server_core` rejects only NULL
+                    // (excluded above) and a non-POLLING state (this arm).
+                    // Mapped rather than `unreachable!()` so a future
+                    // rejection reason cannot turn into a panic across the
+                    // FFI boundary.
+                    None => NROS_RET_NOT_INIT,
+                }
+            }
+            // `nros_action_server_init_polling` sets `state = POLLING`
+            // outside the `rmw-cffi` gate, so this arm is reachable: the
+            // state says polling and `_opaque` holds no core.
+            #[cfg(not(feature = "rmw-cffi"))]
+            {
+                NROS_RET_NOT_INIT
+            }
+        }
+        _ => NROS_RET_NOT_INIT,
     }
-    let server_ref = &*server;
-    if server_ref.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
-        return 0;
-    }
-    let internal = get_internal(server);
-    if !internal.is_handle_set() {
-        return 0;
-    }
-    let handle = internal.handle;
-    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-    handle.active_goal_count(executor)
 }
 
 /// Look up a goal's current status in the arena by UUID.
@@ -1461,27 +1518,12 @@ unsafe fn set_action_server_wake_callback(
     }
 }
 
-/// Phase 122.3.c.6.b — L1 polling: get the number of active goals.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_server_active_goal_count_raw(
-    server: *mut nros_action_server_t,
-) -> i32 {
-    if server.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
-    #[cfg(feature = "rmw-cffi")]
-    {
-        let core = match polling_server_core(server) {
-            Some(c) => c,
-            None => return NROS_RET_INVALID_ARGUMENT,
-        };
-        core.active_goal_count() as i32
-    }
-    #[cfg(not(feature = "rmw-cffi"))]
-    {
-        NROS_RET_NOT_INIT
-    }
-}
+// `nros_action_server_active_goal_count_raw` lived here until
+// phase-379 W6 decision 3 merged it into
+// `nros_action_server_get_active_goal_count`, which now branches on
+// `state` to serve the polling tier too. The old spelling survives as a
+// deprecated `static inline` forwarder in `nros/action.h`, so it exports
+// no symbol from here any more.
 
 // ============================================================================
 // Kani Verification
@@ -1721,8 +1763,29 @@ mod verification {
     #[kani::proof]
     #[kani::unwind(5)]
     fn action_server_active_goal_count_null() {
-        let count = unsafe { nros_action_server_get_active_goal_count(ptr::null()) };
-        assert_eq!(count, 0);
+        let mut count: usize = 7;
+
+        // NULL server.
+        assert_eq!(
+            unsafe { nros_action_server_get_active_goal_count(ptr::null_mut(), &mut count) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL out-param.
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_action_server_get_active_goal_count(&mut srv, ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // Zero-initialised server is UNINITIALIZED: neither tier claims it.
+        assert_eq!(
+            unsafe { nros_action_server_get_active_goal_count(&mut srv, &mut count) },
+            NROS_RET_NOT_INIT,
+        );
+
+        // `*out` is untouched on every error path.
+        assert_eq!(count, 7);
     }
 
     #[kani::proof]

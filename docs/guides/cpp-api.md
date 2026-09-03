@@ -119,7 +119,7 @@ NROS_TRY(pub.publish(msg));
 
 ### Subscription
 
-Subscriptions use manual polling — call `spin_once()` to drive I/O, then `try_recv()` to check for messages:
+Subscriptions use manual polling — call `spin_once()` to drive I/O, then `take()` to check for messages:
 
 ```cpp
 nros::Subscription<std_msgs::msg::Int32> sub;
@@ -128,7 +128,7 @@ NROS_TRY(node.create_subscription(sub, "/chatter"));
 nros::spin_once(100);
 
 std_msgs::msg::Int32 msg;
-if (sub.try_recv(msg)) {
+if (sub.take(msg)) {
     printf("Received: %d\n", msg.data);
 }
 ```
@@ -147,7 +147,7 @@ NROS_TRY(node.create_service(srv, "/add_two_ints"));
 nros::spin_once(10);
 AddTwoInts::Request req;
 int64_t seq;
-if (srv.try_recv_request(req, seq)) {
+if (srv.take_request(req, seq)) {
     AddTwoInts::Response resp;
     resp.sum = req.a + req.b;
     srv.send_response(seq, resp);

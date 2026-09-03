@@ -1768,7 +1768,7 @@ mod ghost_checks {
 
     /// Helper: parse attachment bytes and validate CRC against payload.
     ///
-    /// This mirrors the logic in `try_recv_validated()` but is testable
+    /// This mirrors the logic in `take_validated()` but is testable
     /// without creating a full `ZenohSubscriber` (which requires a zenoh session).
     #[cfg(feature = "safety-e2e")]
     fn validate_from_buffers(
@@ -1975,9 +1975,9 @@ mod ghost_checks {
 
     #[test]
     fn sub_svc_independent() {
-        use service::tests::{reset_service_buffer, simulate_service_request, try_recv_service};
+        use service::tests::{reset_service_buffer, simulate_service_request, take_service};
         use subscriber::tests::{
-            reset_subscriber_buffer, simulate_subscription_callback, try_recv_subscription,
+            reset_subscriber_buffer, simulate_subscription_callback, take_subscription,
         };
 
         // Use slot 2 — subscription array and service array are separate
@@ -1989,20 +1989,20 @@ mod ghost_checks {
         simulate_service_request(slot, b"svc_data", b"svc/x");
 
         let mut recv_buf = [0u8; 1024];
-        let sub_result = try_recv_subscription(slot, &mut recv_buf);
+        let sub_result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(sub_result, Ok(Some(8))));
         assert_eq!(&recv_buf[..8], b"sub_data");
 
-        let svc_result = try_recv_service(slot, &mut recv_buf);
+        let svc_result = take_service(slot, &mut recv_buf);
         assert!(matches!(svc_result, Ok(Some(8))));
         assert_eq!(&recv_buf[..8], b"svc_data");
     }
 
     #[test]
     fn sub_overflow_does_not_affect_svc() {
-        use service::tests::{reset_service_buffer, simulate_service_request, try_recv_service};
+        use service::tests::{reset_service_buffer, simulate_service_request, take_service};
         use subscriber::tests::{
-            reset_subscriber_buffer, simulate_subscription_callback, try_recv_subscription,
+            reset_subscriber_buffer, simulate_subscription_callback, take_subscription,
         };
 
         let slot = 3;
@@ -2013,18 +2013,18 @@ mod ghost_checks {
         // SUBSCRIBER_BUFFER_SIZE (1024 B); `simulate_subscription_callback`
         // silently drops it (matches the C producer's behavior — overflow
         // is observable via `overflow_drops_total` per Phase 160.L.2, not
-        // via the `try_recv` path).
+        // via the `take` path).
         simulate_subscription_callback(slot, &[0u8; 2000]);
         // Service normal request
         simulate_service_request(slot, b"svc_ok", b"svc/x");
 
         // Subscription ring stays empty (oversized payload was dropped).
         let mut recv_buf = [0u8; 1024];
-        let sub_result = try_recv_subscription(slot, &mut recv_buf);
+        let sub_result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(sub_result, Ok(None)));
 
         // Service buffer unaffected
-        let svc_result = try_recv_service(slot, &mut recv_buf);
+        let svc_result = take_service(slot, &mut recv_buf);
         assert!(matches!(svc_result, Ok(Some(6))));
         assert_eq!(&recv_buf[..6], b"svc_ok");
     }

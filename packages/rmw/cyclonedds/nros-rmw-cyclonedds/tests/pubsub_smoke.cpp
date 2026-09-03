@@ -2,7 +2,7 @@
 //
 // Drives publisher_create / subscriber_create / *_destroy through
 // the registered vtable. Verifies the topic + writer + reader are
-// real Cyclone entities and that try_recv_raw yields no bytes before
+// real Cyclone entities and that take_serialized yields no bytes before
 // any publish (has_data is a poll-only conservative always-1).
 //
 // Stubs `nros_rmw_cffi_register` since the runtime isn't linked.
@@ -20,7 +20,7 @@ const nros_rmw_vtable_t* g_vt = nullptr;
 } // namespace
 
 extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
-                                                       const nros_rmw_vtable_t* vt) {
+                                                  const nros_rmw_vtable_t* vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
 }
@@ -35,7 +35,8 @@ int main() {
     s.node_name = "nros_rmw_cyclonedds_pubsub_smoke";
     s.namespace_ = "/";
 
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, nullptr, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, nullptr, &s) !=
+        NROS_RMW_RET_OK) {
         std::fprintf(stderr, "open failed\n");
         return 2;
     }
@@ -43,9 +44,9 @@ int main() {
     // Phase 376 W5/B1 — entities are created ON A NODE now. The node
     // carries its own identity plus the route to its session.
     rmw_node_t node{};
-    node.name       = s.node_name;
+    node.name = s.node_name;
     node.namespace_ = s.namespace_;
-    node.session    = &s;
+    node.session = &s;
 
     // Default-ish QoS — reliability=reliable, history=keep_last(10).
     rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
@@ -96,7 +97,8 @@ int main() {
     uint8_t rxbuf[64];
     size_t rxn = 0;
     bool rxtook = true;
-    if (nros_test_take(g_vt, &sub, rxbuf, sizeof(rxbuf), &rxn, &rxtook) != NROS_RMW_RET_OK || rxtook) {
+    if (nros_test_take(g_vt, &sub, rxbuf, sizeof(rxbuf), &rxn, &rxtook) != NROS_RMW_RET_OK ||
+        rxtook) {
         std::fprintf(stderr, "take should yield nothing with no published data\n");
         g_vt->destroy_subscription(&sub);
         g_vt->destroy_publisher(&pub);

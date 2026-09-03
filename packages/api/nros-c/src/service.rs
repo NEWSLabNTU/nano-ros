@@ -129,7 +129,7 @@ pub enum nros_service_state_t {
     NROS_SERVICE_STATE_SHUTDOWN = 2,
     /// Phase 122.3.c.4 — L1 polling-mode: transport entity lives inline
     /// in `_opaque`; caller drains via
-    /// `nros_service_try_recv_request_raw` and replies via
+    /// `nros_service_take_request_raw` and replies via
     /// `nros_service_send_response_raw`. No executor registration.
     NROS_SERVICE_STATE_POLLING = 3,
 }
@@ -434,7 +434,7 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 // L1 path: caller owns scheduling. The transport server is created
 // during `nros_service_init_polling` and stored inline in
 // `service._opaque`; caller drains requests via
-// `nros_service_try_recv_request_raw` and replies via
+// `nros_service_take_request_raw` and replies via
 // `nros_service_send_response_raw`. No executor registration. Used by
 // RTIC / embassy / FreeRTOS-task-per-entity patterns and the C/C++
 // FFI shims for callers that drive their own poll loops.
@@ -443,7 +443,7 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 ///
 /// Creates the underlying RMW server immediately and stores it inline
 /// in the service's `_opaque` field. The caller drains received
-/// requests via `nros_service_try_recv_request_raw` and sends replies
+/// requests via `nros_service_take_request_raw` and sends replies
 /// via `nros_service_send_response_raw`.
 ///
 /// # Parameters
@@ -671,7 +671,7 @@ pub unsafe extern "C" fn nros_client_set_wake_callback(
 /// `service` must be in `POLLING` state. `buf` writable for `buf_len`
 /// bytes. `sequence_number` writable for `i64`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_service_try_recv_request_raw(
+pub unsafe extern "C" fn nros_service_take_request_raw(
     service: *mut nros_service_t,
     buf: *mut u8,
     buf_len: usize,
@@ -693,7 +693,7 @@ pub unsafe extern "C" fn nros_service_try_recv_request_raw(
                 { crate::config::MESSAGE_BUFFER_SIZE },
                 { crate::config::MESSAGE_BUFFER_SIZE },
             >);
-        match raw.try_recv_request_raw() {
+        match raw.take_request_raw() {
             Ok(Some((len, seq))) => {
                 let copy_len = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(raw.req_buffer().as_ptr(), buf, copy_len);
@@ -714,7 +714,7 @@ pub unsafe extern "C" fn nros_service_try_recv_request_raw(
 /// Phase 122.3.c.4 — send a reply on an L1 polling-mode service.
 ///
 /// `sequence_number` must equal the value returned by the most recent
-/// `nros_service_try_recv_request_raw` for the request being replied
+/// `nros_service_take_request_raw` for the request being replied
 /// to.
 ///
 /// # Safety
@@ -921,7 +921,7 @@ pub enum nros_client_state_t {
     NROS_CLIENT_STATE_SHUTDOWN = 3,
     /// Phase 122.3.c.5 — L1 polling-mode: transport entity lives inline
     /// in `_opaque`; caller drives via `nros_client_send_request_raw`
-    /// and `nros_client_try_recv_reply_raw`. No executor registration.
+    /// and `nros_client_take_response_raw`. No executor registration.
     NROS_CLIENT_STATE_POLLING = 4,
 }
 
@@ -1195,7 +1195,7 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 /// Creates the underlying RMW client immediately and stores it inline
 /// in the client's `_opaque` field. The caller drives the
 /// request/reply cycle via `nros_client_send_request_raw` +
-/// `nros_client_try_recv_reply_raw`.
+/// `nros_client_take_response_raw`.
 ///
 /// # Parameters
 /// * `client` - Pointer to a zero-initialized client
@@ -1297,7 +1297,7 @@ pub unsafe extern "C" fn nros_client_init_polling(
 
 /// Phase 122.3.c.5 — send a raw request on an L1 polling-mode client.
 /// Non-blocking. Poll for the reply via
-/// `nros_client_try_recv_reply_raw`.
+/// `nros_client_take_response_raw`.
 ///
 /// # Safety
 /// `client` must be in `POLLING` state. `data` readable for `len`
@@ -1349,7 +1349,7 @@ pub unsafe extern "C" fn nros_client_send_request_raw(
 /// `client` must be in `POLLING` state. `buf` writable for `buf_len`
 /// bytes.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_try_recv_reply_raw(
+pub unsafe extern "C" fn nros_client_take_response_raw(
     client: *mut nros_client_t,
     buf: *mut u8,
     buf_len: usize,
@@ -1370,7 +1370,7 @@ pub unsafe extern "C" fn nros_client_try_recv_reply_raw(
                 { crate::config::MESSAGE_BUFFER_SIZE },
                 { crate::config::MESSAGE_BUFFER_SIZE },
             >);
-        match raw.try_recv_reply_raw() {
+        match raw.take_response_raw() {
             Ok(Some(len)) => {
                 let copy_len = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(raw.reply_buffer().as_ptr(), buf, copy_len);
@@ -1755,7 +1755,7 @@ pub unsafe extern "C" fn nros_client_send_request_async(
 /// * `NROS_RET_NOT_INIT` if the client isn't registered or has no pending request
 /// * `NROS_RET_ERROR` on transport failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_client_try_recv_response(
+pub unsafe extern "C" fn nros_client_take_response(
     client: *mut nros_client_t,
     response_data: *mut u8,
     response_capacity: usize,
@@ -1788,7 +1788,7 @@ pub unsafe extern "C" fn nros_client_try_recv_response(
         }
 
         let buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
-        match entry.handle.try_recv_reply_raw(buf) {
+        match entry.handle.take_response_raw(buf) {
             Ok(Some((len, _seq))) => {
                 entry.pending = false;
                 *response_len = len;
@@ -1981,12 +1981,12 @@ pub unsafe extern "C" fn nros_client_call(
     // queryable isn't ready, calls [2–4] all return BAD_SEQUENCE, the
     // test sees 0 responses and fails even though the server came up
     // fine. Symmetrical to the RAII-style reset on Rust's `Promise`
-    // drop path (handles.rs::Promise::try_recv clears `in_flight` on
+    // drop path (handles.rs::Promise::take clears `in_flight` on
     // successful reception) — we reset here on the timeout path.
     //
     // Semantic note: if the late reply for the timed-out call arrives
     // before the caller fires another request, it will be picked up
-    // by the next `nros_client_try_recv_response` / spin dispatch.
+    // by the next `nros_client_take_response` / spin dispatch.
     // That's a known "stale reply" quirk of single-slot clients; the
     // caller either tolerates it (match on returned seq) or resets
     // the slot explicitly. The previous behaviour — silently jamming

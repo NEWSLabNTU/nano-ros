@@ -422,8 +422,11 @@ consistently on each side:
   non-blocking receive `take`. Both are non-blocking and both report emptiness
   without failing, so nothing asks for the other word — and `try_recv` is Rust
   channel vocabulary that reads as a different contract to a ROS 2 user.
+  **EXECUTED 2026-09-03 (W6 decision 1).**
 * **SERIALIZED → we say RAW.** `publish_serialized_message`/`take_serialized`
-  against `publish_raw`/`try_recv_raw`.
+  against `publish_raw`/`try_recv_raw`. **Receive half executed 2026-09-03**
+  (`try_recv_raw` -> `take_serialized`); `publish_raw` still says RAW, and
+  `c:publish_serialized_message` now owns that half on its own.
 
 Plus `create_publisher`/`create_subscription` against our free-function
 `make_publisher`/`make_subscription`, and `Publisher::borrow_loaned_message`
@@ -645,6 +648,8 @@ must keep upstream's two channels, in a carrier that works without unwinding.
 
 ### Decision 1 — `try_recv` becomes `take`; the squatter is deleted
 
+**LANDED 2026-09-03** — see “How decision 1 landed” at the end of this section.
+
 `Subscription::try_recv(M&) -> Result` and `rclcpp::Subscription::take(M&,
 MessageInfo&) -> bool` are THE SAME OPERATION: non-blocking, consuming. Ours
 already carries `success` / `TryAgain` / `NotInitialized` / `Error` in a
@@ -667,6 +672,65 @@ Same name, same signature, no compile error.
 It yields: it is a convenience duplicating `take_data()`, and it has **zero real
 callers** (one compile test) against 5 for the faithful Autoware mirrors
 `take_data()` / `take_new_data()` (issue 0278), which stay.
+
+**How decision 1 landed — 2026-09-03.**
+
+The rename is one mapping, applied to the receive verb wherever it names the
+subscription / service / client operation, in all three languages:
+
+| was | is |
+| --- | --- |
+| `try_recv` | `take` |
+| `try_recv_raw` | `take_serialized` |
+| `try_recv_request` | `take_request` |
+| `try_recv_reply_raw` | `take_response_raw` |
+| `try_recv_sequence` | `take_sequence` |
+| `try_recv_validated` | `take_validated` |
+
+`take_serialized`, not `take_raw`: ROS 2 says SERIALIZED for the pre-CDR byte
+form, which is what `c:take_serialized_message` settles. The publish half
+(`publish_raw`) is deliberately NOT in this move — it is
+`c:publish_serialized_message`'s own row, which now carries that decision alone.
+
+**The direction is worth stating, because it is the opposite of what a "rename
+for parity" usually means.** The RMW vtable one layer down
+(`nros-rmw-abi/include/nros/rmw_vtable.h`) has spelled these slots `take`,
+`take_request`, `take_response`, `take_sequence` since phase-376 W3.b. So the
+USER API was the only layer still saying `try_recv`: this move takes it onto the
+vocabulary its own foundation already used, and rcl/rclcpp agreeing is a
+consequence rather than the argument. Nothing in the vtable layer was touched.
+
+Deprecation, per the settled policy:
+
+* **C** — `NROS_DEPRECATED_MSG` `static inline` forwarders in the hand-written
+  module headers (`nros/subscription.h`, `nros/service.h`, `nros/client.h`),
+  the shape `nros/parameter.h`'s `nros_param_*` family established. An inline
+  definition has no external linkage, so the `take_*` name stays the only
+  exported symbol and the ABI cost is zero — a SOURCE promise, not a binary one.
+* **C++** — `[[deprecated("…")]]` header-only forwarders naming the replacement,
+  the shape `qos.hpp`'s `*_raw()` established.
+* **Rust** — nothing. A rename there breaks IMPLEMENTORS of the RMW traits
+  rather than callers, and a compile error is what a backend author wants.
+
+Both halves are gated, because a dropped attribute otherwise reads as a pass:
+`receive_verb_aliases.{c,cpp}` prove the old spellings still resolve WITH THE
+SAME SIGNATURE (via function pointers in C, instantiation in C++), and
+`receive_deprecation_probe.{c,cpp}` are expected-FAILURE compiles under
+`-Werror=deprecated-declarations`. All four run in `just check c` / `just
+check cpp`, beside the W5 parameter and service pairs.
+
+What the ledger did with it: `c:take` and `c:take_serialized_message` are
+`divergence` with `rename.status: resolved` (what is left is the byte
+orientation — no typesupport dispatch, no allocator — which is `c:publish`'s
+constraint mirrored on the receive side); `c:take_sequence`, `c:take_request`
+and `c:take_response` are `declined` (only the module prefix differs, which is
+`c:get_zero_initialized_publisher`'s precedent); `c:take_request_with_info` and
+`c:take_response_with_info` are `gap` (they were deferring to the verb, and what
+they were hiding is an absent `rmw_service_info_t` channel, not a spelling).
+`cpp:Subscription::take` and `cpp:Service::take_request` are `divergence` on
+their remaining parameter, not on their name. The `try_recv*` rows survive as
+`extension` rows describing DEPRECATED spellings, retired with the rest of the
+set in W7 step 4.
 
 ### Decision 2 — `service_is_ready`, returning `Expected<bool>`
 
@@ -766,6 +830,7 @@ inflate the work list and mislead the next reader about what is left.
    `take_serialized`, `try_recv_request` -> `take_request`,
    `try_recv_reply_raw` -> `take_response_raw`. This is the big one and it
    unblocks the ~32 rows in `service` and `pubsub` that defer to `c:take`.
+   **DONE 2026-09-03.**
 3. `service_is_ready` returning `Expected<bool>` / `Result<bool, E>` /
    `nros_ret_t + bool *out`; delete the two collapsing spellings.
 4. The goal-count merge.

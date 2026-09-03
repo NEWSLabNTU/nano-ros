@@ -7,7 +7,7 @@
 //! executor → spin) is owned by `nros::main!()` + `nros-board-mps2-an385`
 //! (Phase 244.D1 enabler) — none of it appears here. The old hand-written
 //! `#[rtic::app]` (Config, RMW register, `net_poll` + `listen` tasks, manual
-//! `try_recv` loop) folds into the boot scaffold; only the declarative node
+//! `take` loop) folds into the boot scaffold; only the declarative node
 //! survives. The old per-task RTIC priority split (net_poll / listen both at
 //! priority 1) does not survive the declarative migration — the single
 //! deferred node drives spin + dispatch from one collapsed run task.

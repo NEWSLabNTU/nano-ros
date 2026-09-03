@@ -202,7 +202,7 @@ impl DescriptorBuilder {
     /// caller-supplied field offset shifted by 16. This mirrors stock
     /// `rmw_cyclonedds_cpp`'s idlc-emitted Request/Response descriptors
     /// (see `service.cpp` doc block) and is what `service_send_request_raw`
-    /// / `service_try_recv_request` already assume on the C++ wire side
+    /// / `service_take_request` already assume on the C++ wire side
     /// when they prepend / split the 16-byte header. The user-facing
     /// `Serialize` / `Deserialize` impls intentionally still serialise
     /// only user fields — the wire framing (`build_wire_with_header`)

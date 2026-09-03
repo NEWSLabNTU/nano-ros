@@ -7,7 +7,7 @@
 //! - `client.try_recv_feedback()` for feedback
 //!
 //! Note: `Promise::wait()` and `FeedbackStream::wait_next()` are NOT usable
-//! in RTIC because they require `&mut Executor`. Use `try_recv()` loops instead.
+//! in RTIC because they require `&mut Executor`. Use `take()` loops instead.
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/rtic-action-client/`.
 

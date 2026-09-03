@@ -1023,7 +1023,7 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
     help
       Serialized-sample capacity of every executor arena subscription
       (nros-node build.rs DEFAULT_RX_BUF_SIZE). A sample larger than this
-      is dropped at try_recv with BUFFER_TOO_SMALL — for the C++ arena
+      is dropped at take with BUFFER_TOO_SMALL — for the C++ arena
       dispatch path that drop is silent, so an undersized buffer looks
       like a subscription that never fires. Size it to the largest
       serialized message the image subscribes to (e.g. an Autoware

@@ -958,7 +958,7 @@ static void sample_handler(z_loaned_sample_t* sample, void* arg) {
         // Drop empty-payload samples — zenoh-pico delivers background
         // probes / liveliness syncs through the regular subscription
         // path with a zero-length payload. Buffering them would let
-        // the typed `try_recv()` consume a slot whose CDR header check
+        // the typed `take()` consume a slot whose CDR header check
         // then fails. Mirrors the legacy single-slot behaviour.
         if (payload_len == 0) {
             return;
@@ -1278,7 +1278,7 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * reportable. Writing a second, Linux-flavoured copy of this would be the
  * two-spellings failure issue 0623 already charged the tree for. */
 
-static void zpico_posix_set_priority(pthread_attr_t *attr, uint32_t normalized) {
+static void zpico_posix_set_priority(pthread_attr_t* attr, uint32_t normalized) {
 #if !defined(CONFIG_PREEMPT_ENABLED)
     /* No preemptive priorities to place a task on. */
     (void)attr;
@@ -1380,7 +1380,7 @@ static int zpico_posix_rt_permitted(void) {
     return cached;
 }
 
-static void zpico_posix_fifo_set_priority(pthread_attr_t *attr, uint32_t raw) {
+static void zpico_posix_fifo_set_priority(pthread_attr_t* attr, uint32_t raw) {
     if (raw == 0u) {
         return;
     }
@@ -1522,8 +1522,8 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
         g_default_lease_nros_attr.stack_bytes = lease_stack_bytes;
     }
 #endif
-    g_default_read_task_opts.task_attributes = (z_task_attr_t *) &g_default_read_nros_attr;
-    g_default_lease_task_opts.task_attributes = (z_task_attr_t *) &g_default_lease_nros_attr;
+    g_default_read_task_opts.task_attributes = (z_task_attr_t*)&g_default_read_nros_attr;
+    g_default_lease_task_opts.task_attributes = (z_task_attr_t*)&g_default_lease_nros_attr;
     g_default_read_task_configured = true;
     g_default_lease_task_configured = true;
 #elif defined(ZENOH_THREADX)
@@ -1650,10 +1650,10 @@ int32_t zpico_open(zpico_session_t* session) {
     s->read_nros_attr = g_default_read_nros_attr;
     s->lease_nros_attr = g_default_lease_nros_attr;
     if (s->read_task_configured) {
-        s->read_task_opts.task_attributes = (z_task_attr_t *) &s->read_nros_attr;
+        s->read_task_opts.task_attributes = (z_task_attr_t*)&s->read_nros_attr;
     }
     if (s->lease_task_configured) {
-        s->lease_task_opts.task_attributes = (z_task_attr_t *) &s->lease_nros_attr;
+        s->lease_task_opts.task_attributes = (z_task_attr_t*)&s->lease_nros_attr;
     }
 #else
     if (s->read_task_configured) {
@@ -1711,7 +1711,6 @@ int32_t zpico_open(zpico_session_t* session) {
     const zp_task_read_options_t* read_opts = s->read_task_configured ? &s->read_task_opts : NULL;
     const zp_task_lease_options_t* lease_opts =
         s->lease_task_configured ? &s->lease_task_opts : NULL;
-
 
     if (zp_start_read_task(z_session_loan_mut(&s->session), read_opts) < 0) {
         z_close(z_session_loan_mut(&s->session), NULL);

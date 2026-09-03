@@ -54,7 +54,7 @@ fn main() {
 
     loop {
         let _ = exec.spin_once(Duration::from_millis(10));
-        while let Ok(Some(n)) = sub.try_recv_raw() {
+        while let Ok(Some(n)) = sub.take_serialized() {
             info!("Received: {n} bytes");
         }
     }

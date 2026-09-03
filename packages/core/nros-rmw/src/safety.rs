@@ -56,7 +56,7 @@ pub fn crc32(data: &[u8]) -> u32 {
 
 /// Result of E2E integrity validation for a received message.
 ///
-/// Returned by `try_recv_validated()` on the subscriber side.
+/// Returned by `take_validated()` on the subscriber side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IntegrityStatus {
     /// Sequence gap: 0 = normal, >0 = messages lost, <0 should not occur

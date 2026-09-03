@@ -59,10 +59,10 @@ Every subscription message traverses two copies
 
 ```
 Network → zpico SUBSCRIBER_BUFFERS ring → arena BufferStrategy slot → message struct
-              (zenoh C write, no copy)      (copy #1: try_recv_raw memcpy)  (copy #2: CDR)
+              (zenoh C write, no copy)      (copy #1: take_serialized memcpy)  (copy #2: CDR)
 ```
 
-- **Copy #1** is `try_recv_raw` copying the backend ring slot into the executor
+- **Copy #1** is `take_serialized` copying the backend ring slot into the executor
   arena buffer (`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:944`
   `buf[..len].copy_from_slice(&buffer.ring_payload[slot][..len])`), consumed by
   the arena dispatch (`packages/core/nros-node/src/executor/arena.rs:290`
@@ -462,7 +462,7 @@ one receive design across all links.
   drop is the intended per-sub `KEEP_LAST(N)`.
 - **Attachment / metadata.** The attachment ring must move with the payload slot
   (co-located `{payload, attachment}` per pool slot), so
-  `try_recv_raw_with_info` / `process_raw_in_place_with_info` borrow both together.
+  `take_serialized_with_info` / `process_raw_in_place_with_info` borrow both together.
 - **Tests pin the current contract.** `triple_buffer.rs`, `spsc_ring.rs`, and the
   QoS-depth arena tests assume the two-ring shape and must be reworked to the
   pool model. The `lending` feature tests and the safety-e2e in-place tests

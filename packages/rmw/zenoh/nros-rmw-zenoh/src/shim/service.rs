@@ -56,13 +56,13 @@ impl ServiceRequestSlot {
 }
 
 /// Shared buffer for service server callbacks — a single-producer (the queryable
-/// callback on the zenoh read task) single-consumer (`try_recv_request` on the
+/// callback on the zenoh read task) single-consumer (`take_request` on the
 /// executor) ring. `head`/`tail` are monotonic wrapping counters; the slot index
 /// is `counter % depth`. `tail - head` is the queued count; full → the callback
 /// drops the newest (preserving in-order delivery).
 pub(super) struct ServiceBuffer {
     pub(super) ring: [ServiceRequestSlot; SERVICE_REQUEST_RING_DEPTH],
-    /// Consumer cursor (written only by `try_recv_request`).
+    /// Consumer cursor (written only by `take_request`).
     pub(super) head: AtomicUsize,
     /// Producer cursor (written only by the callback).
     pub(super) tail: AtomicUsize,
@@ -461,7 +461,7 @@ impl ServiceTrait for ZenohServiceServer {
         self.buf.get().waker.register(waker);
     }
 
-    fn try_recv_request<'a>(
+    fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
@@ -531,11 +531,11 @@ impl ServiceTrait for ZenohServiceServer {
         let context = unsafe { &*self.context };
 
         // Phase 237 — `sequence_number` selects the cloned query the C shim is
-        // holding for this request (the reply-slot index from `try_recv_request`),
+        // holding for this request (the reply-slot index from `take_request`),
         // so a deferred get_result reply reaches the original requester even
         // after later requests arrived. The reply keyexpr is constant per server
         // (same rr/ topic), so it is NOT cleared — subsequent deferred replies
-        // reuse it; it is re-set on every `try_recv_request` regardless.
+        // reuse it; it is re-set on every `take_request` regardless.
         context
             .query_reply(
                 self._queryable.handle(),
@@ -646,7 +646,7 @@ pub struct ZenohServiceClient {
     /// zenoh-pico's query timeout (`Z_CONFIG_SOCKET_TIMEOUT`, 5 s on
     /// Zephyr), so `zpico_get_check` never returned the data to the
     /// caller. Tracking ALL outstanding handles + polling each in
-    /// `try_recv_reply_raw` returns the first reply that lands,
+    /// `take_response_raw` returns the first reply that lands,
     /// regardless of which generation of resend produced it.
     /// Capacity matches the C-side slot pool so we can never lose a
     /// handle the C allocator successfully returned.
@@ -807,7 +807,7 @@ impl ClientTrait for ZenohServiceClient {
         //    enqueued but hasn't run yet — can be transiently rejected
         //    by the session's pending-query table. Typical surface:
         //        let (_, mut p) = client.send_goal(&g)?;
-        //        ... p.try_recv() sees the accept reply ...
+        //        ... p.take() sees the accept reply ...
         //        let r = client.get_result(&id)?;  // flaked here
         //    Resolves within a few μs once the scheduler runs the
         //    lease / read tasks.
@@ -904,7 +904,7 @@ impl ClientTrait for ZenohServiceClient {
         Err(TransportError::from(last_err.unwrap()))
     }
 
-    fn try_recv_reply_raw(
+    fn take_response_raw(
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<(usize, i64)>, Self::Error> {
@@ -1086,8 +1086,8 @@ pub(super) mod tests {
     }
 
     /// Try to receive a service request from a buffer slot.
-    /// Replicates `try_recv_request` logic for testing without a zenoh queryable.
-    pub(in crate::shim) fn try_recv_service(
+    /// Replicates `take_request` logic for testing without a zenoh queryable.
+    pub(in crate::shim) fn take_service(
         slot: usize,
         recv_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
@@ -1158,7 +1158,7 @@ pub(super) mod tests {
         simulate_service_request(slot, &payload, b"test/service");
 
         let mut small_buf = [0u8; 256];
-        let result = try_recv_service(slot, &mut small_buf);
+        let result = take_service(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
         assert!(
@@ -1168,7 +1168,7 @@ pub(super) mod tests {
 
         simulate_service_request(slot, b"hello", b"test/service");
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(5))));
         assert_eq!(&recv_buf[..5], b"hello");
 
@@ -1182,15 +1182,15 @@ pub(super) mod tests {
 
         simulate_service_request(slot, b"first", b"svc/a");
         let mut buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut buf);
+        let result = take_service(slot, &mut buf);
         assert!(matches!(result, Ok(Some(5))));
         assert_eq!(&buf[..5], b"first");
 
-        let result = try_recv_service(slot, &mut buf);
+        let result = take_service(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
         simulate_service_request(slot, b"second", b"svc/a");
-        let result = try_recv_service(slot, &mut buf);
+        let result = take_service(slot, &mut buf);
         assert!(matches!(result, Ok(Some(6))));
         assert_eq!(&buf[..6], b"second");
 
@@ -1207,7 +1207,7 @@ pub(super) mod tests {
         reset_service_buffer(slot);
 
         let mut buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut buf);
+        let result = take_service(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
         assert!(!service_buf_has_request(slot));
@@ -1223,7 +1223,7 @@ pub(super) mod tests {
         assert!(service_buf_has_request(slot));
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(12))));
         assert_eq!(&recv_buf[..12], b"request_data");
 
@@ -1240,7 +1240,7 @@ pub(super) mod tests {
         simulate_service_request(slot, &payload, b"svc/big");
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(1024))));
         assert_eq!(&recv_buf, &payload);
     }
@@ -1255,7 +1255,7 @@ pub(super) mod tests {
         simulate_service_request(slot, &payload, b"svc/test");
 
         let mut small_buf = [0u8; 256];
-        let result = try_recv_service(slot, &mut small_buf);
+        let result = take_service(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
         // Oversized head entry dropped → ring drained.
@@ -1264,7 +1264,7 @@ pub(super) mod tests {
         // Next request accepted
         simulate_service_request(slot, b"ok", b"svc/test");
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(2))));
         assert_eq!(&recv_buf[..2], b"ok");
     }
@@ -1281,11 +1281,11 @@ pub(super) mod tests {
         simulate_service_request(slot, b"second_req", b"svc/a");
 
         let mut recv_buf = [0u8; 1024];
-        let r1 = try_recv_service(slot, &mut recv_buf);
+        let r1 = take_service(slot, &mut recv_buf);
         assert!(matches!(r1, Ok(Some(9))));
         assert_eq!(&recv_buf[..9], b"first_req");
 
-        let r2 = try_recv_service(slot, &mut recv_buf);
+        let r2 = take_service(slot, &mut recv_buf);
         assert!(matches!(r2, Ok(Some(10))));
         assert_eq!(&recv_buf[..10], b"second_req");
 
@@ -1300,10 +1300,10 @@ pub(super) mod tests {
         simulate_service_request(slot, b"once", b"svc/a");
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(4))));
 
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(None)));
     }
 
@@ -1318,15 +1318,15 @@ pub(super) mod tests {
 
         // Consume before next request
         let mut buf = [0u8; 1024];
-        let _ = try_recv_service(slot, &mut buf);
+        let _ = take_service(slot, &mut buf);
 
         simulate_service_request(slot, b"r2", b"svc/a");
         let seq2 = read_service_seq(slot);
-        let _ = try_recv_service(slot, &mut buf);
+        let _ = take_service(slot, &mut buf);
 
         simulate_service_request(slot, b"r3", b"svc/a");
         let seq3 = read_service_seq(slot);
-        let _ = try_recv_service(slot, &mut buf);
+        let _ = take_service(slot, &mut buf);
 
         assert!(seq2 > seq1, "seq2 ({seq2}) should be > seq1 ({seq1})");
         assert!(seq3 > seq2, "seq3 ({seq3}) should be > seq2 ({seq2})");
@@ -1345,7 +1345,7 @@ pub(super) mod tests {
 
         // Consume and verify keyexpr was available during request
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot, &mut recv_buf);
+        let result = take_service(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(7))));
     }
 
@@ -1361,14 +1361,14 @@ pub(super) mod tests {
 
         // Consume slot_b first
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_service(slot_b, &mut recv_buf);
+        let result = take_service(slot_b, &mut recv_buf);
         assert!(matches!(result, Ok(Some(9))));
         assert_eq!(&recv_buf[..9], b"req_seven");
 
         // slot_a still has its request
         assert!(service_buf_has_request(slot_a));
 
-        let result = try_recv_service(slot_a, &mut recv_buf);
+        let result = take_service(slot_a, &mut recv_buf);
         assert!(matches!(result, Ok(Some(8))));
         assert_eq!(&recv_buf[..8], b"req_zero");
     }

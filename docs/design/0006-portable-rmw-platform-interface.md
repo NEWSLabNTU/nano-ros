@@ -92,7 +92,7 @@ Rust trait is just the most popular consumer."
 
 ### Drift risk
 
-Today, when we change `nros-rmw::Subscriber::try_recv_raw_with_info`,
+Today, when we change `nros-rmw::Subscriber::take_serialized_with_info`,
 we update:
 1. `nros-rmw/src/traits.rs` (the trait)
 2. `nros-rmw-cffi/src/lib.rs` (the vtable)
@@ -123,7 +123,7 @@ Pseudo-code:
 pub struct NrosRmwSubscriberVtable {
     pub abi_version: u32,                   // R5: see Versioning
     pub _reserved: [u8; 4],
-    pub try_recv_raw: unsafe extern "C" fn(
+    pub take_serialized: unsafe extern "C" fn(
         sub: *mut NrosRmwSubscriber,
         buf: *mut u8,
         buf_len: usize,
@@ -138,13 +138,13 @@ pub struct NrosRmwSubscriberVtable {
 
 // thin wrapper: nros-rmw/src/lib.rs
 pub trait Subscriber {
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         // delegates to vtable; never declared in two places.
     }
 }
 ```
 
-Rust apps still write `sub.try_recv_raw(&mut buf)?`. No idiom loss.
+Rust apps still write `sub.take_serialized(&mut buf)?`. No idiom loss.
 But the *definition* lives in cffi.
 
 ### R2. Hand-written canonical C headers
@@ -309,7 +309,7 @@ Things to **NOT** do:
   + `impl Trait` for futures = unportable. Stick with poll-style
   + waker callback. Per-language wrappers can layer async on top.
 - **Don't make the vtable struct part of the *public* C-side API.**
-  Users call `nros_subscription_try_recv` (a C entry that
+  Users call `nros_subscription_take_serialized` (a C entry that
   internally dispatches via the vtable). Backend authors fill in
   the vtable. Keep the two surfaces separate.
 - **Don't generic-ize the vtable types.** No `NrosRmwSubscriber<T>`.

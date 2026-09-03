@@ -104,7 +104,7 @@ register::<T>("/ros/name", instance)
         ▼
 HashMap<&str, Box<dyn TopicHandle>>
         │
-        ▼ at publish_raw / try_recv_raw time
+        ▼ at publish_raw / take_serialized time
 Handle<T> { Publication<T>, Subscription<T> }
         │
         ▼ ptr::read_unaligned(&[u8] → T::Msg) / ptr::copy_nonoverlapping(T::Msg → &[u8])

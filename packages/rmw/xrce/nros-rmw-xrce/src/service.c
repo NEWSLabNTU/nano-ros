@@ -85,10 +85,10 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
 
 /* ---- Service server -------------------------------------------------- */
 
-rmw_ret_t xrce_service_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
-                                const char* service_name,
-                                          uint32_t domain_id, const rmw_qos_profile_t* qos,
-                                          rmw_service_t* out) {
+rmw_ret_t xrce_service_create(const rmw_node_t* node,
+                              const rmw_service_type_support_t* type_support,
+                              const char* service_name, uint32_t domain_id,
+                              const rmw_qos_profile_t* qos, rmw_service_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -245,9 +245,8 @@ rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
  * only reason it did not crash too.
  *
  * Status is returned, length goes to an out-parameter. */
-static rmw_ret_t xrce_service_try_recv_request_len(const rmw_service_t* server, uint8_t* buf,
-                                                   size_t buf_len, int64_t* seq_out,
-                                                   size_t* out_len) {
+static rmw_ret_t xrce_service_take_request_len(const rmw_service_t* server, uint8_t* buf,
+                                               size_t buf_len, int64_t* seq_out, size_t* out_len) {
     if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
     if (server == NULL || server->backend_data == NULL) {
@@ -313,9 +312,8 @@ static rmw_ret_t xrce_service_try_recv_request_len(const rmw_service_t* server, 
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_request(const rmw_service_t* server,
-                                         rmw_mut_byte_span_t* request, int64_t* seq_out,
-                                         bool* taken) {
+rmw_ret_t xrce_service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
+                                    int64_t* seq_out, bool* taken) {
     /* phase-406 W2 — one span in, the old three names out, so the body below
        is unchanged. `len` lives IN the span now, which is what removes the
        "who writes the count" question the flat triple kept raising. */
@@ -331,7 +329,7 @@ rmw_ret_t xrce_service_take_request(const rmw_service_t* server,
     *out_len = 0;
     *taken = false;
     size_t n = 0;
-    rmw_ret_t rc = xrce_service_try_recv_request_len(server, buf, buf_len, seq_out, &n);
+    rmw_ret_t rc = xrce_service_take_request_len(server, buf, buf_len, seq_out, &n);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }
@@ -361,7 +359,7 @@ rmw_ret_t xrce_service_has_request(rmw_service_t* server, bool* out_has_request)
 }
 
 rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
-                                       rmw_byte_span_t response) {
+                                     rmw_byte_span_t response) {
     const uint8_t* data = response.data;
     size_t len = response.len;
     if (server == NULL || server->backend_data == NULL) {
@@ -373,7 +371,7 @@ rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
     xrce_service_server_state* ss = (xrce_service_server_state*)server->backend_data;
     xrce_session_state_t* st = ss->session_state;
 
-    /* Phase 237 — resolve the reply token captured by `try_recv_request`. `seq`
+    /* Phase 237 — resolve the reply token captured by `take_request`. `seq`
      * is its index; the token holds the request's `SampleIdentity` and survives
      * later requests on the same server, so a deferred `get_result` reply still
      * reaches the original requester. */
@@ -413,9 +411,8 @@ rmw_ret_t xrce_service_send_response(const rmw_service_t* server, int64_t seq,
  * re-sending the request or sleeping in a never-signaled
  * wake-primitive wait (Phase 127.C.4 root cause for the C++
  * action send_goal trampoline). */
-rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
-                                             rmw_byte_span_t request_span,
-                                             int64_t* sequence_id) {
+rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t request_span,
+                                        int64_t* sequence_id) {
     const uint8_t* request = request_span.data;
     size_t req_len = request_span.len;
     if (client == NULL || client->backend_data == NULL) {
@@ -430,7 +427,7 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
     if (slot == NULL) {
         return NROS_RMW_RET_ERROR;
     }
-    /* Clear any stale reply so try_recv_reply_raw doesn't surface
+    /* Clear any stale reply so take_response_raw doesn't surface
      * an earlier request's response. */
     slot->has_reply = false;
     slot->overflow = false;
@@ -461,9 +458,9 @@ rmw_ret_t xrce_service_send_request_raw(const rmw_client_t* client,
     return NROS_RMW_RET_OK;
 }
 
-static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
-                                                     size_t reply_buf_len, int64_t* seq_out,
-                                                     size_t* out_len) {
+static rmw_ret_t xrce_service_take_response_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
+                                                    size_t reply_buf_len, int64_t* seq_out,
+                                                    size_t* out_len) {
     if (out_len == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
     *out_len = 0;
     if (client == NULL || client->backend_data == NULL) {
@@ -506,9 +503,8 @@ static rmw_ret_t xrce_service_try_recv_reply_raw_len(const rmw_client_t* client,
  * not "nothing to take"), so it is preserved verbatim and only the reporting
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
-rmw_ret_t xrce_service_take_response(const rmw_client_t* client,
-                                          rmw_mut_byte_span_t* reply, int64_t* seq_out,
-                                          bool* taken) {
+rmw_ret_t xrce_service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
+                                     int64_t* seq_out, bool* taken) {
     if (reply == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -522,7 +518,7 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client,
     *taken = false;
     size_t n = 0;
     rmw_ret_t rc =
-        xrce_service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len, seq_out, &n);
+        xrce_service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out, &n);
     if (rc == NROS_RMW_RET_NO_DATA) {
         return NROS_RMW_RET_OK;
     }
@@ -537,9 +533,8 @@ rmw_ret_t xrce_service_take_response(const rmw_client_t* client,
 /* ---- Service client -------------------------------------------------- */
 
 rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
-                                const char* service_name,
-                                          uint32_t domain_id, const rmw_qos_profile_t* qos,
-                                          rmw_client_t* out) {
+                             const char* service_name, uint32_t domain_id,
+                             const rmw_qos_profile_t* qos, rmw_client_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -670,4 +665,3 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
     xrce_session_entity_detach(st);
     return ret;
 }
-

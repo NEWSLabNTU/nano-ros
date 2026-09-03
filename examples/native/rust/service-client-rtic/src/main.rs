@@ -6,7 +6,7 @@
 //! - `client.call()` + `promise.take()` loop (manual polling)
 //!
 //! Note: `Promise::wait()` is NOT usable in RTIC because it requires `&mut Executor`,
-//! which is `#[local]` to the `net_poll` task. Use `try_recv()` loop instead.
+//! which is `#[local]` to the `net_poll` task. Use `take()` loop instead.
 //!
 //! This is the native equivalent of `examples/stm32f4/rust/rtic-service-client/`.
 

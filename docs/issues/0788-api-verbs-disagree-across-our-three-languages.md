@@ -21,7 +21,7 @@ Six, found across four stages:
 | --- | --- | --- | --- | --- |
 | reply to a service request | `nros_service_send_response_raw` (phase-379 W5, 2026-08-27) | `Service::send_response` | `ServiceTrait::send_response` | `send_response` |
 | is the server up? | `nros_client_service_is_ready` **and** `nros_client_server_available` | `Client::server_available` | `ClientTrait::is_server_ready` **and** `ClientTrait::server_available` | `service_is_ready` |
-| non-blocking receive | `nros_service_take_request` but `nros_client_try_recv_response` | `try_recv*` throughout | `try_recv*` throughout | `take` |
+| non-blocking receive | `nros_service_take_request` but `nros_client_take_response` | `take*` throughout | `take*` throughout | `take` |
 | cancelled timer | (no predicate at all) | `Timer::is_cancelled` → `is_canceled` (phase-379 W5, 2026-08-26) | `Timer::is_canceled` | `is_canceled` |
 | create a subscription | `nros_subscription_init` | `Node::create_subscription` | `Node::create_subscriber` | `create_subscription` |
 | serialized bytes | `publish_raw` | `publish_raw` | `publish_raw` | `serialized` |
@@ -43,9 +43,15 @@ implementors, and a compile error is the right answer for them. Rows in
 `docs/reference/api-parity-ledger/service.json`
 (`cpp:Service::send_response` carries the history).
 
-The `non-blocking receive` row is deliberately still open: `nros_service_take_request`
-is the unimplemented twin of the working `nros_service_try_recv_request_raw`, and
-settling it is `c:take_request`'s job, not the reply verb's.
+**The `non-blocking receive` row LANDED 2026-09-03 (phase-379 W6 decision 1).**
+All three languages now say `take`: C `nros_subscription_take_serialized` /
+`nros_service_take_request_raw` / `nros_client_take_response{,_raw}`, C++
+`Subscription::take` / `Service::take_request`, Rust `Subscription::take` /
+`ServiceTrait::take_request` / `ClientTrait::take_response{,_raw}`. The C
+duplicate this row named is NOT resolved by it and is not this issue's:
+`nros_service_take_request` is still the unimplemented twin of the working
+`nros_service_take_request_raw`, and which spelling survives is
+`c:service_take_request`'s open question.
 
 ## Why it matters
 
@@ -78,7 +84,11 @@ the sweep is scoped correctly:
   pairs are recent enough that neither has an external user.
 * The `take` versus `try_recv` decision is the widest — it touches every entity
   in all three languages — and should be settled before the narrower ones so the
-  rest follow from it.
+  rest follow from it. **SETTLED AND EXECUTED 2026-09-03** (phase-379 W6
+  decision 1): `take` won, in C, C++ and Rust at once, with `_raw` →
+  `_serialized` for the pre-CDR byte form and `reply` → `response` on the
+  client. The old spellings survive as deprecated forwarders in C and C++ and
+  not at all in Rust, where the break is what a trait implementor needs.
 
 Anything the sweep changes should be re-checked with `scripts/api-parity.py`,
 not by reading, which is the whole reason the correlator exists.

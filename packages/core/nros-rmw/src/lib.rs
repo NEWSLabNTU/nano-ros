@@ -80,7 +80,7 @@ pub use traits::{
 };
 
 // Re-export `MessageInfo` from nros-core so backends implementing
-// `Subscription::try_recv_raw_with_info` don't need their own direct
+// `Subscription::take_serialized_with_info` don't need their own direct
 // nros-core dep.
 pub use nros_core::MessageInfo;
 

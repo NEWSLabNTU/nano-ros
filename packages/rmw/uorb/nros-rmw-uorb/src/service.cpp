@@ -21,10 +21,9 @@ namespace nros_rmw_uorb {
 // unused because uORB has no services at all: this returns UNSUPPORTED, and
 // the slot exists so the runtime gets that answer instead of a NULL crash.
 rmw_ret_t service_create(const rmw_node_t* /*node*/,
-                                     const rmw_service_type_support_t* /*type_support*/,
-                                     const char* /*service_name*/,
-                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* /*qos*/,
-                                     rmw_service_t* /*out*/) {
+                         const rmw_service_type_support_t* /*type_support*/,
+                         const char* /*service_name*/, uint32_t /*domain_id*/,
+                         const rmw_qos_profile_t* /*qos*/, rmw_service_t* /*out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -34,9 +33,8 @@ rmw_ret_t service_destroy(rmw_service_t* /*server*/) {
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t service_take_request(const rmw_service_t* /*server*/,
-                                    rmw_mut_byte_span_t* /*request*/, int64_t* /*seq_out*/,
-                                    bool* /*taken*/) {
+rmw_ret_t service_take_request(const rmw_service_t* /*server*/, rmw_mut_byte_span_t* /*request*/,
+                               int64_t* /*seq_out*/, bool* /*taken*/) {
     /* uORB has no service transport — see service_send_response. */
     return NROS_RMW_RET_UNSUPPORTED;
 }
@@ -50,7 +48,7 @@ rmw_ret_t service_has_request(rmw_service_t* /*server*/, bool* out_has_request) 
 }
 
 rmw_ret_t service_send_response(const rmw_service_t* /*server*/, int64_t /*seq*/,
-                                  rmw_byte_span_t /*response*/) {
+                                rmw_byte_span_t /*response*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -58,10 +56,9 @@ rmw_ret_t service_send_response(const rmw_service_t* /*server*/, int64_t /*seq*/
 // unused because uORB has no services at all: this returns UNSUPPORTED, and
 // the slot exists so the runtime gets that answer instead of a NULL crash.
 rmw_ret_t client_create(const rmw_node_t* /*node*/,
-                                     const rmw_service_type_support_t* /*type_support*/,
-                                     const char* /*service_name*/,
-                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* /*qos*/,
-                                     rmw_client_t* /*out*/) {
+                        const rmw_service_type_support_t* /*type_support*/,
+                        const char* /*service_name*/, uint32_t /*domain_id*/,
+                        const rmw_qos_profile_t* /*qos*/, rmw_client_t* /*out*/) {
     return NROS_RMW_RET_UNSUPPORTED;
 }
 
@@ -70,7 +67,7 @@ rmw_ret_t client_destroy(rmw_client_t* /*client*/) {
 }
 
 // Phase-301: the deprecated blocking `call_raw` slot was deleted from
-// the vtable; `send_request_raw` / `try_recv_reply_raw` stay NULL on
+// the vtable; `send_request_raw` / `take_response_raw` stay NULL on
 // this backend (services unsupported).
 
 } // namespace nros_rmw_uorb

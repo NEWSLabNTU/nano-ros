@@ -39,7 +39,7 @@ binding, RFC-0045 boot config, RFC-0048 CMake verbs).
   windows (`sched_context.rs::tick`, `tt_window_offset_us`) — but only via
   the programmatic API, never fed from tier tables.
 - There is **no message-age concept** in `nros-node`: the take path
-  (`handles.rs::try_recv`) never extracts `header.stamp`; no rate/jitter
+  (`handles.rs::take`) never extracts `header.stamp`; no rate/jitter
   accounting exists.
 - The vendored `ros-launch-manifest` `model`/`sched` crates define
   `TierDef`/`TierPlatformSpec` that duplicate `nros-orchestration-ir`'s
@@ -138,7 +138,7 @@ Generated per-node `const` table (no heap, no YAML on target):
 
 | Contract | Monitor | Seam |
 |---|---|---|
-| sub `max_age_ms` | `now - header.stamp` at take; requires the **new** stamp extraction: CDR peek of the leading `std_msgs/Header` when the type has one (codegen knows; non-stamped types get no age monitor) | take path (`handles.rs::try_recv`) |
+| sub `max_age_ms` | `now - header.stamp` at take; requires the **new** stamp extraction: CDR peek of the leading `std_msgs/Header` when the type has one (codegen knows; non-stamped types get no age monitor) | take path (`handles.rs::take`) |
 | pub `min_rate_hz` / `jitter_ms` | per-endpoint publish counter + EWMA period, checked per spin tick (~the play_launch 5 s cadence, scaled to `spin_period_us`) | publish path + spin loop |
 | node path `max_latency_ms` | take-timestamp → publish-timestamp delta for the declared (input, output) pair | executor sched-context (already threads a monotonic clock) |
 | topic QoS | baked endpoint QoS config (exists — RFC-0006 axes) | codegen |

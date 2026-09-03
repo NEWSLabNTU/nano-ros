@@ -40,14 +40,15 @@ inline ::nros::Result instantiate(::nros::Node& node) {
     const Int32* fresh = sub.take_new_data();
     const Int32* peeked = sub.peek();
     Int32 out{};
-    bool got = sub.take(out);
+    // phase-379 W6 — `take(M&)` is GONE from this class; the name now means
+    // rclcpp's consuming take. `take_data()` is what it did.
+    if (const Int32* d = sub.take_data()) out = *d;
     bool has = sub.has_data();
     bool valid = sub.is_valid();
 
     (void)latest;
     (void)fresh;
     (void)peeked;
-    (void)got;
     (void)has;
     (void)valid;
     return r;
@@ -63,9 +64,8 @@ static_assert(
     std::is_same<decltype(std::declval<::nros::PollingSubscription<Int32>&>().take_new_data()),
                  const Int32*>::value,
     "PollingSubscription<M>::take_new_data() must return const M*");
-static_assert(std::is_same<decltype(std::declval<::nros::PollingSubscription<Int32>&>().take(
-                               std::declval<Int32&>())),
-                           bool>::value,
-              "PollingSubscription<M>::take(M&) must return bool");
+// phase-379 W6 — no `take(M&)` assertion: the member is deliberately absent so
+// the name cannot collide with rclcpp's consuming `take`. `take_data` above and
+// `take_new_data` below are the retained-latest pair that replaced it.
 
 } // namespace nros_cpp_polling_subscription_compile_test

@@ -1281,7 +1281,7 @@ impl Session for ZenohSession {
         // - Reliability maps to zenoh congestion-control (CORE).
         // - Durability VOLATILE / History / Depth honoured at the
         //   subscriber buffer level (CORE).
-        // - DEADLINE: clock-based check at try_recv_raw (sub) /
+        // - DEADLINE: clock-based check at take_serialized (sub) /
         //   publish_raw (pub). 108.C.zenoh.2.
         // - LIFESPAN: subscriber filters samples whose attachment
         //   timestamp is older than `now - lifespan_ms`. 108.C.zenoh.3.

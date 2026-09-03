@@ -382,7 +382,7 @@ class Node {
 
     /// Create a **callback-style** subscription that also delivers each sample's
     /// wire **attachment** (Phase 189.M3.4 — the callback analogue of
-    /// `Subscription::try_recv_raw_with_attachment`). Arena-registered like the
+    /// `Subscription::take_serialized_with_attachment`). Arena-registered like the
     /// callback overload above (so `options.sched_context` is functional), but the
     /// handler is invoked as `callback(const M&, const uint8_t* attachment, size_t
     /// attachment_len)`; `attachment_len == 0` means the sample carried none.

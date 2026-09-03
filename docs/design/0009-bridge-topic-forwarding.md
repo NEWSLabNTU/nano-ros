@@ -72,7 +72,7 @@ sit on top, both idiomatic extensions (each has an upstream analogue):
    the callback drops samples whose origin is its own (echo). The
    attachment + `bridge_origin` codec + FNV dedup already exist in
    `nros-bridge` (`encode_bridge_origin` / `parse_bridge_origin` / `payload_hash`)
-   and `nros-node` (`publish_raw_with_attachment` / `try_recv_raw_with_attachment`)
+   and `nros-node` (`publish_raw_with_attachment` / `take_serialized_with_attachment`)
    — the add-on is only to surface them on the *callback* path.
 2. **One node per bridged session** — `domain_bridge` makes one node per domain;
    nano-ros runs the sessions in one binary, so each bridge node binds to its

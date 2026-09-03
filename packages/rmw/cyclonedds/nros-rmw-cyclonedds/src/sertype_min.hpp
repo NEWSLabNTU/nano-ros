@@ -10,7 +10,7 @@
 //
 //   publish_raw  : CDR bytes →  dds_stream_read_sample → typed buf
 //                  → dds_write (Cyclone re-serialises) → wire
-//   try_recv_raw : wire → dds_take (typed buf)
+//   take_serialized : wire → dds_take (typed buf)
 //                  → dds_stream_write_sample → CDR bytes → caller
 //
 // `dds_stream_read_sample` / `dds_stream_write_sample` (public
@@ -83,7 +83,7 @@ namespace nros_rmw_cyclonedds {
  */
 class SertypeMin {
   public:
-    explicit SertypeMin(const dds_topic_descriptor_t *desc);
+    explicit SertypeMin(const dds_topic_descriptor_t* desc);
     ~SertypeMin();
 
     SertypeMin(const SertypeMin&) = delete;
@@ -93,16 +93,16 @@ class SertypeMin {
 
     /** Sertype suitable for `dds_stream_read_sample` /
      *  `dds_stream_write_sample`. */
-    const struct ddsi_sertype_default *as_sertype() const { return &st_; }
+    const struct ddsi_sertype_default* as_sertype() const { return &st_; }
 
     /** Underlying descriptor, for `m_size` / `m_ops` lookups. */
-    const dds_topic_descriptor_t *descriptor() const { return desc_; }
+    const dds_topic_descriptor_t* descriptor() const { return desc_; }
 
   private:
-    const dds_topic_descriptor_t *desc_;
-    struct ddsi_sertype_default   st_{};
-    uint32_t                     *ops_copy_{nullptr};
-    ddsi_sertype_default_desc_key_t *keys_copy_{nullptr};
+    const dds_topic_descriptor_t* desc_;
+    struct ddsi_sertype_default st_ {};
+    uint32_t* ops_copy_{nullptr};
+    ddsi_sertype_default_desc_key_t* keys_copy_{nullptr};
 };
 
 } // namespace nros_rmw_cyclonedds

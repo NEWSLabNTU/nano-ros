@@ -8,11 +8,11 @@
 //   - **Fast path (PX4 build):** the broker's workqueue thread
 //     fires `subscriber_ready_callback` → flips
 //     `SubscriberState::ready` atomically. `has_data` /
-//     `try_recv_raw` short-circuit on the flag, skipping the
+//     `take_serialized` short-circuit on the flag, skipping the
 //     `orb_check` syscall on the common "no data" branch.
 //   - **Slow path (host build / push-wake unavailable):**
 //     `nros_orb_register_callback` returns -1, the flag stays
-//     pinned to true, and `has_data` / `try_recv_raw` fall
+//     pinned to true, and `has_data` / `take_serialized` fall
 //     through to `orb_check` every time. Same behaviour the
 //     pre-push-wake K.4.2 build had.
 //
@@ -21,7 +21,7 @@
 //     registry, calls `orb_subscribe_multi(meta, 0)`, allocates a
 //     `SubscriberState` holding the subscription handle + ready
 //     flag, attempts `nros_orb_register_callback`.
-//   - `try_recv_raw` fast-checks the flag, then `orb_check`, then
+//   - `take_serialized` fast-checks the flag, then `orb_check`, then
 //     `orb_copy`. BUFFER_TOO_SMALL when `buf_len < meta->o_size`
 //     and DOES NOT drain (retry-safe).
 //   - `has_data` returns the flag (or runs `orb_check` on the
@@ -45,33 +45,32 @@ namespace nros_rmw_uorb {
 namespace {
 
 struct SubscriberState {
-    const struct orb_metadata *meta;
+    const struct orb_metadata* meta;
     int sub_handle;
     // `true` whenever the broker signals fresh data and after the
     // initial create (so the first poll triggers an orb_check that
     // surfaces any sample latched between subscribe + first call).
     // On the slow path (callback registration failed) we pin this
-    // to `true` so try_recv_raw always falls through to orb_check.
+    // to `true` so take_serialized always falls through to orb_check.
     std::atomic<bool> ready;
     // `true` if `nros_orb_register_callback` succeeded — used by
     // destroy to decide whether to unregister.
     bool callback_active;
 };
 
-extern "C" void subscriber_ready_callback(void *arg) {
-    auto *state = static_cast<SubscriberState *>(arg);
+extern "C" void subscriber_ready_callback(void* arg) {
+    auto* state = static_cast<SubscriberState*>(arg);
     state->ready.store(true, std::memory_order_release);
 }
 
 } // namespace
 
 rmw_ret_t subscription_create(const rmw_node_t* node,
-                                 const rmw_message_type_support_t * /*type_support*/,
-                                 const char *topic_name,
-                                 uint32_t /*domain_id*/,
-                                 const rmw_qos_profile_t * /*qos*/,
-                                 const rmw_subscription_options_t * /*options*/,
-                                 rmw_subscription_t *out) {
+                              const rmw_message_type_support_t* /*type_support*/,
+                              const char* topic_name, uint32_t /*domain_id*/,
+                              const rmw_qos_profile_t* /*qos*/,
+                              const rmw_subscription_options_t* /*options*/,
+                              rmw_subscription_t* out) {
     // Phase 376 W5/B1 — the entity is created ON ITS NODE, as upstream does.
     // The node carries the route to its session (our `context`).
     if (node == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -82,7 +81,7 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     if (out == nullptr || topic_name == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    const struct orb_metadata *meta = nros_rmw_uorb_lookup_topic(topic_name);
+    const struct orb_metadata* meta = nros_rmw_uorb_lookup_topic(topic_name);
     if (meta == nullptr) {
         return NROS_RMW_RET_TOPIC_NAME_INVALID;
     }
@@ -90,7 +89,7 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     if (handle < 0) {
         return NROS_RMW_RET_ERROR;
     }
-    auto *state = static_cast<SubscriberState *>(std::malloc(sizeof(SubscriberState)));
+    auto* state = static_cast<SubscriberState*>(std::malloc(sizeof(SubscriberState)));
     if (state == nullptr) {
         (void)orb_unsubscribe(handle);
         return NROS_RMW_RET_BAD_ALLOC;
@@ -100,20 +99,18 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     state->sub_handle = handle;
     state->callback_active = false;
     // K.4.2-sub-push: try push-wake. Failure leaves callback_active
-    // = false; we pin `ready` to true so try_recv_raw degrades
+    // = false; we pin `ready` to true so take_serialized degrades
     // gracefully to the slow polling path.
-    int reg_rc = nros_orb_register_callback(meta,
-                                            /*instance=*/0,
-                                            handle,
-                                            subscriber_ready_callback,
-                                            state);
+    int reg_rc =
+        nros_orb_register_callback(meta,
+                                   /*instance=*/0, handle, subscriber_ready_callback, state);
     if (reg_rc == 0) {
         state->callback_active = true;
         // Start "ready" so the first poll surfaces any sample the
         // broker latched between subscribe + callback install.
         state->ready.store(true, std::memory_order_relaxed);
     } else {
-        // Slow path: pin ready so has_data / try_recv_raw never
+        // Slow path: pin ready so has_data / take_serialized never
         // short-circuit on the flag.
         state->ready.store(true, std::memory_order_relaxed);
     }
@@ -122,11 +119,11 @@ rmw_ret_t subscription_create(const rmw_node_t* node,
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t subscription_destroy(rmw_subscription_t *subscriber) {
+rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<SubscriberState *>(subscriber->backend_data);
+    auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
     int rc = 0;
     if (state->callback_active && nros_orb_unregister_callback(state->sub_handle) != 0) {
         rc = -1;
@@ -140,13 +137,13 @@ rmw_ret_t subscription_destroy(rmw_subscription_t *subscriber) {
     return rc == 0 ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
-                                 rmw_mut_byte_span_t *message, bool *taken) {
+rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* message,
+                            bool* taken) {
     /* phase-406 W2 — one span in, the old three names out. */
     if (message == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
-    uint8_t *buf = message->data;
+    uint8_t* buf = message->data;
     size_t buf_len = message->capacity;
-    size_t *out_len = &message->len;
+    size_t* out_len = &message->len;
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -157,13 +154,12 @@ rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<SubscriberState *>(subscriber->backend_data);
+    auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
     // Fast path: on the push-wake build, `ready` flips only when
     // the broker fires our callback. Skip the orb_check syscall
     // when we know nothing is pending. On the slow path the flag
     // is pinned to `true` so we always fall through.
-    if (state->callback_active
-        && !state->ready.load(std::memory_order_acquire)) {
+    if (state->callback_active && !state->ready.load(std::memory_order_acquire)) {
         *taken = false;
         return NROS_RMW_RET_OK;
     }
@@ -197,7 +193,7 @@ rmw_ret_t subscription_take(const rmw_subscription_t *subscriber,
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t subscription_has_data(rmw_subscription_t *subscriber, bool *out_has_data) {
+rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data) {
     // Phase 376 W3.d step A — flag out, status returned. A failing `orb_check`
     // used to be reported as "no data"; it is now an error.
     if (out_has_data == nullptr) {
@@ -206,10 +202,9 @@ rmw_ret_t subscription_has_data(rmw_subscription_t *subscriber, bool *out_has_da
     if (subscriber == nullptr || subscriber->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    auto *state = static_cast<SubscriberState *>(subscriber->backend_data);
+    auto* state = static_cast<SubscriberState*>(subscriber->backend_data);
     // Fast path: the callback flag is the authoritative signal.
-    if (state->callback_active
-        && !state->ready.load(std::memory_order_acquire)) {
+    if (state->callback_active && !state->ready.load(std::memory_order_acquire)) {
         *out_has_data = false;
         return NROS_RMW_RET_OK;
     }

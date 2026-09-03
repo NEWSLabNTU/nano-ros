@@ -42,7 +42,7 @@ to update its members — **does not compile** as-is.
 
 Workaround used here: hoist per-subscription state into globals + stateless
 function-pointer callbacks. The upstream port would need the same rewrite or
-poll via `try_recv_raw` in the spin loop.
+poll via `take_serialized` in the spin loop.
 
 **Right fix (209.A follow-up):** the compat header's `create_subscription`
 allocates a heap-stored `std::function<void(const M&)>` per subscription and

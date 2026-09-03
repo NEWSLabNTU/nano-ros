@@ -64,7 +64,7 @@ struct SubState {
     /// reader indistinguishable.
     ///
     /// It is parked here and delivered by the NEXT take instead. That is the
-    /// shape `nros-verification`'s `try_recv_post_fix` proves for the single
+    /// shape `nros-verification`'s `take_post_fix` proves for the single
     /// take — check the flag first, clear it, return the error, take nothing —
     /// moved one call later, because that is where the contract leaves room.
     bool pending_too_small{false};
@@ -103,11 +103,12 @@ inline SubState* as_state(const rmw_subscription_t* s) {
 /// (`rmw_entity.h`). What it may not do is ignore it silently, which is the state
 /// issue 0958 opened against: the parameter was discarded at a bare
 /// `/*options*/` with nothing for a reader to find.
-rmw_ret_t subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
-                                const char* topic_name,
-                                 uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
-                                 const rmw_subscription_options_t* /*options — see above*/,
-                                 rmw_subscription_t* out) {
+rmw_ret_t subscription_create(const rmw_node_t* node,
+                              const rmw_message_type_support_t* type_support,
+                              const char* topic_name, uint32_t /*domain_id*/,
+                              const rmw_qos_profile_t* qos,
+                              const rmw_subscription_options_t* /*options — see above*/,
+                              rmw_subscription_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -201,7 +202,7 @@ rmw_ret_t subscription_destroy(rmw_subscription_t* subscriber) {
 }
 
 rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
-                                 bool* out_taken) {
+                            bool* out_taken) {
     /* phase-406 W2 — by pointer: `capacity` in, `len` out. */
     if (out == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     uint8_t* buf = out->data;
@@ -277,17 +278,18 @@ rmw_ret_t subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_s
 // 0969 replaced the typed `dds_take` + re-serialize body with a copy out of
 // each serdata, matching `subscription_take` above.
 static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscriber, uint8_t* buf,
-                                               size_t per_msg_cap, size_t max_msgs,
-                                               size_t* out_lens) {
+                                                size_t per_msg_cap, size_t max_msgs,
+                                                size_t* out_lens) {
     if (subscriber == nullptr || buf == nullptr || out_lens == nullptr) {
-        return -static_cast<int32_t>(NROS_RMW_RET_INVALID_ARGUMENT);  // issue 0773 — statuses travel NEGATED
+        return -static_cast<int32_t>(
+            NROS_RMW_RET_INVALID_ARGUMENT); // issue 0773 — statuses travel NEGATED
     }
     if (per_msg_cap == 0 || max_msgs == 0) {
         return 0;
     }
     SubState* state = as_state(subscriber);
     if (state == nullptr || state->reader <= 0) {
-        return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
+        return -static_cast<int32_t>(NROS_RMW_RET_ERROR); // issue 0773 — statuses travel NEGATED
     }
 
     // Issue 0971 — a status parked by an earlier drain goes out before any new
@@ -295,7 +297,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
     // above, so a caller that mixes the two entry points hears it either way.
     if (state->pending_too_small) {
         state->pending_too_small = false;
-        return -static_cast<int32_t>(NROS_RMW_RET_BUFFER_TOO_SMALL);  // issue 0773 — NEGATED
+        return -static_cast<int32_t>(NROS_RMW_RET_BUFFER_TOO_SMALL); // issue 0773 — NEGATED
     }
 
     // Stack-cap the per-call slot budget; Cyclone happily takes
@@ -309,7 +311,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
 
     dds_return_t taken = dds_takecdr(state->reader, ds, take_n, si, DDS_ANY_STATE);
     if (taken < 0) {
-        return -static_cast<int32_t>(NROS_RMW_RET_ERROR);  // issue 0773 — statuses travel NEGATED
+        return -static_cast<int32_t>(NROS_RMW_RET_ERROR); // issue 0773 — statuses travel NEGATED
     }
     if (taken == 0) {
         return 0;
@@ -319,7 +321,7 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
     // dropped, and the samples already written are still reported. Dropping it
     // is the design rather than an oversight: live zenoh does the same on its
     // single take ("drop the slot so the subscription isn't permanently stuck",
-    // `shim/subscriber.rs`), and `nros-verification`'s `try_recv_post_fix` /
+    // `shim/subscriber.rs`), and `nros-verification`'s `take_post_fix` /
     // `no_silent_truncation` fix that in place — the consumer gets the complete
     // message or an explicit error, and no subscription is left stuck holding a
     // sample nobody can take.
@@ -364,8 +366,8 @@ static int32_t subscription_take_sequence_count(const rmw_subscription_t* subscr
  * disturb, and only the reporting convention is changing. A count of 0 is a
  * legitimate OK here — an empty reader, not an error. */
 rmw_ret_t subscription_take_sequence(const rmw_subscription_t* subscriber, uint8_t* buf,
-                                          size_t per_msg_cap, size_t max_msgs, size_t* out_lens,
-                                          size_t* taken) {
+                                     size_t per_msg_cap, size_t max_msgs, size_t* out_lens,
+                                     size_t* taken) {
     if (taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -421,9 +423,8 @@ uint32_t sat_u32(int32_t v) {
 
 } // namespace
 
-rmw_ret_t subscription_take_event(const rmw_subscription_t* subscription,
-                                       rmw_event_type_t kind, rmw_event_payload_t* out,
-                                       bool* taken) {
+rmw_ret_t subscription_take_event(const rmw_subscription_t* subscription, rmw_event_type_t kind,
+                                  rmw_event_payload_t* out, bool* taken) {
     if (out == nullptr || taken == nullptr) return NROS_RMW_RET_INVALID_ARGUMENT;
     *taken = false;
     if (subscription == nullptr || subscription->backend_data == nullptr) {
@@ -433,50 +434,50 @@ rmw_ret_t subscription_take_event(const rmw_subscription_t* subscription,
     if (state == nullptr || state->reader <= 0) return NROS_RMW_RET_INVALID_ARGUMENT;
 
     switch (kind) {
-        case NROS_RMW_EVENT_LIVELINESS_CHANGED: {
-            dds_liveliness_changed_status_t st{};
-            if (dds_get_liveliness_changed_status(state->reader, &st) != DDS_RETCODE_OK) {
-                return NROS_RMW_RET_ERROR;
-            }
-            if (st.alive_count_change == 0 && st.not_alive_count_change == 0) {
-                return NROS_RMW_RET_OK;
-            }
-            out->liveliness_changed.alive_count = sat_u16(st.alive_count);
-            out->liveliness_changed.not_alive_count = sat_u16(st.not_alive_count);
-            out->liveliness_changed.alive_count_change = sat_i16(st.alive_count_change);
-            out->liveliness_changed.not_alive_count_change = sat_i16(st.not_alive_count_change);
-            *taken = true;
+    case NROS_RMW_EVENT_LIVELINESS_CHANGED: {
+        dds_liveliness_changed_status_t st{};
+        if (dds_get_liveliness_changed_status(state->reader, &st) != DDS_RETCODE_OK) {
+            return NROS_RMW_RET_ERROR;
+        }
+        if (st.alive_count_change == 0 && st.not_alive_count_change == 0) {
             return NROS_RMW_RET_OK;
         }
-        case NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED: {
-            dds_requested_deadline_missed_status_t st{};
-            if (dds_get_requested_deadline_missed_status(state->reader, &st) != DDS_RETCODE_OK) {
-                return NROS_RMW_RET_ERROR;
-            }
-            if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
-            out->count.total_count = st.total_count;
-            out->count.total_count_change = sat_u32(st.total_count_change);
-            *taken = true;
-            return NROS_RMW_RET_OK;
+        out->liveliness_changed.alive_count = sat_u16(st.alive_count);
+        out->liveliness_changed.not_alive_count = sat_u16(st.not_alive_count);
+        out->liveliness_changed.alive_count_change = sat_i16(st.alive_count_change);
+        out->liveliness_changed.not_alive_count_change = sat_i16(st.not_alive_count_change);
+        *taken = true;
+        return NROS_RMW_RET_OK;
+    }
+    case NROS_RMW_EVENT_REQUESTED_DEADLINE_MISSED: {
+        dds_requested_deadline_missed_status_t st{};
+        if (dds_get_requested_deadline_missed_status(state->reader, &st) != DDS_RETCODE_OK) {
+            return NROS_RMW_RET_ERROR;
         }
-        case NROS_RMW_EVENT_MESSAGE_LOST: {
-            dds_sample_lost_status_t st{};
-            if (dds_get_sample_lost_status(state->reader, &st) != DDS_RETCODE_OK) {
-                return NROS_RMW_RET_ERROR;
-            }
-            if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
-            out->count.total_count = st.total_count;
-            out->count.total_count_change = sat_u32(st.total_count_change);
-            *taken = true;
-            return NROS_RMW_RET_OK;
+        if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
+        out->count.total_count = st.total_count;
+        out->count.total_count_change = sat_u32(st.total_count_change);
+        *taken = true;
+        return NROS_RMW_RET_OK;
+    }
+    case NROS_RMW_EVENT_MESSAGE_LOST: {
+        dds_sample_lost_status_t st{};
+        if (dds_get_sample_lost_status(state->reader, &st) != DDS_RETCODE_OK) {
+            return NROS_RMW_RET_ERROR;
         }
-        // Publisher-side kinds on a subscription are a caller error, not an
-        // empty poll: answering `taken = false` would let the mistake run
-        // forever looking like "no events".
-        case NROS_RMW_EVENT_LIVELINESS_LOST:
-        case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED:
-        default:
-            return NROS_RMW_RET_INVALID_ARGUMENT;
+        if (st.total_count_change <= 0) return NROS_RMW_RET_OK;
+        out->count.total_count = st.total_count;
+        out->count.total_count_change = sat_u32(st.total_count_change);
+        *taken = true;
+        return NROS_RMW_RET_OK;
+    }
+    // Publisher-side kinds on a subscription are a caller error, not an
+    // empty poll: answering `taken = false` would let the mistake run
+    // forever looking like "no events".
+    case NROS_RMW_EVENT_LIVELINESS_LOST:
+    case NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED:
+    default:
+        return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 }
 
@@ -489,7 +490,7 @@ rmw_ret_t subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_da
     // Cyclone's DATA_AVAILABLE status is edge-like for our executor use:
     // querying it as a pre-filter can clear/suppress the subsequent take
     // path while samples remain readable. This backend is poll-only, so a
-    // conservative "maybe" keeps dispatch correct; try_recv_raw remains the
+    // conservative "maybe" keeps dispatch correct; take_serialized remains the
     // authoritative non-blocking check.
     *out_has_data = true;
     return NROS_RMW_RET_OK;

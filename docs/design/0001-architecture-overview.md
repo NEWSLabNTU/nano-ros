@@ -256,8 +256,8 @@ classDiagram
     class Subscription {
         <<trait>>
         +has_data() bool
-        +try_recv_raw(buf) Option~usize~
-        +try_recv~M~(buf) Option~M~
+        +take_serialized(buf) Option~usize~
+        +take~M~(buf) Option~M~
         +register_waker(waker: &Waker)
     }
 
@@ -270,7 +270,7 @@ classDiagram
     class ClientTrait {
         <<trait>>
         +send_request_raw(data)
-        +try_recv_reply_raw(buf) Option~usize~
+        +take_response_raw(buf) Option~usize~
         +register_waker(waker: &Waker)
     }
 
@@ -339,7 +339,7 @@ graph LR
 
 ### Zero-Cost Opt-Out
 
-When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are zero-sized. This means manual-polling code (using `create_node()` + `try_recv()` without callbacks) pays zero overhead for the callback infrastructure.
+When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are zero-sized. This means manual-polling code (using `create_node()` + `take()` without callbacks) pays zero overhead for the callback infrastructure.
 
 ### Spin Variants
 
@@ -376,7 +376,7 @@ graph LR
 Handles can be used in two modes:
 
 1. **Callback mode** — register with `executor.add_subscription(sub, |msg| { ... })`, dispatched by `spin_once()`
-2. **Manual-poll mode** — call `sub.try_recv()` or `client.call()` → `Promise` directly
+2. **Manual-poll mode** — call `sub.take()` or `client.call()` → `Promise` directly
 
 ### Executor Semantics
 
@@ -544,7 +544,7 @@ sequenceDiagram
     EX->>ARENA: entries[i].has_data()?
     ARENA->>SUB: has_data() → true
     EX->>ARENA: entries[i].try_process()
-    ARENA->>SUB: try_recv_raw(buf) → Some(len)
+    ARENA->>SUB: take_serialized(buf) → Some(len)
     ARENA->>ARENA: CdrReader::new(buf)<br/>M::deserialize(reader)
     ARENA->>CB: callback(&msg)
 ```

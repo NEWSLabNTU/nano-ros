@@ -266,7 +266,7 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
         // with room for the tag header.
         let mut att_in = [0u8; 64];
         loop {
-            let recv = self.sub.try_recv_raw_with_attachment(&mut att_in)?;
+            let recv = self.sub.take_serialized_with_attachment(&mut att_in)?;
             let (payload_len, att_len) = match recv {
                 Some(t) => t,
                 None => break,

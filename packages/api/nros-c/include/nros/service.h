@@ -8,11 +8,11 @@
  * time and let the executor deliver requests and send responses for you.
  *
  * For manual polling, create the server with nros_service_init_polling(),
- * take requests with nros_service_try_recv_request_raw(), and send responses
+ * take requests with nros_service_take_request_raw(), and send responses
  * with nros_service_send_response_raw().
  *
  * (nros_service_take_request() is the unimplemented twin of
- * nros_service_try_recv_request_raw() and returns `NROS_RET_NOT_INIT`; which
+ * nros_service_take_request_raw() and returns `NROS_RET_NOT_INIT`; which
  * of the two spellings survives is the `c:take_request` question in the
  * phase-379 parity ledger.)
  */
@@ -68,6 +68,20 @@ static inline nros_ret_t nros_service_send_reply_raw(struct nros_service_t* serv
                                                      int64_t sequence_number, const uint8_t* data,
                                                      size_t len) {
     return nros_service_send_response_raw(service, sequence_number, data, len);
+}
+
+/* phase-379 W6 decision 1 (2026-09-03): `try_recv` -> `take`. rcl
+ * (`rcl_take_request`), rclcpp (`Service::take_request`) and our own RMW
+ * vtable (`take_request`) all spell the non-blocking consuming receive that
+ * way; only the user-facing layer said `try_recv`. Same `static inline`
+ * shape, same source-not-binary promise -- see `nros/subscription.h`. */
+
+NROS_DEPRECATED_MSG("nros_service_try_recv_request_raw() is deprecated; use "
+                    "nros_service_take_request_raw()")
+static inline int32_t nros_service_try_recv_request_raw(struct nros_service_t* service,
+                                                        uint8_t* buf, size_t buf_len,
+                                                        int64_t* sequence_number) {
+    return nros_service_take_request_raw(service, buf, buf_len, sequence_number);
 }
 
 NROS_DEPRECATED_MSG("nros_service_send_response() is deprecated; use "

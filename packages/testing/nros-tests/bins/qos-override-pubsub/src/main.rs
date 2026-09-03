@@ -180,7 +180,7 @@ fn run_listener(exec: &mut Executor<'static>, overrides: &'static [QoSOverride])
     info!("Waiting for messages on {TOPIC}...");
     loop {
         let _ = exec.spin_once(Duration::from_millis(10));
-        while let Ok(Some(n)) = sub.try_recv_raw() {
+        while let Ok(Some(n)) = sub.take_serialized() {
             info!("Received: {n} bytes");
         }
     }

@@ -13,7 +13,7 @@ void AddClient::on_tick() {
     if (in_flight_) {
         uint8_t resp[64];
         size_t rlen = 0;
-        if (nros_cpp_service_client_try_recv_reply(client_.bytes, resp, sizeof(resp), &rlen) == 0 &&
+        if (nros_cpp_service_client_take_response(client_.bytes, resp, sizeof(resp), &rlen) == 0 &&
             rlen > 0) {
             Svc::Response r;
             if (Svc::Response::ffi_deserialize(resp, rlen, &r) == 0) {

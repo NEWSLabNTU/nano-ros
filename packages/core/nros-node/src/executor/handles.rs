@@ -1065,10 +1065,10 @@ impl<'a, const TX_BUF: usize> Drop for PublishLoan<'a, TX_BUF> {
 ///
 /// Two methods, both byte-oriented at the wire:
 ///
-/// - [`try_recv`](Self::try_recv) / [`recv`](Self::recv) — pull bytes
+/// - [`take`](Self::take) / [`recv`](Self::recv) — pull bytes
 ///   from the backend, CDR-decode into `M: RosMessage`, hand back
 ///   ownership of the typed message.
-/// - [`try_recv_raw`](Self::try_recv_raw) — copy bytes into the
+/// - [`take_serialized`](Self::take_serialized) — copy bytes into the
 ///   subscription's internal buffer and return the length, leaving CDR
 ///   decoding to the caller.
 ///
@@ -1103,14 +1103,14 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// surface. NOT after rclrs: its subscription API is callback/worker-driven
     /// and has no public polling counterpart at all (its `take_*` methods are
     /// private), which is why the ledger records this as an `extension` against
-    /// the Rust reference rather than a match. `try_recv` was Rust
+    /// the Rust reference rather than a match. `take` was Rust
     /// channel vocabulary that reads as a different contract to a ROS 2 user:
     /// both are non-blocking and both report emptiness without failing, so
     /// nothing asked for the other word. Renamed as a clean break, no shim.
     pub fn take(&mut self) -> Result<Option<M>, NodeError> {
         match self
             .handle
-            .try_recv_raw(&mut self.buffer)
+            .take_serialized(&mut self.buffer)
             .map_err(NodeError::Transport)?
         {
             Some(len) => {
@@ -1127,13 +1127,13 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     }
 
     /// Try to receive raw CDR-encoded data (non-blocking).
-    pub fn try_recv_raw(&mut self) -> Result<Option<usize>, NodeError> {
+    pub fn take_serialized(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
-            .try_recv_raw(&mut self.buffer)
+            .take_serialized(&mut self.buffer)
             .map_err(NodeError::Transport)
     }
 
-    /// Get the receive buffer (valid after `try_recv_raw`).
+    /// Get the receive buffer (valid after `take_serialized`).
     pub fn buffer(&self) -> &[u8] {
         &self.buffer
     }
@@ -1257,7 +1257,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
         core::future::poll_fn(|cx| {
             // Register the waker FIRST, then check for data. This ordering
             // closes the race window where a subscriber callback fires
-            // between `try_recv` returning `None` and the waker being
+            // between `take` returning `None` and the waker being
             // registered — the wake would otherwise be delivered to the
             // previous waker (or nowhere) and the task would hang.
             self.handle.register_waker(cx.waker());
@@ -1310,7 +1310,7 @@ impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
 
 /// Typeless subscription handle. Counterpart of [`EmbeddedRawPublisher`].
 ///
-/// The user owns the decoding step: call [`try_recv_raw`](Self::try_recv_raw)
+/// The user owns the decoding step: call [`take_serialized`](Self::take_serialized)
 /// to fill an internal buffer with bytes whose format depends on the active
 /// RMW backend, then interpret them however is appropriate (memcpy, custom
 /// parser, …).
@@ -1348,9 +1348,9 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// Try to receive raw bytes (non-blocking). Returns `Ok(Some(len))`
     /// with the message length on success; the bytes live in
     /// [`buffer`](Self::buffer) until the next call.
-    pub fn try_recv_raw(&mut self) -> Result<Option<usize>, NodeError> {
+    pub fn take_serialized(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
-            .try_recv_raw(&mut self.buffer)
+            .take_serialized(&mut self.buffer)
             .map_err(NodeError::Transport)
     }
 
@@ -1363,31 +1363,31 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// the incoming sample carried no attachment.
     ///
     /// Backends without native attachment support delegate to
-    /// [`try_recv_raw`](Self::try_recv_raw) and always report
+    /// [`take_serialized`](Self::take_serialized) and always report
     /// `attachment_len == 0` (default `Subscriber` trait body in
     /// `nros-rmw`).
-    pub fn try_recv_raw_with_attachment(
+    pub fn take_serialized_with_attachment(
         &mut self,
         att_buf: &mut [u8],
     ) -> Result<Option<(usize, usize)>, NodeError> {
         self.handle
-            .try_recv_raw_with_attachment(&mut self.buffer, att_buf)
+            .take_serialized_with_attachment(&mut self.buffer, att_buf)
             .map_err(NodeError::Transport)
     }
 
     /// Phase 252 / issue 0073 — raw receive that also returns the E2E
     /// [`IntegrityStatus`](nros_rmw::IntegrityStatus) (CRC + sequence gap/dup) for
-    /// the C/C++ `nros_subscription_try_recv_validated` path. The validator lives
-    /// in the backend handle (`try_recv_validated`), so no typed message is needed;
+    /// the C/C++ `nros_subscription_take_validated` path. The validator lives
+    /// in the backend handle (`take_validated`), so no typed message is needed;
     /// the payload lives in [`buffer`](Self::buffer). `crc_valid == None` when the
     /// wire sample carried no CRC (e.g. a publisher built without `safety-e2e`).
     #[cfg(feature = "safety-e2e")]
-    pub fn try_recv_validated(
+    pub fn take_validated(
         &mut self,
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, NodeError> {
         use nros_rmw::Subscription as _;
         self.handle
-            .try_recv_validated(&mut self.buffer)
+            .take_validated(&mut self.buffer)
             .map_err(NodeError::Transport)
     }
 
@@ -1398,11 +1398,11 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// Returns the number of messages delivered.
     ///
     /// Backends without a native batch take inherit the
-    /// `Subscriber::try_recv_sequence` default body which loop-drives
-    /// `try_recv_raw` — same shape, same observable result; the
+    /// `Subscriber::take_sequence` default body which loop-drives
+    /// `take_serialized` — same shape, same observable result; the
     /// batched API just lets sensor loops commit to the call shape
     /// regardless of backend support.
-    pub fn try_recv_sequence(
+    pub fn take_sequence(
         &mut self,
         buf: &mut [u8],
         per_msg_cap: usize,
@@ -1411,7 +1411,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     ) -> Result<usize, NodeError> {
         use nros_rmw::Subscription as _;
         self.handle
-            .try_recv_sequence(buf, per_msg_cap, max_msgs, out_lens)
+            .take_sequence(buf, per_msg_cap, max_msgs, out_lens)
             .map_err(NodeError::Transport)
     }
 
@@ -1485,7 +1485,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
         )
     }
 
-    /// Get the receive buffer (valid after [`try_recv_raw`](Self::try_recv_raw)).
+    /// Get the receive buffer (valid after [`take_serialized`](Self::take_serialized)).
     pub fn buffer(&self) -> &[u8] {
         &self.buffer
     }
@@ -1500,7 +1500,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     ///
     /// The returned [`RecvView`] borrows the subscriber's internal
     /// receive buffer. Lifetime is tied to `&mut self` — only one view
-    /// can be live at a time, and the next `try_borrow` / `try_recv_raw`
+    /// can be live at a time, and the next `try_borrow` / `take_serialized`
     /// call invalidates the previous view's bytes.
     ///
     /// View is `!Send + !Sync` to discourage holding it across `.await`
@@ -1508,7 +1508,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
     /// same subscriber).
     #[cfg(not(feature = "rmw-lending"))]
     pub fn try_borrow(&mut self) -> Result<Option<RecvView<'_>>, NodeError> {
-        match self.try_recv_raw()? {
+        match self.take_serialized()? {
             Some(len) => Ok(Some(RecvView {
                 bytes: &self.buffer[..len],
                 _marker: core::marker::PhantomData,
@@ -1613,7 +1613,7 @@ impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
 /// shims.
 ///
 /// Holds the transport handle plus an inline request buffer. The
-/// caller polls [`try_recv_request_raw`](Self::try_recv_request_raw)
+/// caller polls [`take_request_raw`](Self::take_request_raw)
 /// and sends replies via [`send_response_raw`](Self::send_response_raw)
 /// with raw CDR bytes.
 pub struct RawServiceServer<
@@ -1654,8 +1654,8 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     /// [`req_buffer`](Self::req_buffer) at `&req_buffer()[..len]`
     /// until the next call. The sequence number is required by
     /// [`send_response_raw`](Self::send_response_raw).
-    pub fn try_recv_request_raw(&mut self) -> Result<Option<(usize, i64)>, NodeError> {
-        match self.handle.try_recv_request(&mut self.req_buffer) {
+    pub fn take_request_raw(&mut self) -> Result<Option<(usize, i64)>, NodeError> {
+        match self.handle.take_request(&mut self.req_buffer) {
             Ok(Some(req)) => Ok(Some((req.data.len(), req.sequence_number))),
             Ok(None) => Ok(None),
             Err(_) => Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
@@ -1663,14 +1663,14 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
     }
 
     /// Borrow the inline request buffer. Valid after a successful
-    /// [`try_recv_request_raw`](Self::try_recv_request_raw) call.
+    /// [`take_request_raw`](Self::take_request_raw) call.
     pub fn req_buffer(&self) -> &[u8] {
         &self.req_buffer
     }
 
     /// Send a reply with raw CDR bytes. `sequence_number` must match
     /// the value returned by the most recent
-    /// [`try_recv_request_raw`](Self::try_recv_request_raw).
+    /// [`take_request_raw`](Self::take_request_raw).
     pub fn send_response_raw(
         &mut self,
         sequence_number: i64,
@@ -1713,7 +1713,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     }
 
     /// Send a raw CDR request. Non-blocking; the reply arrives via
-    /// [`try_recv_reply_raw`](Self::try_recv_reply_raw).
+    /// [`take_response_raw`](Self::take_response_raw).
     pub fn send_request_raw(&mut self, request: &[u8]) -> Result<(), NodeError> {
         // Issue 0778 — the backend now hands back a sequence id. This raw
         // handle keeps one call in flight (`in_flight_flag`), so it has no use
@@ -1735,15 +1735,15 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
     /// `Ok(Some(len))` with the reply length on success; bytes
     /// live in [`reply_buffer`](Self::reply_buffer) until the next
     /// call.
-    pub fn try_recv_reply_raw(&mut self) -> Result<Option<usize>, NodeError> {
+    pub fn take_response_raw(&mut self) -> Result<Option<usize>, NodeError> {
         self.handle
-            .try_recv_reply_raw(&mut self.reply_buffer)
+            .take_response_raw(&mut self.reply_buffer)
             .map(|opt| opt.map(|(len, _seq)| len))
             .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))
     }
 
     /// Borrow the inline reply buffer. Valid after a successful
-    /// [`try_recv_reply_raw`](Self::try_recv_reply_raw) call.
+    /// [`take_response_raw`](Self::take_response_raw) call.
     pub fn reply_buffer(&self) -> &[u8] {
         &self.reply_buffer
     }
@@ -1756,7 +1756,7 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
 ///
 /// Two backings, selected at compile time by the `rmw-lending` feature:
 /// the no-lending variant points at `RawSubscription::buffer` (filled by
-/// `try_recv_raw`'s memcpy); the lending variant holds the backend's
+/// `take_serialized`'s memcpy); the lending variant holds the backend's
 /// own [`SlotBorrowing::View`](nros_rmw::SlotBorrowing::View) — zero
 /// copies on the receive path, with the backend's Drop taking care of
 /// releasing the buffer lock.
@@ -2040,7 +2040,7 @@ pub struct EmbeddedServiceClient<
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
     /// Phase 84.D3: set after a successful `send_request`, cleared on a
-    /// successful `Promise::try_recv`. Guards against "drop Promise
+    /// successful `Promise::take`. Guards against "drop Promise
     /// without awaiting, then `call()` again" which would otherwise
     /// deliver the stale reply to the new caller.
     pub(crate) in_flight: bool,
@@ -2106,7 +2106,7 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// and you want to abandon the pending reply. The next
     /// [`call`](Self::call) will proceed but may still observe the stale
     /// reply if one is in the transport's queue — callers that need strict
-    /// correctness should drain / ignore one extra `try_recv` first.
+    /// correctness should drain / ignore one extra `take` first.
     pub fn reset_in_flight(&mut self) {
         self.in_flight = false;
     }
@@ -2219,13 +2219,13 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
 
 /// A pending reply from a non-blocking service or action call.
 ///
-/// Poll with [`try_recv()`](Promise::try_recv) to check for the reply.
+/// Poll with [`take()`](Promise::take) to check for the reply.
 /// Implements [`Future`](core::future::Future) for use with async executors.
 pub struct Promise<'a, T> {
     pub(crate) handle: &'a mut session::RmwServiceClient,
     pub(crate) reply_buffer: &'a mut [u8],
     pub(crate) parse: fn(&[u8]) -> Result<T, NodeError>,
-    /// Phase 84.D3: cleared on a successful `try_recv` so the client's
+    /// Phase 84.D3: cleared on a successful `take` so the client's
     /// next `call()` can proceed. If the `Promise` is dropped before the
     /// reply is consumed, the flag stays set — forcing the user to
     /// explicitly acknowledge the abandoned call via
@@ -2245,14 +2245,14 @@ impl<T> Promise<'_, T> {
     /// surface. NOT after rclrs: its subscription API is callback/worker-driven
     /// and has no public polling counterpart at all (its `take_*` methods are
     /// private), which is why the ledger records this as an `extension` against
-    /// the Rust reference rather than a match. `try_recv` was Rust
+    /// the Rust reference rather than a match. `take` was Rust
     /// channel vocabulary that reads as a different contract to a ROS 2 user:
     /// both are non-blocking and both report emptiness without failing, so
     /// nothing asked for the other word. Renamed as a clean break, no shim.
     pub fn take(&mut self) -> Result<Option<T>, NodeError> {
         // Phase 120: NoData (no reply yet) is the steady-state polling
         // condition — map to Ok(None) instead of ServiceRequestFailed.
-        match match self.handle.try_recv_reply_raw(self.reply_buffer) {
+        match match self.handle.take_response_raw(self.reply_buffer) {
             Ok(opt) => opt,
             Err(TransportError::NoData) => return Ok(None),
             Err(e) => return Err(NodeError::Transport(e)),
@@ -2313,7 +2313,7 @@ impl<T> core::future::Future for Promise<'_, T> {
     ) -> core::task::Poll<Self::Output> {
         let this = self.get_mut();
         // Register-then-check (closes the race where a reply lands
-        // between try_recv returning None and the waker registering).
+        // between take returning None and the waker registering).
         this.handle.register_waker(cx.waker());
         match this.take() {
             Ok(Some(reply)) => core::task::Poll::Ready(Ok(reply)),
@@ -2339,7 +2339,7 @@ impl<T> Promise<'_, T> {
     /// parked `.await` consumer never issues such a call.
     ///
     /// `poll_until_ready(yield_fn)` instead actively polls
-    /// `try_recv()` on each turn and awaits the caller-supplied
+    /// `take()` on each turn and awaits the caller-supplied
     /// yield future between attempts. The yield gives the executor
     /// a chance to run other ready tasks (typically a `spin_task`
     /// that drives the backend runtime via `executor.spin_once()`),

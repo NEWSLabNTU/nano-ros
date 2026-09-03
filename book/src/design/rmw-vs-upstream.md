@@ -360,11 +360,11 @@ The backend dereferences `ros_message` according to a
 receive *already-CDR-encoded* bytes:
 
 ```c
-rmw_ret_t (*publish_raw)(rmw_publisher_t * publisher,
-                              const uint8_t * data, size_t len);
+rmw_ret_t (*publish)(rmw_publisher_t * publisher,
+                     const uint8_t * data, size_t len);
 
-int32_t (*try_recv_raw)(rmw_subscription_t * subscription,
-                        uint8_t * buf, size_t len);
+int32_t (*take)(rmw_subscription_t * subscription,
+                uint8_t * buf, size_t len);
 ```
 
 **Why.** rosidl typesupport is heavy: dynamic dispatch through a
