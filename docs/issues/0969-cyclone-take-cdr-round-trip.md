@@ -503,3 +503,49 @@ over 49 exchanges, client half only. The server half and the CPU cost of the
 removed decode/encode are not measured. The 8 KB crossover is where these two
 curves meet on THIS type and this transport; treat it as an order of magnitude,
 not a threshold to encode.
+
+## The SERVER half, and the whole exchange — measured 2026-09-03
+
+The sweep above was the client. The server, same method (valgrind on the server
+process, client untraced), bytes allocated per exchange:
+
+| reply payload | SERVER before | after | delta | CLIENT before | after | delta |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 B | 4,328 | 299 | -4,030 | 8,329 | 270 | -8,059 |
+| 1,008 B | 4,223 | 1,299 | -2,924 | 8,347 | 1,186 | -7,161 |
+| 8,008 B | 4,307 | 8,284 | **+3,977** | 8,325 | 8,219 | -106 |
+| 16,008 B | 4,232 | 16,282 | +12,051 | 8,444 | 16,260 | +7,816 |
+
+**The server's old cost is flat too, but at HALF the client's** — ~4,270 versus
+~8,350 bytes per exchange. Both are payload-independent; they differ by a factor
+of two, which is what the two directions cost asymmetrically in the old typed
+path. The new cost is the same on both sides, ~1.02x payload, because both now
+allocate exactly the message.
+
+**Combined, per exchange:**
+
+| reply | before | after | delta |
+| ---: | ---: | ---: | ---: |
+| 16 B | 12,657 | 569 | **-12,089** |
+| 1,008 B | 12,570 | 2,485 | -10,085 |
+| 8,008 B | 12,632 | 16,503 | +3,871 |
+| 16,008 B | 12,676 | 32,542 | +19,867 |
+
+**So the WHOLE-EXCHANGE crossover is ~6 KB of reply, not the ~8 KB the client
+half alone suggested.** Measuring one side and doubling would have put it in the
+wrong place: the server's flat cost is half the client's, so the combined old
+curve sits at ~12,635 rather than ~16,700.
+
+Corrected summary of the migration, both halves, whole exchange:
+
+* **a 22x reduction** on a small reply (12,657 -> 569 bytes);
+* break-even at **~6 KB**;
+* **2.6x more** at 16 KB, growing linearly beyond it.
+
+The shape argument stands and is stronger with both halves: flat-and-unattributable
+becomes linear-and-derivable, on both sides, from the same
+`MAX_SERIALIZED_SIZE` issue 0896 exposes.
+
+Limits unchanged: two points per size, one type, one transport, allocation BYTES
+only — the CPU cost of the removed decode/encode is still unmeasured, and it is
+the half that does not cross over.
