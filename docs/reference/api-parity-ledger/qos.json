@@ -670,5 +670,13 @@
   "rust:Session::supported_qos_policies": {
     "verdict": "divergence",
     "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls; see `rust:Session::create_publisher` in the pubsub stage, and issue 0784 on `nros::` exporting the seam beside the API. rclrs has no equivalent because rcl is its only backend and DDS is assumed to honour every policy. It exists here because ours do not: zenoh-pico honours a different subset from Cyclone, and `QoSProfile::validate_against` uses this mask to fail a create call with `INCOMPATIBLE_QOS` rather than downgrade silently (RFC-0036). OUR LANGUAGES DISAGREE: this is the only way in any of our three languages to ask which policies the linked backend honours, and it is Rust-only -- a C or C++ caller learns the answer only by getting `NROS_RET_INCOMPATIBLE_QOS` back from a create it already made. Same asymmetry as `Publisher::supports_event` in the pubsub stage."
+  },
+  "rust:QoSProfile::resolve_system_default": {
+    "verdict": "extension",
+    "why": "issue 0829. Replaces each `SYSTEM_DEFAULT` field with the backend's own answer, and is called by every backend at its create entry. rclrs has no counterpart because upstream never resolves the sentinel in the client library: `rmw_qos_profile_system_default` is passed down untouched and each `librmw_*_cpp.so` resolves it internally, differently -- `rmw_cyclonedds_cpp`'s `create_readwrite_qos` gives `KEEP_LAST, 1`, `rmw_zenoh_cpp`'s `QoS::QoS()` gives `RMW_ZENOH_DEFAULT_HISTORY_DEPTH` (42). We link ONE backend at build time and our backends are Rust crates implementing `nros_rmw::Session` from other crates, so the same per-backend resolution has to be a public item on the shared `QoSProfile` rather than private C++ inside a dynamically-loaded plugin. One shared helper, not three spellings."
+  },
+  "rust:QoSProfile::has_unresolved_system_default": {
+    "verdict": "extension",
+    "why": "issue 0829. Predicate for `is any policy field still the sentinel`, the guard a backend or test uses to assert resolution happened before anything is derived from the profile -- load-bearing on the zenoh path, where the QoS is serialised into a liveliness-token keyexpr that a ROS `rmw_zenoh_cpp` peer parses, and an unresolved `0:0:0,0` would advertise a policy nobody chose. rclrs exposes nothing equivalent for the same reason as `resolve_system_default`: upstream's resolution is invisible C++ inside the loaded RMW, so there is no client-library state to ask about."
   }
 }

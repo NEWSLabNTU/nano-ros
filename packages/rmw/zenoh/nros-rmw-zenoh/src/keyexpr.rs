@@ -176,9 +176,9 @@ pub trait QosKeyExpr {
     /// Format: `reliability:durability:history,depth:deadline:lifespan:liveliness,lease:avoid_ros_namespace_conventions`
     ///
     /// rmw_zenoh encoding:
-    /// - reliability: RELIABLE=1, BEST_EFFORT=2
-    /// - durability: TRANSIENT_LOCAL=1, VOLATILE=2
-    /// - history: KEEP_LAST=1, KEEP_ALL=2
+    /// - reliability: SYSTEM_DEFAULT=0, RELIABLE=1, BEST_EFFORT=2
+    /// - durability: SYSTEM_DEFAULT=0, TRANSIENT_LOCAL=1, VOLATILE=2
+    /// - history: SYSTEM_DEFAULT=0, KEEP_LAST=1, KEEP_ALL=2
     fn to_qos_string<const N: usize>(&self) -> heapless::String<N>;
 }
 
@@ -186,17 +186,27 @@ impl QosKeyExpr for QoSProfile {
     fn to_qos_string<const N: usize>(&self) -> heapless::String<N> {
         let mut s = heapless::String::new();
 
+        // issue 0829 — the sentinel gets upstream's own digit, 0, rather than
+        // being folded onto a concrete policy. It should never arrive here:
+        // `ZenohSession::create_{publisher,subscription}` resolve before
+        // deriving anything from the profile, precisely so a ROS peer parsing
+        // this token out of the graph never reads `0:0:0,0` as a policy. Emit
+        // the honest digit anyway, so a leak reads as "unstated" to that peer
+        // instead of as a reliability we never chose.
         let reliability = match self.reliability {
+            QoSReliabilityPolicy::SystemDefault => 0,
             QoSReliabilityPolicy::Reliable => 1,
             QoSReliabilityPolicy::BestEffort => 2,
         };
 
         let durability = match self.durability {
+            QoSDurabilityPolicy::SystemDefault => 0,
             QoSDurabilityPolicy::TransientLocal => 1,
             QoSDurabilityPolicy::Volatile => 2,
         };
 
         let history = match self.history {
+            QoSHistoryPolicy::SystemDefault => 0,
             QoSHistoryPolicy::KeepLast => 1,
             QoSHistoryPolicy::KeepAll => 2,
         };

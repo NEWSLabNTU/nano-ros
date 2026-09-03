@@ -986,8 +986,16 @@ pub mod qos {
         ..DEFAULT
     };
 
-    /// `rmw_qos_profile_system_default`-equivalent.
-    pub const SYSTEM_DEFAULT: QoSProfile = DEFAULT;
+    /// `rmw_qos_profile_system_default`-equivalent — **an absence, not a
+    /// profile**: every policy is the SYSTEM_DEFAULT sentinel and the depth is
+    /// 0, resolved by whichever backend is linked.
+    ///
+    /// issue 0829 — this said `= DEFAULT` (depth 10) while
+    /// `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` said depth 1, so one name
+    /// shipped two queue depths depending on which spelling a caller reached.
+    /// It is now an ALIAS of the associated const, like the other four, and
+    /// neither number survives: see `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT`.
+    pub const SYSTEM_DEFAULT: QoSProfile = QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT;
 }
 
 // Re-export safety types when feature is enabled
@@ -1519,6 +1527,15 @@ mod qos_preset_parity {
     /// The one that can actually rot: `qos::*` is a SEPARATE hand-written copy.
     #[test]
     fn qos_module_agrees_with_the_presets() {
+        // issue 0829 FIXED — SYSTEM_DEFAULT joins the four that always agreed.
+        // It is here rather than in its own pinned test because the two copies
+        // no longer say anything a copy could get wrong: both alias the one
+        // associated const, which is all sentinel.
+        assert_eq!(
+            qos::SYSTEM_DEFAULT,
+            QOS_PROFILE_SYSTEM_DEFAULT,
+            "qos::SYSTEM_DEFAULT drifted"
+        );
         assert_eq!(qos::DEFAULT, QOS_PROFILE_DEFAULT, "qos::DEFAULT drifted");
         assert_eq!(
             qos::SENSOR_DATA,
@@ -1537,32 +1554,40 @@ mod qos_preset_parity {
         );
     }
 
-    /// issue 0829 — `SYSTEM_DEFAULT` is the one that ALREADY drifted, and this
-    /// test is what found it: `nros::qos::SYSTEM_DEFAULT` queues **10**,
-    /// `QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT` queues **1**, each with two
-    /// callers, so neither is obviously the live one. Depth is not cosmetic —
-    /// it is how many samples the history keeps before dropping.
+    /// issue 0829, RESOLVED — this test used to PIN the divergence, asserting
+    /// depth 10 on the façade side and depth 1 on the `nros-rmw` side because
+    /// neither was obviously the live one. Both numbers are gone, and the
+    /// replacement is not "we picked one": no concrete depth can be right,
+    /// because the two reference RMWs resolve the same sentinel differently
+    /// (`rmw_cyclonedds_cpp` → `KEEP_LAST, 1`; `rmw_zenoh_cpp` →
+    /// `RMW_ZENOH_DEFAULT_HISTORY_DEPTH`, 42).
     ///
-    /// Pinned at the CURRENT divergent values rather than deleted or "fixed" by
-    /// guess: recording a known gap keeps any FURTHER drift failing, where a
-    /// removed assertion would let both sides wander. Delete this test and fold
-    /// the constant into the one above when 0829 picks a depth.
+    /// So what is asserted now is the SHAPE: `SYSTEM_DEFAULT` states nothing,
+    /// on every field. That is what makes it different from `DEFAULT` — the
+    /// two being byte-identical was the older defect, and asserting they
+    /// DIFFER is what keeps anyone from quietly aliasing them again.
     #[test]
-    fn system_default_divergence_is_pinned_until_0829() {
-        assert_eq!(
-            qos::SYSTEM_DEFAULT.depth,
-            10,
-            "façade side changed; see issue 0829"
-        );
-        assert_eq!(
-            QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.depth,
-            1,
-            "nros-rmw side changed; see issue 0829"
-        );
+    fn system_default_states_nothing_on_every_field() {
+        use nros_rmw::{
+            DEPTH_SYSTEM_DEFAULT, QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy,
+            QoSReliabilityPolicy,
+        };
+        let sd = QOS_PROFILE_SYSTEM_DEFAULT;
+        assert_eq!(sd.reliability, QoSReliabilityPolicy::SystemDefault);
+        assert_eq!(sd.durability, QoSDurabilityPolicy::SystemDefault);
+        assert_eq!(sd.history, QoSHistoryPolicy::SystemDefault);
+        assert_eq!(sd.depth, DEPTH_SYSTEM_DEFAULT);
+        // `None` IS the liveliness sentinel — it lowers to
+        // `NROS_RMW_LIVELINESS_SYSTEM_DEFAULT` (0), the two having collapsed
+        // onto one value in phase-376 W5/B2.
+        assert_eq!(sd.liveliness_kind, QoSLivelinessPolicy::None);
+        assert!(sd.has_unresolved_system_default());
+
+        // The whole point of the name: it is NOT a synonym for DEFAULT.
         assert_ne!(
-            qos::SYSTEM_DEFAULT,
-            QOS_PROFILE_SYSTEM_DEFAULT,
-            "0829 appears to be FIXED — fold this into qos_module_agrees_with_the_presets"
+            sd, QOS_PROFILE_DEFAULT,
+            "SYSTEM_DEFAULT aliased DEFAULT again — see issue 0829"
         );
+        assert!(!QOS_PROFILE_DEFAULT.has_unresolved_system_default());
     }
 }

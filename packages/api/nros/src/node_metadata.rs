@@ -1420,9 +1420,16 @@ fn effect_json_kind(kind: CallbackEffectKind) -> &'static str {
     }
 }
 
+// issue 0829 — `"system_default"` is the spelling `liveliness_json` below
+// already uses for the same sentinel, and the one the orchestration IR emits
+// for an unstated policy (`nros-cli-core/src/orchestration/schema.rs:58-88`,
+// `planner.rs:1657-1671`). The metadata reports what the node REQUESTED, so a
+// sentinel must survive to the JSON: printing the resolved value here would
+// claim the node asked for something it left to the backend.
 #[cfg(feature = "alloc")]
 fn reliability_json(value: QoSReliabilityPolicy) -> &'static str {
     match value {
+        QoSReliabilityPolicy::SystemDefault => "system_default",
         QoSReliabilityPolicy::Reliable => "reliable",
         QoSReliabilityPolicy::BestEffort => "best_effort",
     }
@@ -1431,6 +1438,7 @@ fn reliability_json(value: QoSReliabilityPolicy) -> &'static str {
 #[cfg(feature = "alloc")]
 fn durability_json(value: QoSDurabilityPolicy) -> &'static str {
     match value {
+        QoSDurabilityPolicy::SystemDefault => "system_default",
         QoSDurabilityPolicy::Volatile => "volatile",
         QoSDurabilityPolicy::TransientLocal => "transient_local",
     }
@@ -1439,6 +1447,7 @@ fn durability_json(value: QoSDurabilityPolicy) -> &'static str {
 #[cfg(feature = "alloc")]
 fn history_json(value: QoSHistoryPolicy) -> &'static str {
     match value {
+        QoSHistoryPolicy::SystemDefault => "system_default",
         QoSHistoryPolicy::KeepLast => "keep_last",
         QoSHistoryPolicy::KeepAll => "keep_all",
     }

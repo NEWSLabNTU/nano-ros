@@ -450,6 +450,25 @@ upstream `rmw_qos_profile_*` field-for-field, so applications
 porting from rclcpp / rclrs can pull the equivalent profile
 constant unchanged.
 
+`_SYSTEM_DEFAULT` is the one where "field-for-field" is worth
+spelling out: like upstream's, it names **no concrete policy at
+all**. Every field is the sentinel — `NROS_RMW_{RELIABILITY,
+DURABILITY,HISTORY,LIVELINESS}_SYSTEM_DEFAULT` are all `0`, and
+the depth sentinel is `0` too, matching
+`RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT`. The backend resolves it at
+entity-create time, and **the answer differs per backend**, which
+is the whole point of the name: cyclonedds resolves to
+RELIABLE / VOLATILE / KEEP_LAST(1), mirroring what
+`rmw_cyclonedds_cpp` does with the same sentinel; zenoh resolves
+the depth to the subscriber ring the shim actually enforces; xrce
+resolves the three policies the same way and leaves the depth
+absent from the wire for the Agent to fill. Upstream's own two
+reference RMWs disagree here as well — `rmw_cyclonedds_cpp` picks
+depth 1, `rmw_zenoh_cpp` picks 42 — so a profile constant that
+baked a number would be wrong for every backend but one. Ask for
+`_DEFAULT` if you want a stated reliable / volatile /
+keep-last(10) profile. (issue 0829)
+
 ### Per-backend support, no silent downgrade
 
 Each backend advertises which policies it can honour via
