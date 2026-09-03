@@ -159,6 +159,21 @@ KNOB_CLASS = {
     #
     # The board descriptor's facts: identity and paths the CLI hands the build,
     # which are what the ladder RESOLVES AGAINST rather than knobs it resolves.
+    # phase-403 step 3 -- the entity inventory's per-kind counts. INFRA, not
+    # sizing: nobody tunes these, they are what the image DECLARED, and the
+    # arena derivation sums bytes over them. Same category as a board
+    # descriptor fact -- something the ladder resolves AGAINST rather than a
+    # knob it resolves.
+    "NROS_ENTITY_COUNT_SUBSCRIPTION": ("infra", "declared entity count"),
+    "NROS_ENTITY_COUNT_TIMER": ("infra", "declared entity count"),
+    "NROS_ENTITY_COUNT_SERVICE_SERVER": ("infra", "declared entity count"),
+    "NROS_ENTITY_COUNT_ACTION_CLIENT": ("infra", "declared entity count"),
+    "NROS_ENTITY_COUNT_ACTION_SERVER": ("infra", "declared entity count"),
+    # The receive payload class. DERIVED -- it is the largest bound among the
+    # types this image subscribes to, which phase-403 W8 computes exactly. Read
+    # here so the arena stops billing a subscription at the CLOSURE buffer,
+    # which is also DEFAULT_TX_BUF and therefore larger.
+    "NROS_SUBSCRIBER_BUFFER_SIZE": ("derived", "receive payload class"),
     "NROS_BOARD_ZEPHYR_ID": ("infra", "board descriptor fact"),
     "NROS_BOARD_TOOLCHAIN": ("infra", "board descriptor fact"),
     "NROS_BOARD_RUNNER": ("infra", "board descriptor fact"),
@@ -286,6 +301,10 @@ def kconfig_symbols():
 # and a callee in neither is a FAILURE: the same "a new knob forces a decision"
 # rule this file already applies to knobs, applied to the idioms that read them.
 READ_CALLEES = {
+    # phase-403 step 3. Reads the environment like `env_usize`, but returns
+    # Option: for an entity COUNT, absence and zero are different answers and
+    # a default would erase the difference.
+    "env_opt_usize",
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",

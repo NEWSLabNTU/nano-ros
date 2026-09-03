@@ -285,7 +285,17 @@ function(_nros_load_derived_entity_inventory)
         NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
         NROS_DERIVED_MAX_PUBLISHERS
         NROS_DERIVED_MAX_QUERYABLES
-        NROS_DERIVED_EXECUTOR_MAX_NODES)
+        NROS_DERIVED_EXECUTOR_MAX_NODES
+        # phase-403 step 3 -- the per-kind COUNTS, for the arena sum. Third
+        # time this whitelist has dropped a symbol the fragment publishes: it
+        # is a NAMED list, so anything not spelled here loads and then dies at
+        # the function boundary, silently, and the consumer falls back to a
+        # default that looks deliberate.
+        NROS_ENTITY_COUNT_SUBSCRIPTION
+        NROS_ENTITY_COUNT_TIMER
+        NROS_ENTITY_COUNT_SERVICE_SERVER
+        NROS_ENTITY_COUNT_ACTION_CLIENT
+        NROS_ENTITY_COUNT_ACTION_SERVER)
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
@@ -410,6 +420,38 @@ function(nros_resolve_knobs)
     # bridge, whose two nodes are runtime strings declared nowhere; that path
     # now names this knob when the table fills, which is what makes deriving it
     # safe rather than hopeful.
+    # phase-403 step 3 -- the ARENA sums over what the image DECLARES, and the
+    # byte arithmetic lives in nros-node's build.rs (it knows rx_buf and the
+    # target's pointer width; this file knows neither). So the COUNTS travel
+    # and the bytes stay put.
+    #
+    # These are not Kconfig symbols, so `$DOTCONFIG` cannot carry them and the
+    # cargo env is the only route -- `nros_set_cargo_env_from_kconfig` exports
+    # every name in NROS_RESOLVED_KNOBS, so resolving them here is what makes
+    # them reachable. Forwarding a count the inventory did not publish would be
+    # WORSE than not forwarding it: build.rs treats a missing count as "nobody
+    # declared" and keeps the old worst case, while a zero would sum an arena
+    # too small for entities that exist.
+    # Spelled out, not looped. A computed name (`NROS_ENTITY_COUNT_${_kind}`)
+    # is invisible to `check-kconfig-knob-forwarding`, which reads this file
+    # statically: it saw the literal prefix as a forwarded knob no build script
+    # reads, and failed. It is the same lesson a computed `NROS_DERIVED_${_pool}`
+    # taught one wave earlier, where cmake resolved the built-up name to EMPTY
+    # and the knob silently took a default. Knob names are written in full.
+    if(DEFINED NROS_ENTITY_COUNT_SUBSCRIPTION AND
+       NOT "${NROS_ENTITY_COUNT_SUBSCRIPTION}" STREQUAL "")
+        _nros_resolve_knob(NROS_ENTITY_COUNT_SUBSCRIPTION
+            "${NROS_ENTITY_COUNT_SUBSCRIPTION}")
+        _nros_resolve_knob(NROS_ENTITY_COUNT_TIMER
+            "${NROS_ENTITY_COUNT_TIMER}")
+        _nros_resolve_knob(NROS_ENTITY_COUNT_SERVICE_SERVER
+            "${NROS_ENTITY_COUNT_SERVICE_SERVER}")
+        _nros_resolve_knob(NROS_ENTITY_COUNT_ACTION_CLIENT
+            "${NROS_ENTITY_COUNT_ACTION_CLIENT}")
+        _nros_resolve_knob(NROS_ENTITY_COUNT_ACTION_SERVER
+            "${NROS_ENTITY_COUNT_ACTION_SERVER}")
+    endif()
+
     _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_NODES
         "${CONFIG_NROS_EXECUTOR_MAX_NODES}" NROS_DERIVED_EXECUTOR_MAX_NODES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
