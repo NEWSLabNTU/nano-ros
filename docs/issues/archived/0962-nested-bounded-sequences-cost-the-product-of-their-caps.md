@@ -1,7 +1,7 @@
 ---
 id: 962
 title: "A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate"
-status: open
+status: resolved
 area: codegen, memory
 severity: medium
 found: 2026-08-31
@@ -240,3 +240,56 @@ header both read, so a fourth state changes the exported schema and every
 consumer of it. Inventing that channel is a design decision this issue already
 lists three options for, and picking one inside an unrelated change is how a
 substituted number gets shipped. The observation is recorded here instead.
+
+
+## RESOLVED 2026-09-04 — verified, then closed on the owner's instruction
+
+The analysis above recommended resolving and flagged itself rather than closing,
+because it reverses a "still open" line the owner wrote. The owner asked for this
+issue to be continued; what follows is the verification that was owed before
+acting on a recommendation this issue made about itself.
+
+**Every checkable claim was re-checked. None was taken from the prose.**
+
+| claim | how it was verified |
+| --- | --- |
+| `size_bound` multiplies over nesting | read `nros-serdes/src/size.rs:145` — `BoundedSequence(n, inner)` loops `while i < *n` recursing into `field_bound(inner, ..)`, so a level's cost is taken `n` times |
+| `element_cap` cannot deepen a chain | `an_element_cap_cannot_deepen_a_bounded_sequence_chain` — passes |
+| a budget-free type is untouched | `a_type_with_no_budget_is_untouched` — passes |
+| a budget the type fits is not substituted | `a_budget_the_type_fits_never_becomes_the_bound` — passes |
+| the over-budget diagnostic names the chain | `over_budget_names_the_chain_and_its_factors` — passes |
+| the whole bounds surface | 21 of 21 `bounds::` tests, plus the codegen suite, green |
+
+**The one claim that is an argument rather than a test** is that a total-element
+bound is unsound in both directions, and it holds on inspection: a `cap` in
+`nros-codegen.toml` binds OUR STORAGE and has no effect whatever on what a
+conforming remote publisher sends, which is bound by the `.msg`. So an RX bound
+computed as a total under-reports against a peer that is within its rights, and
+`size_bound`'s own comment names under-reporting as the dangerous direction. The
+TX half fails for the mirror reason: our generated storage caps each level
+independently and nothing enforces a total across a chain.
+
+**So this closes as a PROPERTY, not as work done.** A per-level capacity model
+multiplies; that is the correct worst case for both directions; and the two ways
+to make the number smaller both exist already — cap one level of the worst chain
+(the option-2 diagnostic names the chains and says so), or declare a total and
+enforce it at the wire, which neither ROS 2 nor our storage offers.
+
+### What this unblocks, and it is worth saying explicitly
+
+[Issue 0963](0963-the-exported-bound-inventory-has-no-consumer.md) lists its
+first remedy as "bound them in `nros-codegen.toml`, **which runs into issue
+0962**: a bound over nested bounded sequences is the PRODUCT of the caps, so a
+uniform cap does not terminate at a usable number".
+
+That framing treated this issue as a blocker. It is not one, and was not after
+phase-403 W7b landed options 2 and 4. A UNIFORM cap does not terminate — that
+part stays true — but a uniform cap was never the remedy. The diagnostic names
+the worst chain and its factors, and capping ONE level of it divides the whole
+product. 0963's unbounded types are the `example_interfaces` `*MultiArray`
+family, `String`, `WString` and `action_msgs/GoalStatusArray`, which nest one or
+two levels, not five: this issue's pathological case is
+`visualization_msgs`, and nothing in 0963's closure resembles it.
+
+Recorded in 0963 too, so its next reader does not inherit a blocker that was
+lifted a phase ago.
