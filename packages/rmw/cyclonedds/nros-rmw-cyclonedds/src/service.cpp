@@ -46,6 +46,8 @@
 
 #include "internal.hpp"
 
+#include "nros_sertype.hpp"
+
 #include "descriptors.hpp"
 #include "qos.hpp"
 #include "sertype_min.hpp"
@@ -397,76 +399,12 @@ bool type_ends_with(const dds_topic_descriptor_t* desc, const char* suffix) {
     return len >= slen && std::strcmp(desc->m_typename + len - slen, suffix) == 0;
 }
 
-bool type_contains(const dds_topic_descriptor_t* desc, const char* needle) {
-    return desc != nullptr && desc->m_typename != nullptr && needle != nullptr &&
-           std::strstr(desc->m_typename, needle) != nullptr;
-}
-
 struct DdsSequenceInt32 {
     uint32_t _maximum;
     uint32_t _length;
     int32_t* _buffer;
     bool _release;
 };
-
-// Phase 171.0.b: Cyclone 0.10.5's public `dds_stream_read_sample`
-// helper crashes on the generated Fibonacci_GetResult_Response_ dynamic
-// sequence path when fed the CDR assembled by nros. Build the generated
-// C layout directly for this smoke-test action until the generic raw-CDR
-// writer path is replaced.
-rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
-                                                   const dds_topic_descriptor_t* desc,
-                                                   const uint8_t* wire_cdr, size_t wire_len) {
-    if (desc == nullptr || desc->m_ops == nullptr || wire_cdr == nullptr ||
-        wire_len < kEncapLen + kHeaderBytes + kStatusFieldLen + kCdrLenPrefix) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-
-    const uint32_t* ops = desc->m_ops;
-    const uint32_t guid_off = ops[1];
-    const uint32_t seq_off = ops[3];
-    const uint32_t status_off = ops[5];
-    const uint32_t result_off = ops[7];
-
-    size_t pos = kEncapLen + kHeaderBytes;
-    int8_t status = static_cast<int8_t>(wire_cdr[pos]);
-    pos += 1;
-    pos = cdr_align4(pos);
-    if (pos + sizeof(kCdrLeHeader) <= wire_len &&
-        std::memcmp(wire_cdr + pos, kCdrLeHeader, sizeof(kCdrLeHeader)) == 0) {
-        pos += sizeof(kCdrLeHeader);
-    }
-    if (pos + kCdrLenPrefix > wire_len) return NROS_RMW_RET_INVALID_ARGUMENT;
-
-    uint32_t count = 0;
-    std::memcpy(&count, wire_cdr + pos, sizeof(count));
-    pos += kCdrLenPrefix;
-    if (count > (wire_len - pos) / sizeof(int32_t)) {
-        return NROS_RMW_RET_INVALID_ARGUMENT;
-    }
-
-    auto* sample = static_cast<uint8_t*>(ddsrt_calloc(1, desc->m_size));
-    if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-    std::memcpy(sample + guid_off, wire_cdr + kEncapLen, kGuidBytes);
-    std::memcpy(sample + seq_off, wire_cdr + kEncapLen + kGuidBytes, kSeqBytes);
-    std::memcpy(sample + status_off, &status, sizeof(status));
-
-    auto* sequence = reinterpret_cast<DdsSequenceInt32*>(sample + result_off);
-    sequence->_maximum = count;
-    sequence->_length = count;
-    sequence->_release = true;
-    sequence->_buffer = static_cast<int32_t*>(dds_alloc(count * sizeof(int32_t)));
-    if (count > 0 && sequence->_buffer == nullptr) {
-        ddsrt_free(sample);
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
-    std::memcpy(sequence->_buffer, wire_cdr + pos, count * sizeof(int32_t));
-
-    dds_return_t r = dds_write(writer, sample);
-    dds_stream_free_sample(sample, desc->m_ops);
-    ddsrt_free(sample);
-    return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
-}
 
 // (Issue #68) `insert_goal_id_len_at` was removed: it re-inserted a pre-233.6
 // `uint32(16)` goal_id length prefix on the service-request receive path, which a
@@ -534,67 +472,34 @@ int32_t split_wire_header(const uint8_t* wire_cdr, size_t wire_len,
 
 // Run dds_stream_read_sample on @p wire_cdr, then dds_write. Caller
 // owns @p wire_cdr.
+// Publish the caller's wire CDR as a blob. Issues 0970 and 0969.
+//
+// This used to decode the bytes into a typed sample (`dds_stream_read_sample`)
+// and hand THAT to `dds_write`, so Cyclone re-serialised them: a decode, an
+// encode and a heap allocation per publish, to put back on the wire what the
+// caller already had. `publisher.cpp` stopped doing that when issue 0970's
+// message half landed; this is the service half, and it is the same three lines.
+//
+// The recorded blocker — Cyclone must expose `dds_writer_lookup_serdatatype` —
+// was never the real one. That API recovers a sertype you do NOT own; registering
+// our own with `dds_create_topic_sertype` makes the question moot, which is what
+// the topics below now do.
+//
+// Two per-type adapters go with it, both artefacts of the round trip rather than
+// of the wire. The `_SendGoal_*` / `_GetResult_Request_` branch memcpy'd the
+// payload onto a typed struct because the stream reader mishandled it, and
+// `write_fibonacci_get_result_response` hand-built the generated C layout because
+// `dds_stream_read_sample` CRASHES on that type (phase 171.0.b). Nothing reads a
+// stream here now, so neither has anything to work around.
 rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
-                           const SertypeMin* st, const uint8_t* wire_cdr, size_t wire_len) {
-    if (writer <= 0 || desc == nullptr || st == nullptr || wire_cdr == nullptr ||
-        wire_len < kEncapLen) {
+                      const uint8_t* wire_cdr, size_t wire_len) {
+    if (writer <= 0 || desc == nullptr || wire_cdr == nullptr || wire_len < kEncapLen) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    // Issue 0976 — the two write-side CDR corrections are GONE, not disabled.
-    //
-    // `strip_goal_id_len_at` removed a `[16,0,0,0]` length prefix before the
-    // goal UUID and `strip_nested_cdr_at` removed a nested encapsulation header,
-    // both correcting bytes nano-ros used to emit. It no longer emits them: the
-    // runtime writes the fixed `octet[16]` ROS 2 declares (publisher.cpp's 233.6
-    // note records that fix), so the guards had nothing to match.
-    //
-    // MEASURED before deleting, against a stock ROS 2 Humble action server over
-    // `rmw_cyclonedds_cpp`, one client per language:
-    //
-    //     Rust  strip_goal_id_len_at declined x2, strip_nested_cdr_at declined
-    //     C     the same counts
-    //     C++   the same counts
-    //
-    // and each round trip returned the correct Fibonacci sequence. Three
-    // independent serializers reaching this function through the C ABI, none of
-    // them producing a byte either helper would have touched.
-    //
-    // A ROS 2-compatibility correction belongs where nano-ros SERIALIZES, not in
-    // one backend: bytes fixed here would still be wrong for every other
-    // transport. That move already happened; this removes the copy left behind.
-    //
-    // `ros2_action_e2e.rs` is what makes this checkable — both directions, real
-    // peer. Before it, nothing in the tree could tell whether these mattered.
-    const uint8_t* read_cdr = wire_cdr;
-    size_t read_len = wire_len;
-
-    if (type_ends_with(desc, "_SendGoal_Request_") || type_ends_with(desc, "_SendGoal_Response_") ||
-        type_ends_with(desc, "_GetResult_Request_")) {
-        void* sample = ddsrt_calloc(1, desc->m_size);
-        if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-        size_t payload_len = read_len - kEncapLen;
-        if (payload_len > desc->m_size) payload_len = desc->m_size;
-        std::memcpy(sample, read_cdr + kEncapLen, payload_len);
-        dds_return_t r = dds_write(writer, sample);
-        ddsrt_free(sample);
-        return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
-    }
-    if (type_contains(desc, "Fibonacci_GetResult_Response_")) {
-        return write_fibonacci_get_result_response(writer, desc, read_cdr, read_len);
-    }
-
-    uint32_t xcdrv = cdr_xcdr_version(read_cdr);
-    void* sample = ddsrt_calloc(1, desc->m_size);
-    if (sample == nullptr) return NROS_RMW_RET_BAD_ALLOC;
-
-    dds_istream_t is;
-    dds_istream_init(&is, static_cast<uint32_t>(read_len - kEncapLen), read_cdr + kEncapLen, xcdrv);
-    dds_stream_read_sample(&is, sample, st->as_sertype());
-    dds_istream_fini(&is);
-
-    dds_return_t r = dds_write(writer, sample);
-    dds_stream_free_sample(sample, desc->m_ops);
-    ddsrt_free(sample);
+    // The sample IS the caller's bytes, header included: `from_sample` copies
+    // them into the serdata and that is the whole of publish.
+    const NrosCdrBlob blob{wire_cdr, wire_len};
+    dds_return_t r = dds_write(writer, &blob);
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
@@ -798,7 +703,7 @@ rmw_ret_t maybe_flush_request(ClientState* state) {
     if (!request_writer_matched(state->writer)) {
         return NROS_RMW_RET_OK;
     }
-    rmw_ret_t r = write_typed(state->writer, state->req_desc, state->req_st,
+    rmw_ret_t r = write_typed(state->writer, state->req_desc,
                                    state->pending_request, state->pending_request_len);
     if (r == NROS_RMW_RET_OK) {
         state->pending_request_len = 0;
@@ -854,8 +759,24 @@ rmw_ret_t service_create(const rmw_node_t* node, const rmw_service_type_support_
     state->req_desc = req_desc;
     state->rep_desc = rep_desc;
 
-    state->request_topic = dds_create_topic(pp, req_desc, req_topic, nullptr, nullptr);
-    state->reply_topic = dds_create_topic(pp, rep_desc, rep_topic, nullptr, nullptr);
+    // Issue 0970 — OUR sertype, not Cyclone's generated one. Cyclone's deals in
+    // typed C structs, which is what forced the CDR round trip in both
+    // directions; `create_nros_sertype` makes the sample a span of CDR. On
+    // failure the sertype is ours to free, on success the domain owns it.
+    struct ddsi_sertype* req_st = create_nros_sertype(req_desc);
+    struct ddsi_sertype* rep_st = create_nros_sertype(rep_desc);
+    if (req_st == nullptr || rep_st == nullptr) {
+        if (req_st != nullptr) ddsi_sertype_unref(req_st);
+        if (rep_st != nullptr) ddsi_sertype_unref(rep_st);
+        // A keyed descriptor is the only way this fails today, and a service
+        // type has no keys — so this is a contract breach, not a runtime
+        // condition a caller can recover from.
+        return NROS_RMW_RET_ERROR;
+    }
+    state->request_topic =
+        dds_create_topic_sertype(pp, req_topic, &req_st, nullptr, nullptr, nullptr);
+    state->reply_topic =
+        dds_create_topic_sertype(pp, rep_topic, &rep_st, nullptr, nullptr, nullptr);
     if (state->request_topic < 0 || state->reply_topic < 0) {
         if (state->request_topic > 0) (void)dds_delete(state->request_topic);
         if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);
@@ -1076,7 +997,7 @@ rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
     if (wire_is_status(wire_len)) {
         r = wire_status_code(wire_len);
     } else {
-        r = write_typed(state->writer, state->rep_desc, state->rep_st, wire,
+        r = write_typed(state->writer, state->rep_desc, wire,
                         static_cast<size_t>(wire_len));
     }
     slot.in_use = false;
@@ -1129,8 +1050,24 @@ rmw_ret_t client_create(const rmw_node_t* node, const rmw_service_type_support_t
     state->rep_desc = rep_desc;
     state->next_seq.store(0, std::memory_order_relaxed);
 
-    state->request_topic = dds_create_topic(pp, req_desc, req_topic, nullptr, nullptr);
-    state->reply_topic = dds_create_topic(pp, rep_desc, rep_topic, nullptr, nullptr);
+    // Issue 0970 — OUR sertype, not Cyclone's generated one. Cyclone's deals in
+    // typed C structs, which is what forced the CDR round trip in both
+    // directions; `create_nros_sertype` makes the sample a span of CDR. On
+    // failure the sertype is ours to free, on success the domain owns it.
+    struct ddsi_sertype* req_st = create_nros_sertype(req_desc);
+    struct ddsi_sertype* rep_st = create_nros_sertype(rep_desc);
+    if (req_st == nullptr || rep_st == nullptr) {
+        if (req_st != nullptr) ddsi_sertype_unref(req_st);
+        if (rep_st != nullptr) ddsi_sertype_unref(rep_st);
+        // A keyed descriptor is the only way this fails today, and a service
+        // type has no keys — so this is a contract breach, not a runtime
+        // condition a caller can recover from.
+        return NROS_RMW_RET_ERROR;
+    }
+    state->request_topic =
+        dds_create_topic_sertype(pp, req_topic, &req_st, nullptr, nullptr, nullptr);
+    state->reply_topic =
+        dds_create_topic_sertype(pp, rep_topic, &rep_st, nullptr, nullptr, nullptr);
     if (state->request_topic < 0 || state->reply_topic < 0) {
         if (state->request_topic > 0) (void)dds_delete(state->request_topic);
         if (state->reply_topic > 0) (void)dds_delete(state->reply_topic);

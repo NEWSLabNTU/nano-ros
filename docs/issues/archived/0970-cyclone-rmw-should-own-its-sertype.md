@@ -1,7 +1,7 @@
 ---
 id: 970
 title: "The Cyclone backend borrows Cyclone's generated sertype instead of registering its own, and that — not an upstream gap — is what forces the CDR round trip on publish"
-status: open
+status: resolved
 area: [rmw]
 severity: medium
 related: [0969, 0958, 0896, phase-391, 0038]
@@ -103,3 +103,60 @@ Not zero copy. The buffered take contract has the caller own the buffer, so one
 [design 0038](../design/0038-zero-copy-data-transport.md). What it buys is the
 removal of a decode and an encode, and every heap allocation that goes with them,
 from both directions of a control loop's data path.
+
+## Resolved 2026-09-03 — the service half, and the round trip is gone
+
+Steps 1-4 of the direction above are done. The message half had already landed
+(`publisher.cpp` / `subscriber.cpp` on `create_nros_sertype` +
+`dds_create_topic_sertype`); this is `service.cpp`.
+
+* Its four topic creations moved from `dds_create_topic(pp, desc, ...)` — which
+  registers CYCLONE's sertype, the one that deals in typed C structs — to
+  `dds_create_topic_sertype` with ours.
+* `write_typed` is three lines: `const NrosCdrBlob blob{wire_cdr, wire_len};
+  dds_write(writer, &blob)`. The `dds_istream_t`, the `dds_stream_read_sample`
+  and the per-publish `ddsrt_calloc` are gone, and `SertypeMin` is unused on this
+  path.
+* Step 4's worry — the request-header wrapping — turned out to need nothing. The
+  16-byte header is INLINE in the CDR nano-ros builds, not a DDS-level wrapper,
+  so a blob sertype carries it like any other bytes. Upstream's
+  `cdds_request_wrapper_t` solves a problem this protocol does not have.
+
+**Three more adapters fell out**, which is what issue 0969 predicted and the
+reason it said this change subsumes it. Each existed to work around the typed
+round trip, not the wire: the `_SendGoal_*` / `_GetResult_Request_` memcpy
+branch, `write_fibonacci_get_result_response` (which hand-built the generated C
+layout because `dds_stream_read_sample` CRASHES on that type — phase 171.0.b),
+and `type_contains`, its only caller. With no stream read there is nothing to
+work around.
+
+**The measurable result**, from the allocation ledger the gate maintains:
+
+    cyclonedds steady-state sites   2 -> 1
+
+The survivor is `serdata_alloc`, the one copy a caller-owns-the-buffer contract
+cannot avoid. Per-message allocation on the service and action data path is
+otherwise gone.
+
+`check-rmw-alloc-sites` is what caught the leftovers: it failed with "DECLARED
+names a steady-state site that is gone", which is how `write_fibonacci_get_result_
+response` was found to be dead rather than merely unused-looking. A ledger that
+fails when reality shrinks is worth as much as one that fails when it grows.
+
+Acceptance:
+
+| check | result |
+| --- | --- |
+| backend ctest (incl. `ros2_srv_e2e` vs stock ROS 2) | 23/23 |
+| `ros2_action_e2e`, both directions, real ROS 2 peer | 2 passed |
+| `test_native_cyclonedds_rust_action` (nros to nros) | passed |
+| `just check fast` | 188 gates |
+
+**Keys were the stated risk and did not bite**: `create_nros_sertype` refuses a
+keyed descriptor, and every service request/reply descriptor in this tree is
+`m_nkeys = 0u`. Checking that first is what made this mechanical rather than
+speculative.
+
+None of it was checkable before `ros2_action_e2e` (issue 0976). This change alters
+what goes on the wire for every service and action; before that witness, nothing
+in the tree could have told.

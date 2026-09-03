@@ -121,7 +121,7 @@ the same treatment. The request path in `src/service.cpp:657` mirrors it and
 should be checked, not assumed.
 
 **Not in scope here:** the publish direction, which genuinely needs the sertype we
-do not own — that is [#0970](0970-cyclone-rmw-should-own-its-sertype.md), and it
+do not own — that is [#0970](archived/0970-cyclone-rmw-should-own-its-sertype.md), and it
 subsumes this fix if it lands first.
 
 **Also not in scope:** filling the ABI's `take_loaned_message` slot for this

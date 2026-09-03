@@ -171,7 +171,7 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0970](../issues/0970-cyclone-rmw-should-own-its-sertype.md) | the Cyclone backend borrows Cyclone's generated sertype instead of registering its own — the contract gap behind the CDR round trip |
+| [#0970](../issues/archived/0970-cyclone-rmw-should-own-its-sertype.md) | the Cyclone backend borrows Cyclone's generated sertype instead of registering its own — the contract gap behind the CDR round trip |
 | [#0971](../issues/0971-take-sequence-cannot-say-why-it-stopped.md) | `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it |
 | [#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md) | five action adapters in the Cyclone service path reshape the CDR to match ROS 2, exercised only by nano-ros talking to itself. This is the VERIFICATION remainder W3 names |
 
