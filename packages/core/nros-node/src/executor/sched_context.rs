@@ -248,12 +248,29 @@ pub struct AtomicSporadicState {
     /// callbacks, and `last_overrun_us` carries the worst-case
     /// observation for tuning. Both reset by `clear_overrun_stats`.
     pub overrun_count: portable_atomic::AtomicU32,
-    /// Phase 110.E.b — most recent dispatch's overrun amount
-    /// (`measured_us - budget_us`). `0` when no overrun has been
-    /// observed since the last `clear_overrun_stats`. Used by
-    /// monitoring code that wants to size the budget against
-    /// worst-case observed runtime.
+    /// WORST overrun amount seen (`measured_us - budget_us`) since the
+    /// last `clear_overrun_stats`; `0` when none has been observed.
+    ///
+    /// This used to `store` the most RECENT overrun while its doc claimed
+    /// it "carries the worst-case observation for tuning". A large overrun
+    /// followed by a small one silently replaced the number anyone would
+    /// have sized a budget from, and the only surviving evidence of the bad
+    /// dispatch was that `overrun_count` had gone up by one. It is a
+    /// `fetch_max` now, which is what the name and the purpose both say.
     pub last_overrun_us: portable_atomic::AtomicU32,
+    /// Worst execution time observed on this SC, in microseconds, recorded
+    /// on EVERY dispatch rather than only on an overrun.
+    ///
+    /// `overrun_count` and `last_overrun_us` answer "did it exceed the
+    /// budget, and by how much". Neither can answer "how close did it come"
+    /// — a system that never overruns produces no evidence at all, and that
+    /// is exactly the system whose budget you are trying to choose. Sizing
+    /// `budget_us` from a measured maximum is the whole point of the field.
+    ///
+    /// Only meaningful where the dispatch loop actually measures: elapsed is
+    /// `0` unless a latency monitor, a deadline action, or a clock is
+    /// present (`measure_us` in `spin_once`). No clock, no number.
+    pub max_exec_us: portable_atomic::AtomicU32,
 }
 
 impl AtomicSporadicState {
@@ -265,6 +282,7 @@ impl AtomicSporadicState {
             period_us,
             overrun_count: portable_atomic::AtomicU32::new(0),
             last_overrun_us: portable_atomic::AtomicU32::new(0),
+            max_exec_us: portable_atomic::AtomicU32::new(0),
         }
     }
 
@@ -277,7 +295,21 @@ impl AtomicSporadicState {
         self.overrun_count
             .fetch_add(1, portable_atomic::Ordering::Relaxed);
         self.last_overrun_us
-            .store(overrun_us, portable_atomic::Ordering::Relaxed);
+            .fetch_max(overrun_us, portable_atomic::Ordering::Relaxed);
+    }
+
+    /// Record one dispatch's measured execution time. Called on EVERY
+    /// dispatch charged to this SC, overrun or not.
+    #[inline]
+    pub fn record_exec(&self, elapsed_us: u32) {
+        self.max_exec_us
+            .fetch_max(elapsed_us, portable_atomic::Ordering::Relaxed);
+    }
+
+    /// Worst execution time seen since the last `clear_overrun_stats`.
+    #[inline]
+    pub fn max_exec_us(&self) -> u32 {
+        self.max_exec_us.load(portable_atomic::Ordering::Relaxed)
     }
 
     /// Reset both overrun statistics. Useful when tuning the budget
@@ -287,6 +319,8 @@ impl AtomicSporadicState {
         self.overrun_count
             .store(0, portable_atomic::Ordering::Relaxed);
         self.last_overrun_us
+            .store(0, portable_atomic::Ordering::Relaxed);
+        self.max_exec_us
             .store(0, portable_atomic::Ordering::Relaxed);
     }
 
@@ -371,6 +405,23 @@ pub struct SporadicState {
     /// to be reported whether it starves or merely throttles.
     pub window_skips: u32,
     pub window_dispatches: u32,
+    /// Worst execution time observed on this SC, in microseconds, recorded
+    /// on EVERY dispatch.
+    ///
+    /// This is the polled path, and issue 0736 established it is the one
+    /// that matters: `has_budget` prefers the atomic state only when a
+    /// refill timer was registered, which no board or entry does. So a
+    /// number recorded only on the atomic side would be a number no shipped
+    /// image ever writes.
+    ///
+    /// Sizing `budget_us` needs a measured maximum, and the overrun
+    /// counters cannot supply one: they say nothing at all until the budget
+    /// is already exceeded, which is the wrong end of the question when the
+    /// budget is what you are trying to choose.
+    ///
+    /// Only meaningful where the dispatch loop measures: elapsed is `0`
+    /// unless a latency monitor, a deadline action, or a clock is present.
+    pub max_exec_us: u32,
 }
 
 impl SporadicState {
@@ -383,6 +434,7 @@ impl SporadicState {
             consecutive_budget_skips: 0,
             window_skips: 0,
             window_dispatches: 0,
+            max_exec_us: 0,
         }
     }
 
@@ -423,6 +475,10 @@ impl SporadicState {
         self.budget_remaining_us = self.budget_remaining_us.saturating_sub(us);
         self.consecutive_budget_skips = 0;
         self.window_dispatches = self.window_dispatches.saturating_add(1);
+        // Every dispatch, not only the overrunning ones. See `max_exec_us`.
+        if us > self.max_exec_us {
+            self.max_exec_us = us;
+        }
     }
 
     /// How many dispatch opportunities before the throttle ratio is judged.
@@ -756,5 +812,67 @@ mod tests {
         // No class, no deadline → None → caller keeps the default Fifo SC.
         assert!(SchedContext::from_tier_policy(None, Some(1_000), None, None, None).is_none());
         assert!(SchedContext::from_tier_policy(Some("default"), None, None, None, None).is_none());
+    }
+}
+
+#[cfg(test)]
+mod exec_high_water_tests {
+    use super::*;
+
+    /// The number a budget gets sized from has to survive a later, smaller
+    /// dispatch. `max_exec_us` is a maximum, not a last-write.
+    #[test]
+    fn polled_state_keeps_the_worst_execution_not_the_latest() {
+        let mut st = SporadicState::new(1000, 10_000);
+        st.consume(120);
+        st.consume(900);
+        st.consume(30);
+        assert_eq!(st.max_exec_us, 900);
+    }
+
+    /// Recorded on EVERY dispatch, including ones well inside budget. A
+    /// system that never overruns still has to say how close it came.
+    #[test]
+    fn polled_state_records_without_any_overrun() {
+        let mut st = SporadicState::new(10_000, 20_000);
+        st.consume(700);
+        st.consume(450);
+        assert_eq!(st.max_exec_us, 700, "no overrun occurred, yet 700 is the evidence");
+    }
+
+    #[test]
+    fn atomic_state_keeps_the_worst_execution_not_the_latest() {
+        let st = AtomicSporadicState::new(1000, 10_000);
+        st.record_exec(120);
+        st.record_exec(900);
+        st.record_exec(30);
+        assert_eq!(st.max_exec_us(), 900);
+    }
+
+    /// Regression: `last_overrun_us` used to `store`, so a big overrun
+    /// followed by a small one lost the big one entirely -- while its own
+    /// doc promised "the worst-case observation for tuning".
+    #[test]
+    fn last_overrun_keeps_the_worst_not_the_most_recent() {
+        let st = AtomicSporadicState::new(1000, 10_000);
+        st.record_overrun(500);
+        st.record_overrun(20);
+        assert_eq!(
+            st.last_overrun_us.load(portable_atomic::Ordering::Relaxed),
+            500,
+            "a later small overrun must not erase the worst one"
+        );
+        assert_eq!(st.overrun_count.load(portable_atomic::Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn clearing_stats_resets_the_high_water_too() {
+        let st = AtomicSporadicState::new(1000, 10_000);
+        st.record_exec(4242);
+        st.record_overrun(7);
+        st.clear_overrun_stats();
+        assert_eq!(st.max_exec_us(), 0);
+        assert_eq!(st.last_overrun_us.load(portable_atomic::Ordering::Relaxed), 0);
+        assert_eq!(st.overrun_count.load(portable_atomic::Ordering::Relaxed), 0);
     }
 }
