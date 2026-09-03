@@ -451,6 +451,47 @@ jobs:
             "+refs/heads/$base:refs/remotes/origin/$base"
           echo "NROS_SUBMODULE_PIN_BASELINE=origin/$base" >> "$GITHUB_ENV"
 
+      # The step above says "depth=1 is enough: the gate reads TREES, never
+      # history". True of the SUPERPROJECT, and not of the submodules. To prove
+      # a moved pin is a fast-forward the gate runs
+      # `git -C <path> merge-base --is-ancestor <old> <new>`, which needs BOTH
+      # commits in that submodule's object store — and the baseline commit is
+      # by definition the one before the tip, which a shallow submodule never
+      # has. `git fetch --all` does not deepen a shallow clone, so the gate's
+      # own retry could not help either.
+      #
+      # The effect was that EVERY pin bump failed with "commit ... is not in
+      # the submodule's object store", advising "push the submodule commit
+      # FIRST" — advice already satisfied, since the commit was pushed and on
+      # its branch. Same shape as the baseline trap above: the gate cannot
+      # fetch (check-fast is network-free), so the workflow provides.
+      #
+      # UNSHALLOW, not `--depth=1 <sha>`. Fetching the baseline sha shallowly
+      # does hand over the commit object, and it is useless here: a shallow
+      # fetch grafts it as a ROOT with no parent links, so `merge-base
+      # --is-ancestor` finds no path between the two pins and reports
+      # "DIVERGED - neither pin contains the other" on what is actually a
+      # clean fast-forward. Connectivity is the whole point, so the history
+      # has to be real.
+      #
+      # Only submodules that are initialised AND actually missing their
+      # baseline commit are touched, so the cost lands on the one repo whose
+      # pin moved rather than on every clone.
+      - name: Fetch submodule history for check-submodule-pins
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path sha; do
+                [ -n "$path" ] || continue
+                [ -e "$path/.git" ] || continue
+                git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null && continue
+                echo "  deepening $path for $sha"
+                git -C "$path" fetch --no-tags --quiet --unshallow 2>/dev/null \
+                  || git -C "$path" fetch --no-tags --quiet origin "$sha" 2>/dev/null \
+                  || true
+              done
+
       - name: just check fast
         run: |
           source ./activate.sh
