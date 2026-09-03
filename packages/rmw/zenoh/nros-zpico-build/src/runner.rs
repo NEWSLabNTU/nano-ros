@@ -450,8 +450,12 @@ fn shim_config_from_env() -> ShimConfig {
         max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
-        get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
-        get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
+        // phase-400 W6 — BUILTINS, like the tx pair below: these five are
+        // ladder knobs now, and `resolve_wire` overwrites them where the rungs
+        // are known (search `shim_config.get_reply_buf_size =`). Reading the
+        // environment twice is what `check-knob-single-reader` forbids.
+        get_reply_buf_size: 4096,
+        get_poll_interval_ms: 10,
         // phase-400 W8 — the BUILTINS, not a second env read. These two are
         // ladder knobs, and the resolved values overwrite them below (search
         // `shim_config.tx_batch =`), so reading the environment here was dead
@@ -483,9 +487,13 @@ fn zenoh_buffer_config_from_env(posix: bool) -> ZenohBufferConfig {
     };
 
     ZenohBufferConfig {
-        frag_max_size: env_usize("ZPICO_FRAG_MAX_SIZE", default_frag),
-        batch_unicast_size: env_usize("ZPICO_BATCH_UNICAST_SIZE", default_batch_uni),
-        batch_multicast_size: env_usize("ZPICO_BATCH_MULTICAST_SIZE", default_batch_multi),
+        // phase-400 W6 — the computed per-platform BUILTINS. `resolve_wire`
+        // takes them as its `defaults` and applies the rungs above them, so the
+        // transport still picks the starting number and a descriptor can still
+        // override it.
+        frag_max_size: default_frag,
+        batch_unicast_size: default_batch_uni,
+        batch_multicast_size: default_batch_multi,
     }
 }
 
@@ -941,13 +949,17 @@ pub fn run() {
     // issue 0460 — the same env-or-Kconfig ladder the sized knobs use, so the
     // tx trio is not one more thing a Zephyr RUST image reads as "unset".
     let env_get = |name: &str| kconfig_fallback_str(name);
+    // phase-400 W6 — loaded ONCE and shared by both zenoh tenants (`tx` and
+    // `wire`). It used to live inside the tx arm; a second `load` for the wire
+    // knobs would parse the same file twice and could disagree with itself if
+    // one call site ever grew an option the other did not.
+    let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {
+        let p = PathBuf::from(&path);
+        println!("cargo:rerun-if-changed={}", p.display());
+        platform_config::BoardKnobsFile::load(&p).unwrap_or_else(|e| panic!("{path}: {e}"))
+    });
     let tx_knobs = match (&platforms_tree, platform_name) {
         (Some(tree), Some(name)) => {
-            let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {
-                let p = PathBuf::from(&path);
-                println!("cargo:rerun-if-changed={}", p.display());
-                platform_config::BoardKnobsFile::load(&p).unwrap_or_else(|e| panic!("{path}: {e}"))
-            });
             let mut tx = tree
                 .resolve_tx(
                     name,
@@ -979,7 +991,7 @@ pub fn run() {
     // Read buffer config with platform-appropriate defaults
     // NuttX is POSIX-compatible, use same defaults as posix.
     // ThreadX uses NetX Duo BSD sockets, treat as posix-like for buffer defaults.
-    let buf_config = zenoh_buffer_config_from_env(use_posix || use_nuttx || use_threadx);
+    let mut buf_config = zenoh_buffer_config_from_env(use_posix || use_nuttx || use_threadx);
 
     // Read shim slot counts from ZPICO_MAX_* env vars and generate Rust consts
     let mut shim_config = shim_config_from_env();
@@ -987,6 +999,68 @@ pub fn run() {
     // top-rung values; overwrite the tx pair with the ladder-resolved ones.
     shim_config.tx_batch = tx_knobs.batch.value;
     shim_config.tx_batch_flush_ms = tx_knobs.flush_ms.value as usize;
+    // phase-400 W6 — the zenoh WIRE sizes, same ladder. The builtins are the
+    // values `shim_config_from_env` just computed from the platform's
+    // transport, so a board that says nothing keeps the transport-appropriate
+    // number and a board that speaks outranks it.
+    {
+        let wire_defaults: [(&'static str, usize); 5] = [
+            ("batch_unicast_size", buf_config.batch_unicast_size),
+            ("batch_multicast_size", buf_config.batch_multicast_size),
+            ("frag_max_size", buf_config.frag_max_size),
+            ("get_reply_buf_size", shim_config.get_reply_buf_size),
+            ("get_poll_interval_ms", shim_config.get_poll_interval_ms),
+        ];
+        for key in platform_config::WIRE_KNOBS {
+            println!(
+                "cargo:rerun-if-env-changed={}",
+                platform_config::wire_env_key(key)
+            );
+        }
+        let resolved = match (&platforms_tree, platform_name) {
+            (Some(tree), Some(name)) => tree
+                .resolve_wire(
+                    name,
+                    board_knobs.as_ref().map(|b| &b.knobs.zenoh.wire),
+                    &env_get,
+                    &wire_defaults,
+                )
+                .unwrap_or_else(|e| panic!("nros-platform.toml: {e}")),
+            // No platform named: the env front-end over the computed builtins,
+            // which is what an out-of-tree consumer and a plain `cargo build`
+            // get.
+            _ => wire_defaults
+                .iter()
+                .map(|(name, builtin)| {
+                    let key = platform_config::wire_env_key(name);
+                    let value = env_get(key)
+                        .and_then(|v| v.trim().parse::<usize>().ok())
+                        .unwrap_or(*builtin);
+                    (*name, value)
+                })
+                .map(|(name, value)| {
+                    (
+                        name,
+                        platform_config::ResolvedUsize {
+                            value,
+                            source: platform_config::KnobSource::Builtin,
+                            env_key: platform_config::wire_env_key(name),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        for (name, r) in resolved {
+            match name {
+                "batch_unicast_size" => buf_config.batch_unicast_size = r.value,
+                "batch_multicast_size" => buf_config.batch_multicast_size = r.value,
+                "frag_max_size" => buf_config.frag_max_size = r.value,
+                "get_reply_buf_size" => shim_config.get_reply_buf_size = r.value,
+                "get_poll_interval_ms" => shim_config.get_poll_interval_ms = r.value,
+                other => unreachable!("unknown wire knob `{other}`"),
+            }
+        }
+    }
     std::fs::write(out_dir.join("shim_constants.rs"), shim_config.rust_consts()).unwrap();
 
     // Phase 134.3 — `zenoh_generic_config.h` is the single source of

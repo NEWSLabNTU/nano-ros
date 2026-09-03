@@ -116,6 +116,26 @@ def crate_of(rel):
 # silently dropped by a literal-only regex.
 KNOB_ANY = re.compile(r'\b(?:env_usize(?:_compat|_min)?|knob)\(\s*"([A-Z0-9_]+)"')
 
+# A knob whose FRONT-END NAME lives in a ladder mapping rather than a call.
+#
+# phase-400 W6 moves a knob's resolution out of its build script and into the
+# RFC-0049 ladder. The build script then reads no environment at all — the
+# ladder does, through `<tenant>_env_key`, whose body is a match from field name
+# to env name:
+#
+#     "frag_max_size" => "ZPICO_FRAG_MAX_SIZE",
+#
+# The call-shaped patterns above cannot see that, so migrating a tenant DELETED
+# its knobs from this table: five vanished with the `zenoh.wire` tenant, three
+# with `params` before that. A knob nobody can enumerate is a knob nobody sets
+# (issue 0271), and "it moved to the ladder" is not a reason to stop listing it
+# — the ladder is where a user sets it.
+#
+# Their default is deliberately recorded as COMPUTED: a ladder knob's builtin
+# may be per-platform (`nros-zpico-build` picks a batch size from the
+# transport), so a single number here would be a claim this file cannot make.
+LADDER_ENV_KEY = re.compile(r'=>\s*"([A-Z][A-Z0-9_]+)"\s*,')
+
 
 def scan(files=None):
     """(knobs, pools) — knobs: name -> (default, file, line); pools: list."""
@@ -145,6 +165,12 @@ def scan(files=None):
                 # None default = computed expression; render says so rather
                 # than dropping the row.
                 knobs.setdefault(name, (None, rel, line, False))
+        if "_env_key" in text:
+            for m in LADDER_ENV_KEY.finditer(text):
+                name = m.group(1)
+                if name not in knobs:
+                    line = text[: m.start()].count("\n") + 1
+                    knobs.setdefault(name, (None, rel, line, False))
         for m in POOL_ANNOT.finditer(text):
             expr = m.group(2).replace("\\", " ").strip()
             pools.append((m.group(1), expr, rel, text[: m.start()].count("\n") + 1))

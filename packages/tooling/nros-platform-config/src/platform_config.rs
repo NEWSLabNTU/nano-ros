@@ -422,6 +422,25 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.zenoh.wire]` RUNGS for this build — platform merged with
+    /// board, board winning. See [`Self::rmw_rungs`].
+    pub fn wire_rungs(&self) -> WireKnobs {
+        let plat = self.tree.platform_wire_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("zenoh.wire", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.zenoh.wire.clone())
+            .unwrap_or_default();
+        WireKnobs {
+            batch_unicast_size: b.batch_unicast_size.or(plat.batch_unicast_size),
+            batch_multicast_size: b.batch_multicast_size.or(plat.batch_multicast_size),
+            frag_max_size: b.frag_max_size.or(plat.frag_max_size),
+            get_reply_buf_size: b.get_reply_buf_size.or(plat.get_reply_buf_size),
+            get_poll_interval_ms: b.get_poll_interval_ms.or(plat.get_poll_interval_ms),
+        }
+    }
+
     /// The `[knobs.runtime]` RUNGS for this build — platform merged with board,
     /// board winning. See [`Self::rmw_rungs`].
     pub fn runtime_rungs(&self) -> RuntimeKnobs {
@@ -914,6 +933,53 @@ pub struct ResolvedTransport {
 pub struct ZenohKnobs {
     #[serde(default)]
     pub tx: TxKnobs,
+    /// phase-400 W6 — the WIRE sizes: batch buffers, the fragmentation
+    /// ceiling, the get-reply staging block and its poll interval.
+    ///
+    /// Deliberately NOT the entity caps. `ZPICO_MAX_QUERYABLES`,
+    /// `ZPICO_MAX_SESSIONS` and `SERVICE_BUFFERS` are phase-392's question —
+    /// that phase is deciding whether they stop being globals at all, and a
+    /// per-platform rung would answer it the wrong way. These five are sizes of
+    /// the wire itself, which no campaign derives.
+    #[serde(default)]
+    pub wire: WireKnobs,
+}
+
+/// phase-400 W6 — the zenoh WIRE sizes, read by `nros-zpico-build`.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireKnobs {
+    #[serde(default)]
+    pub batch_unicast_size: Option<usize>,
+    #[serde(default)]
+    pub batch_multicast_size: Option<usize>,
+    #[serde(default)]
+    pub frag_max_size: Option<usize>,
+    #[serde(default)]
+    pub get_reply_buf_size: Option<usize>,
+    #[serde(default)]
+    pub get_poll_interval_ms: Option<usize>,
+}
+
+/// Every wire knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const WIRE_KNOBS: &[&str] = &[
+    "batch_unicast_size",
+    "batch_multicast_size",
+    "frag_max_size",
+    "get_reply_buf_size",
+    "get_poll_interval_ms",
+];
+
+/// The env front-end for a wire knob — the EXISTING `ZPICO_*` names.
+pub fn wire_env_key(knob: &str) -> &'static str {
+    match knob {
+        "batch_unicast_size" => "ZPICO_BATCH_UNICAST_SIZE",
+        "batch_multicast_size" => "ZPICO_BATCH_MULTICAST_SIZE",
+        "frag_max_size" => "ZPICO_FRAG_MAX_SIZE",
+        "get_reply_buf_size" => "ZPICO_GET_REPLY_BUF_SIZE",
+        "get_poll_interval_ms" => "ZPICO_GET_POLL_INTERVAL_MS",
+        other => panic!("unknown wire knob `{other}`"),
+    }
 }
 
 /// The phase-282 TX levers. All optional — `None` means "defer to the
@@ -1542,6 +1608,80 @@ impl PlatformsTree {
         Ok(out)
     }
 
+    fn platform_wire_knobs(&self, name: &str) -> Result<WireKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = WireKnobs::default();
+        for file in chain.iter().rev() {
+            let w = &file.knobs.zenoh.wire;
+            for (dst, src) in [
+                (&mut out.batch_unicast_size, w.batch_unicast_size),
+                (&mut out.batch_multicast_size, w.batch_multicast_size),
+                (&mut out.frag_max_size, w.frag_max_size),
+                (&mut out.get_reply_buf_size, w.get_reply_buf_size),
+                (&mut out.get_poll_interval_ms, w.get_poll_interval_ms),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// phase-400 W6 — resolve the zenoh WIRE tenant over the RFC-0049 ladder.
+    ///
+    /// `defaults` carries the CALLER's builtins because they are computed, not
+    /// constant: `nros-zpico-build` picks a batch and fragmentation size from
+    /// the platform's transport before any descriptor is consulted. The ladder
+    /// still owns the rungs above them.
+    pub fn resolve_wire(
+        &self,
+        platform: &str,
+        board: Option<&WireKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_wire_knobs(platform)?;
+        let pick = |k: &WireKnobs, name: &str| match name {
+            "batch_unicast_size" => k.batch_unicast_size,
+            "batch_multicast_size" => k.batch_multicast_size,
+            "frag_max_size" => k.frag_max_size,
+            "get_reply_buf_size" => k.get_reply_buf_size,
+            "get_poll_interval_ms" => k.get_poll_interval_ms,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = wire_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.zenoh.wire]` rungs for a platform, inherits chain applied.
+    pub fn platform_wire_rungs(&self, platform: &str) -> Result<WireKnobs, ConfigError> {
+        self.platform_wire_knobs(platform)
+    }
+
     /// The `[knobs.runtime]` rungs for a platform, inherits chain applied.
     pub fn platform_runtime_rungs(&self, platform: &str) -> Result<RuntimeKnobs, ConfigError> {
         self.platform_runtime_knobs(platform)
@@ -2160,6 +2300,68 @@ impl BoardKnobsFile {
 
 #[cfg(test)]
 mod tests {
+    /// The zenoh WIRE ladder: builtin < platform < board < env.
+    ///
+    /// The `nros-zpico-build` side of this tenant writes a C header from an
+    /// example build tree, which made an end-to-end probe unreliable to observe
+    /// — so the RESOLVER is pinned here instead, and the build script's job is
+    /// reduced to five straight-line assignments that mirror the tx trio two
+    /// lines above them.
+    #[test]
+    fn the_wire_ladder_resolves_builtin_platform_board_and_env() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir_all(dir.path().join("posix")).unwrap();
+        std::fs::write(
+            dir.path().join("posix/nros-platform.toml"),
+            "[knobs.zenoh.wire]\nfrag_max_size = 777\nget_reply_buf_size = 1234\n",
+        )
+        .unwrap();
+        let tree = PlatformsTree::load_search_path(&[dir.path().to_path_buf()]).expect("tree");
+        let defaults = [
+            ("frag_max_size", 2048usize),
+            ("get_reply_buf_size", 4096),
+            ("get_poll_interval_ms", 10),
+        ];
+
+        // platform rung over the caller's computed builtins
+        let got = tree
+            .resolve_wire("posix", None, &|_| None, &defaults)
+            .expect("resolve");
+        let by = |n: &str| got.iter().find(|(k, _)| *k == n).unwrap().1.clone();
+        assert_eq!(by("frag_max_size").value, 777);
+        assert_eq!(by("frag_max_size").source, KnobSource::Platform);
+        // a knob the platform does not name keeps the CALLER's builtin, which is
+        // the whole reason `defaults` is a parameter: it is computed per
+        // transport, not a constant.
+        assert_eq!(by("get_poll_interval_ms").value, 10);
+        assert_eq!(by("get_poll_interval_ms").source, KnobSource::Builtin);
+
+        // board outranks platform
+        let board = WireKnobs {
+            frag_max_size: Some(99),
+            ..Default::default()
+        };
+        let got = tree
+            .resolve_wire("posix", Some(&board), &|_| None, &defaults)
+            .expect("resolve");
+        let hit = got.iter().find(|(k, _)| *k == "frag_max_size").unwrap();
+        assert_eq!(hit.1.value, 99);
+        assert_eq!(hit.1.source, KnobSource::Board);
+
+        // env outranks both
+        let got = tree
+            .resolve_wire(
+                "posix",
+                Some(&board),
+                &|k| (k == "ZPICO_FRAG_MAX_SIZE").then(|| "555".to_string()),
+                &defaults,
+            )
+            .expect("resolve");
+        let hit = got.iter().find(|(k, _)| *k == "frag_max_size").unwrap();
+        assert_eq!(hit.1.value, 555);
+        assert_eq!(hit.1.source, KnobSource::Env);
+    }
+
     /// A platform with NO descriptor resolves to builtins; a BROKEN one does not.
     ///
     /// The phase-400 W6 regression this pins killed every image of the three
