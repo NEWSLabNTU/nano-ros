@@ -141,9 +141,41 @@ exactly that (publisher.cpp's 233.6 comment records the Rust runtime being fixed
 to emit the fixed `octet[16]` and the matching strip being deleted from both
 sides). This test makes that move verifiable; it does not perform it.
 
-Also not covered: the reverse direction, an nros action CLIENT against a `ros2`
-action server. The adapters sit on both sides of the service path, and this
-witnesses one. That is the obvious next cell.
+### The reverse cell, added the same day — both directions now witnessed
+
+`the_nano_ros_action_client_drives_a_stock_ros2_server`: the nano-ros action
+client against `examples_rclcpp_minimal_action_server`, which serves the same
+`/fibonacci` over `example_interfaces/action/Fibonacci`.
+
+```
+[INFO] Sending goal
+[INFO] Goal accepted by server, waiting for result
+[INFO] Next number in sequence received: [0, 1, 1]
+...
+[INFO] Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+```
+
+and on the ROS 2 side, ten `Publish Feedback` lines and `Goal Succeeded`.
+
+**Not redundant with the forward cell.** The adapters sit on BOTH sides. Sending
+a goal exercises `strip_goal_id_len_at` and `strip_nested_cdr_at` on what
+nano-ros WRITES; receiving feedback and a result exercises the take path against
+bytes a real ROS 2 server produced. One direction passing says nothing about the
+other, which is precisely why a nano-ros-to-nano-ros test could not settle this.
+
+So option 1 holds in both directions: the corrections are right, and ROS 2
+interop passes with them.
+
+**One defect in the test itself, worth recording.** The first version ran the
+client with `Command::output()` and no deadline. The client BLOCKS waiting for a
+server it has not discovered, so a slow discovery did not fail — it hung for ten
+minutes. It now runs under `timeout 60` inside the ROS env. A test that cannot
+fail in bounded time is not a test, and an e2e that spawns a peer is exactly
+where that goes unnoticed.
+
+Both cells are mutation-tested: the forward one pointed at an action nothing
+serves, the reverse one with the server replaced by `sleep 300`. Both go red on
+the goal-accepted assertion.
 
 ## Not to be confused with
 
