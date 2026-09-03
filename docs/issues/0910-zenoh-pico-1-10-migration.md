@@ -5,7 +5,7 @@ title: "migrating to zenoh-pico 1.10: the serial layer moved, `config.h` is no
 status: open
 type: task
 area: rmw, build
-related: [issue-0852, issue-0882]
+related: [phase-415, issue-0852, issue-0882]
 ---
 
 ## Why
@@ -84,3 +84,30 @@ upstream's `CMakeLists.txt` defaults at build time. Then a bump costs nothing.
 
 The submodule pin is back on `dac320e3` and the board builds. Nothing here is
 half-applied; the migration lives on the two fork branches.
+
+
+## 2026-09-03 — the target changes to 1.8.0, and the work moves to phase-415
+
+This issue is written around **1.10**. Measured in the `ros2` distrobox with the
+apt index refreshed: ROS Humble ships zenoh **1.8.0**
+(`ZENOH_C "1.8.0"` in `zenoh_configure.h`; `ros-humble-rmw-zenoh-cpp` 0.1.9,
+installed == candidate, built 2026-07-23 and unchanged since). We track what ROS
+adopts, so 1.10 — two minors AHEAD of ROS — is the wrong target and
+`nros-integration-1.10` is further from ROS than our 1.7.2 line is.
+
+None of that branch's three nano-ros commits ports to 1.7.2 either: one is
+1.10-only by construction (`config.h` becomes CMake-generated there), one
+targets files that do not exist at 1.7.2, and one would REGRESS us — our serial
+read already has the deadline, the `k_yield()` and the issue-0852 interrupt-driven
+RX that commit lacks.
+
+The 1.7.2 -> 1.8.0 port is surveyed in
+[phase 415](../roadmap/phase-415-zenoh-pico-1-8-0-patch-line.md): 85 files apply
+clean, **42 conflict**, 2 moved, and one genuine name collision — our added
+`session/keyexpr.h` versus upstream's `protocol/keyexpr.h` moved to the same
+path. That is a decision, not a merge.
+
+This issue stays open for the parts that are not the version bump: the config
+generator being 54 knobs behind, the `ZENOH_GENERIC` TU, and the note that fork
+commit `67ee0224`'s INIT-retry must NOT be carried forward because upstream
+never had the flood it fixed.
