@@ -297,7 +297,9 @@ _matrix-run:
 # cover actually has a job. Change the lane here and CI follows, with no second
 # edit — that is the whole reason the selection is computed.
 # BUILD depth over the tier-2 breadth: cross build + link, no boot. This is
-# what `build-wide.yml` runs on every merge.
+# what `queue.yml` runs on every merge group (phase-413 W1 — it ran in two
+# places, `queue.yml` and `build-wide.yml`, with different provisioning and
+# opposite verdicts; the latter is dispatch-only now).
 #
 # It IS `l3` — build depth means build, link, AND verify the link, which is the
 # ELF symbol interrogation plus the heap-free gate that `l3` already does.
