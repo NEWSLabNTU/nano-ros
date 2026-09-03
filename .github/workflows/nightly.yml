@@ -586,7 +586,8 @@ jobs:
         if: startsWith(matrix.example, 'rust/')
         run: |
           apt-get update -q
-          apt-get install -y --no-install-recommends clang libclang-dev
+          apt-get install -y --no-install-recommends \
+            $(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)
 
       - name: Build zephyr/${{ matrix.example }} (zenoh) on ${{ matrix.line }}
         run: |

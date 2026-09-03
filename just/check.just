@@ -282,6 +282,7 @@ fast-serial: \
     version-lockstep \
     wait-evidence-discarded \
     weak-symbols \
+    workflow-indexed-apt \
     workflow-repo-env \
     workflow-runner-isolation \
     workspace-build-output \
@@ -989,6 +990,20 @@ knob-single-reader:
 # this existed, because the phase doc recorded a table and no method.
 config-knob-census:
     @python3 scripts/check/config-knob-census.py --check
+
+# The reverse of `check-sysdep-remedies` — phase-413 W3.
+#
+# That gate refuses a hand-written `sudo apt` in a `just` recipe, and
+# `[prereq.doxygen]`'s own `why` reads "found undeclared by
+# check-sysdep-remedies". Nothing guarded the other direction: a WORKFLOW may
+# not restate a package `[prereq.*]` already declares. Three did — doxygen and
+# graphviz in `docs.yml`, clang and libclang-dev in `nightly.yml` — each with
+# its dnf/pacman/brew spellings and a presence probe sitting in the index.
+#
+# Buildless and source-only, so it belongs on the fast line.
+[group("main")]
+workflow-indexed-apt:
+    @python3 scripts/check-workflow-indexed-apt.py
 
 # issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
 # environment. `activate.sh` is what exports `nano_ros_ROOT`, and that is how

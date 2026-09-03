@@ -55,10 +55,21 @@ jobs:
           curl -sSL https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz \
             | tar xz -C /usr/local/bin
 
-      - name: Install Doxygen + Graphviz
+      # The INDEX names these, not this file — phase-413 W3. `[prereq.doxygen]`
+      # and `[prereq.graphviz]` already carry the apt/dnf/pacman/brew spellings
+      # and a presence probe; repeating `doxygen graphviz` here made this the
+      # second place that fact lived, and the one nobody updates.
+      #
+      # `nros setup --system` is the user-facing verb and stays so. It is not
+      # used HERE because this job builds no CLI, and making a docs deploy
+      # compile one to learn that `doxygen` is spelled `doxygen` costs minutes
+      # to answer what the index answers in milliseconds. The script reads the
+      # same file the CLI reads.
+      - name: Install Doxygen + Graphviz (from the index)
         run: |
           sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
+          sudo apt-get install -y \
+            $(python3 scripts/sdk/prereq-packages.py --manager apt doxygen graphviz)
 
       - name: Install Rust toolchain
         # tools/rust-toolchain.toml pins the workspace channel; reuse it so
