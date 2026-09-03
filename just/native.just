@@ -162,6 +162,40 @@ build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
     @bash scripts/dev/deprecated-scope-alias.sh native build-fixtures "just build native"
     @echo "Native test fixtures built."
 
+# Provision what the NATIVE lane needs — phase-413 W5.
+#
+# `just setup native` expands to the modules of the `native` preset, which is
+# `[native]` — and this module had NO `setup` recipe, so the verb ran the common
+# preamble (submodule init, CLI, launch resolver) and then printed "native has no
+# `setup` recipe — nothing to provision". Meanwhile `host-tests.yml` provisioned
+# the native lane in five hand-rolled steps, because the verb genuinely did not
+# do it. That is the gap issue 0996 measured as "provisioning verbs `just setup`
+# cannot reach".
+#
+# SOURCES COME FROM THE INDEX, NOT A LIST HERE. `--build-sources` resolves the
+# top-level `build_sources` union — which is byte for byte the seven sources the
+# workflow was naming by hand (zenoh-pico, mbedtls, cyclonedds-src,
+# micro-xrce-dds-client, micro-cdr, px4-rs, nuttx-libc). Restating it here would
+# reintroduce the second copy W3 just deleted one level down.
+#
+# `--prefix build/qemu` is not a CI detail: `nros setup --help` documents it as
+# where the test harness already looks for the emulator.
+[group("setup")]
+setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nros setup --build-sources
+    just ci provision-zenohd
+    nros setup --tool qemu --prefix build/qemu --index nros-sdk-index.toml
+    nros setup --tool xrce-agent --index nros-sdk-index.toml
+    # OPTIONAL, and it says so. The workspace-entry fixtures skip without it;
+    # every other native fixture builds. `|| echo` is the "continue past a
+    # known-optional command" form — a decision that is visible in the log,
+    # not a fallback between two verbs.
+    nros setup --tool play_launch_parser --index nros-sdk-index.toml \
+        || echo "native setup: play_launch_parser unavailable — workspace-entry fixtures will SKIP"
+    echo "native lane provisioned."
+
 # Build native workspace fixtures from examples/fixtures.toml.
 #
 # CODEGEN FIRST — phase-413 W2, and it is issue 0992 in a second place.

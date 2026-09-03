@@ -96,13 +96,21 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     not prebuilt")`. A gate in an affordability tier may resolve a COMPILE-stage
     stamp only if the lane BUILDS it (~13 s); a runtime fixture is banned
     outright.
-    **CI runs a SUBSET of it, deliberately** (phase-396/399): the required `CI`
-    context is `check-fast` + `test-unit` + `check-cli-tests` (the last added
+    **CI runs a SUBSET of it, deliberately, and the subset DIFFERS BY EVENT**
+    (phase-395 "PR cheap, batch thorough"; phase-396/399). On `pull_request` the
+    required `CI` context is `check-fast` + `check-submodule-commits-reachable` +
+    `check-compile-smoke` + `check-cli-tests`. **`test-unit` is NOT in it** — it
+    runs on `merge_group` (and schedule/dispatch), where it costs a measured
+    ~3.5 min per batch instead of per PR push. So a green `CI` on a pull request
+    means "it compiles and the source gates hold", NOT "the unit tests pass";
+    nothing broken lands, because the queue runs them before the merge, but the
+    feedback arrives at the queue and an ejection is how you hear about it
+    (`queue-notify.yml` comments on the PR). Run `just ci gate` locally if you
+    want that answer sooner — it is the same lane. (`check-cli-tests` was added
     2026-09-02 — it lived only in `check-build`, which no merge-gating event
-    runs, so issue 0896's two reds landed and stayed; no fixture/SDK/ROS, on
-    `pull_request` AND `merge_group`, ~2 min warm / ~8 min cold, including
-    the `nros-launch-resolve` it must build first); `ci-l1` also runs `check-build` +
-    `check-api-parity`. Your local tier is STRONGER than the gate, so you catch
+    runs, so issue 0896's two reds landed and stayed; no fixture/SDK/ROS, ~2 min
+    warm / ~8 min cold, including the `nros-launch-resolve` it must build
+    first.) `ci-l1` also runs `check-build` + `check-api-parity`. Your local tier is STRONGER than the gate, so you catch
     compile-tier breakage before the queue does and the queue stays cheap and
     always-satisfiable. `check-build` is now `schedule`/`workflow_dispatch` only —
     it was on the merge group and could never pass there (it needs generated
