@@ -276,6 +276,7 @@ fast-serial: \
     subtree-guard \
     sysdep-remedies \
     test-domain-assignment \
+    test-scripts-have-callers \
     tests-can-fail \
     tier-has-ci-owner \
     tier-priority-plan \
@@ -1237,6 +1238,65 @@ entity-inventory-knobs:
 #
 # cmake + ninja only: `project(... NONE)`, no compiler, no nano-ros build, no
 # codegen, ~2 s. Fast line, beside the two readers it protects.
+# Issue 0870's neighbour, found while restoring `declared-qos-header` above: a
+# test script with NO CALLER is a test that runs nowhere, and nothing detected
+# it. `e569d9a55` -- a commit about which Zephyr SDK the CI image bakes --
+# deleted that recipe and its lane entry, its message mentioning neither, and
+# `tests/cmake-declared-qos-header-tests.sh` sat tracked and unreachable for a
+# day while guarding phase-403 step 2's delivery half.
+#
+# The repo's recurring class one level up: a mechanism that is correct and
+# unreachable. Every previous instance (0896, 0963, the flag-only selftest, the
+# NuttX printk arm, `just xrce setup`'s short-circuit) was found by a human
+# noticing, which is not a control.
+#
+# Pure `git ls-files` + line scan, no build, ~0.2 s -- fast line.
+test-scripts-have-callers:
+    python3 scripts/check-test-scripts-have-callers.py
+
+# RESTORED (2026-09-04). This recipe and its fast-lane list entry were deleted
+# by `e569d9a55`, a commit about which Zephyr SDK the CI image bakes, whose
+# message does not mention them -- an accidental loss in a rebase, not a
+# decision. For a day the test script sat tracked with NO caller anywhere in
+# `just/`, `justfile` or `.github/`: a gate that runs nowhere, guarding the
+# delivery half of phase-403 step 2, which had merged hours earlier.
+#
+# `check-test-scripts-have-callers` now catches that class -- it was written
+# from this incident and fires on exactly this state.
+# phase-403 step 2 -- does the declared `@depth=` REACH A COMPILER?
+#
+# `just check cpp` proves the CHECK: it compiles a TU whose declared depth and
+# passed QoS disagree and asserts the build is rejected, with the topic and both
+# numbers in the diagnostic. It hands the table to the compiler with a `-I` of
+# its own, so it says nothing about DELIVERY.
+#
+# This is the delivery half, and it is the half that goes wrong silently: a
+# component whose generated table never lands on its include path compiles with
+# every declared-depth assertion disabled, and looks exactly like a component
+# whose depths all agree. Six mechanisms in this campaign have been correct and
+# unreachable for precisely that reason.
+#
+# Drives `_nros_emit_declared_qos_header()` in a real configure with the real
+# CLI. Needs cmake, a C compiler and a built `nros` -- and SKIPS rather than
+# passing when any is missing, because a gate that examined nothing must not
+# read as a pass.
+declared-qos-header:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    command -v cmake >/dev/null 2>&1 || _missing="$_missing cmake"
+    command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 \
+        || _missing="$_missing cc"
+    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
+    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip declared-qos-header "missing:$_missing"
+        exit 0
+    fi
+    ./tests/cmake-declared-qos-header-tests.sh
+
 reconfigure-on-change:
     #!/usr/bin/env bash
     set -euo pipefail
