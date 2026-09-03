@@ -1303,6 +1303,163 @@ UNDER-sizes an image that took the default -- the unsafe direction. Depth must b
 declared, on W9's own principle: the declaration supplies, the running image
 verifies.
 
+#### The design (2026-09-03)
+
+**The contract is the single source of truth for SIZING, and the two authoring
+modes are both legal.**
+
+| mode | the code writes | the contract says | disagreement |
+| --- | --- | --- | --- |
+| the impl states QoS | `NROS_SUBSCRIBE(M, m, "t", QoS(1))` | `...@depth=1` | USER ERROR -- detected |
+| the contract states QoS | `NROS_SUBSCRIBE(M, m, "t")` | `...@depth=10` | impossible, one number |
+
+Mode 2 needs no new C++ surface: `NROS_SUBSCRIBE` is already variadic, so
+omitting the QoS is the natural spelling and the declared depth fills in.
+
+**Detection is COMPILE-TIME, and that is reachable rather than aspirational.**
+Every piece already exists:
+
+* `nros::QoS` has `explicit constexpr QoS(int)` and constexpr builders
+  (`reliable()`, `best_effort()`), so `::nros::QoS(1).best_effort()` is a
+  constant expression;
+* `constexpr int depth() const` reads it back at compile time (`qos.hpp:347`);
+* generated messages carry `static constexpr const char* TYPE_NAME`;
+* topics are string literals at every call site in this tree;
+* `NROS_SUBSCRIBE` is used as a STATEMENT, so a `static_assert` may precede the
+  call it expands to.
+
+So codegen emits the declared depths as a `constexpr` table and the macro
+asserts against it. A mismatch fails the BUILD, naming the topic and both
+numbers. Nothing is checked at runtime and nothing costs a byte.
+
+    // generated, per image
+    struct NrosDeclaredQoS { const char* type; const char* topic; int depth; };
+    inline constexpr NrosDeclaredQoS NROS_DECLARED_QOS[] = { ... };
+    constexpr int nros_declared_depth(std::string_view type, std::string_view topic);
+
+`nros_declared_depth` is a linear constexpr search, which C++17 evaluates at
+compile time; the table is per image and tens of entries, so the cost is a
+compile-time loop nobody notices and no runtime storage at all.
+
+**The C++17 obstacle, stated because it shapes the macro.** There is no
+`__VA_OPT__` before C++20, so the macro cannot branch on "a QoS was passed"
+with the obvious spelling. It dispatches on ARGUMENT COUNT instead -- the
+standard trick, and the reason `NROS_SUBSCRIBE` gains a helper macro rather
+than an `if constexpr`.
+
+**Boot-time is the fallback, per call site, not per project.** A topic that is
+not a literal (built at runtime, or forwarded through a variable) cannot be
+looked up at compile time. Those get the same check at construction with an
+explicit error naming the topic and both depths -- the idiom
+`NodeError::ExecutorFull` and `NodeTableFull` already use, where the running
+image checks its own declaration. The compile-time path is preferred and the
+boot-time path is honest about what it costs.
+
+**A subscription that declares no depth and passes no QoS is NOT an error.** It
+is an image that has not opted in. The arena then REFUSES to derive rather than
+defaulting, exactly as W8 refuses on an unbounded type: 10 inflates tenfold, 1
+under-sizes, and the hand-set knob stays until someone declares.
+
+**Syntax.** The spec is parsed `splitn(3, ':')` as `kind:type:name`, so the name
+takes the rest and a fourth positional would be ambiguous against a topic. Depth
+attaches as a named attribute:
+
+    sub:nav_msgs/msg/Odometry:/localization/kinematic_state@depth=10
+
+Named rather than positional so reliability, history and durability can follow
+without another grammar change.
+
+**What this does NOT do.** It does not read QoS out of C++ source. An earlier
+sketch had a gate parsing `NROS_SUBSCRIBE` call sites for a QoS literal; that
+only ever sees the literal forms and silently passes everything else, which is
+the "correct but unreachable" shape this campaign keeps finding. Comparing the
+actual `QoS` object against the declared number is exact.
+
+#### What landed (2026-09-03)
+
+The design above, implemented as written. Where it needed a decision it did not
+make, the decision and its reason are below.
+
+**Grammar.** `@depth=N` is a named attribute split off the WHOLE spec BEFORE the
+`splitn(3, ':')`, not off the last field. Neither a ROS type name nor a ROS
+topic name may contain `@` (REP-144), so the split is unambiguous, and an
+attribute then attaches to the declaration rather than to whichever positional
+field happens to be last. `@depth=0` and an unknown `@attr=` are ERRORS, not
+skipped rows -- `@depth=0` because KEEP_LAST(0) holds no sample, so it can only
+be a typo for "I did not want to say", which is what OMITTING it means. A depth
+on a `timer` or a `guard_condition` is an error too: those carry no QoS.
+
+**Absence.** `EntityDecl::depth` is `Option<u32>`; the JSON row carries no
+`depth` key at all when nobody declared; the CMake fragment publishes
+`NROS_ENTITY_UNDECLARED_DEPTH_COUNT` beside the list, which is the number a size
+consumer must refuse on; and the C++ side spells it
+`nros::DECLARED_DEPTH_UNDECLARED == -1`, never 0. Schema bumped 2 -> 3.
+
+**Delivery is PER COMPONENT, which the design did not specify.** The knobs are
+composed image-wide by `nano_ros_entry()`, which runs after every register call
+and therefore after each component library's include path is already set; a
+table written there would reach a component's TUs one configure late, so the
+check would silently not run on the configure that changed the declaration. And
+the table is keyed `(type, topic)`, which two components in one image may
+legitimately share at different depths. So `nano_ros_node_register()` renders
+its own component's rows -- `nros ws entity-inventory --component <pkg>::<name>
+--output-header` -- into `<binary-dir>/nros-declared-qos/<name>/nros/` and puts
+that dir on the target's PRIVATE include path. One renderer, one grammar, no
+parsing in cmake.
+
+**The header is an X-MACRO**, not a C++ array: pure preprocessor, so it can be
+included in any order and `nros/declared_qos.hpp` owns the one definition of the
+table's type. Each row is emitted under BOTH spellings of the type, the ROS
+`pkg/msg/Name` the declaration used and the DDS-mangled
+`pkg::msg::dds_::Name_` a generated class carries as `TYPE_NAME`. The mangling
+mirrors `packs/cpp/message.hpp.jinja` and is held to it by a test, because a
+mangling change would leave every `static_assert` in the tree keyed on a name no
+message class carries -- vacuously true, and green.
+
+**The macro dispatches on argument count** through `_NROS_SUB_PICK`, as the
+design said it would have to. Three arguments select `_NROS_SUB_3`, which fills
+the declared depth in; four select `_NROS_SUB_4`, which asserts. Fewer names
+`_NROS_SUB_TOO_FEW`, whose `static_assert` is about the call rather than about
+an undeclared identifier three expansions away.
+
+**The diagnostic needs TWO assertions, and that is a C++17 tax rather than a
+choice.** A `static_assert` message must be a string LITERAL, so it can carry
+the topic (via `#topic`) and can NOT interpolate two `constexpr int`s; template
+ARGUMENTS are printed by both compilers, so `declared_depth_agrees<1, 10>`
+carries the numbers and can NOT carry a string. So the macro emits the assertion
+for the topic and a `sizeof` that instantiates the template for the numbers.
+gcc prints all three facts plus `note: '(1 == 10)' evaluates to false`; clang
+prints `requirement '1 == 10'` and the instantiation. Splitting it is not
+elegant; a check that names neither the topic nor the numbers is one nobody can
+act on.
+
+**Boot-time is per CALL SITE and it is also unconditional.**
+`ComponentNode::create_subscription` and `create_subscription_in` run the same
+comparison against the same table through the same `nros::declared_depth`, and a
+disagreement goes through `set_error` -- so it halts boot naming the node, in
+the `NodeError::ExecutorFull` idiom -- after printing the topic and both depths.
+It covers the two shapes no macro can: a topic that is not a constant
+expression, and a caller that reaches `create_subscription<M, C, Method>`
+directly. `NROS_SUBSCRIBE_DYNAMIC` is the explicit spelling for the first, so
+the count of call sites that gave up the compile-time check stays visible.
+
+**Proof that the check FAILS.** `packages/api/nros-cpp/tests/compile/
+declared_qos_depth_probe.cpp` declares `@depth=1` and passes `nros::QoS(10)`;
+`just check cpp` compiles it EXPECTING failure and greps the diagnostic for the
+topic, `declared_depth_agrees<1, 10>` and `nano_ros_node_register`. A rejection
+for the wrong reason -- a typo, a missing include -- would otherwise read as a
+pass, and the positive TU beside it is compiled clean FIRST for the same reason.
+`just check declared-qos-header` is the DELIVERY half: it drives
+`_nros_emit_declared_qos_header()` in a real configure with the real CLI and
+asserts the header lands, the dir is on the include path, and the dir is PRIVATE
+-- because a table that never arrives disables every assertion silently and
+looks exactly like a component whose depths all agree.
+
+**Not done here.** Nothing sizes from depth yet; that is step 3. The publish
+side is not in the table -- keyed `(type, topic)`, a publisher and a
+subscription on one pair would be two rows with one key, and nothing consults a
+publisher's depth today.
+
 ### Step 3 -- the arena. Last, because its failure cannot report itself.
 
 With depth present the arena is a straight sum: `arena_alloc` is a BUMP
