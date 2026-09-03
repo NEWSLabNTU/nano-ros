@@ -2629,6 +2629,7 @@ zenohd-router-skips:
 [group("check")]
 api-parity-ledger:
     @python3 scripts/api-parity.py --self-test
+    @python3 scripts/gen-api-comparison.py --self-test
 
 # Phase 379 W2 (landed 2026-08-25) — every item where the nano-ros user API does
 # not correspond to rclc/rclcpp/rclrs carries a written verdict. 2158 rows across
