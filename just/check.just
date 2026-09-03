@@ -3373,6 +3373,71 @@ cpp: cpp-fmt
         echo "       rename ships with no migration warning at all." >&2; \
         exit 1; \
     fi
+    # phase-403 step 2 — the DECLARED `@depth=` reaches the compiler, and a
+    # disagreement between it and the QoS at the call site FAILS THE BUILD.
+    #
+    # `-std=c++17` and not the c++14 of its neighbours: C++17 is what the
+    # component lane actually compiles with, and the absence of `__VA_OPT__`
+    # there is the reason `NROS_SUBSCRIBE` dispatches on argument count at all.
+    # Checking the macro under a standard no component uses would test a
+    # different preprocessor.
+    #
+    # The fixture dir carries `nros/nros_declared_qos_generated.h` — what
+    # `nros ws entity-inventory --output-header` renders from the
+    # `entities.json` beside it, and what `nano_ros_node_register()` puts on a
+    # real component's include path. Putting it on `-I` here exercises the same
+    # `__has_include` pickup. The header and its input are held together by
+    # `the_committed_compile_fixture_is_what_this_emitter_renders` in
+    # nros-cli-core, so this fixture cannot drift into a table that matches
+    # nothing (which would leave every assertion below vacuous and green).
+    echo "  - declared QoS depth: the three cases COMPILE (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/declared_qos_depth.cpp
+    # ...and a DISAGREEMENT must not. NEGATIVE assertion, and the one that makes
+    # the check reachable rather than merely correct: six mechanisms in this
+    # campaign were right and never ran. The positive TU above is compiled FIRST
+    # so a missing include path or a fixture that matches nothing shows up as a
+    # failure there, not as a silent pass here — an expected-failure compile
+    # cannot tell "the assertion fired" from "the file is not there".
+    test -f packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp || { \
+        echo "ERROR: declared_qos_depth_probe.cpp is MISSING -- the expected-failure check" >&2; \
+        echo "       below would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
+    echo "  - declared QoS depth: a MISMATCH fails the build (c++17, expected failure)"
+    _dq_out="$(c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp 2>&1)" && { \
+        echo "ERROR: declared_qos_depth_probe.cpp COMPILED. The fixture declares" >&2; \
+        echo "       sub:std_msgs/msg/Int32:/chatter@depth=1 and the call site passes" >&2; \
+        echo "       nros::QoS(10); NROS_SUBSCRIBE's static_assert did not fire, so the" >&2; \
+        echo "       declared depth is not reaching the compiler and nothing is checked." >&2; \
+        exit 1; \
+    }
+    # A rejection is not enough: it must be OUR rejection, naming the topic and
+    # BOTH depths. A typo or a missing header would also exit non-zero, and a
+    # diagnostic the reader cannot act on is the same as no diagnostic.
+    for _want in '"/chatter"' 'declared_depth_agrees<1, 10>' 'nano_ros_node_register'; do \
+        case "$_dq_out" in \
+            *"$_want"*) ;; \
+            *) echo "ERROR: the declared-depth diagnostic does not contain: $_want" >&2; \
+               echo "       It must name the TOPIC and BOTH depths, or a reader cannot tell" >&2; \
+               echo "       which subscription is wrong or which of the two numbers to fix." >&2; \
+               echo "--- compiler said ---" >&2; echo "$_dq_out" >&2; \
+               exit 1 ;; \
+        esac; \
+    done
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level
