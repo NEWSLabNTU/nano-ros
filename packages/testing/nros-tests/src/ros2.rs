@@ -12,6 +12,11 @@ use std::{
 /// Default ROS 2 distro to use
 pub const DEFAULT_ROS_DISTRO: &str = "humble";
 
+/// How long a `ros2 topic echo` peer lives when the caller does not say
+/// (issue 1026) — the historical baked `timeout --foreground 10`, now named so
+/// a caller can compare its own wait against it instead of guessing.
+pub const DEFAULT_ECHO_WINDOW: Duration = Duration::from_secs(10);
+
 /// phase-304 W4 — is a specific ROS 2 distro installed under `/opt/ros/<distro>`?
 /// Distro-parametric so an edition lane (RFC-0056) can require iron/jazzy/rolling
 /// and `skip!` when absent, instead of everything assuming humble. Returns false
@@ -347,7 +352,8 @@ impl Ros2Process {
         })
     }
 
-    /// Start a ROS 2 topic echo subscriber
+    /// Start a ROS 2 topic echo subscriber that lives for
+    /// [`DEFAULT_ECHO_WINDOW`].
     ///
     /// # Arguments
     /// * `topic` - Topic name (e.g., "/chatter")
@@ -360,9 +366,34 @@ impl Ros2Process {
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
+        Self::topic_echo_for(topic, msg_type, locator, distro, DEFAULT_ECHO_WINDOW)
+    }
+
+    /// [`Self::topic_echo`] with the subscriber's LIFETIME named by the caller
+    /// (issue 1026).
+    ///
+    /// The `timeout --foreground` is a horizon, not an implementation detail:
+    /// it is the hard cap on what the echo can ever observe, so a caller whose
+    /// own wait is longer than it silently gets a truncated transcript and a
+    /// failure that reads like "no delivery". Passing the window makes the two
+    /// numbers one decision at one site.
+    ///
+    /// `PYTHONUNBUFFERED=1` is what makes a CONDITION wait possible here at
+    /// all: `ros2 topic echo` is a Python entry point, so with stdout on a pipe
+    /// its `print`s sit in a block buffer until the process exits — which is
+    /// how the baked timeout came to double as the flush mechanism, and why
+    /// every caller used to have to drain to completion.
+    pub fn topic_echo_for(
+        topic: &str,
+        msg_type: &str,
+        locator: &str,
+        distro: &str,
+        window: Duration,
+    ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        let secs = window.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
+            "{env_setup} && PYTHONUNBUFFERED=1 timeout --foreground {secs} ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"), Some(config_dir))
@@ -668,18 +699,57 @@ impl Drop for Ros2Process {
     }
 }
 
-/// Helper to collect output from a process with timeout
-pub fn collect_ros2_output(process: &mut Ros2Process, timeout: Duration) -> String {
-    process.wait_for_output(timeout).unwrap_or_default()
-}
-
 /// Read everything a spawned child prints on stdout within `timeout`, without
 /// blocking forever. Shared by [`Ros2Process`] and [`crate::ros_env::RosPeer`]
 /// (phase-309) so both peer wrappers use identical non-blocking drain logic.
+///
+/// **A terminal drain, not a wait-for-readiness (issue 1026).** There is no
+/// stop condition, so a process that keeps running ALWAYS reaches the deadline
+/// — and reaching it kills the process group. Pointed at a `spin = "forever"`
+/// node the timeout is therefore the node's LIFETIME, and whatever the node
+/// would have done afterwards is unobservable by construction. To wait on a
+/// CONDITION and keep the peer alive, use [`collect_child_until`].
 pub fn wait_child_output(handle: &mut Child, name: &str, timeout: Duration) -> TestResult<String> {
+    collect_child_inner(handle, name, None, timeout)
+}
+
+/// Collect a child's stdout, returning as soon as `pattern` has appeared
+/// `expected` times — the CONDITION sibling of [`wait_child_output`], and the
+/// wait to use for a free-running node (issue 1026).
+///
+/// Never kills: the caller (or [`crate::ros_env::RosPeer`]'s `Drop`) decides
+/// when the peer dies, so a test that wants to keep observing after the marker
+/// still can. Returns whatever was printed whether or not the condition was
+/// met — the caller asserts on the content and wants the transcript in its own
+/// failure message, exactly as with
+/// [`crate::process::ManagedProcess::collect_until`].
+pub fn collect_child_until(
+    handle: &mut Child,
+    name: &str,
+    pattern: &str,
+    expected: usize,
+    timeout: Duration,
+) -> TestResult<String> {
+    collect_child_inner(handle, name, Some((pattern, expected)), timeout)
+}
+
+/// The shared drain loop. `stop` is `None` for the terminal drain (run to the
+/// deadline, then kill) and `Some((pattern, n))` for the condition wait (return
+/// at the n-th occurrence, kill nothing).
+fn collect_child_inner(
+    handle: &mut Child,
+    name: &str,
+    stop: Option<(&str, usize)>,
+    timeout: Duration,
+) -> TestResult<String> {
     use std::io::Read;
     #[cfg(unix)]
     use std::os::unix::io::AsRawFd;
+
+    let satisfied = |out: &str| match stop {
+        Some((pattern, expected)) => out.matches(pattern).count() >= expected,
+        None => false,
+    };
 
     let start = std::time::Instant::now();
     let mut output = String::new();
@@ -701,8 +771,22 @@ pub fn wait_child_output(handle: &mut Child, name: &str, timeout: Duration) -> T
 
     let mut buffer = [0u8; 4096];
     loop {
+        if satisfied(&output) {
+            // Condition met — hand the stream back so a later call keeps
+            // reading where this one stopped, and leave the peer RUNNING.
+            handle.stdout = Some(stdout);
+            return Ok(output);
+        }
         if start.elapsed() > timeout {
-            kill_process_group(handle);
+            // Only the terminal drain kills. A condition wait that misses its
+            // deadline leaves the peer alive: the caller asserts on the output
+            // and may still want to look at (or keep) the process.
+            if stop.is_none() {
+                kill_process_group(handle);
+            } else {
+                handle.stdout = Some(stdout);
+                return Ok(output);
+            }
             if output.is_empty() {
                 return Err(TestError::Timeout);
             }
@@ -729,6 +813,12 @@ pub fn wait_child_output(handle: &mut Child, name: &str, timeout: Duration) -> T
             },
             Err(_) => break,
         }
+    }
+    if stop.is_some() {
+        // Process exited (or the stream broke) before the condition was met.
+        // Give the stream back regardless; the caller decides what the missing
+        // marker means.
+        handle.stdout = Some(stdout);
     }
     Ok(output)
 }

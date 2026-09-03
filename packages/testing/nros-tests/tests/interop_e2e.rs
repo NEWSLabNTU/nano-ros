@@ -303,15 +303,37 @@ fn interop(#[case] cell: Cell) {
         Scenario::ZenohPubsubNanoToRos2 => {
             let router = start_zenoh_router();
             let locator = router.locator();
-            let mut ros2 =
-                match Ros2Process::topic_echo(TOPIC, STRING_MSG, &locator, DEFAULT_ROS_DISTRO) {
-                    Ok(p) => p,
-                    Err(e) => skip!("ROS 2 topic echo could not start: {e}"),
-                };
+            // issue 1026 — the echo peer's LIFETIME and the wait are one
+            // decision, made here. `ECHO_WINDOW` is the `timeout --foreground`
+            // baked into the peer; the wait is shorter so a missed sample is
+            // reported as "no delivery" rather than as the peer vanishing
+            // mid-read. The wait itself is a CONDITION (one `data:` line), so
+            // the common path returns as soon as delivery happens.
+            const ECHO_WINDOW: Duration = Duration::from_secs(25);
+            const ECHO_WAIT: Duration = Duration::from_secs(20);
+            let mut ros2 = match Ros2Process::topic_echo_for(
+                TOPIC,
+                STRING_MSG,
+                &locator,
+                DEFAULT_ROS_DISTRO,
+                ECHO_WINDOW,
+            ) {
+                Ok(p) => p,
+                Err(e) => skip!("ROS 2 topic echo could not start: {e}"),
+            };
             let mut talker = spawn_nano_zenoh(&talker_binary(), "native-rs-talker", &locator);
-            let out = ros2
-                .wait_for_output(Duration::from_secs(8))
-                .unwrap_or_default();
+            // Bound stated: this cell asserts FIRST delivery only. It cannot
+            // see a session that dies after the first sample — that is the
+            // continuity assertion, and it lives on the pubsub cells that
+            // count samples over a lease interval (issue 1013).
+            // The asserted string and the diagnostic go on DIFFERENT channels
+            // (issue 0670): the error text names the pattern it waited for, so
+            // folding it into `out` would make `count_pattern(&out, "data:")`
+            // match the complaint about the missing samples.
+            let (out, why) = match ros2.wait_for_output_count("data:", 1, ECHO_WAIT) {
+                Ok(o) => (o, String::new()),
+                Err(e) => (String::new(), format!("\n[wait data:] {e}")),
+            };
             talker.kill();
 
             let n = count_pattern(&out, "data:");
@@ -325,7 +347,7 @@ fn interop(#[case] cell: Cell) {
                  conventions carry no version of their own, so the zenoh numbers are \
                  the closest available proxy; the ROS PACKAGE version is not — it is a \
                  wrapper version and says nothing about the zenoh inside it.)\n\
-                 ROS 2 output:\n{out}",
+                 ROS 2 output:\n{out}{why}",
                 cell.note,
                 nros_tests::process::zenoh_pairing_versions()
             );
@@ -479,9 +501,20 @@ fn interop(#[case] cell: Cell) {
                 "native-rs-service-client",
                 &locator,
             );
-            let out = client
-                .wait_for_all_output(Duration::from_secs(15))
-                .unwrap_or_default();
+            // issue 1026 — was `wait_for_all_output(15s)`, which KILLS at the
+            // deadline: the SUT's whole life was the wait window, so the cell
+            // could only ever mean "did it answer within 15 s of birth".
+            // `collect_until` waits on the CONDITION instead and leaves the
+            // client running.
+            //
+            // Bound stated: the demo client is SINGLE-SHOT — `State::done`
+            // latches on the first reply and it then idles forever — so one
+            // result is everything it will ever print, and no count above 1 is
+            // available to assert here. What this cell therefore cannot see is
+            // whether the session survives past that first call; that is the
+            // continuity question, and it belongs to a cell whose SUT keeps
+            // issuing requests.
+            let out = client.collect_until(output::SERVICE_RESULT_PREFIX, Duration::from_secs(15));
             ros2_server.kill();
 
             // The nano client prints the demo `Result of add_two_ints:` line.

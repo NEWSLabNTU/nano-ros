@@ -170,9 +170,60 @@ pub struct RosPeer {
 }
 
 impl RosPeer {
-    /// Best-effort read of everything the peer printed within `timeout`.
+    /// Drain the peer's stdout until it exits or `timeout` elapses, then KILL
+    /// it.
+    ///
+    /// **A terminal drain, not a wait-for-readiness — issue 1026.** There is no
+    /// stop condition, so a peer that keeps running always reaches the deadline
+    /// and reaching it kills its process group. Aimed at a `spin = "forever"`
+    /// nano-ros node the timeout is therefore that node's LIFETIME, not a
+    /// deadline: the test observes exactly one window and reports PASS on the
+    /// first marker inside it, whatever the node would have done next. That is
+    /// the shape issue 1013 measured — a 15 s window ended a 1 Hz talker after
+    /// twelve publishes and hid a lease defect that broke delivery in
+    /// production.
+    ///
+    /// It also reads STDOUT ONLY. Peers spawned through
+    /// [`nano_node_cmd`]/[`nano_node_cmd_rmw`] redirect `2>&1` so their
+    /// `env_logger` lines land here; a peer spawned any other way that logs to
+    /// stderr looks silent.
+    ///
+    /// Use [`Self::collect_until`] when the test is really waiting for a
+    /// CONDITION — which is nearly always.
     pub fn wait_for_output(&mut self, timeout: std::time::Duration) -> TestResult<String> {
         crate::ros2::wait_child_output(&mut self.handle, &self.name, timeout)
+    }
+
+    /// Collect the peer's stdout, returning as soon as `pattern` has appeared
+    /// `expected` times — the CONDITION wait (issue 1026).
+    ///
+    /// Kills nothing: the peer stays alive (its `Drop` still tears it down), so
+    /// the timeout bounds the WAIT rather than the node. Returns whatever was
+    /// printed whether or not the condition was met, so the caller's own
+    /// assertion carries the transcript; a harness-level failure (stdout
+    /// already taken) is rendered INTO the returned text rather than dropped,
+    /// matching [`crate::qemu::QemuProcess::collect_until`].
+    pub fn collect_until_count(
+        &mut self,
+        pattern: &str,
+        expected: usize,
+        timeout: std::time::Duration,
+    ) -> String {
+        match crate::ros2::collect_child_until(
+            &mut self.handle,
+            &self.name,
+            pattern,
+            expected,
+            timeout,
+        ) {
+            Ok(out) => out,
+            Err(e) => format!("<no output collected: {e}>"),
+        }
+    }
+
+    /// [`Self::collect_until_count`] for the single-occurrence case.
+    pub fn collect_until(&mut self, pattern: &str, timeout: std::time::Duration) -> String {
+        self.collect_until_count(pattern, 1, timeout)
     }
 
     /// Still running?
