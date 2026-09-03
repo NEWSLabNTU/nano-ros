@@ -528,6 +528,20 @@ pub struct ZenohSubscriber {
     msg_lost_total: core::cell::Cell<u32>,
     /// Phase 108.A — registered `MessageLost` callback slot.
     msg_lost_cb: core::cell::Cell<Option<EventReg>>,
+    /// Issue 0971 — a `try_recv_sequence` that stopped because a message did
+    /// not fit parks the reason here, and the NEXT take reports it.
+    ///
+    /// A batch drain cannot both deliver its count and return an error, so the
+    /// answer arrives one call later: the caller gets every message it was
+    /// handed, then the reason the drain stopped. `Cell` rather than a plain
+    /// field because every take path here works through `&self`.
+    ///
+    /// Before this the batch path dropped the oversized message and kept
+    /// draining, which is the option 0971 rejects outright — "delivers more,
+    /// still destroys the message with no signal". The SINGLE take
+    /// (`try_recv_raw`) has always done consume-then-refuse, so the two entry
+    /// points contradicted each other on the same subscriber.
+    pending_too_small: core::cell::Cell<bool>,
     /// Phase 108.C.zenoh.3 — sample lifespan in ms (`0` = infinite).
     /// Captured from QoS at create time; samples whose attachment
     /// timestamp is older than `now - lifespan_ms` are dropped in
@@ -725,6 +739,7 @@ impl ZenohSubscriber {
             next_expected_seq: core::cell::Cell::new(0),
             msg_lost_total: core::cell::Cell::new(0),
             msg_lost_cb: core::cell::Cell::new(None),
+            pending_too_small: core::cell::Cell::new(false),
             lifespan_ms: qos.lifespan_ms,
             deadline_ms: qos.deadline_ms,
             last_msg_at_ms: core::cell::Cell::new(now),
@@ -1106,6 +1121,15 @@ impl Subscription for ZenohSubscriber {
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+        // Issue 0971 — report a drain that stopped on an oversized message
+        // before taking anything. Cyclone clears its flag in BOTH take entry
+        // points (`subscriber.cpp:226` and `:296`) for the same reason: the
+        // caller that next asks this subscriber for data is the one owed the
+        // explanation, and it may well ask through the single take rather than
+        // another batch.
+        if self.pending_too_small.replace(false) {
+            return Err(TransportError::BufferTooSmall);
+        }
         let buffer = self.buf.get();
 
         // Phase 108.C.zenoh.2 — check deadline expiry on every poll
@@ -1300,10 +1324,22 @@ impl Subscription for ZenohSubscriber {
 
     // Phase 124.D.3.c — native batch take. Drains up to `max_msgs`
     // queued messages out of the SPSC ring in one call, each into a
-    // `per_msg_cap`-strided slot of `buf`. Oversized messages
-    // (payload > per_msg_cap) are dropped individually rather than
-    // erroring the whole batch — the burst-drain caller wants
-    // forward progress. Returns the count actually delivered.
+    // `per_msg_cap`-strided slot of `buf`. Returns the count actually
+    // delivered.
+    //
+    // Issue 0971 — an oversized message (payload > per_msg_cap) STOPS the
+    // drain: it is consumed, the reason is parked, and the next take on this
+    // subscriber returns `BufferTooSmall`. The count already drained is still
+    // returned, so the caller keeps every message it was handed and then learns
+    // why the drain ended.
+    //
+    // This comment used to say oversized messages "are dropped individually
+    // rather than erroring the whole batch — the burst-drain caller wants
+    // forward progress", and the code did exactly that. Forward progress was
+    // the right instinct and silence was the wrong price: the caller could not
+    // distinguish "the burst ended" from "a message was destroyed". 0971
+    // rejects that option by name. Parking keeps the progress and adds the
+    // signal, one call later.
     fn try_recv_sequence(
         &mut self,
         buf: &mut [u8],
@@ -1311,6 +1347,14 @@ impl Subscription for ZenohSubscriber {
         max_msgs: usize,
         out_lens: &mut [usize],
     ) -> Result<usize, Self::Error> {
+        // Issue 0971 — a previous drain stopped on a message that did not fit.
+        // Report it now, before taking anything: the caller already has the
+        // messages that drain delivered, and this is the call that tells it why
+        // the drain ended. Cleared as it is reported, so the next call proceeds
+        // normally.
+        if self.pending_too_small.replace(false) {
+            return Err(TransportError::BufferTooSmall);
+        }
         if per_msg_cap == 0 || max_msgs == 0 {
             return Ok(0);
         }
@@ -1330,10 +1374,19 @@ impl Subscription for ZenohSubscriber {
             };
             let len = buffer.ring_len[slot];
             if len > per_msg_cap {
-                // Oversized for the caller's per-slot cap — drop this
-                // message, keep draining the rest of the burst.
+                // Issue 0971 — the message does not fit the caller's per-slot
+                // cap. Consume it (leaving it would wedge the subscription on a
+                // message nobody can ever take), PARK the reason, and STOP.
+                //
+                // It used to `continue`: drop it and keep draining. That is the
+                // option 0971 rejects — the caller gets more messages and never
+                // learns one was destroyed. Stopping matches Cyclone's batch
+                // (`subscriber.cpp:341`) so the two backends now agree on the
+                // count as well as the status; continuing would have made zenoh
+                // deliver a different number of messages for the same burst.
                 buffer.consume_head();
-                continue;
+                self.pending_too_small.set(true);
+                break;
             }
             let off = count * per_msg_cap;
             buf[off..off + len].copy_from_slice(buffer.payload_slot(slot, len));
