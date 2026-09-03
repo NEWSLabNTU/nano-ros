@@ -123,3 +123,74 @@ CLAUDE.md's rule for QEMU reds, and this issue's list came out of a sweep. And
 matching nothing exits 0, so a re-run needs four verdicts (pass / fail /
 skipped-precondition / not-found), not two. A two-verdict harness would report
 an unmet precondition as a regression and a renamed test as a pass.
+
+## The threadx_linux cyclonedds cluster, DIAGNOSED 2026-09-04 (3 of the 12)
+
+`test_threadx_linux_cyclonedds_{service,action,talker_to_native_listener}`.
+Reproduced solo, on fixtures built at `a1c6d0d22`, and narrowed by elimination.
+Every line below is a measurement; the two that turned out to be measurement
+ARTIFACTS are kept, because both looked like findings.
+
+### What this issue said, and why it was wrong
+
+> the client printed `Locator:` empty and the server produced no output at all,
+> i.e. it did not start
+
+**The server starts.** Run directly it prints its whole banner through to
+`Waiting for service requests (Ctrl+C to exit)...`. The empty `server` section
+in the failure message is a HARNESS artifact:
+
+```rust
+server.wait_for_output_pattern(SERVICE_SERVER_READY_MARKER, 30s);  // consumes the banner
+let server_out = server.collect_until("Incoming request", 2s);      // only what came after
+```
+
+`wait_for_output_pattern` has already consumed the startup output, so
+`server_out` holds only what arrived afterwards — nothing. Anyone reading that
+panic message concludes the server never started, which is what this issue did.
+
+### Eliminated, each by measurement
+
+| hypothesis | result |
+| --- | --- |
+| server does not start | starts; full banner to a file AND through a pipe |
+| stdio block-buffering loses the output | 496 bytes reach a pipe; the harness also uses `stdbuf` |
+| domain mismatch | server honours `ROS_DOMAIN_ID`; both bind 34150/34151 on domain 107 |
+| isolated network stack (NetX/NSOS) | 4 host UDP sockets, one on the real LAN address |
+| multicast group not joined | both threadx and native join the DDS group |
+| stale binaries straddling 0970's sertype change | all three built the same night, well after it |
+| discovery is merely slow | client TIMES OUT after a 75 s budget |
+| the client or the Cyclone backend is broken | **CONTROL PASSES**: native client + native Cyclone server returns `Result of add_two_ints: 5` |
+
+### What IS established
+
+The native client never matches any endpoint of the threadx-linux server.
+Comparing `Tracing/finest` from the working pair against the failing one, the
+working trace carries `ACKNACK` traffic and
+`ddsi_delete_proxy_{participant,reader,writer}`; the failing trace carries none
+of them. ACKNACK is reliable-protocol traffic that only occurs with a matched
+remote endpoint, so its absence is not a shutdown-path artifact the way the
+`delete_*` lines partly are.
+
+SPDP frames ARE seen on both sides (5-6 each), so packets flow. **Discovery does
+not complete: the participant is never admitted.**
+
+### NOT established — what the next person should do
+
+WHY the SPDP is not admitted. That needs the announcement's CONTENT compared
+between a threadx and a native participant (GUID prefix, locators, lease
+duration, domain tag), which is packet-level work this stopped short of.
+
+Do not assume it generalises to the other two of the three. `service` is what
+was diagnosed; `action` and `talker_to_native_listener` share a fixture family
+and a plausible cause, and that is a hypothesis, not a result.
+
+### Two measurement artifacts, kept because both looked like findings
+
+1. **"Zero proxy participants discovered."** `new_proxy_participant` is not the
+   trace spelling — the WORKING control reports zero for it too. Caught by
+   running the same grep against the pair that passes, which is the only reason
+   it was not written up as the finding.
+2. **Unequal time budgets.** The control ran 25 s and the first threadx attempt
+   20 s, so "the client never completes" was not comparable until the 75 s run
+   made it so.
