@@ -10,12 +10,24 @@ setup:
     set -e
     # phase-334 W2.b step 2 — path from the ONE derivation (RFC-0070 R3).
     source scripts/build/build-root.sh
-    adir="$(nros_build_dir "$NROS_KIND_XRCE_AGENT")"
-    if [ -x "$adir/MicroXRCEAgent" ]; then
-        echo "Micro-XRCE-DDS Agent already built: $adir/MicroXRCEAgent"
-    else
-        ./scripts/xrce-agent/build.sh
-    fi
+    # Issue 0741 — ALWAYS delegate. This used to short-circuit on
+    # `[ -x "$adir/MicroXRCEAgent" ]`, which made the agent's own freshness
+    # logic unreachable on exactly the hosts that need it.
+    #
+    # `scripts/xrce-agent/build.sh` already keys its stamp on
+    # "$agent_ref $ros_prefix" and rebuilds when either moves. That stamp is
+    # what issue 0741's 2026-08-24 mitigation (`ca224e271`) is made of: build
+    # the agent against the SOURCED ROS's own Fast-CDR, because an agent
+    # carrying a different Fast-CDR MAJOR mis-frames the 24-byte SampleIdentity
+    # on a service reply. A file-existence test cannot see a ROS prefix change,
+    # so any host that had ever published an agent kept the skewed one and the
+    # mitigation never ran there -- including this one, still carrying the
+    # pre-mitigation wrapper dated Aug 23.
+    #
+    # The recipe must not re-implement that decision: build.sh prints
+    # "already built" itself when the stamp matches, so the fast path is
+    # preserved without a second, weaker copy of the rule.
+    ./scripts/xrce-agent/build.sh
 
 # Diagnose XRCE install status (read-only).
 [group("setup")]
