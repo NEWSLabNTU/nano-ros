@@ -226,6 +226,10 @@
       "residue": "`nros_service_take_request`, the stub's twin, is still an exported `NROS_RET_NOT_INIT` symbol; it belongs to `c:take_request`."
     }
   },
+  "c:service_send_response_raw": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides. LANDED 2026-08-27 (phase-379 W5): this is the renamed `nros_service_send_reply_raw`, and it is now the ONE exported symbol of the reply verb in C. `_raw` is the family convention for the byte-buffer entry points (`nros_publish_raw`, `nros_client_send_request_raw`, the `nros_action_*_raw` family) -- not a marker that a typed non-raw twin exists, because in C there is none. Reached on a server created with `nros_service_init_polling`; `sequence_number` is the value the matching `nros_service_try_recv_request_raw` returned (see `rust:RequestId` for why that token is a bare integer)."
+  },
   "c:service_set_on_new_request_callback": {
     "verdict": "divergence",
     "why": "see the pubsub stage's `c:subscription_set_on_new_message_callback`."
@@ -309,6 +313,14 @@
   "cpp:Client::call_polling": {
     "verdict": "extension",
     "why": "RFC-0022's polling tier: an entity a task drains itself instead of receiving a callback. See the pubsub stage's `cpp:PollingSubscription`."
+  },
+  "cpp:Client::call_polling_sized": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+  },
+  "cpp:Client::call_sized": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Client::clear_on_new_response_callback": {
     "verdict": "divergence",
@@ -397,6 +409,10 @@
   "cpp:Client::send_request": {
     "verdict": "extension",
     "why": "the ours-only half of `c:send_request`."
+  },
+  "cpp:Client::send_request_sized": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Client::server_available": {
     "verdict": "rename",
@@ -910,7 +926,7 @@
   },
   "rust:QoSProfile::parameter_services_default": {
     "verdict": "gap",
-    "why": "ROS 2 gives the parameter services their own profile — `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
+    "why": "ROS 2 gives the parameter services their own profile \u2014 `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
   },
   "rust:QoSProfile::services_default": {
     "verdict": "rename",
@@ -1052,6 +1068,10 @@
     "verdict": "extension",
     "why": "see `c:client_set_wake_callback`."
   },
+  "rust:ServiceTrait::send_response": {
+    "verdict": "divergence",
+    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint. RENAMED from `ServiceTrait::send_reply` 2026-08-27 (phase-379 W5, key moved from that spelling); see `cpp:Service::send_response`. No `#[deprecated]` forwarder, deliberately: this is a REQUIRED trait method, so the rename breaks implementors rather than callers, and a defaulted forwarder that panicked or silently did nothing would convert a compile error every backend author wants into a runtime failure. The five in-tree implementors moved with it (zenoh shim, cffi adapter, metadata, the node mock, the cffi test doubles)."
+  },
   "rust:Session::create_client": {
     "verdict": "divergence",
     "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
@@ -1083,13 +1103,5 @@
   "rust:rmw_request_id_t": {
     "verdict": "divergence",
     "why": "see `rust:RequestId`."
-  },
-  "c:service_send_response_raw": {
-    "verdict": "extension",
-    "why": "the ours-only half of `c:send_response`; recorded so the pair is visible from both sides. LANDED 2026-08-27 (phase-379 W5): this is the renamed `nros_service_send_reply_raw`, and it is now the ONE exported symbol of the reply verb in C. `_raw` is the family convention for the byte-buffer entry points (`nros_publish_raw`, `nros_client_send_request_raw`, the `nros_action_*_raw` family) -- not a marker that a typed non-raw twin exists, because in C there is none. Reached on a server created with `nros_service_init_polling`; `sequence_number` is the value the matching `nros_service_try_recv_request_raw` returned (see `rust:RequestId` for why that token is a bare integer)."
-  },
-  "rust:ServiceTrait::send_response": {
-    "verdict": "divergence",
-    "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint. RENAMED from `ServiceTrait::send_reply` 2026-08-27 (phase-379 W5, key moved from that spelling); see `cpp:Service::send_response`. No `#[deprecated]` forwarder, deliberately: this is a REQUIRED trait method, so the rename breaks implementors rather than callers, and a defaulted forwarder that panicked or silently did nothing would convert a compile error every backend author wants into a runtime failure. The five in-tree implementors moved with it (zenoh shim, cffi adapter, metadata, the node mock, the cffi test doubles)."
   }
 }

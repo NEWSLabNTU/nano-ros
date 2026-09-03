@@ -227,9 +227,17 @@
     "verdict": "extension",
     "why": "the executor handle behind the free-function `nros::init()` / `nros::spin_once()` convenience path, so a caller using it can still hand an executor to `Future::wait` / `Stream::wait_next` -- which they must, because RFC-0021 makes every blocking helper take the executor. rclcpp needs no equivalent: `spin_until_future_complete` takes a node or executor the caller already holds. Returns `nullptr` before `init()`."
   },
+  "cpp:has_derived_size_bound": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. Asks whether a message type carries a DERIVED serialized-size bound, as opposed to the estimate `SERIALIZED_SIZE_MAX` states for every type including unbounded ones. It is the predicate the receive buffers branch on: derived -> use it, not derived -> keep today's behaviour. rclcpp has nothing to compare because with an allocator the question does not arise."
+  },
   "cpp:is_type_adapter": {
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
+  },
+  "cpp:rx_buffer_capacity": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The capacity a RECEIVE buffer is sized to: the derived RX bound where the type has one, today's estimate where it does not. Distinct from `rx_size_bound`, which POISONS an unbounded type \u2014 this one falls back, because a receive buffer must still compile for the 81 of 120 stock Humble types that state no bound. Two questions, two spellings, deliberately."
   },
   "cpp:rx_size_bound": {
     "verdict": "extension",
@@ -246,6 +254,10 @@
   "cpp:to_string": {
     "verdict": "divergence",
     "why": "four overloads across rclcpp (`FutureReturnCode`, `ParameterType`, `ParameterValue`) and rclcpp_action (`GoalUUID`), each returning `std::string`. A returned `std::string` allocates, and the freestanding C++ profile has neither the allocator nor `<string>` (RFC-0018, issue 0112). Where a name is genuinely needed our surfaces return a `const char *` or let the caller format into its own buffer."
+  },
+  "cpp:tx_buffer_capacity": {
+    "verdict": "extension",
+    "why": "as cpp:rx_buffer_capacity, for the transmit direction. Not yet consumed \u2014 the 17 transmit sites still use the estimate, where an over-estimate only wastes stack; kept beside its sibling so the pair is one mechanism rather than two."
   },
   "cpp:tx_size_bound": {
     "verdict": "extension",
