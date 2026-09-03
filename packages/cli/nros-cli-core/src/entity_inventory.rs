@@ -469,6 +469,20 @@ pub struct DerivedEntityKnobs {
     /// still state the knob, and that is why this is a DEFAULT rather than a
     /// ceiling.
     pub max_queryables: usize,
+    /// `NROS_EXECUTOR_MAX_NODES` -- one node per declared component.
+    ///
+    /// A `ComponentNode` constructor is one `Node::create` is one node NAME,
+    /// and the executor keys node slots by name ("a repeated name must reuse
+    /// its record"), so two components sharing a name share a slot and this
+    /// OVER-counts by one. Over-counting is the safe direction.
+    ///
+    /// UNDER-counting has exactly one source: `nros_pubsub_bridge_create`
+    /// creates TWO nodes whose names are RUNTIME strings, declared nowhere.
+    /// That path now names this knob when the table is full rather than
+    /// returning a bare error code, which is what makes deriving it safe -- the
+    /// same argument that let `MAX_CBS` derive, where the shortfall surfaces as
+    /// `ExecutorFull` naming the knob. An image that bridges states this knob.
+    pub max_nodes: usize,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -654,6 +668,7 @@ impl EntityInventory {
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS;
         let max_queryables = n(EntityKind::ServiceServer.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES;
+        let max_nodes = self.components().len();
 
         Derivation::Derived(Box::new(DerivedEntityKnobs {
             max_cbs,
@@ -662,6 +677,7 @@ impl EntityInventory {
             max_subscribers,
             max_publishers,
             max_queryables,
+            max_nodes,
             per_kind,
             per_component,
         }))
@@ -956,6 +972,13 @@ impl EntityInventory {
                 s.push_str(&format!(
                     "set(NROS_DERIVED_MAX_QUERYABLES {})\n",
                     k.max_queryables
+                ));
+                s.push_str(
+                    "# One node per declared component. Over-counts if two share\n                     # a name (slots are keyed by name); UNDER-counts only for a\n                     # bridge, whose two nodes are runtime strings declared\n                     # nowhere -- that path names this knob when the table fills.\n",
+                );
+                s.push_str(&format!(
+                    "set(NROS_DERIVED_EXECUTOR_MAX_NODES {})\n",
+                    k.max_nodes
                 ));
             }
         }

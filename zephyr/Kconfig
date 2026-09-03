@@ -1073,8 +1073,8 @@ config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
       (NROS_RET_FULL), not silently dropped.
 
 config NROS_EXECUTOR_MAX_NODES
-    int "Maximum nodes per executor"
-    default 4
+    int "Maximum nodes per executor (-1 = derive)"
+    default -1
     help
       Nodes attachable to one executor (nros-node build.rs MAX_NODES,
       Phase 104.C.2).

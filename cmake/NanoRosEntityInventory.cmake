@@ -240,6 +240,7 @@ function(nros_derive_entity_inventory_knobs)
     foreach(_v NROS_DERIVED_EXECUTOR_MAX_CBS NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
                NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
+               NROS_DERIVED_EXECUTOR_MAX_NODES
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
@@ -340,7 +341,8 @@ function(nros_derive_entity_inventory_knobs)
     # only when the whole image declared, absent otherwise, so a consumer reads
     # a derived value or reads nothing.
     foreach(_pool NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
-                  NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES)
+                  NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
+                  NROS_DERIVED_EXECUTOR_MAX_NODES)
         if(DEFINED ${_pool})
             _nros_entity_publish(${_pool} "${${_pool}}")
         endif()
@@ -428,6 +430,7 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
         NROS_DERIVED_MAX_PUBLISHERS
         NROS_DERIVED_MAX_QUERYABLES
+        NROS_DERIVED_EXECUTOR_MAX_NODES
         NROS_ENTITY_COUNT_PUBLISHER
         NROS_ENTITY_COUNT_SUBSCRIPTION
         NROS_ENTITY_COUNT_TIMER

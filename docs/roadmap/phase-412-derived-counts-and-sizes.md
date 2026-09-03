@@ -171,13 +171,60 @@ Named here so nobody re-audits them, with the blocker rather than a shrug.
 | `NROS_ZEPHYR_HEAP_SIZE` | 94208 | runtime allocation. No static model, and the honest first step is a high-water reporter, not a derivation |
 | `NROS_GRAPH_CACHE_SIZE` | 4096 | sized by the PEER graph. Not a property of this image and probably never derivable from it |
 | `NROS_MAX_LIVELINESS` | 32 | same — remote peers |
-| `NROS_EXECUTOR_MAX_NODES` | 6 | the BRIDGE creates two nodes per bridge outside the component model, so `COMPONENT_COUNT` is a lower bound. Needs the bridge to declare, or the derivation to refuse when one is present |
 | `NROS_ZEPHYR_TASK_SLOTS`, `..._TASK_STACK_SIZE` | 5, 8192 | transport tasks, not entities. Derivable in principle from the transport's own declaration; nothing declares it today |
 
 `NROS_SUBSCRIBER_LARGE_SIZE` is a seventh case and a different one: it is
 DELIBERATELY not derived (see `NanoRosMessageBounds`), and on the island it now
 sizes nothing because `MAX_LARGE_SUBSCRIBERS` derives to 0. A number that sizes
 nothing should be deleted from a `.conf`, not derived.
+
+## W2 — `NROS_EXECUTOR_MAX_NODES`. LANDED 2026-09-03
+
+Wired, after the blocker was REMOVED rather than worked around. This phase first
+said not to derive it: a bridge creates two nodes whose names are runtime
+strings, declared nowhere, so `COMPONENT_COUNT` is a lower bound and
+under-counting halts the board.
+
+What changed the answer is the failure MODE, not the count. A short node table
+raises `NodeError::NodeTableFull`, which NAMES the knob -- the same property
+that justified deriving `MAX_CBS`, where the shortfall surfaces as
+`ExecutorFull`. Every consumer had that property except one: the bridge mapped
+it to a bare `NROS_RMW_RET_ERROR` and lost the name.
+
+So the bridge was fixed FIRST. Both `create_node_on` calls in
+`nros_pubsub_bridge_create` now match `NodeTableFull` and say which knob to
+raise, through `nros_log::nros_error!` rather than `eprintln!` (issue 0589 --
+std stdio SIGSEGVs a Zephyr native_sim image). Only then is deriving the knob
+safe rather than hopeful: every path that can exhaust the table names it.
+
+The derivation is one node per declared component, asymmetric on purpose:
+
+* OVER-counts if two components share a node name, because slots are keyed by
+  name and a repeat reuses its record. The safe direction.
+* UNDER-counts only for a bridge, which is now legible at the point it fails.
+
+Island: 6 hand-set -> 4 derived. DTCM 89320 (68.15%) -> 86896 (66.30%).
+
+**A THIRD instance of one shape.** `check-knob-delivery` caught
+`NROS_EXECUTOR_MAX_NODES` derived as 4 and resolved as `-1`: the knob was
+resolved TWICE in `nros_cargo_build.cmake`, and the second call passed the raw
+Kconfig value, which is the DERIVE SENTINEL, so the sentinel won as though
+someone had stated it. `NROS_RMW_SUBSCRIBER_SLOTS` was the second instance and
+a zpico define the first.
+
+The rule that falls out: **converting a knob to derivable means REMOVING its old
+`_nros_resolve_knob` call, not just adding a derivable one.** That file has a
+long tail of plain calls and the duplicate is invisible to every gate except
+this one. A check that no knob is resolved twice in that file would make the
+rule enforceable rather than remembered; it is not built here.
+
+Worth the contrast, since it is the argument for having built W4 first:
+
+| | W1, before the gate | W2, with it |
+| --- | --- | --- |
+| delivery bugs | 6 | 1 |
+| found by | build failures, then the gate after merge | the gate, in seconds |
+| reached `main` | yes -- 8/8/8 shipped | no |
 
 ## W3 — the arena, once phase-403 step 2 lands
 
