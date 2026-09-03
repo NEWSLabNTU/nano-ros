@@ -79,9 +79,9 @@ fails if this block drifts.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1006** (tooling, build) — esp32-qemu's configure does not disable the backends it never uses, so its runtime dependency set is a property of the machine that built it See `1006-*`.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
-- **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
-- **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 - **#1008** (api, rmw) — `wait_for_service` returns `Ok(true)` immediately on every real backend — its fast path calls `is_server_ready()`, whose trait default is `true` and which only zenoh overrides See `1008-*`.
-- **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 18 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
+- **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
+- **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 15 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
+- **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 
 <!-- END GENERATED open-issue list -->
