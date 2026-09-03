@@ -705,6 +705,10 @@ pub unsafe extern "C" fn nros_subscription_try_recv_validated(
 /// Phase 124.A.6 — borrow a read-only view of the next available message
 /// in place (zero-copy receive path).
 ///
+/// **Availability:** requires the `lending` AND `alloc` cargo features,
+/// and no shipped build enables `lending` — see `nros_publisher_loan`
+/// for what that means for this header. Issue 0814.
+///
 /// Bypasses the subscription's staging buffer. On success, `*out_buf`
 /// points at `*out_len` bytes the caller can read directly. Caller MUST
 /// pass `*out_token` back to [`nros_subscription_release`] before
@@ -779,6 +783,9 @@ pub unsafe extern "C" fn nros_subscription_borrow(
 }
 
 /// Phase 124.A.6 — release a previously borrowed view.
+///
+/// **Availability:** requires `lending` AND `alloc`, and no shipped build
+/// enables `lending` — see `nros_publisher_loan`. Issue 0814.
 ///
 /// `token` MUST come from a prior `nros_subscription_borrow` on the
 /// SAME subscription; consuming it is mandatory before the

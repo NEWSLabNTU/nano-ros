@@ -5533,6 +5533,27 @@ NROS_PUBLIC nros_ret_t nros_publisher_assert_liveliness(const struct nros_publis
  * Phase 124.A.6 — loan a writable slot from the publisher's outbound
  * buffer (zero-copy publish path).
  *
+ * # AVAILABILITY — read this before calling
+ *
+ * This symbol exists **only** in a nano-ros built with the `lending`
+ * cargo feature, and **no shipped configuration enables it**: the
+ * string `lending` appears zero times under `cmake/` and `zephyr/`,
+ * `nros-rmw-zenoh-staticlib` — the crate every C/C++ and RTOS image
+ * links — declares no forwarder for it, and the only crate in the tree
+ * that turns it on is the `nros-tests` test harness.
+ *
+ * Its presence in this header is therefore **not evidence that it can
+ * be linked.** cbindgen emits every declaration unconditionally here,
+ * by deliberate repo-wide policy (`packages/api/nros-c/cbindgen.toml`
+ * `[defines]`, empty on purpose), so a `#[cfg]`-gated Rust symbol still
+ * appears. Calling this against a default build compiles and then fails
+ * at LINK with an undefined symbol.
+ *
+ * The supported zero-copy surface is `nros_publisher_publish_streamed`
+ * and its receive twin `process_raw_in_place`: no feature, no token, no
+ * arena, no size ceiling, and the XRCE and zenoh backends fill them
+ * natively while all three NULL the loan trio. See issue 0814.
+ *
  * On success, `*out_buf` points at `*out_cap` writable bytes the
  * caller fills in place. Pass `*out_token` back to
  * [`nros_publisher_commit`] (to send) or [`nros_publisher_discard`]
@@ -5544,12 +5565,21 @@ NROS_PUBLIC nros_ret_t nros_publisher_assert_liveliness(const struct nros_publis
  * Falls back to a heap-allocated staging buffer when the active
  * backend's vtable doesn't expose a native loan slot — the wire
  * payload still takes a single memcpy at commit time. `requested_len`
- * is the minimum capacity; `*out_cap` may exceed it.
+ * is the minimum capacity; `*out_cap` may exceed it. That fallback
+ * needs a heap: in a build without `alloc` there is nothing to hand
+ * out, and the answer is `NROS_RET_NOT_ALLOWED` (see below).
  *
  * # Returns
  * * `NROS_RET_OK` — slot reserved.
- * * `NROS_RET_TRY_AGAIN` (`-15`) — backend has no slot available;
- *   retry later or use a non-loan publish path.
+ * * `NROS_RET_TRY_AGAIN` (`-14`) — no slot available *right now*.
+ *   TRANSIENT: retry later, or use a non-loan publish path.
+ * * `NROS_RET_NOT_ALLOWED` (`-12`) — this publisher cannot loan at
+ *   all. PERMANENT (issue 0814): the backend's vtable exposes no loan
+ *   slot and this build has no heap for the staging fallback, and
+ *   neither fact can change while the publisher lives. Do NOT retry —
+ *   take a non-loan path. `nros_publisher_publish_streamed` is the
+ *   better one: it needs no token, no arena and no heap, and the XRCE
+ *   and zenoh backends fill it natively.
  * * `NROS_RET_INVALID_ARGUMENT` on NULL pointers or zero `requested_len`.
  * * `NROS_RET_NOT_INIT` if publisher isn't initialised.
  *
@@ -5567,6 +5597,9 @@ nros_ret_t nros_publisher_loan(const struct nros_publisher_t *publisher,
  * Phase 124.A.6 — commit a previously-loaned slot. Sends the slot's
  * `actual_len` bytes via the active backend.
  *
+ * **Availability:** `lending`-only, and no shipped build enables it —
+ * see `nros_publisher_loan`. Issue 0814.
+ *
  * `token` MUST come from a prior `nros_publisher_loan` on the SAME
  * publisher; consuming it (commit OR discard) is mandatory.
  *
@@ -5581,6 +5614,9 @@ nros_ret_t nros_publisher_commit(const struct nros_publisher_t *publisher,
 
 /**
  * Phase 124.A.6 — abandon a previously-loaned slot without sending.
+ *
+ * **Availability:** `lending`-only, and no shipped build enables it —
+ * see `nros_publisher_loan`. Issue 0814.
  *
  * `token` MUST come from a prior `nros_publisher_loan` on the SAME
  * publisher; consuming it (commit OR discard) is mandatory.
@@ -6394,6 +6430,10 @@ int32_t nros_subscription_try_recv_validated(struct nros_subscription_t *subscri
  * Phase 124.A.6 — borrow a read-only view of the next available message
  * in place (zero-copy receive path).
  *
+ * **Availability:** requires the `lending` AND `alloc` cargo features,
+ * and no shipped build enables `lending` — see `nros_publisher_loan`
+ * for what that means for this header. Issue 0814.
+ *
  * Bypasses the subscription's staging buffer. On success, `*out_buf`
  * points at `*out_len` bytes the caller can read directly. Caller MUST
  * pass `*out_token` back to [`nros_subscription_release`] before
@@ -6402,6 +6442,17 @@ int32_t nros_subscription_try_recv_validated(struct nros_subscription_t *subscri
  *
  * Falls back to a `try_recv_raw` copy into the staging buffer when the
  * active backend's vtable doesn't expose a native borrow slot.
+ *
+ * **Requires `alloc` as well as `lending`.** Unlike the publish half —
+ * which issue 0812 made allocation-free by passing the BACKEND's own
+ * token through — the receive half still boxes a `RecvView` per borrow
+ * to manufacture a stable FFI token, so it cannot exist in a heap-free
+ * image. That was 0812's own "what this does NOT yet buy" item, and
+ * leaving the `cfg` at `lending` alone did not make it work: it made
+ * `nros-c` FAIL TO COMPILE under `--features lending` without `alloc`
+ * (four `alloc::boxed::Box` uses with no `extern crate alloc` in scope).
+ * A capability that cannot build is worse than one that is absent, so
+ * the `cfg` now states the real requirement (issue 0814).
  *
  * # Returns
  * * `> 0` — message length written into `*out_len`; view is ready.
@@ -6421,9 +6472,15 @@ int32_t nros_subscription_borrow(struct nros_subscription_t *subscription,
 /**
  * Phase 124.A.6 — release a previously borrowed view.
  *
+ * **Availability:** requires `lending` AND `alloc`, and no shipped build
+ * enables `lending` — see `nros_publisher_loan`. Issue 0814.
+ *
  * `token` MUST come from a prior `nros_subscription_borrow` on the
  * SAME subscription; consuming it is mandatory before the
  * subscription's next borrow / destroy.
+ *
+ * **Requires `alloc` as well as `lending`** — it unboxes the `RecvView`
+ * its paired `nros_subscription_borrow` boxed. See that function.
  *
  * # Safety
  * * `subscription` must be the subscription the token was borrowed from.
