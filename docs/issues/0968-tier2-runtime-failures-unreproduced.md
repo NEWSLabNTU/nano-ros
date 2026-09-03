@@ -232,6 +232,48 @@ three, and — for the threadx cluster — one wrong explanation removed from in
 front of it.
 
 
+## 2026-09-03 re-measurement: the zephyr cluster IS diagnosed (issue 1010)
+
+Rebuilt tier-2 fixtures, rebuilt the zephyr west leaves, re-ran all nine XRCE
+cells on fresh images:
+
+```
+Summary [290.668s] 9 tests run: 0 passed, 9 failed, 45 skipped
+```
+
+Zero skips — the first run in which all nine actually executed. 72 copies of:
+
+```
+nros: HEAP EXHAUSTED: request 329648 bytes, arena 66048 bytes
+      (raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE)
+```
+
+**Cause, from the images' own autoconf:** `CONFIG_NROS_ZEPHYR_HEAP_SIZE 65536`
+and `CONFIG_NROS_EXECUTOR_ARENA_SIZE 0` (derive). The derive budgets every
+callback slot at action-client size, producing ~322-418 KiB, requested as ONE
+allocation from a 64 KiB arena. Deterministic, not flake, not staleness. Filed
+as issue 1010.
+
+**Two lessons about this issue's own earlier entries.**
+
+First, a `lane=tier2` build does NOT cover the zephyr rust/c west leaves. An
+earlier attempt at this re-run reported "9 failed" where six were actually
+`skip!` panics carrying a STALE verdict — bare `cargo nextest` counts those as
+failures, exactly as CLAUDE.md warns. Six of the nine were not measured at all,
+and the summary line looked identical to a real result. `just zephyr
+build-fixtures` (now `just build zephyr`) is what covers them.
+
+Second, and more useful: the whole cluster was never a delivery problem. These
+images cannot boot as configured, so the earlier `pubsub`/`service` reading of
+"boots, then no delivery" describes something that never got as far as
+publishing, and should be re-measured rather than carried forward.
+
+**Issue 1003 is therefore ruled out as this cluster's cause** — not by the
+argument I first gave (which was wrong: the C entries DO go through the fixed
+templates), but by measurement. The images die in `Executor::open` before any
+XRCE session is created, so a collided client key cannot be what is being
+observed. 1003 was a real defect and is fixed; it is not this.
+
 ## NOT DIAGNOSED — read this before acting
 
 **No root cause is claimed for any of the 12.** One sample was examined
