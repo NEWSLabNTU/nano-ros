@@ -160,8 +160,22 @@ while IFS=$'\t' read -r path new_sha; do
         if ! git -C "$path" cat-file -e "${sha}^{commit}" 2>/dev/null; then
             echo "submodule-pins: CANNOT VERIFY $path" >&2
             echo "    commit ${sha:0:12} is not in the submodule's object store, even" >&2
-            echo "    after a fetch. A pin nobody can resolve clones as a broken tree." >&2
-            echo "    Push the submodule commit FIRST, then bump the pointer." >&2
+            echo "    after a fetch." >&2
+            echo "" >&2
+            echo "    Two different causes, and they need different fixes:" >&2
+            echo "" >&2
+            echo "    1. The commit was never pushed. A pin nobody can resolve" >&2
+            echo "       clones as a broken tree; push it FIRST, then bump the" >&2
+            echo "       pointer. \`check submodule-commits-reachable\` is the gate" >&2
+            echo "       that asks the remote and will also catch this." >&2
+            echo "" >&2
+            echo "    2. The submodule is a SHALLOW clone, so the baseline commit" >&2
+            echo "       (the one before the tip) is simply absent. This is the" >&2
+            echo "       usual case in CI, and it is not your pin's fault. The" >&2
+            echo "       fetch above cannot help: \`git fetch --all\` does not" >&2
+            echo "       deepen a shallow clone. check-fast is network-free by" >&2
+            echo "       contract, so the WORKFLOW must provide the objects --" >&2
+            echo "       see the 'Fetch submodule history' step in gate.yml." >&2
             fail=1
             continue 2
         fi
