@@ -85,5 +85,7 @@ fails if this block drifts.
 - **#1003** (build, codegen, testing) — Zephyr images are compiled from SIX-WEEK-OLD generated entries — the entry is never regenerated when the emitter changes See `1003-*`.
 - **#1010** (zephyr, platform, examples) — The derived executor arena is one allocation ~6x larger than the heap it comes from, so every zephyr XRCE example dies at boot See `1010-*`.
 - **#1011** (rmw-cyclonedds, zephyr) — `publisher.cpp` brace-initializes a struct with default member initializers, which is not an aggregate under the Zephyr lane's `-std=c++11` See `1011-*`.
+- **#1016** (testing, zephyr, ci) — `lane=tier2` does not build the zephyr rust/c west leaves, so their cells report as failures that are really skips See `1016-*`.
+- **#1017** (codegen, api, testing) — Nothing stops a CMake entry template from dropping the session name again (issue 1003 has no gate) See `1017-*`.
 
 <!-- END GENERATED open-issue list -->

@@ -863,4 +863,33 @@ holds the evidence, the item is *close it*.
 | [#0816](../issues/0816-no-alloc-claimed-but-unenforced.md) | the book promises no-alloc integrations and nothing checks the linked image |
 | [#0827](../issues/0827-unused-rmw-pools-dominate-static-ram.md) | static RAM is a property of the RMW, not of the node |
 | [#0857](../issues/0857-cell-registry-inline-capacity-heap-regression.md) | ComponentCell's inline registries cost worst-case x biggest-payload heap per component |
+| [#1010](../issues/1010-zephyr-xrce-executor-arena-exceeds-heap.md) | the derived executor arena is ONE allocation ~6x the arena it comes from (2026-09-04) |
+
+**On #1010, added 2026-09-04.** Measured on all nine zephyr XRCE cells, freshly
+built, all three languages: `0 passed, 9 failed`, with 72 copies of
+
+```
+nros: HEAP EXHAUSTED: request 329648 bytes, arena 66048 bytes
+```
+
+From the images' own `autoconf.h`: `CONFIG_NROS_ZEPHYR_HEAP_SIZE 65536` and
+`CONFIG_NROS_EXECUTOR_ARENA_SIZE 0`, i.e. derived. The derive budgets every
+callback slot at action-client size (~18 KiB, as its own Kconfig help says), so
+it asks for ~322-418 KiB as a SINGLE block from a 64 KiB arena. One block larger
+than the whole arena fails on every host, every time — deterministic, not the
+flake class and not staleness.
+
+It belongs to THIS phase rather than to the runtime one because it is an arena
+question, and specifically because of this phase's own title: *a link-time gate
+that proves it*. The heap arena is a Kconfig integer and the executor arena is
+derived at BUILD time, so an image whose arena cannot hold its executor should
+fail to link, naming both numbers. `NROS_EXECUTOR_ARENA_SIZE`'s help already
+warns "too small fails at runtime, not at link" about the other direction; this
+is the same complaint one level up, and the gate this phase built does not
+cover it.
+
+Not claimed: that raising the heap makes those nine cells pass. Other failures
+may sit behind this one. What is established is narrower and stronger — those
+images cannot boot as configured, so no runtime result from them has ever been
+evidence about anything else.
 
