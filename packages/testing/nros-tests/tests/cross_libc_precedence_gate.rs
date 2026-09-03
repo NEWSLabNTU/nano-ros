@@ -136,12 +136,13 @@ fn cross_libc_two_set_precedence_holds() {
             gxx.display()
         );
     }
-    // Sanity: the failure must be the div_t clash we model, not an unrelated error
-    // (a broken stub/probe would falsely "pass" the negative direction).
+    // Sanity: the failure must be the two-libc clash we model, not an unrelated
+    // error (a broken stub/probe would falsely "pass" the negative direction).
     assert!(
-        broken_log.contains("div_t") && broken_log.to_lowercase().contains("conflict"),
-        "broken-precedence compile failed for a reason OTHER than the modelled div_t \
-         clash — fix the gate fixture, do not assume the precedence bug:\n{broken_log}"
+        models_two_libc_clash(&broken_log),
+        "broken-precedence compile failed for a reason OTHER than the modelled \
+         two-libc clash — fix the gate fixture, do not assume the precedence \
+         bug:\n{broken_log}"
     );
 
     // 2. With the RTOS `include/cxx` prepended (the #27/#36 fix), the SAME probe
@@ -153,5 +154,75 @@ fn cross_libc_two_set_precedence_holds() {
          the #27/#36 two-libc `div_t` clash — the SYSTEM/`include/cxx` precedence that \
          keeps the RTOS sysroot winning has regressed (see nuttx_ffi_build.rs / the NuttX \
          NanoRos cmake SYSTEM include):\n{fixed_log}"
+    );
+}
+
+/// Does this compile log show the RTOS `stdlib.h` winning over the cross
+/// newlib's — the #27/#36 two-libc clash — rather than some unrelated error?
+///
+/// Issue 0995. It has TWO manifestations, and which one you get depends on
+/// which cross toolchain is installed:
+///
+///   * SDK store (`~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1`, newlib 13.2.1):
+///     newlib's own `stdlib.h` is reached FIRST, so the stub's is a
+///     redefinition —
+///         error: conflicting declaration 'typedef struct div_s div_t'
+///
+///   * the CI container's apt cross (newlib 10.3.1): the stub's `stdlib.h` is
+///     reached INSTEAD of newlib's, so newlib's `<cstdlib>` finds nothing to
+///     re-export —
+///         /usr/include/newlib/c++/10.3.1/bits/std_abs.h:52:11:
+///             error: 'abs' has not been declared in '::'
+///
+/// Both are the stub shadowing the real libc; only the first was modelled, so
+/// the gate failed on the container with "fix the gate fixture" — correctly
+/// refusing to conclude, and correctly telling us the fixture was the problem.
+fn models_two_libc_clash(log: &str) -> bool {
+    let lower = log.to_lowercase();
+    // Manifestation 1: a redefinition, naming the type the stub redeclares.
+    if lower.contains("div_t") && lower.contains("conflict") {
+        return true;
+    }
+    // Manifestation 2: the C++ `<cstdlib>` chain cannot find the C names it
+    // re-exports, because the stub's header replaced the one that declares
+    // them. Keyed on BOTH halves so an unrelated "not declared" elsewhere does
+    // not qualify.
+    let from_cstdlib_chain = lower.contains("cstdlib") || lower.contains("std_abs.h");
+    let missing_c_names = lower.contains("has not been declared in");
+    from_cstdlib_chain && missing_c_names
+}
+
+#[test]
+fn the_clash_predicate_accepts_both_toolchains_and_rejects_noise() {
+    // Issue 0995 — REAL logs, not paraphrases: the first from this host's SDK
+    // cross, the second copied from the CI run that failed (33654481082).
+    let sdk_cross = "\
+rtos-stub/include/stdlib.h:19:23: error: conflicting declaration 'typedef struct div_s div_t'
+   19 | typedef struct div_s  div_t;
+.../c++/13.2.1/cstdlib:79: note: previous declaration as 'typedef struct div_t div_t'";
+    assert!(
+        models_two_libc_clash(sdk_cross),
+        "the div_t redefinition is the originally modelled manifestation"
+    );
+
+    let apt_cross = "\
+In file included from /usr/include/newlib/c++/10.3.1/cstdlib:77,
+                 from .../cross_libc_precedence/probe.cpp:9:
+/usr/include/newlib/c++/10.3.1/bits/std_abs.h:52:11: error: 'abs' has not been declared in '::'
+   52 |   using ::abs;";
+    assert!(
+        models_two_libc_clash(apt_cross),
+        "the container's newlib shadows the other way and must also qualify"
+    );
+
+    // A genuinely unrelated failure must still fail the gate — that is the
+    // whole point of the sanity check.
+    assert!(
+        !models_two_libc_clash("probe.cpp:3:10: fatal error: nowhere.h: No such file or directory"),
+        "an unrelated error must NOT be read as the clash"
+    );
+    assert!(
+        !models_two_libc_clash("error: 'frobnicate' has not been declared in '::'"),
+        "a `not declared` outside the cstdlib chain must NOT qualify"
     );
 }
