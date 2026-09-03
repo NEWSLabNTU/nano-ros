@@ -207,11 +207,36 @@ action protocol, and it is NOT verified here — it needs the Cyclone action E2E
 fixtures built and `ros2_pubsub_e2e`'s witness extended to the action types, which
 is a fixture build this session did not have room for.
 
-**Recorded rather than attempted, deliberately.** The adapters exist because of
-subtle byte-level bugs that only a real ROS 2 peer exposes, and 0976's whole point
-is that nothing but nano-ros-talking-to-itself exercises them. A plausible-looking
-rewrite of that path without those fixtures would be exactly the change this repo
-keeps retracting.
+**DONE 2026-09-03 — the third site is converted, and the prediction held.**
+
+`take_typed_wire` now runs `dds_takecdr` -> `ddsi_serdata_size` ->
+`ddsi_serdata_to_ser` into the caller's buffer, the same shape `subscriber.cpp`
+already had. The typed sample, the `dds_ostream_t`, the re-encode and the two
+heap allocations are gone from the request and reply paths.
+
+The prediction above was that converting would REMOVE a receive adapter rather
+than conflict with it. It did: `take_fibonacci_get_result_response_wire` existed
+because `dds_stream_read_sample` crashes on that type (phase 171.0.b), and there
+is no stream read on this path any more, so it is deleted. `write_fibonacci_get_
+result_response` stays — it is on the WRITE side, which still decodes, and that
+is issue 0970's half.
+
+Acceptance, on fixtures rebuilt against the converted path:
+
+| check | result |
+| --- | --- |
+| backend ctest suite | 23/23 |
+| `ros2_action_e2e`, both directions, real ROS 2 peer | 2 passed |
+| `test_native_cyclonedds_rust_action` (nros to nros) | passed |
+
+One red appeared in the first suite run — `ros2_pubsub_e2e`, a lane this change
+does not touch. It passed solo (11.4 s) and the whole suite passed 23/23 on
+re-run, which is this repo's own guidance applied: retest a QEMU/e2e red SOLO
+before believing it.
+
+**This was only checkable because `ros2_action_e2e` exists** (issue 0976). Before
+that witness, converting this path would have changed the action wire format with
+nothing in the tree able to tell.
 
 **Not measured, and not expected to move:** delivery rate at the fragment sizes
 in [#0917](0917-an536-fragmented-sample-never-syncs.md). That cliff is the

@@ -53,6 +53,7 @@
 
 #include <dds/dds.h>
 #include <dds/ddsi/ddsi_cdrstream.h>
+#include <dds/ddsi/ddsi_serdata.h>
 // phase-370 W4 — the ddsrt heap, for the transient samples below.
 //
 // They were `std::calloc`/`std::free`, which is the hazard
@@ -467,42 +468,6 @@ rmw_ret_t write_fibonacci_get_result_response(dds_entity_t writer,
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-int32_t take_fibonacci_get_result_response_wire(const void* sample,
-                                                const dds_topic_descriptor_t* desc,
-                                                uint8_t* out_buf, size_t out_cap) {
-    if (sample == nullptr || desc == nullptr || desc->m_ops == nullptr || out_buf == nullptr) {
-        return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
-    }
-    const uint32_t* ops = desc->m_ops;
-    const auto* bytes = static_cast<const uint8_t*>(sample);
-    const uint32_t guid_off = ops[1];
-    const uint32_t seq_off = ops[3];
-    const uint32_t status_off = ops[5];
-    const uint32_t result_off = ops[7];
-    const auto* sequence = reinterpret_cast<const DdsSequenceInt32*>(bytes + result_off);
-    const uint32_t count = sequence->_length;
-    // Wire layout: [encap][guid][seq][status+pad][count][int32 data...]
-    constexpr size_t status_off_wire = kEncapLen + kHeaderBytes;
-    constexpr size_t count_off_wire = status_off_wire + kStatusFieldLen;
-    constexpr size_t data_off_wire = count_off_wire + kCdrLenPrefix;
-    const size_t total = data_off_wire + count * sizeof(int32_t);
-    if (out_cap < total) return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
-
-    std::memcpy(out_buf, kCdrLeHeader, sizeof(kCdrLeHeader));
-    std::memcpy(out_buf + kEncapLen, bytes + guid_off, kGuidBytes);
-    std::memcpy(out_buf + kEncapLen + kGuidBytes, bytes + seq_off, kSeqBytes);
-    out_buf[status_off_wire] = bytes[status_off];
-    out_buf[status_off_wire + 1] = 0;
-    out_buf[status_off_wire + 2] = 0;
-    out_buf[status_off_wire + 3] = 0;
-    std::memcpy(out_buf + count_off_wire, &count, sizeof(count));
-    if (count > 0) {
-        if (sequence->_buffer == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
-        std::memcpy(out_buf + data_off_wire, sequence->_buffer, count * sizeof(int32_t));
-    }
-    return static_cast<int32_t>(total);
-}
-
 // (Issue #68) `insert_goal_id_len_at` was removed: it re-inserted a pre-233.6
 // `uint32(16)` goal_id length prefix on the service-request receive path, which a
 // real `rcl_action` peer never sends and the post-233.6 action core no longer
@@ -638,74 +603,50 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
 // Caller-owned scratch buf must be ≥ 8 + desc->m_size + extras.
 //
 // Returns wire byte count, NROS_RMW_RET_NO_DATA, or negative error.
-int32_t take_typed_wire(dds_entity_t reader, const SertypeMin* st, uint8_t* out_buf,
-                        size_t out_cap) {
-    void* samples[1] = {nullptr};
+// Take the wire CDR straight out of the serdata. Issue 0969.
+//
+// This used to `dds_take` a typed sample, then re-serialise it through a
+// `dds_ostream_t` and copy THAT out — a full decode plus a full encode plus two
+// heap allocations, per take, to hand back bytes that were already on the wire.
+// `sertype_min.hpp` recorded the raw-CDR path as blocked on Cyclone exposing
+// `dds_writer_lookup_serdatatype`; that blocker is real for PUBLISH and does not
+// exist here. `dds_takecdr` needs only a reader entity, and the reader already
+// owns its sertype from `dds_create_topic(desc)`.
+//
+// `ddsi_serdata_size` counts the 4-byte `CDRHeader` and `to_ser` copies from
+// `&d->hdr`, so one call delivers header + payload in the WIRE's own
+// representation. The old path synthesised an XCDR1 little-endian header of its
+// own, which is why the caller used to see a re-encoding rather than what the
+// peer sent.
+//
+// The per-type adapters that stood in front of this are gone with it. They
+// existed because the typed round trip mangled particular action messages; there
+// is no round trip now, so `Fibonacci_GetResult_Response_` needs no hand-built
+// struct and `_SendGoal_*` needs no memcpy branch. `ros2_action_e2e` is what
+// makes their removal checkable — both directions against a real ROS 2 peer.
+int32_t take_typed_wire(dds_entity_t reader, uint8_t* out_buf, size_t out_cap) {
+    if (reader <= 0 || out_buf == nullptr) return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
+
+    struct ddsi_serdata* d = nullptr;
     dds_sample_info_t si[1];
-    dds_return_t taken = dds_take(reader, samples, si, 1, 1);
-    if (taken < 0) return wire_status(NROS_RMW_RET_ERROR);
-    if (taken == 0 || !si[0].valid_data) {
-        if (taken > 0) (void)dds_return_loan(reader, samples, taken);
-        return wire_status(NROS_RMW_RET_NO_DATA);
+    for (;;) {
+        dds_return_t taken = dds_takecdr(reader, &d, 1, si, DDS_ANY_STATE);
+        if (taken < 0) return wire_status(NROS_RMW_RET_ERROR);
+        if (taken == 0) return wire_status(NROS_RMW_RET_NO_DATA);
+        if (si[0].valid_data) break;
+        // A disposal or unregister carries no sample; drop it and look again
+        // rather than reporting NO_DATA, which would end the caller's drain.
+        ddsi_serdata_unref(d);
+        d = nullptr;
     }
 
-    if (type_contains(st->descriptor(), "Fibonacci_GetResult_Response_")) {
-        int32_t total =
-            take_fibonacci_get_result_response_wire(samples[0], st->descriptor(), out_buf, out_cap);
-        (void)dds_return_loan(reader, samples, taken);
-        return total;
-    }
-
-    dds_ostream_t os;
-    dds_ostream_init(&os, 0, 1 /*xcdr1*/);
-    bool ok = dds_stream_write_sample(&os, samples[0], st->as_sertype());
-    if (!ok && (type_ends_with(st->descriptor(), "_SendGoal_Request_") ||
-                type_ends_with(st->descriptor(), "_SendGoal_Response_") ||
-                type_ends_with(st->descriptor(), "_GetResult_Request_"))) {
-        uint32_t total = kEncapLen + st->descriptor()->m_size;
-        if (out_cap < total) {
-            (void)dds_return_loan(reader, samples, taken);
-            dds_ostream_fini(&os);
-            return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
-        }
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-        out_buf[0] = 0x00;
-        out_buf[1] = 0x01;
-#else
-        out_buf[0] = 0x00;
-        out_buf[1] = 0x00;
-#endif
-        out_buf[2] = 0;
-        out_buf[3] = 0;
-        std::memcpy(out_buf + kEncapLen, samples[0], st->descriptor()->m_size);
-        (void)dds_return_loan(reader, samples, taken);
-        dds_ostream_fini(&os);
-        return static_cast<int32_t>(total);
-    }
-    (void)dds_return_loan(reader, samples, taken);
-    if (!ok) {
-        dds_ostream_fini(&os);
-        return wire_status(NROS_RMW_RET_ERROR);
-    }
-
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-    constexpr uint8_t kEncId[2] = {0x00, 0x01};
-#else
-    constexpr uint8_t kEncId[2] = {0x00, 0x00};
-#endif
-
-    uint32_t paylen = os.m_index;
-    uint32_t total = paylen + kEncapLen;
+    const uint32_t total = ddsi_serdata_size(d);
     if (out_cap < total) {
-        dds_ostream_fini(&os);
+        ddsi_serdata_unref(d);
         return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL);
     }
-    out_buf[0] = kEncId[0];
-    out_buf[1] = kEncId[1];
-    out_buf[2] = 0;
-    out_buf[3] = 0;
-    std::memcpy(out_buf + kEncapLen, os.m_buffer, paylen);
-    dds_ostream_fini(&os);
+    ddsi_serdata_to_ser(d, 0, total, out_buf);
+    ddsi_serdata_unref(d);
     return static_cast<int32_t>(total);
 }
 
@@ -989,7 +930,7 @@ static int32_t service_try_recv_request_len(const rmw_service_t* server, uint8_t
     auto* state = static_cast<ServerState*>(server->backend_data);
 
     uint8_t wire[kWireScratch];
-    int32_t wire_len = take_typed_wire(state->reader, state->req_st, wire, sizeof(wire));
+    int32_t wire_len = take_typed_wire(state->reader, wire, sizeof(wire));
     if (wire_is_status(wire_len) || wire_len == 0) return wire_len;
 
     RequestId id{};
@@ -1379,7 +1320,7 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
     // one lost. `dds_take` below is the authoritative check, exactly as
     // `try_recv_raw` is on the subscription side.
     uint8_t wire_rep[kWireScratch];
-    int32_t wlen = take_typed_wire(state->reader, state->rep_st, wire_rep, sizeof(wire_rep));
+    int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep));
     if (wire_is_status(wlen)) return wlen;
 
     RequestId got_id{};
