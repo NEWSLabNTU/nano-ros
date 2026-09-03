@@ -369,9 +369,22 @@ EOF
 
 # The entity fragment the stubbed `nros ws entity-inventory` composes: this
 # image subscribes to Int32 only.
+# The schema version is READ FROM THE MODULE, never hardcoded. Its sibling
+# `cmake-message-bounds-tests.sh` records why in its own words: a literal here
+# "silently stopped testing anything it claimed to" the moment the supported
+# version moved. It moved again on 2026-09-03 (2 -> 3, phase-403 step 2's
+# `@depth=`), and a hardcoded 2 turned this case into a configure FATAL rather
+# than a wrong answer -- loud, but for the wrong reason.
+ENTITY_SCHEMA="$(sed -n 's/^set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED \([0-9]*\).*/\1/p' \
+    "$PROJECT_ROOT/cmake/NanoRosEntityInventory.cmake" | head -1)"
+if [ -z "$ENTITY_SCHEMA" ]; then
+    fail "could not read NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED from the module"
+    exit 1
+fi
+
 ENTITY_BODY="$TEST_TMPDIR/integration-entity.cmake"
-cat > "$ENTITY_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)
+cat > "$ENTITY_BODY" <<EOF
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION ${ENTITY_SCHEMA})
 set(NROS_ENTITY_INVENTORY_STATUS "derived")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 1)
 set(NROS_ENTITY_INVENTORY_ENTITY_TOTAL 1)
