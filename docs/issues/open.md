@@ -81,6 +81,6 @@ fails if this block drifts.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 - **#0991** (cmake) — A clean build of an entity-declaring image derives the WRONG payload basis and does not link See `0991-*`.
-- **#0997** ([rmw, platform, embedded]) — A FreeRTOS Cyclone participant announces itself once, so every peer expires its lease and deletes it mid-run See `0997-*`.
+- **#0997** ([rmw, platform, embedded]) — A FreeRTOS Cyclone participant stops announcing seconds after the first real traffic arrives, so every peer expires its lease and deletes it See `0997-*`.
 
 <!-- END GENERATED open-issue list -->

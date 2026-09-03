@@ -1,13 +1,13 @@
 ---
 id: 997
-title: "A FreeRTOS Cyclone participant announces itself once, so every peer expires its lease and deletes it mid-run"
+title: "A FreeRTOS Cyclone participant stops announcing seconds after the first real traffic arrives, so every peer expires its lease and deletes it"
 status: open
 area: [rmw, platform, embedded]
 severity: high
 related: [0917, 0888, phase-177]
 ---
 
-# One SPDP in 81 seconds, where the config asks for one every eight
+# The announcements are correct, on schedule, and then they stop
 
 ## What was measured
 
@@ -94,7 +94,63 @@ size-vs-rate curve was presumably taken inside the window: a sweep of this shape
 cannot distinguish "too big" from "the participant is gone", and its numbers
 should be re-taken once this is fixed.
 
-## What is NOT explained yet
+## AMENDED 2026-09-03 — island-side tracing, and the headline was wrong
+
+Everything above is the HOST's view, and it supported the wrong conclusion. With
+tracing added on the ISLAND (a `<Tracing>` block in `kEmbeddedCycloneConfig`,
+plus `q_xevent.c`'s two "xmit spdp" `GVTRACE` calls routed to `GVLOGDISC` so the
+transmit side lands in the cheap `discovery` category rather than the `trace`
+firehose — the firehose over semihosted stdout is slow enough to change the
+timing of the thing being measured):
+
+```
+1788407870  tev: xmit spdp … (resched 8s)
+1788407878  tev: xmit spdp … (resched 8s)
+1788407887  tev: xmit spdp … (resched 8s)
+1788407895  tev: xmit spdp … (resched 8s)
+1788407903  tev: xmit spdp … (resched 8s)
+1788407909  tev: xmit spdp … (resched 1s)   <- directed reply to the publisher
+1788407911  tev: xmit spdp … (resched 8s)   <- the last one, ever
+```
+
+**Seven transmits, on the `tev` thread, at exactly the 8-second cadence the
+scheduler computes.** The interval is not absent, the timed-event thread is not
+missing, and the config is not at fault — every conclusion in the section above
+about a missing announcement is wrong. What happens is that the transmits STOP,
+while the island keeps running for another 161 seconds, still logging.
+
+The correlation is tight, and it is not elapsed time:
+
+| time | event |
+| --- | --- |
+| 1788407909 | publisher reports `matched … =1` |
+| 1788407911 | island's LAST spdp transmit |
+| 1788407921 | host: `gc: lease expired` → proxy participant deleted |
+| 1788407924 | publisher reports `matched … =0` |
+
+Expiry lands 10.3 s after the last transmit — exactly the advertised
+`lease_duration` of 10 s. So the "81 seconds rather than 10" puzzle below is
+resolved and needs no theory: the lease simply ran from whenever the transmits
+stopped. **The data-traffic-renewal speculation in that section is retracted.**
+
+Two findings, and they should not be conflated:
+
+1. **The `tev` thread stops doing its work within ~2 s of the first real traffic
+   arriving.** That is the defect. It is a stall, not a missing interval, and its
+   trigger looks like load rather than time.
+2. **Of seven SPDP packets sent, the host logged one arriving.** Separate, and
+   unexplained. Six went missing on a paced local tap, which is its own question
+   — and if it were the whole story the lease would still have been renewed by
+   the ones that did arrive.
+
+A stalled `tev` also stops PMD heartbeats and lease renewals, which fits the
+symptom exactly. Candidates worth separating, in the order they are cheap to
+test: `tev` starved or blocked once `recv` / `dq.user` begin real work, or `tev`
+overflowing its 16 KiB stack — the same class of bug phase 177.26 fixed for
+`recvUC` at 1 KiB, and FreeRTOS's `an536-tasks.py` reports per-task high-water
+marks over the QEMU gdb stub.
+
+## What was NOT explained (superseded by the amendment above)
 
 **Why the lease survived 81 seconds rather than 10.** With a 10-second advertised
 lease and a single announcement, expiry should land near `+10 s`, not `+81 s`.
