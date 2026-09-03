@@ -6497,6 +6497,11 @@ impl<'s> Executor<'s> {
                     sporadic_atomic_states.get(sc_idx).and_then(|s| s.as_ref())
                 {
                     state.consume(elapsed_us);
+                    // Unconditional, unlike the overrun record below: the
+                    // budget is sized FROM this number, so it has to exist
+                    // before the budget is right rather than only after it
+                    // is wrong.
+                    state.record_exec(elapsed_us);
                     // Phase 110.E.b — overrun detection. Cooperative
                     // single-thread can't preempt a runaway callback,
                     // so post-dispatch wall-clock comparison delivers
