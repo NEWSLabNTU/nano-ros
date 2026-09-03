@@ -18,7 +18,6 @@ fails if this block drifts.
 - **#0259** (orchestration) — Derived scheduling is quantitatively inert — no WCET in the model, so blocking is unmodelled and budget/placement/non_preempt can't be derived See `0259-*`.
 - **#0506** (embedded) — Transport tasks above application tiers is the right default but has no budget — inbound overload preempts every tier for ~200 ms bursts See `0506-*`.
 - **#0736** (core, platform, testing) — `realtime_tiers` nuttx-arm/rust: the fast tier now outruns the slow one but only ~2.4x against a 3x bar — was a 10x inversion, now a marginal shortfall See `0736-*`.
-- **#0741** (rmw, testing) — `test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the 28-byte reply into a 15-byte history payload See `0741-*`.
 - **#0758** (core, boards) — No platform wall-clock epoch source — embedded consumers hand-roll SNTP before boot, and stamped messages are wrong until they do See `0758-*`.
 - **#0760** (orchestration, rmw) — RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — park it until that discussion happens See `0760-*`.
 - **#0772** (platform, boards) — FreeRTOS/lwIP has no wall-clock epoch — the same consumer that drove the Zephyr one runs a FreeRTOS board too See `0772-*`.
@@ -82,5 +81,6 @@ fails if this block drifts.
 - **#1001** (tooling, ci) — `check-action-client-arena-budget` walks the whole repo, so `check fast` costs minutes on a cold page cache — the pre-push gate is where that is felt See `1001-*`.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
+- **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
 
 <!-- END GENERATED open-issue list -->

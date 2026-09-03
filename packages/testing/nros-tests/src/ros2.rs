@@ -2045,12 +2045,29 @@ pub fn dds_bus_snapshot(distro: &str, domain_id: u8) -> String {
     // agent creates DDS participants on behalf of its clients, and those are not
     // ROS nodes. `services` and `topics` are where a foreign endpoint shows up —
     // a SECOND `/add_two_ints`, or a reply topic nobody in this test created.
+    //
+    // Issue 1009 — `--no-daemon` on every one, like the three sibling probes at
+    // the top of this file. Without it each call STARTS a ros2 daemon on this
+    // domain and leaves it running; `domain_discovery_port_busy` then reads the
+    // port as busy and the next run steps to the NEXT domain. That is not a
+    // tidiness point: it silently walks a failing test off the domain that made
+    // it fail, so a real, reproducible failure presents as "one red then dozens
+    // of greens" — which is exactly the pattern issue 0741 recorded and could
+    // not explain, while a foreign CycloneDDS server sat on domains 1 and 5.
+    //
+    // Note this probe could not have caught 0741 even so: `ros2 service list`
+    // collapses a service to one NAME however many servers offer it, so the
+    // "SECOND /add_two_ints" the comment above hopes for never appears as a
+    // second row. Fixing the daemon leak is necessary, not sufficient.
     for (label, sub) in [
-        ("nodes", "node list"),
-        ("services", "service list -t"),
+        ("nodes", "node list --no-daemon"),
+        ("services", "service list -t --no-daemon"),
         // Hidden topics included: a service's request/reply pair is hidden, and
         // hiding them is precisely what would keep a foreign endpoint invisible.
-        ("topics", "topic list -t --include-hidden-topics"),
+        (
+            "topics",
+            "topic list -t --include-hidden-topics --no-daemon",
+        ),
     ] {
         let out = std::process::Command::new("bash")
             .args(["-c", &format!("{env} && timeout 10 ros2 {sub} 2>&1")])
