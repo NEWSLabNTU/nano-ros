@@ -872,8 +872,24 @@ function(_nros_entry_invoke_codegen)
     # Never fatal on absence. The knobs file is a promise on a clean tree, and
     # every image built before this wave has no `ENTITIES` at all — those keep
     # their configured `MAX_CBS` and are unaffected.
+    #
+    # Issue 0991 -- and because it is composed HERE, every reader of it already
+    # ran: the Zephyr knob resolver during `find_package(Zephyr)`, the
+    # payload-class join at the end of each `nros_find_interfaces()`. If this
+    # composition writes different bytes than those readers saw, the build about
+    # to start is sized from the PREVIOUS answer, which on a clean build dir is
+    # the "no inventory yet" placeholder -- and on a memory-tight image that is
+    # a link failure naming a byte count and no knob. `nros_reconfigure_*` makes
+    # cmake run once more before the build proceeds; see NanoRosReconfigure.cmake
+    # for why the `CMAKE_CONFIGURE_DEPENDS` recovery this used to rely on never
+    # fired.
     include("${_NROS_ENTRY_DIR}/NanoRosEntityInventory.cmake")
+    include("${_NROS_ENTRY_DIR}/NanoRosReconfigure.cmake")
+    nros_entity_inventory_knobs_file(_entity_knobs_path)
+    nros_reconfigure_snapshot("${_entity_knobs_path}" _entity_knobs_before)
     nros_derive_entity_inventory_knobs(CLI "${_nros_bin}")
+    nros_reconfigure_on_change("${_entity_knobs_path}" "${_entity_knobs_before}"
+        LABEL "this image's entity inventory")
 
     # #182 — the generated TU is a function of the CODEGEN TOOL too, not just
     # its inputs: a `nros` rebuild that changes the emitter (e.g. the fd32a0f75

@@ -232,6 +232,7 @@ fast-serial: \
     ps-zombie-blind \
     python \
     readiness-marker-literals \
+    reconfigure-on-change \
     required-contexts-reportable \
     required-features-reachable \
     retired-platform-clock-symbols \
@@ -1192,6 +1193,37 @@ entity-inventory-knobs:
         exit 0
     fi
     ./tests/cmake-entity-inventory-tests.sh
+
+# Issue 0991 -- the two inventories above are written LATER in a configure than
+# they are READ, and the recovery three call sites described in comments
+# ("CMAKE_CONFIGURE_DEPENDS, so ninja re-runs cmake by itself") was measured to
+# never fire: `build.ninja` is written after the fragment, so the dependency is
+# never stale. A memory-tight image therefore sized itself from the "nothing
+# composed yet" placeholder on every clean build dir and failed at LINK naming
+# 103160 bytes and no knob.
+#
+# This gates the mechanism that replaces it. It is a REAL configure plus a real
+# `ninja`, not `cmake -P`, because the claim is about what ninja does with an
+# mtime -- and the thing being fixed is a mechanism that read as working in
+# every review while firing never. The control case reproduces that bug, so the
+# gate would notice a fix that quietly stopped working.
+#
+# cmake + ninja only: `project(... NONE)`, no compiler, no nano-ros build, no
+# codegen, ~2 s. Fast line, beside the two readers it protects.
+reconfigure-on-change:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip reconfigure-on-change "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-reconfigure-tests.sh
 
 abi-bindings:
     #!/usr/bin/env bash

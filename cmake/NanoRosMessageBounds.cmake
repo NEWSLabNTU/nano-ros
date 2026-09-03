@@ -275,12 +275,15 @@ endfunction()
 # interface lane in the same configure.
 #
 # It exists for one mechanical reason. A consumer registers this path with
-# `CMAKE_CONFIGURE_DEPENDS` so ninja re-runs cmake when the interfaces lane
-# writes a new answer into it -- and a ninja input that does not exist and has
-# no rule producing it is a hard `missing and no known rule to make it` at
-# LOAD, before any rule runs. Seeding makes the dependency well-formed on the
-# very first configure; the real answer overwrites it later in that same
-# configure and the next build picks it up.
+# `CMAKE_CONFIGURE_DEPENDS`, and a ninja input that does not exist and has no
+# rule producing it is a hard `missing and no known rule to make it` at LOAD,
+# before any rule runs. Seeding makes the dependency well-formed on the very
+# first configure; the real answer overwrites it later in that same configure.
+#
+# Issue 0991 -- that registration is NOT what makes the new answer reach the
+# readers who already ran. It cannot be: `build.ninja` is written after the
+# fragment, so the dependency is never stale. `nros_reconfigure_on_change`
+# (cmake/NanoRosReconfigure.cmake) is the mechanism that re-runs cmake.
 #
 # Does NOT overwrite an existing file: the whole point is that the file may
 # already hold a derived answer.
@@ -295,7 +298,8 @@ function(nros_message_bounds_seed_knobs_file _path)
         "#\n"
         "# Placeholder: no message-bound inventory had been composed when this\n"
         "# configure first needed one. It is rewritten with the real answer by\n"
-        "# nros_find_interfaces(), and its rewrite re-runs cmake.\n"
+        "# nros_find_interfaces(); that rewrite arms a re-configure (issue 0991)\n"
+        "# so the readers that already ran this pass see the real answer.\n"
         "set(NROS_MESSAGE_BOUNDS_STATUS \"refused\")\n"
         "set(NROS_MESSAGE_BOUNDS_REASON \"no inventory composed yet\")\n")
 endfunction()
@@ -827,9 +831,12 @@ endfunction()
 # of where every number came from. Written only when the caller asked for a
 # path.
 #
-# WRITE-IF-CHANGED, and that is load-bearing rather than tidy: a consumer
-# registers this file with `CMAKE_CONFIGURE_DEPENDS`, so rewriting it with
-# identical bytes on every configure would re-arm a re-configure forever.
+# WRITE-IF-CHANGED, and that is load-bearing rather than tidy: issue 0991's
+# `nros_reconfigure_on_change` compares this file's CONTENT before and after the
+# derivation, so a producer that rewrote identical bytes would re-arm a
+# re-configure forever. (The digest is over content, so this is belt and braces
+# -- but the file is also read by humans, and a diff that moves every configure
+# is noise.)
 function(_nros_message_bounds_write_output _path _status _reason _ceiling)
     if(NOT _path)
         return()

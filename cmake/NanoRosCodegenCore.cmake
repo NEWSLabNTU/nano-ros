@@ -31,6 +31,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosMessageBounds.cmake")
 # include is a no-op when `nano_ros_entry()` has already pulled it in.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
 
+# Issue 0991 -- both fragments above are written LATER in a configure than they
+# are read, and the `CMAKE_CONFIGURE_DEPENDS` recovery every comment in this
+# area described was measured to never fire. This is the mechanism that does.
+# At FILE scope, not inside the function that uses it: `include()` in a function
+# frame drops the included file's normal variables when the frame pops, and this
+# module's `CMAKE_CURRENT_LIST_DIR` is only correct here.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosReconfigure.cmake")
+
 # _nros_collect_rs_closure(<out_var> DEPS <pkgs...> OWN <rs-files...>)
 #
 # Compute the de-duplicated transitive closure of generated FFI `.rs` files:
@@ -840,20 +848,38 @@ function(nros_find_interfaces)
     #    it has to, because it is the first point after every
     #    `nano_ros_node_register()`. So the fragment read here is the one the
     #    PREVIOUS configure wrote, which is exactly the lag the Zephyr knob
-    #    resolver already has against this file, and it is closed the same way:
-    #    `CMAKE_CONFIGURE_DEPENDS` plus a write-if-changed producer, so ninja
-    #    re-runs cmake by itself once the entity lane writes different bytes.
-    #    An image whose declaration has just changed builds once at its old
-    #    payload classes, re-configures, and builds again at the derived ones --
-    #    never silently, since the status line says which basis was used.
+    #    resolver already has against this file.
+    #
+    #    Issue 0991 -- that lag used to be described here as closing itself
+    #    through `CMAKE_CONFIGURE_DEPENDS` plus a write-if-changed producer.
+    #    MEASURED: it never did, because `build.ninja` is written AFTER the
+    #    fragment and ninja's regeneration rule fires only on an input that is
+    #    NEWER. `NanoRosReconfigure.cmake` is the mechanism that actually
+    #    re-runs cmake, and the calls below are its two halves: SETTLE before
+    #    the read (clear a date a previous pass armed) and, further down, arm on
+    #    change around the write.
+    #
+    #    So the honest statement remains what it always claimed to be: an image
+    #    whose declaration has just changed configures once at its old payload
+    #    classes, re-configures, and builds at the derived ones -- and it is
+    #    never silent, since the status line says which basis was used.
     nros_entity_inventory_knobs_file(_entity_knobs)
     nros_entity_inventory_seed_knobs_file("${_entity_knobs}")
     set_property(DIRECTORY APPEND PROPERTY
         CMAKE_CONFIGURE_DEPENDS "${_entity_knobs}")
+    nros_reconfigure_settle("${_entity_knobs}")
     nros_message_bounds_knobs_file(_bounds_knobs)
+    nros_reconfigure_settle("${_bounds_knobs}")
+    # The digest of what the readers of THIS pass consumed. The Zephyr knob
+    # resolver already read this file during `find_package(Zephyr)`; if the
+    # derivation below writes different bytes, that read was of a stale answer
+    # and the build must not proceed on it.
+    nros_reconfigure_snapshot("${_bounds_knobs}" _bounds_before)
     nros_derive_message_bound_knobs(
         OUTPUT_FILE "${_bounds_knobs}"
         ENTITY_INVENTORY "${_entity_knobs}")
+    nros_reconfigure_on_change("${_bounds_knobs}" "${_bounds_before}"
+        LABEL "this image's derived message-bound sizes")
     set(NROS_MESSAGE_BOUNDS_STATUS "${NROS_MESSAGE_BOUNDS_STATUS}" PARENT_SCOPE)
     set(NROS_MESSAGE_BOUNDS_REASON "${NROS_MESSAGE_BOUNDS_REASON}" PARENT_SCOPE)
     set(NROS_MESSAGE_BOUNDS_BASIS "${NROS_MESSAGE_BOUNDS_BASIS}" PARENT_SCOPE)
