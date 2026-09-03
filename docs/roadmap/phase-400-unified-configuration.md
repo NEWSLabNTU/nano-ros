@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-09-01): W2-W5, W7 and W8 done; W6's `executor`, `transport`,
-`zenoh.tx`, `memory` and `params` tenants done, its remaining tenants and W1
+`zenoh.tx`, `memory`, `params` and `rmw` tenants done, its remaining tenants and W1
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
@@ -312,6 +312,36 @@ census fix below), and its largest families are:
 | platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
+
+### The `rmw` tenant — done, minus the one phase-412 took
+
+Three static pools the CFFI registry and node table are carved from —
+`NROS_RMW_MAX_BACKENDS`, `NROS_RMW_MAX_NODES`, `NROS_RMW_MESSAGE_INFO_SLOTS` —
+now resolve through the ladder: `RmwKnobs`, `[knobs.rmw]`,
+`BuildRungs::rmw_rungs()`, and one reader in `packages/rmw/cffi/build.rs`. The
+build script keeps its RANGE checks, which belong to the array it carves rather
+than to the ladder.
+
+**`NROS_RMW_SUBSCRIBER_SLOTS` was in this family and is NOT in this tenant.** It
+sits in the same build script, three lines away, and looks identical — but
+phase-412 W1 landed on 2026-09-03 deriving it from the entity inventory
+(`COUNT_SUBSCRIPTION`). A knob two campaigns resolve is exactly the drift issue
+0938 cost, so it stays on env -> Kconfig -> builtin and takes its platform
+answer from the derivation. The census now classes it `derived` and names the
+owner.
+
+That check is the third time it has changed the plan: the zenoh tenant belonged
+to phase-392/403, the buffers to phase-403/408, and now a quarter of the `rmw`
+family to phase-412. **Checking for an owning campaign is not a formality in
+this repo — it has been right more often than the plan was.**
+
+phase-412 also derives two knobs THIS wave already migrated
+(`NROS_EXECUTOR_MAX_NODES`, `NROS_EXECUTOR_ACTION_CLIENTS`). That is not a
+conflict: its precedence is env > Kconfig/board > derived > crate default, so
+the ladder's rungs still win and the derivation fills the builtin slot. Worth
+knowing before someone reads the two docs and assumes one must be wrong.
+
+Backlog after this: **24**, from 28.
 
 ### The `params` tenant — done
 

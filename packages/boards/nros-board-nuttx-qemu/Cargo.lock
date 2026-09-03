@@ -360,6 +360,7 @@ name = "nros-rmw-cffi"
 version = "0.5.0"
 dependencies = [
  "cc",
+ "nros-board-common",
  "nros-cc-flags",
  "nros-log",
  "nros-rmw",

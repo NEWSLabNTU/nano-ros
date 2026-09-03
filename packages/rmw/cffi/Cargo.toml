@@ -35,6 +35,12 @@ portable-atomic = { version = "1", default-features = false }
 # an env a Zephyr Rust image never receives. Same helper `nros-node` and
 # `nros-params` use; gated by `check-kconfig-knob-forwarding`.
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+# phase-400 W6 — the `[knobs.rmw]` platform/board rungs. Build-only, like the
+# helper above; `default-features = false` keeps the board crate's runtime half
+# out of a build script.
+nros-board-common = { path = "../../boards/nros-board-common", features = [
+    "build-helpers",
+], default-features = false }
 # Phase 115.G.4 — compiles the second-language smoke-test stubs in
 # `tests/c_stubs/*.c` into a small static lib that the integration
 # tests link against. Only used during `cargo build`/`cargo test`;

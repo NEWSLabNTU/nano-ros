@@ -264,6 +264,32 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
+    // phase-400 W6 — the RMW static-pool tenant. Defaults mirror
+    // `packages/rmw/cffi/build.rs`, which stays the authority on them.
+    // `NROS_RMW_SUBSCRIBER_SLOTS` is absent on purpose: phase-412 W1 derives it.
+    let rmw_defaults: &[(&str, usize)] = &[
+        ("max_backends", 8),
+        ("max_nodes", 4),
+        ("message_info_slots", 64),
+    ];
+    for (name, r) in tree
+        .resolve_rmw(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.rmw),
+            &env_get,
+            rmw_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("rmw.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
     // phase-400 W6 — the parameter-storage tenant. Defaults mirror
     // `nros-params/build.rs`, which stays the authority on them.
     let param_defaults: &[(&str, usize)] = &[
