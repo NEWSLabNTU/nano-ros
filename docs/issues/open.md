@@ -80,5 +80,6 @@ fails if this block drifts.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
+- **#1014** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>` unconditionally, so the Cyclone backend has not compiled for threadx-riscv64 since it landed See `1014-*`.
 
 <!-- END GENERATED open-issue list -->
