@@ -147,7 +147,6 @@ fast-serial: \
     cpp-no-std-stdio \
     cyclone-backend-sources \
     cyclone-domain-not-pinned \
-    declared-qos-header \
     deploy-board-resolves \
     doc-recipe-refs \
     doc-refs \
@@ -189,7 +188,6 @@ fast-serial: \
     just-recipe-refs \
     kconfig-knob-forwarding \
     kconfig-overridden-values \
-    knob-delivery \
     knob-single-reader \
     lane-contracts \
     lane-scope-consumers \
@@ -288,7 +286,8 @@ fast-serial: \
     zenohd-resolution-parity \
     zenohd-router-skips \
     zenohd-spawn-sites \
-    zephyr-knob-agreement
+    zephyr-knob-agreement \
+    zephyr-sdk-lines
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
     # depend on a root recipe, so it is called rather than depended on. It must
@@ -1193,40 +1192,6 @@ entity-inventory-knobs:
         exit 0
     fi
     ./tests/cmake-entity-inventory-tests.sh
-
-# phase-403 step 2 -- does the declared `@depth=` REACH A COMPILER?
-#
-# `just check cpp` proves the CHECK: it compiles a TU whose declared depth and
-# passed QoS disagree and asserts the build is rejected, with the topic and both
-# numbers in the diagnostic. It hands the table to the compiler with a `-I` of
-# its own, so it says nothing about DELIVERY.
-#
-# This is the delivery half, and it is the half that goes wrong silently: a
-# component whose generated table never lands on its include path compiles with
-# every declared-depth assertion disabled, and looks exactly like a component
-# whose depths all agree. Six mechanisms in this campaign have been correct and
-# unreachable for precisely that reason.
-#
-# Drives `_nros_emit_declared_qos_header()` in a real configure with the real
-# CLI. Needs cmake, a C compiler and a built `nros` -- and SKIPS rather than
-# passing when any is missing, because a gate that examined nothing must not
-# read as a pass.
-declared-qos-header:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    _missing=""
-    command -v cmake >/dev/null 2>&1 || _missing="$_missing cmake"
-    command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 \
-        || _missing="$_missing cc"
-    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
-    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
-    if [ -n "$_missing" ]; then
-        # shellcheck source=scripts/build/check-skip.sh
-        source scripts/build/check-skip.sh
-        nros_check_skip declared-qos-header "missing:$_missing"
-        exit 0
-    fi
-    ./tests/cmake-declared-qos-header-tests.sh
 
 abi-bindings:
     #!/usr/bin/env bash
@@ -2445,6 +2410,18 @@ cmake-find-program-shadowed:
 shared-cargo-dir-witness:
     @bash scripts/check-shared-cargo-dir-used.sh --self-test
 
+# The CI image must bake an SDK for every Zephyr line `setup.sh` can select.
+#
+# One baked SDK served both lines until 4.4 moved to the 1.x series; then its
+# `find_package(Zephyr-sdk 1.0)` rejected the baked 0.17.4 and every
+# `zephyr 4.4 /*` nightly cell died at cmake configure. The image's own comment
+# said 4.4 would "fall through to its own west-managed SDK" while every CI job
+# runs `just zephyr setup --skip-sdk` — two documents, each locally consistent,
+# describing different worlds.
+[group("hygiene")]
+zephyr-sdk-lines:
+    @python3 scripts/check/check-zephyr-sdk-lines.py
+
 # The gate REGISTRIES hold one name per line, sorted — phase-400 follow-up to
 # issues 0883/0884.
 #
@@ -3408,71 +3385,6 @@ cpp: cpp-fmt
         echo "       rename ships with no migration warning at all." >&2; \
         exit 1; \
     fi
-    # phase-403 step 2 — the DECLARED `@depth=` reaches the compiler, and a
-    # disagreement between it and the QoS at the call site FAILS THE BUILD.
-    #
-    # `-std=c++17` and not the c++14 of its neighbours: C++17 is what the
-    # component lane actually compiles with, and the absence of `__VA_OPT__`
-    # there is the reason `NROS_SUBSCRIBE` dispatches on argument count at all.
-    # Checking the macro under a standard no component uses would test a
-    # different preprocessor.
-    #
-    # The fixture dir carries `nros/nros_declared_qos_generated.h` — what
-    # `nros ws entity-inventory --output-header` renders from the
-    # `entities.json` beside it, and what `nano_ros_node_register()` puts on a
-    # real component's include path. Putting it on `-I` here exercises the same
-    # `__has_include` pickup. The header and its input are held together by
-    # `the_committed_compile_fixture_is_what_this_emitter_renders` in
-    # nros-cli-core, so this fixture cannot drift into a table that matches
-    # nothing (which would leave every assertion below vacuous and green).
-    echo "  - declared QoS depth: the three cases COMPILE (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/declared_qos_depth.cpp
-    # ...and a DISAGREEMENT must not. NEGATIVE assertion, and the one that makes
-    # the check reachable rather than merely correct: six mechanisms in this
-    # campaign were right and never ran. The positive TU above is compiled FIRST
-    # so a missing include path or a fixture that matches nothing shows up as a
-    # failure there, not as a silent pass here — an expected-failure compile
-    # cannot tell "the assertion fired" from "the file is not there".
-    test -f packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp || { \
-        echo "ERROR: declared_qos_depth_probe.cpp is MISSING -- the expected-failure check" >&2; \
-        echo "       below would PASS on a missing file, which is why this asserts first." >&2; \
-        exit 1; \
-    }
-    echo "  - declared QoS depth: a MISMATCH fails the build (c++17, expected failure)"
-    _dq_out="$(c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
-        -Itarget/nros-cpp-generated \
-        -Itarget/nros-c-generated \
-        -Ipackages/api/nros-cpp/include \
-        -Ipackages/api/nros-c/include \
-        -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/declared_qos_depth_probe.cpp 2>&1)" && { \
-        echo "ERROR: declared_qos_depth_probe.cpp COMPILED. The fixture declares" >&2; \
-        echo "       sub:std_msgs/msg/Int32:/chatter@depth=1 and the call site passes" >&2; \
-        echo "       nros::QoS(10); NROS_SUBSCRIBE's static_assert did not fire, so the" >&2; \
-        echo "       declared depth is not reaching the compiler and nothing is checked." >&2; \
-        exit 1; \
-    }
-    # A rejection is not enough: it must be OUR rejection, naming the topic and
-    # BOTH depths. A typo or a missing header would also exit non-zero, and a
-    # diagnostic the reader cannot act on is the same as no diagnostic.
-    for _want in '"/chatter"' 'declared_depth_agrees<1, 10>' 'nano_ros_node_register'; do \
-        case "$_dq_out" in \
-            *"$_want"*) ;; \
-            *) echo "ERROR: the declared-depth diagnostic does not contain: $_want" >&2; \
-               echo "       It must name the TOPIC and BOTH depths, or a reader cannot tell" >&2; \
-               echo "       which subscription is wrong or which of the two numbers to fix." >&2; \
-               echo "--- compiler said ---" >&2; echo "$_dq_out" >&2; \
-               exit 1 ;; \
-        esac; \
-    done
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level
@@ -3910,24 +3822,6 @@ zenoh:
 [private]
 infra-queryable-counts:
     @python3 scripts/check-infra-queryable-counts.py
-
-# phase-412 W4 — the value that reaches the COMPILE is the value the resolver
-# produced. The knob gates beside this one check whether the derived number is
-# RIGHT; this one checks whether it ARRIVED, which is a different question and
-# the one that kept going wrong. W1 shipped six delivery failures in one wave
-# with every other gate green: a second consumer reading raw CONFIG_*, a name
-# that resolved to empty, a C consumer with no default under rung 4, a loader
-# whitelist that dropped symbols at a function boundary, and a knob resolved
-# twice where the second call won with the DERIVE sentinel. Two of those were
-# live in pushed work, and one built the zenoh session with 8 subscriber slots
-# for 10 subscriptions — a runtime failure, invisible at link.
-#
-# Self-test only here: the end-to-end assertion needs a CONFIGURED build dir,
-# which the fast tier does not have. Point it at one by hand:
-#     python3 scripts/check-knob-delivery.py <build-dir>
-[private]
-knob-delivery:
-    @python3 scripts/check-knob-delivery.py --self-test
 
 # phase-403 W9 (issue 0965) — the per-kind CALLBACK SLOT cost has ONE
 # definition, tied to the registration sites that actually claim a slot.

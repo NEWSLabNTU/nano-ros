@@ -48,11 +48,26 @@ ENV AMENT_PREFIX_PATH=/opt/ros/humble \
     ROS_LOCALHOST_ONLY=0
 ENV PATH=/opt/ros/humble/bin:$PATH
 
-# 0.17.4: the version the Zephyr 4.4 line requires (its west pulls zephyr-sdk-0.17);
-# Zephyr 3.7.0's FindZephyr-sdk enforces only a *minimum* SDK version (no upper
-# bound), so 0.17.4 serves BOTH lines from one baked SDK. (Baking 0.16.8 forced
-# 4.4 to reject it — FindZephyr-sdk wanted >= 0.17.)
+# TWO SDKs, because the SDK is a PER-LINE FACT — `scripts/zephyr/setup.sh` says
+# so in as many words, and `nros-sdk-index.toml` carries a second entry
+# (`[tool.zephyr-sdk-1-0-1]`) for exactly this reason: 3.7's `zephyr/SDK_VERSION`
+# demands 0.16.8, 4.4's demands 1.0.1, and `FindZephyr-sdk.cmake` refuses
+# anything older than the tree asks for.
+#
+# One baked SDK could not serve both. 0.17.4 satisfies 3.7 (newer-satisfies-
+# older, and 3.7 sets no upper bound) but 4.4 asks for `find_package(Zephyr-sdk
+# 1.0)` and correctly rejects it:
+#
+#   Could not find a configuration file for package "Zephyr-sdk" that is
+#   compatible with requested version "1.0".
+#     considered: /opt/zephyr-sdk/cmake/Zephyr-sdkConfig.cmake, version: 0.17.4
+#
+# That killed every `zephyr 4.4 /*` nightly cell. The comment below used to say
+# 4.4 "must fall through to its own west-managed SDK" — but every CI job runs
+# `just zephyr setup --skip-sdk`, so there was no west-managed SDK to fall
+# through to, and the fallback the design relied on did not exist.
 ARG ZEPHYR_SDK_VERSION=0.17.4
+ARG ZEPHYR_SDK_VERSION_44=1.0.1
 # Zephyr SDK toolchains the dual-line + aemv8r reference need (setup.sh
 # DEFAULT_TARGETS + the phase-117 aarch64 target). Keep in sync with
 # scripts/zephyr/setup.sh.
@@ -87,13 +102,23 @@ RUN curl -fsSL -o /tmp/sdk.tar.xz \
     && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
     && /opt/zephyr-sdk/setup.sh $sdk_args -h -c \
     && rm /tmp/sdk.tar.xz
+
+# ...and the 4.4 line's own SDK, registered the same way. Separate prefix, so
+# both Config packages sit in the CMake user registry and each line's
+# `find_package` picks the one that satisfies it: 3.7 accepts either, 4.4
+# accepts only this one.
+RUN curl -fsSL -o /tmp/sdk44.tar.xz \
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION_44}/zephyr-sdk-${ZEPHYR_SDK_VERSION_44}_linux-x86_64.tar.xz" \
+    && mkdir -p /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44} \
+    && tar xf /tmp/sdk44.tar.xz -C /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44} --strip-components=1 \
+    && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
+    && /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44}/setup.sh $sdk_args -h -c \
+    && rm /tmp/sdk44.tar.xz
 # NB: deliberately NOT setting ZEPHYR_SDK_INSTALL_DIR. That env makes Zephyr's
-# FindZephyr-sdk use /opt *exclusively* — fine for 3.7 (accepts 0.16/0.17), but
-# the 4.4 line requests `find_package(Zephyr-sdk 1.0)` and rejects the baked
-# release Config (version 0.17.4), so it must fall through to its own
-# west-managed SDK. The baked SDK is instead exposed as a CMake-package-registry
-# *candidate* (registered per-job via `setup.sh -c`): 3.7 accepts it, 4.4
-# considers-and-rejects it then uses its west SDK.
+# FindZephyr-sdk use ONE directory exclusively, which is precisely wrong when
+# two lines need two SDKs. Both are exposed as CMake-package-registry
+# *candidates* instead (each registered by its own `setup.sh -c`), and
+# `FindZephyr-sdk` picks per line: 3.7 accepts either, 4.4 accepts only 1.0.1.
 ENV ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
 # Zephyr's Python build prerequisites — issue 0878.
