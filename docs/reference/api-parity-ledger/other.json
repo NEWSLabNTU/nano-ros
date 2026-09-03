@@ -117,7 +117,7 @@
   },
   "c:set_trace_sink": {
     "verdict": "extension",
-    "why": "rclc has no callback-level trace hook \u2014 it leaves tracing to LTTng userspace tracepoints, which need a tracer, a session daemon and a filesystem none of the RTOS targets have. `nros_set_trace_sink` is the embedded substitute: one function pointer, no allocation, no I/O, deliberately ungated so the symbol exists whether or not the tracing feature is on."
+    "why": "rclc has no callback-level trace hook — it leaves tracing to LTTng userspace tracepoints, which need a tracer, a session daemon and a filesystem none of the RTOS targets have. `nros_set_trace_sink` is the embedded substitute: one function pointer, no allocation, no I/O, deliberately ungated so the symbol exists whether or not the tracing feature is on."
   },
   "c:wake_state_get_zero_initialized": {
     "verdict": "extension",
@@ -241,11 +241,11 @@
   },
   "cpp:rx_buffer_capacity": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The capacity a RECEIVE buffer is sized to: the derived RX bound where the type has one, today's estimate where it does not. Distinct from `rx_size_bound`, which POISONS an unbounded type \u2014 this one falls back, because a receive buffer must still compile for the 81 of 120 stock Humble types that state no bound. Two questions, two spellings, deliberately."
+    "why": "phase-408 / issue 0964. The capacity a RECEIVE buffer is sized to: the derived RX bound where the type has one, today's estimate where it does not. Distinct from `rx_size_bound`, which POISONS an unbounded type — this one falls back, because a receive buffer must still compile for the 81 of 120 stock Humble types that state no bound. Two questions, two spellings, deliberately."
   },
   "cpp:rx_size_bound": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. `nros::rx_size_bound<M>::value` is the RECEIVE bound a message type derives for itself \u2014 max(XCDR1, XCDR2) from `nros_serdes::size::max_serialized_size`, the same function the Rust runtime const uses. rclcpp has no counterpart because it has an allocator: a subscription there grows its buffer, so no caller ever needs to name a capacity. Here the buffer is static and the number decides whether a sample fits or is dropped at the transport. A type with NO bound gets a poisoned template whose static_assert names the member costing it, rather than a plausible estimate."
+    "why": "phase-408 / issue 0964. `nros::rx_size_bound<M>::value` is the RECEIVE bound a message type derives for itself — max(XCDR1, XCDR2) from `nros_serdes::size::max_serialized_size`, the same function the Rust runtime const uses. rclcpp has no counterpart because it has an allocator: a subscription there grows its buffer, so no caller ever needs to name a capacity. Here the buffer is static and the number decides whether a sample fits or is dropped at the transport. A type with NO bound gets a poisoned template whose static_assert names the member costing it, rather than a plausible estimate."
   },
   "cpp:sub_will_overflow": {
     "verdict": "declined",
@@ -261,11 +261,11 @@
   },
   "cpp:tx_buffer_capacity": {
     "verdict": "extension",
-    "why": "as cpp:rx_buffer_capacity, for the transmit direction. Not yet consumed \u2014 the 17 transmit sites still use the estimate, where an over-estimate only wastes stack; kept beside its sibling so the pair is one mechanism rather than two."
+    "why": "as cpp:rx_buffer_capacity, for the transmit direction. Not yet consumed — the 17 transmit sites still use the estimate, where an over-estimate only wastes stack; kept beside its sibling so the pair is one mechanism rather than two."
   },
   "cpp:tx_size_bound": {
     "verdict": "extension",
-    "why": "as cpp:rx_size_bound, for the transmit direction (XCDR1 alone \u2014 this stack writes XCDR1). Same reason rclcpp has nothing to compare: it serializes into an allocating buffer."
+    "why": "as cpp:rx_size_bound, for the transmit direction (XCDR1 alone — this stack writes XCDR1). Same reason rclcpp has nothing to compare: it serializes into an allocating buffer."
   },
   "rust:ACTION_SERVER_INTERNAL_SIZE": {
     "verdict": "extension",
@@ -1061,7 +1061,7 @@
   },
   "rust:rx_buffer_for": {
     "verdict": "extension",
-    "why": "phase-392 W3 \u2014 a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run. phase-403 W0: an UNBOUNDED type is now a build error rather than an expansion to `DEFAULT_RX_BUF_SIZE` -- every message type is required to carry a derived upper bound, and a buffer sized from a fallback is what phase 380 forbade."
+    "why": "phase-392 W3 — a subscription receive-buffer size computed from the message schema at compile time (`nros::rx_buffer_for!(Msg)`), so the buffer is sized by the type instead of the NROS_SUBSCRIPTION_BUFFER_SIZE guess. No upstream analogue: rcl sizes nothing statically. Landed unledgered; entry added when check-api-parity caught it one gate into a tier-2 run. phase-403 W0: an UNBOUNDED type is now a build error rather than an expansion to `DEFAULT_RX_BUF_SIZE` -- every message type is required to carry a derived upper bound, and a buffer sized from a fallback is what phase 380 forbade."
   },
   "rust:zephyr_component_main": {
     "verdict": "extension",
