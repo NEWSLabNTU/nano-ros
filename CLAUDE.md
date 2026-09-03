@@ -701,6 +701,18 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   eleven slots before the app declares anything, against `ZPICO_MAX_QUERYABLES` = 8 embedded.
   Raise `CONFIG_NROS_MAX_QUERYABLES`; the table is a static array, so the default stays small.
   → issue 0460.
+- **The interop DDS bus is pinned to LOOPBACK by the harness, not by a variable you
+  export** (issue 1009) — `FASTRTPS_DEFAULT_PROFILES_FILE` + `CYCLONEDDS_URI` from
+  `nros_tests::ros2::apply_dds_loopback_env`, applied at the CHOKE POINT
+  (`ManagedProcess::spawn_command`) plus every `ros2_env_setup_*` and the XRCE Agent's
+  own `Command`. `ROS_LOCALHOST_ONLY=1` is NOT this and does not work: it reaches ROS
+  processes only, so it isolates one side of a pair and measures **0/15** — the Agent is
+  a bare Fast-DDS app and ignores it. **Pin both sides or neither; half is no discovery**
+  (3/3 both, 3/3 neither, 0/3 one side). `useBuiltinTransports` must stay FALSE —
+  `userTransports` ADDS to the builtin set, so leaving it true keeps the unrestricted
+  transport beside the whitelisted one and isolates nothing while reading as if it does.
+  Without the pin a foreign `add_two_ints_server` on ANOTHER HOST failed our XRCE service
+  cell 4 of 15 and cost issue 0741 five wrong diagnoses. Opt out: `NROS_TEST_DDS_ALLOW_LAN=1`.
 - **Manual native_sim pair repros need distinct `--seed`** — unseeded processes share the test
   entropy source → identical GUIDs/ports → discovery sees the peer as itself → false-negative
   "no delivery". The test harness seeds automatically; hand-run repros must too. → issue 0157
