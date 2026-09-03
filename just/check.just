@@ -2796,6 +2796,40 @@ no-std:
     # Still NOT covered: the board/platform-specific crates (they need SDKs and
     # a linker, which this lane deliberately excludes).
     rmw_crates="-p nros-node -p nros"
+    # issue 0814 — the LENDING slice, heap-free. `nros-rmw-cffi/lending` and
+    # `nros-node/rmw-lending` are the whole zero-copy surface, and NOTHING
+    # builds them: the feature is enabled by exactly one crate in the tree
+    # (`packages/testing/nros-tests`, and it names `platform-posix` while doing
+    # it), it appears zero times under `cmake/` and `zephyr/`, and
+    # `nros-rmw-zenoh-staticlib` declares no forwarder. So the one surface
+    # sold as "for RAM-tight embedded targets" was compiled for no embedded
+    # target at all, and the C half of it had in fact stopped compiling
+    # entirely when issue 0812 retyped the loan token — for months, silently,
+    # because no lane looked.
+    #
+    # This is a RATCHET, not new work: both rows passed before they were
+    # written (measured on thumbv7em-none-eabi and re-measured on this lane's
+    # two targets). What it buys is that they cannot quietly stop.
+    #
+    # NO `alloc`, deliberately — that combination is the one issue 0814's
+    # `try_lend_slot` fix is about, and it is the tier where a heap is denied
+    # outright.
+    #
+    # Why not a QEMU lane, which issue 0814 originally proposed: it would not
+    # prove what it appears to. zenoh-pico memcpys the payload into a
+    # non-expandable wire buffer regardless of whether we aliased it
+    # (`_z_buf_encode` takes its no-copy branch only for an expandable wbuf;
+    # every transport builds its TX wbuf with `_z_wbuf_make(mtu, false)`), so a
+    # green "zero-copy works on hardware" lane would be green while every byte
+    # is still copied. This costs seconds and catches the class that actually
+    # bit.
+    #
+    # NOT here: `nros-c --features rmw-cffi,lending`. Its build script needs
+    # `arm-none-eabi-gcc` for the C anchor, and SDK-needing crates are what
+    # this lane deliberately excludes (see the note above). Its host-target
+    # row lives in `check::workspace-features` instead — same class, same
+    # issue, a lane that can afford it.
+    lending_feats="nros-rmw-cffi/lending,nros-node/rmw-cffi,nros-node/rmw-lending"
     # `rustup target add` FIRST, serially: two concurrent adds of different
     # targets touch the same toolchain dir.
     for target in thumbv7m-none-eabi riscv32imc-unknown-none-elf; do
@@ -2811,6 +2845,8 @@ no-std:
         "echo '== check-no-std: riscv32imc-unknown-none-elf ==' && cargo check $crates --no-default-features --target riscv32imc-unknown-none-elf" \
         "echo '== check-no-std: executor slice (alloc+rmw-cffi), thumbv7m ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target thumbv7m-none-eabi" \
         "echo '== check-no-std: executor slice (alloc+rmw-cffi), riscv32imc ==' && cargo check $rmw_crates --no-default-features --features alloc,rmw-cffi --target riscv32imc-unknown-none-elf" \
+        "echo '== check-no-std: lending slice (NO alloc), thumbv7m ==' && cargo check -p nros-rmw-cffi -p nros-node --no-default-features --features $lending_feats --target thumbv7m-none-eabi" \
+        "echo '== check-no-std: lending slice (NO alloc), riscv32imc ==' && cargo check -p nros-rmw-cffi -p nros-node --no-default-features --features $lending_feats --target riscv32imc-unknown-none-elf" \
         | nros_pool_run no-std
     echo "no-std OK."
 
@@ -2994,6 +3030,29 @@ workspace-features:
     # must cover the class it claims to.
     @echo "  - nros-c: test-compile (default features)"
     cargo test --no-run -p nros-c --quiet
+    # issue 0814 — the loan/borrow surface, which had NOT COMPILED since issue
+    # 0812 retyped the backend token (`*mut c_void` -> `*mut rmw_loan_token_t`)
+    # and left these three FFI call sites behind. Seven errors, for months,
+    # caught by nothing: no lane enables `lending`, so the crate's whole
+    # zero-copy API was never built — while the committed cbindgen header went
+    # on declaring all five symbols unconditionally.
+    #
+    # Both rows, because the two differ in what they even contain: without
+    # `alloc` the receive half is `cfg`-ed out (it boxes a `RecvView` per
+    # borrow — 0812's own open item), so the no-`alloc` row is the publish
+    # surface and the `std` row is the whole thing. Checking one would leave
+    # the other exactly as dark as before.
+    #
+    # The embedded-target twin of this is the lending slice in
+    # `check::no-std`; `nros-c` cannot go there because its build script needs
+    # a cross C toolchain.
+    @echo "  - nros-c: lending (publish surface, no alloc)"
+    # `panic-platform` is nros-c's own `default` and is named here for the
+    # reason its manifest gives: `--no-default-features` builds this crate's
+    # staticlib, which is a FINAL artifact and needs a `#[panic_handler]`.
+    cargo clippy --quiet -p nros-c --no-default-features --features "panic-platform,rmw-cffi,lending" -- -D warnings
+    @echo "  - nros-c: lending + std (publish AND borrow surface)"
+    cargo clippy --quiet -p nros-c --no-default-features --features "std,rmw-cffi,lending,platform-posix" -- -D warnings
     @echo "All feature checks passed!"
 
 # Check C formatting only (clang-format) — BUILDLESS, source-free → push lane.
