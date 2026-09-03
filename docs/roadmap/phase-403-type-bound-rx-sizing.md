@@ -1,6 +1,10 @@
 # Phase 403 — the type's bound sizes every receive buffer, and third parties can say what they need
 
-**Status (2026-08-30). Design, nothing landed.** Opened because
+**Status (2026-09-04). W1, W4 (one half), W6, W7, W7b, W8, W9 and steps 1-3
+are LANDED; W0, W2, W3 and W5 remain.** The 2026-08-30 line said "design,
+nothing landed" and outlived that by five days and eleven commits -- the body
+below had been recording `LANDED` per wave the whole time, so the phase read as
+unstarted to anyone who stopped at the header. Opened because
 [phase 402](phase-402-c-subscription-options-struct.md) delivered the PLUMBING
 for a per-type receive hint and stopped there: the hint now reaches the backend
 and changes nothing's size. Depends on
@@ -1286,7 +1290,7 @@ M and N are the join, its refusals and the back-compat),
 `just check entity-inventory-knobs` (27, up from 24) and 26 unit tests in
 `nros_cli_core::entity_inventory`.
 
-### Step 2 -- QoS depth in the declaration. Blocks the arena.
+### Step 2 LANDED 2026-09-02 -- QoS depth in the declaration. Blocks the arena.
 
 The arena's per-subscription cost is
 `sizeof(entry) + buffered_region_size(depth, bound)`, and that region is
@@ -1462,7 +1466,7 @@ side is not in the table -- keyed `(type, topic)`, a publisher and a
 subscription on one pair would be two rows with one key, and nothing consults a
 publisher's depth today.
 
-### Step 3 -- the arena. Last, because its failure cannot report itself.
+### Step 3 LANDED 2026-09-03 -- the arena. Last, because its failure cannot report itself.
 
 With depth present the arena is a straight sum: `arena_alloc` is a BUMP
 allocator, so the total IS the sum of the allocations. Two things are still
