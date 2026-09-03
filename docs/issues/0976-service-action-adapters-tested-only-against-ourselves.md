@@ -270,7 +270,7 @@ correcting them.
 
 ## Not to be confused with
 
-**#0970** (`archived/0970-cyclone-rmw-should-own-its-sertype.md`, RESOLVED 2026-09-03 — not
-linked because it has not landed on `main` yet) — the sertype migration
-itself, whose message half has landed. This is the reason its service half has
-not.
+[**#0970**](archived/0970-cyclone-rmw-should-own-its-sertype.md) — the sertype
+migration itself. RESOLVED 2026-09-03: this issue's witnesses are what unblocked
+its service half, and that half then removed the three receive-side adapters
+listed at the top of this issue. Both halves are on `main`.
