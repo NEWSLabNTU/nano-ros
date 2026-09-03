@@ -714,6 +714,17 @@ pub unsafe extern "C" fn nros_subscription_try_recv_validated(
 /// Falls back to a `try_recv_raw` copy into the staging buffer when the
 /// active backend's vtable doesn't expose a native borrow slot.
 ///
+/// **Requires `alloc` as well as `lending`.** Unlike the publish half —
+/// which issue 0812 made allocation-free by passing the BACKEND's own
+/// token through — the receive half still boxes a `RecvView` per borrow
+/// to manufacture a stable FFI token, so it cannot exist in a heap-free
+/// image. That was 0812's own "what this does NOT yet buy" item, and
+/// leaving the `cfg` at `lending` alone did not make it work: it made
+/// `nros-c` FAIL TO COMPILE under `--features lending` without `alloc`
+/// (four `alloc::boxed::Box` uses with no `extern crate alloc` in scope).
+/// A capability that cannot build is worse than one that is absent, so
+/// the `cfg` now states the real requirement (issue 0814).
+///
 /// # Returns
 /// * `> 0` — message length written into `*out_len`; view is ready.
 /// * `0` — no message ready right now.
@@ -722,7 +733,7 @@ pub unsafe extern "C" fn nros_subscription_try_recv_validated(
 /// # Safety
 /// * `subscription` must be a valid polling subscription.
 /// * `out_buf` / `out_len` / `out_token` must be valid pointers.
-#[cfg(feature = "lending")]
+#[cfg(all(feature = "lending", feature = "alloc"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_subscription_borrow(
     subscription: *mut nros_subscription_t,
@@ -745,9 +756,14 @@ pub unsafe extern "C" fn nros_subscription_borrow(
     // — the caller's release/destroy contract restores correctness.
     match raw.try_borrow() {
         Ok(Some(view)) => {
-            // RecvView impls Deref<Target=[u8]> on both paths.
-            let buf_ptr = (&*view).as_ptr();
-            let len = (&*view).len();
+            // RecvView impls Deref<Target=[u8]> on both paths, so the
+            // slice methods are reached by auto-deref (issue 0814: the
+            // explicit `(&*view)` reborrow this replaces tripped clippy's
+            // `needless_borrow` / `explicit_auto_deref` under `-D warnings`.
+            // It had never been LINTED, because until now this file did not
+            // compile under `lending` at all).
+            let buf_ptr = view.as_ptr();
+            let len = view.len();
             // SAFETY: erase the lifetime — caller must release before
             // dropping the subscription or requesting another borrow.
             let view_static: nros_node::RecvView<'static> = core::mem::transmute(view);
@@ -768,10 +784,13 @@ pub unsafe extern "C" fn nros_subscription_borrow(
 /// SAME subscription; consuming it is mandatory before the
 /// subscription's next borrow / destroy.
 ///
+/// **Requires `alloc` as well as `lending`** — it unboxes the `RecvView`
+/// its paired `nros_subscription_borrow` boxed. See that function.
+///
 /// # Safety
 /// * `subscription` must be the subscription the token was borrowed from.
 /// * `token` must not be NULL and must not be reused after this call.
-#[cfg(feature = "lending")]
+#[cfg(all(feature = "lending", feature = "alloc"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_subscription_release(
     subscription: *mut nros_subscription_t,

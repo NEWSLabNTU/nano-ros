@@ -18,7 +18,7 @@ use crate::{
 /// "something went wrong, dig into the backend log" semantics for
 /// callers that branch on `== NROS_RET_ERROR`.
 #[cfg(feature = "rmw-cffi")]
-fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_t {
+pub(crate) fn transport_error_to_ret(err: nros_rmw::TransportError) -> nros_ret_t {
     use nros_rmw::TransportError as E;
     match err {
         E::ConnectionFailed | E::Disconnected => NROS_RET_NOT_FOUND,
