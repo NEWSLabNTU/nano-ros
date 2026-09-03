@@ -17,7 +17,7 @@ related: [0970, 0968, 0942, 0112, phase-393]
 ```
 == threadx_riscv64 == FAILED (rc=2)
 FAILED: nros_rmw_cyclonedds.dir/src/nros_sertype.cpp.obj
-/mnt/evo/aeon/nano-ros/packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/nros_sertype.cpp:23:10:
+packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/nros_sertype.cpp:23:10:
     fatal error: memory: No such file or directory
 ```
 
