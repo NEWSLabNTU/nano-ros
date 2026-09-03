@@ -8,6 +8,7 @@ const GLYPH = Object.fromEntries(STATES.map(s => [s[0], s[2]]));
 const LABEL = Object.fromEntries(STATES.map(s => [s[0], s[1]]));
 const on = new Set(STATES.map(s => s[0]));
 let query = "";
+let alias = false;   // render our side under ROS 2's spelling
 
 const esc = s => String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
@@ -19,21 +20,28 @@ const prose = s => esc(s).replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code
    argument, where the vertical form buys nothing. The two signature cells stay
    line-for-line comparable, which is why the status chip heads the reason
    column instead of sitting in the nano-ros cell. */
-function cellHTML(cell, renamed) {
+function cellHTML(cell, renamed, ours) {
   if (!cell) return '<div class="nosig">— none</div>';
-  const nm = '<span class="fn' + (renamed ? " ren" : "") + '">' + esc(cell.n) + "</span>";
+  // `a`/`ar`/`ap` are the same signature spelled the way ROS 2 spells it —
+  // a VIEW for comparing shape, never a claim about what the code is called.
+  const useAlias = ours && alias && cell.a;
+  const nm = '<span class="fn' + (renamed && !useAlias ? " ren" : "") +
+             (useAlias ? " aliased" : "") + '">' +
+             esc(useAlias ? cell.a : cell.n) + "</span>";
   if (!cell.p) {
     const k = cell.k ? '<span class="kind">' + esc(cell.k) + "</span> " : "";
     return "<pre>" + k + nm + "</pre>";
   }
-  const ret = cell.r ? '<span class="ret">' + esc(cell.r) + "</span>\n" : "";
+  const rawRet = useAlias && cell.ar ? cell.ar : cell.r;
+  const params = useAlias && cell.ap ? cell.ap : cell.p;
+  const ret = rawRet ? '<span class="ret">' + esc(rawRet) + "</span>\n" : "";
   const arg = ([txt, flag]) =>
     '<span class="ty' + (flag ? " " + flag : "") + '">' + esc(txt) + "</span>";
   let body;
-  if (!cell.p.length) body = nm + '<span class="pu">(</span><span class="ty">void</span><span class="pu">)</span>';
-  else if (cell.p.length === 1) body = nm + '<span class="pu">(</span>' + arg(cell.p[0]) + '<span class="pu">)</span>';
+  if (!params.length) body = nm + '<span class="pu">(</span><span class="ty">void</span><span class="pu">)</span>';
+  else if (params.length === 1) body = nm + '<span class="pu">(</span>' + arg(params[0]) + '<span class="pu">)</span>';
   else body = nm + '<span class="pu">(</span>\n' +
-       cell.p.map(p => "  " + arg(p)).join('<span class="pu">,</span>\n') +
+       params.map(p => "  " + arg(p)).join('<span class="pu">,</span>\n') +
        '\n<span class="pu">)</span>';
   const more = cell.x ? '\n<span class="pu">/* +' + cell.x +
     " overload" + (cell.x === 1 ? "" : "s") + " */</span>" : "";
@@ -68,8 +76,8 @@ function rowHTML(r) {
   }
   if (r.w) why += '<div class="wtext">' + prose(r.w) + "</div>";
   return "<tr" + (r.i ? ' class="inh"' : "") + ">" +
-    '<td class="c" data-lbl="ROS 2">' + cellHTML(r.T, false) + "</td>" +
-    '<td class="c" data-lbl="nano-ros">' + cellHTML(r.O, !!r.ren) + "</td>" +
+    '<td class="c" data-lbl="ROS 2">' + cellHTML(r.T, false, false) + "</td>" +
+    '<td class="c" data-lbl="nano-ros">' + cellHTML(r.O, !!r.ren, true) + "</td>" +
     '<td class="why">' + why + "</td></tr>";
 }
 
@@ -148,6 +156,13 @@ function buildChips() {
 
 buildChips();
 document.getElementById("q").addEventListener("input", e => { query = e.target.value; render(); });
+const aliasBtn = document.getElementById("alias");
+aliasBtn.addEventListener("click", () => {
+  alias = !alias;
+  aliasBtn.dataset.on = alias ? "1" : "0";
+  aliasBtn.setAttribute("aria-pressed", alias ? "true" : "false");
+  render();
+});
 document.getElementById("expand").addEventListener("click", () => {
   const allOpen = !document.querySelector(".grp:not([open])");
   document.querySelectorAll(".grp").forEach(d => { d.open = !allOpen; });

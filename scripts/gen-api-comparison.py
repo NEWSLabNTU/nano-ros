@@ -114,6 +114,34 @@ def norm_type(text):
     return re.sub(r"\s+", "", text).lower()
 
 
+# The page can render OUR side under ROS 2's own spelling, so that a reader
+# comparing the two columns sees SHAPE and not naming noise. This is a VIEW,
+# never a claim about the code: `nros_take` is not called `rcl_take`, and the
+# toggle is off by default and labelled for exactly that reason.
+#
+# The substitution is per-language because the three upstreams disagree about
+# what our prefix even maps to: rcl/rclc for C, the `rclcpp::` namespace for
+# C++, the `rclrs::` one for Rust.
+ALIAS_PREFIX = {
+    "c": [("nros_", "rcl_")],
+    "cpp": [("nros::", "rclcpp::"), ("nros_", "rcl_")],
+    "rust": [("nros::", "rclrs::")],
+}
+
+
+def aliased(text, lang):
+    """`nros_take` -> `rcl_take` for display only.
+
+    Longest prefix first: `nros::` must be tried before `nros_`, or a C++ name
+    is rewritten to `rcl_:` and the toggle produces nonsense.
+    """
+    if not text:
+        return text
+    for src, dst in ALIAS_PREFIX.get(lang, []):
+        text = text.replace(src, dst)
+    return text
+
+
 def param_text(param):
     """Type plus name. The NAME is kept even though the diff ignores it: it is
     the only place a reader learns what the argument MEANS, and `size_t` twice
@@ -295,6 +323,14 @@ def collect(langs):
                 tflags, oflags = diff_params(overload_params(theirs),
                                             overload_params(ours))
                 tcell, ocell = side(theirs, tflags), side(ours, oflags)
+                # the ROS 2-spelled view of OUR side, precomputed so the toggle
+                # is a class swap rather than a re-render
+                if ocell:
+                    ocell["a"] = aliased(ocell["n"], lang)
+                    if ocell.get("r"):
+                        ocell["ar"] = aliased(ocell["r"], lang)
+                    if ocell.get("p"):
+                        ocell["ap"] = [[aliased(txt, lang), f] for txt, f in ocell["p"]]
                 recs.append({
                     "k": r["key"],
                     "s": rec["s"],
@@ -446,6 +482,17 @@ def self_test():
     cell = side({"qual": "nros::QoS", "kind": "type"}, [])
     check("p" not in cell, "a type rendered with a parameter list")
     check(side(None, []) is None, "a missing side did not render as absent")
+
+    # the ROS 2-spelling VIEW: longest prefix first, or a C++ name is rewritten
+    # to `rcl_:` and the toggle produces nonsense
+    check(aliased("nros::Subscription::take", "cpp") == "rclcpp::Subscription::take",
+          "C++ namespace alias: %r" % aliased("nros::Subscription::take", "cpp"))
+    check(aliased("nros_take", "c") == "rcl_take", "C prefix alias")
+    check(aliased("nros::Node", "rust") == "rclrs::Node", "Rust namespace alias")
+    check("rcl_:" not in aliased("nros::QoS", "cpp"), "prefix order produced `rcl_:`")
+    # it must never touch the ROS 2 side, and never reach an unrelated word
+    check(aliased("rcl_node_t *", "c") == "rcl_node_t *", "alias mangled upstream text")
+    check(aliased("", "c") == "", "alias on empty text")
 
     # every state has a glyph, so the page is legible without colour
     check(len({g for _, _, g in STATES}) >= 4, "states are not glyph-distinguishable")
