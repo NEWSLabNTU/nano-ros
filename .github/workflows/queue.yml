@@ -68,90 +68,53 @@ jobs:
       # lands on the author's change looking like a code failure. Assert first.
       - name: Verify this runner's labels are true
         run: ./scripts/ci/runner-doctor.sh nros-sdk-zephyr,nros-big
-      # L3 cross-builds three example leaves, and every one of them carries a
-      # `.cargo/config.toml` whose `include` names the GITIGNORED
-      # `nros-patch.toml` that only `nros sync` writes. Cargo treats a missing
-      # include as a HARD error during manifest parse (issue 0463), so without
-      # this the lane dies before compiling anything:
+      # phase-411 W4 — a CI job is `just setup <scope>` then one command a
+      # developer can type. Nothing here is CI-only orchestration.
+      #
+      # WHAT THIS REPLACES, AND WHY IT WAS HERE
+      #
+      # Four hand-rolled steps stood here until phase-413 W1b: `just setup-cli`,
+      # `just setup-launch-resolve`, `nros sync` on the rust workspace, and a
+      # loop syncing the three leaves L3 cross-builds. They existed because the
+      # leaves carry a `.cargo/config.toml` whose `include` names the GITIGNORED
+      # `nros-patch.toml` that only `nros sync` writes, and cargo treats a
+      # missing include as a HARD error during manifest parse (issue 0463):
       #
       #   error: 54 unresolved `include` target(s) across 54 of 73 tracked
       #          .cargo/config.toml files
       #
-      # That is what this job had been failing on since it was enabled — NOT the
-      # Zephyr SDK. The doctor step above passes; `ac0c8cd96` fixed the SDK
-      # lookup, and the red simply moved one step later, which is easy to read
-      # as "the runner is still broken".
+      # That is issue 0992: the codegen stage was mandatory and reachable from
+      # no verb, so this lane did it by hand. The workaround was LOAD-BEARING —
+      # it is what kept the queue green while `build-wide.yml`, running the same
+      # recipe without it, failed on that exact error for a day (issue 0996).
       #
-      # `nros sync` needs the CLI built and `nros-launch-resolve` sitting BESIDE
-      # it (issues 0285 / 0797 — resolved by absolute path, never $PATH, and
-      # `--bin nros` does not build it). Same chain `host-tests.yml` and
-      # `nightly.yml` already run, for the same reason.
-      - name: Build nros CLI (nros sync needs it)
+      # `just setup <scope>` now runs `_setup-common` (the guarded play_launch
+      # submodule init, the CLI, the launch resolver) and the build verb runs
+      # `_codegen` for every scope, in dependency order. The steps are gone
+      # because the toolchain does the work, not because the work stopped
+      # mattering — and that is the point of the phase: a hand-rolled step in a
+      # workflow is a claim the toolchain cannot do the thing itself, and each
+      # true one is a defect nobody is looking at.
+      #
+      # NROS_SKIP_LEAF_INCLUDE_CHECK went with them. It skipped
+      # `_require-leaf-includes`, never the sync itself, and post-0992 the sync
+      # happens inside `_codegen` regardless — so the variable would now
+      # suppress only the ASSERT that the codegen this lane just ran produced a
+      # resolvable tree. That is the one thing worth keeping.
+      - name: just setup tier2
         run: |
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
           source ./activate.sh
-          just setup-cli
+          just setup tier2
 
-      - name: Build nros-launch-resolve (nros sync shells out to it)
+      # `ci matrix build` — the (breadth, depth) pair, not a lane letter.
+      # phase-410 W4: `l3` survives as the implementation; this spelling says
+      # WHICH breadth at WHICH depth, which is what the file is for. It is the
+      # same recipe (`_matrix-build`'s body IS `l3`), now with one spelling
+      # across the repo instead of two.
+      - name: just ci matrix build
         run: |
           source ./activate.sh
-          just setup-launch-resolve
-
-      # Run from a WORKSPACE, not the repo root. `nros sync` at the root fails —
-      #
-      #   Error: sync: no `src/<pkg>/package.xml` and no `package.xml` at root
-      #          … expected colcon-style workspace or single-pkg dir
-      #
-      # — which is what the first attempt at this step did, because the remedy
-      # the leaf-include gate prints is `nros sync` with no directory. The
-      # CENTRAL patch is written to `<checkout>/nros-patch.toml` by ANY
-      # workspace's sync (`ws.rs` CENTRAL_PATCH_FILE), so one workspace suffices
-      # and every one of the 54 leaves then resolves its include.
-      #
-      # Verified locally: with the root file deleted, `cd examples/workspaces/
-      # rust && nros sync` recreated it BYTE-IDENTICAL to the committed-era one,
-      # `leaf-config-includes.py` went green, and no tracked file changed.
-      - name: nros sync (writes the central `nros-patch.toml` the leaves include)
-        run: |
-          source ./activate.sh
-          cd examples/workspaces/rust
-          nros sync
-
-      # ...and the THREE leaves this lane actually cross-builds. Each example
-      # leaf is its own consumer: its manifest path-deps `generated/<msg pkg>`,
-      # which `nros sync` produces per leaf and `.gitignore` excludes, so a
-      # clone has none of them.
-      - name: nros sync the leaves L3 builds
-        run: |
-          source ./activate.sh
-          for leaf in examples/qemu-arm-freertos/rust/talker \
-                      examples/qemu-arm-nuttx/rust/talker \
-                      examples/threadx-linux/rust/talker; do
-            nros sync "$leaf"
-          done
-
-      # NROS_SKIP_LEAF_INCLUDE_CHECK, deliberately and narrowly.
-      #
-      # `_require-leaf-includes` is a REPO-WIDE precondition: it walks all 73
-      # tracked `.cargo/config.toml` and 110 manifests and fails if ANY leaf
-      # lacks its gitignored `generated/`. That is right for `just format` and
-      # `build-test-fixtures`, which touch the whole tree (issues 0463/0474).
-      #
-      # L3 cross-builds THREE leaves. Demanding a fully-synced tree to link
-      # three talkers means syncing ~108 unrelated leaves per merge group, and
-      # the guard's whole purpose — turning a cryptic cargo manifest-parse error
-      # into a sentence naming sync — is already served for the leaves that
-      # matter by the step above, which syncs exactly them.
-      #
-      # So the scope of the check is wrong for this lane, not the check. If L3
-      # ever reaches a leaf outside that list, the raw cargo error is the cost,
-      # which is what the bypass documents.
-      - name: just ci l3
-        env:
-          NROS_SKIP_LEAF_INCLUDE_CHECK: "1"
-        run: |
-          source ./activate.sh
-          just ci l3
+          just ci matrix build
       - name: Upload logs and size reports
         if: always()
         uses: actions/upload-artifact@v4
