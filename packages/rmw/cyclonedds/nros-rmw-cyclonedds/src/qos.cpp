@@ -22,11 +22,24 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
         return nullptr;
     }
 
+    // issue 0829 — the test is on BEST_EFFORT, not on RELIABLE, because this
+    // field has FOUR values and only one of them means best-effort.
+    // `NROS_RMW_RELIABILITY_SYSTEM_DEFAULT` is 0 and `_UNKNOWN` is 3
+    // (`nros/rmw_entity.h:70-76`); testing `== RELIABLE` sent both to the
+    // else-branch, so a zero-filled or hand-rolled `rmw_qos_profile_t` — a
+    // shape the header explicitly contemplates — got BEST_EFFORT here while
+    // the tree's two other folds of the same value got RELIABLE
+    // (`nros-rmw-xrce/src/session.c:211`,
+    // `nros-rmw-cffi/src/rust_adapter.rs:258`). Upstream settles it the same
+    // way: `rmw_cyclonedds_cpp`'s `create_readwrite_qos` puts
+    // `RELIABILITY_SYSTEM_DEFAULT` on the `RELIABLE` case by fallthrough.
+    // Cyclone is the backend that meets real ROS peers, and it was the one
+    // picking the less safe side.
     dds_qset_reliability(
         q,
-        src->reliability == NROS_RMW_RELIABILITY_RELIABLE
-            ? DDS_RELIABILITY_RELIABLE
-            : DDS_RELIABILITY_BEST_EFFORT,
+        src->reliability == NROS_RMW_RELIABILITY_BEST_EFFORT
+            ? DDS_RELIABILITY_BEST_EFFORT
+            : DDS_RELIABILITY_RELIABLE,
         // Default max blocking time on reliable: 1 s. 100 ms (the
         // pre-117.X.5 value) was too aggressive for the local
         // participant's reader-writer match handshake between
