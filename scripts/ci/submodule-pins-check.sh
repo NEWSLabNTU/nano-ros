@@ -36,6 +36,8 @@
 set -uo pipefail
 
 baseline="${1:-${NROS_SUBMODULE_PIN_BASELINE:-origin/main}}"
+exceptions_file="${NROS_SUBMODULE_PIN_EXCEPTIONS:-docs/reference/submodule-pin-exceptions.txt}"
+allowed=0
 local_ref="${2:-HEAD}"
 
 # --- selftest, on the NORMAL path (phase-395) -------------------------------
@@ -182,7 +184,23 @@ while IFS=$'\t' read -r path new_sha; do
     done
 
     if git -C "$path" merge-base --is-ancestor "$old_sha" "$new_sha" 2>/dev/null; then
-        continue  # fast-forward: the only sanctioned move
+        continue  # fast-forward: the sanctioned move
+    fi
+
+    # A rebased fork patch line is deliberately not a descendant of the old pin,
+    # and the only bypass used to be an environment variable NOTHING IN CI CAN
+    # SET -- so a correct pin passed locally and could never pass the merge
+    # queue. An allowlist row names the exact path and both shas, so it expires
+    # as soon as either moves; the variable stays for the interactive case.
+    if [ -f "$exceptions_file" ] \
+       && grep -qE "^[[:space:]]*${path}[[:space:]]+${old_sha}[[:space:]]+${new_sha}[[:space:]]" \
+                "$exceptions_file"; then
+        reason="$(grep -E "^[[:space:]]*${path}[[:space:]]+${old_sha}[[:space:]]+${new_sha}[[:space:]]" \
+                       "$exceptions_file" | head -1 | cut -d' ' -f4-)"
+        echo "submodule-pins: $path — non-fast-forward ALLOWED by" >&2
+        echo "  ${exceptions_file}: ${reason}" >&2
+        allowed=$((allowed + 1))
+        continue
     fi
 
     # Not an ancestor. Say WHICH kind of wrong it is — a rewind and a fork need
@@ -219,5 +237,9 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-echo "submodule-pins: OK ($moved pin(s) moved, all fast-forward)"
+if [ "$allowed" -ne 0 ]; then
+    echo "submodule-pins: OK ($moved pin(s) moved; $allowed allowed by $exceptions_file)"
+else
+    echo "submodule-pins: OK ($moved pin(s) moved, all fast-forward)"
+fi
 exit 0
