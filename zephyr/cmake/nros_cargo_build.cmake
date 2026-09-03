@@ -252,7 +252,17 @@ function(_nros_load_derived_entity_inventory)
         NROS_ENTITY_INVENTORY_REASON
         NROS_ENTITY_INVENTORY_ENTITY_TOTAL
         NROS_DERIVED_EXECUTOR_MAX_CBS
-        NROS_DERIVED_EXECUTOR_ACTION_CLIENTS)
+        NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
+        # phase-412 W1. This list is a WHITELIST: a symbol the fragment sets
+        # but this loop does not name is loaded here and then dies at the
+        # function boundary, so the knob silently falls to rung 4. That cost a
+        # shipped under-size -- the pools derived 10/14/0 and the zenoh session
+        # was built with 8/8/8, which is 8 subscriber slots for 10
+        # subscriptions and fails at RUNTIME, not at link.
+        NROS_DERIVED_MAX_SUBSCRIBERS
+        NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
+        NROS_DERIVED_MAX_PUBLISHERS
+        NROS_DERIVED_MAX_QUERYABLES)
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
@@ -446,8 +456,13 @@ function(nros_resolve_knobs)
 
     # nros-rmw-cffi's static subscription-handle pool. Backend-independent:
     # the no_std slot path is in the cffi adapter, not in a transport.
-    _nros_resolve_knob(NROS_RMW_SUBSCRIBER_SLOTS
-        "${CONFIG_NROS_RMW_SUBSCRIBER_SLOTS}")
+    #
+    # phase-412 W1/W4 -- resolved ABOVE, with the other session pools, because
+    # it is derivable now. A second `_nros_resolve_knob` here would re-resolve
+    # it from the raw Kconfig value, which is the `-1` DERIVE SENTINEL, and the
+    # sentinel would win as though someone had stated it: the knob reached the
+    # build as -1 while the inventory had derived 10. check-knob-delivery is
+    # what found it, and this comment is here so it is not re-added.
 
     # The arena is tri-state. nros-node build.rs DERIVES a size when the knob
     # is absent, so forwarding a literal 0 would hand it a zero-byte arena
