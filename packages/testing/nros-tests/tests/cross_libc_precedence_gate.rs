@@ -166,13 +166,13 @@ fn cross_libc_two_set_precedence_holds() {
 ///   * SDK store (`~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1`, newlib 13.2.1):
 ///     newlib's own `stdlib.h` is reached FIRST, so the stub's is a
 ///     redefinition —
-///         error: conflicting declaration 'typedef struct div_s div_t'
+///     error: conflicting declaration 'typedef struct div_s div_t'
 ///
 ///   * the CI container's apt cross (newlib 10.3.1): the stub's `stdlib.h` is
 ///     reached INSTEAD of newlib's, so newlib's `<cstdlib>` finds nothing to
 ///     re-export —
-///         /usr/include/newlib/c++/10.3.1/bits/std_abs.h:52:11:
-///             error: 'abs' has not been declared in '::'
+///     /usr/include/newlib/c++/10.3.1/bits/std_abs.h:52:11:
+///     error: 'abs' has not been declared in '::'
 ///
 /// Both are the stub shadowing the real libc; only the first was modelled, so
 /// the gate failed on the container with "fix the gate fixture" — correctly
