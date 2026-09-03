@@ -1985,7 +1985,39 @@ impl Session for CffiSession {
             return Err(TransportError::PublisherCreationFailed);
         }
         pub_state.backend_data = view.backend_data;
-        pub_state.can_loan_messages = view.can_loan_messages;
+        // issue 0814 — DERIVED from the vtable, never merely declared.
+        //
+        // The field is the same fact as `borrow_loaned_message` being
+        // non-NULL — the header defines it as "the backend exposes the
+        // loan_publish / commit_publish primitive" — and a fact with two
+        // spellings drifts. It had drifted BOTH ways at once:
+        //
+        //  * UNDER-claim. Nothing wrote `true` anywhere outside a test.
+        //    A C backend writes the field, but `RustBackendAdapter`'s
+        //    generic `create_publisher_trampoline` cannot: it is generic
+        //    over the Session and does not know which vtable it was
+        //    registered under, so it writes only `backend_data`
+        //    (`rust_adapter.rs:541-548`) and leaves the runtime's pre-zero
+        //    (`:1951`) standing. That is not an oversight to fix in the
+        //    trampoline; it is structural. So zenoh built with `lending` —
+        //    whose vtable DOES fill all three loan slots
+        //    (`nros-rmw-zenoh/src/lib.rs:427-432`) and whose loans work —
+        //    reported that it cannot loan.
+        //  * OVER-claim. A backend may write `true` with the slot NULL and
+        //    be believed; the test stub at `:4390` does exactly that.
+        //
+        // Neither was doing damage YET, because nothing branches on the
+        // field (every read is a copy into the C view or an accessor) —
+        // dispatch keys on the slot at `:2760`. The damage is scheduled:
+        // the moment anyone implements the branch the header promises,
+        // zenoh's working loan path silently drops to the copy fallback.
+        //
+        // A backend that must refuse a loan for a PARTICULAR entity has not
+        // lost anything — it returns `NROS_RMW_RET_UNSUPPORTED` from
+        // `borrow_loaned_message` and `try_lend_slot` surfaces that as an
+        // error. The per-entity answer belongs on the call, which is
+        // consulted; not on a flag, which is not.
+        pub_state.can_loan_messages = pub_state.vtable.borrow_loaned_message.is_some();
         // phase-393 W1 — say so when the backend granted something else.
         #[cfg(feature = "alloc")]
         if let Some(read) = pub_state.vtable.publisher_get_actual_qos {
@@ -2071,7 +2103,12 @@ impl Session for CffiSession {
             return Err(TransportError::SubscriberCreationFailed);
         }
         sub_state.backend_data = view.backend_data;
-        sub_state.can_loan_messages = view.can_loan_messages;
+        // issue 0814 — the receive-side twin, derived from its own slot for
+        // the same reason as the publisher above. `take_loaned_message` is
+        // NULL in every backend we ship, so this is `false` everywhere today
+        // — but now it is false BECAUSE no backend fills the slot, which is
+        // checkable, rather than because nobody remembered to write it.
+        sub_state.can_loan_messages = sub_state.vtable.take_loaned_message.is_some();
         // Phase 231 (RFC-0038) — cache the in-place capability once.
         // The capability is the CONJUNCTION of the probe and the slot that
         // would serve it (issue 0781). The probe alone was the whole answer,
@@ -4704,7 +4741,17 @@ mod tests {
         // Rust accessors read back the typed-struct fields.
         assert_eq!(publisher.topic_name(), "/chatter");
         assert_eq!(publisher.type_name(), "std_msgs/msg/Int32");
-        assert!(publisher.can_loan_messages());
+        // issue 0814 — `can_loan_messages` is DERIVED, so a backend cannot
+        // over-claim it. `stub_create_publisher` writes `true` into the view
+        // while `STUB_VTABLE` inherits `borrow_loaned_message: None` from
+        // `EMPTY_VTABLE`; a backend that cannot be asked for a loan does not
+        // advertise loans, whatever it wrote. This assertion read `true`
+        // before the fix — it was the over-claim, believed.
+        assert!(
+            !publisher.can_loan_messages(),
+            "the stub declared can_loan_messages=true with a NULL \
+             borrow_loaned_message slot; the declaration must not win"
+        );
 
         // Publish — verify backend_data round-trips correctly via
         // the typed view.

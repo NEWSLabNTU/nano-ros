@@ -823,14 +823,27 @@ typedef struct rmw_node_t {
  * Created by `vtable->create_publisher`; destroyed by
  * `vtable->destroy_publisher`. The runtime owns the storage; the
  * runtime fills `topic_name` / `type_name` / `qos` before the
- * create call. The backend writes `can_loan_messages` and
- * `backend_data`.
+ * create call. The backend writes `backend_data`.
  *
  * `can_loan_messages` matches upstream `rmw_publisher_t`'s field of
  * the same name — `true` means the backend exposes the
- * `loan_publish` / `commit_publish` primitive (Phase 99). The
- * runtime reads it once at create time and picks the publish path
- * accordingly; no per-call probe.
+ * `loan_publish` / `commit_publish` primitive (Phase 99).
+ *
+ * **The runtime DERIVES it; a backend does not write it** (issue 0814).
+ * Its value is exactly `vtable->borrow_loaned_message != NULL`, because
+ * that is the same fact, and a fact with two spellings drifts — this one
+ * had drifted in both directions at once. Anything a backend writes here
+ * is overwritten.
+ *
+ * This paragraph used to read "the runtime reads it once at create time
+ * and picks the publish path accordingly; no per-call probe". That was
+ * never true: nothing has ever branched on the field, and the publish
+ * path is chosen per call from `vtable->borrow_loaned_message` itself.
+ *
+ * To refuse a loan for a PARTICULAR entity, return
+ * `RMW_RET_UNSUPPORTED` from `borrow_loaned_message`. The per-entity
+ * answer belongs on the call, which the runtime consults; not on this
+ * flag, which it does not.
  */
 typedef struct rmw_publisher_t {
     /** Topic name (borrowed; outlives the publisher). */
@@ -840,7 +853,9 @@ typedef struct rmw_publisher_t {
     const char    *type_name;
     /** QoS subset honoured by this publisher. */
     rmw_qos_profile_t qos;
-    /** Backend exposes loan_publish / commit_publish (Phase 99). */
+    /** Backend exposes loan_publish / commit_publish (Phase 99).
+     *  DERIVED by the runtime from `vtable->borrow_loaned_message`;
+     *  a backend's write is overwritten (issue 0814). */
     bool           can_loan_messages;
     /** Reserved for future fields; must be zero. */
     uint8_t        _reserved[7];
@@ -859,7 +874,9 @@ typedef struct rmw_subscription_t {
     const char    *type_name;
     /** QoS subset honoured by this subscription. */
     rmw_qos_profile_t qos;
-    /** Backend exposes loan_recv / release_recv (Phase 99). */
+    /** Backend exposes loan_recv / release_recv (Phase 99).
+     *  DERIVED by the runtime from `vtable->take_loaned_message`;
+     *  a backend's write is overwritten (issue 0814). */
     bool           can_loan_messages;
     /** Reserved for future fields; must be zero. */
     uint8_t        _reserved[7];
