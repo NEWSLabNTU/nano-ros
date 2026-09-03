@@ -404,3 +404,74 @@ not enabled here:
   cells that already exist. If that measurement shows no difference on zenoh — which
   §2 predicts — then the right follow-up is to retire `lending`'s publish half rather
   than to build a lane for it.
+
+---
+
+## What landed (2026-09-03) — recommendation (C)
+
+Implemented as argued above: the byte-span ABI is kept, the honesty defects are
+fixed, and `publish_streamed` / `process_raw_in_place` are named as the supported
+zero-copy surface. No typed dual, no ABI change, no lane enabling `lending`.
+
+Two things the study did not know, both found by trying to build what it
+described:
+
+* **The C loan surface had not COMPILED since issue 0812 landed.**
+  `cargo check -p nros-c --features rmw-cffi,lending` failed with seven errors on
+  `main`. Three were the loan trio: 0812 retyped the backend token from
+  `*mut c_void` to `*mut rmw_loan_token_t` (`packages/rmw/cffi/src/lib.rs:2963,3012,3029`)
+  and left the three FFI call sites behind. Four were the receive half using
+  `alloc::boxed::Box` while `extern crate alloc` is `#[cfg(feature = "alloc")]`
+  — so `lending` without `alloc` was not a build with a missing capability, it
+  was not a build. `nros-cpp` is broken the same way and is NOT fixed here; its
+  fifth blocker is the deliberate `T::BackendDynamic` tripwire at
+  `packages/api/nros-cpp/src/lib.rs:802`, whose own comment predicts exactly
+  this and whose resolution is a cross-crate feature-observation question with
+  issue 0586's exhaustiveness policy attached.
+* **`can_loan_messages` had drifted in BOTH directions at once**, not just the
+  one the study measured. The under-claim is as described (nothing outside a
+  test writes `true`; `RustBackendAdapter`'s generic trampoline structurally
+  cannot). The over-claim is its mirror: a backend writing `true` with a NULL
+  slot was believed, and the test stub did precisely that. It is now DERIVED
+  from the vtable slot, so the two spellings cannot disagree.
+
+### On 0812 and 0813 — judged, not fixed
+
+Both are already `resolved` (`5af7e1e44`); what the study flagged is the residue
+0812 itself listed under "what this does NOT yet buy". **Neither residue is worth
+closing in place, for the same reason:**
+
+* The cffi `ArenaStaging` `Box` + `vec![]` per loan
+  (`packages/rmw/cffi/src/lib.rs:2765-2779`) is on the FALLBACK path — taken only
+  when the backend has no loan slot, i.e. Cyclone / XRCE / uORB. On those the
+  "zero-copy" loan is already a staging buffer plus a memcpy at commit; it is not
+  a zero-copy path. Removing the malloc means a static arena in the cffi layer,
+  which is issue 0813's shape reintroduced one layer DOWN — a per-publisher
+  ceiling priced into every image on every backend, instead of one backend's.
+  That is a worse trade than the malloc.
+* `nros-c`'s per-borrow `RecvView` box has the same alternative and the same
+  cost. It is now DECLARED instead: the `cfg` on `nros_subscription_borrow` /
+  `_release` says `all(lending, alloc)`, so the heap requirement is visible
+  rather than a compile error.
+
+The honest move — taken — is that `publish_streamed` is the supported path, and
+it is now said where a caller will actually read it: in the committed C/C++
+headers, and in the error text a refused heap-free loan produces. It has no
+token, no arena, no ceiling and no heap, and XRCE and zenoh fill it natively
+while all three backends NULL the loan trio.
+
+### The ratchet, and what is still open
+
+`just check no-std` gained the heap-free lending slice on
+`thumbv7m-none-eabi` and `riscv32imc-unknown-none-elf`;
+`just check workspace-features` gained `nros-c`'s two lending rows (host — its
+build script needs a cross C toolchain, which the `no-std` lane excludes). Both
+rows passed before they were written; this is a ratchet, and what it buys is
+that they cannot quietly stop. It is what would have caught the `nros-c` break.
+
+**This issue stays `open`.** The ratchet COMPILES the lending surface on
+embedded targets; nothing RUNS it, which is the gap in this issue's title. The
+study's argument against the proposed QEMU lane still stands — zenoh-pico
+memcpys into a non-expandable wire buffer either way, so such a lane would be
+green while every byte is still copied — so the useful successor is the
+copy-count measurement in §"On the proposed test lane", not a delivery test.
