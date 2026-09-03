@@ -264,6 +264,32 @@ fn explain(args: ExplainArgs) -> Result<()> {
         );
     }
 
+    // phase-400 W6 — the component-runtime tenant. Defaults mirror
+    // `packages/api/nros/build.rs`, which stays the authority on them.
+    let runtime_defaults: &[(&str, usize)] = &[
+        ("max_components", 4),
+        ("component_slot_bytes", 512),
+        ("max_class_instances", 2),
+        ("max_cell_entities", 8),
+    ];
+    for (name, r) in tree
+        .resolve_runtime(
+            &args.platform,
+            board.as_ref().map(|b| &b.knobs.runtime),
+            &env_get,
+            runtime_defaults,
+        )
+        .map_err(|e| eyre!("{e}"))?
+    {
+        println!(
+            "{:<34} {:<10} {}  [{}]",
+            format!("runtime.{name}"),
+            r.value,
+            r.source.as_str(),
+            r.env_key
+        );
+    }
+
     // phase-400 W6 — the smoltcp net tenant. Defaults mirror
     // `packages/drivers/net/nros-smoltcp/build.rs`, which stays the authority.
     // `max_udp_sockets` shows 1 here: its builtin is FEATURE-derived (4 with

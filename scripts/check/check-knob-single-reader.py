@@ -85,6 +85,12 @@ OWNERS: dict[str, str] = {
     "NROS_SMOLTCP_BUFFER_SIZE": "packages/drivers/net/nros-smoltcp/build.rs",
     "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
     "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": "packages/drivers/net/nros-smoltcp/build.rs",
+    # The component-runtime tenant (phase-400 W6). phase-391 emits the consts
+    # from these; the ladder decides their values.
+    "NROS_RUNTIME_MAX_COMPONENTS": "packages/api/nros/build.rs",
+    "NROS_RUNTIME_COMPONENT_SLOT_BYTES": "packages/api/nros/build.rs",
+    "NROS_RUNTIME_MAX_CLASS_INSTANCES": "packages/api/nros/build.rs",
+    "NROS_RUNTIME_MAX_CELL_ENTITIES": "packages/api/nros/build.rs",
     "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
     "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
     "ZPICO_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",

@@ -50,10 +50,10 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_RMW_MAX_NODES` | 4 | `packages/rmw/cffi` |
 | `NROS_RMW_MESSAGE_INFO_SLOTS` | 64 | `packages/rmw/cffi` |
 | `NROS_RMW_SUBSCRIBER_SLOTS` | 8 | `packages/rmw/cffi` |
-| `NROS_RUNTIME_COMPONENT_SLOT_BYTES` | 512 | `packages/api/nros` |
-| `NROS_RUNTIME_MAX_CELL_ENTITIES` | 8 | `packages/api/nros` |
-| `NROS_RUNTIME_MAX_CLASS_INSTANCES` | 2 | `packages/api/nros` |
-| `NROS_RUNTIME_MAX_COMPONENTS` | 4 | `packages/api/nros` |
+| `NROS_RUNTIME_COMPONENT_SLOT_BYTES` | computed — see `packages/api/nros/build.rs:47` | `packages/api/nros` |
+| `NROS_RUNTIME_MAX_CELL_ENTITIES` | computed — see `packages/api/nros/build.rs:70` | `packages/api/nros` |
+| `NROS_RUNTIME_MAX_CLASS_INSTANCES` | computed — see `packages/api/nros/build.rs:58` | `packages/api/nros` |
+| `NROS_RUNTIME_MAX_COMPONENTS` | computed — see `packages/api/nros/build.rs:41` | `packages/api/nros` |
 | `NROS_SERVICE_TIMEOUT_MS` | 30000 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `NROS_SMOLTCP_BUFFER_SIZE` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:57` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:62` | `packages/drivers/net/nros-smoltcp` |
