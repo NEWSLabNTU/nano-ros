@@ -84,7 +84,8 @@ inline void operator delete(void*, void*) noexcept {}
 inline void operator delete[](void*, void*) noexcept {}
 #endif
 
-#include "nros/component.hpp" // bind_subscription / bind_timer (the no-alloc trampolines)
+#include "nros/component.hpp"    // bind_subscription / bind_timer (the no-alloc trampolines)
+#include "nros/declared_qos.hpp" // phase-403 step 2 — the DECLARED @depth= table + its assertion
 #include "nros/node.hpp"
 #include "nros/parameter.hpp" // ParameterServer backing the value-returning facade (242.7)
 #include "nros/publisher.hpp"
@@ -165,6 +166,41 @@ inline void report_component_failure(const char* node_name, const char* what, in
     (void)node_name;
     (void)what;
     (void)code;
+#endif
+}
+
+/// phase-403 step 2 — the code `set_error` records when a subscription's QoS
+/// depth disagrees with the `@depth=` its component declared.
+///
+/// Named after the phase rather than borrowed from `nros_cpp_ret_t`: this is
+/// not a backend failure, it is the image contradicting its own manifest, and a
+/// code that also means "the RMW said no" would send the reader to the wrong
+/// half of the tree.
+constexpr int32_t DECLARED_DEPTH_MISMATCH = -403;
+
+/// The boot-time diagnostic for that disagreement — the runtime twin of the
+/// `static_assert`, and it prints the same three facts: the topic, the depth
+/// the declaration states, and the depth the code passed.
+///
+/// Hosted-only, exactly like `report_component_failure` beside it. On a
+/// freestanding target `set_error`'s halt is the whole signal; the numbers
+/// still reach a debugger through `error_code()`.
+inline void report_declared_depth_mismatch(const char* node_name, const char* topic, int declared,
+                                           int passed) {
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    ::std::fprintf(stderr,
+                   "[nros] FATAL: ComponentNode \"%s\": topic \"%s\" was DECLARED @depth=%d in "
+                   "nano_ros_node_register(... ENTITIES ...) but the QoS passed to "
+                   "create_subscription states depth %d. Depth multiplies the executor arena "
+                   "(cost is (depth+1)*bound per subscription), so the two must agree. Fix the "
+                   "ENTITIES row or the call site.\n",
+                   (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?",
+                   declared, passed);
+#else
+    (void)node_name;
+    (void)topic;
+    (void)declared;
+    (void)passed;
 #endif
 }
 
@@ -285,10 +321,62 @@ class ComponentNode {
     /// `Self` automatically.
     template <typename M, class C, void (C::*Method)(const M& msg)>
     void create_subscription(const char* topic, const QoS& qos = QoS::default_profile()) {
+        if (!check_declared_depth(M::TYPE_NAME, topic, qos)) {
+            return;
+        }
         Result r = bind_subscription<M, C, Method>(node_, topic, static_cast<C*>(this), qos);
         if (!r.ok()) {
             set_error("create_subscription", r.raw());
         }
+    }
+
+    /// phase-403 step 2 — the BOOT-TIME half of the declared-depth check.
+    ///
+    /// The compile-time half (`NROS_SUBSCRIBE`'s `static_assert`) is the
+    /// primary path and covers every call site whose topic is a string literal,
+    /// which is all of them in this tree. It cannot cover two shapes:
+    ///
+    ///   * a topic built at runtime or forwarded through a variable — the
+    ///     lookup key is not a constant expression, so there is nothing to
+    ///     `static_assert` on;
+    ///   * a caller that reaches `create_subscription<M, C, Method>` directly
+    ///     rather than through the macro, which no macro can intercept.
+    ///
+    /// Both get the same comparison here, against the same table, through the
+    /// same `nros::declared_depth`. It runs once per subscription during
+    /// construction and is a linear scan of a table with tens of entries, so it
+    /// costs a boot-time memcmp storm nobody will measure — and only on an
+    /// image that HAS a table.
+    ///
+    /// A disagreement is a named boot failure, in the idiom
+    /// `NodeError::ExecutorFull` set: it goes through `set_error`, which prints
+    /// the node and the reason and makes the entry's post-construct `ok()`
+    /// check halt boot. It does NOT create the subscription — an entity built
+    /// at a depth its own image did not declare is exactly the arena mis-sizing
+    /// this step exists to make impossible.
+    ///
+    /// Returns true when the subscription may be created.
+    bool check_declared_depth(const char* type_name, const char* topic, const QoS& qos) {
+        const int declared = ::nros::declared_depth(type_name, topic);
+        // Nobody declared this endpoint. Not an error: the image has not opted
+        // in, and anything sizing from depth refuses rather than defaulting.
+        if (declared == ::nros::DECLARED_DEPTH_UNDECLARED) {
+            return true;
+        }
+        if (declared == qos.depth()) {
+            return true;
+        }
+        // The two NUMBERS and the TOPIC go out first: `set_error` records one
+        // `const char*`, which cannot carry them, and a boot failure that says
+        // only "depth disagrees" leaves the reader to grep two files for the
+        // pair. Same division of labour the compile-time path makes between its
+        // assertion message and its template arguments.
+        detail::report_declared_depth_mismatch(node_.get_name(), topic, declared, qos.depth());
+        set_error("create_subscription: QoS depth disagrees with the declared @depth= for this "
+                  "topic (nano_ros_node_register ENTITIES). Depth multiplies the arena, so the "
+                  "declaration and the code must state one number, not two.",
+                  detail::DECLARED_DEPTH_MISMATCH);
+        return false;
     }
 
     /// Create a **typed member** repeating timer: `void C::Method()` fires every
@@ -392,6 +480,13 @@ class ComponentNode {
     template <typename M, class C, void (C::*Method)(const M& msg)>
     void create_subscription_in(const CallbackGroup& group, const char* topic,
                                 const QoS& qos = QoS::default_profile()) {
+        // phase-403 step 2 — the same boot-time check as `create_subscription`.
+        // A grouped subscription costs the arena exactly what an ungrouped one
+        // does, so leaving this path out would make the declared depth
+        // enforceable everywhere except in the images that use callback groups.
+        if (!check_declared_depth(M::TYPE_NAME, topic, qos)) {
+            return;
+        }
         const nros_cpp_node_t* h = node_.ffi_handle();
         if (h == nullptr) {
             set_error("create_subscription_in", -3);
@@ -623,13 +718,27 @@ template <class T> struct strip_ref {
 template <class T> struct strip_ref<T&> {
     using type = T;
 };
+
+/// phase-403 step 2 — the QoS a `NROS_SUBSCRIBE` with no QoS argument gets.
+///
+/// `QoS(N)` is `QoS::default_profile()` with the depth replaced (RELIABLE,
+/// VOLATILE, KEEP_LAST), so filling the declared depth in changes exactly the
+/// one field the declaration spoke about and nothing else.
+///
+/// `DECLARED_DEPTH_UNDECLARED` returns the default profile untouched. That is
+/// the back-compatibility hinge: every call site that existed before this step,
+/// in an image with no `@depth=` anywhere, gets the same depth-10 profile it
+/// always got, from a `constexpr` branch the optimiser folds away.
+constexpr ::nros::QoS qos_from_declared_depth(int declared) {
+    return (declared == ::nros::DECLARED_DEPTH_UNDECLARED) ? ::nros::QoS::default_profile()
+                                                           : ::nros::QoS(declared);
+}
 } // namespace detail
 } // namespace nros
 
 /// Inside a `ComponentNode` ctor: subscribe `void Self::method(const Msg&)` to
 /// `topic`. Derives `Self` from `this` so only the message type, method, and
-/// topic are spelled. An optional 4th argument is the QoS; omitted, it is
-/// `QoS::default_profile()`, whose depth is 10.
+/// topic are spelled. An optional 4th argument is the QoS.
 ///
 /// State the depth on a memory-constrained target. Since phase-403 a
 /// subscription's arena buffer is sized from its own type, so the cost of a
@@ -637,10 +746,88 @@ template <class T> struct strip_ref<T&> {
 /// the largest thing the topic carries, not a count of small slots. Measured on
 /// mr-canhubk344: nine subscriptions at the default depth 10 wanted 86108 bytes
 /// of arena, and the same nine at depth 1 want 24516.
-#define NROS_SUBSCRIBE(Msg, method, topic, ...)                                                    \
+///
+/// # phase-403 step 2 — the depth is DECLARED, and the two must agree
+///
+/// The image's `nano_ros_node_register(... ENTITIES sub:<type>:<topic>@depth=N)`
+/// is the source of truth for SIZING, because the arena is compiled before this
+/// TU exists. Both authoring modes are legal:
+///
+///   * **the code states the QoS** — `NROS_SUBSCRIBE(M, m, "/t", nros::QoS(1))`
+///     and `...@depth=1`. If the two numbers differ, this macro fails the BUILD
+///     with a `static_assert` naming the topic and both depths.
+///   * **the contract states the QoS** — `NROS_SUBSCRIBE(M, m, "/t")` with
+///     `...@depth=1`, and the declared depth fills in. Omitting the QoS is
+///     already the natural spelling, so this mode needs no new surface.
+///
+/// With NEITHER a declaration nor a QoS the profile is `QoS::default_profile()`
+/// exactly as before, and nothing is asserted: that image has not opted in, and
+/// an image that has not opted in is not an image in error.
+///
+/// # Dispatching on ARGUMENT COUNT
+///
+/// C++17 has no `__VA_OPT__`, so the macro cannot branch on "a QoS was passed"
+/// with the obvious spelling. `_NROS_SUB_PICK` is the standard argument-count
+/// trick instead: the argument list is padded with the handler names, and which
+/// one lands on the `NAME` parameter depends on how many arguments came before
+/// it. Three arguments select `_NROS_SUB_3`, four select `_NROS_SUB_4`, and the
+/// list is always long enough that the trailing `...` is never empty (which ISO
+/// C++ forbids, and which is why there is no `##__VA_ARGS__` here any more).
+///
+/// # STATEMENT context
+///
+/// The 4-argument form expands to a `static_assert` FOLLOWED BY the call, so it
+/// is a statement and not an expression: write `NROS_SUBSCRIBE(...);` on its own
+/// line, as every call site in this tree does. `if (c) NROS_SUBSCRIBE(...);`
+/// would bind only the assertion to the `if`, so brace such a call.
+#define _NROS_SUB_PICK(_1, _2, _3, _4, NAME, ...) NAME
+#define NROS_SUBSCRIBE(...)                                                                        \
+    _NROS_SUB_PICK(__VA_ARGS__, _NROS_SUB_4, _NROS_SUB_3, _NROS_SUB_TOO_FEW, _NROS_SUB_TOO_FEW)    \
+    (__VA_ARGS__)
+
+/// The 3-argument form: no QoS at the call site, so the DECLARED depth supplies
+/// one. Nothing to assert — there is only ever one number.
+#define _NROS_SUB_3(Msg, method, topic)                                                            \
     this->template create_subscription<Msg, ::nros::detail::strip_ref<decltype(*this)>::type,      \
                                        &::nros::detail::strip_ref<decltype(*this)>::type::method>( \
-        (topic), ##__VA_ARGS__)
+        (topic),                                                                                   \
+        ::nros::detail::qos_from_declared_depth(::nros::declared_depth(Msg::TYPE_NAME, (topic))))
+
+/// The 4-argument form: the call site states a QoS, so the two numbers must
+/// agree and the BUILD is where that is settled. `#topic` is the topic as the
+/// call site wrote it — the only way a string can reach a `static_assert`
+/// message in C++17.
+#define _NROS_SUB_4(Msg, method, topic, qos)                                                       \
+    NROS_ASSERT_DECLARED_DEPTH(Msg::TYPE_NAME, (topic), (qos), #topic);                            \
+    this->template create_subscription<Msg, ::nros::detail::strip_ref<decltype(*this)>::type,      \
+                                       &::nros::detail::strip_ref<decltype(*this)>::type::method>( \
+        (topic), (qos))
+
+/// Fewer than three arguments. Named rather than left undefined so the error is
+/// about the CALL and not about an identifier the reader has never seen: an
+/// unexpanded `_NROS_SUB_TOO_FEW` would be reported as an undeclared function,
+/// three frames of macro expansion away from the line at fault.
+#define _NROS_SUB_TOO_FEW(...)                                                                     \
+    static_assert(false, "NROS_SUBSCRIBE takes (Msg, method, topic) or "                           \
+                         "(Msg, method, topic, qos) -- with the QoS omitted, the @depth= "         \
+                         "declared in nano_ros_node_register(... ENTITIES ...) supplies it.")
+
+/// A subscription whose TOPIC is not a compile-time constant.
+///
+/// The compile-time check needs the topic as a constant expression to key the
+/// table with; a topic built at runtime or forwarded through a variable has
+/// none, so a call site like that names itself here and takes the BOOT-TIME
+/// check in `ComponentNode::create_subscription` instead. That check is the same
+/// comparison against the same table, and it halts boot naming the topic and
+/// both depths.
+///
+/// This is the fallback and not the default on purpose: a build failure is
+/// cheaper than a boot failure, and making the dynamic spelling explicit keeps
+/// the count of call sites that gave up the compile-time check visible.
+#define NROS_SUBSCRIBE_DYNAMIC(Msg, method, topic, qos)                                            \
+    this->template create_subscription<Msg, ::nros::detail::strip_ref<decltype(*this)>::type,      \
+                                       &::nros::detail::strip_ref<decltype(*this)>::type::method>( \
+        (topic), (qos))
 
 /// Inside a `ComponentNode` ctor: create a repeating timer calling
 /// `void Self::method()` every `period_ms`. Derives `Self` from `this`.
