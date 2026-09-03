@@ -77,6 +77,10 @@
   },
   "c:publish": {
     "verdict": "divergence",
+    "provides": [
+      "nros_publish_raw",
+      "<pkg>_<msg>_publish"
+    ],
     "why": "CORRECTED 2026-08-26 (phase-379 W5), re-verdicted rename -> divergence. The previous text argued from `nros_publisher_publish`, a symbol that has never existed: the only occurrence of that spelling anywhere in the tree is a comment in `examples/native/c/custom-transport-loopback/src/main.c` recording that phase 212 replaced the never-defined name. Our C publish entry points are `nros_publish_raw(publisher, data, len)` for the byte form and the codegen'd per-message `<pkg>_<msg>_publish(publisher, msg)` for the typed form (`packs/c/message.h.jinja`, e.g. `std_msgs_msg_int32_publish`). BOTH already have rcl's shape -- a free function taking the publisher first -- so there is no free-function-vs-method rename here. The cited precedent does not apply either, twice over: `c:get_zero_initialized_publisher` is verdict DECLINED, i.e. it argues for KEEPING our spelling, and it declines because ours there IS method-style, which ours here is not.\nWhat actually differs is the SHAPE, and a platform constraint is why. `rcl_publish(publisher, ros_message, allocation)` is ONE type-erased function over a `const void *` ROS message plus an `rmw_publisher_allocation_t *`. We have no runtime typesupport dispatch and no allocator, so the typed publish is generated per message type (concrete struct pointer, no typesupport lookup, serializes into a `NROS_PUB_BUFFER_SIZE` stack buffer) and the type-erased publish is byte-oriented. The generated typed helper lives in a message header, which the report drops as message plumbing -- that, not an absence, is why this row reads theirs-only.\nThe `_raw` suffix on the byte form is a separate and still-open question, tracked by the SERIALIZED -> RAW pair (`c:take_serialized_message`, `c:publish_serialized_message`). It is not this row's.",
     "rename": {
       "category": "B",
@@ -342,6 +346,10 @@
   },
   "c:take": {
     "verdict": "divergence",
+    "provides": [
+      "nros_subscription_take_serialized",
+      "<pkg>_<msg>_deserialize"
+    ],
     "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the WORD moved and what is left has a constraint behind it.\nEXECUTED: `try_recv` -> `take` across C, C++ and Rust. Note the direction this went -- our own RMW vtable (`nros/rmw_vtable.h`) has spelled these slots `take` / `take_request` / `take_response` / `take_sequence` since phase-376 W3.b, so the USER API was the only layer still saying `try_recv`; the rename moves it onto the vocabulary the layer beneath it already used, which is also rcl's (`rcl_take`) and rclcpp's (`Subscription::take`). The contract collision that blocked this row is gone too: `PollingSubscription<M>::take(M&)` -- non-consuming, retained-latest, the opposite contract under the same word -- was DELETED, its `take_data()` / `take_new_data()` autoware mirrors (issue 0278) retained. Old C spellings survive as NROS_DEPRECATED_MSG `static inline` forwarders in `nros/subscription.h`, `nros/service.h` and `nros/client.h`; C++ as `[[deprecated]]` methods; Rust took a clean break with no shim, because a rename there breaks IMPLEMENTORS of the RMW traits rather than callers and a compile error is what a backend author wants.\nWHAT REMAINS, and the constraint. `rcl_take(subscription, void *ros_message, rmw_message_info_t *, rmw_subscription_allocation_t *)` is ONE type-erased function over typesupport plus an allocator. We have neither on target, so the type-erased take is byte-oriented -- `nros_subscription_take_serialized(subscription, buf, buf_len)` -- and the typed take is generated per message type. That is exactly `c:publish`'s divergence mirrored on the receive side. The `nros_subscription_` prefix is not a second difference: it is a module prefix of the construction rcl itself uses (`rcl_client_fini`), and the precedent chain (`c:get_zero_initialized_publisher`, verdict DECLINED) argues for keeping ours.",
     "rename": {
       "category": "B",
@@ -508,6 +516,10 @@
   },
   "cpp:Publisher::clear_on_new_qos_event_callback": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Publisher::on_liveliness_lost",
+      "nros::Publisher::on_offered_deadline_missed"
+    ],
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:Publisher::get_actual_qos": {
@@ -520,6 +532,10 @@
   },
   "cpp:Publisher::get_event_handlers": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Publisher::on_liveliness_lost",
+      "nros::Publisher::on_offered_deadline_missed"
+    ],
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:Publisher::get_gid": {
@@ -592,6 +608,10 @@
   },
   "cpp:Publisher::set_on_new_qos_event_callback": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Publisher::on_liveliness_lost",
+      "nros::Publisher::on_offered_deadline_missed"
+    ],
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:Publisher::setup_intra_process": {
@@ -612,6 +632,12 @@
   },
   "cpp:SerializedMessage": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Publisher::publish_raw",
+      "nros::Subscription::take_serialized",
+      "nros_publish_raw",
+      "nros_subscription_take_serialized"
+    ],
     "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), rename -> divergence. The row deferred on 'settle the word first', but the word cannot settle it: a rename needs two names, and there is no ours-side type to rename. `rclcpp::SerializedMessage` is an OWNING, GROWABLE byte buffer -- constructor, `reserve`, `capacity`, `size`, `get_rcl_serialized_message`, `release_rcl_serialized_message`, wrapping `rcl_serialized_message_t` behind an allocator. Ours is a caller-owned `(uint8_t*, size_t)` pair at every call site (`Publisher::publish_raw(const uint8_t*, size_t)`, `Subscription::try_recv_raw(uint8_t*, size_t, size_t&)`, `nros_publish_raw`), with no wrapper type, because there is no allocator to own a growable buffer and no exceptions to report a failed grow. That is a shape change with a named platform constraint, which is what divergence means.\nThe SERIALIZED -> RAW question (`c:take_serialized_message`) is about METHOD names and does not reach this row either way: whichever word wins, we still have no type here. If nano-ros ever introduces one, that is a NEW-TYPE decision made under whatever naming is in force then -- not a rename of this row. Six member rows inherit this verdict.",
     "rename": {
       "category": "B",
@@ -673,6 +699,11 @@
   },
   "cpp:Subscription::clear_on_new_qos_event_callback": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Subscription::on_liveliness_changed",
+      "nros::Subscription::on_requested_deadline_missed",
+      "nros::Subscription::on_message_lost"
+    ],
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:Subscription::create_message": {
@@ -697,6 +728,11 @@
   },
   "cpp:Subscription::get_event_handlers": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Subscription::on_liveliness_changed",
+      "nros::Subscription::on_requested_deadline_missed",
+      "nros::Subscription::on_message_lost"
+    ],
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:Subscription::get_intra_process_waitable": {
@@ -797,6 +833,11 @@
   },
   "cpp:Subscription::set_on_new_qos_event_callback": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Subscription::on_liveliness_changed",
+      "nros::Subscription::on_requested_deadline_missed",
+      "nros::Subscription::on_message_lost"
+    ],
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
   "cpp:Subscription::setup_intra_process": {

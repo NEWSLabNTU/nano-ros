@@ -931,6 +931,10 @@
   },
   "rust:ReadyKind": {
     "verdict": "divergence",
+    "provides": [
+      "nros_rmw::Subscription::has_data",
+      "nros_rmw::ServiceTrait::has_request"
+    ],
     "why": "rclrs 0.7.0's readiness tokens, returned by its wait-set so a caller can tell which primitive woke it. RFC-0002's executor drives entities directly and has no wait set to return a token from; our equivalent is `has_data`/`has_request` on the entity."
   },
   "rust:ReadyKind::for_basic": {

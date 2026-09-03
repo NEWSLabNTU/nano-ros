@@ -89,6 +89,9 @@
   },
   "c:get_node_names_with_enclaves": {
     "verdict": "divergence",
+    "provides": [
+      "nros_executor_get_node_names"
+    ],
     "why": "IMPLEMENTED as of phase-381 W4, under our receiver: see `c:executor_get_node_names`. The previous text here said the whole family was absent -- \"every one of those slots is NULL in every backend, nothing above them wraps a slot, and no C/C++/Rust entry point exists\" -- which was true when written (phase-379 W3) and is not now. The zenoh backend fills the slot, the runtime wraps it and all three languages expose it. The `_with_enclaves` form is answered by the SAME call: the visitor takes an `enclave` argument that is NULL where the backend tracks none, which is what lets one slot answer both upstream names."
   },
   "c:get_publisher_names_and_types_by_node": {
@@ -137,6 +140,10 @@
   },
   "c:service_server_is_available": {
     "verdict": "rename",
+    "provides": [
+      "nros_client_server_available",
+      "nros_client_service_is_ready"
+    ],
     "why": "the theirs half of a name we already ship twice. rcl spells it `rcl_service_server_is_available(node, client, bool*)`; ours are `nros_client_server_available` and `nros_client_service_is_ready`, and service.json's `cpp:Client::service_is_ready` records the decision that `service_is_ready` is the name to keep (rclcpp and rclrs both use it) and `c:client_server_available` the one to drop. Recorded here as the rcl-side half so the pair is complete. CORRECTED 2026-08-27 (phase-379 W5): the previous text claimed \"two real signature deviations ... no `node` parameter and no allocator\". There is ONE. `rcl_service_server_is_available` takes no allocator either -- its three parameters are `(const rcl_node_t *node, const rcl_client_t *client, bool *is_available)`, verified in `docs/reference/api-surface/rclc.json` under `rcl/graph.h` -- so there was nothing to drop, and citing it as a deviation invented an alignment we already have. The real deviation is the missing `node`, and our ABI declares it in those words: `packages/core/nros-rmw-abi/include/nros/rmw_vtable.h:571`, \"an image has no node object to pass -- the client reaches its session directly\". Note the vtable SLOT already carries rcl's exact spelling -- `service_server_is_available(const rmw_client_t *, bool *out_available)` at :575 -- so the disagreement this row records is entirely in the public C/C++/Rust entry points ABOVE the vtable, not in the ABI. This is the ONE member of rcl's `graph.h` we implement (every other member reports `theirs-only`, verdicted `gap` or `divergence`), and it is implemented by exactly one backend: zenoh, via the session's liveliness subscription (`packages/rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs:983`); Cyclone's slot is `nullptr` pending built-in topic readers (`packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp:98`), XRCE's is NULL for good (`packages/rmw/xrce/nros-rmw-xrce/src/vtable.c:80`).",
     "rename": {
       "to": null,

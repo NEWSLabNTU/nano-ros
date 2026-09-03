@@ -150,6 +150,10 @@
   },
   "cpp:Node::Node": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Executor::create_node",
+      "nros::Node::create"
+    ],
     "why": "rclcpp constructs a node from `(name[, namespace][, NodeOptions])` and expects `std::make_shared`. Ours has a default constructor and a move constructor, and the node is produced by `Executor::create_node` / `nros::Node::create` into caller-owned storage -- the `out-param-first` and `no-shared-ptr` rules, applied to construction itself. Constraint: no allocator, and RFC-0022's rule that two live node handles are a borrow error rather than a second shared_ptr."
   },
   "cpp:Node::create": {
@@ -305,6 +309,12 @@
   },
   "rust:Node": {
     "verdict": "divergence",
+    "provides": [
+      "nros::Node",
+      "nros::NodeHandle",
+      "nros::StandaloneNode",
+      "NodeCtx"
+    ],
     "why": "the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape. Note the name collision this creates: `nros::Node` is the TRAIT, while rclrs's `Node` is the handle. The handle-equivalent here is `NodeCtx`, which the facade does not export at all -- issue 0784."
   },
   "rust:Node::commands": {

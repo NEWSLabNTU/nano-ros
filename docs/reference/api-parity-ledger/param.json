@@ -37,6 +37,17 @@
   ],
   "c:add_parameter": {
     "verdict": "declined",
+    "provides": [
+      "nros_parameter_declare_bool",
+      "nros_parameter_declare_integer",
+      "nros_parameter_declare_double",
+      "nros_parameter_declare_string",
+      "nros_parameter_declare_bool_array",
+      "nros_parameter_declare_integer_array",
+      "nros_parameter_declare_double_array",
+      "nros_parameter_declare_string_array",
+      "nros_parameter_declare_byte_array"
+    ],
     "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`. rclc declares a parameter with `rclc_add_parameter(server, name, TYPE)` and gives it a value in a second `rclc_parameter_set_*` call. Ours is `nros_parameter_declare_<type>(server, name, DEFAULT)` -- one call, which is rclcpp's and rclrs's shape, so the FOLD is deliberate. The two are not one call under two names: rclc's third argument is a TYPE (`rclc_parameter_type_t`, confirmed in the recorded rclc surface), ours is a VALUE. So no target name exists for this row to carry -- which is exactly why it sat blocked, and a row that endorses our shape and can name no destination is a DECLINE, not a rename. What a user loses: the two-step idiom; a ported rclc node rewrites `rclc_add_parameter(s, \"x\", RCLC_PARAMETER_INT)` + `rclc_parameter_set_int(s, \"x\", 5)` as one `nros_parameter_declare_integer(s, \"x\", 5)`. The reader's other complaint -- that nothing here is spelled `add` -- is really the `param` vs `parameter` PREFIX question, and that is a DIFFERENT row: `c:parameter_server_t` owns it. Ours half: the `c:parameter_declare_*` family.",
     "rename": {
       "status": "resolved",
@@ -179,6 +190,10 @@
   },
   "c:parameter_server_init_default": {
     "verdict": "divergence",
+    "provides": [
+      "nros_parameter_server_init",
+      "nros_executor_register_parameter_services"
+    ],
     "why": "rclc's `rclc_parameter_server_init_default(server, node)` allocates the parameter table from `rcl_get_default_allocator()` and creates the six services in the same call. Ours is `nros_parameter_server_init(server, storage, capacity)`: the caller owns the `nros_parameter_t[]` and the count is an argument, because there is no allocator to size a table from. The service half is a separate explicit call (`c:executor_register_parameter_services`, service stage). The NAME should still change -- see `c:parameter_server_t`. LANDED 2026-08-27 (phase-379 W5): the name half is done -- ours is `nros_parameter_server_init`. What remains is the caller-owned-storage divergence, which is the verdict."
   },
   "c:parameter_server_init_with_option": {
@@ -304,6 +319,10 @@
   },
   "cpp:Parameter": {
     "verdict": "declined",
+    "provides": [
+      "nros::ParameterServer::get_parameter",
+      "nros::ParameterServer::set_parameter"
+    ],
     "why": "rclcpp's parameter VALUE OBJECT: a name plus a type-tagged value, copied around by value and the currency of `set_parameters`, `get_parameters` and the on-set callback. Every accessor on it (`as_string`, `as_double_array`, `value_to_string`, `to_parameter_msg`) returns an owned `std::string` or `std::vector`, so the type cannot exist without an allocator. Our C++ passes values through the typed template methods instead (`ParameterServer::get_parameter<T>(name, out&)`), which is the out-param form of the same read. What a user loses: a heterogeneous parameter list. Note C and Rust both DO have the record type (`nros_parameter_t`, `nros_params::Parameter`) -- theirs holds the value inline rather than owning it."
   },
   "cpp:ParameterCallbackHandle": {
@@ -480,6 +499,10 @@
   },
   "rust:ParameterKind": {
     "verdict": "declined",
+    "provides": [
+      "nros::ParameterType",
+      "nros::ParameterDescriptor::with_dynamic_typing"
+    ],
     "why": "rclrs's type discriminant, which is `rcl_interfaces`'s nine types PLUS a tenth, `Dynamic`, for a parameter allowed to change type. Ours is `ParameterType` (see `rust:ParameterType`), which mirrors `rcl_interfaces/msg/ParameterType` exactly and carries the dynamic-typing intent as a descriptor FLAG (`ParameterDescriptor::with_dynamic_typing`) rather than a tenth variant, so the enum stays byte-identical to what goes on the wire. What a user loses: a type-level distinction between a fixed and a dynamic parameter."
   },
   "rust:ParameterOptions": {
@@ -517,6 +540,9 @@
   },
   "rust:ParameterValueError": {
     "verdict": "declined",
+    "provides": [
+      "nros::ParameterError"
+    ],
     "why": "RE-VERDICTED 2026-08-26 (phase-379 W5), was `rename`, and the old reason was wrong on two counts. rclrs's set-time failure enum is exactly `OutOfRange`, `TypeMismatch`, `ReadOnly` (recorded surface: rclrs 0.7.0, `rclrs/src/parameter.rs`). It is one of rclrs's TWO parameter error enums -- the other is `DeclarationError` (`AlreadyDeclared`, `NoValueAvailable`, `OverrideValueTypeMismatch`, `PriorValueTypeMismatch`, `InitialValueOutOfRange`, `InvalidRange`). Ours is ONE `ParameterError` (`packages/core/nros-params/src/typed.rs:18`) whose seven variants span both: those three, plus `InvalidRange` -- which is rclrs's DECLARATION error, and ours is raised by `ParameterBuilder::integer_range`/`float_range` -- plus `NotFound`, plus `StorageFull` and `StringConversion`, the two failures a fixed-capacity `heapless` store has and an allocating one does not. So (a) it is NOT 'the same concept under a different name': our declare path already returns it (`ParameterBuilder::mandatory`/`optional`/`read_only` -> `Result<_, ParameterError>`), and a type called `ParameterValueError` would report a full store and a malformed range as 'value' errors. And (b) it is not 'no platform reason': two of the four extra variants are the capacity constraint made visible, the same one `rust:ParameterValue::*` and `rust:ParameterVariant::*` record. Taking rclrs's narrow name would also fight `rust:DeclarationError`, the open gap for the other half of rclrs's split. What a user loses: that split -- a type-level distinction between a declare-time and a set-time failure -- which is recorded as the `rust:DeclarationError` gap, not here. Ours half: `rust:ParameterError`.",
     "rename": {
       "status": "resolved",
