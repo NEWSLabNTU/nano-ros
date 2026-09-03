@@ -161,18 +161,6 @@
     "bucket": "ours-only",
     "why": "the deprecated `nros_param_*` spelling of `c:parameter_set_*`. DEPRECATED ALIAS, phase-379 W5 (2026-08-27). The live spelling is `nros_parameter_set_*`; this one survives in the public surface as a `NROS_DEPRECATED_MSG` `static inline` forwarder in `nros/parameter.h`, so an out-of-tree C node that still names it keeps compiling and gets a diagnostic that names its replacement. Recorded rather than left implicit for the same reason as `rust:BoardConfig::zenoh_locator` in boot.json: a deprecated item is still API a reader can find, and this one teaches the reader the abbreviation the rename existed to remove. Source compatibility only -- the forwarder has no external linkage, so `nros_parameter_set_*` is the sole exported symbol and an object file built against the old one must be recompiled. Removal is the follow-up. Substantive verdict moved to `c:parameter_set_*`."
   },
-  "c:parameter_callback_t": {
-    "verdict": "rename",
-    "why": "rclc's `rclc_parameter_callback_t`; ours is `nros_parameter_callback_t` with the same accept/reject `bool` return. Same `param`/`parameter` split as `c:parameter_server_t`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_callback_t`."
-  },
-  "c:parameter_get_bool": {
-    "verdict": "rename",
-    "why": "rclc spells it `rclc_parameter_get_bool`; ours is `nros_parameter_get_bool`. See `c:parameter_server_t` for the `param`/`parameter` split. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_get_bool`."
-  },
-  "c:parameter_get_double": {
-    "verdict": "rename",
-    "why": "rclc spells it `rclc_parameter_get_double`; ours is `nros_parameter_get_double`. See `c:parameter_server_t` for the `param`/`parameter` split. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_get_double`."
-  },
   "c:parameter_get_int": {
     "verdict": "declined",
     "why": "rclc spells it `rclc_parameter_get_int`; ours is `nros_parameter_get_integer`. See `c:parameter_server_t` for the `param`/`parameter` split. Ours also spells the 64-bit integer `integer` where rclc says `int`, matching `rcl_interfaces` and our own `ParameterType::Integer`. RE-VERDICTED 2026-08-27 (phase-379 W5), was `rename`. The `param` -> `parameter` half of this row LANDED: ours is `nros_parameter_get_integer` now. What is left is the only thing this row can still be about, and it is a difference we KEEP: rclc abbreviates the 64-bit integer to `int`, and we spell it `integer` because that is what `rcl_interfaces` calls the type and what our own `ParameterType::Integer`, `nros_parameter_type_t::NROS_PARAMETER_INTEGER` and the C++/Rust surfaces call it. Renaming ours to `int` would make the C surface disagree with our other two languages and with the message definitions, to match one abbreviation. So there is no destination left for this row to carry, which -- exactly as for `c:add_parameter` -- makes it a DECLINE rather than a rename. What a user loses: nothing but the spelling; `rclc_parameter_get_int(s, \"x\", &v)` is `nros_parameter_get_integer(s, \"x\", &v)`. Ours: `c:parameter_get_integer`.",
@@ -196,18 +184,6 @@
   "c:parameter_server_init_with_option": {
     "verdict": "divergence",
     "why": "the options-taking form of `c:parameter_server_init_default`; see also `c:parameter_options_t`."
-  },
-  "c:parameter_server_t": {
-    "verdict": "rename",
-    "why": "rclc spells the parameter server `rclc_parameter_server_t`; ours was `nros_param_server_t`. The abbreviation was ours alone and it was not even consistent inside our own C header: the FUNCTIONS said `param` (`nros_param_declare_bool`) while the TYPES they operate on said `parameter` (`nros_parameter_t`, `nros_parameter_value_t`, `nros_parameter_type_t`), so `nros_param_get_type()` returned an `nros_parameter_type_t`. (Past tense as of the LANDED note below; the old spellings in this sentence are the pre-rename ones, quoted deliberately.) C++ and Rust both spell it out (`nros::ParameterServer`, `nros_params::ParameterServer`). Nothing about an RTOS needs the five saved characters. Phase 379 W3. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_server_t`."
-  },
-  "c:parameter_set_bool": {
-    "verdict": "rename",
-    "why": "the setter half; see `c:parameter_get_bool`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_set_bool`."
-  },
-  "c:parameter_set_double": {
-    "verdict": "rename",
-    "why": "the setter half; see `c:parameter_get_double`. LANDED 2026-08-27 (phase-379 W5). Ours is now spelled the same way, so this row and its ours-only half have COLLAPSED -- the correlator reports the pair as `same` and neither side needs a verdict to explain it. The row is kept for the history. The old `nros_param_*` spelling still exists as a deprecated forwarder, recorded at `c:param_set_double`."
   },
   "c:parameter_set_int": {
     "verdict": "declined",
@@ -571,10 +547,6 @@
   "rust:Parameters": {
     "verdict": "gap",
     "why": "the handle `Node::use_undeclared_parameters` returns, with `get`/`set` covered by this row. Ours is named `UndeclaredParameters` and is not exported. This is not a missing capability, it is an unexported one: `packages/api/nros/src/lib.rs` re-exports ten `nros_params` items and stops, so a user of the `nros` facade cannot name it. Phase 379 W3. Ours is also read-only where rclrs's has `set`."
-  },
-  "rust:QoSProfile::parameter_events_default": {
-    "verdict": "rename",
-    "why": "rclrs spells the preset `QoSProfile::parameter_events_default`; ours is `QosSettings::parameter_events_default` -- the same words on a type we spell `QosSettings` where ROS 2 spells `QoSProfile`. The type rename belongs to the qos stage; see the service stage's `rust:QoSProfile::services_default`. Ours half: `rust:QosSettings::parameter_events_default`. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::parameter_events_default`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::parameter_events_default` was deleted; the text above records the state BEFORE the rename and is kept as history."
   },
   "rust:QoSProfile::parameters_default": {
     "verdict": "rename",

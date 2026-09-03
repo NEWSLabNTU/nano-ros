@@ -527,16 +527,6 @@
     "verdict": "declined",
     "why": "our RMW/platform seam is not reachable from an entity; see `c:node_get_rmw_handle`."
   },
-  "cpp:Timer::is_canceled": {
-    "verdict": "rename",
-    "why": "LANDED 2026-08-26 (phase-379 W5) — C++ now spells it `is_canceled`, so ours and theirs carry the same name and this row is satisfied. Two internal symbols moved with it, or the header would have stopped matching the shim: the private FFI export `nros_cpp_timer_is_cancelled` -> `nros_cpp_timer_is_canceled` (cbindgen-regenerated in `nros_cpp_ffi.h`) and `Executor::timer_is_cancelled` -> `timer_is_canceled` in `nros-node/src/executor/spin.rs`. The ours-only half of this pair (`cpp:Timer::is_cancelled`) is gone: renaming the item merges the two rows into this one. rcl, rclcpp and our own Rust (`Timer::is_canceled`) all use ONE `l`. Our C++ spells it `Timer::is_cancelled`. A spelling, in one of three languages, against every other spelling in the tree. Phase 379 W5.",
-    "rename": {
-      "from": "is_cancelled",
-      "to": "is_canceled",
-      "status": "landed",
-      "category": "A"
-    }
-  },
   "cpp:Timer::is_ready": {
     "verdict": "gap",
     "why": "whether the timer is due to fire. Rust has `Timer::is_ready`; C++ and C do not. See `c:timer_is_ready`."

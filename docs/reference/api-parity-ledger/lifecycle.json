@@ -291,16 +291,6 @@
     "verdict": "gap",
     "why": "issue 0789 gave `nros::Node` a clock (`get_clock()` / `now()`) and this row did not close with it: our `LifecycleNode` is not a Node. It wraps the executor's REP-2002 state machine and holds no node handle, so there is nothing for the accessor to reach. Closing it means deciding whether `LifecycleNode` owns a node -- a lifecycle question, not a clock one. Phase 379 W3."
   },
-  "cpp:LifecycleNode::get_current_state": {
-    "verdict": "rename",
-    "why": "LANDED 2026-08-26 (phase-379 W5, group A) — every name this row named has moved, in one commit: C++ `LifecycleNode::get_state()` -> `get_current_state()`, C `nros_lifecycle_get_state` -> `nros_lifecycle_get_current_state` and `nros_executor_lifecycle_get_state` -> `nros_executor_lifecycle_get_current_state` (cbindgen-regenerated in `nros_generated.h`), plus the private C++ FFI `nros_cpp_lifecycle_get_state` -> `nros_cpp_lifecycle_get_current_state`. Rust's `LifecyclePollingNode::state()` deliberately did NOT move: RFC-430 drops `get_`, so Rust was already correct. The ours-only half of this pair (`cpp:LifecycleNode::get_state`) is merged into this row. The paragraph that follows is the row's ORIGINAL reasoning and describes the PRE-rename tree. rclcpp spells it `get_current_state()`; we spell it `get_state()`. Nothing about an RTOS asks for the shorter name, and a ported rclcpp lifecycle node calls the longer one. OUR LANGUAGES DISAGREE, three ways: C++ `get_state()`, C `nros_lifecycle_get_state` / `nros_executor_lifecycle_get_state`, Rust `LifecyclePollingNode::state()`. Rust's is correct for Rust (RFC-430 drops `get_`); C and C++ should both read `get_current_state`. Phase 379 W3.",
-    "rename": {
-      "from": "get_state",
-      "to": "get_current_state",
-      "status": "landed",
-      "category": "A"
-    }
-  },
   "cpp:LifecycleNode::get_logger": {
     "verdict": "divergence",
     "why": "`nros::Node::get_logger` exists and matches rclcpp's. Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
@@ -408,17 +398,6 @@
   "cpp:LifecycleNode::register_on_shutdown": {
     "verdict": "gap",
     "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_shutdown` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
-  },
-  "cpp:LifecycleNode::trigger_transition": {
-    "verdict": "rename",
-    "why": "LANDED 2026-08-27 (phase-379 W5) — `LifecycleNode::trigger(uint8_t)` is now the PUBLIC `LifecycleNode::trigger_transition(uint8_t)` (lifecycle.hpp). The rename alone would have changed nothing a caller can observe, because the member was `protected`: the fix is the visibility, with the rename riding along. The five named helpers (`configure()`…`shutdown()`) were the only callers in the tree — no example, test or subclass touched it — and were repointed at the new name; they keep their rclcpp spellings. A `[[deprecated]]` `protected` forwarder named `trigger` is kept, NOT because an external caller can exist (none can) but because inheriting `LifecycleNode` is the class's whole purpose and a user subclass calling `trigger(id)` is a real case; being `protected` it is outside the extracted surface, so it grows no ledger row of its own. C and Rust did NOT move: C's `nros_lifecycle_change_state` is rclc's own word and correct for that language, and Rust's `LifecyclePollingNode::trigger_transition` was already public and already correctly named. The paragraph that follows is the row's ORIGINAL reasoning and describes the PRE-change tree. rclcpp's public `trigger_transition(id)` is how a ported node drives a transition it does not have a named helper for. Ours exists but is spelled `trigger(uint8_t)` and is `protected`, so it is not callable from outside the class at all -- a user gets only the five named helpers (`configure()`...`shutdown()`, which DO match rclcpp). OUR LANGUAGES DISAGREE: C says `nros_lifecycle_change_state` (rclc's word), Rust says `LifecyclePollingNode::trigger_transition` (rclcpp's word, and public), C++ says `trigger` and hides it. Phase 379 W3.",
-    "rename": {
-      "from": "trigger",
-      "to": "trigger_transition",
-      "category": "C",
-      "status": "landed",
-      "actual_change": "VISIBILITY, with a rename riding along — `trigger()` was `protected` at lifecycle.hpp:163, so renaming alone would have left a ported node just as unable to call it. Moved to the public section AND spelled `trigger_transition`; deprecated `protected` forwarder retained for derived classes. No C or Rust change."
-    }
   },
   "cpp:LifecyclePublisher": {
     "verdict": "gap",

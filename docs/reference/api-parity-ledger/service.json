@@ -928,10 +928,6 @@
     "verdict": "gap",
     "why": "ROS 2 gives the parameter services their own profile \u2014 `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
   },
-  "rust:QoSProfile::services_default": {
-    "verdict": "rename",
-    "why": "rclrs spells the preset `QoSProfile::services_default`; ours is `QosSettings::services_default` -- the same words on a type we spell `QosSettings` where ROS 2 spells `QoSProfile`. The type rename belongs to the qos stage; this row records that the preset itself lines up. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::services_default`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::services_default` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
   "rust:RawServiceCallback": {
     "verdict": "divergence",
     "why": "the raw-bytes callback type; see the pubsub stage's `rust:RawSubscriptionCallback`."
