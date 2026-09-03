@@ -58,8 +58,21 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   30 s listener wait is the reported ~65 s exactly. The service and action
   shapes use `collect_until` and let the server live, which is why they pass on
   the same host.
-  **Next: rebuild the FreeRTOS pubsub fixtures, confirm the bake reads 60000,
-  re-run the cell.** Do not trust a FRESH verdict from the probe here.
+  **VERIFIED 2026-09-03: rebuilt, bake confirmed 60000, cell is GREEN — 9 of 9
+  across all three languages, 12 published / 12 heard, ~35.4 s each.** The
+  symptom does not reproduce.
+  **But the attribution to 0906 is REFUTED, by counterfactual rather than by
+  doubt.** Putting the lease back to 10000 and rebuilding still passes 6 of 6.
+  The cell kills its talker 15 s in, so it emits 12 publishes and the first
+  lease lapse (~20 s of session life) never arrives — the constant is invisible
+  here. The rebuild fixed it; 0906 did not. The real cause is somewhere in the
+  twenty days Aug 20 -> Sep 3 and is NOT identified (best untested candidate:
+  `7cb213c43`, lan9118 RX driven from the interrupt, which fits "delivers by
+  hand, nothing under the harness").
+  **Corollary that outlives the issue: this cell can never regression-test
+  0906**, and nothing else currently does.
+  NOT closed on "it passes now" — that is the reasoning that let the
+  stale-binary story stand in the first place.
   The `queue.c:1673` assert this issue also records is **issue 0899, already
   resolved** — the same 0906 session churn one layer down.
 * **W2 — [issue 0867](../issues/archived/0867-nuttx-c-action-goal-send-times-out.md).
@@ -169,11 +182,12 @@ server ordering cannot reach it. The phase does not shrink.
 Three of the five were unreadable rather than unfixed:
 
 * W2 was fixed on 2026-08-28 and nobody closed it.
-* W1's evidence predates issue 0906's fix by one day, and every built FreeRTOS
-  fixture still bakes the pre-fix `Z_TRANSPORT_LEASE 10000` while the source
-  says 60000 — with a staleness probe that reports FRESH, because the constant
-  lives in a build-script DEPENDENCY crate that never enters
-  `cargo:rerun-if-changed`.
+* W1's fixtures were baked 2026-08-20 and the staleness probe reported FRESH
+  for all of them, because the constant lives in a build-script DEPENDENCY
+  crate that never enters `cargo:rerun-if-changed` (#1005). A rebuild makes the
+  cell green — though NOT, as first written here, because of issue 0906: the
+  counterfactual passes too, so the fix is real and unattributed. And the cell
+  cannot see that constant in either direction, which is the sharper half.
 * W3 could not be read at all: NuttX had no `printk` arm, so every shim
   diagnostic compiled away.
 * W5's own mitigation had been unreachable for nine days behind a

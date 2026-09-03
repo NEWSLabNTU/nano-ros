@@ -83,6 +83,20 @@ Not settled, and worth choosing rather than patching the one constant:
 Whichever lands, the acceptance is the case above: change
 `Z_TRANSPORT_LEASE_MS`, do not rebuild, and require the probe to report STALE.
 
+## Confirmed independently 2026-09-03
+
+A sanctioned `just build freertos` flipped every live FreeRTOS zenoh fixture
+from `10000` to `60000`. The binaries it replaced were dated **2026-08-20**, ten
+days before the fix that changed the constant, and the probe reported FRESH for
+all of them. Measured, not inferred.
+
+**And a second gap found while verifying it:** the cell that would notice the
+old value cannot. `test_rtos_pubsub_e2e` FreeRTOS kills its talker after 15 s,
+so it emits 12 publishes and the first lease lapse (~20 s of session life) never
+arrives — a build baked at `10000` passes it 6 of 6. So the constant is
+unprotected in BOTH directions: the probe cannot see it change, and the cell
+cannot see it be wrong. Fixing the probe alone leaves the second half open.
+
 ## Not covered
 
 Whether other build-script dependency crates feed other fixture families the

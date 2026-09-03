@@ -162,3 +162,79 @@ pin is well past it.
 If green: close this as fixed by 0906 and file the `wait_for_output` talker-kill
 separately. If still red: raise `talker_window` to 60 s, which separates
 "delivery is broken" from "the publisher was killed first" in one run.
+
+## VERIFIED 2026-09-03: the cell is GREEN — and my attribution above is WRONG
+
+Rebuilt via the sanctioned `just build freertos` (exit 0), bake verified BEFORE
+running anything, then `test_rtos_pubsub_e2e` FreeRTOS solo,
+`--test-threads 1 --retries 0`, 3 rounds x 3 languages.
+
+**9 of 9 PASS.** C, C++ and Rust, 12 published / 12 heard every run, ~35.4 s
+each, zero message loss, no STALE verdict, no panic. **0877's symptom does not
+reproduce.**
+
+The bake, measured before and after:
+
+| | before | after |
+| --- | --- | --- |
+| C++ fixtures | `10000` x12, mtime **2026-08-20 22:31** | `60000` x12, 19:08 |
+| Rust fixtures | `10000`, mtime **2026-08-20 21:53** | `60000`, 19:02 |
+
+So issue 1005 is confirmed independently: every live FreeRTOS zenoh fixture was
+baked ten days before the 0906 fix and the probe never said so. (The `10000`
+copies still on disk are dead fingerprint dirs from Aug 20; nothing links them.)
+
+### RETRACTION: this is NOT attributable to 0906
+
+The section above says the report "probably predates its own fix" and names
+0906. **The green is real; that attribution is refuted**, and by measurement
+rather than by doubt.
+
+Counterfactual run: `Z_TRANSPORT_LEASE_MS` put back to `10_000`, fixtures
+rebuilt, bake verified to read `10000`, C and C++ run 3x each.
+
+    6 of 6 PASS, 12 published / 12 heard — identical to the fixed build.
+
+The lease constant is **invisible to this cell**, and the arithmetic says why:
+
+    listener t=0 -> stabilization_delay 20 s -> talker t=20
+    -> wait_for_output(15 s) SIGKILLs it at t~35
+
+The talker emits exactly **12** publishes at 1 Hz before it dies. The first
+lease lapse is at ~20 s of session life. **The window closes before the lapse
+can happen.**
+
+So the rebuild fixed it and 0906 did not. Something else in the twenty days
+between Aug 20 and Sep 3 is the real cause. Candidates, INFERRED and untested —
+`7cb213c43 feat(lan9118): drive RX from the interrupt, not a 5 ms poll (#0917)`
+is the best fit for "delivers by hand, nothing under the harness", with
+`5e147bee3` (#0899/#0906 lease task freeing the transport under the publisher),
+`34d0a22de` (#0924) and the lwIP FULLDUPLEX / per-task netconn changes behind
+it. Bisecting is separate work and is NOT done.
+
+### A corollary that outlives this issue
+
+**This cell can never regression-test 0906.** It kills the publisher before the
+lease can lapse, so the constant it was supposed to protect is unobservable
+here. Whatever gate guards that fix, it is not this one — and nothing currently
+does.
+
+### The talker kill, now quantified
+
+Real and independent of 0877. The 15 s `wait_for_output` window
+(`rtos_e2e.rs:725`, `qemu.rs:448` `kill_process_group`) truncates the talker at
+exactly 12 messages, every run, all three languages: the cell exercises twelve
+seconds of a free-running publisher. It was not raised here — that escalation
+was conditioned on the cell failing, and it passed.
+
+**Correction to the timeline in the section above:** the predicted `verdict
+t~65` no longer holds. Every run finished in 35.4 s. The ~65 s in the original
+report is not what this cell does today.
+
+### Disposition
+
+The symptom is gone and the cell is green, but the CAUSE is unidentified, so
+this is not being closed on "it passes now" — that is precisely the reasoning
+that let the stale-binary story stand. It stays open pending either a bisect
+across the Aug-20..Sep-3 range or a decision that a green cell with an
+unattributed fix is acceptable to close.
