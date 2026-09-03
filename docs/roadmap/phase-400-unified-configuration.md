@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-09-01): W2-W5, W7 and W8 done; W6's `executor`, `transport`,
-`zenoh.tx`, `memory`, `params` and `rmw` tenants done, its remaining tenants and W1
+`zenoh.tx`, `memory`, `params`, `rmw` and `net` tenants done, its remaining tenants and W1
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
@@ -312,6 +312,35 @@ census fix below), and its largest families are:
 | platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
+
+### The `net` tenant — done, and the reason the reader moved
+
+Five smoltcp knobs — the TCP and UDP socket pools, the per-socket buffer, and
+the connect/socket timeouts — now resolve through the ladder: `NetKnobs`,
+`[knobs.net]`, `BuildRungs::net_rungs()`, and one reader in
+`packages/drivers/net/nros-smoltcp/build.rs`.
+
+**This tenant is why `nros-platform-config` exists.** `nros-smoltcp` could not
+depend on `nros-board-common`: cargo counts an optional dependency when it looks
+for cycles, and the board crate reaches back through `nros-platform ->
+nros-platform-esp32-qemu -> nros-smoltcp`. Every driver was locked out of the
+ladder. The reader moved to a leaf crate, and this is the first tenant to use it.
+
+Two things the rung does NOT flatten. `max_udp_sockets`'s builtin is
+FEATURE-derived (1 brokered, 4 with `rtps`), and it stays that way — a
+descriptor naming the knob outranks it, but a board that says nothing still gets
+the feature-appropriate number rather than a constant. And the deprecated
+`ZPICO_SMOLTCP_*` spellings rank WITH env, above the rungs, which is what a
+deprecated front-end should do.
+
+Verified against the build script's own emitted constants:
+
+    builtin        1 / 1 / 2048 / 10000
+    platform rung  3 / 2 /  512 /   250
+    env wins       MAX_SOCKETS=4, the rest keep the rung
+    legacy alias   ZPICO_SMOLTCP_BUFFER_SIZE=99 also outranks the rung
+
+Backlog after this: **19**, from 24.
 
 ### The `rmw` tenant — done, minus the one phase-412 took
 

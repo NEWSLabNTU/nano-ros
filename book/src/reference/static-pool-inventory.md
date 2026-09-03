@@ -55,11 +55,11 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_RUNTIME_MAX_CLASS_INSTANCES` | 2 | `packages/api/nros` |
 | `NROS_RUNTIME_MAX_COMPONENTS` | 4 | `packages/api/nros` |
 | `NROS_SERVICE_TIMEOUT_MS` | 30000 | `packages/rmw/zenoh/nros-rmw-zenoh` |
-| `NROS_SMOLTCP_BUFFER_SIZE` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:31` | `packages/drivers/net/nros-smoltcp` |
-| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:36` | `packages/drivers/net/nros-smoltcp` |
-| `NROS_SMOLTCP_MAX_SOCKETS` | 1 | `packages/drivers/net/nros-smoltcp` |
-| `NROS_SMOLTCP_MAX_UDP_SOCKETS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:26` | `packages/drivers/net/nros-smoltcp` |
-| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:41` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_BUFFER_SIZE` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:57` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_CONNECT_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:62` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_MAX_SOCKETS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:44` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_MAX_UDP_SOCKETS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:52` | `packages/drivers/net/nros-smoltcp` |
+| `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:67` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
 | `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:259` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
 | `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:488` | `packages/rmw/zenoh/nros-zpico-build` |

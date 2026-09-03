@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 23
+LADDER_FLOOR = 28
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -192,11 +192,11 @@ KNOB_CLASS = {
     "NROS_RMW_MAX_NODES": ("ladder", "rmw tenant"),
     "NROS_RMW_SUBSCRIBER_SLOTS": ("derived", "phase-412 W1 — COUNT_SUBSCRIPTION"),
     "NROS_RMW_MESSAGE_INFO_SLOTS": ("ladder", "rmw tenant"),
-    "NROS_SMOLTCP_MAX_SOCKETS": ("sizing", "driver pool; candidate net tenant"),
-    "NROS_SMOLTCP_MAX_UDP_SOCKETS": ("sizing", "driver pool; candidate net tenant"),
-    "NROS_SMOLTCP_BUFFER_SIZE": ("sizing", "driver buffer; candidate net tenant"),
-    "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": ("sizing", "driver timeout; candidate net tenant"),
-    "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": ("sizing", "driver timeout; candidate net tenant"),
+    "NROS_SMOLTCP_MAX_SOCKETS": ("ladder", "net tenant"),
+    "NROS_SMOLTCP_MAX_UDP_SOCKETS": ("ladder", "net tenant"),
+    "NROS_SMOLTCP_BUFFER_SIZE": ("ladder", "net tenant"),
+    "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": ("ladder", "net tenant"),
+    "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": ("ladder", "net tenant"),
     "NROS_XRCE_STREAM_HISTORY": ("sizing", "xrce stream depth; candidate rmw tenant"),
     "ZPICO_SUBSCRIBER_RING_DEPTH": ("sizing", "SPSC ring depth (count, not a byte size)"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
@@ -257,6 +257,7 @@ def ladder_knobs():
         "MemoryKnobs",
         "ParamKnobs",
         "RmwKnobs",
+        "NetKnobs",
     ):
         fields = _struct_fields(src, struct)
         if fields:
