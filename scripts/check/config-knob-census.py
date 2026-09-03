@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 37
+LADDER_FLOOR = 42
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -95,9 +95,9 @@ KNOB_CLASS = {
     "NROS_ZEPHYR_HEAP_SIZE": ("sizing", "BLOCKED: the ladder crate depends on nros-platform, so the rungs are a cycle away. Kconfig already serves the rung on Zephyr"),
     "NROS_FREERTOS_HEAP_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_FREERTOS_APP_STACK_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
-    "NROS_KEYEXPR_STRING_SIZE": ("sizing", "keyexpr bound"),
-    "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape"),
-    "NROS_XRCE_CUSTOM_TRANSPORT_MTU": ("sizing", "transport MTU; numeric, read as a string"),
+    "NROS_KEYEXPR_STRING_SIZE": ("ladder", "zenoh.limits tenant"),
+    "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape. TWO readers (zenoh build + the C emitter), so it needs one emission point before a rung"),
+    "NROS_XRCE_CUSTOM_TRANSPORT_MTU": ("ladder", "xrce tenant"),
     "ZPICO_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # --- infra: not knobs ---
@@ -130,7 +130,7 @@ KNOB_CLASS = {
     "ZPICO_GET_POLL_INTERVAL_MS": ("ladder", "zenoh.wire tenant"),
     "ZPICO_READ_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
     "ZPICO_LEASE_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
-    "NROS_LET_BUFFER_SIZE": ("sizing", "logical-execution-time buffer"),
+    "NROS_LET_BUFFER_SIZE": ("ladder", "runtime tenant"),
     # --- infra ---
     "NROS_DECLARED_INFRA_QUERYABLES": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_SERVICE_SERVERS": ("infra", "a COUNT the resolver passes down, not a knob"),
@@ -212,8 +212,8 @@ KNOB_CLASS = {
     "NROS_SMOLTCP_BUFFER_SIZE": ("ladder", "net tenant"),
     "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": ("ladder", "net tenant"),
     "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": ("ladder", "net tenant"),
-    "NROS_XRCE_STREAM_HISTORY": ("sizing", "xrce stream depth; candidate rmw tenant"),
-    "ZPICO_SUBSCRIBER_RING_DEPTH": ("sizing", "SPSC ring depth (count, not a byte size)"),
+    "NROS_XRCE_STREAM_HISTORY": ("ladder", "xrce tenant"),
+    "ZPICO_SUBSCRIBER_RING_DEPTH": ("ladder", "zenoh.limits tenant"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
     "NROS_HOME": ("infra", "path"),
     "NROS_MODEL_DIR": ("infra", "path"),
@@ -275,6 +275,8 @@ def ladder_knobs():
         "NetKnobs",
         "RuntimeKnobs",
         "WireKnobs",
+        "XrceKnobs",
+        "ZenohLimitKnobs",
     ):
         fields = _struct_fields(src, struct)
         if fields:
@@ -308,6 +310,9 @@ READ_CALLEES = {
     # Option: for an entity COUNT, absence and zero are different answers and
     # a default would erase the difference.
     "env_opt_usize",
+    # phase-400 W6. `env_usize` with a ladder rung between the env and the
+    # builtin.
+    "env_usize_rung",
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",

@@ -256,7 +256,14 @@ fn main() {
     // targets that don't run server-side action callbacks can drop
     // from the default 16 (= 64 KiB per-session output buffer) to 8
     // or 4. `internal.h` enforces `>= 4`.
-    if let Some(v) = knob("NROS_XRCE_STREAM_HISTORY") {
+    // phase-400 W6 — the `[knobs.xrce]` rungs sit under the env front-end and
+    // above the builtins below.
+    let xrce_rungs = nros_platform_config::platform_config::BuildRungs::from_build_env()
+        .map(|r| r.xrce_rungs())
+        .unwrap_or_default();
+    if let Some(v) = knob("NROS_XRCE_STREAM_HISTORY")
+        .or_else(|| xrce_rungs.stream_history.map(|n| n.to_string()))
+    {
         let n: u32 = v
             .parse()
             .unwrap_or_else(|_| panic!("NROS_XRCE_STREAM_HISTORY='{}' is not a number", v));
@@ -392,8 +399,17 @@ fn generate_uxr_config(
             // CUSTOM_TRANSPORT_MTU × STREAM_HISTORY`) by an order of
             // magnitude. Min 128 (smaller breaks the framing/header
             // assumptions); default tracks XRCE_TRANSPORT_MTU_DEFAULT.
-            &env::var("NROS_XRCE_CUSTOM_TRANSPORT_MTU")
-                .unwrap_or_else(|_| XRCE_TRANSPORT_MTU_DEFAULT.into()),
+            // phase-400 W6 — env, then the `[knobs.xrce]` rung, then the
+            // default. `knob` rather than a bare `env::var` so the Kconfig
+            // front-end reaches this the way it reaches the pool sizes above
+            // (issue 0460).
+            &knob("NROS_XRCE_CUSTOM_TRANSPORT_MTU")
+                .or_else(|| {
+                    nros_platform_config::platform_config::BuildRungs::from_build_env()
+                        .and_then(|r| r.xrce_rungs().custom_transport_mtu)
+                        .map(|n| n.to_string())
+                })
+                .unwrap_or_else(|| XRCE_TRANSPORT_MTU_DEFAULT.into()),
         )
         .replace("@UCLIENT_SHARED_MEMORY_MAX_ENTITIES@", "4")
         .replace("@UCLIENT_SHARED_MEMORY_STATIC_MEM_SIZE@", "10")

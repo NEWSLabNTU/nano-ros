@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
-`zenoh.tx`, `memory`, `params`, `rmw`, `net`, `runtime` and `zenoh.wire` tenants done, its remaining tenants
+`zenoh.tx`, `memory`, `params`, `rmw`, `net`, `runtime`, `zenoh.wire`, `xrce` and `zenoh.limits` tenants done, its remaining tenants
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
@@ -340,6 +340,32 @@ census fix below), and its largest families are:
 | platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
+
+### The singletons — five migrated, three with reasons not to
+
+`[knobs.xrce]` (`custom_transport_mtu`, `stream_history`),
+`[knobs.zenoh.limits]` (`keyexpr_string_size`, `subscriber_ring_depth`) and the
+LET buffer folded into `[knobs.runtime]`.
+
+**Three did NOT migrate, and each refusal is the interesting part.**
+
+`NROS_SERVICE_TIMEOUT_MS` has TWO readers by design — `nros-rmw-zenoh/build.rs`
+emits a Rust const and `nros-build-helpers`'s C emitter emits a `#define`, and a
+comment asked the next editor to keep the defaults equal. I migrated it, and
+`check-knob-single-reader` refused: a migrated knob gets exactly one reader, and
+that rule is precisely what stops the pair drifting. Both would have resolved
+through the same ladder and so could not disagree — but the gate cannot know
+that, and weakening it to say so trades a checked invariant for a comment.
+Migrating this knob means giving the pair ONE emission point first, which is a
+change to where the value is emitted rather than to the ladder.
+
+`NROS_ENTRY_SPIN_MS` is read by a proc macro, the C++ library and a C header.
+Same shape, three readers, and no single build script to own it.
+
+The two transport-band priorities stay out for the reasons in the `zenoh.wire`
+section above.
+
+Backlog after this: **5**, from 10.
 
 ### The `zenoh.wire` tenant — done, and the two priorities left out
 

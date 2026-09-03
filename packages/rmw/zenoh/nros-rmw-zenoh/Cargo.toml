@@ -152,6 +152,8 @@ log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 
 [build-dependencies]
+# phase-400 W6 — the ladder rungs, from the LEAF crate.
+nros-platform-config = { path = "../../../tooling/nros-platform-config" }
 # issue 0460 — `ZPICO_{SUBSCRIBER,SERVICE}_BUFFER_SIZE` are Kconfig knobs on
 # Zephyr, and the Rust lane never sees the cmake `set(ENV{...})` exports. One
 # spelling of the `$DOTCONFIG` fallback, shared with `nros-zpico-build`.
