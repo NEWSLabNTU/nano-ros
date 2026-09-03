@@ -1,0 +1,5 @@
+# Bench-only: a reply whose size the caller picks, so the codec bench can
+# sweep payload size. AddTwoInts carries a fixed int64 and cannot.
+int64 count
+---
+int64[] sums
