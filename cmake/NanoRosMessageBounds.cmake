@@ -789,6 +789,24 @@ function(_nros_bounds_join_subscribed _frag _ceiling
             list(APPEND _unpriced "${_t}")
             continue()
         endif()
+        # A subscribed type that is `unbounded`/`unresolved` has no `_RX` worth
+        # reading, and reading one anyway would size a payload class from a
+        # blank or a placeholder -- the silent BufferTooSmall this module exists
+        # to prevent.
+        #
+        # Today this cannot fire: the closure-wide open-type check above
+        # `return()`s before this function is called, and the subscribed set is
+        # a SUBSET of the closure. That is exactly why the check belongs here.
+        # The invariant lives in another block, thirty lines up, and nothing
+        # states the dependency -- so the first person to make the payload
+        # classes derivable on an image whose CLOSURE has an unbounded type
+        # (issue 0963's "narrow the closure" remedy, which is the whole point of
+        # this join) removes the guard without knowing it was one.
+        if(NOT NROS_MESSAGE_BOUND_${_key}_STATE STREQUAL "bounded")
+            list(APPEND _open_subscribed
+                 "${_t} (${NROS_MESSAGE_BOUND_${_key}_STATE})")
+            continue()
+        endif()
         set(_rx "${NROS_MESSAGE_BOUND_${_key}_RX}")
         if(_rx GREATER _ceiling)
             list(APPEND _large_types "${_t}=${_rx}")
@@ -807,6 +825,20 @@ function(_nros_bounds_join_subscribed _frag _ceiling
     # (`BoundInventory::record_message` is called for `.msg` and for nothing
     # else), so a `pkg/srv/Name_Request` or a `pkg/action/Name_Result` has no
     # entry however well-formed the declaration is.
+    # Checked BEFORE `_unpriced` because it is the more specific answer: a type
+    # this image receives and this tree cannot bound is a different problem from
+    # one the inventory has never heard of, and saying "not in the inventory"
+    # about a type that IS in it would send the reader looking for a typo.
+    if(_open_subscribed)
+        list(LENGTH _open_subscribed _open_sub_count)
+        string(REPLACE ";" "\n    " _open_sub_block "${_open_subscribed}")
+        set(${_o_status} "refused" PARENT_SCOPE)
+        set(${_o_why}
+            "${_open_sub_count} type(s) this image RECEIVES carry no derived bound, so their payload class cannot be sized:\n    ${_open_sub_block}\n  Bound the member in its `.msg` (`string<=64`) or cap it `inline` in the package's `nros-codegen.toml` (RFC-0033). Narrowing to the subscribed set does not help here -- these are in it."
+            PARENT_SCOPE)
+        return()
+    endif()
+
     if(_unpriced)
         list(LENGTH _unpriced _unpriced_count)
         string(REPLACE ";" "\n    " _unpriced_block "${_unpriced}")
