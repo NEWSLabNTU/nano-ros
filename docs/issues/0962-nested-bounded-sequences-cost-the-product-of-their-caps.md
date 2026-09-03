@@ -153,15 +153,48 @@ still what is exported (`a_budget_the_type_fits_never_becomes_the_bound`), which
 is the phase-380 rule this issue insisted on. The whole in-tree golden corpus is
 byte-identical across this change.
 
-### Still open
+### Still open -- and ANALYSED 2026-09-03: not implementable as stated
 
 This does not FIX the multiplication -- `size_bound` still walks a bounded
 sequence element by element, and a deep chain still costs the product. What
 changed is that the number is legible and that a user can make it a build error
-instead of a runtime surprise. Making the product itself smaller (a size rule
-that treats a nested bounded sequence as a bound on TOTAL elements rather than
-per-level) is a change to `nros_serdes::size`, i.e. to a `const fn` the runtime
-and codegen share, and is not attempted here.
+instead of a runtime surprise. The remaining proposal was a size rule that treats
+a nested bounded sequence as a bound on TOTAL elements rather than per-level.
+
+**That is unsound in the RX direction, and the reason is issue 0896's rule one
+level up.** A `cap` bounds OUR STORAGE. A remote ROS publisher is bound by the
+`.msg`, not by `nros-codegen.toml`, so if the `.msg` permits 128 elements at each
+of four levels a conforming peer really can send 128^4 of them. An RX bound
+computed as a total would UNDER-REPORT, and `size_bound`'s own comment names that
+as the dangerous direction: "an under-reported bound sizes a buffer too small and
+reintroduces the very drop this exists to stop".
+
+The tempting counter -- "our storage is capped, so we would reject the oversized
+sample anyway" -- does not rescue it. Rejection happens after PARSING, and
+parsing happens after the bytes have been received into a buffer. With a
+size-classed payload pool an oversized sample is dropped at the TRANSPORT, which
+is the silent drop, not a clean rejection.
+
+**And it does not help TX either.** Our generated storage caps each level
+independently; nothing enforces a total across a chain. A total-based TX bound
+would be under-reported for the same reason, just against our own encoder.
+
+So the multiplication is not a defect in `size_bound`. It is the correct worst
+case for both directions, given that capacities are declared per level. There are
+exactly two ways to make the number smaller and both already exist:
+
+* **cap one level of the worst chain**, which divides the whole product -- what
+  the option-2 diagnostic already tells the user to do, naming the chains; or
+* **declare a total and enforce it**, which would require a wire-level element
+  budget that neither ROS 2 nor our storage has.
+
+**Recommendation: resolve this issue.** Options 2 and 4 landed, options 1 and 3
+were rejected with reasons, and the fifth thing anyone would reach for is
+unsound. What remains is not work but a property: a per-level capacity model
+multiplies, and this issue is now the place that says so.
+
+Flagged rather than closed unilaterally -- options 1-4 carry an explicit owner
+decision (2026-08-31) and this reverses the "still open" line the owner wrote.
 
 ## Adjacent, from the same work -- RESOLVED 2026-08-31 (phase-403 W7)
 
