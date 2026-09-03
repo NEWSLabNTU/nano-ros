@@ -20,7 +20,13 @@ nano_ros_auto_add_library(talker_lib STATIC src/Talker.cpp)
 nros_components_register_node(talker_lib
     PLUGIN talker_pkg::Talker
     EXECUTABLE talker
-    SHAPE configure)
+    SHAPE configure
+    # issue 0965 — what this component CREATES, read off its own
+    # source. Absence means "nobody said" and refuses the whole image,
+    # so every component in a workspace declares or none derives.
+    ENTITIES
+             pub:std_msgs/msg/Int32:/chatter
+             timer)
 
 # `nros_find_interfaces` declares INTERFACE libs (`std_msgs__nano_ros_cpp`)
 # carrying generated headers' include dirs. Entry pkg auto-links; Node

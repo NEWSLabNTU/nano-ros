@@ -161,17 +161,75 @@ to its creation sites.
 
 ### What is still uncovered
 
-* **The arena** and **the zenoh payload classes** need the two inventories
-  JOINED per subscription -- this one's per-entity list against W8's per-type
-  size. Either half alone yields the confident wrong number. Named as its own
-  work rather than bolted onto either reader.
-* **`NROS_MAX_SUBSCRIBERS` / `NROS_MAX_PUBLISHERS`** are a straight read of
-  `NROS_ENTITY_COUNT_SUBSCRIPTION` / `_PUBLISHER`. Left out for scope
-  discipline, not for a reason.
-* **No image in this tree declares `ENTITIES` yet**, so nothing derives today;
-  every existing image refuses and keeps its configured value. The island's own
-  declaration is four `nros_components_register_node(... ENTITIES ...)` edits
-  in the consumer repo.
+* ~~**The arena** and **the zenoh payload classes** need the two inventories
+  JOINED per subscription.~~ **LANDED** as phase-403 step 1 --
+  `_nros_bounds_join_subscribed` in `NanoRosMessageBounds.cmake`, with
+  `NROS_MESSAGE_BOUNDS_BASIS` reading `subscribed` or `closure`.
+* ~~**`NROS_MAX_SUBSCRIBERS` / `NROS_MAX_PUBLISHERS`**~~ **LANDED** as
+  phase-412 W1, as `NROS_DERIVED_MAX_SUBSCRIBERS` / `_MAX_PUBLISHERS`.
+* ~~**No image in this tree declares `ENTITIES` yet**~~ -- fixed 2026-09-04,
+  see below. This was the bullet that made the other three unreachable.
 * **Not measured on hardware.** The island was not flashed. The code claim (a
   publisher claims no slot) is verified by reading all 24 registration sites
   and by the gate; the byte saving is not.
+
+
+## The first declaring image (2026-09-04) — and 65,024 bytes off its stack
+
+Two of the four bullets above were already stale when this section was written:
+the join landed as phase-403 step 1 and the two pool knobs as phase-412 W1. The
+one that mattered was the third — **nothing declared, so none of it ran**. A
+mechanism that is correct, tested and unreachable from a real build is this
+campaign's signature failure, and this issue's own list had been carrying it as
+a footnote.
+
+`examples/workspaces/cpp` now declares. All six components, each read off its
+own source rather than inferred from its name:
+
+| package | `ENTITIES` |
+| --- | --- |
+| `talker_pkg` | `pub:std_msgs/msg/Int32:/chatter`, `timer` |
+| `listener_pkg` | `sub:std_msgs/msg/Int32:/chatter` |
+| `service_server_pkg` | `service_server:example_interfaces/srv/AddTwoInts:/add_two_ints` |
+| `service_client_pkg` | `service_client:…:/add_two_ints`, `timer` |
+| `action_server_pkg` | `action_server:example_interfaces/action/Fibonacci:/fibonacci`, `timer` |
+| `action_client_pkg` | `action_client:…:/fibonacci`, `timer` |
+
+All six, not just the two the entry composes, because a package declares what
+IT creates; which image composes it is the entry's question. And composition
+refuses if any member is silent, so a partial declaration buys nothing.
+
+### What it derives, predicted before it was run
+
+Over all six (the whole workspace): `entity_total` 10, `NROS_EXECUTOR_MAX_CBS`
+**9**, `NROS_EXECUTOR_ACTION_CLIENTS` **2**. Predicted 9 and 2 from the rules —
+a publisher claims no slot, and an action SERVER occupies a heavy slot like a
+client — and the verb agreed exactly.
+
+`src/zephyr_entry` composes only `talker_pkg` and `listener_pkg`, so the real
+image derives `MAX_CBS=2`, `ACTION_CLIENTS=0`, and a received-type set of one
+(`std_msgs/msg/Int32`). Worth stating because the six-component number is the
+WORKSPACE's, not the image's, and reporting it as the image's would have
+overstated this by a factor of four.
+
+### The saving, measured from `nros-node`'s generated constant
+
+| | `MAX_CBS` | `ARENA_SIZE` |
+| --- | ---: | ---: |
+| crate defaults, what this image compiles with today | 4 | 74,240 |
+| derived from the declarations | 2 | **9,216** |
+
+**65,024 bytes**, and it is stack rather than `.bss`, so `just mem-report`
+cannot see it — this is read from `ARENA_SIZE` for the reason issue 0900 gives.
+
+### What this still does not do
+
+* **Not configured or flashed.** The numbers above come from the derivation verb
+  and from `nros-node`'s build, not from a Zephyr configure of this entry — every
+  entry in `examples/workspaces/` targets Zephyr or FVP, so there is no host
+  entry to configure. The CMake reader is exercised by its own tests, not by this
+  image yet.
+* **The received-type set is resolved but unspent.** `received_types` reports
+  `std_msgs/msg/Int32` for this image, which is exactly the input the
+  `subscribed` basis wants; whether that changes the payload classes here is
+  unmeasured, and on a one-small-type image it may well be nothing.

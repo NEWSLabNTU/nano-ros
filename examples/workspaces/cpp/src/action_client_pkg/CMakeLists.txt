@@ -16,7 +16,13 @@ nano_ros_auto_add_library(action_client_lib STATIC src/FibClient.cpp)
 nros_components_register_node(action_client_lib
     PLUGIN action_client_pkg::FibClient
     EXECUTABLE fib_client
-    SHAPE configure)
+    SHAPE configure
+    # issue 0965 — what this component CREATES, read off its own
+    # source. Absence means "nobody said" and refuses the whole image,
+    # so every component in a workspace declares or none derives.
+    ENTITIES
+             action_client:example_interfaces/action/Fibonacci:/fibonacci
+             timer)
 
 if(TARGET example_interfaces__nano_ros_cpp)
     target_link_libraries(action_client_lib
