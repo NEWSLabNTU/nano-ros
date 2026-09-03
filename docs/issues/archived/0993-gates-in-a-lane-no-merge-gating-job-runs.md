@@ -7,7 +7,7 @@ type: bug
 area: ci
 severity: medium
 found: 2026-09-02
-related: [issue-0981, issue-0952, phase-395, phase-396]
+related: [issue-0872, issue-0871, issue-0981, issue-0952, phase-395, phase-396]
 ---
 
 ## Symptom
@@ -155,6 +155,22 @@ that is already red cannot start gating pull requests regardless of cost.
 
 So `.config/ungated-gates.txt` keeps its 20 entries, and the ratchet keeps doing
 the one thing that is unambiguously right: making the invisible set visible.
+
+## Prior art I should have found first
+
+Issue **0872** already states this issue's central claim, from 2026-08-28:
+
+> an arm nothing executes accumulates gaps at roughly one per gate
+
+It reached it from the opposite end — PR #7's required check failing seven times,
+each on a different gate, each further into the job — where this one reached it
+by asking which lanes a merge-gating job runs at all. Two convergent diagnoses
+of one property, which is itself evidence for the property.
+
+I filed this without checking for an existing issue, which CLAUDE.md says to do.
+What is genuinely new here is the RATCHET (`.config/ungated-gates.txt` plus
+`check-gate-visibility`) and the 20 gates moved after testing each in a pristine
+worktree; the diagnosis is 0872's.
 
 ## Acceptance
 
