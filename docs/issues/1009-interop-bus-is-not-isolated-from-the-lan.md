@@ -105,3 +105,15 @@ walking.
 The orphans themselves. `arm-a100` is a different machine and clearing it needs
 access to that host; it is the direct cause of today's failures and none of the
 fix above depends on it.
+
+## Direction 2 was already landed — verified 2026-09-04
+
+`dds_bus_snapshot` passes `--no-daemon` on all three sub-commands
+(`packages/testing/nros-tests/src/ros2.rs`), with a comment citing this issue and
+recording both halves: that the daemon leak is what walked a failing run onto a
+clean domain, and that fixing it could not have caught 0741 anyway because
+`ros2 service list` collapses a service to one NAME however many servers offer
+it. Nothing to do here.
+
+Directions 1 (loopback isolation for every DDS lane AND the Agent) and 3 (state
+0707's local-probe blindness) remain open, and 1 is the one that survives the LAN.

@@ -602,6 +602,30 @@ fn generate_config_header(
 }
 
 pub fn run() {
+    // Issue 1005 — THIS crate's sources are an input to every build that calls
+    // `run()`, and until now nothing said so. Cargo tracks the dependency
+    // correctly through its own unit graph, so an edit here does rebuild the
+    // consumer; what was missing is a `rerun-if-changed` PATH, and the fixture
+    // staleness probe reads exactly that recorded path list
+    // (`zpico_recorded_inputs`). The consequence was measured: `Z_TRANSPORT_LEASE_MS`
+    // moved 10_000 -> 60_000 on 2026-08-30 (issue 0906) and every FreeRTOS
+    // fixture in the tree still baked 10000 ten days later while the probe
+    // reported FRESH -- a known, measured, delivery-breaking value behind a
+    // green verdict.
+    //
+    // Emitted HERE and not from each consuming `build.rs` on purpose. The whole
+    // build-script implementation lives in this crate (`zpico-sys/build.rs` is
+    // a three-line shim), so a future consumer inherits the input declaration
+    // instead of having to remember it -- and "every consumer remembers" is the
+    // property that already failed.
+    //
+    // `env!` binds THIS crate's manifest dir at ITS compile time, which is what
+    // makes the path right no matter who calls `run()`. Watching a PATH is the
+    // safe direction: cargo reads a `rerun-if-changed` back from the stored
+    // output and never re-resolves it, unlike `rerun-if-env-changed` on a path
+    // VALUE (issue 0491).
+    println!("cargo:rerun-if-changed={}/src", env!("CARGO_MANIFEST_DIR"));
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap_or_default();

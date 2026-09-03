@@ -102,3 +102,53 @@ cannot see it be wrong. Fixing the probe alone leaves the second half open.
 Whether other build-script dependency crates feed other fixture families the
 same way. `nros-zpico-build` is the one measured; the class is "a build-script
 dependency crate", and nothing has swept for siblings.
+
+## Landed 2026-09-04 — the crate declares itself, and it is MEASURED to reach the probe
+
+`nros_zpico_build::runner::run()` now emits its own sources as an input:
+
+    println!("cargo:rerun-if-changed={}/src", env!("CARGO_MANIFEST_DIR"));
+
+Verified end to end rather than reasoned about — a real `cargo build -p zpico-sys`,
+then reading the file the probe actually reads:
+
+    target/debug/build/zpico-sys-e43b33ac44297a9a/output
+      29 rerun-if-changed entries (was 28, none under nros-zpico-build)
+      cargo:rerun-if-changed=<root>/packages/rmw/zenoh/nros-zpico-build/src
+
+That path is absolute and in-repo, so it survives `zpico_recorded_inputs`'
+canonicalize-and-filter, and `zpico_c_inputs` expands a recorded DIRECTORY
+through `collect_source_files` already.
+
+**Emitted from the DEPENDENCY, not from each consumer** — which is stronger than
+direction 2 as written above. The objection to direction 2 was that it "relies on
+every future build-script dependency remembering to do it". Here the whole
+build-script implementation lives in this crate (`zpico-sys/build.rs` is a
+three-line shim calling `run()`), so a future consumer inherits the declaration
+instead of having to remember it. `env!` binds THIS crate's manifest dir at its
+own compile time, so the path is right whoever calls `run()`.
+
+Direction 1 (walk the build-script dependency closure from cargo metadata) is
+still the more general answer and is NOT done. This is the cheap half that closes
+the measured defect.
+
+## Still open after this
+
+* **The second gap is untouched.** `test_rtos_pubsub_e2e` FreeRTOS kills its
+  talker after 15 s, so the first lease lapse (~20 s of session life) never
+  arrives and a build baked at `10000` passes 6 of 6. The probe can now see the
+  constant change; the cell still cannot see it be wrong.
+* **The class is unswept.** The rule is "an in-repo build-script dependency
+  crate is an input the recorded path list does not name", and `nros-zpico-build`
+  is the one measured. A sweep of `[build-dependencies]` with a `path =` across
+  the tree finds these other helper crates, none of which declares itself:
+
+      nros-board-common     (9 consumers: every freertos/nuttx/threadx board)
+      nros-cc-flags         (5 consumers)
+      nros-build-paths      (4 consumers)
+      nros-zephyr-build     (packages/api/nros)
+      nros-board-threadx-port-riscv64
+
+  Whether each MATTERS depends on whether a staleness probe arm reads that
+  consumer's recorded inputs — the zenoh arm does, and the others have not been
+  checked. Not fixed here, and worth doing as one change rather than five.
