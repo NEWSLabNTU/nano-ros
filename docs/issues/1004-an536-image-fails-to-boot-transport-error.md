@@ -1,6 +1,6 @@
 ---
 id: 1004
-title: "an536 island stopped booting reliably at pin d2a8955c5: `create_subscription` returns TransportError, sometimes preceded by a stack overflow"
+title: "an536 island hangs nondeterministically at controller construction — three signatures, both pins, no bracket"
 status: open
 area: [rmw, platform, embedded]
 severity: high
@@ -46,7 +46,55 @@ So: a stack overflow corrupts adjacent heap, and the corruption presents later
 as a `create_subscription` failure. The difference from 177.26 is that the
 banner names no task, so which stack is overflowing is not yet known.
 
-## Why this is new
+## CORRECTED — there is no bracket, and it is not a regression in those 31 commits
+
+The table below was built from one or two observations per pin. Re-tested with a
+scripted predicate that boots each build THREE times and calls a pin bad if any
+attempt fails:
+
+| pin | 3-attempt result |
+| --- | --- |
+| `d2a8955c5` (was "bad") | **BAD** — stack overflow on attempt 1 |
+| `2b03606ca` (was "good") | **BAD** — attempt 2 |
+
+**Both ends fail.** So the bracket in the original table does not hold, the
+"regression inside 31 commits" framing is unsupported, and the correlation drawn
+with island tracing being absent is unsupported with it. A bisect was prepared
+and abandoned: with a noisy predicate it would have named an innocent commit with
+confidence, which is the failure mode `AGENTS.md` records for issue 0268 — "a
+first-bad that cannot plausibly cause the symptom means the verdicts tracked a
+confounder".
+
+What the retest also showed is that the run I called good was good: attempt 1 at
+`2b03606ca` produced 9440 lines and ran the full 75 s. Attempt 2 produced NINE:
+
+```
+Network ready
+[INFO] nros: ARM - Autoware: Actuation Safety Island
+[INFO] nros: Wall clock set from SNTP
+[INFO] nros: Starting Controller Node...
+qemu-system-arm: terminating on signal 15 (timeout)
+```
+
+It reaches SNTP, starts the controller, and then hangs silently — no overflow
+banner, no FATAL, no further output. That is a THIRD signature alongside the
+stack overflow and the `create_subscription -100`, and all three land in the same
+window: immediately after `Starting Controller Node`.
+
+So the honest description is one nondeterministic hang at controller
+construction, presenting three ways, on both pins — not a version regression.
+Roughly one run in three on this host.
+
+**Method note, because it caused the wrong issue to be filed:** a single boot
+attempt is not evidence about a ~1-in-3 failure. The original bracket came from
+1–2 samples per pin and was wrong in the direction that felt most explanatory.
+Any future claim here needs a repeat count stated with it.
+
+Environment checked and NOT the cause: the SNTP server is running throughout
+(`sntp-server.py --bind 192.0.3.1`), and the failing boot reaches
+`Wall clock set from SNTP`, so it is not a missing time source.
+
+## Why this looked new (superseded by the correction above)
 
 The same tree booted this image repeatedly earlier the same day. Sequence, all
 on one host with one tap and one QEMU (`11.0.0-nros2`):
@@ -100,10 +148,14 @@ here.
 
 ## What to establish first
 
-1. **Which stack overflows.** The banner prints an empty name, so the FreeRTOS
-   overflow hook is reporting without a task. Fixing that reporting is a
-   prerequisite for everything else — `an536-tasks.py` in the consumer repo
-   dumps per-task stacks, but only for an image that gets far enough to attach.
-2. **Bisect `2b03606ca..d2a8955c5`** (31 commits). The table above brackets it,
-   and the two ends are known-good and known-bad on the same host.
-3. **Only then** return to #0997.
+1. **Attach to a hung instance.** The silent hang is the most tractable of the
+   three signatures: it reaches `Starting Controller Node` and stops, so the
+   image is alive and gdb can be attached to ask which task is stuck and on
+   what. `an536-blocked-on.py` in the consumer repo answers exactly that, and it
+   is what identified the condvar waiters in #0997.
+2. **Which stack overflows.** The banner prints an EMPTY task name, so the
+   FreeRTOS overflow hook reports without one. That reporting needs fixing
+   regardless, because it is the difference between "some stack" and a fix.
+3. **NOT a bisect.** Both ends fail; there is nothing to bisect until the
+   failure is deterministic or the predicate is made reliable.
+4. **Only then** return to #0997.
