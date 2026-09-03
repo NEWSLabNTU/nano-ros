@@ -448,3 +448,58 @@ So the honest statement is narrower than either "no saving" or "a saving":
 sequence long enough to force ostream growth. That is where a service-path number
 comparable to 9.93 -> 2.00 would come from, and this harness's payload cannot
 produce one.
+
+## The size sweep — the migration is a CROSSOVER at ~8 KB, measured 2026-09-03
+
+Allocation COUNT is neutral at every size (4.14 -> 4.15 at 12 B, 4.20 -> 4.26 at
+16 KB), so counting allocations was the wrong instrument. BYTES is where the
+behaviour lives. Client half, two-process, bytes allocated per exchange:
+
+| reply payload | before | after | delta |
+| ---: | ---: | ---: | ---: |
+| 16 B | 8,329 | 270 | **-8,059** |
+| 104 B | 8,329 | 276 | -8,054 |
+| 488 B | 8,428 | 844 | -7,584 |
+| 1,008 B | 8,347 | 1,186 | -7,161 |
+| 2,008 B | 8,350 | 2,260 | -6,089 |
+| 4,008 B | 8,354 | 4,342 | -4,011 |
+| **8,008 B** | 8,325 | 8,219 | **-106** |
+| 16,008 B | 8,444 | 16,260 | **+7,816** |
+
+**The old path is FLAT — ~8,350 bytes per exchange whatever the payload, from
+16 bytes to 16 KB.** It pays a fixed cost for a typed sample plus a re-encode
+buffer, and a one-field reply costs the same as a 2,000-element sequence.
+
+**The new path is LINEAR — about 1.02x the payload, on a ~260-byte floor.** The
+sample IS the bytes, so what it allocates is what the message weighs.
+
+So the migration is neither a win nor a regression; it is a change of SHAPE, and
+the two curves cross at roughly **8 KB of reply payload**:
+
+* below it, the saving is large and grows as the message shrinks — **30x fewer
+  bytes** on a small reply, which is the regime a control loop actually runs in;
+* above it, the new path allocates more, and the gap widens linearly.
+
+### Why this matters beyond a number
+
+Flat-versus-linear is the more useful half. A fixed ~8.4 KB per exchange is easy
+to bound and impossible to shrink; a payload-proportional cost is the opposite.
+For [phase 391](../roadmap/phase-391-allocation-unification-and-tier-model.md)'s
+Robson bound the linear one is the better shape — it is derivable from the type's
+own `MAX_SERIALIZED_SIZE`, which is exactly what issue 0896 makes available —
+whereas the old constant was a number nobody could attribute.
+
+But a service whose replies routinely exceed 8 KB now allocates MORE, and nothing
+warns about it. That is worth knowing before someone quotes the round-trip
+removal as an unconditional improvement, which is what the migration commit did
+and what this measurement corrects.
+
+### Method and limits
+
+`NROS_PROBE_SEQ_LEN` was a SCRATCH change (an `int64[] sums` reply on
+`AddTwoInts`) used to sweep payload size, and it is reverted — the committed
+harness keeps only `NROS_ROUNDTRIP_ITERS`. Two points per size (n=1, n=50), slope
+over 49 exchanges, client half only. The server half and the CPU cost of the
+removed decode/encode are not measured. The 8 KB crossover is where these two
+curves meet on THIS type and this transport; treat it as an order of magnitude,
+not a threshold to encode.
