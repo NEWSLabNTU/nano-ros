@@ -2,7 +2,7 @@
 id: 1014
 title: "`nros_sertype.cpp` includes `<memory>` and `<string>` unconditionally, so
   the Cyclone backend has not compiled for threadx-riscv64 since it landed"
-status: open
+status: resolved
 type: bug
 area: rmw, build
 related: [0970, 0112, 0332]
@@ -67,13 +67,58 @@ So a fix is a small rewrite, not an include change:
   **unverified**, and it decides between borrowing the pointer and copying.
   `descriptors.cpp` reaches for `<string.h>` for exactly this kind of work.
 
-## Why this is filed rather than fixed
+## RESOLVED — and the lifetime question dissolved
 
-The fix cannot be verified where it was written. There is no
-`riscv-none-elf-g++` on the machine that diagnosed it, so a rewrite would be
-unverified cross-compilation code in a memory-ownership path — and a wrong
-`.release()`/`delete` pairing here leaks or double-frees on an embedded target
-where a return code is all you get.
+Fixed in the same pull request that filed this.
+
+The first draft said the fix could not be verified here because there is no
+`riscv-none-elf-g++` on this machine. **That was wrong, and the mistake is worth
+recording:** the toolchain was not on `PATH`, but it was in the SDK store all
+along, at `~/.nros/sdk/riscv-none-elf-gcc/14.2-nros1/bin/riscv-none-elf-g++`. A
+`command -v` came back empty and that was read as "absent" rather than "not on
+PATH" — the same shape as concluding a module had no `setup` recipe from a
+`grep` of a filename that does not exist.
+
+**The `std::string` did not need replacing. It needed deleting.**
+`ddsi_sertype_init_flags` does `tp->type_name = ddsrt_strdup(type_name)`
+(`ddsi_sertype.c:176`), so Cyclone already owns a heap copy in the BASE
+`ddsi_sertype::type_name`, freed by `ddsi_sertype_fini` in `sertype_free`. The
+derived member was a redundant second copy whose only job was to hold the string
+long enough to pass `.c_str()` to a function that immediately duplicates it.
+
+So the question this issue flagged as unverified — does `desc->m_typename`
+outlive the sertype — **does not need answering**. The descriptor's name is
+handed straight to `ddsi_sertype_init_flags`, and the only copy that survives is
+Cyclone's. Equality and hashing read the base field: same bytes, same order, so
+the hash values are unchanged, which matters because a shifted sertype hash
+would silently stop matching remote types.
+
+`std::unique_ptr` became a 20-line `OwnPtr` with the same shape, so the call
+sites are unchanged (`!d`, `d.get()`, `d->field`, `d.release()`).
+
+### What the compiler caught that reading did not
+
+`auto d = OwnPtr<T>(p);` does not compile under `-std=c++14`: it is
+copy-initialisation and needs an accessible copy or move constructor, since
+guaranteed elision is C++17. `unique_ptr` got away with the spelling by having a
+move constructor. Rather than add a move this type never uses, the call sites
+are direct-initialised. Found by compiling, not by reviewing.
+
+### Verified
+
+* **Freestanding, real toolchain**: `riscv-none-elf-g++ 14.2.0`,
+  `-ffreestanding -nostdinc++ -std=c++14 -Wall -Wextra`, `-isystem` the
+  `cxx-compat` shim and nothing else — the `OwnPtr` used exactly as at the three
+  call sites, `std::strcmp`, and the FNV loop all compile. (`<cstring>` is in the
+  shim and exports `std::strcmp`/`std::strlen`; `<memory>` and `<string>` are
+  confirmed absent, which is the original failure.)
+* **Hosted, the real translation unit**: clean under `-Wall -Wextra`.
+* **Behaviour**: `just check rmw-cyclonedds` — 23/23 tests pass.
+
+The one thing still NOT verified here is a full cross build of the TU, because
+that needs a ThreadX-configured Cyclone; the installed 0.10.5 headers in the
+store are POSIX-configured and pull `sys/socket.h`. The nightly
+`threadx_riscv64` cell is the check that closes it.
 
 ## Blast radius — one board, but check before assuming
 
@@ -87,8 +132,8 @@ compile — whether their C++ leaves would hit it too is untested. Verify after
 the preflight fix (`c003ae608`) lands in a nightly rather than assuming the
 blast radius is one.
 
-## How to verify a fix
+## How to verify
 
-Build the threadx-riscv64 cyclone fixture on a host with the RISC-V toolchain,
-or wait for the nightly `threadx_riscv64` cell. The compile is the test: the TU
-either finds its headers or it does not.
+Build the threadx-riscv64 cyclone fixture, or wait for the nightly
+`threadx_riscv64` cell. The compile is the test: the TU either finds its headers
+or it does not.
