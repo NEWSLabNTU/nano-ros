@@ -80,11 +80,9 @@ fails if this block drifts.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
-- **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
-- **#1003** (codegen, api, rmw) — The generated C++ entry never passes a session name, so every C++ image registers with the XRCE agent as `node` See `1003-*`.
-- **#1003** (build, codegen, testing) — Zephyr images are compiled from SIX-WEEK-OLD generated entries — the entry is never regenerated when the emitter changes See `1003-*`.
 - **#1010** (zephyr, platform, examples) — The derived executor arena is one allocation ~6x larger than the heap it comes from, so every zephyr XRCE example dies at boot See `1010-*`.
 - **#1011** (rmw-cyclonedds, zephyr) — `publisher.cpp` brace-initializes a struct with default member initializers, which is not an aggregate under the Zephyr lane's `-std=c++11` See `1011-*`.
+- **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 - **#1016** (testing, zephyr, ci) — `lane=tier2` does not build the zephyr rust/c west leaves, so their cells report as failures that are really skips See `1016-*`.
 - **#1017** (codegen, api, testing) — Nothing stops a CMake entry template from dropping the session name again (issue 1003 has no gate) See `1017-*`.
 
