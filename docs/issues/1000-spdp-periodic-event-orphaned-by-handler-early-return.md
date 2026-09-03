@@ -1,6 +1,6 @@
 ---
 id: 1000
-title: "Vendored Cyclone: `handle_xevk_spdp`'s early returns orphan the PERIODIC spdp event — it leaves the heap, is never re-armed, and the participant goes silent forever"
+title: "Vendored Cyclone: a fired event is off the heap until its handler re-arms it, and `handle_xevk_spdp` has return paths that do neither — a latent leak, NOT the cause of #0997"
 status: open
 area: [rmw, third-party]
 severity: high
@@ -101,7 +101,65 @@ The last SPDP handler logged `(resched 8s)`, and eight seconds later nothing
 fired. `tev` then waited with `portMAX_DELAY` — correctly, because the queue was
 empty — and the peer expired the lease 10 s after the final announcement.
 
-## What is NOT yet proven, and how to close it cheaply
+## MEASURED 2026-09-03 — these paths do not fire, so this is NOT #0997's cause
+
+The section below asked for a cheap confirmation. It was done, with counters
+rather than tracing (tracing this handler over semihosted stdout hangs the
+island during discovery, so the instrument changed the outcome — see **#1004**).
+Four `volatile unsigned` counters were added to `handle_xevk_spdp` and read over
+the QEMU gdb stub:
+
+```
+enter        = 3      handler ran three times
+unknown_guid = 0      <- first early return NEVER taken
+no_writer    = 0      <- second early return NEVER taken
+resched      = 2      periodic branch re-armed twice
+xevents.roots= (nil)  event tree empty, as in #0997
+```
+
+**Both early returns are measured at zero.** So the mechanism this issue
+describes is real in the code and did not happen: it is not what silences the
+participant in
+[#0997](0997-island-announces-spdp-once-then-lease-expires.md). The title and
+the "Why this is not merely theoretical" section overstated it, and both are
+corrected rather than deleted so the reasoning stays inspectable.
+
+`enter = 3` against `resched = 2` is the remaining thread: one invocation left
+without re-arming through a path that is neither of these two. The directed
+branch legitimately does that — `delete_xevent` on its last use — so this may be
+entirely ordinary, and counters splitting directed from periodic were written to
+settle it.
+
+**They have not been read, because the image stopped booting**
+(**#1004**, `1004-an536-image-fails-to-boot-transport-error.md`, filed in PR #262 — not linked because it has not landed on `main` yet): `create_subscription`
+returns `TransportError` in 3 of 3 runs at the current pin. That has to be fixed
+before anything here can be confirmed or refuted further.
+
+The counter read above is itself weak evidence and should be repeated: it
+predates the gated runner, and that run never had a publisher match, so it did
+not reproduce #0997's scenario. What it does establish is narrow and sufficient
+for the correction above — in a run where the handler executed three times,
+neither early exit was taken.
+
+### What this issue is still worth
+
+The invariant is the durable part, and it is untouched by the refutation:
+
+> A fired event is off the heap until its handler re-arms or deletes it, and
+> **nothing enforces that**.
+
+`handle_xevents` extracts the event and stamps `tsched = DDS_NEVER` before
+calling the handler, so any handler path that returns without rescheduling or
+deleting leaks the event out of the queue while leaving it allocated — silently.
+The two `handle_xevk_spdp` paths below do exactly that for a periodic event, and
+remain worth fixing on their own merits as a latent leak, whether or not they
+are ever hit in practice.
+
+The assertion proposed at the end of this issue is worth more than the narrow
+fix, and this episode is the argument for it: the reason those paths could be
+suspected for a day is that nothing would have said if they HAD fired.
+
+## What was NOT yet proven, and how it was closed (superseded above)
 
 **That these early returns are the path actually taken.** The mechanism exists,
 and it produces precisely the observed state, but no trace line confirms it fired
