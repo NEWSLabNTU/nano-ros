@@ -205,6 +205,23 @@ uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos) {
         out.depth = 10;
         return out;
     }
+    /* issue 0829 — this IS the SYSTEM_DEFAULT resolution for the XRCE backend,
+     * and it needs no new branches: each ternary tests the ONE value that is
+     * not the sentinel's answer, so `NROS_RMW_*_SYSTEM_DEFAULT` (0) already
+     * lands on VOLATILE / RELIABLE / KEEP_LAST — what `rmw_cyclonedds_cpp` and
+     * `rmw_zenoh_cpp` both resolve those three to. That was accidental until
+     * now; it is recorded here so a later edit does not flip a test to
+     * `== RELIABLE` and quietly send the sentinel the other way, which is
+     * exactly what had happened one backend over
+     * (`nros-rmw-cyclonedds/src/qos.cpp`, fixed alongside this).
+     *
+     * The DEPTH deliberately keeps the sentinel instead of resolving it. The
+     * client encodes exactly this meaning — `optional_history_depth = false`
+     * when `qos.depth == 0` (`create_entities_bin.c:148`), so the field is
+     * simply absent from the CREATE submessage and the Agent's DDS layer
+     * supplies its own. This backend genuinely has no depth of its own to
+     * offer: every default on this path is the Agent's, so deferring is the
+     * honest answer rather than a gap. */
     out.durability = (qos->durability == NROS_RMW_DURABILITY_TRANSIENT_LOCAL)
                          ? UXR_DURABILITY_TRANSIENT_LOCAL
                          : UXR_DURABILITY_VOLATILE;

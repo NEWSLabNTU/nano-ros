@@ -251,25 +251,36 @@ fn qos_from_cffi(q: &NrosRmwQos) -> QoSProfile {
     };
     // Phase 376 W5/B2 — these were `== 0` tests against a dense 0/1 encoding.
     // Under upstream's numbering 0 is SYSTEM_DEFAULT for every policy, so each
-    // test now has three cases, not two, and the third one is the default the
-    // profile constants already use. Written as a match on the named constants
-    // so an unrecognised value is visible rather than folded into one arm.
+    // test now has three cases, not two. Written as a match on the named
+    // constants so an unrecognised value is visible rather than folded into
+    // one arm.
+    //
+    // issue 0829 — SYSTEM_DEFAULT now RAISES to the sentinel variant instead
+    // of being folded to the ROS default here. This function is the inbound
+    // edge of a Rust backend, and resolving an absence is the BACKEND's job:
+    // folding at the edge made every Rust backend answer the sentinel
+    // identically, which is exactly what upstream does not do. UNKNOWN keeps
+    // its old fold — it is a read-back artefact ("the backend could not
+    // determine this"), not a request, so it has no sentinel meaning to carry.
     QoSProfile {
         reliability: match q.reliability as i32 {
+            generated::NROS_RMW_RELIABILITY_SYSTEM_DEFAULT => QoSReliabilityPolicy::SystemDefault,
             generated::NROS_RMW_RELIABILITY_BEST_EFFORT => QoSReliabilityPolicy::BestEffort,
             generated::NROS_RMW_RELIABILITY_RELIABLE => QoSReliabilityPolicy::Reliable,
-            // SYSTEM_DEFAULT and UNKNOWN both mean "the caller did not pin
-            // this"; RELIABLE is the ROS default and the safer of the two.
             _ => QoSReliabilityPolicy::Reliable,
         },
         durability: match q.durability as i32 {
+            generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT => QoSDurabilityPolicy::SystemDefault,
             generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL => QoSDurabilityPolicy::TransientLocal,
             _ => QoSDurabilityPolicy::Volatile,
         },
         history: match q.history as i32 {
+            generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT => QoSHistoryPolicy::SystemDefault,
             generated::NROS_RMW_HISTORY_KEEP_ALL => QoSHistoryPolicy::KeepAll,
             _ => QoSHistoryPolicy::KeepLast,
         },
+        // The depth sentinel is a VALUE (0), so it needs no raising — it
+        // already reads as `DEPTH_SYSTEM_DEFAULT` on the far side.
         depth: q.depth as u32,
         // phase-301 (issue 0240): the express hint left the QoS struct; the
         // create trampolines thread it via `TopicInfo` from the options param.
@@ -2000,5 +2011,39 @@ unsafe fn take_box<T>(slot: &mut *mut c_void) -> Option<Box<T>> {
         // back and the slot has been cleared so no second take is
         // possible.
         Some(unsafe { Box::from_raw(ptr) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// issue 0829 — the inbound edge RAISES a 0 policy back to the sentinel, so
+    /// a C caller's "unstated" survives to the Rust backend that has to resolve
+    /// it. Before this, `qos_from_cffi` folded 0 to RELIABLE / VOLATILE /
+    /// KEEP_LAST here at the edge, which made every Rust backend answer the
+    /// sentinel identically — the thing upstream deliberately does not do.
+    ///
+    /// This is the round trip: profile -> C struct -> profile.
+    #[test]
+    fn a_zero_filled_c_profile_reads_back_as_the_sentinel() {
+        let raised = qos_from_cffi(&crate::NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT);
+        assert_eq!(raised, nros_rmw::QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT);
+        assert!(raised.has_unresolved_system_default());
+    }
+
+    /// UNKNOWN is NOT the sentinel and must keep its old fold: it is a
+    /// read-back artefact ("the backend could not determine this"), not a
+    /// request, so there is no absence to carry.
+    #[test]
+    fn unknown_is_not_raised_to_the_sentinel() {
+        let mut q = crate::NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT;
+        q.reliability = crate::generated::NROS_RMW_RELIABILITY_UNKNOWN as u8;
+        let raised = qos_from_cffi(&q);
+        assert_eq!(
+            raised.reliability,
+            nros_rmw::QoSReliabilityPolicy::Reliable,
+            "UNKNOWN must keep folding to the ROS default, not become a sentinel"
+        );
     }
 }

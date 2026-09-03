@@ -889,6 +889,30 @@ impl ZenohSession {
     }
 }
 
+/// issue 0829 — what THIS backend resolves `rmw_qos_profile_system_default`
+/// to, applied at every create entry via `QoSProfile::resolve_system_default`.
+///
+/// The three policies mirror `rmw_zenoh_cpp`'s `QoS::QoS()`
+/// (`RMW_ZENOH_DEFAULT_RELIABILITY` RELIABLE, `_DURABILITY` VOLATILE,
+/// `_HISTORY` KEEP_LAST), which is also what `rmw_cyclonedds_cpp` folds the
+/// same sentinels to — the two reference RMWs agree on everything except the
+/// depth.
+///
+/// The depth deliberately does NOT mirror upstream's 42. That number is
+/// `rmw_zenoh_cpp`'s figure for its own buffers; ours is
+/// `SUBSCRIBER_RING_DEPTH`, the statically-allocated per-subscriber ring the
+/// shim actually enforces (`shim/subscriber.rs:51-57`, overflow drops at
+/// `:1538`; build-time `ZPICO_SUBSCRIBER_RING_DEPTH`, default 4). Advertising
+/// a depth we cannot honour is the lie issue 0829 is about, and the depth
+/// reaches a peer only through the liveliness-token keyexpr, where history and
+/// depth are not RxO policies and so do not gate matching.
+const ZENOH_SYSTEM_DEFAULTS: nros_rmw::QoSSystemDefaults = nros_rmw::QoSSystemDefaults {
+    reliability: nros_rmw::QoSReliabilityPolicy::Reliable,
+    durability: nros_rmw::QoSDurabilityPolicy::Volatile,
+    history: nros_rmw::QoSHistoryPolicy::KeepLast,
+    depth: crate::config::SUBSCRIBER_RING_DEPTH as u32,
+};
+
 impl Session for ZenohSession {
     type Error = TransportError;
     type PublisherHandle = ZenohPublisher;
@@ -901,6 +925,13 @@ impl Session for ZenohSession {
         topic: &TopicInfo,
         qos: QoSProfile,
     ) -> Result<Self::PublisherHandle, Self::Error> {
+        // issue 0829 — resolve the SYSTEM_DEFAULT sentinel FIRST, before
+        // anything is derived from the profile. The liveliness-token keyexpr
+        // below serialises this QoS in upstream's numbering for a ROS
+        // `rmw_zenoh_cpp` peer to parse out of the graph; upstream resolves in
+        // `best_available_qos` before the token exists, so its tokens never
+        // carry a sentinel and neither may ours.
+        let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
         let mut publisher = ZenohPublisher::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this publisher's node.
         if let Some(node_name) = topic.node_name {
@@ -933,6 +964,8 @@ impl Session for ZenohSession {
         topic: &TopicInfo,
         qos: QoSProfile,
     ) -> Result<Self::SubscriptionHandle, Self::Error> {
+        // issue 0829 — see `create_publisher`: resolve before the keyexpr.
+        let qos = qos.resolve_system_default(&ZENOH_SYSTEM_DEFAULTS);
         let mut subscriber = ZenohSubscriber::new(&self.context, topic, None, &qos)?;
         // Phase 268 W2 — ensure a per-node NN token for this subscriber's node.
         if let Some(node_name) = topic.node_name {

@@ -731,8 +731,45 @@ typedef struct rmw_subscription_options_t {
         ._reserved1  = {0, 0, 0},                                        \
     })
 
-/** `rmw_qos_profile_system_default`-equivalent: same as DEFAULT. */
-#define NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT  NROS_RMW_QOS_PROFILE_DEFAULT
+/** `rmw_qos_profile_system_default`-equivalent: **every field is the sentinel**.
+ *
+ * issue 0829. This aliased `NROS_RMW_QOS_PROFILE_DEFAULT` until 2026-09-03,
+ * which made `SYSTEM_DEFAULT` a byte-for-byte synonym for a concrete
+ * RELIABLE / VOLATILE / KEEP_LAST(10) profile — i.e. the constant said nothing
+ * of its own. Upstream's `rmw_qos_profile_system_default` names no concrete
+ * policy either; it is all sentinel, and the RMW resolves it. The two
+ * reference RMWs resolve the SAME sentinel differently —
+ * `rmw_cyclonedds_cpp`'s `create_readwrite_qos` gives `KEEP_LAST, 1`, while
+ * `rmw_zenoh_cpp`'s `QoS::QoS()` gives `RMW_ZENOH_DEFAULT_HISTORY_DEPTH`,
+ * which is 42 — so no number baked here could be right.
+ *
+ * NOT AN ABI BREAK: no struct layout moved and no policy value was
+ * renumbered. What changed is the BYTES this macro expands to, so a caller
+ * that recompiles against this header and uses this constant now sends
+ * sentinels where it used to send depth 10. That is the intended fix, and
+ * nothing in this repository used the macro. Every field being zero also means
+ * this is what a `memset` of `rmw_qos_profile_t` gives, so the ABI stops
+ * having two answers for the same bytes.
+ *
+ * Which concrete values a sentinel becomes is the BACKEND's answer, applied at
+ * its create entry: cyclonedds resolves to RELIABLE / VOLATILE / KEEP_LAST(1),
+ * mirroring `rmw_cyclonedds_cpp`; xrce resolves the three policies the same way
+ * and leaves the depth for the Agent; zenoh resolves the depth to the ring the
+ * shim actually enforces. */
+#define NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT                                 \
+    ((rmw_qos_profile_t){                                                   \
+        .reliability = NROS_RMW_RELIABILITY_SYSTEM_DEFAULT,              \
+        .durability  = NROS_RMW_DURABILITY_SYSTEM_DEFAULT,               \
+        .history     = NROS_RMW_HISTORY_SYSTEM_DEFAULT,                  \
+        .liveliness_kind = NROS_RMW_LIVELINESS_SYSTEM_DEFAULT,           \
+        .depth       = 0,                                                \
+        ._reserved0  = 0,                                                \
+        .deadline_ms = 0,                                                \
+        .lifespan_ms = 0,                                                \
+        .liveliness_lease_ms = 0,                                        \
+        .avoid_ros_namespace_conventions = 0,                            \
+        ._reserved1  = {0, 0, 0},                                        \
+    })
 
 /* ------------------------------------------------------------------ */
 /* Entity structs                                                     */

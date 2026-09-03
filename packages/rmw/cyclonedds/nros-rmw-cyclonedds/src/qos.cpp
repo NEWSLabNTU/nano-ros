@@ -56,11 +56,35 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
             ? DDS_DURABILITY_TRANSIENT_LOCAL
             : DDS_DURABILITY_VOLATILE);
 
+    // issue 0829 — the history KIND needs no new arm: the else-branch already
+    // sends `NROS_RMW_HISTORY_SYSTEM_DEFAULT` (0) to KEEP_LAST, which is where
+    // `rmw_cyclonedds_cpp` puts it too (its `HISTORY_SYSTEM_DEFAULT` joins
+    // `KEEP_LAST` by case fallthrough).
+    //
+    // The DEPTH does. `NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT` now carries depth
+    // 0, and Cyclone does not clamp that — `validate_history_qospolicy`
+    // REJECTS `KEEP_LAST` with `depth < 1` outright
+    // (`ddsi_plist.c:2603-2604`, reached from every entity-create path via
+    // `ddsi_xqos_valid`), so a sentinel profile would fail create with
+    // `BAD_PARAMETER` rather than defer to anything. 1 is what
+    // `create_readwrite_qos` resolves `RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT`
+    // to — `dds_qset_history(qos, DDS_HISTORY_KEEP_LAST, 1)` — and it is also
+    // Cyclone's own reader/writer table default (`ddsi_default_qos_reader`,
+    // `ddsi_plist.c:3454-3455`), so upstream and the middleware agree here
+    // even though they do not on reliability.
+    //
+    // KEEP_ALL keeps its 0: it carries one legitimately (upstream's
+    // `rmw_qos_profile_parameter_events` does) and the validator constrains
+    // only the KEEP_LAST case.
+    const bool keep_all = (src->history == NROS_RMW_HISTORY_KEEP_ALL);
+    uint32_t depth = src->depth;
+    if (!keep_all && depth == 0) {
+        depth = 1;
+    }
     dds_qset_history(
         q,
-        src->history == NROS_RMW_HISTORY_KEEP_ALL ? DDS_HISTORY_KEEP_ALL
-                                                  : DDS_HISTORY_KEEP_LAST,
-        src->depth);
+        keep_all ? DDS_HISTORY_KEEP_ALL : DDS_HISTORY_KEEP_LAST,
+        (int32_t)depth);
 
     // Phase-301 (issue 0241): `NROS_RMW_DURATION_INFINITE_MS` is the
     // explicit infinite spelling — semantically identical to 0 (no

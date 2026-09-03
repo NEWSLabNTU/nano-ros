@@ -331,6 +331,13 @@ pub enum TransportError {
 /// QoS history policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QoSHistoryPolicy {
+    /// **The caller did not state a history policy** — the backend picks.
+    /// Upstream's `RMW_QOS_POLICY_HISTORY_SYSTEM_DEFAULT`; lowers to
+    /// `NROS_RMW_HISTORY_SYSTEM_DEFAULT` (0) across the C ABI.
+    ///
+    /// See [`QoSSystemDefaults`] for how a backend resolves it. Listed
+    /// first to match rclrs's enumerator order.
+    SystemDefault,
     /// Keep last N messages (where N is defined in QoSProfile)
     #[default]
     KeepLast,
@@ -341,6 +348,12 @@ pub enum QoSHistoryPolicy {
 /// QoS reliability policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QoSReliabilityPolicy {
+    /// **The caller did not state a reliability policy** — the backend picks.
+    /// Upstream's `RMW_QOS_POLICY_RELIABILITY_SYSTEM_DEFAULT`; lowers to
+    /// `NROS_RMW_RELIABILITY_SYSTEM_DEFAULT` (0) across the C ABI.
+    ///
+    /// See [`QoSSystemDefaults`].
+    SystemDefault,
     /// Reliable delivery (retransmit if needed).
     ///
     /// Default — matches ROS 2 `rmw_qos_profile_default` and the
@@ -354,6 +367,12 @@ pub enum QoSReliabilityPolicy {
 /// QoS durability policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum QoSDurabilityPolicy {
+    /// **The caller did not state a durability policy** — the backend picks.
+    /// Upstream's `RMW_QOS_POLICY_DURABILITY_SYSTEM_DEFAULT`; lowers to
+    /// `NROS_RMW_DURABILITY_SYSTEM_DEFAULT` (0) across the C ABI.
+    ///
+    /// See [`QoSSystemDefaults`].
+    SystemDefault,
     /// Messages are discarded when subscriber disconnects
     #[default]
     Volatile,
@@ -641,6 +660,55 @@ impl Default for QoSProfile {
     }
 }
 
+/// The depth sentinel — "the caller did not state a queue depth".
+///
+/// issue 0829. Upstream spells it `RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT = 0`
+/// (`rmw/include/rmw/types.h`); depth is `size_t` there and `uint16_t` in our
+/// C ABI, but 0 is 0 in both. The value was already free on every backend:
+/// Cyclone REJECTS `KEEP_LAST` with depth 0 outright
+/// (`validate_history_qospolicy`, `ddsi_plist.c:2603-2604`), the XRCE client
+/// already reads it as "unstated" and drops the field from the wire
+/// (`create_entities_bin.c:148`), and both `read_entity_qos`
+/// (`nros-rmw-cyclonedds/src/qos.cpp:138`) and `report_qos_downgrade`
+/// (`nros-rmw-cffi/src/lib.rs:1903`) already treat a 0 read-back as "no
+/// answer" rather than as an answer.
+pub const DEPTH_SYSTEM_DEFAULT: u32 = 0;
+
+/// What ONE backend resolves the `SYSTEM_DEFAULT` sentinel to.
+///
+/// issue 0829. `rmw_qos_profile_system_default` is an absence, and the RMW
+/// fills it — which means the answer is per backend and there is no constant
+/// this crate could bake. Each backend declares its own `QoSSystemDefaults`
+/// and applies it with [`QoSProfile::resolve_system_default`] at its create
+/// entry, **before anything is derived from the QoS**.
+///
+/// That ordering is load-bearing on the zenoh path: the profile is serialised
+/// into the liveliness-token keyexpr that a ROS `rmw_zenoh_cpp` peer parses
+/// out of the graph (`nros-rmw-zenoh/src/keyexpr.rs`). Upstream resolves in
+/// `best_available_qos` before the entity and its token exist, so its tokens
+/// never carry a sentinel; ours must not either, or we advertise `0:0:0,0` to
+/// peers as though it were a policy.
+///
+/// The values a backend picks should mirror **the corresponding upstream
+/// RMW**, not the raw middleware default — interop with a ROS peer is the
+/// requirement, and the two differ. Leaving `dds_qset_reliability` unset gives
+/// Cyclone's own reader default of BEST_EFFORT (`ddsi_plist.c:3470`), where
+/// `rmw_cyclonedds_cpp` deliberately picks RELIABLE.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QoSSystemDefaults {
+    /// Concrete reliability. Must not itself be `SystemDefault`.
+    pub reliability: QoSReliabilityPolicy,
+    /// Concrete durability. Must not itself be `SystemDefault`.
+    pub durability: QoSDurabilityPolicy,
+    /// Concrete history. Must not itself be `SystemDefault`.
+    pub history: QoSHistoryPolicy,
+    /// Concrete queue depth. `0` means the backend genuinely has no answer and
+    /// defers further down the stack — the XRCE case, where the client encodes
+    /// exactly that (`optional_history_depth = false`) and the Agent's DDS
+    /// layer resolves it.
+    pub depth: u32,
+}
+
 impl QoSProfile {
     /// Phase 211.H — fold the plan's `qos_overrides` matching `topic` + `role`
     /// into this profile, returning the overridden profile. Setup-time only
@@ -747,13 +815,39 @@ impl QoSProfile {
         10,
     );
 
-    /// System default QoS profile (matches rmw_qos_profile_system_default)
-    pub const QOS_PROFILE_SYSTEM_DEFAULT: Self = Self::build(
-        QoSReliabilityPolicy::Reliable,
-        QoSDurabilityPolicy::Volatile,
-        QoSHistoryPolicy::KeepLast,
-        1,
-    );
+    /// `rmw_qos_profile_system_default` — **an absence, not a profile.**
+    ///
+    /// issue 0829. Every field is the sentinel: upstream's constant names no
+    /// concrete policy at all, and the two reference RMWs fill the absence with
+    /// different numbers — `rmw_cyclonedds_cpp`'s `create_readwrite_qos` folds
+    /// `RMW_QOS_POLICY_DEPTH_SYSTEM_DEFAULT` to `KEEP_LAST(1)`, while
+    /// `rmw_zenoh_cpp`'s `QoS::QoS()` fills it from
+    /// `RMW_ZENOH_DEFAULT_HISTORY_DEPTH`, which is 42, over a comment stating
+    /// the contract outright: *"If the depth field in the qos profile is set to
+    /// 0, the RMW implementation has the liberty to assign a default depth."*
+    ///
+    /// So no baked number can be right. This carried a concrete
+    /// `Reliable / Volatile / KeepLast(1)` until 2026-09-03, and
+    /// `nros::qos::SYSTEM_DEFAULT` carried a concrete depth **10**, which is how
+    /// one name shipped two queue depths. Both are gone; the backend resolves
+    /// this at its create entry via [`QoSProfile::resolve_system_default`].
+    ///
+    /// `liveliness_kind` is [`QoSLivelinessPolicy::None`], which IS the
+    /// sentinel on that policy — it lowers to
+    /// `NROS_RMW_LIVELINESS_SYSTEM_DEFAULT` (0), the two having collapsed onto
+    /// one value in phase-376 W5/B2.
+    pub const QOS_PROFILE_SYSTEM_DEFAULT: Self = Self {
+        history: QoSHistoryPolicy::SystemDefault,
+        reliability: QoSReliabilityPolicy::SystemDefault,
+        durability: QoSDurabilityPolicy::SystemDefault,
+        liveliness_kind: QoSLivelinessPolicy::None,
+        depth: DEPTH_SYSTEM_DEFAULT,
+        deadline_ms: 0,
+        lifespan_ms: 0,
+        liveliness_lease_ms: 0,
+        avoid_ros_namespace_conventions: false,
+        tx_express: false,
+    };
 
     /// Default QoS profile (matches rmw_qos_profile_default)
     pub const QOS_PROFILE_DEFAULT: Self = Self::build(
@@ -1620,16 +1714,46 @@ impl QoSProfile {
     /// Compute the set of QoS policies actually requested by this profile.
     ///
     /// Zero-valued time fields and `LivelinessKind::None` count as "not
-    /// requesting" the corresponding policy — the cheap default. The
-    /// `CORE` bits (reliability, durability=VOLATILE, history, depth)
-    /// are always present because every nano-ros backend honours them.
+    /// requesting" the corresponding policy — the cheap default.
+    ///
+    /// issue 0829 — the four `CORE` bits (reliability, durability, history,
+    /// depth) used to be added UNCONDITIONALLY, on the reasoning that every
+    /// nano-ros backend honours them. That is true and still not the right
+    /// test: this function answers *what did the caller ASK FOR*, and a
+    /// `SYSTEM_DEFAULT` policy asks for nothing. Starting from `CORE` made
+    /// `QOS_PROFILE_SYSTEM_DEFAULT` demand all four, so a backend that could
+    /// not honour one would reject the profile with `IncompatibleQos` — for
+    /// requesting nothing. The pattern was already here for the extended
+    /// policies three lines down (a zero `deadline_ms` declines its bit); it
+    /// just never reached the four CORE ones.
+    ///
+    /// This RELAXES the mask, so it can only turn a rejection into an
+    /// acceptance, never the reverse — and it flips no verdict today: every
+    /// `supported_qos_policies` impl in the tree returns at least `CORE`
+    /// (`traits.rs` default impl, `nros-node/src/mock.rs:259`,
+    /// `nros-rmw-cffi/src/lib.rs:2580`, `nros-rmw-zenoh/src/shim/session.rs:1245`),
+    /// so a CORE bit has never been the reason for a failure.
     pub fn required_policies(&self) -> QoSPolicyMask {
-        let mut mask = QoSPolicyMask::CORE;
-        if self.durability == QoSDurabilityPolicy::TransientLocal {
-            mask = QoSPolicyMask(
-                (mask.0 & !QoSPolicyMask::DURABILITY_VOLATILE.0)
-                    | QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL.0,
-            );
+        let mut mask = QoSPolicyMask(0);
+        if self.reliability != QoSReliabilityPolicy::SystemDefault {
+            mask |= QoSPolicyMask::RELIABILITY;
+        }
+        if self.history != QoSHistoryPolicy::SystemDefault {
+            mask |= QoSPolicyMask::HISTORY;
+        }
+        // Depth's sentinel is a VALUE, not a variant: `DEPTH_SYSTEM_DEFAULT`
+        // is 0, the same 0 that `KEEP_ALL` profiles carry to mean "depth is
+        // not used here" (`QOS_PROFILE_PARAMETER_EVENTS`). Both mean the
+        // caller did not ask for a depth, so both decline the bit.
+        if self.depth != DEPTH_SYSTEM_DEFAULT {
+            mask |= QoSPolicyMask::DEPTH;
+        }
+        match self.durability {
+            QoSDurabilityPolicy::SystemDefault => {}
+            QoSDurabilityPolicy::Volatile => mask |= QoSPolicyMask::DURABILITY_VOLATILE,
+            QoSDurabilityPolicy::TransientLocal => {
+                mask |= QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL
+            }
         }
         // Phase-301 (issue 0241): DURATION_INFINITE_MS reads the same as 0
         // (infinite = no check) at every duration check site.
@@ -1664,6 +1788,48 @@ impl QoSProfile {
         } else {
             Err(TransportError::IncompatibleQos)
         }
+    }
+
+    /// Replace every `SYSTEM_DEFAULT` field with the backend's own answer.
+    ///
+    /// issue 0829 — a backend calls this at its create entry, **before**
+    /// anything is derived from the profile (see [`QoSSystemDefaults`] for why
+    /// the ordering matters on the zenoh path). Fields the caller DID state
+    /// are left exactly as they are: this resolves an absence, it never
+    /// overrides a request.
+    ///
+    /// Idempotent, and safe to call on a fully concrete profile — a profile
+    /// with no sentinel in it is returned unchanged.
+    #[must_use]
+    pub const fn resolve_system_default(mut self, defaults: &QoSSystemDefaults) -> Self {
+        if matches!(self.reliability, QoSReliabilityPolicy::SystemDefault) {
+            self.reliability = defaults.reliability;
+        }
+        if matches!(self.durability, QoSDurabilityPolicy::SystemDefault) {
+            self.durability = defaults.durability;
+        }
+        if matches!(self.history, QoSHistoryPolicy::SystemDefault) {
+            self.history = defaults.history;
+        }
+        if self.depth == DEPTH_SYSTEM_DEFAULT {
+            self.depth = defaults.depth;
+        }
+        self
+    }
+
+    /// `true` if any field is still the `SYSTEM_DEFAULT` sentinel.
+    ///
+    /// Depth is deliberately NOT part of this test: a `KEEP_ALL` profile
+    /// legitimately carries depth 0 forever (`QOS_PROFILE_PARAMETER_EVENTS`),
+    /// and a backend that resolves the sentinel depth to 0 — XRCE does, on
+    /// purpose — leaves a resolved profile reading 0 here. This asks about the
+    /// three POLICY fields, where the sentinel is a distinct variant and so
+    /// cannot be confused with a stated value.
+    #[must_use]
+    pub const fn has_unresolved_system_default(&self) -> bool {
+        matches!(self.reliability, QoSReliabilityPolicy::SystemDefault)
+            || matches!(self.durability, QoSDurabilityPolicy::SystemDefault)
+            || matches!(self.history, QoSHistoryPolicy::SystemDefault)
     }
 }
 
@@ -2936,6 +3102,99 @@ mod tests {
         let qos = QoSProfile::QOS_PROFILE_SERVICES_DEFAULT;
         assert_eq!(qos.reliability, QoSReliabilityPolicy::Reliable);
         assert_eq!(qos.durability, QoSDurabilityPolicy::Volatile);
+    }
+
+    /// issue 0829 — `SYSTEM_DEFAULT` asks for NOTHING, so it demands no policy.
+    ///
+    /// `required_policies` started from `QoSPolicyMask::CORE` unconditionally,
+    /// which made the sentinel profile demand reliability, durability, history
+    /// AND depth — so a backend that could not honour one would answer
+    /// `IncompatibleQos` to a profile that requested none of them.
+    #[test]
+    fn system_default_profile_requires_no_policy() {
+        let required = QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.required_policies();
+        assert_eq!(required.0, 0, "SYSTEM_DEFAULT demanded {required:?}");
+        // Therefore it is admissible against a backend that advertises nothing.
+        assert!(
+            QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+                .validate_against(QoSPolicyMask(0))
+                .is_ok()
+        );
+    }
+
+    /// The relaxation is per FIELD, not all-or-nothing: a profile that states
+    /// SOME policies still demands exactly those.
+    #[test]
+    fn a_partly_stated_profile_demands_only_what_it_states() {
+        let qos = QoSProfile {
+            reliability: QoSReliabilityPolicy::BestEffort,
+            ..QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+        };
+        let required = qos.required_policies();
+        assert!(required.contains(QoSPolicyMask::RELIABILITY));
+        assert!(!required.contains(QoSPolicyMask::HISTORY));
+        assert!(!required.contains(QoSPolicyMask::DEPTH));
+        assert!(!required.contains(QoSPolicyMask::DURABILITY_VOLATILE));
+        assert!(!required.contains(QoSPolicyMask::DURABILITY_TRANSIENT_LOCAL));
+    }
+
+    /// A fully concrete profile is unaffected by the relaxation — this is the
+    /// guard on "do not silently stop demanding what the caller asked for".
+    #[test]
+    fn concrete_profiles_still_demand_their_core_policies() {
+        let required = QoSProfile::QOS_PROFILE_DEFAULT.required_policies();
+        assert!(required.contains(QoSPolicyMask::RELIABILITY));
+        assert!(required.contains(QoSPolicyMask::DURABILITY_VOLATILE));
+        assert!(required.contains(QoSPolicyMask::HISTORY));
+        assert!(required.contains(QoSPolicyMask::DEPTH));
+        // And a backend missing one still rejects it.
+        let missing = QoSPolicyMask(required.0 & !QoSPolicyMask::DEPTH.0);
+        assert_eq!(
+            QoSProfile::QOS_PROFILE_DEFAULT.validate_against(missing),
+            Err(TransportError::IncompatibleQos)
+        );
+    }
+
+    /// issue 0829 — resolution replaces ONLY the sentinel fields, and the
+    /// answer is the backend's, not a constant this crate bakes.
+    #[test]
+    fn resolve_system_default_fills_absences_and_touches_nothing_else() {
+        // Two backends, two different answers to the SAME sentinel — the whole
+        // reason no concrete `QOS_PROFILE_SYSTEM_DEFAULT` could be right.
+        const CYCLONE: QoSSystemDefaults = QoSSystemDefaults {
+            reliability: QoSReliabilityPolicy::Reliable,
+            durability: QoSDurabilityPolicy::Volatile,
+            history: QoSHistoryPolicy::KeepLast,
+            depth: 1,
+        };
+        const ZENOH: QoSSystemDefaults = QoSSystemDefaults {
+            depth: 4,
+            ..CYCLONE
+        };
+
+        let a = QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.resolve_system_default(&CYCLONE);
+        let b = QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.resolve_system_default(&ZENOH);
+        assert_eq!(a.reliability, QoSReliabilityPolicy::Reliable);
+        assert_eq!(a.history, QoSHistoryPolicy::KeepLast);
+        assert_eq!(a.durability, QoSDurabilityPolicy::Volatile);
+        assert_eq!(a.depth, 1);
+        assert_eq!(b.depth, 4);
+        assert!(!a.has_unresolved_system_default());
+        assert!(!b.has_unresolved_system_default());
+
+        // A STATED policy is never overridden — resolution fills an absence.
+        let stated = QoSProfile {
+            reliability: QoSReliabilityPolicy::BestEffort,
+            history: QoSHistoryPolicy::KeepAll,
+            durability: QoSDurabilityPolicy::TransientLocal,
+            depth: 7,
+            ..QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+        };
+        let resolved = stated.resolve_system_default(&CYCLONE);
+        assert_eq!(resolved, stated, "resolution overrode a stated policy");
+
+        // Idempotent.
+        assert_eq!(a.resolve_system_default(&ZENOH), a);
     }
 
     #[test]

@@ -362,8 +362,32 @@ pub const NROS_RMW_QOS_PROFILE_PARAMETERS: NrosRmwQos = NrosRmwQos {
     ..NROS_RMW_QOS_PROFILE_DEFAULT
 };
 
-/// Standard `rmw_qos_profile_system_default`-equivalent.
-pub const NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT: NrosRmwQos = NROS_RMW_QOS_PROFILE_DEFAULT;
+/// Standard `rmw_qos_profile_system_default`-equivalent — **all sentinel**.
+///
+/// issue 0829. This aliased `_DEFAULT` until 2026-09-03, which said the
+/// constant carried no meaning of its own: `SYSTEM_DEFAULT` became a
+/// byte-for-byte synonym for a concrete reliable / volatile / keep-last(10)
+/// profile. Upstream's `rmw_qos_profile_system_default` names no concrete
+/// policy at all, and the RMW resolves the absence — differently per backend
+/// (`rmw_cyclonedds_cpp` → depth 1, `rmw_zenoh_cpp` → depth 42), which is why
+/// no baked number here could be right.
+///
+/// Every field is now zero, so this is also what a `memset` of the struct
+/// gives: the ABI stops having two answers for the same bytes. Mirrors
+/// `NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT` in `nros/rmw_entity.h`.
+pub const NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT: NrosRmwQos = NrosRmwQos {
+    reliability: generated::NROS_RMW_RELIABILITY_SYSTEM_DEFAULT as u8,
+    durability: generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT as u8,
+    history: generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT as u8,
+    liveliness_kind: generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT as u8,
+    depth: 0,
+    _reserved0: 0,
+    deadline_ms: 0,
+    lifespan_ms: 0,
+    liveliness_lease_ms: 0,
+    avoid_ros_namespace_conventions: 0,
+    _reserved1: [0; 3],
+};
 
 // Phase-301 (issue 0241) — the QoS lowering is FALLIBLE: a depth the
 // C ABI's u16 cannot represent is a create-time error, never a silent
@@ -380,19 +404,32 @@ impl TryFrom<QoSProfile> for NrosRmwQos {
             return Err(TransportError::InvalidArgument);
         }
         Ok(Self {
+            // issue 0829 — the sentinel LOWERS; it is not resolved here.
+            // `NrosRmwQos` is what a C backend receives, and resolving the
+            // absence is that backend's job (cyclone answers depth 1, xrce
+            // leaves it for the Agent). Folding it to a concrete value on this
+            // side would hand every C backend the same answer and make the
+            // per-backend resolution unreachable.
             reliability: match qos.reliability {
+                QoSReliabilityPolicy::SystemDefault => {
+                    generated::NROS_RMW_RELIABILITY_SYSTEM_DEFAULT as u8
+                }
                 QoSReliabilityPolicy::BestEffort => {
                     generated::NROS_RMW_RELIABILITY_BEST_EFFORT as u8
                 }
                 QoSReliabilityPolicy::Reliable => generated::NROS_RMW_RELIABILITY_RELIABLE as u8,
             },
             durability: match qos.durability {
+                QoSDurabilityPolicy::SystemDefault => {
+                    generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT as u8
+                }
                 QoSDurabilityPolicy::Volatile => generated::NROS_RMW_DURABILITY_VOLATILE as u8,
                 QoSDurabilityPolicy::TransientLocal => {
                     generated::NROS_RMW_DURABILITY_TRANSIENT_LOCAL as u8
                 }
             },
             history: match qos.history {
+                QoSHistoryPolicy::SystemDefault => generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT as u8,
                 QoSHistoryPolicy::KeepLast => generated::NROS_RMW_HISTORY_KEEP_LAST as u8,
                 QoSHistoryPolicy::KeepAll => generated::NROS_RMW_HISTORY_KEEP_ALL as u8,
             },
@@ -4629,6 +4666,49 @@ mod tests {
         assert_eq!(
             NrosRmwQos::try_from(qos),
             Err(TransportError::InvalidArgument)
+        );
+    }
+
+    /// issue 0829 — the POLICY sentinel lowers rather than resolving, and the
+    /// hand-mirrored C constant agrees with what the Rust profile lowers to.
+    ///
+    /// Two things at once, both hand-mirror class (issues 0088/0160/0245):
+    /// `NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT` here is a second copy of the macro
+    /// in `nros/rmw_entity.h`, and the lowering is a third statement of the same
+    /// mapping. All three must say "every field is zero", because a C backend
+    /// resolving the sentinel can only do so if it actually receives one.
+    #[test]
+    fn system_default_lowers_to_all_sentinel_and_matches_the_c_mirror() {
+        let lowered = NrosRmwQos::try_from(nros_rmw::QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT)
+            .expect("the sentinel profile must lower");
+
+        assert_eq!(
+            lowered.reliability as i32,
+            generated::NROS_RMW_RELIABILITY_SYSTEM_DEFAULT
+        );
+        assert_eq!(
+            lowered.durability as i32,
+            generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT
+        );
+        assert_eq!(
+            lowered.history as i32,
+            generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT
+        );
+        assert_eq!(lowered.depth, 0, "depth sentinel must lower as 0");
+        assert_eq!(
+            lowered.liveliness_kind as u32,
+            generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT
+        );
+
+        // The hand-mirrored C constant says the same thing.
+        assert_eq!(
+            lowered, NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT,
+            "the C mirror drifted from what the Rust profile lowers to"
+        );
+        // And it is NOT `_DEFAULT` — the aliasing was half the 0829 defect.
+        assert_ne!(
+            NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT, NROS_RMW_QOS_PROFILE_DEFAULT,
+            "SYSTEM_DEFAULT aliased DEFAULT again — see issue 0829"
         );
     }
 
