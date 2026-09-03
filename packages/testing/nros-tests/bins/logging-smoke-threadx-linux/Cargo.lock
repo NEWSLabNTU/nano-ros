@@ -338,6 +338,7 @@ version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
+ "nros-platform-config",
  "nros-zephyr-build",
 ]
 

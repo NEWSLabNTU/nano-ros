@@ -61,6 +61,10 @@ OWNERS: dict[str, str] = {
     # The memory tenant (phase-400 W6). The stack is read inside the crate that
     # owns the ladder; the heap by the board crate that sizes `ucHeap`.
     "NROS_FREERTOS_APP_STACK_KB": "packages/boards/nros-board-common/src/freertos_build.rs",
+    # The Zephyr heap joined the memory tenant once `nros-platform` could reach
+    # the ladder — it could not while the reader lived in `nros-board-common`,
+    # which depends on `nros-platform`.
+    "NROS_ZEPHYR_HEAP_SIZE": "packages/platform/nros-platform/build.rs",
     "NROS_FREERTOS_HEAP_KB": "packages/boards/nros-board-freertos/build.rs",
     # The transport and zenoh-tx tenants resolve inside the ladder itself, so
     # the resolver IS the owner. `nros-zpico-build` re-read the tx trio for its

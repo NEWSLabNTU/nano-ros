@@ -92,7 +92,7 @@ KNOB_CLASS = {
     "NROS_RUNTIME_MAX_CELL_ENTITIES": ("ladder", "runtime tenant"),
     "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("ladder", "runtime tenant"),
     "NROS_RUNTIME_MAX_COMPONENTS": ("ladder", "runtime tenant"),
-    "NROS_ZEPHYR_HEAP_SIZE": ("sizing", "BLOCKED: the ladder crate depends on nros-platform, so the rungs are a cycle away. Kconfig already serves the rung on Zephyr"),
+    "NROS_ZEPHYR_HEAP_SIZE": ("ladder", "memory tenant — unblocked when the reader moved to a leaf crate"),
     "NROS_FREERTOS_HEAP_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_FREERTOS_APP_STACK_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_KEYEXPR_STRING_SIZE": ("ladder", "zenoh.limits tenant"),

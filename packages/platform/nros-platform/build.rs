@@ -38,13 +38,26 @@ fn main() {
     // `$DOTCONFIG` (issue 0460). The platform states the value where a Zephyr
     // image already looks for it.
     //
-    // Giving it the toml rungs would need the ladder types in a crate BELOW
-    // both — a real refactor, not a dependency line.
-    let size = nros_zephyr_build::knob_usize(
-        "NROS_ZEPHYR_HEAP_SIZE",
-        "CONFIG_NROS_ZEPHYR_HEAP_SIZE",
-        DEFAULT_HEAP_SIZE,
-    );
+    // phase-400 W6 — and it NOW HAS the toml rungs. This comment used to end
+    // "giving it the toml rungs would need the ladder types in a crate BELOW
+    // both — a real refactor, not a dependency line", and that refactor
+    // happened: `nros-platform-config` is exactly that crate, extracted so the
+    // reader could reach crates `nros-board-common` cannot.
+    //
+    // The `memory` tenant already mapped this knob — `("zephyr", "heap_bytes")
+    // => "NROS_ZEPHYR_HEAP_SIZE"` — so the ladder modelled it while the only
+    // reader could not consult it. `memory_value` composes the whole ladder:
+    // env, then Kconfig via `$DOTCONFIG`, then the platform/board rung, then
+    // the builtin below.
+    let size = nros_platform_config::platform_config::BuildRungs::from_build_env()
+        .map(|r| r.memory_value("heap_bytes", DEFAULT_HEAP_SIZE))
+        .unwrap_or_else(|| {
+            nros_zephyr_build::knob_usize(
+                "NROS_ZEPHYR_HEAP_SIZE",
+                "CONFIG_NROS_ZEPHYR_HEAP_SIZE",
+                DEFAULT_HEAP_SIZE,
+            )
+        });
 
     // `zephyr_heap.rs` keeps its `option_env!` read; this simply makes the
     // value it sees the RESOLVED one rather than whatever happened to be in
