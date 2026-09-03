@@ -844,12 +844,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
-      - name: Verify this runner's labels are true
-        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
       - name: just setup tier2-nightly
         run: |
           source ./activate.sh
           just setup tier2-nightly
+      # AFTER `setup` — phase-413 W2, same as run-matrix (#279), queue (#253)
+      # and build-wide (#249).
+      #
+      # `runner-doctor.sh` checks `$root/build/qemu/bin/qemu-system-arm` FIRST
+      # ("the project-local patched build is the PRIMARY path (phase-143) … a
+      # host with it needs nothing from the system") and falls back to the
+      # system qemu only when that is absent. That path is inside the CHECKOUT,
+      # and `just setup tier2-nightly` creates it — the lane expands to
+      # `esp32 freertos native nuttx qemu threadx_linux threadx_riscv64 zephyr`,
+      # and the `qemu` module's `setup` ends in `just qemu setup-qemu`.
+      #
+      # Asserting before provisioning asks the host for something the next step
+      # supplies. This job carries the same `nros-qemu` label on the same runner
+      # class as `run-matrix`, where it failed at step 2 against a system qemu
+      # 6.2 in every run — provisioning nothing, testing nothing, and reporting
+      # it as a host that needs `runner-provision.sh`.
+      #
+      # A genuinely mislabeled runner still fails, one step later, and `setup`
+      # would have failed on it first.
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
+
       - name: just ci matrix-nightly
         run: |
           source ./activate.sh
