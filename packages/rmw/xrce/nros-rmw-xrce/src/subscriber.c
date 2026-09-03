@@ -1,7 +1,7 @@
 /* Phase 115.K.2.2 — subscriber path.
  *
  * Mirrors the Rust impl's `XrceSession::create_subscriber` /
- * `XrceSubscriber::try_recv_raw`. Single-slot ringbuffer: callbacks
+ * `XrceSubscriber::take_serialized`. Single-slot ringbuffer: callbacks
  * overwrite stale data; oversize messages flag overflow and drop.
  *
  * The topic callback dispatches by datareader_id to the matching
@@ -23,24 +23,20 @@
 /* Topic callback — dispatches by datareader id. Registered once at
  * session_open via `uxr_set_topic_callback(..., xrce_topic_callback,
  * st)`. */
-void xrce_topic_callback(uxrSession *session,
-                         uxrObjectId object_id,
-                         uint16_t request_id,
-                         uxrStreamId stream_id,
-                         struct ucdrBuffer *ub,
-                         uint16_t length,
-                         void *args) {
+void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t request_id,
+                         uxrStreamId stream_id, struct ucdrBuffer* ub, uint16_t length,
+                         void* args) {
     (void)session;
     (void)request_id;
     (void)stream_id;
 
-    xrce_session_state_t *st = (xrce_session_state_t *)args;
+    xrce_session_state_t* st = (xrce_session_state_t*)args;
     if (st == NULL || ub == NULL) {
         return;
     }
     size_t len = (size_t)length;
     for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
-        xrce_subscriber_slot *slot = &st->subscriber_slots[i];
+        xrce_subscriber_slot* slot = &st->subscriber_slots[i];
         if (!slot->active || slot->datareader_id != object_id.id) {
             continue;
         }
@@ -55,13 +51,12 @@ void xrce_topic_callback(uxrSession *session,
         if (slot->count >= XRCE_SUBSCRIBER_RING_DEPTH) {
             return;
         }
-        xrce_subscriber_ring_entry *entry = &slot->entries[slot->write_idx];
+        xrce_subscriber_ring_entry* entry = &slot->entries[slot->write_idx];
         /* Issue 0819 — staging (bound, CDR header, fragment-aware copy) is
          * `xrce_stage_inbound`, shared with the two service inboxes because all
          * three had the same fragment bug. A refusal sets the entry's overflow
          * flag, which the take reports as NROS_RMW_RET_MESSAGE_TOO_LARGE. */
-        entry->overflow =
-            !xrce_stage_inbound(entry->data, XRCE_BUFFER_SIZE, ub, len, &entry->len);
+        entry->overflow = !xrce_stage_inbound(entry->data, XRCE_BUFFER_SIZE, ub, len, &entry->len);
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
         slot->count++;
         return;
@@ -70,13 +65,10 @@ void xrce_topic_callback(uxrSession *session,
      * for diagnostics when the slot pool is full. */
 }
 
-rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
-                                      const rmw_message_type_support_t* type_support,
-                                const char* topic_name,
-                                      uint32_t domain_id,
-                                      const rmw_qos_profile_t *qos,
-                                      const rmw_subscription_options_t *options,
-                                      rmw_subscription_t *out) {
+rmw_ret_t
+xrce_subscription_create(const rmw_node_t* node, const rmw_message_type_support_t* type_support,
+                         const char* topic_name, uint32_t domain_id, const rmw_qos_profile_t* qos,
+                         const rmw_subscription_options_t* options, rmw_subscription_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -96,13 +88,13 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
     if (session == NULL || out == NULL || topic_name == NULL || type_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    xrce_session_state_t *st = (xrce_session_state_t *)session->backend_data;
+    xrce_session_state_t* st = (xrce_session_state_t*)session->backend_data;
     if (st == NULL) {
         return NROS_RMW_RET_ERROR;
     }
 
     /* Find a free slot. */
-    xrce_subscriber_slot *slot = NULL;
+    xrce_subscriber_slot* slot = NULL;
     for (size_t i = 0; i < XRCE_MAX_SUBSCRIBERS; ++i) {
         if (!st->subscriber_slots[i].active) {
             slot = &st->subscriber_slots[i];
@@ -113,17 +105,17 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
         return NROS_RMW_RET_ERROR;
     }
 
-    xrce_subscriber_state *ss = (xrce_subscriber_state *)
-        nros_xrce_calloc(1, sizeof(xrce_subscriber_state));
+    xrce_subscriber_state* ss =
+        (xrce_subscriber_state*)nros_xrce_calloc(1, sizeof(xrce_subscriber_state));
     if (ss == NULL) {
         return NROS_RMW_RET_BAD_ALLOC;
     }
     ss->session_state = st;
-    ss->slot          = slot;
+    ss->slot = slot;
 
     uxrObjectId topic_oid = xrce_alloc_entity_id(st, UXR_TOPIC_ID);
-    uxrObjectId sub_oid   = xrce_alloc_entity_id(st, UXR_SUBSCRIBER_ID);
-    uxrObjectId dr_oid    = xrce_alloc_entity_id(st, UXR_DATAREADER_ID);
+    uxrObjectId sub_oid = xrce_alloc_entity_id(st, UXR_SUBSCRIBER_ID);
+    uxrObjectId dr_oid = xrce_alloc_entity_id(st, UXR_DATAREADER_ID);
 
     int avoid_ros = 0;
     if (qos != NULL) {
@@ -140,18 +132,16 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
 
     uxrQoS_t xrce_qos = xrce_map_qos(qos);
 
-    uint16_t req_topic = uxr_buffer_create_topic_bin(
-        &st->session, st->output_reliable, topic_oid, st->participant_oid,
-        dds_topic, dds_type, UXR_REPLACE);
-    uint16_t req_sub = uxr_buffer_create_subscriber_bin(
-        &st->session, st->output_reliable, sub_oid, st->participant_oid,
-        UXR_REPLACE);
-    uint16_t req_dr = uxr_buffer_create_datareader_bin(
-        &st->session, st->output_reliable, dr_oid, sub_oid, topic_oid,
-        xrce_qos, UXR_REPLACE);
+    uint16_t req_topic =
+        uxr_buffer_create_topic_bin(&st->session, st->output_reliable, topic_oid,
+                                    st->participant_oid, dds_topic, dds_type, UXR_REPLACE);
+    uint16_t req_sub = uxr_buffer_create_subscriber_bin(&st->session, st->output_reliable, sub_oid,
+                                                        st->participant_oid, UXR_REPLACE);
+    uint16_t req_dr = uxr_buffer_create_datareader_bin(&st->session, st->output_reliable, dr_oid,
+                                                       sub_oid, topic_oid, xrce_qos, UXR_REPLACE);
 
-    uint16_t requests[3] = { req_topic, req_sub, req_dr };
-    uint8_t  statuses[3] = { 0, 0, 0 };
+    uint16_t requests[3] = {req_topic, req_sub, req_dr};
+    uint8_t statuses[3] = {0, 0, 0};
     rmw_ret_t cret = xrce_confirm_entities(st, requests, statuses, 3);
     if (cret != NROS_RMW_RET_OK) {
         nros_xrce_free(ss);
@@ -160,26 +150,26 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
 
     /* Register slot for callback dispatch. */
     slot->datareader_id = dr_oid.id;
-    slot->write_idx     = 0;
-    slot->read_idx      = 0;
-    slot->count         = 0;
-    slot->locked        = false;
+    slot->write_idx = 0;
+    slot->read_idx = 0;
+    slot->count = 0;
+    slot->locked = false;
     for (size_t i = 0; i < XRCE_SUBSCRIBER_RING_DEPTH; ++i) {
         slot->entries[i].len = 0;
         slot->entries[i].overflow = false;
     }
-    slot->active        = true;
-    ss->datareader_oid  = dr_oid;
+    slot->active = true;
+    ss->datareader_oid = dr_oid;
 
     /* Request continuous data delivery. */
     uxrDeliveryControl delivery = {
-        .max_samples           = UXR_MAX_SAMPLES_UNLIMITED,
-        .max_elapsed_time      = UXR_MAX_ELAPSED_TIME_UNLIMITED,
-        .max_bytes_per_second  = UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
-        .min_pace_period       = 0,
+        .max_samples = UXR_MAX_SAMPLES_UNLIMITED,
+        .max_elapsed_time = UXR_MAX_ELAPSED_TIME_UNLIMITED,
+        .max_bytes_per_second = UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+        .min_pace_period = 0,
     };
-    (void)uxr_buffer_request_data(&st->session, st->output_reliable,
-                                  dr_oid, st->input_reliable, &delivery);
+    (void)uxr_buffer_request_data(&st->session, st->output_reliable, dr_oid, st->input_reliable,
+                                  &delivery);
     (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
 
     /* Issue 0847 — this entity now holds a pointer into the session state, so
@@ -190,12 +180,12 @@ rmw_ret_t xrce_subscription_create(const rmw_node_t* node,
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_subscription_destroy(rmw_subscription_t *subscriber) {
+rmw_ret_t xrce_subscription_destroy(rmw_subscription_t* subscriber) {
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
-    xrce_session_state_t *st = ss->session_state;
+    xrce_subscriber_state* ss = (xrce_subscriber_state*)subscriber->backend_data;
+    xrce_session_state_t* st = ss->session_state;
 
     if (ss->slot != NULL) {
         ss->slot->active = false;
@@ -233,26 +223,26 @@ rmw_ret_t xrce_subscription_destroy(rmw_subscription_t *subscriber) {
     return ret;
 }
 
-rmw_ret_t xrce_subscription_take(const rmw_subscription_t *subscriber, rmw_mut_byte_span_t *out,
-                                   bool *taken) {
+rmw_ret_t xrce_subscription_take(const rmw_subscription_t* subscriber, rmw_mut_byte_span_t* out,
+                                 bool* taken) {
     /* phase-406 W2 — by pointer: `capacity` in, `len` out. */
     if (out == NULL) return NROS_RMW_RET_INVALID_ARGUMENT;
-    uint8_t *buf = out->data;
+    uint8_t* buf = out->data;
     const size_t buf_len = out->capacity;
-    size_t *out_len = &out->len;
+    size_t* out_len = &out->len;
     /* Phase 376 W3.b/W3.d step A — upstream `rmw_take`'s shape. */
     if (subscriber == NULL || subscriber->backend_data == NULL || out_len == NULL ||
         taken == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
-    xrce_subscriber_slot *slot = ss->slot;
+    xrce_subscriber_state* ss = (xrce_subscriber_state*)subscriber->backend_data;
+    xrce_subscriber_slot* slot = ss->slot;
     if (slot == NULL || slot->count == 0) {
         /* Empty subscription: OK with `taken = false`, not a sentinel. */
         *taken = false;
         return NROS_RMW_RET_OK;
     }
-    xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
+    xrce_subscriber_ring_entry* entry = &slot->entries[slot->read_idx];
     /* Always consume the head slot regardless of outcome — overflow,
      * buffer-too-small, and successful read all advance the ring so a
      * single bad entry can't wedge the queue. */
@@ -278,8 +268,7 @@ rmw_ret_t xrce_subscription_take(const rmw_subscription_t *subscriber, rmw_mut_b
     return ret;
 }
 
-rmw_ret_t xrce_subscription_has_data(rmw_subscription_t *subscriber,
-                                          bool *out_has_data) {
+rmw_ret_t xrce_subscription_has_data(rmw_subscription_t* subscriber, bool* out_has_data) {
     /* Phase 376 W3.d step A — flag out, status returned. */
     if (out_has_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -287,7 +276,7 @@ rmw_ret_t xrce_subscription_has_data(rmw_subscription_t *subscriber,
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
+    xrce_subscriber_state* ss = (xrce_subscriber_state*)subscriber->backend_data;
     if (ss->slot == NULL) {
         /* No slot bound yet: legitimately nothing to take. */
         *out_has_data = false;
@@ -300,8 +289,7 @@ rmw_ret_t xrce_subscription_has_data(rmw_subscription_t *subscriber,
 /* Phase 231 (RFC-0038) — the XRCE backend already stages each message in a
  * static ring entry (`entry->data`), so it can hand the bytes to the callback
  * in place instead of copying into a caller buffer (copy #1 removed). */
-rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t *subscriber,
-                                                   bool *out_supports) {
+rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t* subscriber, bool* out_supports) {
     /* Phase 376 W3.d step A — capability out, status returned. */
     (void)subscriber;
     if (out_supports == NULL) {
@@ -311,9 +299,9 @@ rmw_ret_t xrce_subscription_supports_in_place(rmw_subscription_t *subscriber,
     return NROS_RMW_RET_OK;
 }
 
-rmw_ret_t xrce_subscription_process_raw_in_place(
-    rmw_subscription_t *subscriber, void *ctx,
-    void (*cb)(void *ctx, rmw_byte_span_t message), bool *out_processed) {
+rmw_ret_t xrce_subscription_process_raw_in_place(rmw_subscription_t* subscriber, void* ctx,
+                                                 void (*cb)(void* ctx, rmw_byte_span_t message),
+                                                 bool* out_processed) {
     /* Phase 376 W3.d step A — "processed one" out, status returned. An empty
      * subscription is OK with false rather than the NO_DATA sentinel. */
     if (out_processed == NULL) {
@@ -322,15 +310,15 @@ rmw_ret_t xrce_subscription_process_raw_in_place(
     if (subscriber == NULL || subscriber->backend_data == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    xrce_subscriber_state *ss = (xrce_subscriber_state *)subscriber->backend_data;
-    xrce_subscriber_slot *slot = ss->slot;
+    xrce_subscriber_state* ss = (xrce_subscriber_state*)subscriber->backend_data;
+    xrce_subscriber_slot* slot = ss->slot;
     if (slot == NULL || slot->count == 0) {
         *out_processed = false;
         return NROS_RMW_RET_OK;
     }
-    xrce_subscriber_ring_entry *entry = &slot->entries[slot->read_idx];
+    xrce_subscriber_ring_entry* entry = &slot->entries[slot->read_idx];
     /* Always consume the head slot (overflow + success both advance) so a single
-     * bad entry can't wedge the queue — mirrors try_recv_raw. */
+     * bad entry can't wedge the queue — mirrors take_serialized. */
     rmw_ret_t ret;
     if (entry->overflow) {
         ret = NROS_RMW_RET_MESSAGE_TOO_LARGE;

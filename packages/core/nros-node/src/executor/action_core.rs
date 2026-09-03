@@ -285,7 +285,7 @@ impl<
     /// Returns the parsed GoalId, sequence number, and data length.
     /// The full CDR data (including GoalId) remains in `goal_buffer`.
     pub fn try_recv_goal_request(&mut self) -> Result<Option<RawGoalRequest>, NodeError> {
-        // Capture buf base ptr before borrowing through `try_recv_request`
+        // Capture buf base ptr before borrowing through `take_request`
         // so we can recover the data offset after the borrow ends.
         // DDS-style backends place a sequence-number prefix before the
         // CDR payload; reading the buffer from offset 0 unconditionally
@@ -295,10 +295,7 @@ impl<
         // expected condition — collapse it to `Ok(None)` instead of
         // surfacing as ServiceRequestFailed. Any other transport
         // error remains ServiceRequestFailed.
-        let request = match self
-            .send_goal_server
-            .try_recv_request(&mut self.goal_buffer)
-        {
+        let request = match self.send_goal_server.take_request(&mut self.goal_buffer) {
             Ok(opt) => opt,
             Err(TransportError::NoData) => return Ok(None),
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
@@ -752,7 +749,7 @@ impl<
         let buf_start = self.cancel_buffer.as_ptr() as usize;
         let request = match self
             .cancel_goal_server
-            .try_recv_request(&mut self.cancel_buffer)
+            .take_request(&mut self.cancel_buffer)
         {
             Ok(Some(r)) => r,
             Ok(None) | Err(TransportError::NoData) => return Ok(None),
@@ -844,7 +841,7 @@ impl<
         // Phase 120: NoData == steady-state idle; map to Ok(None).
         let request = match self
             .cancel_goal_server
-            .try_recv_request(&mut self.cancel_buffer)
+            .take_request(&mut self.cancel_buffer)
         {
             Ok(Some(r)) => r,
             Ok(None) | Err(TransportError::NoData) => return Ok(None),
@@ -914,10 +911,7 @@ impl<
     ) -> Result<Option<GoalId>, NodeError> {
         let buf_start = self.goal_buffer.as_ptr() as usize;
         // Phase 120: NoData == steady-state idle; map to Ok(None).
-        let request = match self
-            .get_result_server
-            .try_recv_request(&mut self.goal_buffer)
-        {
+        let request = match self.get_result_server.take_request(&mut self.goal_buffer) {
             Ok(Some(r)) => r,
             Ok(None) | Err(TransportError::NoData) => return Ok(None),
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
@@ -1110,7 +1104,7 @@ pub struct ActionClientCore<
     /// Phase 84.D3: per-sub-client in-flight flags. Each of the three
     /// sub-clients (send_goal / cancel / get_result) is an independent
     /// request/reply channel and tracks its own "unconsumed reply"
-    /// state. Cleared by `Promise::try_recv` on success.
+    /// state. Cleared by `Promise::take` on success.
     pub(crate) in_flight_send_goal: bool,
     pub(crate) in_flight_cancel: bool,
     pub(crate) in_flight_get_result: bool,
@@ -1209,7 +1203,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     pub fn try_recv_feedback_raw(&mut self) -> Result<Option<(GoalId, usize)>, NodeError> {
         let data = self
             .feedback_subscriber
-            .try_recv_raw(&mut self.feedback_buffer)
+            .take_serialized(&mut self.feedback_buffer)
             .map_err(NodeError::Transport)?;
 
         let len = match data {
@@ -1295,7 +1289,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     pub fn try_recv_cancel_reply(&mut self) -> Result<Option<usize>, NodeError> {
         match self
             .cancel_goal_client
-            .try_recv_reply_raw(&mut self.result_buffer)
+            .take_response_raw(&mut self.result_buffer)
         {
             // Issue 0778 — the sequence id is discarded HERE, not missing:
             // an action's cancel / get_result client keeps one call in flight
@@ -1319,7 +1313,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match self
             .get_result_client
-            .try_recv_reply_raw(&mut self.result_buffer)
+            .take_response_raw(&mut self.result_buffer)
         {
             // Issue 0778 — the sequence id is discarded HERE, not missing:
             // an action's cancel / get_result client keeps one call in flight
@@ -1341,7 +1335,7 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         // Phase 120: NoData == steady-state polling; map to Ok(None).
         match self
             .send_goal_client
-            .try_recv_reply_raw(&mut self.result_buffer)
+            .take_response_raw(&mut self.result_buffer)
         {
             // Issue 0778 — the sequence id is discarded HERE, not missing:
             // an action's cancel / get_result client keeps one call in flight

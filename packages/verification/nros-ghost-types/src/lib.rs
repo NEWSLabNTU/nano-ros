@@ -169,8 +169,8 @@ impl SubscriberBufferGhost {
         true
     }
 
-    /// Models `try_recv_raw` — copy-based read with lock window.
-    pub fn try_recv_raw(&mut self, user_buf_capacity: usize) -> SubReadResult {
+    /// Models `take_serialized` — copy-based read with lock window.
+    pub fn take_serialized(&mut self, user_buf_capacity: usize) -> SubReadResult {
         if !self.has_data {
             return SubReadResult::Empty;
         }
@@ -233,8 +233,8 @@ impl ServiceBufferGhost {
         }
     }
 
-    /// Models `try_recv_request`.
-    pub fn try_recv_request(&mut self) -> SvcReadResult {
+    /// Models `take_request`.
+    pub fn take_request(&mut self) -> SvcReadResult {
         if !self.has_request {
             return SvcReadResult::Empty;
         }
@@ -481,7 +481,7 @@ mod verification {
         kani::assume(msg_len > cap && msg_len <= 65536);
         buf.callback_write(msg_len);
 
-        let result = buf.try_recv_raw(cap);
+        let result = buf.take_serialized(cap);
         assert_eq!(result, SubReadResult::Overflow);
     }
 
@@ -526,7 +526,7 @@ mod verification {
         kani::assume(cap > 0 && cap <= 65536);
         let mut buf = SubscriberBufferGhost::new(cap);
 
-        assert_eq!(buf.try_recv_raw(cap), SubReadResult::Empty);
+        assert_eq!(buf.take_serialized(cap), SubReadResult::Empty);
         assert_eq!(buf.process_in_place(), SubReadResult::Empty);
     }
 
@@ -620,7 +620,7 @@ mod verification {
         kani::assume(msg_len > cap && msg_len <= 65536);
         buf.callback_write(msg_len);
 
-        let result = buf.try_recv_request();
+        let result = buf.take_request();
         assert_eq!(result, SvcReadResult::Overflow);
     }
 
@@ -635,7 +635,7 @@ mod verification {
         kani::assume(msg_len > 0 && msg_len <= cap);
         buf.callback_write(msg_len);
 
-        let result = buf.try_recv_request();
+        let result = buf.take_request();
         assert_eq!(result, SvcReadResult::Ok);
         assert!(!buf.has_request);
         assert!(!buf.overflow);
@@ -648,7 +648,7 @@ mod verification {
         kani::assume(cap > 0 && cap <= 65536);
         let mut buf = ServiceBufferGhost::new(cap);
 
-        assert_eq!(buf.try_recv_request(), SvcReadResult::Empty);
+        assert_eq!(buf.take_request(), SvcReadResult::Empty);
     }
 
     /// Service overflow→read→write→read cycle.
@@ -661,13 +661,13 @@ mod verification {
         let big: usize = kani::any();
         kani::assume(big > cap && big <= 65536);
         buf.callback_write(big);
-        let r1 = buf.try_recv_request();
+        let r1 = buf.take_request();
         assert_eq!(r1, SvcReadResult::Overflow);
 
         let small: usize = kani::any();
         kani::assume(small > 0 && small <= cap);
         buf.callback_write(small);
-        let r2 = buf.try_recv_request();
+        let r2 = buf.take_request();
         assert_eq!(r2, SvcReadResult::Ok);
     }
 
@@ -684,7 +684,7 @@ mod verification {
         buf.callback_write(msg_len);
         assert_eq!(buf.buf_capacity, original_cap);
 
-        let _ = buf.try_recv_request();
+        let _ = buf.take_request();
         assert_eq!(buf.buf_capacity, original_cap);
     }
 

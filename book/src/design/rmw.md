@@ -12,7 +12,7 @@ This page documents the architectural differences and trade-offs. For trait sign
 
 `rmw.h` heap-allocates everywhere -- handles, serialized message buffers, wait sets, type support tables. Bare-metal targets often have no allocator; RTOS targets have allocators with hard total budgets (~16-256 KB) that must cover the application as well.
 
-nros-rmw moves all I/O buffers to the caller. `publish_raw(&[u8])` and `try_recv_raw(&mut [u8])` operate on slices that the caller stack- or statically-allocates. Type metadata is a string-only `TopicInfo` struct, not a pointer-laden `rosidl_message_type_support_t` table. What the abstraction itself allocates is nothing. What the BACKENDS allocate is
+nros-rmw moves all I/O buffers to the caller. `publish_raw(&[u8])` and `take_serialized(&mut [u8])` operate on slices that the caller stack- or statically-allocates. Type metadata is a string-only `TopicInfo` struct, not a pointer-laden `rosidl_message_type_support_t` table. What the abstraction itself allocates is nothing. What the BACKENDS allocate is
 enumerated by `scripts/rmw-alloc-sites.py`, which reports each site with its
 file and line and — the distinction that decides whether you care — whether it
 sits on the STEADY-STATE path (per message, so it is latency and a heap that
@@ -153,8 +153,8 @@ pub trait Publisher {
 }
 
 pub trait Subscription {
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
-    fn try_recv<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error>;
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+    fn take<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error>;
 }
 ```
 
@@ -190,7 +190,7 @@ For async integration, subscribers and service clients expose `register_waker(&W
 ```rust,ignore
 // Caller provides the buffer
 let mut buf = [0u8; 512];
-let msg: Option<MyMsg> = subscriber.try_recv(&mut buf)?;
+let msg: Option<MyMsg> = subscriber.take(&mut buf)?;
 ```
 
 Zero-copy receive is supported via `process_raw_in_place()`, which invokes a closure with a reference to the subscriber's internal receive buffer, avoiding the copy into a caller-provided buffer. This is gated behind the `unstable-zenoh-api` feature.
@@ -224,7 +224,7 @@ Standard QoS profiles (`QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PR
 pub trait ClientTrait {
     // Async: send request, poll for reply separately
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error>;
-    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+    fn take_response_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 }
 ```
 
@@ -257,9 +257,9 @@ this table as the design rationale behind the original omissions.
 | nros-rmw API | Purpose |
 |--------------|---------|
 | `Publisher::publish<M>(msg, buf)` | Typed publish with built-in CDR serialization |
-| `Subscription::try_recv<M>(buf)` | Typed receive with built-in CDR deserialization |
+| `Subscription::take<M>(buf)` | Typed receive with built-in CDR deserialization |
 | `Subscription::process_raw_in_place(f)` | Zero-copy in-place processing via closure |
-| `Subscription::try_recv_validated()` | E2E safety validation (CRC-32 + sequence tracking) |
+| `Subscription::take_validated()` | E2E safety validation (CRC-32 + sequence tracking) |
 | `ServiceTrait::handle_request<S>()` | Typed request handling with automatic CDR roundtrip |
 | `Session::drive_io(timeout_ms)` | Explicit network polling (ROS 2 rmw relies on middleware threads) |
 

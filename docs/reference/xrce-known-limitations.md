@@ -36,7 +36,7 @@ or use the `nros-rmw-xrce` Rust backend for deadline events.
 
 Subscribers / service clients in the Rust impl carry an
 `AtomicWaker` so executor-driven code can `await` on a poll. The C
-backend's `try_recv_raw` is purely poll-based — callers spin or
+backend's `take_serialized` is purely poll-based — callers spin or
 sleep externally.
 
 **Workaround:** poll from the application's main loop. The bounded

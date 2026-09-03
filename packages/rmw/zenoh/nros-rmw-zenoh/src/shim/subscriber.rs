@@ -39,8 +39,8 @@ use super::signal_executor_wake;
 ///
 /// Replaces the previous single-slot + `locked` flag design — a
 /// burst of up to `SUBSCRIBER_RING_DEPTH` messages arriving between
-/// two `try_recv` calls is now buffered instead of dropped, and
-/// `try_recv_sequence` can drain the whole ring in one call. No
+/// two `take` calls is now buffered instead of dropped, and
+/// `take_sequence` can drain the whole ring in one call. No
 /// lock is needed: the SPSC discipline + the Release/Acquire fence
 /// on `ring_tail` / `ring_head` covers the cross-FFI handoff.
 pub(super) struct SubscriberBuffer {
@@ -250,7 +250,7 @@ const LARGEST_PAYLOAD_CLASS: usize =
 /// a 68-byte type and a 1000-byte type would both come back 1024, which is the
 /// two-arbitrary-constants answer the runtime already had. zenoh-pico can be
 /// exact here because it adds NOTHING to the payload the caller must hold:
-/// `try_recv_raw` copies `ring_len[slot]` bytes out of the ring slot and the
+/// `take_serialized` copies `ring_len[slot]` bytes out of the ring slot and the
 /// attachment travels in its own parallel ring (`ring_att`), so the take buffer
 /// carries serialized message bytes and no framing.
 ///
@@ -519,7 +519,7 @@ pub struct ZenohSubscriber {
     /// Phase 108.C.zenoh.5 — next expected sequence number, used to
     /// detect publisher gaps in the attachment-encoded seq stream and
     /// fire `MessageLost` events. Initialised to `0` (= "no message
-    /// observed yet"); first `try_recv_raw` synchronises to the
+    /// observed yet"); first `take_serialized` synchronises to the
     /// publisher's seq w/o reporting a gap.
     next_expected_seq: core::cell::Cell<i64>,
     /// Cumulative count of messages dropped between this subscriber's
@@ -528,7 +528,7 @@ pub struct ZenohSubscriber {
     msg_lost_total: core::cell::Cell<u32>,
     /// Phase 108.A — registered `MessageLost` callback slot.
     msg_lost_cb: core::cell::Cell<Option<EventReg>>,
-    /// Issue 0971 — a `try_recv_sequence` that stopped because a message did
+    /// Issue 0971 — a `take_sequence` that stopped because a message did
     /// not fit parks the reason here, and the NEXT take reports it.
     ///
     /// A batch drain cannot both deliver its count and return an error, so the
@@ -539,13 +539,13 @@ pub struct ZenohSubscriber {
     /// Before this the batch path dropped the oversized message and kept
     /// draining, which is the option 0971 rejects outright — "delivers more,
     /// still destroys the message with no signal". The SINGLE take
-    /// (`try_recv_raw`) has always done consume-then-refuse, so the two entry
+    /// (`take_serialized`) has always done consume-then-refuse, so the two entry
     /// points contradicted each other on the same subscriber.
     pending_too_small: core::cell::Cell<bool>,
     /// Phase 108.C.zenoh.3 — sample lifespan in ms (`0` = infinite).
     /// Captured from QoS at create time; samples whose attachment
     /// timestamp is older than `now - lifespan_ms` are dropped in
-    /// `try_recv_raw` (return `Ok(None)` as if no data was present).
+    /// `take_serialized` (return `Ok(None)` as if no data was present).
     lifespan_ms: u32,
     /// Phase 108.C.zenoh.2 — deadline period in ms (`0` = infinite).
     /// Captured from QoS at create time; if `now - last_msg_at_ms`
@@ -566,7 +566,7 @@ pub struct ZenohSubscriber {
     /// `MessageLost` events — lifespan-expired samples count as lost).
     deadline_cb: core::cell::Cell<Option<EventReg>>,
     /// Phase 108.C.zenoh.4 — registered `LivelinessChanged` callback.
-    /// Fired from `has_data` / `try_recv_raw` after a periodic
+    /// Fired from `has_data` / `take_serialized` after a periodic
     /// `liveliness_get_*` poll detects an alive-state transition for
     /// any publisher matching the subscriber's wildcard liveliness
     /// keyexpr.
@@ -888,10 +888,10 @@ impl ZenohSubscriber {
 
     /// Phase 108.C.zenoh.3 — read the publisher-supplied timestamp
     /// out of the most recent attachment. Returns `0` if no attachment
-    /// is present. Called from `try_recv_raw` to enforce LIFESPAN.
+    /// is present. Called from `take_serialized` to enforce LIFESPAN.
     fn attachment_timestamp_ms(&self) -> u64 {
         let buffer = self.buf.get();
-        // Inspect the head ring slot — the message `try_recv_raw` is
+        // Inspect the head ring slot — the message `take_serialized` is
         // about to deliver. Empty ring → no timestamp.
         let Some(slot) = buffer.peek_head_slot() else {
             return 0;
@@ -915,7 +915,7 @@ impl ZenohSubscriber {
 
     /// Phase 108.C.zenoh.2 — fire the registered `RequestedDeadlineMissed`
     /// callback when the gap since the last successful receive exceeds
-    /// `deadline_ms`. Called from `has_data` / `try_recv_raw` so deadline
+    /// `deadline_ms`. Called from `has_data` / `take_serialized` so deadline
     /// is checked on every spin cycle that touches this subscriber.
     /// Rate-limited: at most one fire per deadline period.
     fn check_deadline_and_fire(&self) {
@@ -954,13 +954,13 @@ impl ZenohSubscriber {
     /// Phase 108.C.zenoh.5 — peek the just-received attachment for a
     /// sequence number, detect gaps against `next_expected_seq`, and
     /// fire the registered `MessageLost` callback if any are dropped.
-    /// Called from `try_recv_raw` AFTER the payload is copied so the
+    /// Called from `take_serialized` AFTER the payload is copied so the
     /// status-event delivery is observable to the user as a side-
     /// effect of receive (matching dust-DDS sample-lost semantics).
     fn check_msg_lost_and_fire(&self) {
         let buffer = self.buf.get();
         // Inspect the head ring slot — the message just copied out by
-        // `try_recv_raw`, not yet consumed.
+        // `take_serialized`, not yet consumed.
         let Some(slot) = buffer.peek_head_slot() else {
             return;
         };
@@ -1019,7 +1019,7 @@ impl ZenohSubscriber {
     ///
     /// The payload bytes are written to `buf[..len]`.
     #[cfg(feature = "safety-e2e")]
-    pub fn try_recv_validated(
+    pub fn take_validated(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, TransportError> {
@@ -1080,7 +1080,7 @@ impl ZenohSubscriber {
     /// - `info` is the parsed message info (if attachment was present)
     ///
     /// Returns `Ok(None)` if no data is available.
-    pub fn try_recv_with_info(
+    pub fn take_with_info(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
@@ -1120,7 +1120,7 @@ impl Subscription for ZenohSubscriber {
         self.buf.get().waker.register(waker);
     }
 
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
         // Issue 0971 — report a drain that stopped on an oversized message
         // before taking anything. Cyclone clears its flag in BOTH take entry
         // points (`subscriber.cpp:226` and `:296`) for the same reason: the
@@ -1287,7 +1287,7 @@ impl Subscription for ZenohSubscriber {
 
     // Phase 231 Wave 0.1 — in-place dispatch with the co-located attachment.
     // Borrows the ring slot's payload + parses its attachment into the canonical
-    // `nros_core::MessageInfo` (same conversion as `try_recv_raw_with_info`) for
+    // `nros_core::MessageInfo` (same conversion as `take_serialized_with_info`) for
     // `f`, then advances head. Promoted from the former inherent method.
     fn process_raw_in_place_with_info(
         &mut self,
@@ -1340,7 +1340,7 @@ impl Subscription for ZenohSubscriber {
     // distinguish "the burst ended" from "a message was destroyed". 0971
     // rejects that option by name. Parking keeps the progress and adds the
     // signal, one call later.
-    fn try_recv_sequence(
+    fn take_sequence(
         &mut self,
         buf: &mut [u8],
         per_msg_cap: usize,
@@ -1401,12 +1401,12 @@ impl Subscription for ZenohSubscriber {
         Ok(count)
     }
 
-    fn try_recv_raw_with_info(
+    fn take_serialized_with_info(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, Option<nros_core::MessageInfo>)>, Self::Error> {
         // Delegate to the inherent method which parses the zenoh attachment
-        match self.try_recv_with_info(buf)? {
+        match self.take_with_info(buf)? {
             Some((len, zenoh_info)) => {
                 let core_info = zenoh_info.map(|zi| {
                     let mut info = nros_core::MessageInfo::new();
@@ -1422,12 +1422,12 @@ impl Subscription for ZenohSubscriber {
     }
 
     #[cfg(feature = "safety-e2e")]
-    fn try_recv_validated(
+    fn take_validated(
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, Self::Error> {
         // Delegate to the inherent safety validation method
-        ZenohSubscriber::try_recv_validated(self, buf)
+        ZenohSubscriber::take_validated(self, buf)
     }
 
     fn deserialization_error(&self) -> Self::Error {
@@ -1448,7 +1448,7 @@ mod borrowing {
     /// for the lifetime of the view. The SPSC discipline guarantees
     /// the C producer never writes the slot `ring_head` points at, so
     /// no explicit lock is needed; `Drop` advances `ring_head`
-    /// (consume-on-borrow semantics, matching `try_recv_raw`).
+    /// (consume-on-borrow semantics, matching `take_serialized`).
     pub struct ZenohView<'a> {
         bytes: &'a [u8],
         buffer: &'a SubscriberBuffer,
@@ -1558,8 +1558,8 @@ pub(super) mod tests {
     }
 
     /// Try to receive one message from a subscriber ring slot.
-    /// Replicates `try_recv_raw` logic for testing without a zenoh session.
-    pub(in crate::shim) fn try_recv_subscription(
+    /// Replicates `take_serialized` logic for testing without a zenoh session.
+    pub(in crate::shim) fn take_subscription(
         slot: usize,
         recv_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
@@ -1605,7 +1605,7 @@ pub(super) mod tests {
         reset_subscriber_buffer(slot);
 
         let mut buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut buf);
+        let result = take_subscription(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
         // Ring empty.
@@ -1625,7 +1625,7 @@ pub(super) mod tests {
         assert!(buffer.has_data());
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(100))));
         assert_eq!(&recv_buf[..100], &payload);
 
@@ -1888,7 +1888,7 @@ pub(super) mod tests {
         assert!(buffer.has_data());
 
         let mut recv_buf = [0u8; SUBSCRIBER_BUFFER_SIZE];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(n)) if n == SUBSCRIBER_BUFFER_SIZE));
         assert_eq!(&recv_buf, &payload);
     }
@@ -1907,12 +1907,12 @@ pub(super) mod tests {
         assert!(!buffer.has_data(), "oversized message must be dropped");
 
         let mut recv_buf = [0u8; SUBSCRIBER_BUFFER_SIZE];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(None)));
 
         // Recovery: next normal callback is accepted.
         simulate_subscription_callback(slot, b"recovered");
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(9))));
         assert_eq!(&recv_buf[..9], b"recovered");
     }
@@ -1927,7 +1927,7 @@ pub(super) mod tests {
         simulate_subscription_callback(slot, &payload);
 
         let mut small_buf = [0u8; 256];
-        let result = try_recv_subscription(slot, &mut small_buf);
+        let result = take_subscription(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
         // Slot consumed (the message that didn't fit is dropped).
@@ -1937,7 +1937,7 @@ pub(super) mod tests {
         // Recovery: next callback accepted.
         simulate_subscription_callback(slot, b"small");
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(5))));
         assert_eq!(&recv_buf[..5], b"small");
     }
@@ -1953,19 +1953,16 @@ pub(super) mod tests {
         simulate_subscription_callback(slot, b"second_msg");
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(9))));
         assert_eq!(&recv_buf[..9], b"first_msg");
 
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(10))));
         assert_eq!(&recv_buf[..10], b"second_msg");
 
         // Ring drained.
-        assert!(matches!(
-            try_recv_subscription(slot, &mut recv_buf),
-            Ok(None)
-        ));
+        assert!(matches!(take_subscription(slot, &mut recv_buf), Ok(None)));
     }
 
     #[test]
@@ -1984,15 +1981,12 @@ pub(super) mod tests {
 
         let mut recv_buf = [0u8; 16];
         for i in 0..SUBSCRIBER_RING_DEPTH {
-            let result = try_recv_subscription(slot, &mut recv_buf);
+            let result = take_subscription(slot, &mut recv_buf);
             assert!(matches!(result, Ok(Some(4))));
             assert_eq!(&recv_buf[..4], &[i as u8; 4]);
         }
         // The dropped message never appears.
-        assert!(matches!(
-            try_recv_subscription(slot, &mut recv_buf),
-            Ok(None)
-        ));
+        assert!(matches!(take_subscription(slot, &mut recv_buf), Ok(None)));
     }
 
     #[test]
@@ -2003,11 +1997,11 @@ pub(super) mod tests {
         simulate_subscription_callback(slot, b"data");
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(4))));
 
         // Second recv returns None — ring drained.
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(None)));
     }
 
@@ -2019,11 +2013,11 @@ pub(super) mod tests {
         // Oversized → dropped by producer → normal → delivered.
         simulate_subscription_callback(slot, &[0u8; SUBSCRIBER_BUFFER_SIZE + 1]);
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(None)));
 
         simulate_subscription_callback(slot, b"after_oversized");
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(Some(15))));
         assert_eq!(&recv_buf[..15], b"after_oversized");
     }
@@ -2041,7 +2035,7 @@ pub(super) mod tests {
         assert!(!buffer.has_data());
 
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot, &mut recv_buf);
+        let result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(result, Ok(None)));
     }
 
@@ -2057,7 +2051,7 @@ pub(super) mod tests {
 
         // Consume slot_b first.
         let mut recv_buf = [0u8; 1024];
-        let result = try_recv_subscription(slot_b, &mut recv_buf);
+        let result = take_subscription(slot_b, &mut recv_buf);
         assert!(matches!(result, Ok(Some(10))));
         assert_eq!(&recv_buf[..10], b"slot_seven");
 
@@ -2065,7 +2059,7 @@ pub(super) mod tests {
         let buffer_a = SubscriberBufferRef::new(slot_a).get();
         assert!(buffer_a.has_data());
 
-        let result = try_recv_subscription(slot_a, &mut recv_buf);
+        let result = take_subscription(slot_a, &mut recv_buf);
         assert!(matches!(result, Ok(Some(9))));
         assert_eq!(&recv_buf[..9], b"slot_zero");
     }
@@ -2079,12 +2073,12 @@ pub(super) mod tests {
         let slot = 0;
         reset_subscriber_buffer(slot);
 
-        // Write 100-byte payload, try_recv (copy path) → capture bytes.
+        // Write 100-byte payload, take (copy path) → capture bytes.
         let payload = [0x42u8; 100];
         simulate_subscription_callback(slot, &payload);
 
         let mut recv_buf = [0u8; 1024];
-        let copy_result = try_recv_subscription(slot, &mut recv_buf);
+        let copy_result = take_subscription(slot, &mut recv_buf);
         assert!(matches!(copy_result, Ok(Some(100))));
         let copy_bytes = recv_buf[..100].to_vec();
 
@@ -2140,8 +2134,8 @@ pub(super) mod tests {
         assert_eq!(head_before, 0);
 
         let mut recv_buf = [0u8; 16];
-        let _ = try_recv_subscription(slot, &mut recv_buf);
-        let _ = try_recv_subscription(slot, &mut recv_buf);
+        let _ = take_subscription(slot, &mut recv_buf);
+        let _ = take_subscription(slot, &mut recv_buf);
 
         let head_after = buffer.ring_head.load(Ordering::Acquire);
         assert_eq!(head_after, 2);

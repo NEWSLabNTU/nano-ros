@@ -167,7 +167,7 @@ add_test(
     COMMAND nros_rmw_cyclonedds_log_severity
 )
 
-# Phase 117.6.B raw-CDR data round-trip via publish_raw / try_recv_raw.
+# Phase 117.6.B raw-CDR data round-trip via publish_raw / take_serialized.
 add_executable(nros_rmw_cyclonedds_data_roundtrip
     data_roundtrip.cpp
     ${_test_string_sources}

@@ -218,7 +218,7 @@ Landed (2026-07-17):
   LE `Time` words; unstamped/pre-epoch = no sample) and records
   `epoch_now - stamp` (fetch_max). Hooked at ALL take sites: arena
   buffered (triple + ring), arena in-place, and the session-direct
-  `Subscription::try_recv` (NodeHandle path; auto-seeded from the
+  `Subscription::take` (NodeHandle path; auto-seeded from the
   executor's table + epoch at create_node). Attachment needs a stamped
   type AND an epoch source — otherwise the hook is `None` (one branch).
 - `max-latency-runtime` — dispatch elapsed time (std `Instant`, no_std

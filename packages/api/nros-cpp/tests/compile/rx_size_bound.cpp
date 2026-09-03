@@ -188,11 +188,11 @@ template <class Payload> struct ActionOf {
 // constructing these needs a Node, and the point is the template BODY.
 template <class M>
 inline ::nros::Result recv_paths(::nros::Subscription<M>& sub, ::nros::Stream<M>& stream, M& msg) {
-    (void)sub.try_recv(msg);                      // subscription.hpp -- derived where one exists
-    (void)sub.template try_recv_sized<4096>(msg); // ... and the escape hatch
+    (void)sub.try_recv(msg);                  // subscription.hpp -- derived where one exists
+    (void)sub.template take_sized<4096>(msg); // ... and the escape hatch
     nros_cpp_integrity_status_t status{};
     (void)sub.try_recv_validated(msg, status);
-    (void)sub.template try_recv_validated_sized<4096>(msg, status);
+    (void)sub.template take_validated_sized<4096>(msg, status);
     (void)stream.try_next(msg); // stream.hpp
     (void)stream.template try_next_sized<4096>(msg);
     (void)stream.wait_next(nullptr, 1, msg);

@@ -28,7 +28,7 @@ a static library + a single public header carrying the
   session pool of 8, and issues `uxr_buffer_request_data` for
   continuous delivery. The single per-session topic callback
   (registered at `xrce_session_open`) dispatches by datareader id
-  to the matching slot. `try_recv_raw` reads the slot's single-msg
+  to the matching slot. `take_serialized` reads the slot's single-msg
   ringbuffer; oversize messages flag overflow and drop.
 - [x] **115.K.2.3 — services.** `xrce_service_server_create` allocates
   a REPLIER entity via `uxr_buffer_create_replier_bin` and a slot
@@ -65,7 +65,7 @@ intentionally ships a smaller surface than the Rust impl:
   full FastDDS XML is not ported.
 - No deadline tracking, no `OfferedDeadlineMissed` /
   `RequestedDeadlineMissed` event surface.
-- No async wakers — `try_recv_raw` is purely poll-based.
+- No async wakers — `take_serialized` is purely poll-based.
 - No fragmented publish path — payloads larger than a single stream
   slot return `NROS_RMW_RET_MESSAGE_TOO_LARGE`.
 - Single-slot-per-subscriber ringbuffer; concurrent inbound messages

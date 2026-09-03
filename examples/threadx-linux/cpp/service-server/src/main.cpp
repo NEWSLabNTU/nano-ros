@@ -68,7 +68,7 @@ int nros_app_main(int argc, char** argv) {
 
         example_interfaces::srv::AddTwoInts::Request req;
         int64_t seq_id = 0;
-        while (srv.try_recv_request(req, seq_id)) {
+        while (srv.take_request(req, seq_id)) {
             request_count++;
 
             example_interfaces::srv::AddTwoInts::Response resp;

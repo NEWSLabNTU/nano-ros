@@ -3,7 +3,7 @@
 /// (RFC-0043 / phase-257). The C projection of the Rust `service_client_pkg`.
 ///
 /// The C component service client is POLL-model (`nros_cpp_service_client_{create,
-/// send_request,try_recv_reply}`), not blocking — a component callback must never block the
+/// send_request,take_response}`), not blocking — a component callback must never block the
 /// executor. A 1 Hz timer drives the loop: poll for the in-flight reply, on success print +
 /// republish the server-computed sum on `/sum`, then send the next request. A wait counter
 /// re-sends if a reply never arrives (the first request(s) can be dropped before the server is
@@ -49,7 +49,7 @@ static void on_tick(void* ctx) {
     if (self->in_flight) {
         uint8_t resp[64];
         size_t rlen = 0;
-        if (nros_cpp_service_client_try_recv_reply(self->client, resp, sizeof(resp), &rlen) == 0 &&
+        if (nros_cpp_service_client_take_response(self->client, resp, sizeof(resp), &rlen) == 0 &&
             rlen > 0) {
             example_interfaces_srv_add_two_ints_response r;
             if (example_interfaces_srv_add_two_ints_response_deserialize(&r, resp, rlen) == 0) {

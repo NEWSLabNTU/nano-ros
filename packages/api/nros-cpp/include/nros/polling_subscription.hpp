@@ -9,7 +9,7 @@
  * Issue 0278 — the nano-ros analog of ROS 2
  * `autoware_utils::InterProcessPollingSubscriber`: a poll-mode
  * `Subscription<M>` plus a RETAINED last value. Where the bare
- * `Subscription<M>` is consuming (each `try_recv` yields a sample once, then
+ * `Subscription<M>` is consuming (each `take` yields a sample once, then
  * `TryAgain`), this wrapper keeps the newest value so a caller can read it
  * repeatably at a chosen point — replacing the hand-rolled "callback caches
  * latest + has_ flag" pattern (see `examples/templates/topic-state-monitor-port`).
@@ -69,14 +69,22 @@ template <typename M> class PollingSubscription {
     /// `takeNewData` — use when "did it change?" matters).
     const M* take_new_data() { return drain() ? &latest_ : nullptr; }
 
-    /// Convenience: copy the retained latest into `out`. Returns `true` if any
-    /// value has ever been received (cached-or-new), `false` otherwise.
-    bool take(M& out) {
-        drain();
-        if (!has_ever_) return false;
-        out = latest_;
-        return true;
-    }
+    // phase-379 W6 — `take(M&)` was REMOVED here, deliberately, and the name is
+    // now reserved for rclcpp's meaning.
+    //
+    // It drained to the newest sample and returned `true` if a value had EVER
+    // been received, cached or new. `rclcpp::Subscription::take` is CONSUMING:
+    // "true if data was taken and is valid". So the idiomatic drain loop
+    //
+    //     while (sub.take(msg)) { process(msg); }
+    //
+    // terminated under rclcpp and spun forever on one stale sample here --
+    // same name, same signature, opposite contract, no compile error.
+    //
+    // It was a convenience duplicating `take_data()`, with zero real callers.
+    // `take_data()` (retained latest) and `take_new_data()` (only if new) are
+    // the faithful `autoware_utils` mirrors (issue 0278) and are unaffected;
+    // use `take_data()` for what this did.
 
     /// Direct read of the cached latest without draining (no transport poll).
     /// `nullptr` until the first value arrives. Pair with an explicit
@@ -87,12 +95,12 @@ template <typename M> class PollingSubscription {
     friend class Node;
 
     /// Consume every pending sample, keeping the newest in `latest_`. Returns
-    /// `true` iff at least one new sample was taken this call. `try_recv`
+    /// `true` iff at least one new sample was taken this call. `take`
     /// writes `latest_` only on success, so a trailing `TryAgain` leaves the
     /// previous latest intact.
     bool drain() {
         bool got = false;
-        while (sub_.try_recv(latest_).ok()) {
+        while (sub_.take(latest_).ok()) {
             has_ever_ = true;
             got = true;
         }

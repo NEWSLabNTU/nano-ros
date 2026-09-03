@@ -42,7 +42,7 @@ void AddTwoIntsClient::on_tick() {
     }
     uint8_t resp[64];
     size_t len = 0;
-    if (nros_cpp_service_client_try_recv_reply(client_.bytes, resp, sizeof(resp), &len) == 0 &&
+    if (nros_cpp_service_client_take_response(client_.bytes, resp, sizeof(resp), &len) == 0 &&
         len >= 12) {
         int64_t sum = read_i64_le(resp + 4);
         std::printf("Result of add_two_ints: %lld\n", static_cast<long long>(sum));

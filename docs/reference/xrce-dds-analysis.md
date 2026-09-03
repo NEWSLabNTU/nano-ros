@@ -462,11 +462,11 @@ This is dramatically simpler than zpico-platform-mps2-an385's 55 FFI symbols (z_
 | `Session::create_publisher(topic, qos)` | `uxr_buffer_create_participant_bin` (once) + `create_topic_bin` + `create_publisher_bin` + `create_datawriter_bin` + `uxr_run_session_until_all_status` |
 | `Publisher::publish_raw(data)` | `uxr_buffer_topic(session, stream, datawriter_id, data, len)` |
 | `Session::create_subscription(topic, qos)` | `create_subscriber_bin` + `create_datareader_bin` + `uxr_buffer_request_data` + `uxr_set_topic_callback` |
-| `Subscriber::try_recv_raw(buf)` | Read from callback-populated static buffer |
+| `Subscriber::take_serialized(buf)` | Read from callback-populated static buffer |
 | `Session::spin_once(timeout)` | `uxr_run_session_time(timeout)` |
-| `ServiceServer::try_recv_request` | Read from `uxrOnRequestFunc` callback buffer |
+| `ServiceServer::take_request` | Read from `uxrOnRequestFunc` callback buffer |
 | `ServiceServer::send_reply` | `uxr_buffer_reply(session, stream, replier_id, sample_id, data, len)` |
-| `ClientTrait::send_request_raw` / `try_recv_reply_raw` | `uxr_buffer_request` + `uxr_run_session_time` polling for the reply |
+| `ClientTrait::send_request_raw` / `take_response_raw` | `uxr_buffer_request` + `uxr_run_session_time` polling for the reply |
 
 ### Key differences in the mapping
 
@@ -487,7 +487,7 @@ This is dramatically simpler than zpico-platform-mps2-an385's 55 FFI symbols (z_
 ### What works well
 
 - **Trait signatures are compatible.** The core `Session`, `Publisher`, `Subscriber`, `ServiceServer`, `ServiceClient` trait methods map cleanly to XRCE-DDS operations.
-- **Raw bytes interface.** Both zenoh-pico and XRCE-DDS ultimately send/receive CDR-encoded byte buffers. The `publish_raw`/`try_recv_raw` abstraction is correct. The `uxr_buffer_topic()` function accepts pre-serialized data directly.
+- **Raw bytes interface.** Both zenoh-pico and XRCE-DDS ultimately send/receive CDR-encoded byte buffers. The `publish_raw`/`take_serialized` abstraction is correct. The `uxr_buffer_topic()` function accepts pre-serialized data directly.
 - **Static memory model.** XRCE-DDS's fully static allocation is even more embedded-friendly than zenoh-pico's heap-based approach. No `z_malloc` needed.
 - **Minimal platform porting.** Only 1 platform symbol (`clock_gettime` / `uxr_nanos`) vs 55 for zenoh-pico. New board support is trivial.
 - **Serial transport.** Opens up MCUs without Ethernet/WiFi -- a major gap in nros today. HDLC framing is built into the library.

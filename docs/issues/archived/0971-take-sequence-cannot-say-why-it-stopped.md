@@ -56,16 +56,16 @@ message was too big for your slots and has been destroyed".
 
 ## And the fallback answers differently
 
-`CffiSubscriber::try_recv_sequence`'s loop (`packages/rmw/cffi/src/lib.rs`):
+`CffiSubscriber::take_sequence`'s loop (`packages/rmw/cffi/src/lib.rs`):
 
 ```rust
-match self.try_recv_raw(slot)? {
+match self.take_serialized(slot)? {
     Some(len) => { out_lens[i] = len; count += 1; }
     None => break,
 }
 ```
 
-`try_recv_raw` returns `BUFFER_TOO_SMALL` for the same message, and `?`
+`take_serialized` returns `BUFFER_TOO_SMALL` for the same message, and `?`
 propagates it. The fallback therefore returns `Err(TransportError::BufferTooSmall)`
 where the native path returns `Ok(partial_count)`.
 
@@ -131,7 +131,7 @@ return Err(TransportError::BufferTooSmall);
 ```
 
 **And it is formally verified.** `nros-verification/src/e2e.rs`'s
-`try_recv_post_fix` models the take path after the 31.6 fix, and its listed
+`take_post_fix` models the take path after the 31.6 fix, and its listed
 difference from the pre-fix version is exactly this:
 
 > 2. On `BufferTooSmall` (stored_len > rx_buf_len) → clears `has_data`
@@ -149,7 +149,7 @@ is the one place the explicit error has nowhere to go.
 ## The fix
 
 Where the error cannot be returned inline, carry it to the next call. That is
-the same shape `try_recv_post_fix` already has — check a flag first, clear it,
+the same shape `take_post_fix` already has — check a flag first, clear it,
 return the error, take nothing — applied one call later.
 
 **Cyclone.** `SubState` gains `pending_too_small`:
@@ -188,7 +188,7 @@ erroring out of a partial drain, and it is strictly better than never.
    a caller with a bigger buffer can retry.** This was offered here as the
    option that "makes the message survivable". It is the bug that was already
    fixed: a sample left in the cache that no caller can ever take is precisely
-   the stuck subscription `try_recv_post_fix` exists to rule out, and a caller
+   the stuck subscription `take_post_fix` exists to rule out, and a caller
    whose buffer is sized from the type bound will not come back with a bigger
    one anyway.
 

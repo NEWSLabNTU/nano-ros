@@ -53,12 +53,12 @@ template <typename T> class Stream {
     Result try_next(T& out) { return try_next_sized<::nros::rx_buffer_capacity<T>::value>(out); }
 
     /// @ref try_next with the receive buffer sized by the CALLER.
-    /// See @ref Subscription::try_recv_sized (issue 0964).
+    /// See @ref Subscription::take_sized (issue 0964).
     template <size_t Cap> Result try_next_sized(T& out) {
-        if (!try_recv_fn_) return Result(ErrorCode::NotInitialized);
+        if (!take_fn_) return Result(ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
-        nros_cpp_ret_t ret = try_recv_fn_(storage_, buf, sizeof(buf), &len);
+        nros_cpp_ret_t ret = take_fn_(storage_, buf, sizeof(buf), &len);
         if (ret != 0) return Result(ret);
         if (len == 0) return Result(ErrorCode::TryAgain);
         if (T::ffi_deserialize(buf, len, &out) != 0) return Result(ErrorCode::Error);
@@ -81,11 +81,11 @@ template <typename T> class Stream {
     }
 
     /// @ref wait_next with the receive buffer sized by the CALLER.
-    /// See @ref Subscription::try_recv_sized (issue 0964).
+    /// See @ref Subscription::take_sized (issue 0964).
     template <size_t Cap>
     Result wait_next_sized(void* executor_handle, uint32_t timeout_ms, T& out,
                            uint32_t poll_ms = 10) {
-        if (!try_recv_fn_) return Result(ErrorCode::NotInitialized);
+        if (!take_fn_) return Result(ErrorCode::NotInitialized);
         if (poll_ms == 0) poll_ms = 1;
         // Phase 118.C: budget by wall-clock. Accumulating `step` per
         // iteration breaks when `zpico_spin_once` returns early on a
@@ -116,26 +116,26 @@ template <typename T> class Stream {
     }
 
     /// Check if the stream is connected to a valid source.
-    bool is_valid() const { return try_recv_fn_ != nullptr; }
+    bool is_valid() const { return take_fn_ != nullptr; }
 
     // Move semantics (non-copyable)
-    Stream(Stream&& other) noexcept : storage_(other.storage_), try_recv_fn_(other.try_recv_fn_) {
+    Stream(Stream&& other) noexcept : storage_(other.storage_), take_fn_(other.take_fn_) {
         other.storage_ = nullptr;
-        other.try_recv_fn_ = nullptr;
+        other.take_fn_ = nullptr;
     }
 
     Stream& operator=(Stream&& other) noexcept {
         if (this != &other) {
             storage_ = other.storage_;
-            try_recv_fn_ = other.try_recv_fn_;
+            take_fn_ = other.take_fn_;
             other.storage_ = nullptr;
-            other.try_recv_fn_ = nullptr;
+            other.take_fn_ = nullptr;
         }
         return *this;
     }
 
     /// Default constructor -- creates an unbound stream.
-    Stream() : storage_(nullptr), try_recv_fn_(nullptr) {}
+    Stream() : storage_(nullptr), take_fn_(nullptr) {}
 
   private:
     Stream(const Stream&) = delete;
@@ -144,17 +144,17 @@ template <typename T> class Stream {
     template <typename M> friend class Subscription;
     template <typename A> friend class ActionClient;
 
-    using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
+    using TakeFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
 
-    Stream(void* storage, TryRecvFn fn) : storage_(storage), try_recv_fn_(fn) {}
+    Stream(void* storage, TakeFn fn) : storage_(storage), take_fn_(fn) {}
 
-    void bind(void* storage, TryRecvFn fn) {
+    void bind(void* storage, TakeFn fn) {
         storage_ = storage;
-        try_recv_fn_ = fn;
+        take_fn_ = fn;
     }
 
     void* storage_;
-    TryRecvFn try_recv_fn_;
+    TakeFn take_fn_;
 };
 
 } // namespace nros

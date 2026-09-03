@@ -54,14 +54,14 @@ is propagated through the feature chain but does not add any API surface.
 
 **Publish/Subscribe:**
 - `node.create_publisher::<M>(topic)` — typed publisher
-- `node.create_subscription::<M>(topic)` — typed subscription (poll with `try_recv()`)
+- `node.create_subscription::<M>(topic)` — typed subscription (poll with `take()`)
 - `publisher.publish(&msg)` / `publish_raw(&bytes)` — publish messages
 
 **Services:**
 - `node.create_service::<S>(name)` — service server (poll with `handle_request()`)
 - `node.create_client::<S>(name)` — service client
 - `client.call(&request)` — non-blocking, returns `Promise<Reply>`
-- `promise.try_recv()` — poll for reply (returns `Ok(Some(reply))` or `Ok(None)`)
+- `promise.take()` — poll for reply (returns `Ok(Some(reply))` or `Ok(None)`)
 - `promise.await` — async poll (implements `core::future::Future`)
 
 **Actions:**
@@ -76,7 +76,7 @@ is propagated through the feature chain but does not add any API surface.
 **Async:**
 - `executor.spin_async()` — async spin loop (drives I/O, dispatches callbacks, yields between iterations)
 - `Promise<'a, T, Cli>` — allocation-free promise, borrows client's reply slot
-- `Promise::try_recv()` — non-blocking poll for reply
+- `Promise::take()` — non-blocking poll for reply
 - `Promise: Future` — implements `core::future::Future` for `.await`
 - Uses only `core::future` and `core::task` — no external async runtime dependency
 
@@ -155,7 +155,7 @@ deleted both types, which no public API ever returned. The user error is
 nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-bare-metal"] }
 ```
 Full pub/sub, services, actions, timers (fn pointers), parameters (local).
-Async: `spin_async()`, `Promise`, `try_recv()`, `.await` — all available without std or alloc.
+Async: `spin_async()`, `Promise`, `take()`, `.await` — all available without std or alloc.
 Use `spin_once()` or `spin_period_polling()` in your main loop, or `spin_async()` with an async runtime (Embassy, RTIC v2).
 
 **Embedded with allocator (e.g., Zephyr with heap):**

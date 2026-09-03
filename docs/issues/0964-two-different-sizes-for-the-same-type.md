@@ -82,7 +82,7 @@ undercounted the risk.** Thirty call sites still stack
 example workspaces — and they are NOT all transmit scratch:
 
 * **RECEIVE buffers — the dangerous direction, an under-estimate TRUNCATES.**
-  `Subscription<M>::try_recv` / `try_recv_validated` (`subscription.hpp:127,153`),
+  `Subscription<M>::take` / `take_validated` (`subscription.hpp:127,153`),
   `Client<Svc>::call`'s response buffer (`client.hpp:131`),
   `Future<T>`/`Stream<T>` (`future.hpp:46,166`, `stream.hpp:54`), the action
   client's result/feedback buffers (`action_client.hpp:147,238`,

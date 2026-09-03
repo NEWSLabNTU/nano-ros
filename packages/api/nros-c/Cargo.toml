@@ -50,7 +50,7 @@ rmw-cffi = ["nros/rmw-cffi"]
 # `IntegrityStatus`) AND the zenoh backend's own `safety-e2e` (the CRC attach on
 # publish + validate on receive — `nros/safety-e2e` does not reach the backend;
 # Cargo features don't propagate upward). Surfaces `nros_integrity_status_t` +
-# `nros_subscription_try_recv_validated` across the C ABI. zenoh-only (the only
+# `nros_subscription_take_validated` across the C ABI. zenoh-only (the only
 # backend with the CRC path); `?` keeps it inert when zenoh isn't selected.
 safety-e2e = ["nros/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 

@@ -70,7 +70,7 @@ FEATURES = [
      r"fn next_deadline_ms"),
     ("Zero-copy loan API", ["borrow_loaned_message"], r"fn (pub_loan|borrow_loaned)"),
     ("Batch receive (`take_sequence`)", ["take_sequence"],
-     r"fn try_recv_sequence"),
+     r"fn take_sequence"),
     ("Streamed publish", ["publish_streamed"], r"fn publish_streamed"),
     ("Connectivity ping", ["ping_session"], r"fn ping_session"),
     # ---- phase-376 W4 parity surface (declared slots; wiring in flight) ----

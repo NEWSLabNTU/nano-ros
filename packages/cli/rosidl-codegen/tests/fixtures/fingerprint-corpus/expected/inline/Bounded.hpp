@@ -87,7 +87,7 @@ struct Bounded {
         return nros_cpp_serialize_fingerprint_corpus_msg_bounded(msg, buf, buf_len, out_len);
     }
 
-    /// Deserialize from CDR (called by Subscription<M>::try_recv)
+    /// Deserialize from CDR (called by Subscription<M>::take)
     static int ffi_deserialize(const uint8_t* data, size_t len, void* out) {
         return nros_cpp_deserialize_fingerprint_corpus_msg_bounded(data, len, out);
     }

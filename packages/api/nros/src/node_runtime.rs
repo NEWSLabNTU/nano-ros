@@ -1930,7 +1930,7 @@ impl ClientDispatch for RuntimeClientDispatch<'_> {
             executor.spin_once(core::time::Duration::from_millis(10));
             let entry = unsafe { executor.service_client_entry_mut(hid.0) }
                 .ok_or(NodeDeclError::Runtime)?;
-            match entry.handle.try_recv_reply_raw(response_buf) {
+            match entry.handle.take_response_raw(response_buf) {
                 // Issue 0778 — one call in flight on this blocking path, so
                 // the sequence id is dropped deliberately.
                 Ok(Some((len, _seq))) => return Ok(len),

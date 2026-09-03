@@ -313,7 +313,7 @@ pub(crate) struct ActionClientRawArenaEntry<
 /// Holds the `RmwServiceClient` plus a single-shot reply buffer and a
 /// callback fn pointer. The executor dispatches via
 /// `service_client_raw_try_process` which checks `reply_ready` (set by
-/// the transport waker) before calling `try_recv_reply_raw`. This
+/// the transport waker) before calling `take_response_raw`. This
 /// avoids busy-polling `get_check` on every spin tick.
 ///
 /// Single in-flight request per entry: a second `send_request` while
@@ -496,7 +496,7 @@ pub(crate) struct SubBufferedEntry<M, F> {
 
 /// Drain the RMW subscriber handle into the buffer strategy.
 ///
-/// Calls `try_recv_raw()` on the subscriber handle and writes received data
+/// Calls `take_serialized()` on the subscriber handle and writes received data
 /// into the triple buffer's write slot or the SPSC ring's next push slot.
 ///
 /// # Safety
@@ -730,7 +730,7 @@ mod arena_headroom_tests {
 
 /// Say that a take was thrown away, on the first one and every 64th after.
 ///
-/// Issue 0757, RFC-0052 fail-loud. `try_recv_raw` returns `BufferTooSmall` when
+/// Issue 0757, RFC-0052 fail-loud. `take_serialized` returns `BufferTooSmall` when
 /// a reassembled sample exceeds the subscription buffer, and this path used to
 /// discard EVERY non-OK take. At transport level cyclone has already completed
 /// and ACKed the sample by then, so the subscription looks matched and healthy
@@ -776,7 +776,7 @@ unsafe fn drain_into_buffer<M, F>(
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
             let cap = slot.len();
-            if let Some(len) = entry.handle.try_recv_raw(slot).inspect_err(|e| {
+            if let Some(len) = entry.handle.take_serialized(slot).inspect_err(|e| {
                 report_dropped_take(e, cap);
             })? {
                 tb.writer_publish(len);
@@ -785,7 +785,7 @@ unsafe fn drain_into_buffer<M, F>(
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
                 let cap = slot.len();
-                match entry.handle.try_recv_raw(slot).inspect_err(|e| {
+                match entry.handle.take_serialized(slot).inspect_err(|e| {
                     report_dropped_take(e, cap);
                 })? {
                     Some(len) => ring.commit_push(len),
@@ -995,7 +995,7 @@ unsafe fn drain_into_buffer_raw<F>(
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
             let cap = slot.len();
-            if let Some(len) = entry.handle.try_recv_raw(slot).inspect_err(|e| {
+            if let Some(len) = entry.handle.take_serialized(slot).inspect_err(|e| {
                 report_dropped_take(e, cap);
             })? {
                 tb.writer_publish(len);
@@ -1004,7 +1004,7 @@ unsafe fn drain_into_buffer_raw<F>(
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
                 let cap = slot.len();
-                match entry.handle.try_recv_raw(slot).inspect_err(|e| {
+                match entry.handle.take_serialized(slot).inspect_err(|e| {
                     report_dropped_take(e, cap);
                 })? {
                     Some(len) => ring.commit_push(len),
@@ -1134,7 +1134,7 @@ where
     {
         let slot = tb.write_slot();
         let cap = slot.len();
-        if let Some(len) = entry.handle.try_recv_raw(slot).inspect_err(|e| {
+        if let Some(len) = entry.handle.take_serialized(slot).inspect_err(|e| {
             report_dropped_take(e, cap);
         })? {
             tb.writer_publish(len);
@@ -1177,7 +1177,7 @@ pub(crate) unsafe fn sub_buffered_view_has_data<B, F>(ptr: *const u8) -> bool {
 
 /// Staging cap for a raw subscription's wire attachment (`bridge_origin`
 /// tags and similar are small). Attachment bytes longer than this are
-/// truncated by the backend's `try_recv_raw_with_attachment`.
+/// truncated by the backend's `take_serialized_with_attachment`.
 pub(crate) const RAW_INFO_ATT_CAP: usize = 256;
 
 /// Raw buffered subscription entry that surfaces the sample's wire
@@ -1212,7 +1212,7 @@ where
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawInfoEntry<F, RX_BUF>) };
     match entry
         .handle
-        .try_recv_raw_with_attachment(&mut entry.buffer, &mut entry.att)
+        .take_serialized_with_attachment(&mut entry.buffer, &mut entry.att)
     {
         // Phase 8 — hooked. One sample per dispatch (flat inline buffer, no
         // ring), so exactly one pair. `Ok(None)` and `Err(_)` never reach a
@@ -1272,7 +1272,7 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_try_process(
     let payload = entry.buffer.as_mut_slice();
     match entry
         .handle
-        .try_recv_raw_with_attachment(payload, &mut entry.att)
+        .take_serialized_with_attachment(payload, &mut entry.att)
     {
         // Phase 8 — hooked. One sample per dispatch; the pair brackets the
         // whole `unsafe` FFI call, which is the user callback itself.
@@ -1309,7 +1309,7 @@ pub(crate) unsafe fn sub_buffered_raw_info_c_has_data(ptr: *const u8) -> bool {
 /// gap/dup) alongside the raw CDR bytes (`FnMut(&[u8], &IntegrityStatus)`).
 ///
 /// The type-erased analog of [`SubSafetyEntry`]: the validator lives in the
-/// `RmwSubscriber` and `try_recv_validated` produces the status, so no typed
+/// `RmwSubscriber` and `take_validated` produces the status, so no typed
 /// `M` is needed (the declarative `Node` path is generic). Flat inline payload
 /// buffer; one sample per dispatch.
 #[cfg(feature = "safety-e2e")]
@@ -1335,7 +1335,7 @@ where
     F: FnMut(&[u8], &nros_rmw::IntegrityStatus),
 {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyEntry<F, RX_BUF>) };
-    match entry.handle.try_recv_validated(&mut entry.buffer) {
+    match entry.handle.take_validated(&mut entry.buffer) {
         // Phase 8 — hooked. One sample per dispatch. A failed validation
         // still delivers the sample WITH its status, so this arm is the only
         // callback path; `Ok(None)` / `Err(_)` fire nothing.
@@ -1363,7 +1363,7 @@ pub(crate) unsafe fn sub_buffered_raw_safety_has_data<F, const RX_BUF: usize>(
 }
 
 /// Phase 269 W3 — the C analog of [`SubBufferedRawSafetyEntry`]: same flat inline
-/// payload buffer + `try_recv_validated` dispatch, but the callback is a plain
+/// payload buffer + `take_validated` dispatch, but the callback is a plain
 /// C function pointer (`RawSubscriptionSafetyCallback`) that receives the integrity
 /// scalars alongside the CDR bytes.
 ///
@@ -1395,7 +1395,7 @@ pub(crate) unsafe fn sub_buffered_raw_safety_c_try_process(
 ) -> Result<bool, TransportError> {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedRawSafetyCEntry) };
     let payload = entry.buffer.as_mut_slice();
-    match entry.handle.try_recv_validated(payload) {
+    match entry.handle.take_validated(payload) {
         // Phase 8 — hooked. One sample per dispatch. The `crc_valid` unpack
         // is executor bookkeeping, not user code, so it stays OUTSIDE the
         // span; the pair brackets only the FFI call.
@@ -1464,13 +1464,13 @@ unsafe fn drain_into_buffer_raw_c(entry: &mut SubBufferedRawCEntry) -> Result<()
     match &entry.buffer {
         BufferStrategy::Triple(tb) => {
             let slot = tb.write_slot();
-            if let Some(len) = entry.handle.try_recv_raw(slot)? {
+            if let Some(len) = entry.handle.take_serialized(slot)? {
                 tb.writer_publish(len);
             }
         }
         BufferStrategy::Ring(ring) => {
             while let Some(slot) = ring.try_push() {
-                match entry.handle.try_recv_raw(slot)? {
+                match entry.handle.take_serialized(slot)? {
                     Some(len) => ring.commit_push(len),
                     None => break,
                 }
@@ -1573,7 +1573,7 @@ where
         return Ok(true);
     }
 
-    match entry.handle.try_recv_raw_with_info(&mut entry.buffer) {
+    match entry.handle.take_serialized_with_info(&mut entry.buffer) {
         // Phase 8 — hooked. One sample per dispatch; `Ok(None)` / `Err(_)`
         // fire nothing, and both `?`s precede the start hook.
         Ok(Some((len, info))) => {
@@ -1632,7 +1632,7 @@ where
         return Ok(true);
     }
 
-    match entry.handle.try_recv_validated(&mut entry.buffer) {
+    match entry.handle.take_validated(&mut entry.buffer) {
         // Phase 8 — hooked. One sample per dispatch; both `?`s precede the
         // start hook, and `Ok(None)` / `Err(_)` fire nothing.
         Ok(Some((len, status))) => {
@@ -2162,7 +2162,7 @@ pub(crate) unsafe fn action_client_raw_try_process<
 /// Monomorphized raw service-client dispatch function.
 ///
 /// Checks `reply_ready` (set by the transport waker) before calling
-/// `try_recv_reply_raw`. This avoids blind polling on every spin tick —
+/// `take_response_raw`. This avoids blind polling on every spin tick —
 /// the only cost per tick is an atomic load when no reply is pending.
 ///
 /// # Safety
@@ -2186,7 +2186,7 @@ pub(crate) unsafe fn service_client_raw_try_process<const REPLY_BUF: usize>(
     // Issue 0778 — one call per arena entry today, so the sequence id is
     // discarded rather than absent. Correlating here means keying entries by
     // it, which is the follow-up that issue tracks.
-    match entry.handle.try_recv_reply_raw(&mut entry.reply_buffer) {
+    match entry.handle.take_response_raw(&mut entry.reply_buffer) {
         Ok(Some((len, _seq))) => {
             entry.pending = false;
             // Phase 8 — hooked inside the `Some(cb)` arm. The callback is
@@ -2263,7 +2263,7 @@ where
     match entry
         .hdr
         .handle
-        .try_recv_reply_raw(&mut entry.hdr.reply_buffer)
+        .take_response_raw(&mut entry.hdr.reply_buffer)
     {
         Ok(Some((len, _seq))) => {
             entry.hdr.pending = false;
@@ -2439,7 +2439,7 @@ where
         match feedback_buffer {
             BufferStrategy::Triple(tb) => {
                 let slot = tb.write_slot();
-                if let Ok(Some(len)) = core.feedback_subscriber.try_recv_raw(slot) {
+                if let Ok(Some(len)) = core.feedback_subscriber.take_serialized(slot) {
                     tb.writer_publish(len);
                 }
                 if let Some((data, len)) = tb.reader_acquire() {
@@ -2457,7 +2457,7 @@ where
             }
             BufferStrategy::Ring(ring) => {
                 while let Some(slot) = ring.try_push() {
-                    match core.feedback_subscriber.try_recv_raw(slot) {
+                    match core.feedback_subscriber.take_serialized(slot) {
                         Ok(Some(len)) => ring.commit_push(len),
                         _ => break,
                     }
@@ -2530,7 +2530,7 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
         context,
     } = entry;
     let buf_start = req_buffer.as_ptr() as usize;
-    let (data_offset, data_len, seq_num) = match handle.try_recv_request(req_buffer) {
+    let (data_offset, data_len, seq_num) = match handle.take_request(req_buffer) {
         Ok(Some(request)) => {
             let offset = (request.data.as_ptr() as usize).saturating_sub(buf_start);
             let len = request.data.len();
@@ -2660,7 +2660,7 @@ pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
 pub(crate) unsafe fn sub_info_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
     let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
     // For LET, we sample only the data (MessageInfo is not preserved in the snapshot)
-    entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
+    entry.sampled_len = match entry.handle.take_serialized(&mut entry.buffer) {
         Ok(Some(len)) => len,
         _ => 0,
     };
@@ -2673,7 +2673,7 @@ pub(crate) unsafe fn sub_info_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8
 #[cfg(feature = "safety-e2e")]
 pub(crate) unsafe fn sub_safety_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
     let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
-    entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
+    entry.sampled_len = match entry.handle.take_serialized(&mut entry.buffer) {
         Ok(Some(len)) => len,
         _ => 0,
     };

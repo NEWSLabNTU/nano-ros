@@ -492,7 +492,7 @@ typedef struct nros_cpp_subscription_options_t {
 
 /**
  * Phase 252 / issue 0073 — E2E message-integrity status for the C++ receive
- * path ([`nros_cpp_subscription_try_recv_validated`]). The C++ analog of the
+ * path ([`nros_cpp_subscription_take_validated`]). The C++ analog of the
  * Rust `IntegrityStatus` / `nros_integrity_status_t`.
  */
 typedef struct nros_cpp_integrity_status_t {
@@ -1550,11 +1550,11 @@ nros_cpp_ret_t nros_cpp_service_server_create(const struct nros_cpp_node_t *node
  * # Safety
  * All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
  */
-nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void *storage,
-                                                    uint8_t *out_data,
-                                                    size_t out_capacity,
-                                                    size_t *out_len,
-                                                    int64_t *out_sequence);
+nros_cpp_ret_t nros_cpp_service_server_take_request_raw(void *storage,
+                                                        uint8_t *out_data,
+                                                        size_t out_capacity,
+                                                        size_t *out_len,
+                                                        int64_t *out_sequence);
 
 /**
  * Send a raw reply to a service request.
@@ -1648,10 +1648,10 @@ nros_cpp_ret_t nros_cpp_service_client_send_request(void *storage,
  * # Safety
  * All pointers must be valid. `resp_data` must point to `resp_capacity` writable bytes.
  */
-nros_cpp_ret_t nros_cpp_service_client_try_recv_reply(void *storage,
-                                                      uint8_t *resp_data,
-                                                      size_t resp_capacity,
-                                                      size_t *resp_len);
+nros_cpp_ret_t nros_cpp_service_client_take_response(void *storage,
+                                                     uint8_t *resp_data,
+                                                     size_t resp_capacity,
+                                                     size_t *resp_len);
 
 /**
  * Phase 124.C.3 — graph-aware "is the matching server up?" probe.
@@ -1741,21 +1741,21 @@ struct nros_cpp_subscription_options_t nros_cpp_subscription_default_options(voi
  * — no runtime scratch. If the message is larger than `out_capacity`
  * the backend drops it and returns `NROS_CPP_RET_FULL`; callers that need
  * to handle oversized messages should size `out_data` to the message type's
- * `SERIALIZED_SIZE_MAX` (exactly what `Subscription<M>::try_recv` does).
+ * `SERIALIZED_SIZE_MAX` (exactly what `Subscription<M>::take` does).
  *
  * # Safety
  * `storage` must be a valid subscription storage. `out_data` must point to
  * `out_capacity` writable bytes. `out_len` must be a valid pointer.
  */
-nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void *storage,
-                                                  uint8_t *out_data,
-                                                  size_t out_capacity,
-                                                  size_t *out_len);
+nros_cpp_ret_t nros_cpp_subscription_take_serialized(void *storage,
+                                                     uint8_t *out_data,
+                                                     size_t out_capacity,
+                                                     size_t *out_len);
 
 /**
  * Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E integrity
  * status (CRC + sequence gap/dup). The safety-e2e analog of
- * [`nros_cpp_subscription_try_recv_raw`]; the backend recomputes + compares the
+ * [`nros_cpp_subscription_take_serialized`]; the backend recomputes + compares the
  * CRC attachment and tracks the sequence. Requires `safety-e2e` on both ends
  * (else `crc_valid` reports `-1`).
  *
@@ -1764,11 +1764,11 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void *storage,
  * `out_capacity` writable bytes. `out_len` must be valid. `out_status`, if
  * non-NULL, must point to a writable `nros_cpp_integrity_status_t`.
  */
-nros_cpp_ret_t nros_cpp_subscription_try_recv_validated(void *storage,
-                                                        uint8_t *out_data,
-                                                        size_t out_capacity,
-                                                        size_t *out_len,
-                                                        struct nros_cpp_integrity_status_t *out_status);
+nros_cpp_ret_t nros_cpp_subscription_take_validated(void *storage,
+                                                    uint8_t *out_data,
+                                                    size_t out_capacity,
+                                                    size_t *out_len,
+                                                    struct nros_cpp_integrity_status_t *out_status);
 
 /**
  * Phase 189.M3.4b — try to receive raw CDR data **plus the sample's wire
@@ -1783,13 +1783,13 @@ nros_cpp_ret_t nros_cpp_subscription_try_recv_validated(void *storage,
  * point to `out_capacity` / `out_att_capacity` writable bytes. `out_len` /
  * `out_att_len` must be valid pointers.
  */
-nros_cpp_ret_t nros_cpp_subscription_try_recv_raw_with_attachment(void *storage,
-                                                                  uint8_t *out_data,
-                                                                  size_t out_capacity,
-                                                                  size_t *out_len,
-                                                                  uint8_t *out_att,
-                                                                  size_t out_att_capacity,
-                                                                  size_t *out_att_len);
+nros_cpp_ret_t nros_cpp_subscription_take_serialized_with_attachment(void *storage,
+                                                                     uint8_t *out_data,
+                                                                     size_t out_capacity,
+                                                                     size_t *out_len,
+                                                                     uint8_t *out_att,
+                                                                     size_t out_att_capacity,
+                                                                     size_t *out_att_len);
 
 /**
  * Phase 124.A.7 — borrow the next message in place.
@@ -1843,12 +1843,12 @@ nros_cpp_ret_t nros_cpp_subscription_release(void *storage, void *token);
  * `out_lens` must point to a writable array of `max_msgs` `size_t`
  * slots. `out_count` must be a writable `usize` pointer.
  */
-nros_cpp_ret_t nros_cpp_subscription_try_recv_sequence(void *storage,
-                                                       uint8_t *buf,
-                                                       size_t per_msg_cap,
-                                                       size_t max_msgs,
-                                                       size_t *out_lens,
-                                                       size_t *out_count);
+nros_cpp_ret_t nros_cpp_subscription_take_sequence(void *storage,
+                                                   uint8_t *buf,
+                                                   size_t per_msg_cap,
+                                                   size_t max_msgs,
+                                                   size_t *out_lens,
+                                                   size_t *out_count);
 
 /**
  * Destroy a subscription (drop in place, no free).
@@ -1861,7 +1861,7 @@ nros_cpp_ret_t nros_cpp_subscription_destroy(void *storage);
 /**
  * Relocate an `RmwSubscriber` from `old_storage` to `new_storage`.
  *
- * Subscriptions are pull-based (`try_recv_raw`) and register nothing
+ * Subscriptions are pull-based (`take_serialized`) and register nothing
  * externally that references the storage address — relocation is a
  * straight `ptr::read` + `ptr::write`.
  *

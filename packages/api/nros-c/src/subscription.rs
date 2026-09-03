@@ -59,7 +59,7 @@ pub enum nros_subscription_state_t {
     NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
     /// Phase 122.3.b — initialized for primitive-mode polling (Layer 1).
     /// Subscriber entity created at init time and stored inline in
-    /// `_opaque`; caller drains via `nros_subscription_try_recv_raw`.
+    /// `_opaque`; caller drains via `nros_subscription_take_serialized`.
     /// No executor registration.
     NROS_SUBSCRIPTION_STATE_POLLING = 3,
 }
@@ -360,7 +360,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_options(
 // L1 is for callers that own their own scheduler (RTIC, embassy,
 // FreeRTOS-native task-per-entity). The subscriber entity is created
 // at init time and stored inline in `_opaque`; the caller polls it
-// directly via `nros_subscription_try_recv_raw`, never registering
+// directly via `nros_subscription_take_serialized`, never registering
 // with an `nros_executor_t`.
 //
 // L1 ops are mutually exclusive with L2 (callback / executor). A
@@ -377,7 +377,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_options(
 ///
 /// Creates the underlying RMW subscriber immediately and stores it
 /// inline in the subscription's `_opaque` field. The caller drains
-/// received messages via `nros_subscription_try_recv_raw`.
+/// received messages via `nros_subscription_take_serialized`.
 ///
 /// Uses default QoS (RELIABLE, KEEP_LAST(10)). For custom QoS, use
 /// `nros_subscription_init_polling_with_qos`.
@@ -581,7 +581,7 @@ pub unsafe extern "C" fn nros_subscription_set_wake_callback(
 /// * `subscription` must be in `POLLING` state
 /// * `buf` must point to writable memory of at least `buf_len` bytes
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_try_recv_raw(
+pub unsafe extern "C" fn nros_subscription_take_serialized(
     subscription: *mut nros_subscription_t,
     buf: *mut u8,
     buf_len: usize,
@@ -598,7 +598,7 @@ pub unsafe extern "C" fn nros_subscription_try_recv_raw(
     {
         let raw = &mut *(subscription_mut._opaque.as_mut_ptr()
             as *mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
-        match raw.try_recv_raw() {
+        match raw.take_serialized() {
             Ok(Some(len)) => {
                 let to_copy = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(raw.buffer().as_ptr(), buf, to_copy);
@@ -616,7 +616,7 @@ pub unsafe extern "C" fn nros_subscription_try_recv_raw(
 }
 
 /// Phase 252 / issue 0073 — E2E message-integrity status surfaced to the C/C++
-/// receive path ([`nros_subscription_try_recv_validated`]). The C analog of the
+/// receive path ([`nros_subscription_take_validated`]). The C analog of the
 /// Rust `IntegrityStatus` / `CallbackCtx::integrity()`.
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
@@ -632,7 +632,7 @@ pub struct nros_integrity_status_t {
 
 /// Phase 252 / issue 0073 — non-blocking poll that ALSO returns the E2E
 /// integrity status (CRC + sequence gap/dup) of the received sample. The
-/// safety-e2e analog of [`nros_subscription_try_recv_raw`]: it requests
+/// safety-e2e analog of [`nros_subscription_take_serialized`]: it requests
 /// validation on the backend (the zenoh shim recomputes + compares the CRC
 /// attachment and tracks the sequence) and writes the verdict to `*out_status`.
 ///
@@ -652,7 +652,7 @@ pub struct nros_integrity_status_t {
 /// * `out_status`, if non-NULL, must point to a writable `nros_integrity_status_t`
 #[cfg(feature = "safety-e2e")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_try_recv_validated(
+pub unsafe extern "C" fn nros_subscription_take_validated(
     subscription: *mut nros_subscription_t,
     buf: *mut u8,
     buf_len: usize,
@@ -670,7 +670,7 @@ pub unsafe extern "C" fn nros_subscription_try_recv_validated(
     {
         let raw = &mut *(subscription_mut._opaque.as_mut_ptr()
             as *mut nros_node::RawSubscription<{ crate::config::MESSAGE_BUFFER_SIZE }>);
-        match raw.try_recv_validated() {
+        match raw.take_validated() {
             Ok(Some((len, status))) => {
                 let to_copy = len.min(buf_len);
                 core::ptr::copy_nonoverlapping(raw.buffer().as_ptr(), buf, to_copy);
@@ -715,7 +715,7 @@ pub unsafe extern "C" fn nros_subscription_try_recv_validated(
 /// requesting another borrow on the same subscription — only one
 /// outstanding view per subscription at a time.
 ///
-/// Falls back to a `try_recv_raw` copy into the staging buffer when the
+/// Falls back to a `take_serialized` copy into the staging buffer when the
 /// active backend's vtable doesn't expose a native borrow slot.
 ///
 /// **Requires `alloc` as well as `lending`.** Unlike the publish half —
@@ -838,7 +838,7 @@ pub unsafe extern "C" fn nros_subscription_release(
 /// * `out_lens` must point to a writable array of at least
 ///   `max_msgs` `size_t` slots.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_subscription_try_recv_sequence(
+pub unsafe extern "C" fn nros_subscription_take_sequence(
     subscription: *mut nros_subscription_t,
     buf: *mut u8,
     per_msg_cap: usize,
@@ -862,7 +862,7 @@ pub unsafe extern "C" fn nros_subscription_try_recv_sequence(
         // caller buffer as a flat slice and dispatch.
         let buf_slice = core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap));
         let lens_slice = core::slice::from_raw_parts_mut(out_lens, max_msgs);
-        match raw.try_recv_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
+        match raw.take_sequence(buf_slice, per_msg_cap, max_msgs, lens_slice) {
             Ok(count) => count as i32,
             Err(_) => NROS_RET_ERROR,
         }

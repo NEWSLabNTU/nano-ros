@@ -50,11 +50,11 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
   public:
     /// Check if the result has arrived (non-blocking).
     bool is_ready() {
-        if (slot_ < 0 || !try_recv_fn_) return false;
+        if (slot_ < 0 || !take_fn_) return false;
         if (ready_) return true;
         uint8_t buf[Cap];
         size_t len = 0;
-        nros_cpp_ret_t ret = try_recv_fn_(client_storage_, buf, sizeof(buf), &len);
+        nros_cpp_ret_t ret = take_fn_(client_storage_, buf, sizeof(buf), &len);
         if (ret == 0 && len > 0) {
             ready_ = true;
             cached_len_ = len < sizeof(cached_buf_) ? len : sizeof(cached_buf_);
@@ -125,8 +125,8 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
 
     // Move semantics (non-copyable, single-shot)
     Future(Future&& other) noexcept
-        : client_storage_(other.client_storage_), try_recv_fn_(other.try_recv_fn_),
-          slot_(other.slot_), ready_(other.ready_), cached_len_(other.cached_len_) {
+        : client_storage_(other.client_storage_), take_fn_(other.take_fn_), slot_(other.slot_),
+          ready_(other.ready_), cached_len_(other.cached_len_) {
         for (size_t i = 0; i < cached_len_; ++i)
             cached_buf_[i] = other.cached_buf_[i];
         other.slot_ = -1;
@@ -136,7 +136,7 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
     Future& operator=(Future&& other) noexcept {
         if (this != &other) {
             client_storage_ = other.client_storage_;
-            try_recv_fn_ = other.try_recv_fn_;
+            take_fn_ = other.take_fn_;
             slot_ = other.slot_;
             ready_ = other.ready_;
             cached_len_ = other.cached_len_;
@@ -152,8 +152,7 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
 
     /// Default constructor -- creates an empty/consumed future.
     Future()
-        : client_storage_(nullptr), try_recv_fn_(nullptr), slot_(-1), ready_(false),
-          cached_len_(0) {}
+        : client_storage_(nullptr), take_fn_(nullptr), slot_(-1), ready_(false), cached_len_(0) {}
 
   private:
     Future(const Future&) = delete;
@@ -165,10 +164,10 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
 
     Future(void* storage, TryRecvFn fn, int slot)
-        : client_storage_(storage), try_recv_fn_(fn), slot_(slot), ready_(false), cached_len_(0) {}
+        : client_storage_(storage), take_fn_(fn), slot_(slot), ready_(false), cached_len_(0) {}
 
     void* client_storage_;
-    TryRecvFn try_recv_fn_;
+    TryRecvFn take_fn_;
     int slot_;
     bool ready_;
     size_t cached_len_;

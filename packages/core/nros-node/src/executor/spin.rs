@@ -4235,7 +4235,7 @@ impl<'s> Executor<'s> {
     /// sequence gap/dup) alongside the raw CDR bytes
     /// (`FnMut(&[u8], &IntegrityStatus)`). The type-erased analog of
     /// [`register_subscription_with_safety_sized_inner`]: the validator lives in
-    /// the `RmwSubscriber` (`try_recv_validated`), so the subscriber is created
+    /// the `RmwSubscriber` (`take_validated`), so the subscriber is created
     /// plainly and no `register_type::<M>()` is needed (the declarative `Node`
     /// path is generic). Used by the declarative runtime's `.safety()` opt-in.
     #[cfg(feature = "safety-e2e")]
@@ -5101,7 +5101,7 @@ impl<'s> Executor<'s> {
     /// alongside the CDR bytes — the C/C++ component-callback analog of Rust's
     /// `register_subscription_buffered_raw_safety_on` (`FnMut(&[u8], &IntegrityStatus)`).
     ///
-    /// The executor validates the sample via `try_recv_validated` and unpacks the
+    /// The executor validates the sample via `take_validated` and unpacks the
     /// [`nros_rmw::IntegrityStatus`] into three plain scalars (gap, duplicate,
     /// crc_valid) before calling `callback`. This avoids introducing a
     /// cbindgen-visible struct at the executor layer; the C/C++ headers pack them
@@ -5360,7 +5360,7 @@ impl<'s> Executor<'s> {
     /// buffer size.
     ///
     /// The client is owned by the executor's arena. Each `spin_once`
-    /// dispatch polls the in-flight reply slot via `try_recv_reply_raw`
+    /// dispatch polls the in-flight reply slot via `take_response_raw`
     /// and fires the registered callback when the response arrives.
     /// Used by the C API thin wrapper — see Phase 82.
     pub fn register_service_client_raw(

@@ -3,7 +3,7 @@
 <package format="3">
   <name>native_cpp_safety_listener</name>
   <version>0.1.0</version>
-  <description>nano-ros native C++ E2E-safety listener (issue 0073 — polls Subscription::try_recv_validated)</description>
+  <description>nano-ros native C++ E2E-safety listener (issue 0073 — polls Subscription::take_validated)</description>
   <maintainer email="example@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 

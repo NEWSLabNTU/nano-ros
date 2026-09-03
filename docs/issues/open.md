@@ -67,7 +67,7 @@ fails if this block drifts.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
 - **#0968** (testing) — Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time See `0968-*`.
-- **#0969** ([rmw, memory]) — The Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a decode, an encode and two heap allocations per take See `0969-*`.
+- **#0969** ([rmw, memory]) — The Cyclone RMW deserializes every received sample and re-serializes it, so `take_serialized` costs a decode, an encode and two heap allocations per take See `0969-*`.
 - **#0973** (orchestration) — No resolved SystemModel describes endpoint wiring — 0 of 119 carry topics, services or actions See `0973-*`.
 - **#0976** ([rmw, testing]) — Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself See `0976-*`.
 - **#0986** (tooling) — The pre-push hook writes into the repository it is guarding See `0986-*`.

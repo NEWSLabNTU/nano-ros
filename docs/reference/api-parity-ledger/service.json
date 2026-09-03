@@ -119,6 +119,22 @@
     "verdict": "extension",
     "why": "see `c:publisher_state_t`."
   },
+  "c:client_take_response": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:take_response`: poll for the reply to the most recent `nros_client_send_request_async`. Renamed from `nros_client_try_recv_response` by phase-379 W6 decision 1 (2026-09-03)."
+  },
+  "c:client_take_response_raw": {
+    "verdict": "extension",
+    "why": "the L1 polling-client half of `c:take_response`. `reply` -> `response` moved with the verb. Renamed from `nros_client_try_recv_reply_raw` by phase-379 W6 decision 1 (2026-09-03)."
+  },
+  "c:client_try_recv_reply_raw": {
+    "verdict": "extension",
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+  },
+  "c:client_try_recv_response": {
+    "verdict": "extension",
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_client_take_response` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
+  },
   "c:client_wait_for_service": {
     "verdict": "extension",
     "why": "blocks until the server appears or the deadline passes, driving the executor. rclcpp's `Client::wait_for_service` folds onto ours by the *Base rule; C's rclc has no counterpart."
@@ -244,27 +260,35 @@
   },
   "c:service_take_request": {
     "verdict": "extension",
-    "why": "the ours-only half of `c:take_request`."
+    "why": "the ours-only half of `c:take_request`. Two entry points carry it: this one, a permanent `NROS_RET_NOT_INIT` stub from before the polling API existed, and `nros_service_take_request_raw`, the L1 polling drain (renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1, 2026-09-03). Which of the two spellings survives is still open."
+  },
+  "c:service_take_request_raw": {
+    "verdict": "extension",
+    "why": "the L1 polling-mode drain, the working half of `c:service_take_request`. Byte-oriented for the reason `c:take` names -- no typesupport dispatch, no allocator. Renamed from `nros_service_try_recv_request_raw` by phase-379 W6 decision 1 (2026-09-03)."
+  },
+  "c:service_try_recv_request_raw": {
+    "verdict": "extension",
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_service_take_request_raw` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "c:service_type_t": {
     "verdict": "divergence",
     "why": "the service typesupport handle; see the pubsub stage's `c:message_type_t`."
   },
   "c:take_request": {
-    "verdict": "rename",
-    "why": "rcl's free-function spelling of a word our C already uses: `nros_service_take_request`. Note this makes the pubsub stage's `take` -> `try_recv` rename internally inconsistent as well -- C says TAKE for a service request and TRY_RECV for a subscription, while C++ says `try_recv_request` for both. Whatever W5 picks has to be picked once, for every entity and every language."
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined. The inconsistency this row recorded is gone: C said TAKE for a service request and TRY_RECV for a subscription, C++ said `try_recv_request` for both. All three languages now say `take_request`, and the subscription side says `take`. What is left against `rcl_take_request` is rcl's free-function spelling versus our module-prefixed `nros_service_take_request{,_raw}` -- `c:get_zero_initialized_publisher`'s precedent, which argues for keeping ours. See `c:take`."
   },
   "c:take_request_with_info": {
-    "verdict": "rename",
-    "why": "see `c:take_request`."
+    "verdict": "gap",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> gap: the verb question this row deferred to (`c:take_request`) is settled, and what it was hiding is an ABSENCE, not a spelling. `rcl_take_request_with_info` yields `rmw_service_info_t` (source and received timestamps, plus the request id) alongside the payload; our service path carries no per-request info channel at all, so there is nothing to rename. Written down rather than argued: nobody has needed it yet."
   },
   "c:take_response": {
-    "verdict": "rename",
-    "why": "the client side of `c:take_request`; ours is `nros_client_try_recv_response` -- so within the C API a service TAKES and a client TRY_RECVs. Same one decision."
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined -- the client side of `c:take_request`. Ours is `nros_client_take_response` (executor-registered client) and `nros_client_take_response_raw` (L1 polling client), renamed from `nros_client_try_recv_response` / `nros_client_try_recv_reply_raw`; `reply` -> `response` moved with the verb because rcl, rclcpp and rclrs all say RESPONSE. Only the module prefix remains."
   },
   "c:take_response_with_info": {
-    "verdict": "rename",
-    "why": "see `c:take_response`."
+    "verdict": "gap",
+    "why": "the client side of `c:take_request_with_info`; same absence, same reason. RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1)."
   },
   "cpp:CallbackGroup::find_client_ptrs_if": {
     "verdict": "declined",
@@ -431,8 +455,8 @@
     "why": "rclcpp's `Waitable` protocol -- the executor asks each entity how many wait-set slots it needs, then takes the ready data back out. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set for an entity to describe itself to. Executor plumbing; see the pubsub stage's identical rows."
   },
   "cpp:Client::take_response": {
-    "verdict": "rename",
-    "why": "see `c:take_response`."
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence. The verb question is settled (`c:take`), but the C++ client never had a `take_response` to rename: a call returns a `Future<Response>` and the reply is polled with `Future::try_take()` / `is_ready()`. That is the no-exceptions, no-allocator shape of rclcpp's `async_send_request` future -- see `cpp:Future::try_take`. The C surface is where the take spelling lives (`c:client_take_response{,_raw}`)."
   },
   "cpp:Client::take_type_erased_response": {
     "verdict": "declined",
@@ -578,8 +602,8 @@
     "why": "see `c:service_set_on_new_request_callback`."
   },
   "cpp:Service::take_request": {
-    "verdict": "rename",
-    "why": "see `c:take_request`; ours is `Service::try_recv_request`."
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the name now MATCHES (`Service<S>::take_request`, renamed from `try_recv_request`), and what the report still calls a difference is the second parameter's TYPE. rclcpp's is `rmw_request_id_t&`; ours is a bare `int64_t&` sequence number, because a nano-ros client keeps ONE call in flight (the `in_flight` flag and `reset_in_flight()` on the handle) rather than a correlation table with a writer GUID in it -- the same constraint `c:send_request` and `rust:RequestId` record."
   },
   "cpp:Service::take_type_erased_request": {
     "verdict": "declined",

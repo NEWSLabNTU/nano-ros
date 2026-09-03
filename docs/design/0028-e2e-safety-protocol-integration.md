@@ -55,7 +55,7 @@ Publisher side:
 
 Subscriber side:
   zenoh callback → Copy payload + attachment to static SubscriberBuffer
-  User calls try_recv_raw() → Copy from static buffer to user buffer
+  User calls take_serialized() → Copy from static buffer to user buffer
   User buffer → CdrReader::deserialize() → User msg
   (Attachment parsed into MessageInfo but NOT validated)
 ```
@@ -231,7 +231,7 @@ nros (top-level) → nros-node → nros-rmw
 - New `safety` module: CRC-32 function, `IntegrityStatus` type, `SafetyValidator` state tracker
 - `ShimPublisher::publish_raw()`: behind `#[cfg(feature = "safety-e2e")]`, compute CRC and extend attachment from 33 to 37 bytes
 - `SubscriberBuffer`: increase attachment buffer from 33 to 37 bytes when feature enabled
-- `ShimSubscriber`: add `SafetyValidator` field, add `try_recv_validated()` method
+- `ShimSubscriber`: add `SafetyValidator` field, add `take_validated()` method
 
 **`nros-node`** (API surface):
 - `ShimNodeSubscription`: add `try_recv_safe()` method returning `(M, IntegrityStatus)` when feature enabled
@@ -241,7 +241,7 @@ nros (top-level) → nros-node → nros-rmw
 - Core types (`nros-core`) — no new traits needed
 - Transport traits (`traits.rs`) — shim-specific, not trait-level
 - Zenoh backend (`nros-rmw-zenoh`) — attachment handling already supports variable sizes
-- Existing `try_recv()` API — remains available, unchanged behavior
+- Existing `take()` API — remains available, unchanged behavior
 
 ### Memory impact
 

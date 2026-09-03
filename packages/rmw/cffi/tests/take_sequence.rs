@@ -1,4 +1,4 @@
-//! Phase 124.D.4 — `CffiSubscription::try_recv_sequence` routing test.
+//! Phase 124.D.4 — `CffiSubscription::take_sequence` routing test.
 //!
 //! Two scenarios:
 //!
@@ -8,7 +8,7 @@
 //!    per-slot lengths.
 //!
 //! 2. Backend leaves the slot NULL. The runtime falls back to a
-//!    `try_recv_raw` loop. A counter-driven stub `try_recv_raw`
+//!    `take_serialized` loop. A counter-driven stub `take_serialized`
 //!    feeds 8 messages on consecutive calls and then reports empty;
 //!    the loop terminates at the correct count.
 //!
@@ -108,7 +108,7 @@ unsafe extern "C" fn stub_destroy_subscription(_: *mut NrosRmwSubscription) -> N
     NROS_RMW_RET_OK
 }
 
-// `try_recv_raw` stub: feed the i-th queue entry on the i-th call.
+// `take_serialized` stub: feed the i-th queue entry on the i-th call.
 unsafe extern "C" fn stub_take(
     _: *const NrosRmwSubscription,
     buf: *mut nros_rmw_cffi::generated::rmw_mut_byte_span_t,
@@ -426,7 +426,7 @@ fn open_subscriber(name: &str, vtable: &'static NrosRmwVtable) -> nros_rmw_cffi:
 }
 
 #[test]
-fn try_recv_sequence_native_batch() {
+fn take_sequence_native_batch() {
     let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     SEQ_CALLS_NATIVE.store(0, Ordering::SeqCst);
     RAW_CURSOR.store(0, Ordering::SeqCst);
@@ -435,8 +435,8 @@ fn try_recv_sequence_native_batch() {
     let mut buf = [0u8; 8 * PER_MSG_CAP];
     let mut lens = [0usize; 8];
     let count = sub
-        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
-        .expect("try_recv_sequence");
+        .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .expect("take_sequence");
     assert_eq!(count, QUEUE.len(), "expected all 8 messages in one call");
     assert_eq!(
         SEQ_CALLS_NATIVE.load(Ordering::SeqCst),
@@ -454,7 +454,7 @@ fn try_recv_sequence_native_batch() {
 }
 
 #[test]
-fn try_recv_sequence_loop_fallback() {
+fn take_sequence_loop_fallback() {
     let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     RAW_CURSOR.store(0, Ordering::SeqCst);
     let mut sub = open_subscriber("tb_seq_fallback", &VTABLE_FALLBACK);
@@ -462,13 +462,13 @@ fn try_recv_sequence_loop_fallback() {
     let mut buf = [0u8; 8 * PER_MSG_CAP];
     let mut lens = [0usize; 8];
     let count = sub
-        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
-        .expect("try_recv_sequence");
+        .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .expect("take_sequence");
     assert_eq!(count, QUEUE.len(), "expected all 8 messages via loop");
     assert_eq!(
         RAW_CURSOR.load(Ordering::SeqCst),
         QUEUE.len(),
-        "fallback should call try_recv_raw exactly 8 times (loop stops at max_msgs)"
+        "fallback should call take_serialized exactly 8 times (loop stops at max_msgs)"
     );
     for (i, expected) in QUEUE.iter().enumerate() {
         assert_eq!(lens[i], expected.len(), "lens[{i}] mismatch");
@@ -481,18 +481,20 @@ fn try_recv_sequence_loop_fallback() {
 }
 
 #[test]
-fn try_recv_raw_no_data_maps_to_none() {
+fn take_serialized_no_data_maps_to_none() {
     let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     let mut sub = open_subscriber("tb_seq_no_data", &VTABLE_NO_DATA);
 
     let mut buf = [0u8; PER_MSG_CAP];
-    let received = sub.try_recv_raw(&mut buf).expect("NO_DATA is not an error");
+    let received = sub
+        .take_serialized(&mut buf)
+        .expect("NO_DATA is not an error");
 
     assert_eq!(received, None);
 }
 
 #[test]
-fn try_recv_sequence_rejects_zero_per_msg_cap() {
+fn take_sequence_rejects_zero_per_msg_cap() {
     let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     RAW_CURSOR.store(0, Ordering::SeqCst);
     let mut sub = open_subscriber("tb_seq_zero_cap", &VTABLE_FALLBACK);
@@ -500,11 +502,11 @@ fn try_recv_sequence_rejects_zero_per_msg_cap() {
     let mut buf = [0u8; 64];
     let mut lens = [0usize; 4];
     let count = sub
-        .try_recv_sequence(&mut buf, 0, 4, &mut lens)
+        .take_sequence(&mut buf, 0, 4, &mut lens)
         .expect("zero cap returns Ok(0)");
     assert_eq!(count, 0, "per_msg_cap=0 should drain zero messages");
 
-    // No `try_recv_raw` calls fired because the loop short-circuits.
+    // No `take_serialized` calls fired because the loop short-circuits.
     assert_eq!(RAW_CURSOR.load(Ordering::SeqCst), 0);
 }
 
@@ -521,14 +523,14 @@ fn _make_vtable_smoke() -> NrosRmwVtable {
 /// Issue 0971 — a fallback drain that stops because a message did not fit
 /// reports the count it earned, and the NEXT call reports why it stopped.
 ///
-/// Before this, the loop was `self.try_recv_raw(slot)?`: the error went out
+/// Before this, the loop was `self.take_serialized(slot)?`: the error went out
 /// immediately and `count` went on the floor, so a caller could not tell how
 /// many of the slots it can see are valid. The native Cyclone path answered the
 /// same condition with `Ok(count)` and no reason. Neither could be acted on, and
 /// they disagreed with each other — which is what made the vtable's "identical
 /// observable behaviour" claim about this fallback untrue.
 #[test]
-fn try_recv_sequence_fallback_parks_the_status() {
+fn take_sequence_fallback_parks_the_status() {
     let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     TOO_SMALL_CURSOR.store(0, Ordering::SeqCst);
     let mut sub = open_subscriber("tb_seq_too_small", &VTABLE_TOO_SMALL);
@@ -539,7 +541,7 @@ fn try_recv_sequence_fallback_parks_the_status() {
     // The two that fit are delivered and REPORTED, not lost to the failure of
     // the one behind them.
     let count = sub
-        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
         .expect("a partial drain reports its count, it does not error out");
     assert_eq!(count, 2, "expected the two messages that fit");
     for (i, expected) in QUEUE.iter().take(2).enumerate() {
@@ -553,14 +555,14 @@ fn try_recv_sequence_fallback_parks_the_status() {
 
     // ...and the reason the drain stopped arrives on the next call.
     let err = sub
-        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
         .expect_err("the parked status must be delivered");
     assert_eq!(err, TransportError::BufferTooSmall);
 
     // The status is consumed by the call that reported it, so the subscription
     // is usable again rather than pinned to one error forever.
     let after = sub
-        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
         .expect("the status is cleared once reported");
     assert_eq!(
         after, 0,
@@ -570,9 +572,9 @@ fn try_recv_sequence_fallback_parks_the_status() {
 
 /// Issue 0971 — with nothing delivered yet there is no count worth protecting,
 /// so the status goes out immediately. This is what keeps a one-message drain
-/// answering exactly as `try_recv_raw` would.
+/// answering exactly as `take_serialized` would.
 #[test]
-fn try_recv_sequence_fallback_errors_when_nothing_was_taken() {
+fn take_sequence_fallback_errors_when_nothing_was_taken() {
     let _g = GUARD.lock().unwrap_or_else(|e| e.into_inner());
     // Start the stub AT the oversized sample.
     TOO_SMALL_CURSOR.store(2, Ordering::SeqCst);
@@ -581,7 +583,7 @@ fn try_recv_sequence_fallback_errors_when_nothing_was_taken() {
     let mut buf = [0u8; 8 * PER_MSG_CAP];
     let mut lens = [0usize; 8];
     let err = sub
-        .try_recv_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
+        .take_sequence(&mut buf, PER_MSG_CAP, 8, &mut lens)
         .expect_err("nothing was delivered, so the status is not deferred");
     assert_eq!(err, TransportError::BufferTooSmall);
 }

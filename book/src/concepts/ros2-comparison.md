@@ -57,7 +57,7 @@ executor dispatches them. `rclrs` <0.7 was manual-poll only. `rclc`
 exposes both but treats manual-poll as the second-class path.
 
 nano-ros treats them as equals. A subscription created via
-`node.create_subscription(...)` exposes `try_recv()`. A subscription
+`node.create_subscription(...)` exposes `take()`. A subscription
 registered via `executor.node_mut(nid).create_subscription::<M, _>("/topic", callback)`
 runs the callback during `spin_once`. Pick whichever fits the control loop.
 

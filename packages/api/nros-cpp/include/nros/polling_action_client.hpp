@@ -9,7 +9,7 @@
  * Phase 122.3.d.b — typed C++ wrapper over the L1 polling FFI added
  * in 122.3.d.a. Mirrors `ActionClient<A>` but drops the executor
  * arena / callback model: the caller drives `send_goal_raw` +
- * `try_recv_*` from a spin loop.
+ * `take_*` from a spin loop.
  */
 
 #ifndef NROS_CPP_POLLING_ACTION_CLIENT_HPP

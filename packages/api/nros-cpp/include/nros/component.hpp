@@ -290,7 +290,7 @@ inline Result bind_action_server_raw(Node& node, void* storage, const char* acti
 
 /// Storage a component must own for a raw, poll-style service client (8-aligned,
 /// app lifetime). Send with `nros_cpp_service_client_send_request(bytes, …)`,
-/// poll with `nros_cpp_service_client_try_recv_reply(bytes, …)`.
+/// poll with `nros_cpp_service_client_take_response(bytes, …)`.
 struct ServiceClientStorage {
     alignas(8) uint8_t bytes[NROS_SERVICE_CLIENT_SIZE];
 };

@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # `NANO_ROS_FEATURES` surface (the C/C++ projection of `system.toml`
 # `[system].features = ["safety"]`). The root `nros_lower_system_features` lowers it
 # to `NANO_ROS_SAFETY_E2E=ON` before nros-cpp reads the option, building the zenoh
-# backend with the CRC + validated-recv API (`Subscription::try_recv_validated`).
+# backend with the CRC + validated-recv API (`Subscription::take_validated`).
 # Set BEFORE find_package(nano_ros) so the axis reaches the import.
 set(NANO_ROS_FEATURES "safety")
 

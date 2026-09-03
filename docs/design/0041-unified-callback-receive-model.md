@@ -18,7 +18,7 @@ Subscriptions deliver received messages through an executor-driven **callback**
 depth ≤ 1, SPSC ring at depth > 1, with a `MessageLost` signal). Service and
 action **clients** do not: they receive a reply / result / feedback through a
 poll-based `Promise` over a **single reusable buffer**, drained only when the
-user calls `Promise::try_recv()`.
+user calls `Promise::take()`.
 
 That asymmetry has two costs. (1) **Reliability:** a single reply/feedback
 buffer silently overwrites an un-consumed message when a second arrives — which
@@ -54,9 +54,9 @@ the same buffer → dispatch path.** The backend's poll-vs-wake nature only chan
 
 **Poll is therefore never *required* by an RMW.** It is an explicit **opt-in for
 user-owned scheduling** — RTIC / Embassy / FreeRTOS-task-per-entity, where there
-is no central `spin_once` loop and the caller drives `try_recv_*` itself
-(`polling_action_server.hpp` / `polling_action_client.hpp`, `Subscription::try_recv`,
-`Promise::try_recv`). The single genuine platform constraint is **bare-metal
+is no central `spin_once` loop and the caller drives `take_*` itself
+(`polling_action_server.hpp` / `polling_action_client.hpp`, `Subscription::take`,
+`Promise::take`). The single genuine platform constraint is **bare-metal
 single-threaded zenoh-pico** (`Z_FEATURE_MULTI_THREAD=0`, smoltcp): no background
 RX thread, so callbacks fire only *during* `spin_once` (not preemptively) — but
 they still fire. Choosing poll anywhere a `spin_once` loop exists is a style
@@ -67,7 +67,7 @@ callback-driven, an entity must be **registered in the executor arena** so
 `spin_once` runs its `try_process` each tick (`InvocationMode::OnNewData` for
 buffered RX; `InvocationMode::Always` for the action client's three reply
 channels). An entity that is merely *created* (not arena-registered) has **no
-pump**: nothing drains its reply channel, so a bare `create + try_recv` loop
+pump**: nothing drains its reply channel, so a bare `create + take` loop
 receives nothing. This is the action-client trap — see the impl gaps in
 [issue-0047](../issues/archived/0047-cpp-c-action-client-no-arena-callback-dispatch.md).
 
@@ -79,7 +79,7 @@ receives nothing. This is the action-client trap — see the impl gaps in
 |---|---|---|---|
 | Subscription | callback `FnMut(&M)`, drained at spin | `BufferStrategy(depth)` | bounded + `MessageLost` |
 | Service server | callback, drained at spin | request/reply buffers | n/a (req→reply synchronous) |
-| **Service client (reply)** | `Promise::try_recv()` poll | **single `reply_buffer`** | **silent overwrite** |
+| **Service client (reply)** | `Promise::take()` poll | **single `reply_buffer`** | **silent overwrite** |
 | **Action client (feedback)** | `try_recv_feedback()` poll | **single `feedback_buffer`** | **silent overwrite** |
 | **Action client (result)** | `Promise` poll | **single result buffer** | **silent overwrite** |
 
@@ -117,7 +117,7 @@ spin_once(timeout):
 
 Step 1 pumps the transport once. For a **poll-based backend (XRCE)** that single
 `drive_io` runs `uxr_run_session_time`, whose internal callback fills each reply
-slot's `has_reply` flag; `try_recv_reply_raw` is then a pure non-blocking
+slot's `has_reply` flag; `take_response_raw` is then a pure non-blocking
 flag+copy. For a **wake-capable backend (zenoh-pico, Cyclone)** `drive_io`
 unblocks on data arrival. **Both feed the same buffer→dispatch path** — the
 callback model is transport-agnostic because the pump is per-session, not
@@ -206,9 +206,9 @@ run-to-completion, no heap, no OS mutex, bounded per callback):
 
 | Backend | Receive primitive | Pump model | Callback model |
 |---|---|---|---|
-| XRCE (poll) | `try_recv_*_raw` flag+copy | explicit `uxr_run_session_time` loop in one `drive_io` | ✅ via per-spin pump → buffer → dispatch |
-| zenoh-pico | `try_recv_*_raw` | `drive_io` unblocks on wake callback | ✅ |
-| Cyclone | `try_recv_*_raw` | wake callback / participant | ✅ |
+| XRCE (poll) | `take_*_raw` flag+copy | explicit `uxr_run_session_time` loop in one `drive_io` | ✅ via per-spin pump → buffer → dispatch |
+| zenoh-pico | `take_*_raw` | `drive_io` unblocks on wake callback | ✅ |
+| Cyclone | `take_*_raw` | wake callback / participant | ✅ |
 
 No backend change is required — the receive primitives are identical to the
 subscription path; only the node layer changes.

@@ -253,7 +253,7 @@ copying.
 
 - **Callback-scoped only.** The slice is valid only for the duration of the
   subscription callback; the buffer is released/reused immediately after. A `view`
-  `Msg<'a>` therefore **cannot** be returned by `Subscription::try_recv() -> Option<M>`
+  `Msg<'a>` therefore **cannot** be returned by `Subscription::take() -> Option<M>`
   (no lifetime anchor outside a callback) and **cannot** be stored past the callback —
   copy the needed parts out instead.
 - **Read-only**, receive-only. The publish side owns the data it sends; "borrow on

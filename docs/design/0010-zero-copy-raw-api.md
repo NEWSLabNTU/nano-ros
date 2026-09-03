@@ -27,8 +27,8 @@ nano-ros has **two and only two** classes of public pub/sub methods:
 
 | class | input | encoding |
 |---|---|---|
-| **Typed** (`nros::Publisher<M>::publish(&M)`, `nros::Subscription<M>::try_recv()`) | `M: RosMessage` | nros performs CDR ser/de internally |
-| **Raw** (`nros::EmbeddedRawPublisher::publish_raw(&[u8])`, `nros::RawSubscription::try_recv_raw(&mut [u8])`) | `&[u8]` / `&mut [u8]` | bytes pass straight through |
+| **Typed** (`nros::Publisher<M>::publish(&M)`, `nros::Subscription<M>::take()`) | `M: RosMessage` | nros performs CDR ser/de internally |
+| **Raw** (`nros::EmbeddedRawPublisher::publish_raw(&[u8])`, `nros::RawSubscription::take_serialized(&mut [u8])`) | `&[u8]` / `&mut [u8]` | bytes pass straight through |
 
 There is no third bucket. POD-struct backends (uORB on PX4) sit on the **raw** side — the user owns the struct↔bytes cast (typically a `core::slice::from_raw_parts(&t as *const _ as *const u8, size_of::<T>())`).
 
@@ -133,7 +133,7 @@ The "Two API classes" rule above (typed CDR + byte-level) applies to **`nros`**'
 ## Non-goals
 
 - Zero-copy across **all** backends without preconditions. uORB has no native lending; the arena fallback is the best we can do, with a single memcpy on commit. DDS over UDP cannot lend cross-process without shared memory; its native lending lands when an SHM transport is added.
-- Replacing `publish_raw` / `try_recv_raw`. Both stay as light convenience wrappers (encode CDR locally, hand to backend in one shot). Loan/borrow is the path you take when you care about the copy count.
+- Replacing `publish_raw` / `take_serialized`. Both stay as light convenience wrappers (encode CDR locally, hand to backend in one shot). Loan/borrow is the path you take when you care about the copy count.
 - Making a `PublishLoan` `Send`. Single-task ownership simplifies arena release on Drop and keeps the backend slot's `Drop` impl single-threaded.
 
 ## API summary
@@ -244,7 +244,7 @@ pub struct RecvView<'a> {
 }
 ```
 
-`!Send` prevents the view from crossing a `.await` (which would block the underlying subscriber's next receive). `!Sync` prevents shared-borrow patterns that would let two tasks race on the same backend slot. Lifetime `'_` is the lifetime of `&mut self` on `try_borrow` — the view dies before the next `try_borrow` / `try_recv_raw` call.
+`!Send` prevents the view from crossing a `.await` (which would block the underlying subscriber's next receive). `!Sync` prevents shared-borrow patterns that would let two tasks race on the same backend slot. Lifetime `'_` is the lifetime of `&mut self` on `try_borrow` — the view dies before the next `try_borrow` / `take_serialized` call.
 
 Drop releases the backend's "locked" flag (lending) or simply releases the `&self.buffer` borrow (arena). There is at most one `RecvView` alive per `RawSubscription` at a time; the borrow checker enforces this without runtime cost.
 
@@ -289,9 +289,9 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 |---|---|---|---|---|
 | zenoh-pico (Phase 99.F) | yes | `z_bytes_from_static_buf` aliased publish (no payload copy; attachment still copied) | `z_bytes_get_contiguous_view` (`unstable-zenoh-api`) | landed |
 | XRCE-DDS (Phase 99.G) | yes | `uxr_prepare_output_stream` direct write into `ucdrBuffer.iterator` | per-slot view + `locked` flag (subscriber buffers static, slotted) | landed |
-| dust-dds (Phase 99) | no (today) | `publish_raw` only | `try_recv_raw` only | gated on SHM transport |
-| uORB (Phase 90) | never | arena-only — `commit` does `orb_publish` (1 memcpy into the uORB topic struct) | `try_recv_raw` only — uORB callback writes into static slot | arena fallback always |
-| cffi (`nros-rmw-cffi`) | no | `publish_raw` only | `try_recv_raw` only | not on the lending path |
+| dust-dds (Phase 99) | no (today) | `publish_raw` only | `take_serialized` only | gated on SHM transport |
+| uORB (Phase 90) | never | arena-only — `commit` does `orb_publish` (1 memcpy into the uORB topic struct) | `take_serialized` only — uORB callback writes into static slot | arena fallback always |
+| cffi (`nros-rmw-cffi`) | no | `publish_raw` only | `take_serialized` only | not on the lending path |
 
 ## Migration plan
 
@@ -299,18 +299,18 @@ Consequence: typed pub/sub never sees the lending path. `Publisher<M>::publish(&
 |---|---|
 | **99.I (v1 gate)** | `examples/px4/rust/uorb/{talker,listener}` — first real-world consumer; passes the SITL E2E (90.7) unchanged. PX4 already operates on raw bytes, so this is a direct migration. |
 | 99.J (post-v1) | **New** raw-bytes example tree under `examples/native/rust/<backend>/zero-copy/{talker,listener}` for zenoh / xrce / dds. Not a migration of the existing typed examples — those publish ROS messages (`String`, `Twist`, …) through `Publisher<M>::publish(&M)` and always CDR-serialize, so loan/borrow does not apply to them and they stay unchanged. The new tree publishes byte payloads directly to demonstrate backend lending end-to-end. |
-| 99.K (post-v1) | `cargo bench` harness measuring `publish_raw`/`try_recv_raw` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/0010-zero-copy-raw-api.md` with a decision matrix. |
+| 99.K (post-v1) | `cargo bench` harness measuring `publish_raw`/`take_serialized` vs `loan`/`try_borrow` per backend; user-guide chapter `book/src/user-guide/0010-zero-copy-raw-api.md` with a decision matrix. |
 
-Existing user code that calls `publish_raw` / `try_recv_raw` keeps working unchanged. The two APIs coexist. **Typed** flows (`Publisher<M>::publish` / `Subscription<M>::recv`) are entirely separate from the loan/borrow path and are not affected by this phase.
+Existing user code that calls `publish_raw` / `take_serialized` keeps working unchanged. The two APIs coexist. **Typed** flows (`Publisher<M>::publish` / `Subscription<M>::recv`) are entirely separate from the loan/borrow path and are not affected by this phase.
 
 ## Expected perf delta
 
-Estimates per published / received message, relative to `publish_raw` / `try_recv_raw` baseline. Actual numbers under 99.K bench.
+Estimates per published / received message, relative to `publish_raw` / `take_serialized` baseline. Actual numbers under 99.K bench.
 
 | Backend | Publish save | Receive save |
 |---|---|---|
 | uORB | ~1 memcpy (the user-side encode buffer copy) | identical (uORB callback already writes in place) |
-| zenoh-pico (lending) | ~2 memcpys (user→backend buffer, backend→wire buffer collapses to one) | ~1 memcpy (avoid `try_recv_raw`'s copy into `RawSubscription::buffer`) |
+| zenoh-pico (lending) | ~2 memcpys (user→backend buffer, backend→wire buffer collapses to one) | ~1 memcpy (avoid `take_serialized`'s copy into `RawSubscription::buffer`) |
 | XRCE-DDS (lending) | ~2 memcpys (same pattern) | ~1 memcpy |
 | dust-dds (no lending) | identical | identical |
 

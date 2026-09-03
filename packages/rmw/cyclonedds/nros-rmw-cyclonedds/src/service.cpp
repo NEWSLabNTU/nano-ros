@@ -29,10 +29,10 @@
 //                          [user CDR after-encap]`
 //                       → dds_stream_read_sample into typed struct
 //                       → dds_write
-//   service_try_recv_reply_raw: poll reply reader, filter on
+//   service_take_response_raw: poll reply reader, filter on
 //                         (writer_guid, seq) match.
 //
-//   service_try_recv_request:  dds_take typed struct
+//   service_take_request:  dds_take typed struct
 //                       → dds_stream_write_sample → wire CDR
 //                       → split: (header, user payload)
 //                       → stash header in slot, return slot index.
@@ -155,10 +155,15 @@ namespace nros_rmw_cyclonedds {
 // The encoding is now explicit: a status travels NEGATED, so "is this a
 // status?" is a property of the value rather than a coincidence of the code
 // numbering. One spelling, used by every helper and every caller in this file.
-static inline int32_t wire_status(rmw_ret_t r) { return -static_cast<int32_t>(r); }
-static inline bool wire_is_status(int32_t v) { return v < 0; }
-static inline rmw_ret_t wire_status_code(int32_t v) { return static_cast<rmw_ret_t>(-v); }
-
+static inline int32_t wire_status(rmw_ret_t r) {
+    return -static_cast<int32_t>(r);
+}
+static inline bool wire_is_status(int32_t v) {
+    return v < 0;
+}
+static inline rmw_ret_t wire_status_code(int32_t v) {
+    return static_cast<rmw_ret_t>(-v);
+}
 
 namespace {
 
@@ -660,7 +665,6 @@ bool request_writer_matched(dds_entity_t writer) {
            status.current_count > 0;
 }
 
-
 // Issue 0778 — the outstanding-request set. Linear over eight entries; a map
 // would cost more than it saves at this size.
 bool claim_outstanding(ClientState* state, int64_t seq) {
@@ -703,8 +707,8 @@ rmw_ret_t maybe_flush_request(ClientState* state) {
     if (!request_writer_matched(state->writer)) {
         return NROS_RMW_RET_OK;
     }
-    rmw_ret_t r = write_typed(state->writer, state->req_desc,
-                                   state->pending_request, state->pending_request_len);
+    rmw_ret_t r = write_typed(state->writer, state->req_desc, state->pending_request,
+                              state->pending_request_len);
     if (r == NROS_RMW_RET_OK) {
         state->pending_request_len = 0;
         state->pending_request_seq = -1;
@@ -719,9 +723,8 @@ rmw_ret_t maybe_flush_request(ClientState* state) {
 // =========================================================================
 
 rmw_ret_t service_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
-                                const char* service_name,
-                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
-                                     rmw_service_t* out) {
+                         const char* service_name, uint32_t /*domain_id*/,
+                         const rmw_qos_profile_t* qos, rmw_service_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -843,8 +846,8 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
 }
 
-static int32_t service_try_recv_request_len(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
-                                 int64_t* seq_out) {
+static int32_t service_take_request_len(const rmw_service_t* server, uint8_t* buf, size_t buf_len,
+                                        int64_t* seq_out) {
     if (server == nullptr || server->backend_data == nullptr || buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -879,7 +882,7 @@ static int32_t service_try_recv_request_len(const rmw_service_t* server, uint8_t
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
 rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t* request,
-                                    int64_t* seq_out, bool* taken) {
+                               int64_t* seq_out, bool* taken) {
     /* phase-406 W2 — see the XRCE sibling: one span in, the old names out. */
     if (request == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -890,7 +893,7 @@ rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t*
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = service_try_recv_request_len(server, buf, buf_len, seq_out);
+    int32_t n = service_take_request_len(server, buf, buf_len, seq_out);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
         // An empty queue and a would-block are NOT failures: report
@@ -949,7 +952,7 @@ rmw_ret_t service_has_request(rmw_service_t* server, bool* out_has_request) {
 }
 
 rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
-                                  rmw_byte_span_t response) {
+                                rmw_byte_span_t response) {
     const uint8_t* data = response.data;
     size_t len = response.len;
     if (server == nullptr || server->backend_data == nullptr || data == nullptr || seq < 0 ||
@@ -997,8 +1000,7 @@ rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
     if (wire_is_status(wire_len)) {
         r = wire_status_code(wire_len);
     } else {
-        r = write_typed(state->writer, state->rep_desc, wire,
-                        static_cast<size_t>(wire_len));
+        r = write_typed(state->writer, state->rep_desc, wire, static_cast<size_t>(wire_len));
     }
     slot.in_use = false;
     return r;
@@ -1009,9 +1011,8 @@ rmw_ret_t service_send_response(const rmw_service_t* server, int64_t seq,
 // =========================================================================
 
 rmw_ret_t client_create(const rmw_node_t* node, const rmw_service_type_support_t* type_support,
-                                const char* service_name,
-                                     uint32_t /*domain_id*/, const rmw_qos_profile_t* qos,
-                                     rmw_client_t* out) {
+                        const char* service_name, uint32_t /*domain_id*/,
+                        const rmw_qos_profile_t* qos, rmw_client_t* out) {
     /* phase-406 W1 — one argument in, two locals out, so the body below is
        unchanged. A NULL type support is INVALID_ARGUMENT rather than an
        empty type: the identity is what the entity is keyed on, and one
@@ -1146,14 +1147,14 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
 }
 
 // Phase 130.8 — non-blocking send/recv split. Mirrors
-// `xrce_service_send_request_raw` / `_try_recv_reply_raw` in the
+// `xrce_service_send_request_raw` / `_take_response_raw` in the
 // XRCE backend. Lets the executor's spin loop poll for a late-
 // arriving reply without re-sending the request or blocking 5 s
 // (Phase 127.C.4 root cause class). Phase-301: the deprecated
 // blocking `call_raw` slot was deleted from the vtable; this pair
 // is the one request/reply path.
 rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t request_span,
-                                        int64_t* sequence_id) {
+                                   int64_t* sequence_id) {
     const uint8_t* request = request_span.data;
     size_t req_len = request_span.len;
     if (client == nullptr || client->backend_data == nullptr || request == nullptr || req_len < 4) {
@@ -1213,8 +1214,8 @@ rmw_ret_t service_send_request_raw(const rmw_client_t* client, rmw_byte_span_t r
     return NROS_RMW_RET_OK;
 }
 
-static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
-                                   size_t reply_buf_len, int64_t* seq_out) {
+static int32_t service_take_response_raw_len(const rmw_client_t* client, uint8_t* reply_buf,
+                                             size_t reply_buf_len, int64_t* seq_out) {
     if (client == nullptr || client->backend_data == nullptr || reply_buf == nullptr) {
         return wire_status(NROS_RMW_RET_INVALID_ARGUMENT);
     }
@@ -1255,7 +1256,7 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
     // says so, and the call reports NO_DATA forever. That is what
     // `service_two_outstanding` caught on its first run — one reply delivered,
     // one lost. `dds_take` below is the authoritative check, exactly as
-    // `try_recv_raw` is on the subscription side.
+    // `take_serialized` is on the subscription side.
     uint8_t wire_rep[kWireScratch];
     int32_t wlen = take_typed_wire(state->reader, wire_rep, sizeof(wire_rep));
     if (wire_is_status(wlen)) return wlen;
@@ -1286,7 +1287,7 @@ static int32_t service_try_recv_reply_raw_len(const rmw_client_t* client, uint8_
  * convention is translated. NO_DATA is the one code that becomes
  * `taken = false` with OK. */
 rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t* reply,
-                                     int64_t* seq_out, bool* taken) {
+                                int64_t* seq_out, bool* taken) {
     if (reply == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
@@ -1296,7 +1297,7 @@ rmw_ret_t service_take_response(const rmw_client_t* client, rmw_mut_byte_span_t*
     if (out_len == nullptr || taken == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    int32_t n = service_try_recv_reply_raw_len(client, reply_buf, reply_buf_len, seq_out);
+    int32_t n = service_take_response_raw_len(client, reply_buf, reply_buf_len, seq_out);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
         // An empty queue and a would-block are NOT failures: report

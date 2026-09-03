@@ -2459,7 +2459,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // `CALLBACK_CHANNEL` has queued this cycle
                         // and forward each one through
                         // `Executor::dispatch_callback`.
-                        // `EmbassyRuntime::try_recv()` (Phase 216
+                        // `EmbassyRuntime::take()` (Phase 216
                         // final, sibling of the RTIC SPSC `dequeue`
                         // path) is non-blocking so the spin loop
                         // keeps yielding even when no callback is
@@ -2473,7 +2473,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // dispatch body is a no-op stub today; the
                         // per-Node trampoline registry (linkme /
                         // Phase 216 follow-up) fills it in.
-                        while let Some(envelope) = runtime.try_recv() {
+                        while let Some(envelope) = runtime.take() {
                             let cb = envelope.into_inner();
                             executor.dispatch_callback(cb.cb_id, cb.ctx_ptr);
                         }

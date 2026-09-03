@@ -78,7 +78,7 @@ fn router_locator() -> Option<String> {
 ///
 /// **Permanently `#[ignore]`d (architectural).** Investigation
 /// (2026-05-11) confirmed that `nros-rmw-zenoh`'s in-process
-/// `Subscriber::try_recv_raw` does not surface data on a
+/// `Subscriber::take_serialized` does not surface data on a
 /// single-session pub+sub pair, regardless of whether the call
 /// goes through the cffi adapter (this crate) or the Rust trait
 /// directly (`packages/rmw/zenoh/nros-rmw-zenoh/tests/zenoh_integration.rs::test_pubsub_loopback`,
@@ -137,7 +137,7 @@ fn cffi_pubsub_round_trip() {
         // path too.
         let _ = session.drive_io(50);
         std::thread::sleep(Duration::from_millis(100));
-        match subscriber.try_recv_raw(&mut buf) {
+        match subscriber.take_serialized(&mut buf) {
             Ok(Some(n)) if n > 0 => {
                 got = Some(n);
                 break;

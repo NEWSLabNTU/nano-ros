@@ -299,7 +299,7 @@ impl Publisher for NoopPublisher {
 
 impl Subscription for NoopSubscriber {
     type Error = TransportError;
-    fn try_recv_raw(&mut self, _buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+    fn take_serialized(&mut self, _buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
         TRY_RECV_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(None)
     }
@@ -346,7 +346,7 @@ impl ServiceTrait for NoopServer {
         HAS_REQUEST_HITS.fetch_add(1, Ordering::SeqCst);
         true
     }
-    fn try_recv_request<'a>(
+    fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
@@ -373,7 +373,7 @@ impl ClientTrait for NoopClient {
         // count doubles as a monotonic id here.
         Ok(SEND_REQUEST_HITS.fetch_add(1, Ordering::SeqCst) as i64)
     }
-    fn try_recv_reply_raw(&mut self, _buf: &mut [u8]) -> Result<Option<(usize, i64)>, Self::Error> {
+    fn take_response_raw(&mut self, _buf: &mut [u8]) -> Result<Option<(usize, i64)>, Self::Error> {
         TRY_RECV_REPLY_HITS.fetch_add(1, Ordering::SeqCst);
         Ok(None)
     }

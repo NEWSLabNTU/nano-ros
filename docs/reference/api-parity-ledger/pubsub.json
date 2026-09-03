@@ -39,14 +39,6 @@
     "verdict": "divergence",
     "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
   },
-  "c:client_try_recv_reply_raw": {
-    "verdict": "extension",
-    "why": "see `c:client_try_recv_response`."
-  },
-  "c:client_try_recv_response": {
-    "verdict": "extension",
-    "why": "the service-client half of `try_recv`; recorded here because the topic patterns file `try_recv` under pubsub. See the service stage for the client model."
-  },
   "c:event_publisher_count_cb_t": {
     "verdict": "divergence",
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same. This one reports matched-subscription count changes, which rclcpp answers by POLLING `get_subscription_count` -- see that row."
@@ -102,7 +94,7 @@
   },
   "c:publish_serialized_message": {
     "verdict": "rename",
-    "why": "see `c:take_serialized_message`; ours is `nros_publish_raw`. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_publisher_publish_raw`, which does not exist -- the C API has no `nros_publisher_publish*` byte entry point at all; see `c:publish`. Verdict unchanged.)"
+    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; ours is `nros_publish_raw`. This row became the SOLE owner of that decision on 2026-09-03: the receive half (`c:take_serialized_message`) landed with phase-379 W6 decision 1, which renamed `try_recv_raw` -> `take_serialized`, so publish is the only side still saying RAW. One word, used consistently on both sides, and ours is the one that has to move. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`.)"
   },
   "c:publisher_can_loan_messages": {
     "verdict": "gap",
@@ -195,10 +187,6 @@
   "c:return_loaned_message_from_subscription": {
     "verdict": "divergence",
     "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
-  },
-  "c:service_try_recv_request_raw": {
-    "verdict": "extension",
-    "why": "see `c:client_try_recv_response`."
   },
   "c:subscription_borrow": {
     "verdict": "divergence",
@@ -328,26 +316,37 @@
     "verdict": "extension",
     "why": "see `c:publisher_state_t`."
   },
+  "c:subscription_take_sequence": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:take_sequence`. Renamed from `nros_subscription_try_recv_sequence` by phase-379 W6 decision 1 (2026-09-03)."
+  },
+  "c:subscription_take_serialized": {
+    "verdict": "extension",
+    "why": "the ours-only half of `c:take` / `c:take_serialized_message`, recorded so the pair is visible from both sides. Byte-oriented because there is no typesupport dispatch and no allocator on target -- the constraint `c:take` names. Renamed from `nros_subscription_try_recv_raw` by phase-379 W6 decision 1 (2026-09-03)."
+  },
+  "c:subscription_take_validated": {
+    "verdict": "extension",
+    "why": "receive WITH the end-to-end integrity verdict attached (`nros_integrity_status_t`: sequence gap, duplicate, CRC valid/mismatch/absent). RFC-0028. ROS 2 has no counterpart because a desktop DDS link is not treated as a safety channel. Renamed from `nros_subscription_try_recv_validated` by phase-379 W6 decision 1 (2026-09-03)."
+  },
   "c:subscription_try_recv_raw": {
     "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_subscription_take_serialized` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "c:subscription_try_recv_sequence": {
     "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_subscription_take_sequence` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "c:subscription_try_recv_validated": {
     "verdict": "extension",
-    "why": "receive WITH the end-to-end integrity verdict attached (`nros_integrity_status_t`: sequence gap, duplicate, CRC valid/mismatch/absent). RFC-0028. ROS 2 has no counterpart because a desktop DDS link is not treated as a safety channel."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `nros_subscription_take_validated` and the forwarder is a NROS_DEPRECATED_MSG `static inline` in the hand-written module header, so it adds no exported symbol and no ABI cost. Still on the surface, so still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "c:take": {
-    "verdict": "rename",
-    "why": "rcl, rclcpp and rclrs all spell the non-blocking receive `take`; we spell it `try_recv`. Both are non-blocking and both report emptiness without failing, so nothing about an RTOS asks for the other word -- and `try_recv` is Rust channel vocabulary that reads as a different contract to a ROS 2 user. Covers `nros_subscription_try_recv{,_raw,_sequence,_validated}` and the C++/Rust spellings. Phase 379 W5.",
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the WORD moved and what is left has a constraint behind it.\nEXECUTED: `try_recv` -> `take` across C, C++ and Rust. Note the direction this went -- our own RMW vtable (`nros/rmw_vtable.h`) has spelled these slots `take` / `take_request` / `take_response` / `take_sequence` since phase-376 W3.b, so the USER API was the only layer still saying `try_recv`; the rename moves it onto the vocabulary the layer beneath it already used, which is also rcl's (`rcl_take`) and rclcpp's (`Subscription::take`). The contract collision that blocked this row is gone too: `PollingSubscription<M>::take(M&)` -- non-consuming, retained-latest, the opposite contract under the same word -- was DELETED, its `take_data()` / `take_new_data()` autoware mirrors (issue 0278) retained. Old C spellings survive as NROS_DEPRECATED_MSG `static inline` forwarders in `nros/subscription.h`, `nros/service.h` and `nros/client.h`; C++ as `[[deprecated]]` methods; Rust took a clean break with no shim, because a rename there breaks IMPLEMENTORS of the RMW traits rather than callers and a compile error is what a backend author wants.\nWHAT REMAINS, and the constraint. `rcl_take(subscription, void *ros_message, rmw_message_info_t *, rmw_subscription_allocation_t *)` is ONE type-erased function over typesupport plus an allocator. We have neither on target, so the type-erased take is byte-oriented -- `nros_subscription_take_serialized(subscription, buf, buf_len)` -- and the typed take is generated per message type. That is exactly `c:publish`'s divergence mirrored on the receive side. The `nros_subscription_` prefix is not a second difference: it is a module prefix of the construction rcl itself uses (`rcl_client_fini`), and the precedent chain (`c:get_zero_initialized_publisher`, verdict DECLINED) argues for keeping ours.",
     "rename": {
-      "to": null,
       "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "CONTRACT COLLISION -- verified against the source 2026-08-26; NOT EXECUTED. `nros::PollingSubscription<M>::take(M& out)` (packages/api/nros-cpp/include/nros/polling_subscription.hpp:74) first DRAINS to the newest pending sample and then returns `true` if any value has EVER been received, cached or new -- so it reports SUCCESS when nothing new arrived. rclcpp's `Subscription::take` is consuming and returns false when nothing was taken. Renaming `Subscription<M>::try_recv` -> `take` puts both in namespace `nros` under one word with opposite contracts, and there is NO compile error to catch it: they are different class templates. The rest of that class is already committed to the non-consuming reading -- `take_data` / `take_new_data` deliberately mirror autoware_utils `InterProcessPollingSubscriber::takeData` / `takeNewData` (issue 0278), so the whole `take*` family on the polling type is spoken for. (C is clear: the only `take` in the C headers is `nros_service_take_request`, a different entity. Rust has no `take` today.) SCOPE, so the cost is visible: this one decision fixes the word for `nros_subscription_try_recv{,_raw,_sequence,_validated}`, `Subscription<M>::try_recv{,_raw,_sequence,_validated}`, the Rust spellings, and every child row that says 'see c:take' (`c:take_sequence`, `cpp:Subscription::take`, `cpp:Subscription::take_serialized`, `cpp:Service::take_request`, `c:take_request`, `c:take_response`). THE CHOICE A HUMAN HAS TO MAKE: (a) rename `try_recv` -> `take` AND rename PollingSubscription's family with it, accepting a break on the autoware-facing port that issue 0278 was written for; (b) keep `try_recv` and re-verdict this row `divergence` on the grounds that `take` is already bound here; or (c) a third word for one of the two. Nothing can land until one is picked."
+      "status": "resolved",
+      "resolution": "Executed 2026-09-03. `try_recv{,_raw,_sequence,_validated}` -> `take{,_serialized,_sequence,_validated}` in C, C++ and Rust; `try_recv_request` -> `take_request`, `try_recv_reply_raw` -> `take_response_raw`. The blocking contract collision was resolved by DELETING `PollingSubscription<M>::take(M&)` (a convenience duplicating `take_data()`, zero real callers) rather than by picking a third word. Re-verdicted to divergence for the residue -- byte-oriented because there is no typesupport dispatch and no allocator."
     }
   },
   "c:take_loaned_message": {
@@ -355,12 +354,17 @@
     "why": "RFC-0010's zero-copy path. rcl/rclcpp borrow a TYPED message the middleware owns (`LoanedMessage<T>`, `borrow_loaned_message`, `publish_loaned_message`, `return_loaned_message_from_publisher`); ours is a TOKEN over a byte range (`loan`/`commit`/`discard` on the publisher, `borrow`/`release` on the subscription) because C has no templates and the wrapper would need an allocator to own. NOTE the verbs differ as well as the shape, and only the shape has a reason -- W5 should decide whether `loan`/`commit`/`discard` should read `borrow_loaned_message`/`publish_loaned_message`/`return_loaned_message`."
   },
   "c:take_sequence": {
-    "verdict": "rename",
-    "why": "batch receive; ours is `nros_subscription_try_recv_sequence`. Same word as `c:take`."
+    "verdict": "declined",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> declined. The VERB landed: ours is `nros_subscription_take_sequence`, so the only difference left is rcl's free-function spelling against our module-prefixed `nros_<entity>_<verb>`. That is `c:get_zero_initialized_publisher`'s precedent, which argues for KEEPING ours, and `c:send_request` records that `nros_<entity>_` is the same construction rcl uses in `rcl_client_fini`. See `c:take`."
   },
   "c:take_serialized_message": {
-    "verdict": "rename",
-    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; we say RAW (`publish_raw`, `try_recv_raw`, `nros_cpp_publish_raw`). One word, used consistently on both sides, and ours is the one that has to move. Phase 379 W5. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`. Verdict unchanged.)"
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence FOR THE RECEIVE HALF ONLY. ROS 2 says SERIALIZED for the pre-CDR byte form; we said RAW. The receive half moved with the `take` rename because the two words form one name: `try_recv_raw` -> `take_serialized` in C (`nros_subscription_take_serialized`), C++ (`Subscription::take_serialized`) and Rust. What remains against `rcl_take_serialized_message` is the module prefix and the `_message` suffix, both covered by `c:get_zero_initialized_publisher`'s declined precedent, plus the same byte-orientation constraint `c:take` names.\nTHE PUBLISH HALF IS STILL OPEN and is no longer parented here: `nros_publish_raw` still says RAW. `c:publish_serialized_message` now carries that decision on its own.",
+    "rename": {
+      "category": "B",
+      "status": "resolved",
+      "resolution": "Receive half executed 2026-09-03 alongside the `take` rename. Publish half re-homed to `c:publish_serialized_message`, which stays verdict `rename`."
+    }
   },
   "cpp:CallbackGroup::find_subscription_ptrs_if": {
     "verdict": "declined",
@@ -637,11 +641,11 @@
   },
   "cpp:Service::try_recv_request": {
     "verdict": "extension",
-    "why": "see `c:client_try_recv_response`."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Service::take_request`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "cpp:Service::try_recv_request_sized": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Subscription::Subscription<M>": {
     "verdict": "divergence",
@@ -804,18 +808,16 @@
     "why": "the receive half of `publish_streamed`; see `c:publisher_publish_streamed`."
   },
   "cpp:Subscription::take": {
-    "verdict": "rename",
-    "why": "see `c:take` -- ours is `Subscription::try_recv`."
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-03 (phase-379 W6 decision 1), rename -> divergence: the name now MATCHES (`Subscription<M>::take(M&)`, renamed from `try_recv`), and what the report still calls a difference is the second parameter. rclcpp's is `take(ROSMessageType&, MessageInfo&)`; ours takes the message only, because there is no per-sample message-info channel to fill it from -- most backends carry none, and the one that does (zenoh, via the wire attachment) exposes it separately as `take_serialized_with_attachment`, which is the `cpp:Subscription::try_recv_raw_with_attachment` row. Adding an out-parameter that three of four backends would leave zeroed is the shape RFC-0036 exists to refuse. See `c:take` for the verb decision and `cpp:MessageInfo` for the type."
   },
-  "cpp:Subscription::take_serialized": {
-    "verdict": "rename",
-    "why": "OWNERSHIP SETTLED 2026-08-26 (phase-379 W5). This row -- not `cpp:Subscription::take_type_erased` -- is the one that owns `Subscription<M>::try_recv_raw(uint8_t* buf, size_t capacity, size_t& out_len)`. rclcpp's `take_serialized(SerializedMessage& message_out, MessageInfo&)` is the BYTE-form take; ours is byte-form too, differing only in that the buffer is caller-owned rather than an owning `SerializedMessage` (see `cpp:SerializedMessage`). rclcpp's `take_type_erased(void*, MessageInfo&)` is erasure over a DESERIALIZED message struct, a different thing, and has no ours-half at all -- that row is now declined.\nTwo words still have to move here and both are decided elsewhere: `take` -> `try_recv` (`c:take`) and SERIALIZED -> RAW (`c:take_serialized_message`).",
-    "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "No longer contested: `try_recv_raw` belongs to THIS row (verified against the signature -- `uint8_t*, size_t, size_t&` is the byte form) and cpp:Subscription::take_type_erased has been re-verdicted declined with no ours-half. What remains is inherited, not local: the target name is <take-word>_<byte-word>, and neither parent has landed -- `c:take` is blocked on the PollingSubscription::take contract collision, and `c:take_serialized_message` (SERIALIZED vs RAW) is still open. Decide those two and this row follows mechanically; there is nothing to decide here on its own."
-    }
+  "cpp:Subscription::take_sequence": {
+    "verdict": "extension",
+    "why": "burst take -- drain up to `max_msgs` queued samples in one backend call, instead of N vtable hops, for a sensor loop polled slower than it publishes. rclcpp has no counterpart; rcl's `rcl_take_sequence` is the C one this mirrors (`c:take_sequence`). Renamed from `try_recv_sequence` by phase-379 W6 decision 1 (2026-09-03)."
+  },
+  "cpp:Subscription::take_serialized_with_attachment": {
+    "verdict": "extension",
+    "why": "receive with the transport attachment (zenoh carries the source timestamp and publisher GID there rather than in the payload). rcl's equivalent information arrives in `rmw_message_info_t`; ours is exposed separately because only one backend populates it. Renamed from `try_recv_raw_with_attachment` by phase-379 W6 decision 1 (2026-09-03)."
   },
   "cpp:Subscription::take_type_erased": {
     "verdict": "declined",
@@ -826,37 +828,41 @@
       "resolution": "Re-verdicted rename -> declined. The conflict was resolved by SIGNATURE: `try_recv_raw` is byte-oriented so it belongs to take_serialized, leaving this row with no ours-item. Declined rather than gap because the whole type-agnostic dispatch surface it serves (create_message / handle_message / is_serialized) is already declined for the no-allocator, no-runtime-typesupport reason. No code change; no target name invented."
     }
   },
+  "cpp:Subscription::take_validated": {
+    "verdict": "extension",
+    "why": "receive WITH the end-to-end integrity verdict attached (`nros_cpp_integrity_status_t`). RFC-0028; the C++ half of `c:subscription_take_validated`. Renamed from `try_recv_validated` by phase-379 W6 decision 1 (2026-09-03)."
+  },
   "cpp:Subscription::try_borrow": {
     "verdict": "extension",
     "why": "the subscription half of the loan API; see `c:subscription_borrow`."
   },
   "cpp:Subscription::try_recv": {
     "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Subscription::take`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "cpp:Subscription::try_recv_raw": {
     "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Subscription::take_serialized`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "cpp:Subscription::try_recv_raw_with_attachment": {
     "verdict": "extension",
-    "why": "receive with the transport attachment (zenoh carries the source timestamp and publisher GID there rather than in the payload). rcl's equivalent information arrives in `rmw_message_info_t`; ours is exposed separately because only one backend populates it."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Subscription::take_serialized_with_attachment`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "cpp:Subscription::try_recv_sequence": {
     "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Subscription::take_sequence`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "cpp:Subscription::try_recv_sized": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Subscription::try_recv_validated": {
     "verdict": "extension",
-    "why": "see `c:subscription_try_recv_validated`."
+    "why": "DEPRECATED SPELLING as of phase-379 W6 decision 1 (2026-09-03); the live name is `Subscription::take_validated`. Kept one release as a `[[deprecated]]` header-only forwarder naming its replacement in the diagnostic, so it is on the surface and therefore still a row. Retired in W7 step 4, in one batch with the rest of the deprecated set. See `c:take`."
   },
   "cpp:Subscription::try_recv_validated_sized": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Subscription::use_take_shared_method": {
     "verdict": "declined",
@@ -939,14 +945,6 @@
   "cpp:create_subscription_raw": {
     "verdict": "extension",
     "why": "the non-template function `cpp:bind_subscription_raw` is built on: register a raw `void(*)(const uint8_t*, size_t, void*)` on the executor that owns `node`, the executor owning the subscription so no caller-side storage object is needed. Public and documented, but PLUMBING in practice -- no in-tree caller writes it directly; every one goes through `bind_subscription_raw` or `bind_subscription`, which is what supplies the trampoline. rclcpp has no counterpart because its subscription owns a `std::function` and there is no raw-callback tier to expose."
-  },
-  "rust:ClientTrait::try_recv_reply": {
-    "verdict": "extension",
-    "why": "see `c:client_try_recv_response`."
-  },
-  "rust:ClientTrait::try_recv_reply_raw": {
-    "verdict": "extension",
-    "why": "see `c:client_try_recv_response`."
   },
   "rust:DynamicPublisher": {
     "verdict": "declined",
@@ -1256,10 +1254,6 @@
     "verdict": "divergence",
     "why": "see `rust:PublisherGid`."
   },
-  "rust:Promise::try_recv": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
   "rust:PublishLoan": {
     "verdict": "divergence",
     "why": "the publish-side loan: reserve the outgoing buffer, fill it in place, then `commit` (or `discard`). rclcpp's `borrow_loaned_message` is the same idea and rclrs has no equivalent at all. Ours differs in what backs the slot, which is the platform part: with no allocator the default backing is the publisher's own inline `[u8; TX_BUF]` and commit memcpys into the backend's outbound buffer, while `rmw-lending` swaps it for storage the backend owns (zenoh-pico's `z_bytes_from_static_buf`, XRCE's `ucdrBuffer` reservation) for a true zero-copy publish. `#[must_use]` because dropping without committing silently rolls the message back -- there is no destructor that can publish for you. See the pubsub stage's loan rows."
@@ -1404,22 +1398,6 @@
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
-  "rust:RawSubscription::try_recv_raw": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:RawSubscription::try_recv_raw_with_attachment": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:RawSubscription::try_recv_sequence": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:RawSubscription::try_recv_validated": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
   "rust:RawSubscriptionCallback": {
     "verdict": "divergence",
     "why": "the raw-bytes callback type. See `c:subscription_callback_t` -- bound at declaration, not handed to an executor."
@@ -1435,10 +1413,6 @@
   "rust:RmwPublisher": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:ServiceTrait::try_recv_request": {
-    "verdict": "extension",
-    "why": "see `c:client_try_recv_response`."
   },
   "rust:Session::create_publisher": {
     "verdict": "divergence",
@@ -1528,33 +1502,29 @@
     "verdict": "extension",
     "why": "phase-379 W3. A POLLING receive, which rclrs has no public counterpart for: its subscription API is callback/worker-driven and its `take_*` methods are private (`fn take_response`, `fn take_feedback` in 0.7.0 — no `pub`). So this is ours-only against the RUST reference by construction, not by a naming choice. The NAME follows rcl (`rcl_take`) and rclcpp (`Subscription::take`), which do spell the non-blocking receive that way, and matches our own C surface. It was `try_recv` — Rust channel vocabulary that reads as a different contract to a ROS 2 user, when both forms are non-blocking and both report emptiness without failing. Renamed as a clean break, no deprecation shim: a shim would let call sites keep compiling against the old name silently, and five separate call sites were found only because the break made them hard errors."
   },
+  "rust:Subscription::take_sequence": {
+    "verdict": "extension",
+    "why": "burst take, the Rust half of `c:take_sequence`; rclrs has no counterpart. Renamed from `try_recv_sequence` by phase-379 W6 decision 1 (2026-09-03). See `rust:Subscription::take_serialized`."
+  },
+  "rust:Subscription::take_serialized": {
+    "verdict": "extension",
+    "why": "the byte form of `rust:Subscription::take`, and ours-only against the RUST reference for the same reason that row is: rclrs's subscription API is callback/worker-driven and its `take_*` methods are private. The NAME follows rcl (`rcl_take_serialized_message`) and rclcpp (`Subscription::take_serialized`). Renamed from `try_recv_raw` by phase-379 W6 decision 1 (2026-09-03) -- a clean break with no deprecation shim, because a rename in Rust breaks IMPLEMENTORS of the RMW traits rather than callers and a compile error is what a backend author wants."
+  },
+  "rust:Subscription::take_serialized_with_attachment": {
+    "verdict": "extension",
+    "why": "receive with the transport attachment (zenoh carries the source timestamp and publisher GID there rather than in the payload); rclrs has no counterpart. Renamed from `try_recv_raw_with_attachment` by phase-379 W6 decision 1 (2026-09-03). See `rust:Subscription::take_serialized`."
+  },
+  "rust:Subscription::take_serialized_with_info": {
+    "verdict": "extension",
+    "why": "the byte take that also yields `RawMessageInfo`. Renamed from `try_recv_raw_with_info` by phase-379 W6 decision 1 (2026-09-03). See `rust:Subscription::take_serialized`."
+  },
+  "rust:Subscription::take_validated": {
+    "verdict": "extension",
+    "why": "receive WITH the end-to-end integrity verdict attached (`IntegrityStatus`). RFC-0028; ROS 2 has no counterpart because a desktop DDS link is not treated as a safety channel. Renamed from `try_recv_validated` by phase-379 W6 decision 1 (2026-09-03)."
+  },
   "rust:Subscription::topic_name": {
     "verdict": "gap",
     "why": "see `rust:Publisher::topic_name`."
-  },
-  "rust:Subscription::try_recv": {
-    "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
-  },
-  "rust:Subscription::try_recv_raw": {
-    "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
-  },
-  "rust:Subscription::try_recv_raw_with_attachment": {
-    "verdict": "extension",
-    "why": "see `cpp:Subscription::try_recv_raw_with_attachment`."
-  },
-  "rust:Subscription::try_recv_raw_with_info": {
-    "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides. the ours-only half of the SERIALIZED -> RAW rename pair (`c:take_serialized_message`)."
-  },
-  "rust:Subscription::try_recv_sequence": {
-    "verdict": "extension",
-    "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
-  },
-  "rust:Subscription::try_recv_validated": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:Subscription::unsupported_event_error": {
     "verdict": "extension",
@@ -1591,5 +1561,13 @@
   "rust:WorkerSubscriptionCallback": {
     "verdict": "declined",
     "why": "see the node stage's `rust:Node::create_worker`."
+  },
+  "cpp:Subscription::take_sized": {
+    "verdict": "extension",
+    "why": "caller-sized receive: the escape hatch for a type with no derived rx bound, and the way to override a bounded type's own number (issue 0964). rclcpp has no counterpart -- its subscription buffer is allocator-backed and grows, so there is nothing for a caller to size. Ours is a stack buffer whose capacity is a compile-time constant, which is the whole reason the knob exists: no allocator. Arrived on main between phase-379 W6's decision and its execution, so it carries the W6 verb (`take_*`, not `try_recv_*`) and a deprecated forwarder retired with the rest in W7 step 4."
+  },
+  "cpp:Subscription::take_validated_sized": {
+    "verdict": "extension",
+    "why": "caller-sized receive: the escape hatch for a type with no derived rx bound, and the way to override a bounded type's own number (issue 0964). rclcpp has no counterpart -- its subscription buffer is allocator-backed and grows, so there is nothing for a caller to size. Ours is a stack buffer whose capacity is a compile-time constant, which is the whole reason the knob exists: no allocator. Arrived on main between phase-379 W6's decision and its execution, so it carries the W6 verb (`take_*`, not `try_recv_*`) and a deprecated forwarder retired with the rest in W7 step 4. Validated variant; same reasoning."
   }
 }

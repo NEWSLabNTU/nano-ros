@@ -18,7 +18,7 @@ packages/rmw/uorb/nros-rmw-uorb/
 │   ├── vtable.cpp          assembles nros_rmw_vtable_t + register entry
 │   ├── session.cpp         open / close / drive_io  (stubs in K.4.0)
 │   ├── publisher.cpp       create / publish_raw / destroy (stubs in K.4.0)
-│   ├── subscriber.cpp      create / try_recv_raw / has_data / destroy (stubs in K.4.0)
+│   ├── subscriber.cpp      create / take_serialized / has_data / destroy (stubs in K.4.0)
 │   └── service.cpp         service slots — default UNSUPPORTED (K.4.4 may change)
 └── tests/
     └── register_smoke.cpp  K.4.0 smoke test (stubs cffi_register locally)

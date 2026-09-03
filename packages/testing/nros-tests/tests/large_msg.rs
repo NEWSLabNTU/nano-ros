@@ -203,7 +203,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
     // `overflow_drops=<N>` in the `RECV_DONE:` summary; the test asserts
     // the counter advanced for THIS run. Pre-Phase-160.L.2 the test
     // checked for a `Receive error` printf, which the
-    // `try_recv_raw` path never emits — drops never reach the executor
+    // `take_serialized` path never emits — drops never reach the executor
     // ring at all, so there is no `Err` to log.
     let overflow_drops = listener_output
         .lines()

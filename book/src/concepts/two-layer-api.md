@@ -6,13 +6,13 @@ nano-ros exposes the same communication primitives — subscriptions, publishers
 |---|---|---|
 | **Verb** | `Node::create_*` | `Executor::register_*` |
 | **Returns** | Owned handle | Handle ID + dispatched closure |
-| **Receive shape** | `try_recv()` / `call()` → `Promise<T>` / `try_accept_goal(...)` | Closure runs on rx / reply / timer fire |
+| **Receive shape** | `take()` / `call()` → `Promise<T>` / `try_accept_goal(...)` | Closure runs on rx / reply / timer fire |
 | **Scheduler** | Caller (RTIC, embassy, app loop) | `Executor::spin_once` |
 | **Typical use** | RTIC tasks, single-task FreeRTOS, RT-bounded loops | Callback-shaped apps, multi-handler servers |
 
 ## Rationale
 
-Embedded callers want both. RTIC owns scheduling and refuses to hand its loop to a library; an embassy task wants to `.await` a `Promise`; a FreeRTOS task-per-entity port wants tight `try_recv` polling. None of those fit the L2 callback model.
+Embedded callers want both. RTIC owns scheduling and refuses to hand its loop to a library; an embassy task wants to `.await` a `Promise`; a FreeRTOS task-per-entity port wants tight `take` polling. None of those fit the L2 callback model.
 
 But a posix app that handles a dozen topics + a couple of services + an action server wants L2 — write one closure per entity and let `spin_once()` route events. Forcing it through L1 means writing a manual dispatcher.
 
@@ -78,9 +78,9 @@ Service clients and action clients **stay on L1** in the current code — they h
 
 Both layers cross the FFI cleanly:
 
-- **C, L1 polling** — `nros_subscription_init_polling` writes a `RawSubscription` inline in `nros_subscription_t._opaque`. `nros_subscription_try_recv_raw` reads from the inline buffer. Same shape for service / service-client / action server / action client.
+- **C, L1 polling** — `nros_subscription_init_polling` writes a `RawSubscription` inline in `nros_subscription_t._opaque`. `nros_subscription_take_serialized` reads from the inline buffer. Same shape for service / service-client / action server / action client.
 - **C, L2 callback** — `nros_subscription_init` records the C callback pointer; `nros_executor_register_subscription` allocates the executor-arena entry.
-- **C++** — typed templates wrap each FFI surface: `nros::Subscription<M>` + `try_recv` for L1, `nros::PollingActionServer<A>` for the L1 action path (122.3.d.b), the L2 executor-registered callback model via the existing `nros::ActionServer<A>` API.
+- **C++** — typed templates wrap each FFI surface: `nros::Subscription<M>` + `take` for L1, `nros::PollingActionServer<A>` for the L1 action path (122.3.d.b), the L2 executor-registered callback model via the existing `nros::ActionServer<A>` API.
 
 For the per-FFI-function spec, see the [Doxygen reference](../api/platform-cffi/index.html). For the example migration tally (32 examples on L2, 16 intentionally L1), see the [unify-api-paths roadmap doc](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/roadmap/archived/phase-122-unify-api-paths.md).
 

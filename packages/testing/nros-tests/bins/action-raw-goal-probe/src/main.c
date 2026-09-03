@@ -77,7 +77,9 @@ static struct {
     nros_action_client_t action_client;
 } app;
 
-static void sleep_tick(void) { nros_platform_sleep_us(POLL_SLEEP_US); }
+static void sleep_tick(void) {
+    nros_platform_sleep_us(POLL_SLEEP_US);
+}
 
 /// Dump a byte prefix so a layout surprise is diagnosable from the log rather
 /// than from a rebuild with printfs added.
@@ -165,7 +167,7 @@ int nros_app_main(int argc, char** argv) {
         // No `nros_action_client_poll` here: that arm drives the EXECUTOR
         // arena core and rejects a polling client outright (state POLLING vs
         // INITIALIZED). On a hosted build the zenoh session has its own read
-        // task, so `try_recv_*_raw` is the whole pump.
+        // task, so `take_*_raw` is the whole pump.
         for (int i = 0; i < POLLS_PER_ATTEMPT; i++) {
             got = nros_action_client_try_recv_goal_response_raw(&app.action_client, resp,
                                                                 sizeof(resp));

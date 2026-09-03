@@ -350,7 +350,7 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         send_response: Some(send_response_trampoline::<R>),
         create_client: Some(create_client_trampoline::<R>),
         destroy_client: Some(destroy_client_trampoline::<R>),
-        // Phase-301 (issue 0240) — `send_request_raw` + `try_recv_reply_raw`
+        // Phase-301 (issue 0240) — `send_request_raw` + `take_response_raw`
         // is the one request/reply path; the blocking `call_raw` slot is gone.
         send_request: Some(send_request_trampoline::<R>),
         take_response: Some(take_response_trampoline::<R>),
@@ -713,7 +713,7 @@ unsafe extern "C" fn take_trampoline<R: RustBackend>(
     // SAFETY (all four writes below): both pointers checked non-null above.
     #[cfg(feature = "safety-e2e")]
     if crate::take_cffi_integrity_request(key) {
-        return match Subscription::try_recv_validated(s, slice) {
+        return match Subscription::take_validated(s, slice) {
             Ok(Some((n, status))) => {
                 crate::store_cffi_integrity_status(key, status);
                 unsafe {
@@ -730,7 +730,7 @@ unsafe extern "C" fn take_trampoline<R: RustBackend>(
         };
     }
 
-    match Subscription::try_recv_raw_with_info(s, slice) {
+    match Subscription::take_serialized_with_info(s, slice) {
         Ok(Some((n, info))) => {
             crate::store_cffi_message_info(key, info);
             unsafe {
@@ -911,7 +911,7 @@ unsafe extern "C" fn take_request_trampoline<R: RustBackend>(
     }
     let slice = unsafe { core::slice::from_raw_parts_mut(buf, buf_len) };
     let buf_start = slice.as_ptr() as usize;
-    match ServiceTrait::try_recv_request(s, slice) {
+    match ServiceTrait::take_request(s, slice) {
         Ok(Some(req)) => {
             // The handle's `data` slice borrows from `buf`. Use its
             // offset within the caller's buffer to compute the payload
@@ -1097,7 +1097,7 @@ unsafe extern "C" fn take_response_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     let reply = unsafe { core::slice::from_raw_parts_mut(reply_buf, reply_buf_len) };
-    match ClientTrait::try_recv_reply_raw(c, reply) {
+    match ClientTrait::take_response_raw(c, reply) {
         Ok(Some((n, seq))) => {
             // SAFETY: both checked non-null above.
             unsafe {
@@ -1824,8 +1824,8 @@ unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
     // Phase 124.D.1 — delegate to the Rust backend's
-    // `Subscription::try_recv_sequence` impl. Default trait body
-    // loop-drives `try_recv_raw`; concrete backends opt in by
+    // `Subscription::take_sequence` impl. Default trait body
+    // loop-drives `take_serialized`; concrete backends opt in by
     // overriding for a native batch take.
     let Some(s) = (unsafe { subscription_mut::<R::Subscription>(subscriber) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -1840,7 +1840,7 @@ unsafe extern "C" fn take_sequence_trampoline<R: RustBackend>(
     let buf_slice =
         unsafe { core::slice::from_raw_parts_mut(buf, max_msgs.saturating_mul(per_msg_cap)) };
     let lens_slice = unsafe { core::slice::from_raw_parts_mut(out_lens, max_msgs) };
-    match Subscription::try_recv_sequence(s, buf_slice, per_msg_cap, max_msgs, lens_slice) {
+    match Subscription::take_sequence(s, buf_slice, per_msg_cap, max_msgs, lens_slice) {
         Ok(count) => {
             // SAFETY: checked non-null above.
             unsafe { *taken = count };

@@ -206,7 +206,7 @@ fn run_listener() {
     let mut max_gap_ms: u128 = 0;
 
     while received < expected_count && start.elapsed() < timeout {
-        match subscription.try_recv_raw() {
+        match subscription.take_serialized() {
             Ok(Some(len)) => {
                 let now = Instant::now();
                 if let Some(prev) = last_arrival {

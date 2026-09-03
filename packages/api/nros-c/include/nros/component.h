@@ -370,8 +370,8 @@ int32_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const char* 
                                        nros_cpp_qos_t qos, void* storage);
 int32_t nros_cpp_service_client_send_request(void* storage, const uint8_t* req_data,
                                              size_t req_len);
-int32_t nros_cpp_service_client_try_recv_reply(void* storage, uint8_t* resp_data,
-                                               size_t resp_capacity, size_t* resp_len);
+int32_t nros_cpp_service_client_take_response(void* storage, uint8_t* resp_data,
+                                              size_t resp_capacity, size_t* resp_len);
 
 /* --- Action client (poll model) ----------------------------------------- */
 

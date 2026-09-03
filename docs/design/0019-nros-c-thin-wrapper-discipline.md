@@ -121,7 +121,7 @@ extend to L1 cleanly.
   `RawService<...>`, `RawActionClient<...>`, etc.
 - Entity created in `nros_<entity>_init` via Rust's `Node::create_*`.
 - Entity destroyed in `nros_<entity>_fini` via `Drop`.
-- Polling ops (`try_recv_raw`, `try_recv_request`, `send_response`,
+- Polling ops (`take_serialized`, `take_request`, `send_response`,
   …) delegate to the in-`_opaque` Rust value.
 
 **L2 (callback, executor-managed):**
@@ -167,7 +167,7 @@ Steps:
 4. New entry points:
    - `nros_subscription_init` (L2, with callback) → builds `Registration` variant.
    - `nros_subscription_init_polling` (L1, no callback) → builds `Polling` variant by calling `Node::create_subscription_raw_sized`.
-   - `nros_subscription_try_recv_raw` (L1 op) → match on inner; if `Polling`, delegate.
+   - `nros_subscription_take_serialized` (L1 op) → match on inner; if `Polling`, delegate.
    - `nros_subscription_fini` → drop in place.
    - `nros_executor_register_subscription` (L2 op) → match on inner; if `Registration`, call `executor.register_subscription_raw_*` with the stored callback.
 5. Delete the old field-mirror fields from the public ABI.
@@ -186,8 +186,8 @@ Per-entity ops to ship in L1:
 
 | Entity | L1 op |
 |---|---|
-| service (server) | `try_recv_request` + `send_response` |
-| service_client | `send_request` + `try_recv_response` |
+| service (server) | `take_request` + `send_response` |
+| service_client | `send_request` + `take_response` |
 | action_server | `try_recv_goal` + `accept/reject` + `publish_feedback` + `send_result` |
 | action_client | `send_goal` + `try_recv_feedback` + `try_recv_result` |
 
@@ -210,7 +210,7 @@ public:
 
     // L1 op (returns std::nullopt when no data).
     template<typename M>
-    Result<std::optional<M>> try_recv();
+    Result<std::optional<M>> take();
 };
 
 class Executor {
@@ -259,7 +259,7 @@ After 122.3.b/c/d land:
 - **Removing public state field.** `state` could move into `_opaque`
   too. Keeping it visible is useful for debug visibility and
   zero-init detection. No change.
-- **C-side `try_recv` typed variants.** Today's C API has only
-  raw-bytes ops. Typed `try_recv` (with CDR decode in the
-  consumer's language) is a future addition — `nros_<entity>_try_recv_raw`
+- **C-side `take` typed variants.** Today's C API has only
+  raw-bytes ops. Typed `take` (with CDR decode in the
+  consumer's language) is a future addition — `nros_<entity>_take_serialized`
   is enough for 122.3.

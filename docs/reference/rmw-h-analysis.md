@@ -34,7 +34,7 @@ rmw_send_request(client, ros_request, sequence_id)
 rmw_take_response(client, request_header, ros_response, taken)
 ```
 
-Two modes: typed (`void* ros_message` + runtime type support) and serialized (`rmw_serialized_message_t`). The serialized mode maps directly to nros's `publish_raw`/`try_recv_raw`.
+Two modes: typed (`void* ros_message` + runtime type support) and serialized (`rmw_serialized_message_t`). The serialized mode maps directly to nros's `publish_raw`/`take_serialized`.
 
 ### Central Polling
 
@@ -91,7 +91,7 @@ On single-threaded bare-metal, blocking means the entire system freezes. No kern
 
 nros uses compile-time generics: `Publisher<M: RosMessage>` monomorphizes at build time. No function pointer overhead, no runtime type dispatch, compatible with `no_std`.
 
-**nros-rmw adaptation:** Trait methods operate on raw bytes (`&[u8]`). Typed serialization (`publish<M>`, `try_recv<M>`) happens at a higher layer (board crates or `nros-node`), not in the RMW traits. This separates CDR concerns from middleware concerns.
+**nros-rmw adaptation:** Trait methods operate on raw bytes (`&[u8]`). Typed serialization (`publish<M>`, `take<M>`) happens at a higher layer (board crates or `nros-node`), not in the RMW traits. This separates CDR concerns from middleware concerns.
 
 ### 4. Graph introspection requires alloc
 
@@ -122,11 +122,11 @@ rmw.h's create/destroy/publish/take/wait decomposition is the right granularity.
 | `rmw_create_publisher` | `Session::create_publisher` |
 | `rmw_publish` | `Publisher::publish_raw` |
 | `rmw_create_subscription` | `Session::create_subscription` |
-| `rmw_take` | `Subscriber::try_recv_raw` |
+| `rmw_take` | `Subscriber::take_serialized` |
 | `rmw_create_service` | `Session::create_service` |
-| `rmw_take_request` + `rmw_send_response` | `ServiceServer::try_recv_request` + `send_reply` |
+| `rmw_take_request` + `rmw_send_response` | `ServiceServer::take_request` + `send_reply` |
 | `rmw_create_client` | `Session::create_client` |
-| `rmw_send_request` + `rmw_take_response` | `ClientTrait::send_request_raw` + `try_recv_reply_raw` (phase-301: the blocking `call_raw` collapse was deleted) |
+| `rmw_send_request` + `rmw_take_response` | `ClientTrait::send_request_raw` + `take_response_raw` (phase-301: the blocking `call_raw` collapse was deleted) |
 | `rmw_wait` | `Session::spin_once` |
 
 ### Raw bytes interface

@@ -145,7 +145,7 @@ add_two_ints_server`.
 
 **Caveat — cap:** the server-side slot table is fixed at 32. A
 server with more than 32 outstanding requests will report
-`NROS_RMW_RET_WOULD_BLOCK` from `try_recv_request` until the
+`NROS_RMW_RET_WOULD_BLOCK` from `take_request` until the
 application drains via `send_response`. Tune by editing
 `kRequestSlots` in `src/service.cpp`.
 
@@ -379,7 +379,7 @@ now carries the same explanation at the parameter itself.
 ## No E2E message-integrity (safety-e2e / CRC)
 
 The `safety-e2e` capability (CRC attach on publish + validate on receive, surfaced via
-`ctx.integrity()` / `nros_subscription_try_recv_validated`) is **zenoh-only**. The CRC
+`ctx.integrity()` / `nros_subscription_take_validated`) is **zenoh-only**. The CRC
 machinery lives in the zenoh shim's wire attachment (`nros-rmw-zenoh`); CycloneDDS (and
 XRCE) carry no `safety-e2e` feature, so a declared `[safety]` axis no-ops on them. The
 `NANO_ROS_SAFETY_E2E=ON` CMake option **warns and is ignored** when `NANO_ROS_RMW` is not

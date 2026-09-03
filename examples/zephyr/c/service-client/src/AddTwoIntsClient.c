@@ -58,7 +58,7 @@ static void on_tick(void* ctx) {
     }
     uint8_t resp[64];
     size_t len = 0;
-    if (nros_cpp_service_client_try_recv_reply(self->storage, resp, sizeof(resp), &len) == 0 &&
+    if (nros_cpp_service_client_take_response(self->storage, resp, sizeof(resp), &len) == 0 &&
         len >= 12) {
         int64_t sum = read_i64_le(resp + 4);
         printf("Result of add_two_ints: %lld\n", (long long)sum);

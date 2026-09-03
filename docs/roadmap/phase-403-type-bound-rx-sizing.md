@@ -916,7 +916,7 @@ split**, so the large class is empty and its `2 x 4 x 2560 = 20,480` bytes of
 eye.** `CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE=512` is smaller than
 `nav_msgs/Odometry`, the largest type that board conf itself names as
 subscribed: the derived RX bound is 880, and the conf's own prose computes
-~718 before writing 512. A sample above the buffer is dropped at `try_recv`
+~718 before writing 512. A sample above the buffer is dropped at `take`
 with `BufferTooSmall`, silently on the C++ arena dispatch path -- the exact
 failure the conf's neighbouring comment warns about. Not verified on silicon
 here; the board is the owner's.

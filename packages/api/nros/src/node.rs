@@ -2100,7 +2100,7 @@ pub trait ClientDispatch {
     /// `response_buf`, return the response length in bytes.
     ///
     /// The synchronous block is built on the executor-driven
-    /// `send_request_raw` + `try_recv_reply_raw` pair (phase-301: the
+    /// `send_request_raw` + `take_response_raw` pair (phase-301: the
     /// RMW layer has no blocking call) — the tick hook drives the
     /// executor between callback dispatch, so a blocked `call_raw`
     /// does not starve other callbacks (each tick yields back to the

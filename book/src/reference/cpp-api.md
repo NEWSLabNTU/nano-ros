@@ -19,7 +19,7 @@ public surface a user application needs.
 - [`nros::Publisher<M>`](../api/cpp/classnros_1_1Publisher.html) / [`Subscription<M>`](../api/cpp/classnros_1_1Subscription.html)
 - [`nros::Service<S>`](../api/cpp/classnros_1_1Service.html) / [`Client<S>`](../api/cpp/classnros_1_1Client.html)
 - [`nros::ActionServer<A>`](../api/cpp/classnros_1_1ActionServer.html) / [`ActionClient<A>`](../api/cpp/classnros_1_1ActionClient.html) — L2 callback model (executor-arena registered).
-- [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `try_recv_*` / `accept_goal` / `complete_goal` from a spin loop.
+- [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle
 - [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
 - [`nros::ParameterServer<Cap>`](../api/cpp/classnros_1_1ParameterServer.html) — node-local typed parameter store (`bool` / `int64_t` / `double` / `const char*`); compose alongside a `Node`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.

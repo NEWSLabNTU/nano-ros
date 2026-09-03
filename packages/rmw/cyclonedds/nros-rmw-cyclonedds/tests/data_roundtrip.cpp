@@ -1,7 +1,7 @@
 // Phase 117.6.B end-to-end raw-CDR data path test.
 //
 // Publishes a hand-crafted CDR-encoded `nros_test::msg::TestString`
-// payload via the vtable's `publish_raw`, then `try_recv_raw` on a
+// payload via the vtable's `publish_raw`, then `take_serialized` on a
 // subscriber created on the same topic. Verifies the bytes
 // round-trip through Cyclone's writer + reader.
 //
@@ -29,11 +29,11 @@
 #include "nros_test_domain.h"
 
 namespace {
-const nros_rmw_vtable_t *g_vt = nullptr;
+const nros_rmw_vtable_t* g_vt = nullptr;
 } // namespace
 
-extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char * /*name*/,
-                                                        const nros_rmw_vtable_t *vt) {
+extern "C" rmw_ret_t nros_rmw_cffi_register_named(const char* /*name*/,
+                                                  const nros_rmw_vtable_t* vt) {
     g_vt = vt;
     return NROS_RMW_RET_OK;
 }
@@ -47,10 +47,13 @@ int main() {
     // Build the CDR for `TestString { data = "hello" }`. Length
     // includes the trailing NUL — that's the IDL `string` wire
     // format Cyclone emits.
-    const char *msg = "hello";
-    size_t mlen = std::strlen(msg) + 1;  // include NUL
+    const char* msg = "hello";
+    size_t mlen = std::strlen(msg) + 1; // include NUL
     uint8_t cdr[64] = {
-        0x00, 0x01, 0x00, 0x00,                    // encap: CDR_LE
+        0x00,
+        0x01,
+        0x00,
+        0x00, // encap: CDR_LE
         static_cast<uint8_t>(mlen & 0xff),
         static_cast<uint8_t>((mlen >> 8) & 0xff),
         static_cast<uint8_t>((mlen >> 16) & 0xff),
@@ -60,37 +63,40 @@ int main() {
     size_t cdr_len = 8 + mlen;
 
     rmw_session_t s{};
-    s.node_name  = "data_roundtrip";
+    s.node_name = "data_roundtrip";
     s.namespace_ = "/";
-    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, nullptr, &s) != NROS_RMW_RET_OK) {
+    if (g_vt->create_session(nullptr, 0, nros_test_domain(99), s.node_name, nullptr, &s) !=
+        NROS_RMW_RET_OK) {
         return 2;
     }
 
     // Phase 376 W5/B1 — entities are created ON A NODE now. The node
     // carries its own identity plus the route to its session.
     rmw_node_t node{};
-    node.name       = s.node_name;
+    node.name = s.node_name;
     node.namespace_ = s.namespace_;
-    node.session    = &s;
+    node.session = &s;
 
     rmw_qos_profile_t qos = NROS_RMW_QOS_PROFILE_DEFAULT;
 
     rmw_subscription_t sub{};
     sub.topic_name = "rt/data_roundtrip";
-    sub.type_name  = "nros_test::msg::TestString";
-    sub.qos        = qos;
+    sub.type_name = "nros_test::msg::TestString";
+    sub.qos = qos;
     const rmw_message_type_support_t ts_1{sub.type_name, ""};
-    if (g_vt->create_subscription(&node, &ts_1, sub.topic_name, 99, &qos, nullptr, &sub) != NROS_RMW_RET_OK) {
+    if (g_vt->create_subscription(&node, &ts_1, sub.topic_name, 99, &qos, nullptr, &sub) !=
+        NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_subscription failed\n");
         return 3;
     }
 
     rmw_publisher_t pub{};
     pub.topic_name = "rt/data_roundtrip";
-    pub.type_name  = "nros_test::msg::TestString";
-    pub.qos        = qos;
+    pub.type_name = "nros_test::msg::TestString";
+    pub.qos = qos;
     const rmw_message_type_support_t ts_2{pub.type_name, ""};
-    if (g_vt->create_publisher(&node, &ts_2, pub.topic_name, 99, &qos, nullptr, &pub) != NROS_RMW_RET_OK) {
+    if (g_vt->create_publisher(&node, &ts_2, pub.topic_name, 99, &qos, nullptr, &pub) !=
+        NROS_RMW_RET_OK) {
         std::fprintf(stderr, "create_publisher failed\n");
         return 4;
     }
@@ -168,7 +174,8 @@ int main() {
     size_t n = 0;
     bool took = false;
     /* Phase 376 W3.b/W3.d step A — status returned, bytes + taken out. */
-    if (nros_test_take(g_vt, &sub, buf, sizeof(buf), &n, &took) != NROS_RMW_RET_OK || !took || n == 0) {
+    if (nros_test_take(g_vt, &sub, buf, sizeof(buf), &n, &took) != NROS_RMW_RET_OK || !took ||
+        n == 0) {
         std::fprintf(stderr, "take returned %zu bytes, taken=%d\n", n, (int)took);
         return 7;
     }
@@ -205,24 +212,20 @@ int main() {
     // a receive buffer sized from a type's exact `MAX_SERIALIZED_SIZE` can be
     // up to 3 bytes short of what a remote peer delivers. See issue 0964.
     if (n != cdr_len) {
-        std::fprintf(stderr,
-                     "round-trip size mismatch: pub=%zu sub=%zu\n",
-                     cdr_len, n);
+        std::fprintf(stderr, "round-trip size mismatch: pub=%zu sub=%zu\n", cdr_len, n);
         return 8;
     }
     if (std::memcmp(buf, cdr, cdr_len) != 0) {
         std::fprintf(stderr, "round-trip bytes mismatch\n");
         for (size_t i = 0; i < cdr_len; ++i) {
-            std::fprintf(stderr, "  [%zu] sent=%02x got=%02x\n", i,
-                         cdr[i], buf[i]);
+            std::fprintf(stderr, "  [%zu] sent=%02x got=%02x\n", i, cdr[i], buf[i]);
         }
         return 9;
     }
 
     g_vt->destroy_publisher(&pub);
     g_vt->destroy_subscription(&sub);
-    (void) g_vt->destroy_session(&s);
-    std::printf("OK %zu bytes round-tripped (%zu sent + %zu pad)\n", n, cdr_len,
-                n - cdr_len);
+    (void)g_vt->destroy_session(&s);
+    std::printf("OK %zu bytes round-tripped (%zu sent + %zu pad)\n", n, cdr_len, n - cdr_len);
     return 0;
 }

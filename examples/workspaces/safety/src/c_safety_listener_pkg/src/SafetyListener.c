@@ -33,7 +33,7 @@ typedef struct {
 } safety_listener_t;
 
 /// Validated-subscription callback: invoked by the executor on each /chatter
-/// sample. The integrity scalars come from `try_recv_validated` in the arena.
+/// sample. The integrity scalars come from `take_validated` in the arena.
 static void on_chatter_validated(const uint8_t* data, size_t len, int64_t gap, bool duplicate,
                                  int8_t crc_valid, void* ctx) {
     (void)data;

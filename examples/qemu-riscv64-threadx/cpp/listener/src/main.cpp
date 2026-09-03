@@ -78,7 +78,7 @@ int nros_app_main(int argc, char** argv) {
         nros::spin_once(100);
 
         std_msgs::msg::String msg;
-        while (sub.try_recv(msg)) {
+        while (sub.take(msg)) {
             message_count++;
             printf("I heard: [%s]\n", msg.data.c_str());
         }

@@ -548,7 +548,7 @@ int32_t zpico_declare_subscriber_direct_write(struct zpico_session_t *_session,
  * Phase 124.D.3.c — declare a burst-tolerant direct-write
  * subscriber backed by an SPSC ring. Each message lands in the
  * next free ring slot rather than a single shared slot, so a
- * burst arriving between two `try_recv` calls is buffered
+ * burst arriving between two `take` calls is buffered
  * instead of dropped. The `notify` callback fires once per
  * message for async-waker support.
  *

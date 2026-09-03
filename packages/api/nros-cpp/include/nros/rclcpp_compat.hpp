@@ -387,7 +387,7 @@ class Node : public std::enable_shared_from_this<Node> {
         auto cb_fn = std::make_shared<std::function<void(const M&)>>(std::move(cb));
         pump_callbacks_.push_back([s, cb_fn]() {
             M msg;
-            while (s->try_recv(msg).ok()) {
+            while (s->take(msg).ok()) {
                 (*cb_fn)(msg);
             }
         });

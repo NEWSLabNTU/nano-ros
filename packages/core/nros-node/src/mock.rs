@@ -15,8 +15,8 @@ use nros_rmw::{
 
 /// Mock subscriber that can be loaded with canned CDR data. Holds a small
 /// **queue** (not a single slot) so tests can inject a burst — several messages
-/// arriving before a `try_recv_raw`/spin — to exercise the QoS-depth ring
-/// (Phase 239.5/7). `load` pushes; `try_recv_raw` pops in FIFO order.
+/// arriving before a `take_serialized`/spin — to exercise the QoS-depth ring
+/// (Phase 239.5/7). `load` pushes; `take_serialized` pops in FIFO order.
 /// One queued take: the bytes and their length, or the error the take reports.
 /// Named because `clippy::type_complexity` is right that the inline form was
 /// unreadable.
@@ -59,7 +59,7 @@ impl Subscription for MockSubscriber {
         !self.queue.borrow().is_empty()
     }
 
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+    fn take_serialized(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         match self.queue.borrow_mut().pop_front() {
             Some(Ok((data, len))) => {
                 buf[..len].copy_from_slice(&data[..len]);
@@ -79,14 +79,14 @@ impl Subscription for MockSubscriber {
 /// Mock service server that can be loaded with a canned CDR request, so unit
 /// tests can drive a service callback through `spin_once` (Phase 189.M3.3.d).
 ///
-/// Phase 237 — `try_recv_request` hands out a distinct, monotonically increasing
+/// Phase 237 — `take_request` hands out a distinct, monotonically increasing
 /// `sequence_number` per request (the reply-correlation token), and `send_response`
 /// records `(seq, data)` so tests can assert deferred replies route to the right
 /// requester — the concurrent-safety the seq-keyed backends guarantee.
 pub struct MockServiceServer {
-    /// Pre-encoded request returned on the next `try_recv_request` call.
+    /// Pre-encoded request returned on the next `take_request` call.
     pub pending: Cell<Option<([u8; 256], usize)>>,
-    /// Next correlation token `try_recv_request` will return (then increments).
+    /// Next correlation token `take_request` will return (then increments).
     pub next_seq: Cell<i64>,
     /// Replies recorded by `send_response`: `(seq, data, len)`.
     pub sent: core::cell::RefCell<heapless::Vec<(i64, [u8; 256], usize), 8>>,
@@ -113,7 +113,7 @@ impl ServiceTrait for MockServiceServer {
         self.pending.get().is_some()
     }
 
-    fn try_recv_request<'a>(
+    fn take_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
@@ -163,7 +163,7 @@ impl Publisher for MockPublisher {
 
 /// Mock service client with controllable async reply behavior.
 pub struct MockServiceClient {
-    /// Pre-loaded reply data to return on next `try_recv_reply_raw` call.
+    /// Pre-loaded reply data to return on next `take_response_raw` call.
     pub pending_reply: Cell<Option<([u8; 256], usize)>>,
     /// Issue 0778 — the id handed to the next `send_request_raw`.
     pub next_seq: Cell<i64>,
@@ -180,7 +180,7 @@ impl MockServiceClient {
         }
     }
 
-    /// Load a reply that will be returned by the next `try_recv_reply_raw` call.
+    /// Load a reply that will be returned by the next `take_response_raw` call.
     pub fn load_reply(&self, data: [u8; 256], len: usize) {
         self.pending_reply.set(Some((data, len)));
     }
@@ -199,7 +199,7 @@ impl ClientTrait for MockServiceClient {
         Ok(seq)
     }
 
-    fn try_recv_reply_raw(
+    fn take_response_raw(
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<(usize, i64)>, TransportError> {

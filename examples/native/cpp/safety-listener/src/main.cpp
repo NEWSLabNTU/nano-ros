@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief C++ E2E-safety listener — polls `Subscription::try_recv_validated` and
+/// @brief C++ E2E-safety listener — polls `Subscription::take_validated` and
 ///        prints the per-message integrity status (CRC + sequence gap/dup).
 ///
 /// Issue 0073 / phase-259 W3 — the C++ analog of the C safety-listener. Pairs
@@ -7,7 +7,7 @@
 /// receives `std_msgs/Int32` on `/chatter` over zenohd and validates the CRC the
 /// publisher attached. Built with `NANO_ROS_SAFETY_E2E=ON` (set in CMakeLists) so
 /// the zenoh backend carries the CRC path. The C++ ABI calls the same
-/// `RmwSubscriber::try_recv_validated` the C path does.
+/// `RmwSubscriber::take_validated` the C path does.
 
 #include <cstdint>
 #include <stdio.h>
@@ -50,7 +50,7 @@ int nros_app_main(int argc, char** argv) {
         std_msgs::msg::Int32 msg;
         nros_cpp_integrity_status_t status;
         // Result is true while a sample was received+deserialized (TryAgain → false).
-        while (sub.try_recv_validated(msg, status)) {
+        while (sub.take_validated(msg, status)) {
             count++;
             const char* crc = status.crc_valid == 1 ? "ok" : status.crc_valid == 0 ? "FAIL" : "n-a";
             printf("[%d] Received: data=%d [SAFETY] INTEGRITY gap=%lld dup=%d crc=%s\n", count,

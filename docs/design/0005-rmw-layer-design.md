@@ -362,12 +362,12 @@ pub trait Publisher {
 
 pub trait Subscriber {
     fn has_data(&self) -> bool;
-    fn try_recv_raw<'a>(&self, buf: &'a mut [u8]) -> Result<Option<usize>, RmwError>;
+    fn take_serialized<'a>(&self, buf: &'a mut [u8]) -> Result<Option<usize>, RmwError>;
 }
 
 pub trait ServiceServer {
     fn has_request(&self) -> bool;
-    fn try_recv_request<'a>(&self, buf: &'a mut [u8])
+    fn take_request<'a>(&self, buf: &'a mut [u8])
         -> Result<Option<ServiceRequest<'a>>, RmwError>;
     fn send_response(&self, sequence: i64, data: &[u8]) -> Result<(), RmwError>;
 }
@@ -376,7 +376,7 @@ pub trait ServiceClient {
     // phase-301: the blocking `call_raw` sketch was deleted; the async
     // pair is the one request/reply path.
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), RmwError>;
-    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, RmwError>;
+    fn take_response_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, RmwError>;
 }
 ```
 
@@ -437,10 +437,10 @@ nros-qemu (user-facing, composes everything)
 | `Session::create_publisher` | create topic + publisher + datawriter (participant shared) |
 | `Publisher::publish_raw` | `uxr_buffer_topic(data, len)` — pre-serialized CDR, no double-serialization |
 | `Session::create_subscription` | create datareader + `uxr_buffer_request_data(UNLIMITED)` |
-| `Subscriber::try_recv_raw` | Read from `uxrOnTopicFunc` callback buffer |
+| `Subscriber::take_serialized` | Read from `uxrOnTopicFunc` callback buffer |
 | `Session::spin_once` | `uxr_run_session_time(timeout)` |
 | `ServiceServer` | Replier pattern: `uxrOnRequestFunc` callback + `uxr_buffer_reply` |
-| `ClientTrait::send_request_raw` / `try_recv_reply_raw` | `uxr_buffer_request` + `uxr_run_session_time` polling for the reply |
+| `ClientTrait::send_request_raw` / `take_response_raw` | `uxr_buffer_request` + `uxr_run_session_time` polling for the reply |
 
 **Build approach:**
 - `build.rs` generates `config.h` from Cargo features (same pattern as zpico-sys)
@@ -607,7 +607,7 @@ forbidden is reporting a rounding as a requirement.
 | `hint` | answer | why |
 | --- | --- | --- |
 | `0` | the small class stride | The caller stated nothing and a type is a STRING across this ABI, so there is no schema to consult. What zenoh-pico CAN say exactly is about the subscription it would create: hint `0` routes to the small class, and that stride is the most `take` will ever hand back. A ceiling, not a guess. |
-| `0 < hint <=` the largest class | `hint` | Nothing is added on top of the payload: `try_recv_raw` copies `ring_len[slot]` bytes and the attachment rides a parallel ring. The class the hint routes to is guaranteed to hold it (issue 0841), and the rounding stays inside the backend. |
+| `0 < hint <=` the largest class | `hint` | Nothing is added on top of the payload: `take_serialized` copies `ring_len[slot]` bytes and the attachment rides a parallel ring. The class the hint routes to is guaranteed to hold it (issue 0841), and the rounding stays inside the backend. |
 | `hint >` the largest class | `NROS_RMW_RET_UNSUPPORTED` | No class in this image can hold a sample that big, so no take-buffer length makes the subscription work. `alloc_payload_block` refuses the same hint, which makes this the create-time failure asked in advance. |
 
 The third row is the answer to "is `NROS_RMW_RET_UNSUPPORTED` dead weight now

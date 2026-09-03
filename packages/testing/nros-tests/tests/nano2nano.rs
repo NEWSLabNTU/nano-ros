@@ -493,7 +493,7 @@ fn test_tls_talker_listener_communication(
 }
 
 // =============================================================================
-// RTIC Pattern Tests (zero callbacks, spin_once(0), try_recv())
+// RTIC Pattern Tests (zero callbacks, spin_once(0), take())
 // =============================================================================
 
 /// Test RTIC-pattern talker/listener interop via zenoh.

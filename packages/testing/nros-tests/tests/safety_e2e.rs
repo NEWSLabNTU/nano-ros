@@ -249,11 +249,11 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
 }
 
 // =============================================================================
-// Issue 0073 — C API safety: nros_subscription_try_recv_validated + ctx integrity
+// Issue 0073 — C API safety: nros_subscription_take_validated + ctx integrity
 // =============================================================================
 
 /// The C/C++ safety path end-to-end: a C listener polling
-/// `nros_subscription_try_recv_validated` (built with `NANO_ROS_SAFETY_E2E=ON`)
+/// `nros_subscription_take_validated` (built with `NANO_ROS_SAFETY_E2E=ON`)
 /// receives from the safety talker over zenohd and validates the CRC the
 /// publisher attached — proving the new C ABI surfaces real integrity, not just
 /// the Rust path. The C listener logs `[SAFETY] INTEGRITY ... crc=ok`.
@@ -306,8 +306,8 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
 }
 
 /// Phase-259 W3 (issue 0073/0076 §B) — the C++ analog of the C safety e2e. The
-/// C++ ABI (`Subscription::try_recv_validated`) calls the same backend
-/// `RmwSubscriber::try_recv_validated`; this gives the C++ surface its own
+/// C++ ABI (`Subscription::take_validated`) calls the same backend
+/// `RmwSubscriber::take_validated`; this gives the C++ surface its own
 /// regression coverage. The C++ listener logs `[SAFETY] INTEGRITY ... crc=ok`.
 #[rstest]
 fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {

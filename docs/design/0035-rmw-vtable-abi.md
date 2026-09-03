@@ -219,7 +219,7 @@ the layout is frozen.
 - 2026-07 — phase-301 (issues 0240/0241): slot vocabulary aligned with
   upstream rmw (`create_session`/`destroy_session`, `subscription`,
   `service`, `client`), blocking `call_raw` slot deleted
-  (`send_request_raw` + `try_recv_reply_raw` now required for services),
+  (`send_request_raw` + `take_response_raw` now required for services),
   transport hints moved to per-create options structs. Table now 35 slots
   (incl. the P231 in-place pair).
 - 2026-06 — created (Draft). Records the 34-slot ABI as canonical; defines the

@@ -327,7 +327,7 @@ fn bench_safety_validate() -> Stats {
 
 /// Benchmark: Full safety pipeline (extract attachment, CRC, validate)
 ///
-/// Simulates try_recv_validated: parse seq + CRC from a 37-byte attachment,
+/// Simulates take_validated: parse seq + CRC from a 37-byte attachment,
 /// compute CRC on a 128-byte payload, compare, then validate sequence.
 fn bench_safety_full_pipeline() -> Stats {
     let mut stats = Stats::new();
