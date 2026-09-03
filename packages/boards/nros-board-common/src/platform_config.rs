@@ -317,6 +317,50 @@ impl BuildRungs {
         })
     }
 
+    /// A platform with NO `nros-platform.toml` has no rungs, and that is a
+    /// normal state — not an error.
+    ///
+    /// phase-400 W6 REGRESSION, and this is the second half of issue 0979.
+    /// `nros-node/build.rs` resolved the platform with `.ok()` before the rungs
+    /// moved here; the move turned an absent descriptor into a `panic!`. Three
+    /// of the platforms this tree builds — `threadx-linux`, `esp32`,
+    /// `zephyr` — have never had a descriptor, so every one of their images
+    /// died in a build script:
+    ///
+    /// ```text
+    /// NROS_PLATFORM_NAME=threadx-linux: unknown platform `threadx-linux`:
+    ///   no …/packages/platform/threadx-linux/nros-platform.toml
+    /// ```
+    ///
+    /// 0979 fixed the ROOT being empty, which is why the message now names a
+    /// real path. It did not fix this: a correct root still has no file for a
+    /// platform that declares none.
+    ///
+    /// What stays fatal is a descriptor that EXISTS and is broken — `Io`,
+    /// `Parse`, `Manifest`, a cycle, an arch conflict. Those are a wrong
+    /// answer; an absent file is no answer, and no answer means the builtin
+    /// defaults every knob already carries. The warning keeps it visible, so a
+    /// TYPO in `NROS_PLATFORM_NAME` still shows up rather than silently
+    /// selecting builtins — which is the one thing the panic was buying.
+    ///
+    /// One helper, not three call sites with three spellings: the panic existed
+    /// three times over (executor, params, memory) and would have been fixed
+    /// once and left twice.
+    fn or_builtin_rungs<T: Default>(&self, what: &str, r: Result<T, ConfigError>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(ConfigError::UnknownPlatform { .. }) => {
+                println!(
+                    "cargo:warning=NROS_PLATFORM_NAME={}: no nros-platform.toml, \
+                     so the {what} knobs fall through to their builtin defaults",
+                    self.platform
+                );
+                T::default()
+            }
+            Err(e) => panic!("NROS_PLATFORM_NAME={}: {e}", self.platform),
+        }
+    }
+
     /// The `[knobs.executor]` RUNGS for this build — platform merged with
     /// board, board winning — with NO env rung and no defaults.
     ///
@@ -326,10 +370,8 @@ impl BuildRungs {
     /// the ENV-POINTER DANCE above, not the composition, and pretending
     /// otherwise would have quietly dropped its Kconfig rung.
     pub fn executor_rungs(&self) -> ExecutorKnobs {
-        let plat = self
-            .tree
-            .platform_executor_rungs(&self.platform)
-            .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={}: {e}", self.platform));
+        let plat = self.tree.platform_executor_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("executor", plat);
         let b = self
             .board
             .as_ref()
@@ -355,10 +397,8 @@ impl BuildRungs {
     /// builtin, and the Kconfig rung sits between the front-end and the
     /// descriptors.
     pub fn param_rungs(&self) -> ParamKnobs {
-        let plat = self
-            .tree
-            .platform_param_rungs(&self.platform)
-            .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={}: {e}", self.platform));
+        let plat = self.tree.platform_param_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("params", plat);
         let b = self
             .board
             .as_ref()
@@ -375,14 +415,15 @@ impl BuildRungs {
 
     /// The memory tenant for this build, over the full ladder.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
-        self.tree
-            .resolve_memory(
-                &self.platform,
-                self.board.as_ref().map(|b| &b.knobs.memory),
-                &|k| std::env::var(k).ok(),
-                defaults,
-            )
-            .unwrap_or_else(|e| panic!("NROS_PLATFORM_NAME={}: {e}", self.platform))
+        let plat = self.tree.platform_memory_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("memory", plat);
+        self.tree.resolve_memory_from(
+            &self.platform,
+            &plat,
+            self.board.as_ref().map(|b| &b.knobs.memory),
+            &|k| std::env::var(k).ok(),
+            defaults,
+        )
     }
 
     /// One resolved memory knob, by name.
@@ -1323,6 +1364,24 @@ impl PlatformsTree {
         defaults: &[(&'static str, usize)],
     ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
         let plat = self.platform_memory_knobs(platform)?;
+        Ok(self.resolve_memory_from(platform, &plat, board, env, defaults))
+    }
+
+    /// The memory ladder over an ALREADY-RESOLVED platform rung.
+    ///
+    /// Split out so the build side can supply an empty rung for a platform that
+    /// declares no descriptor (see `BuildRungs::or_builtin_rungs`) without
+    /// re-implementing the ladder, while `nros config explain` keeps the strict
+    /// lookup above — a typo in `--platform` should still be an error there,
+    /// and silently printing builtins for it would be the wrong answer.
+    pub fn resolve_memory_from(
+        &self,
+        platform: &str,
+        plat: &MemoryKnobs,
+        board: Option<&MemoryKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Vec<(&'static str, ResolvedUsize)> {
         let pick = |k: &MemoryKnobs, name: &str| match name {
             "heap_bytes" => k.heap_bytes,
             "app_stack_bytes" => k.app_stack_bytes,
@@ -1331,7 +1390,7 @@ impl PlatformsTree {
         let mut out = Vec::new();
         for (name, builtin) in defaults {
             let (mut value, mut source) =
-                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                match (board.and_then(|b| pick(b, name)), pick(plat, name)) {
                     (Some(v), _) => (v, KnobSource::Board),
                     (None, Some(v)) => (v, KnobSource::Platform),
                     (None, None) => (*builtin, KnobSource::Builtin),
@@ -1359,7 +1418,7 @@ impl PlatformsTree {
                 },
             ));
         }
-        Ok(out)
+        out
     }
 
     /// The `[knobs.executor]` a platform's chain declares, merged nearest-wins.
@@ -1691,6 +1750,61 @@ impl BoardKnobsFile {
 
 #[cfg(test)]
 mod tests {
+    /// A platform with NO descriptor resolves to builtins; a BROKEN one does not.
+    ///
+    /// The phase-400 W6 regression this pins killed every image of the three
+    /// platforms that declare no `nros-platform.toml` — `threadx-linux`,
+    /// `esp32`, `zephyr` — by panicking in a build script. Issue 0979 fixed the
+    /// search ROOT being empty; this is the other half, and the two look
+    /// identical in a log (`unknown platform \`x\`: no <root>/x/…`), which is
+    /// why the second one survived the first fix.
+    ///
+    /// Both directions, because the tolerant arm must not swallow a real error:
+    /// an absent file is NO answer (builtins are correct), a malformed file is
+    /// a WRONG answer (still fatal).
+    #[test]
+    fn an_absent_descriptor_is_unknown_platform_and_a_broken_one_is_not() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = dir.path();
+
+        let tree = PlatformsTree::load_search_path(&[root.to_path_buf()])
+            .expect("an empty but EXISTING root is a valid tree");
+
+        // Absent: the variant `or_builtin_rungs` keys its tolerant arm on.
+        match tree.platform_param_rungs("threadx-linux") {
+            Err(ConfigError::UnknownPlatform { name, .. }) => {
+                assert_eq!(name, "threadx-linux");
+            }
+            other => panic!("expected UnknownPlatform, got {other:?}"),
+        }
+
+        // ...and with no platform rung, the ladder still answers with builtins
+        // rather than dropping the knob.
+        let resolved = tree.resolve_memory_from(
+            "threadx-linux",
+            &MemoryKnobs::default(),
+            None,
+            &|_| None,
+            &[("heap_bytes", 4096)],
+        );
+        assert_eq!(resolved.len(), 1, "an absent rung must not drop the knob");
+        assert_eq!(resolved[0].1.value, 4096);
+
+        // Present but malformed: NOT UnknownPlatform, so it stays fatal.
+        std::fs::create_dir_all(root.join("brokenplat")).expect("mkdir");
+        std::fs::write(
+            root.join("brokenplat/nros-platform.toml"),
+            "[knobs.executor]\nmax_cbs = \"not a number\"\n",
+        )
+        .expect("write");
+        let reloaded = PlatformsTree::load_search_path(&[root.to_path_buf()]);
+        assert!(
+            !matches!(reloaded, Err(ConfigError::UnknownPlatform { .. })),
+            "a malformed descriptor must not be reported as an absent one — \
+             the tolerant arm would then silently substitute builtins"
+        );
+    }
+
     use super::*;
 
     fn write_tree(files: &[(&str, &str)]) -> tempfile::TempDir {
