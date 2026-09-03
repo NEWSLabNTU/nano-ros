@@ -840,6 +840,28 @@ fn run_configure(cfg: &Handoff) -> Result<()> {
 /// warning rather than a failure, because a workspace whose entries are still
 /// hand-written must keep building through the migration (RFC-0065 D13).
 #[allow(clippy::too_many_arguments)]
+/// The capability axes a bringup's `system.toml` turns on — the axes a missing
+/// selection facade would silently drop (phase-413 W2).
+///
+/// Empty when the file is absent or unparseable ON PURPOSE: this decides whether
+/// to ESCALATE a warning into a hard error, and a system that cannot be read is
+/// not evidence that a capability is declared. Whatever is wrong with it will be
+/// reported by the code whose job that is, with better words than this has.
+fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
+    let Ok(raw) = std::fs::read_to_string(bringup_dir.join("system.toml")) else {
+        return Vec::new();
+    };
+    let Ok(sys) = toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+    else {
+        return Vec::new();
+    };
+    cargo_nano_ros::capability_resolver::CAPABILITIES
+        .iter()
+        .filter(|c| sys.capability_enabled(c.declared))
+        .map(|c| c.declared)
+        .collect()
+}
+
 fn generate_entry(
     root: &std::path::Path,
     bringup_dir: &std::path::Path,
@@ -944,13 +966,57 @@ fn generate_entry(
             // stayed red while the same Entry built fine in the workspace next
             // door, which happened to have one.
             //
-            // A warning, not an error: an unsynced workspace is a state the
-            // build is documented to tolerate. What it may not do is tolerate it
-            // WITHOUT SAYING SO.
+            // WARN or FAIL, decided by what the facade would have CARRIED —
+            // phase-413 W2.
+            //
+            // "An unsynced workspace is a tolerable state" is true exactly when
+            // the facade adds nothing the Entry cannot do without. It is false
+            // the moment the system declares a CAPABILITY: those reach the
+            // Entry only through the facade's `nros` feature list, so building
+            // without it produces an Entry that provably cannot be correct, and
+            // the failure lands somewhere that names neither sync nor the
+            // facade. `host-tests` spent four runs on the far end of that:
+            //
+            //   error[E0080]: evaluation panicked: this system declares
+            //   `[param_services]` but this `nros` build does not carry the
+            //   `param-services` feature
+            //     --> build/posix-zenoh/native_rust_qos_entry/src/main.rs:9:1
+            //
+            // — a const-eval panic in a generated `main.rs`, six lines below
+            // this very warning in the same log. The warning was right and
+            // nobody read it, which is what a warning is worth on a build that
+            // continues.
+            //
+            // The RMW and ROS edition stay a WARNING: both have defaults the
+            // Entry can build against, so the tolerance the original comment
+            // describes still holds for them.
+            let declares_capability = declared_capabilities(bringup_dir);
+
+            if !declares_capability.is_empty() {
+                eyre::bail!(
+                    "nros build: `{image_id}` needs a selection facade and there is none at {}.\n\
+                     \n\
+                     Its system declares {} — capabilities reach the Entry ONLY through the\n\
+                     facade's `nros` feature list, so building without it yields an Entry that\n\
+                     cannot be correct. The failure would surface later as a const-eval panic\n\
+                     in a generated `main.rs` naming neither sync nor this facade (issue 0937).\n\
+                     \n\
+                     Run `nros sync` in the workspace first (or `just build <scope>`, which\n\
+                     runs codegen for you).",
+                    d.display(),
+                    declares_capability
+                        .iter()
+                        .map(|c| format!("`[{c}]`"))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+            }
+
             eprintln!(
                 "nros build: warning: no selection facade at {} — building `{image_id}` \
-                 without its RMW, ROS edition and capability features. Run `nros sync` \
-                 first if this Entry needs them (issue 0937).",
+                 without its RMW and ROS edition. Run `nros sync` first if this Entry \
+                 needs them (issue 0937). Its system declares no capabilities, so nothing \
+                 else is lost.",
                 d.display()
             );
             None
@@ -1907,6 +1973,70 @@ fn collect_images_with_warnings(
         ));
     }
     Ok((out, warnings))
+}
+
+#[cfg(test)]
+mod facade_absence_tests {
+    use super::*;
+
+    fn bringup_with(system_toml: &str) -> tempfile::TempDir {
+        let d = tempfile::tempdir().expect("tempdir");
+        std::fs::write(d.path().join("system.toml"), system_toml).expect("write system.toml");
+        d
+    }
+
+    /// Every REQUIRED field of `[system]`. `domain_id` is one of them, and the
+    /// first draft of these tests omitted it: `SystemToml` then failed to parse,
+    /// `declared_capabilities` returned empty for both spellings, and the tests
+    /// looked like they had caught a production bug. They had caught a bad
+    /// fixture. Keep this complete.
+    const BASE: &str = r#"
+[system]
+name = "t"
+rmw = "zenoh"
+domain_id = 0
+"#;
+
+    /// The form that produced the `host-tests` red: capabilities declared with
+    /// the phase-261 `[system].features` list and no typed block in sight.
+    /// Reading only the typed blocks would return empty here and re-open the bug.
+    #[test]
+    fn phase_261_features_list_is_seen() {
+        let d = bringup_with(&format!(
+            "{BASE}features = [\"param_services\", \"lifecycle\"]\n"
+        ));
+        let mut got = declared_capabilities(d.path());
+        got.sort_unstable();
+        assert_eq!(got, vec!["lifecycle", "param_services"]);
+    }
+
+    /// The deprecated typed block still counts — both spellings flip the axis.
+    #[test]
+    fn typed_block_is_seen() {
+        let d = bringup_with(&format!("{BASE}\n[param_services]\nenabled = true\n"));
+        assert_eq!(declared_capabilities(d.path()), vec!["param_services"]);
+    }
+
+    /// A system that declares nothing keeps the WARNING path: a missing facade
+    /// there costs the RMW and the ROS edition, both of which have defaults, and
+    /// escalating it would fail builds that are documented to tolerate it.
+    #[test]
+    fn no_capabilities_is_not_fatal() {
+        let d = bringup_with(BASE);
+        assert!(declared_capabilities(d.path()).is_empty());
+    }
+
+    /// Absent or unparseable input must NOT read as "capabilities declared".
+    /// This predicate only escalates an existing warning, so silence is the
+    /// safe answer; the malformed file is someone else's error to report.
+    #[test]
+    fn unreadable_system_is_empty_not_fatal() {
+        let empty = tempfile::tempdir().expect("tempdir");
+        assert!(declared_capabilities(empty.path()).is_empty());
+
+        let junk = bringup_with("this is not toml {{{");
+        assert!(declared_capabilities(junk.path()).is_empty());
+    }
 }
 
 #[cfg(test)]
