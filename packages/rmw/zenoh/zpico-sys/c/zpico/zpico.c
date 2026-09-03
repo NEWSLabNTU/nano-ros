@@ -350,6 +350,27 @@ typedef struct {
 // Static slots for non-blocking z_get operations
 // ZPICO_MAX_PENDING_GETS is provided via -D compiler flag from build.rs,
 // with a default fallback above for non-Cargo build paths.
+/* Issue 1015 -- these three pools are FIXED C ARRAYS, so zero is not a smaller
+ * pool: a zero-length array is a GNU extension that compiles silently, and
+ * none of these is the last member of its struct. A derived 0 (an image that
+ * declares no service servers derives exactly that) produced a board that
+ * transmitted NOTHING -- no panic, no log, core in WFI -- while every gate
+ * stayed green, because the value was derived correctly and delivered
+ * faithfully. It was simply not a usable size.
+ *
+ * The derivation floors these at 1 (nros-cli-core entity_inventory.rs). This
+ * is the second line, here rather than there because a floor in one producer
+ * does not bind another, and this is where the array actually is. */
+#if ZPICO_MAX_QUERYABLES < 1
+#error "ZPICO_MAX_QUERYABLES must be >= 1: it sizes a C array (issue 1015)"
+#endif
+#if ZPICO_MAX_SUBSCRIBERS < 1
+#error "ZPICO_MAX_SUBSCRIBERS must be >= 1: it sizes a C array (issue 1015)"
+#endif
+#if ZPICO_MAX_PUBLISHERS < 1
+#error "ZPICO_MAX_PUBLISHERS must be >= 1: it sizes a C array (issue 1015)"
+#endif
+
 typedef struct {
     get_reply_ctx_t ctx;
     bool in_use;
