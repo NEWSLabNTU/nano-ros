@@ -1,11 +1,38 @@
 ---
 id: 963
-title: "The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand"
+title: "The derived-bound inventory has readers now — what is left is the executor arena alone (was: nothing reads it)"
 status: open
 area: codegen, memory, build
-severity: high
-related: [0896, 0900, 0939, phase-403, phase-403-W6, phase-403-W8]
+severity: medium
+related: [0896, 0900, 0939, 0965, phase-403, phase-403-W6, phase-403-W8, phase-412]
 ---
+
+## Retitled and downgraded 2026-09-03
+
+The title asserted that NOTHING reads the inventory. That stopped being true on
+2026-09-02 and the body already said so in two dated sections — the front matter
+did not, so every reader of the issue list saw the original claim at HIGH.
+
+Readers that exist on `main`: `nros_derive_message_bound_knobs()`
+(`cmake/NanoRosMessageBounds.cmake:304`), joined against the entity inventory at
+`cmake/NanoRosCodegenCore.cmake:853-856`, and the Zephyr precedence ladder
+`_nros_resolve_derivable_knob()` (`zephyr/cmake/nros_cargo_build.cmake:276`)
+applying it to `NROS_SUBSCRIBER_BUFFER_SIZE`, `NROS_MAX_LARGE_SUBSCRIBERS`,
+`NROS_SUBSCRIBER_LARGE_SIZE`, `NROS_EXECUTOR_MAX_CBS` and
+`NROS_SUBSCRIPTION_BUFFER_SIZE`.
+
+Of the three consumers this issue asked for, 1 and 3 are DONE (`afeab01d5`,
+`36622cadd`). **Item 2, the executor arena, is the only one left** — and it is
+in flight in PR #244, gated on #239, not unowned.
+
+The seam is one thing, not two: 0963 supplies the per-TYPE size, 0965 the
+per-IMAGE entity list, and a knob needs the JOIN. Their remaining item is
+literally the same one. 0961 is NOT part of it — that is stack, not arena, and
+phase-409 severed the last coupling (`size_of::<Executor>()` is 1016 at both the
+shipped knobs and at `MAX_CBS=36`).
+
+Severity `high` → `medium`: what remains is one knob with an owner, not a
+mechanism that does not exist.
 
 # The build knows every number and cannot say any of them
 

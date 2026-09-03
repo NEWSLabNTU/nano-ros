@@ -68,7 +68,7 @@ fails if this block drifts.
 - **#0957** (build) — `just format` fails whole-tree — a workspace leaf is in neither the root members nor the exclude list See `0957-*`.
 - **#0961** (core, memory) — Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so See `0961-*`.
 - **#0962** (codegen, memory) — A bound over nested bounded sequences is the PRODUCT of the caps, so a uniform cap does not terminate See `0962-*`.
-- **#0963** (codegen, memory, build) — The derived-bound inventory is exported and nothing reads it, so every size downstream is still set by hand See `0963-*`.
+- **#0963** (codegen, memory, build) — The derived-bound inventory has readers now — what is left is the executor arena alone (was: nothing reads it) See `0963-*`.
 - **#0964** (codegen) — The C++ header states an ESTIMATED size for every type, including types that have no bound See `0964-*`.
 - **#0965** (codegen, memory, build) — Nothing states which entities an image creates, so the arena, MAX_CBS and the payload classes stay hand-set See `0965-*`.
 - **#0968** (testing) — Tier 2 has ~12 runtime e2e failures on main, unreproduced — nobody has run the tier in a long time See `0968-*`.
