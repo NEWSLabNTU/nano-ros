@@ -862,6 +862,13 @@ fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
         .collect()
 }
 
+// Eight, and the sibling above carries the same allow for the same reason: this
+// is the entry generator's whole input, every parameter is a distinct fact about
+// the image being generated, and bundling them into a struct would move the
+// argument list rather than shorten it. Raised to eight by phase-397's depend
+// ladder (`nano_ros_root`); it started failing `-D warnings` only once clippy
+// began counting this one, which put `ci l1` red on main for everyone.
+#[allow(clippy::too_many_arguments)]
 fn generate_entry(
     root: &std::path::Path,
     bringup_dir: &std::path::Path,

@@ -1282,8 +1282,8 @@ changed builds once at its old payload classes and again at the derived ones,
 never silently -- the status line names the basis.
 
 Gates: `just check message-bound-knobs` (80 assertions, up from 38 -- cases L,
-M and N are the join, its refusals and the back-compat), `just check
-entity-inventory-knobs` (27, up from 24) and 26 unit tests in
+M and N are the join, its refusals and the back-compat),
+`just check entity-inventory-knobs` (27, up from 24) and 26 unit tests in
 `nros_cli_core::entity_inventory`.
 
 ### Step 2 -- QoS depth in the declaration. Blocks the arena.
@@ -1449,9 +1449,11 @@ declared_qos_depth_probe.cpp` declares `@depth=1` and passes `nros::QoS(10)`;
 topic, `declared_depth_agrees<1, 10>` and `nano_ros_node_register`. A rejection
 for the wrong reason -- a typo, a missing include -- would otherwise read as a
 pass, and the positive TU beside it is compiled clean FIRST for the same reason.
-`just check declared-qos-header` is the DELIVERY half: it drives
+A `check-declared-qos-header` gate is the DELIVERY half, and it does not exist
+yet -- this paragraph named it as though it did, which is why
+`check-doc-recipe-refs` was red on main. What it would do: drive
 `_nros_emit_declared_qos_header()` in a real configure with the real CLI and
-asserts the header lands, the dir is on the include path, and the dir is PRIVATE
+assert the header lands, the dir is on the include path, and the dir is PRIVATE
 -- because a table that never arrives disables every assertion silently and
 looks exactly like a component whose depths all agree.
 
