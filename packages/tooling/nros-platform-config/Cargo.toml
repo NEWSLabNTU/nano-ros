@@ -1,0 +1,35 @@
+[package]
+name = "nros-platform-config"
+version = "0.5.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "The RFC-0049 knob ladder: platform/board descriptor parsing and resolution, readable from any build script."
+
+[package.metadata.nros]
+host-only = true
+host-only-reason = "build-script config reader, runs on the host"
+
+[lib]
+path = "src/lib.rs"
+
+# LEAF BY CONSTRUCTION, and that is the whole point of this crate.
+#
+# The ladder reader lived in `nros-board-common`, which depends on
+# `nros-platform` (optionally, for the deploy overlay). Cargo counts an optional
+# dependency when it looks for cycles, so ANY crate the platform layer reaches
+# could not read the ladder:
+#
+#   nros-board-common -> nros-platform -> nros-platform-esp32-qemu
+#                     -> nros-smoltcp  -> nros-board-common
+#
+# That is every driver, and it blocked phase-400 W6's `net` tenant outright.
+# Nothing here may gain a workspace dependency beyond `nros-build-paths`, which
+# is itself a leaf — a new edge would rebuild the wall this crate exists to
+# remove.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+nros-build-paths = { path = "../nros-build-paths" }
+
+[dev-dependencies]
+tempfile = "3"

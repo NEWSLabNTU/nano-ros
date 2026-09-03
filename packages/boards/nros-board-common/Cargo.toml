@@ -25,6 +25,8 @@ name = "nros_board_common"
 # that needs it is a build-script helper, never runtime board code.
 serde = { version = "1", features = ["derive"], optional = true }
 toml = { version = "0.8", optional = true }
+# phase-400 W6 — the ladder reader, now a leaf crate so a driver can read it too.
+nros-platform-config = { path = "../../tooling/nros-platform-config", optional = true }
 # 152.2.B — `threadx_sources::add_threadx_kernel_sources` /
 # `_add_threadx_port_sources` take `&mut cc::Build`. cc-rs is
 # build-host only; gating it behind a feature lets runtime
@@ -53,7 +55,7 @@ default = []
 # Host-only helper set for build scripts: the manifest parser, the policy
 # tables, the ThreadX source lists, and (issue 0657) the riscv64 toolchain
 # resolver that `nros-build-paths` carries.
-build-helpers = ["dep:serde", "dep:toml", "dep:cc", "dep:nros-build-paths", "dep:nros-cc-flags"]
+build-helpers = ["dep:serde", "dep:toml", "dep:cc", "dep:nros-build-paths", "dep:nros-cc-flags", "dep:nros-platform-config"]
 # phase-337 W1.b — `BaseConfig::apply_overlay`, the `DeployOverlay` -> `Config`
 # merge that four board crates had each written out. Optional so the default
 # stays no_std and dep-free: `BaseConfig` itself needs nothing, and only the

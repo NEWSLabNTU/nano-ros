@@ -1646,6 +1646,7 @@ dependencies = [
  "nros-build-paths",
  "nros-cc-flags",
  "nros-platform",
+ "nros-platform-config",
  "serde",
  "tempfile",
  "toml 0.8.23",
@@ -1938,6 +1939,16 @@ dependencies = [
  "nros-log",
  "nros-node",
  "nros-platform-api",
+]
+
+[[package]]
+name = "nros-platform-config"
+version = "0.5.0"
+dependencies = [
+ "nros-build-paths",
+ "serde",
+ "tempfile",
+ "toml 0.8.23",
 ]
 
 [[package]]

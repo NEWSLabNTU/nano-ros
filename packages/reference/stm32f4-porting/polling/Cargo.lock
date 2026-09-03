@@ -387,6 +387,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-platform-config",
  "serde",
  "toml",
 ]
@@ -457,6 +458,15 @@ dependencies = [
 [[package]]
 name = "nros-platform-api"
 version = "0.5.0"
+
+[[package]]
+name = "nros-platform-config"
+version = "0.5.0"
+dependencies = [
+ "nros-build-paths",
+ "serde",
+ "toml",
+]
 
 [[package]]
 name = "nros-rmw"
