@@ -177,6 +177,42 @@ position, so it does), and a receive buffer cut to a type's exact
 `MAX_SERIALIZED_SIZE` can be up to 3 bytes short of what a remote peer delivers.
 That belongs to [#0964](0964-two-different-sizes-for-the-same-type.md).
 
+## The third site was CHECKED 2026-09-03 — still unconverted, and the reason is 0976
+
+This issue said `src/service.cpp:657` "mirrors it and should be checked, not
+assumed". Checked. It is NOT converted:
+
+* `subscriber.cpp` uses `dds_takecdr` in 8 places — both `subscription_take` and
+  `subscription_take_multi` carry the fix.
+* `service.cpp`'s `take_typed_wire` (now line 671) still runs the full
+  `dds_take` -> `dds_ostream_init(&os, 0, 1 /*xcdr1*/)` ->
+  `dds_stream_write_sample` round trip this issue exists to remove. It is reached
+  from the request path (line 1022) and the reply path (line 1412).
+
+**And the interesting part: converting it would REMOVE adapters, not conflict
+with them.** The first read of this is that the five action adapters
+([#0976](0976-service-action-adapters-tested-only-against-ourselves.md)) block the
+change, because they reshape bytes the typed path produces. The direction matters:
+
+* `strip_goal_id_len_at` and `strip_nested_cdr_at` correct bytes WE generate.
+  A raw `dds_takecdr` returns the PEER's bytes, which a conforming ROS 2 peer
+  already emits correctly — so on receive there is nothing to correct.
+* `take_fibonacci_get_result_response_wire` exists because
+  `dds_stream_read_sample` CRASHES on that type (phase 171.0.b). Taking the
+  serdata never calls the stream reader, so the crash path is not on the route.
+
+So the receive half of 0976's adapter set looks like it falls out of this fix
+rather than standing in its way. That is a claim about a byte-exact path in an
+action protocol, and it is NOT verified here — it needs the Cyclone action E2E
+fixtures built and `ros2_pubsub_e2e`'s witness extended to the action types, which
+is a fixture build this session did not have room for.
+
+**Recorded rather than attempted, deliberately.** The adapters exist because of
+subtle byte-level bugs that only a real ROS 2 peer exposes, and 0976's whole point
+is that nothing but nano-ros-talking-to-itself exercises them. A plausible-looking
+rewrite of that path without those fixtures would be exactly the change this repo
+keeps retracting.
+
 **Not measured, and not expected to move:** delivery rate at the fragment sizes
 in [#0917](0917-an536-fragmented-sample-never-syncs.md). That cliff is the
 LAN9118's RX FIFO capacity and has nothing to do with serialisation. What should
