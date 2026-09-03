@@ -89,5 +89,6 @@ fails if this block drifts.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
 - **#1003** (codegen, api, rmw) — The generated C++ entry never passes a session name, so every C++ image registers with the XRCE agent as `node` See `1003-*`.
+- **#1003** (build, codegen, testing) — Zephyr images are compiled from SIX-WEEK-OLD generated entries — the entry is never regenerated when the emitter changes See `1003-*`.
 
 <!-- END GENERATED open-issue list -->
