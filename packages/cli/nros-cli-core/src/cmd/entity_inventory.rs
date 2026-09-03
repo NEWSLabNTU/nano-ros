@@ -73,6 +73,29 @@ pub struct EntityInventoryArgs {
     #[arg(long = "output-dir", value_name = "DIR")]
     pub output_dir: Option<PathBuf>,
 
+    /// Write the C++ compile-time depth table here (phase-403 step 2).
+    ///
+    /// `nros/declared_qos.hpp` expands it and `NROS_SUBSCRIBE` static_asserts
+    /// against it, so this is the transport that carries a declared `@depth=`
+    /// all the way to the compiler.
+    #[arg(long = "output-header", value_name = "PATH")]
+    pub output_header: Option<PathBuf>,
+
+    /// Restrict the inventory to ONE component, by `<pkg>::<name>` or `<name>`.
+    ///
+    /// For `--output-header` from inside `nano_ros_node_register()`, which runs
+    /// once per component and knows only its own declaration. The metadata file
+    /// at that point holds every component registered SO FAR, and a table built
+    /// over that accidental prefix would differ between a clean configure and a
+    /// warm one. Naming the component makes the output a function of the
+    /// declaration rather than of the configure order.
+    ///
+    /// A name that matches nothing is an ERROR, not an empty table: an empty
+    /// table is what a silently-misspelled component would look like, and it
+    /// disables every check for that component's TU.
+    #[arg(long = "component", value_name = "PKG::NAME")]
+    pub component: Option<String>,
+
     /// Exit non-zero when the inventory REFUSES to derive.
     ///
     /// Off by default, and that is the load-bearing choice: a configure that has
@@ -159,7 +182,11 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         .wrap_err_with(|| format!("read metadata `{}`", metadata.display()))?;
     let doc: MetadataDoc = serde_json::from_str(&raw)
         .wrap_err_with(|| format!("parse metadata `{}`", metadata.display()))?;
-    let inv = inventory_from_metadata(&metadata.display().to_string(), &doc)?;
+    let mut inv = inventory_from_metadata(&metadata.display().to_string(), &doc)?;
+
+    if let Some(want) = &args.component {
+        inv = narrow_to_component(&inv, want)?;
+    }
 
     let (json_path, cmake_path) = match &args.output_dir {
         Some(dir) => (
@@ -182,6 +209,9 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     if let Some(p) = &cmake_path {
         write_if_changed(p, &inv.to_cmake())?;
     }
+    if let Some(p) = &args.output_header {
+        write_if_changed(p, &inv.to_declared_qos_header())?;
+    }
 
     // The env transport goes to stdout, which is what makes this verb
     // interchangeable with `ws entity-facts` at a `corrosion_set_env_vars`
@@ -197,6 +227,39 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         eprintln!("nros: entity inventory not derived -- {reason}");
     }
     Ok(())
+}
+
+/// Keep only the named component (phase-403 step 2).
+///
+/// Matches `<pkg>::<component>` first, then a bare `<component>`, and a bare
+/// name that matches more than one component is an ERROR rather than a pick:
+/// two packages may each register a `talker`, and silently choosing one would
+/// give a TU a table describing a different node.
+fn narrow_to_component(inv: &EntityInventory, want: &str) -> Result<EntityInventory> {
+    let want = want.trim();
+    let hits: Vec<&crate::entity_inventory::ComponentEntities> = inv
+        .components()
+        .into_iter()
+        .filter(|c| format!("{}::{}", c.pkg, c.component) == want || c.component == want)
+        .collect();
+    match hits.len() {
+        1 => {
+            let mut narrowed = EntityInventory::new(format!("{} [{}]", inv.source, want));
+            narrowed.insert(hits[0].clone());
+            Ok(narrowed)
+        }
+        0 => bail!(
+            "no component named `{want}` in this metadata. It holds: {}",
+            inv.components()
+                .iter()
+                .map(|c| format!("{}::{}", c.pkg, c.component))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        n => {
+            bail!("`{want}` names {n} components in this metadata; qualify it as `<pkg>::{want}`.")
+        }
+    }
 }
 
 /// The one write discipline (issues 0498/0562): atomic, and WRITE-IF-CHANGED.
@@ -322,5 +385,96 @@ mod tests {
         let inv = parse(r#"{"components": [{"name": "n", "class": "old::N"}]}"#);
         assert_eq!(inv.len(), 1);
         assert_eq!(inv.components()[0].pkg, "old");
+    }
+
+    // -----------------------------------------------------------------
+    // phase-403 step 2.
+    // -----------------------------------------------------------------
+
+    /// `--component` exists so `nano_ros_node_register()` can render a header
+    /// for the component it is registering, from a metadata file that holds
+    /// every component registered SO FAR. Without the narrowing the table would
+    /// be a function of the configure ORDER rather than of the declaration.
+    #[test]
+    fn narrowing_to_a_component_keeps_only_that_row() {
+        let inv = parse(
+            r#"{"components": [
+                 {"name": "talker", "pkg": "demo", "class": "demo::Talker",
+                  "entities": ["pub:std_msgs/msg/Int32:/chatter@depth=1"]},
+                 {"name": "listener", "pkg": "demo", "class": "demo::Listener",
+                  "entities": ["sub:std_msgs/msg/Int32:/chatter@depth=7"]}
+               ]}"#,
+        );
+        let one = narrow_to_component(&inv, "demo::listener").expect("narrows");
+        assert_eq!(one.len(), 1);
+        assert!(one.to_declared_qos_header().contains("\"/chatter\", 7"));
+        // The bare name works too, and a name that matches NOTHING is an error
+        // rather than an empty table: an empty table disables every check for
+        // that TU, which is exactly what a misspelling would produce.
+        assert!(narrow_to_component(&inv, "listener").is_ok());
+        let err = narrow_to_component(&inv, "lisener")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("demo::listener"), "names what IS there: {err}");
+    }
+
+    /// A bare name that matches two components is an ERROR, not a pick. Two
+    /// packages may each register a `talker`, and silently choosing one gives a
+    /// TU a table describing a different node -- a check that passes while
+    /// asserting against the wrong declaration.
+    #[test]
+    fn an_ambiguous_bare_component_name_is_rejected() {
+        let inv = parse(
+            r#"{"components": [
+                 {"name": "talker", "pkg": "a", "class": "a::T", "entities": ["timer"]},
+                 {"name": "talker", "pkg": "b", "class": "b::T", "entities": ["timer"]}
+               ]}"#,
+        );
+        let err = narrow_to_component(&inv, "talker").unwrap_err().to_string();
+        assert!(err.contains("2 components"), "{err}");
+        assert!(err.contains("<pkg>::talker"), "names the fix: {err}");
+    }
+
+    /// The committed C++ compile fixture is exactly what this emitter renders.
+    ///
+    /// `packages/api/nros-cpp/tests/compile/declared-qos-fixture/` holds a
+    /// generated header that `just check cpp` compiles against -- the table the
+    /// positive TU asserts on and the negative TU is rejected by. A checked-in
+    /// artifact with no gate is a copy that drifts, and this one drifts
+    /// SILENTLY in the worst direction: a table whose keys stop matching leaves
+    /// every `static_assert` in that gate vacuously true, and the gate green.
+    ///
+    /// Fix a failure by regenerating, never by hand-editing the header:
+    ///
+    ///   nros ws entity-inventory \
+    ///     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json \
+    ///     --component demo::listener \
+    ///     --output-header packages/api/nros-cpp/tests/compile/declared-qos-fixture/nros/nros_declared_qos_generated.h
+    #[test]
+    fn the_committed_compile_fixture_is_what_this_emitter_renders() {
+        const REL: &str = "packages/api/nros-cpp/tests/compile/declared-qos-fixture";
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .expect("repo root");
+        let dir = root.join(REL);
+        let input = std::fs::read_to_string(dir.join("entities.json"))
+            .unwrap_or_else(|e| panic!("read {}/entities.json: {e}", dir.display()));
+        let doc: MetadataDoc = serde_json::from_str(&input).expect("fixture metadata parses");
+        // The SOURCE line is part of the rendered file, and the CLI puts the
+        // `--metadata` argument there verbatim -- so the fixture is generated
+        // from the repo-relative path and regenerated the same way.
+        let inv = inventory_from_metadata(&format!("{REL}/entities.json"), &doc)
+            .expect("fixture inventory builds");
+        let narrowed = narrow_to_component(&inv, "demo::listener").expect("narrows");
+        let want = std::fs::read_to_string(dir.join("nros/nros_declared_qos_generated.h"))
+            .expect("the committed fixture header exists");
+        assert_eq!(
+            narrowed.to_declared_qos_header(),
+            want,
+            "the committed declared-QoS fixture header is not what this emitter renders. \
+             Regenerate it (see this test's doc comment) rather than editing it: a stale \
+             fixture leaves `just check cpp`'s declared-depth assertions green and vacuous."
+        );
     }
 }
