@@ -179,6 +179,7 @@ fast-serial: \
     just-recipe-refs \
     kconfig-knob-forwarding \
     kconfig-overridden-values \
+    knob-delivery \
     knob-single-reader \
     lane-scope-consumers \
     lane-skip-protocol \
@@ -3758,6 +3759,24 @@ zenoh:
 [private]
 infra-queryable-counts:
     @python3 scripts/check-infra-queryable-counts.py
+
+# phase-412 W4 — the value that reaches the COMPILE is the value the resolver
+# produced. The knob gates beside this one check whether the derived number is
+# RIGHT; this one checks whether it ARRIVED, which is a different question and
+# the one that kept going wrong. W1 shipped six delivery failures in one wave
+# with every other gate green: a second consumer reading raw CONFIG_*, a name
+# that resolved to empty, a C consumer with no default under rung 4, a loader
+# whitelist that dropped symbols at a function boundary, and a knob resolved
+# twice where the second call won with the DERIVE sentinel. Two of those were
+# live in pushed work, and one built the zenoh session with 8 subscriber slots
+# for 10 subscriptions — a runtime failure, invisible at link.
+#
+# Self-test only here: the end-to-end assertion needs a CONFIGURED build dir,
+# which the fast tier does not have. Point it at one by hand:
+#     python3 scripts/check-knob-delivery.py <build-dir>
+[private]
+knob-delivery:
+    @python3 scripts/check-knob-delivery.py --self-test
 
 # phase-403 W9 (issue 0965) — the per-kind CALLBACK SLOT cost has ONE
 # definition, tied to the registration sites that actually claim a slot.
