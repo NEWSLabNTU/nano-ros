@@ -19,18 +19,67 @@
 // `<stdio.h>`, as `descriptors.cpp` does.
 #include <stdio.h>
 
+// NO <memory>, NO <string> — issue 1014.
+//
+// This TU is compiled `-ffreestanding -nostdinc++` for
+// nros-board-threadx-qemu-riscv64 against a ten-header `cxx-compat` shim that
+// has neither, so including them was a hard error and the Cyclone backend had
+// never built for that board. Same class as archived issue 0112, and the
+// sibling `descriptors.cpp` already carries the lesson in its own include
+// block. `<cstring>` IS in the shim, and it exports `std::strcmp`/`std::strlen`
+// alongside the `std::memcpy` this file already uses.
 #include <cstring>
-#include <memory>
 #include <new>
-#include <string>
 
 namespace nros_rmw_cyclonedds {
 
 namespace {
 
-struct NrosSertype : ddsi_sertype {
-    std::string type_name;
+/// The `std::unique_ptr` this file used, minus the header — issue 1014.
+///
+/// The three `serdata_from_*` entry points allocate, bail on any failure, and
+/// hand ownership to Cyclone on success. That is exactly `unique_ptr`'s shape
+/// and the call sites are unchanged: `!d`, `d.get()`, `d->field`, `d.release()`.
+/// Deleting a null pointer is a defined no-op, so the early returns need no
+/// guard.
+///
+/// DIRECT-initialised at the call sites (`OwnPtr<T> d(p);`), not
+/// `auto d = OwnPtr<T>(p);`. This TU is `-std=c++14`, where that spelling is
+/// copy-initialisation and needs an accessible copy or move constructor —
+/// guaranteed elision is C++17. `unique_ptr` got away with it by having a move
+/// constructor; giving this one a move it never uses would be machinery for a
+/// spelling, so the spelling changed instead. Caught by compiling, not by
+/// reading.
+template <typename T>
+class OwnPtr {
+public:
+    explicit OwnPtr(T* p) noexcept : p_(p) {}
+    ~OwnPtr() { delete p_; }
+    OwnPtr(const OwnPtr&) = delete;
+    OwnPtr& operator=(const OwnPtr&) = delete;
+    explicit operator bool() const noexcept { return p_ != nullptr; }
+    T* get() const noexcept { return p_; }
+    T* operator->() const noexcept { return p_; }
+    T* release() noexcept {
+        T* t = p_;
+        p_ = nullptr;
+        return t;
+    }
+
+private:
+    T* p_;
 };
+
+/// No members: the type name lives in the BASE.
+///
+/// This used to carry a `std::string type_name`, which was a redundant second
+/// copy — `ddsi_sertype_init_flags` does `tp->type_name = ddsrt_strdup(name)`
+/// (ddsi_sertype.c:176), so Cyclone already owns a heap copy in
+/// `ddsi_sertype::type_name`, freed by `ddsi_sertype_fini` in `sertype_free`.
+/// Dropping it also settles a lifetime question rather than answering it: it no
+/// longer matters whether `desc->m_typename` outlives the sertype, because the
+/// only copy that survives the call is the one Cyclone made.
+struct NrosSertype : ddsi_sertype {};
 
 struct NrosSerdata : ddsi_serdata {
     size_t size{0};
@@ -100,7 +149,7 @@ void serdata_free(struct ddsi_serdata* dcmn) {
 struct ddsi_serdata* serdata_from_ser(const struct ddsi_sertype* type,
                                       enum ddsi_serdata_kind kind,
                                       const struct nn_rdata* fragchain, size_t size) {
-    auto d = std::unique_ptr<NrosSerdata>(new (std::nothrow) NrosSerdata(type, kind));
+    OwnPtr<NrosSerdata> d(new (std::nothrow) NrosSerdata(type, kind));
     if (!d || !serdata_alloc(d.get(), size)) {
         return nullptr;
     }
@@ -132,7 +181,7 @@ struct ddsi_serdata* serdata_from_ser(const struct ddsi_sertype* type,
 struct ddsi_serdata* serdata_from_ser_iov(const struct ddsi_sertype* type,
                                           enum ddsi_serdata_kind kind, ddsrt_msg_iovlen_t niov,
                                           const ddsrt_iovec_t* iov, size_t size) {
-    auto d = std::unique_ptr<NrosSerdata>(new (std::nothrow) NrosSerdata(type, kind));
+    OwnPtr<NrosSerdata> d(new (std::nothrow) NrosSerdata(type, kind));
     if (!d || !serdata_alloc(d.get(), size)) {
         return nullptr;
     }
@@ -158,7 +207,7 @@ struct ddsi_serdata* serdata_from_keyhash(const struct ddsi_sertype* /*type*/,
 
 struct ddsi_serdata* serdata_from_sample(const struct ddsi_sertype* type,
                                          enum ddsi_serdata_kind kind, const void* sample) {
-    auto d = std::unique_ptr<NrosSerdata>(new (std::nothrow) NrosSerdata(type, kind));
+    OwnPtr<NrosSerdata> d(new (std::nothrow) NrosSerdata(type, kind));
     if (!d) {
         return nullptr;
     }
@@ -330,18 +379,22 @@ void sertype_free_samples(const struct ddsi_sertype* /*d*/, void** ptrs, size_t 
 }
 
 bool sertype_equal(const struct ddsi_sertype* acmn, const struct ddsi_sertype* bcmn) {
-    const auto* a = static_cast<const NrosSertype*>(acmn);
-    const auto* b = static_cast<const NrosSertype*>(bcmn);
-    return a->type_name == b->type_name;
+    // `ddsi_sertype::type_name` — Cyclone's own strdup'd copy. Same bytes the
+    // derived `std::string` used to hold, so this compares what it compared.
+    return std::strcmp(acmn->type_name, bcmn->type_name) == 0;
 }
 
 uint32_t sertype_hash(const struct ddsi_sertype* tpcmn) {
-    const auto* tp = static_cast<const NrosSertype*>(tpcmn);
     // FNV-1a over the type name. The name is the whole identity of this type —
     // there is no typesupport to fold in — so it is what the hash must cover.
+    //
+    // Over `ddsi_sertype::type_name` now rather than a derived `std::string`.
+    // Identical bytes and identical order, so the hash values are unchanged —
+    // which matters, because a sertype hash that shifted would silently stop
+    // matching remote types.
     uint32_t h = 2166136261u;
-    for (char c : tp->type_name) {
-        h ^= static_cast<uint8_t>(c);
+    for (const char* c = tpcmn->type_name; *c != '\0'; ++c) {
+        h ^= static_cast<uint8_t>(*c);
         h *= 16777619u;
     }
     return h;
@@ -388,8 +441,9 @@ struct ddsi_sertype* create_nros_sertype(const dds_topic_descriptor_t* desc) {
     if (st == nullptr) {
         return nullptr;
     }
-    st->type_name = desc->m_typename;
-    ddsi_sertype_init_flags(static_cast<struct ddsi_sertype*>(st), st->type_name.c_str(),
+    // Straight from the descriptor: `ddsi_sertype_init_flags` strdups it, so
+    // nothing here needs to own or outlive the string.
+    ddsi_sertype_init_flags(static_cast<struct ddsi_sertype*>(st), desc->m_typename,
                             &nros_sertype_ops, &nros_serdata_ops,
                             DDSI_SERTYPE_FLAG_TOPICKIND_NO_KEY);
     return static_cast<struct ddsi_sertype*>(st);
