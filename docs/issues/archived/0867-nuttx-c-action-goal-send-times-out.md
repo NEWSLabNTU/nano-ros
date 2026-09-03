@@ -2,7 +2,7 @@
 id: 867
 title: "`test_rtos_action_e2e` nuttx/C fails 3/3 SOLO — the client's goal send
   times out (-2) against a server sitting at its ready banner"
-status: open
+status: resolved
 type: bug
 area: testing, rmw
 related: [issue-0891, issue-0854, issue-0460]
@@ -117,3 +117,45 @@ client, where this issue's client got as far as `Sending goal`. It predates this
 fix and survives it. Filed as 0870 rather than folded in here, because the two
 were already easy to conflate: the same cell produced `-2` and `-100` on
 different runs.
+
+## Resolved by `bb0631e5f` (2026-08-28) — the issue outlived its own fix
+
+The fix landed the day this issue was last edited and nobody closed the file, so
+it has read as open ever since. Found during the phase-414 survey.
+
+CAUSE: not in the image at all. `start_pair` launched both NuttX instances at
+once, keyed on the PLATFORM — correct for pub/sub, where a subscriber joining
+late still gets the next sample, and wrong for request/response, where the
+client asks ONCE and gives up. The C action client reached `Sending goal` before
+the server's queryable was declared.
+
+FIX: `start_server_then_client` (`packages/testing/nros-tests/tests/rtos_e2e.rs:559`)
+waits on the server's readiness BANNER rather than sleeping a guess, and is keyed
+on the SHAPE, which is what actually differs. Measured 3/3 failing at 72-92 s →
+passing at 16.2 s.
+
+That also explains why the `stabilization_delay()` experiment recorded above
+changed nothing: a fixed settle is a guess at the banner's timing, and the banner
+is observable.
+
+The code/comment contradiction this issue found — NuttX excluded from
+`stabilization_delay()` while the comment says the delay is for QEMU-cold-boot
+platforms, which NuttX is — is REAL and still unfixed. It is a cleanliness item,
+not a cause (measured: un-excluding it costs 20 s and fixes nothing), and it does
+not belong to this issue.
+
+## Not shared with 0870 — the phase-414 question, answered
+
+phase-414 W2/W3 asks whether these two have one cause. **They do not**, and the
+evidence is structural rather than a judgement call:
+
+* This fix covers all three languages (`rtos_e2e.rs:922` calls
+  `start_server_then_client` once for the whole action matrix), so the ordering
+  cause is already neutralised for C++ — and 0870 still fails ~2 in 3.
+* The failure POINTS cannot be the same defect. This one failed at `send_goal`,
+  after the client's four entity declarations had all succeeded. 0870 fails
+  INSIDE those declarations, before any interaction with the server exists, so
+  server ordering is causally irrelevant to it.
+
+What they do share is diagnostic blindness on NuttX, not a root cause — see the
+`printk` note now in `zpico.c`.

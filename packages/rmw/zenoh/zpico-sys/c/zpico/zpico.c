@@ -82,6 +82,21 @@ static void _threadx_printk(const char* fmt, ...) {
 }
 #define printk(...) _threadx_printk(__VA_ARGS__)
 #endif
+#elif defined(ZENOH_NUTTX)
+// Issue 0870 — NuttX had NO arm here, so it fell to the no-op below and every
+// diagnostic in this file compiled away. That is not a platform limitation:
+// NuttX has full POSIX stdio and this TU already includes <unistd.h> for it
+// above. The cost was real -- two messages that name a fault outright never
+// reached the console, including the one whose own comment calls a failed
+// liveliness token "a SILENT graph outage ... say so on the console":
+//
+//     zpico: z_declare_subscriber (ring) failed: %d for '%s'
+//     zpico: z_liveliness_declare_token failed: %d for '%s'
+//
+// so a NuttX failure could only ever be read through the collapsed Rust-side
+// return code, which is how 0870 spent three diagnoses on the wrong layer.
+#include <stdio.h>
+#define printk(...) printf(__VA_ARGS__)
 #elif defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
 #define printk(...) // No libc printf on bare-metal
 #else

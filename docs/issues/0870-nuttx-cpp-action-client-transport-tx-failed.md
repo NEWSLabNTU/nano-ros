@@ -166,3 +166,78 @@ the wrong name for it and is what sent both earlier diagnoses at the network.
 * MET ALREADY: the failure names its own cause rather than reporting a generic
   transport error — that half is fixed and is worth keeping independently of the
   connect bug, since it is what made the connect bug findable at all.
+
+## phase-414 W3 (2026-09-03): not shared with 0867, and the blindness that hid it
+
+**The shared-cause question is answered: NO.** 0867's cause was harness ordering
+and its fix (`start_server_then_client`) covers all three languages, so C++ has
+been starting after the server's banner all along and still fails ~2 in 3. And
+the failure POINTS cannot be one defect: 0867 failed at `send_goal`, after this
+client's declarations had all succeeded; this fails INSIDE them, before any
+interaction with the server exists.
+
+### Why nobody could read the real error: `printk` was a no-op on NuttX
+
+`zpico.c`'s printk chain had arms for Zephyr, FreeRTOS, ThreadX and bare-metal,
+then `#else #define printk(...)`. NuttX defines `ZENOH_NUTTX` + `ZENOH_LINUX` and
+matched no arm, so **every diagnostic in the shim compiled away** — including the
+two that name this fault outright:
+
+    zpico: z_declare_subscriber (ring) failed: %d for '%s'
+    zpico: z_liveliness_declare_token failed: %d for '%s'
+
+the second of which has a comment calling a failed token "a SILENT graph outage
+… say so on the console". Not a platform limitation: NuttX has full POSIX stdio
+and the TU already includes `<unistd.h>`. FIXED — NuttX now routes printk to
+`printf`. This is the fifth error-collapse layer in this issue's chain and the
+first one below the Rust boundary.
+
+### Which declaration fails, by elimination — INFERRED, not observed
+
+`register_action_client_raw_sized` makes four `session.create_*` calls. The three
+`create_client` calls do NO network I/O (`ZenohServiceClient::new` only builds
+keyexprs; its only errors are `TopicNameInvalid` / `ServiceClientCreationFailed`),
+and the liveliness declares inside them are swallowed by `.ok()`
+(`shim/session.rs:564`). The feedback `create_subscription` is the ONLY site in
+the whole construction that converts a `ZpicoError`, so it is the only one that
+can produce the observed `Generic -> ConnectionFailed`. That narrows to
+`z_declare_subscriber() < 0` (`zpico.c:2246`).
+
+Construction performs six network ops: five liveliness declares (all invisible)
+plus one `z_declare_subscriber` (the only one that speaks). **Whether the other
+five also failed is currently unknowable, and that distinction is the
+diagnosis:** 6-of-6 means the session's declare/TX path is dead at that moment
+(which is what `ConnectionFailed` accidentally named correctly); 1-of-6 means
+something subscriber-specific.
+
+### MEASURED, and it kills this issue's two standing guesses
+
+Both leaves' compiled shim constants are byte-identical (same fingerprint hash):
+`ZPICO_MAX_QUERYABLES = 32` — **not 8** — `MAX_SUBSCRIBERS = 8`,
+`MAX_LIVELINESS = 16`, `MAX_PENDING_GETS = 4`, `MAX_SESSIONS = 1`. Neither image
+registers param services or lifecycle (both opt-in, neither example calls them),
+so issue 0460's "6+5 slots claimed before the app" does not apply here. **The
+queryable-capacity lead is dead**, and so is the TX-buffer one for the same
+reason: the two languages share the shim config exactly.
+
+C and C++ also declare the same four entities, with the same names, resolving to
+the same session slot 0. Fixture rows are symmetric but for the port.
+
+### Still open, and it is the whole remaining question
+
+**Why C++ and not C is unexplained.** No structural asymmetry was found by
+reading: same shim, same pools, same entities, same names, same slot, same
+ordering relative to session open. The remaining differences are timing-shaped
+(C interposes `nros_executor_init` between session open and the declarations;
+C++ goes through `Executor::open_in`). None is a mechanism defensible from
+reading alone. **Treat any C-vs-C++ story that has not been measured as a
+guess — this issue has already burned three of them.**
+
+### Next step, now cheap
+
+The four per-declaration diagnostics from `f5674ed52` are still in the tree
+(`action.rs:1236/1246/1256/1266`) and `nros_log` demonstrably reaches the NuttX
+console. With printk unmuted, the next FAILING run names which declaration failed
+AND prints zenoh-pico's raw return code — at zero extra cost. Worth pairing with
+a log at the swallowed liveliness site (`shim/session.rs:564`), which is the
+canary the design deliberately muted.

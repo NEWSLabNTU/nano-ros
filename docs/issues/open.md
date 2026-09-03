@@ -44,7 +44,6 @@ fails if this block drifts.
 - **#0854** (testing) — `action_raw_goal_ships_one_cdr_header` times out in-sweep and passes solo with a 16x margin — starved, not slow See `0854-*`.
 - **#0857** (api) — ComponentCell's inline registries cost worst-case × biggest-payload heap per component See `0857-*`.
 - **#0865** (examples, docs) — parameter services are implemented and tested but undiscoverable: no example calls them, and the C header declares the entry point unconditionally so a caller without the feature gets a bare `undefined reference` See `0865-*`.
-- **#0867** (testing, rmw) — `test_rtos_action_e2e` nuttx/C fails 3/3 SOLO — the client's goal send times out (-2) against a server sitting at its ready banner See `0867-*`.
 - **#0870** (rmw, examples) — NuttX C++ action client fails `create_action_client` — the session reports `Transport(ConnectionFailed)` against a router the server reached See `0870-*`.
 - **#0871** (ci, testing) — Every PR is red on a fixture CI never builds — and `main` cannot see it, because the required gate does not run on push See `0871-*`.
 - **#0872** (ci) — The PR/nightly check arm has never run to completion — each fix exposes the next environment gap See `0872-*`.
