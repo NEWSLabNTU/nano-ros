@@ -877,14 +877,24 @@ fn test_zephyr_to_native_e2e() {
     // Wait for communication
     eprintln!("Waiting for Zephyr → Native communication...");
 
-    // Wait for listener output (use wait_for_all_output to capture stderr where env_logger logs).
-    // 40 s: on a slow native_sim host the Zephyr talker's zenoh-pico session
-    // setup + first publish lands ~20 s after boot (issue #17). The wait always
-    // runs the full duration (listener never self-exits), so this caps
-    // wall-time, not the success path.
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(40))
-        .expect("Listener timed out");
+    // Wait for the listener's first SAMPLE line — `collect_until` reads stderr
+    // too (where env_logger writes), returns as soon as the marker lands, and
+    // kills nothing.
+    //
+    // issue 1026 — this was `wait_for_all_output(40s)`, which has no stop
+    // condition and KILLS at the deadline, so it always ran the full 40 s and
+    // the window was the listener's lifetime rather than a bound on the wait.
+    // 40 s is still the right cap: on a slow native_sim host the Zephyr
+    // talker's zenoh-pico session setup + first publish lands ~20 s after boot
+    // (issue #17).
+    //
+    // Bound stated: FIRST delivery only. This cell cannot see a session that
+    // lapses after the first sample — for that, count samples across a lease
+    // interval, which is what issue 1013 put on the RTOS pubsub cell.
+    let listener_output = listener.collect_until(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(40),
+    );
 
     // Get Zephyr output for debugging
     let zephyr_output = zephyr
@@ -970,12 +980,23 @@ fn test_native_to_zephyr_e2e() {
     // Wait for communication
     eprintln!("Waiting for Native → Zephyr communication...");
 
-    // Wait for Zephyr output. 40 s: the Zephyr listener's zenoh-pico
+    // Wait for the Zephyr listener's first SAMPLE line. 40 s: its zenoh-pico
     // subscription setup is slow on a slow native_sim host (issue #17); the
     // fast native talker only delivers once the subscriber is declared.
-    let zephyr_output = zephyr
-        .wait_for_output(Duration::from_secs(40))
-        .unwrap_or_default();
+    //
+    // issue 1026 — `wait_for_output` here was a terminal drain that killed the
+    // image at the deadline, so the timeout was the guest's lifetime; on the
+    // failure path it also short-circuited on markers this cell never asserts.
+    // `wait_for_pattern` waits on the CONDITION, returns the accumulated
+    // output either way, and leaves the image running for the `zephyr.kill()`
+    // below.
+    //
+    // Bound stated: FIRST delivery only — nothing after the first received
+    // sample is observed (issue 1013 is the counting shape).
+    let zephyr_output = zephyr.wait_for_pattern(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        Duration::from_secs(40),
+    );
 
     // Get native talker output for debugging
     let talker_output = talker
@@ -1674,12 +1695,20 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // The external listener must log at least one real sample line.
     // Timeout is generous: on a slow native_sim host the Entry's zenoh-pico
     // session setup + first publish lands ~20 s after boot (steady-state
-    // cadence then tracks the ~2.5 s lease keepalive). `wait_for_all_output`
-    // always runs the full duration (the listener `spin_blocking`s and never
-    // self-exits), so this bounds the test wall-time, not its success path.
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(40))
-        .expect("Listener timed out");
+    // cadence then tracks the ~2.5 s lease keepalive).
+    //
+    // issue 1026 — was `wait_for_all_output(40s)`, which has no stop condition
+    // and kills at the deadline, so the window WAS the listener's lifetime and
+    // the cell always paid the full 40 s. `collect_until` waits on the sample
+    // line the assertion names.
+    //
+    // Bound stated: FIRST cross-process delivery only. Whether the Entry keeps
+    // publishing past that (the lease-lapse question of issue 1013) is not
+    // observed here.
+    let listener_output = listener.collect_until(
+        nros_tests::output::INT32_LISTENER_LOG_PREFIX,
+        Duration::from_secs(40),
+    );
     let entry_output = entry
         .wait_for_output(Duration::from_secs(1))
         .unwrap_or_default();

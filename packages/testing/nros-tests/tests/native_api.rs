@@ -322,10 +322,21 @@ fn test_native_service_communication_callback(
 
     let mut client = spawn_native(&client_bin, lang, "service-client-callback", &locator);
 
-    let client_output = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    // issue 1026 — every client wait in this file used to read
+    // `wait_for_output_pattern(M, t).or_else(|_| wait_for_all_output(2s))
+    //  .unwrap_or_default()`, which destroys its own evidence twice: the strict
+    // wait had already collected the transcript into an `Err` the `or_else`
+    // drops, and the fallback then KILLS the client to gather the two seconds
+    // that remain — so a failing cell reports the tail of a run it truncated.
+    // `collect_until` is the primitive for "assert on the content yourself":
+    // it returns at the marker, returns everything printed when the marker
+    // never comes, and kills nothing.
+    //
+    // Bound stated (all of these): a single request/goal, asserted on its
+    // terminal line. Nothing here observes what the SUT does after that.
+    // Swept with:
+    //   rg -n 'or_else\(\|_\| client\.wait_for_all_output' packages/testing
+    let client_output = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(15));
 
     server.kill();
 
@@ -373,10 +384,7 @@ fn service_callback_interop_body(
         .expect("service server did not become ready");
 
     let mut client = spawn_native(client_bin, client_lang, "service-client-callback", locator);
-    let client_output = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(15))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(15));
     server.kill();
 
     eprintln!("cross-lang callback client output:\n{}", client_output);
@@ -452,10 +460,7 @@ fn rust_callback_interop_body(locator: &str, server_bin: &Path, server_lang: Lan
         .expect("service server did not become ready");
 
     let mut client = spawn_rust_callback_client(&client_bin, locator);
-    let client_output = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(20))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(20));
     server.kill();
 
     eprintln!(
@@ -514,14 +519,24 @@ fn native_action_communication_body(lang: Language, locator: &str) {
     let mut client = spawn_native(&client_bin, lang, "action-client", locator);
 
     // Both clients end with the demo terminal line `Result received: [...]`.
-    let client_output = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(20))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    //
+    // issue 1026 — the `.or_else(wait_for_all_output).unwrap_or_default()`
+    // idiom this replaces destroyed its own evidence twice over: the strict
+    // wait had already consumed the transcript into an `Err` the `or_else`
+    // dropped, and the fallback then KILLED the client to collect the two
+    // seconds that remained. `collect_until` returns at the marker, returns
+    // everything printed when it does not appear, and kills nothing.
+    let client_output = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(20));
 
-    let server_output = server
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
+    // The server is free-running (`spin = "forever"`), so there is no drain
+    // that ends by itself. Wait for the marker the assertion below names — by
+    // now the goal has already completed on the client side, so this normally
+    // returns immediately from what is already buffered.
+    //
+    // Bound stated: this observes the server only up to the FIRST goal it
+    // executed. A server that wedges after one goal, or whose session lapses
+    // later, is outside what this cell can see — it drives exactly one goal.
+    let server_output = server.collect_until(ACTION_EXECUTING_MARKER, Duration::from_secs(5));
     server.kill();
 
     eprintln!(
@@ -606,10 +621,7 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
         &locator,
     );
 
-    let client_output = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(25))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(25));
 
     server.kill();
 
@@ -675,10 +687,7 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
         &locator,
     );
 
-    let client_output = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(25))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(25));
     server.kill();
 
     eprintln!(
@@ -726,10 +735,7 @@ fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) 
         .expect("C++ action server did not become ready");
     let mut client = spawn_native(&client_bin, Language::C, "action-client", &locator);
 
-    let client_output = client
-        .wait_for_output_pattern(ACTION_RESULT_PREFIX, Duration::from_secs(25))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(ACTION_RESULT_PREFIX, Duration::from_secs(25));
     server.kill();
 
     eprintln!(
@@ -778,10 +784,7 @@ fn test_cpp_action_goal_rejection(zenohd_unique: ZenohRouter) {
     let mut client = ManagedProcess::spawn_command(client_cmd, "cpp-action-client")
         .expect("Failed to start cpp-action-client");
 
-    let client_output = client
-        .wait_for_output_pattern(ACTION_GOAL_REJECTED_PREFIX, Duration::from_secs(20))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(ACTION_GOAL_REJECTED_PREFIX, Duration::from_secs(20));
 
     server.kill();
     eprintln!("C++ action client output:\n{}", client_output);
@@ -1308,11 +1311,14 @@ fn native_rust_service_interop(lang: Language, locator: &str) {
     let mut client = ManagedProcess::spawn_command(client_cmd, "rust-service-client")
         .expect("Failed to start Rust service client");
 
-    let client_output = client
-        .wait_for_output_pattern(SERVICE_RESULT_PREFIX, Duration::from_secs(30))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    let client_output = client.collect_until(SERVICE_RESULT_PREFIX, Duration::from_secs(30));
 
+    // issue 1026 — a DIAGNOSTIC drain, and deliberately left as one: nothing
+    // below asserts on `server_output`, it is only `eprintln!`ed beside the
+    // client's, and by this point the client has already printed its result so
+    // the server's side of the exchange is in the pipe. The 2 s is therefore a
+    // bound on the PRINTOUT, not on anything observed. The kill it performs is
+    // the teardown this test wanted anyway.
     let server_output = server
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();

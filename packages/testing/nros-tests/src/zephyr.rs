@@ -565,11 +565,25 @@ impl ZephyrProcess {
         self.platform
     }
 
-    /// Wait for output with timeout
+    /// Wait for output with timeout, then KILL the image.
     ///
     /// Collects stdout from the process. Since Zephyr native_sim processes
     /// typically output everything quickly and then wait indefinitely,
     /// this uses a thread to avoid blocking on read().
+    ///
+    /// **A terminal drain, not a wait-for-readiness — issue 1026.** The only
+    /// early-outs are four hard-coded terminal markers
+    /// (`SUCCESS`/`COMPLETE`/`session error`/`Failed to create context`), so an
+    /// image that keeps spinning always runs to the deadline, and the deadline
+    /// kills it *unconditionally* — every return path here passes through
+    /// `kill_process_group`. Aimed at a `spin_blocking` node the timeout is
+    /// that node's LIFETIME, and whatever it would have printed afterwards is
+    /// unobservable by construction (issue 1013 measured the cost of exactly
+    /// this on the RTOS pubsub cell).
+    ///
+    /// Use [`Self::wait_for_pattern`] when the test is waiting for a
+    /// CONDITION: it returns at the marker, returns the output either way, and
+    /// leaves the image running for the next wait.
     ///
     /// # Arguments
     /// * `timeout` - Maximum time to wait

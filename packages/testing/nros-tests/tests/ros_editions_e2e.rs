@@ -186,14 +186,21 @@ fn ros_edition_interop(#[case] rmw: Rmw, #[case] workload: Workload, #[case] dir
                 .expect("spawn ros2 topic pub");
             let mut listener = ros_env::spawn_process(lane.nano_cmd(&[]), "nano-listener")
                 .expect("spawn nano listener");
-            let out = listener
-                .wait_for_output(Duration::from_secs(45))
-                .unwrap_or_default();
+            // issue 1026 — wait on the SAMPLE, not on 45 s of the listener's
+            // life. `wait_for_output` had no stop condition, so it always ran
+            // the full window and killed the node at the end; a cell that
+            // asserts first delivery paid 45 s for it and, worse, could not
+            // have observed anything past it anyway.
+            //
+            // Bound stated: FIRST delivery only. Nothing here can see a
+            // session that lapses after the first sample — the edition axis is
+            // about type_hash + keyexpr compatibility, and one matched sample
+            // settles that; continuity belongs to the pubsub cells that count
+            // samples across a lease interval (issue 1013).
+            let marker = format!("{} [hello]", nros_tests::output::LISTENER_LOG_PREFIX);
+            let out = listener.collect_until(&marker, Duration::from_secs(45));
             assert!(
-                out.contains(&format!(
-                    "{} [hello]",
-                    nros_tests::output::LISTENER_LOG_PREFIX
-                )),
+                out.contains(&marker),
                 "nano-ros listener did not receive the ROS String on /chatter ({rmw:?}):\n{out}"
             );
         }
@@ -205,11 +212,16 @@ fn ros_edition_interop(#[case] rmw: Rmw, #[case] workload: Workload, #[case] dir
                 .expect("spawn rclpy server");
             let mut client = ros_env::spawn_process(lane.nano_cmd(&[]), "nano-srv-client")
                 .expect("spawn nano client");
-            let out = client
-                .wait_for_output(Duration::from_secs(45))
-                .unwrap_or_default();
+            // issue 1026 — wait on the REPLY, not on 45 s of the client's life.
+            //
+            // Bound stated: the demo service client is single-shot (it latches
+            // `done` after the first reply and idles), so one result is all it
+            // will ever print; this cell says nothing about the session after
+            // that call.
+            let expected = nros_tests::output::service_result_line(5);
+            let out = client.collect_until(&expected, Duration::from_secs(45));
             assert!(
-                out.contains(&nros_tests::output::service_result_line(5)),
+                out.contains(&expected),
                 "nano-ros service-client did not get sum 5 from the ROS server ({rmw:?}):\n{out}"
             );
         }
@@ -233,9 +245,13 @@ fn ros_edition_interop(#[case] rmw: Rmw, #[case] workload: Workload, #[case] dir
                 .expect("spawn rclpy action server");
             let mut client = ros_env::spawn_process(lane.nano_cmd(&[]), "nano-action-client")
                 .expect("spawn nano client");
-            let out = client
-                .wait_for_output(Duration::from_secs(60))
-                .unwrap_or_default();
+            // issue 1026 — wait on the RESULT, not on 60 s of the client's
+            // life. The result line is terminal for this client, so the wait
+            // and the assertion now name the same event.
+            //
+            // Bound stated: one goal, one result. Feedback ordering and what
+            // the client does after the result are not observed here.
+            let out = client.collect_until("Result received:", Duration::from_secs(60));
             assert!(
                 out.contains("Result received:") && out.contains("34"),
                 "nano-ros action-client did not get the Fibonacci result from the ROS server ({rmw:?}):\n{out}"
