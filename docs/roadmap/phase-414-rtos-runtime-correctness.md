@@ -81,8 +81,22 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   was carrying — both leaves' shim constants are byte-identical and
   `ZPICO_MAX_QUERYABLES` is **32, not 8**.
   Why C++ and not C is still unexplained, and the issue now says so rather
-  than offering a fourth guess. The next FAILING run names the declaration and
-  prints zenoh-pico's raw code at zero extra cost.
+  than offering a fourth guess.
+  **EXPERIMENT RUN 2026-09-03: could not reproduce — 28 solo runs, retries
+  disabled, 28 PASS, idle and under load.** At the reported 2-in-3 rate that is
+  (1/3)^28, so the rate does not hold for the current build. NOT a fix: this
+  issue records that removing the diagnostics restored FAIL/PASS/FAIL, so the
+  fault is timing-sensitive and moves with image CONTENT, and today's image
+  carries more code than any previously measured one.
+  The instrumentation is now armed — both shim diagnostics are linked into the
+  binaries (`strings`, absent from the Aug-21 ones), so the next FAILING run
+  answers the 6-of-6 vs 1-of-6 question at zero cost. Verified by LINKAGE, not
+  observation: every printk is on a failure path and nothing failed.
+  First hard number on the asymmetry: **C 26.4-27.2 s, C++ 44-50 s** for the
+  same round trip. A measurement, not a mechanism.
+  Also: the Aug-21 binaries in this tree predate the Aug-29 instrumentation that
+  produced this issue's quoted output, so "it passes now" is not a delta against
+  "it failed then" — different images, not diffable.
 * **W4 — [issue 0847](../issues/archived/0847-xrce-entity-drop-after-session-close.md).
   CLOSED.** The fix is a refcount (`live_entities` + `session_closed`), applied
   to all four entity destructors, with each checking `xrce_session_is_closed`

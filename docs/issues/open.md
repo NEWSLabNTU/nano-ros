@@ -81,5 +81,6 @@ fails if this block drifts.
 - **#1000** ([rmw, third-party]) — Vendored Cyclone: `handle_xevk_spdp`'s early returns orphan the PERIODIC spdp event — it leaves the heap, is never re-armed, and the participant goes silent forever See `1000-*`.
 - **#1001** (tooling, ci) — `check-action-client-arena-budget` walks the whole repo, so `check fast` costs minutes on a cold page cache — the pre-push gate is where that is felt See `1001-*`.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
+- **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
 
 <!-- END GENERATED open-issue list -->
