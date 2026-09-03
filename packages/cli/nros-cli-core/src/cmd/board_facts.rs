@@ -94,11 +94,45 @@ pub fn resolve(
             differing.join(", ")
         ));
     }
-    resolved
+    let mut out = resolved
         .into_iter()
         .next()
         .map(|(_, f)| f)
-        .ok_or_else(|| eyre!("{}: no [deploy.*] blocks", ws.display()))
+        .ok_or_else(|| eyre!("{}: no [deploy.*] blocks", ws.display()))?;
+    // phase-400 W1 — platform packages in the USER's workspace.
+    //
+    // W1 says resolution is by name over a search path and that
+    // `$NROS_PLATFORMS_DIR` "stops being the only way in". For an in-tree
+    // platform it did: `default_search_path` carries `packages/platform`. For a
+    // platform package in the user's own workspace it did NOT — nothing derived
+    // the search path from the workspace, so such a package resolved only if a
+    // human exported the variable by hand, and otherwise fell through to the
+    // builtins with a warning.
+    //
+    // This is the seam that knows the workspace, so it is where the answer
+    // belongs — the same way `NROS_BOARD_TOML` and `NROS_PLATFORM_NAME` are
+    // handed down rather than rediscovered by every build script.
+    //
+    // A caller's own value comes FIRST: an explicit `--platforms-dir` is an
+    // override and must keep outranking discovery.
+    let mut roots: Vec<String> = env("NROS_PLATFORMS_DIR")
+        .map(|v| {
+            v.split(':')
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    for dir in workspace_platform_roots(ws) {
+        let d = dir.display().to_string();
+        if !roots.contains(&d) {
+            roots.push(d);
+        }
+    }
+    if !roots.is_empty() {
+        out.insert("NROS_PLATFORMS_DIR".into(), roots.join(":"));
+    }
+    Ok(out)
 }
 
 /// Do two spellings name the SAME board?
@@ -506,6 +540,72 @@ netstack = "lwip"
 sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 "#;
 
+    /// phase-400 W1 — a platform package in the USER's workspace is found
+    /// WITHOUT anyone exporting `NROS_PLATFORMS_DIR`.
+    ///
+    /// The assertion is on the emitted search path rather than on a built
+    /// artifact because this seam's job ends at handing the path down; that the
+    /// resolver then honours it is `platform_config`'s own coverage.
+    #[test]
+    fn workspace_platform_package_joins_the_search_path() {
+        let ws = ws_with(FREERTOS_WS);
+        let pkg = ws.path().join("src/nros-platform-acme");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(pkg.join(PLATFORM_CONFIG_FILENAME), "names = [\"acme\"]\n").unwrap();
+
+        let env = |k: &str| match k {
+            "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
+            "LWIP_DIR" => Some("/opt/lwip".to_string()),
+            _ => None,
+        };
+        let facts = resolve(ws.path(), &repo_root(), None, None, &env).expect("resolves");
+        let path = facts
+            .get("NROS_PLATFORMS_DIR")
+            .expect("workspace platform packages put a root on the search path");
+        let want = ws.path().join("src").display().to_string();
+        assert!(
+            path.split(':').any(|p| p == want),
+            "search path {path} is missing the workspace root {want}"
+        );
+    }
+
+    /// A caller's own value stays AHEAD of what discovery found — the override
+    /// is still an override.
+    #[test]
+    fn explicit_platforms_dir_outranks_discovery() {
+        let ws = ws_with(FREERTOS_WS);
+        let pkg = ws.path().join("src/nros-platform-acme");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(pkg.join(PLATFORM_CONFIG_FILENAME), "names = [\"acme\"]\n").unwrap();
+
+        let env = |k: &str| match k {
+            "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
+            "LWIP_DIR" => Some("/opt/lwip".to_string()),
+            "NROS_PLATFORMS_DIR" => Some("/opt/mine".to_string()),
+            _ => None,
+        };
+        let facts = resolve(ws.path(), &repo_root(), None, None, &env).expect("resolves");
+        let path = facts.get("NROS_PLATFORMS_DIR").expect("set");
+        assert!(
+            path.starts_with("/opt/mine:"),
+            "explicit root must come first, got {path}"
+        );
+    }
+
+    /// A workspace with no platform package of its own emits nothing — the
+    /// in-tree default search path is not something this seam should restate.
+    #[test]
+    fn plain_workspace_adds_no_search_path() {
+        let ws = ws_with(FREERTOS_WS);
+        let env = |k: &str| match k {
+            "FREERTOS_DIR" => Some("/opt/freertos".to_string()),
+            "LWIP_DIR" => Some("/opt/lwip".to_string()),
+            _ => None,
+        };
+        let facts = resolve(ws.path(), &repo_root(), None, None, &env).expect("resolves");
+        assert_eq!(facts.get("NROS_PLATFORMS_DIR"), None);
+    }
+
     /// The whole point of the wave: one call, both halves, in the shape a
     /// cargo invoker can export.
     #[test]
@@ -823,4 +923,51 @@ sdk = { freertos = "/opt/freertos" }
         );
         assert!(resolve_board(&catalog, "no-such-board").is_none());
     }
+}
+
+use nros_board_common::platform_config::PLATFORM_CONFIG_FILENAME;
+
+/// Directories in `ws` that CONTAIN platform packages.
+///
+/// A platform descriptor lives at `<root>/<pkg>/nros-platform.toml`, so what
+/// the search path wants is `<root>` — the same shape `packages/platform` has
+/// in the tree.
+///
+/// Bounded and source-time (RFC-0071 D5): three levels is enough for
+/// `<ws>/src/<pkg>/` and `<ws>/<pkg>/`, and the build outputs are skipped by
+/// name because scanning them is pure cost — a workspace's `build/` and
+/// `install/` hold copies of the very files this is looking for, and a copy
+/// resolving as a platform is worse than not finding one.
+fn workspace_platform_roots(ws: &Path) -> Vec<std::path::PathBuf> {
+    const SKIP: &[&str] = &["build", "install", "log", "target", ".git"];
+    let mut out = Vec::new();
+    let mut stack = vec![(ws.to_path_buf(), 0u32)];
+    while let Some((dir, depth)) = stack.pop() {
+        if depth > 3 {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut holds_platform = false;
+        for e in entries.flatten() {
+            let p = e.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if SKIP.contains(&name) || name.starts_with('.') {
+                continue;
+            }
+            if p.join(PLATFORM_CONFIG_FILENAME).is_file() {
+                holds_platform = true;
+            }
+            stack.push((p, depth + 1));
+        }
+        if holds_platform && !out.contains(&dir) {
+            out.push(dir);
+        }
+    }
+    out.sort();
+    out
 }
