@@ -1,6 +1,6 @@
 ---
 id: 1004
-title: "an536 island hangs nondeterministically at controller construction — three signatures, both pins, no bracket"
+title: "an536 boot hang is a LIVELOCK in handle_xevents: an ACKNACK event re-armed to an absolute past time is extracted forever, holding the event-queue lock"
 status: open
 area: [rmw, platform, embedded]
 severity: high
@@ -129,6 +129,80 @@ one counter read that did complete (`nros_dbg_spdp_unknown_guid = 0`,
 
 It also means the an536 delivery numbers taken today cannot be trusted as a
 before/after of anything, which is recorded in #0997 for the same reason.
+
+## ROOT CAUSE — an overdue event the loop can never drain
+
+Caught a hang under the gdb stub and read the event queue. Connection health was
+verified first (a live `xTickCount`, no `packet error` / `vMustReplyEmpty` in the
+session) because an unhealthy stub returns zeros that read like data:
+
+```
+roots  = 0x217032d0                        <- tree NOT empty
+min_ev   kind = 1 (XEVK_ACKNACK)
+         tsched = 2,171,000,000 ns  (2.171 s)
+tick   = 140304                     (~140 s)
+```
+
+`handle_xevents` loops on
+
+```c
+while (earliest_in_xeventq(xevq).v <= tnow.v)
+```
+
+and the earliest event is an ACKNACK stuck **138 seconds in the past**. The
+condition is therefore permanently true: extract, handle, re-arm still in the
+past, extract again — forever, holding `evq->lock`. That is why `app`, `recv` and
+`dq.builtins` are all convoyed on the event-queue object
+(`an536-blocked-on.py` reports them sharing one wait object) and the image never
+reaches `Actuation Safety Island is Live`.
+
+The `heapnode` offset used for the cast is the one `evq_xevents_fhdef` is built
+from (`q_xevent.c:172`), and `kind = 1` is `XEVK_ACKNACK` in the enum at `:60`.
+
+### Where the past time comes from
+
+`make_and_resched_acknack` (`ddsi_acknack.c:387`) re-arms using absolute times
+derived from PAST events rather than from now:
+
+```c
+(void) resched_xevent_if_earlier (ev, ddsrt_mtime_add_duration (rwn->t_last_nack, gv->config.nack_delay));
+...
+(void) resched_xevent_if_earlier (ev, ddsrt_mtime_add_duration (rwn->t_last_nack, gv->config.auto_resched_nack_delay));
+```
+
+`t_last_nack` + a small delay is ~2.171 s — exactly the `tsched` measured — while
+the clock is at 140 s. `resched_xevent_if_earlier` accepts it because anything is
+earlier than `DDS_NEVER`, so the event goes back on the heap already overdue and
+is extracted again on the very next iteration.
+
+**Not yet proven:** which of those branches is taken, and the actual values of
+`t_last_nack`, `nack_delay` and `auto_resched_nack_delay` on the hung image.
+Those are three more reads on a caught hang and would turn this from "the shape
+matches" into "this is the line".
+
+Also noted for the #1000 audit: `handle_xevk_acknack` has TWO early returns
+(proxy-writer lookup fails, reader match lookup fails) that neither reschedule
+nor delete — the same class of silent event loss that issue describes, in a
+second handler.
+
+### Two of my earlier readings here were wrong
+
+Recorded because both were stated confidently and neither survived measurement:
+
+* **"Confirmed spin at one instruction."** Seven gdb attaches reported an
+  identical PC, which I read as a tight spin. Single-stepping advances normally
+  (`+92 → +96 → +100 → +104 → +108`). Repeated attaches on QEMU halt at a
+  consistent point, so attach-sampling is NOT a profiler and the identical PCs
+  were an artifact of the stub, not of where time was spent.
+* **"Corrupt circular sibling list."** `an536-fibheap-walk.py` walked it: a clean
+  3-node list closing on the start node. The inner `do/while` terminates fine;
+  the spin is the OUTER loop.
+
+### Relationship to #0997
+
+Probably NOT the same defect, and worth keeping apart. Here the tree is populated
+with a stale event and the thread spins; in #0997 the tree was EMPTY
+(`roots = 0x0`) and `tev` slept indefinitely. Opposite states of the same queue.
 
 ## Reproduce
 
