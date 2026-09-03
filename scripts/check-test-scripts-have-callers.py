@@ -48,34 +48,44 @@ CALLER_FILES = ["justfile"]
 def _files_under(root):
     """TRACKED files in the caller roots.
 
-    `git ls-files`, not `os.walk`, and the reason is measured: `scripts/`
-    carries 7.8 GB across 60,533 files of build output on a working tree, and
-    walking it read-line-by-line hangs this gate for minutes. The first version
-    used `grep -rl`, which was fast only because it is C and short-circuits.
+    `git ls-files`, not `os.walk`, and there is NO walk fallback -- the repo
+    has a gate against exactly that (`check-no-tracked-file-find`), which
+    measured 7m36s -> 0.8s for the same 232 paths and notes that pruning does
+    not help because find still stats every directory it considers pruning. The
+    first version of this file walked `scripts/`, which carries 7.8 GB across
+    60,533 files of build output on a working tree, and hung for minutes.
 
-    Tracked-only is also the correct SEMANTIC rather than just the fast one: a
-    caller that is not committed cannot run the script for anybody else.
+    Tracked-only is also the correct SEMANTIC rather than merely the fast one:
+    a caller that is not committed cannot run the script for anybody else.
     """
     r = subprocess.run(
         ["git", "-C", root, "ls-files", "--"] + CALLER_DIRS + CALLER_FILES,
         capture_output=True, text=True, check=False,
     )
-    if r.returncode == 0:
-        for rel in r.stdout.splitlines():
-            if rel.strip():
-                yield os.path.join(root, rel)
-        return
-    # Not a git tree (the self-test's tmpdir is one such): fall back to a walk,
-    # which is safe there because the fixture is three files.
-    targets = [os.path.join(root, d) for d in CALLER_DIRS]
-    targets += [os.path.join(root, f) for f in CALLER_FILES]
-    for t in targets:
-        if os.path.isfile(t):
-            yield t
-        elif os.path.isdir(t):
-            for dirpath, _dirs, files in os.walk(t):
-                for fn in files:
-                    yield os.path.join(dirpath, fn)
+    if r.returncode != 0:
+        raise SystemExit(
+            f"check-test-scripts-have-callers: `git ls-files` failed in {root}.\n"
+            f"  {r.stderr.strip()}\n"
+            "  This gate reads the INDEX on purpose and has no filesystem-walk\n"
+            "  fallback -- see `check-no-tracked-file-find`, and the 7m36s -> 0.8s\n"
+            "  it measured. The self-test builds a real git tree for the same\n"
+            "  reason."
+        )
+    me = os.path.relpath(os.path.abspath(__file__), ROOT)
+    for rel in r.stdout.splitlines():
+        rel = rel.strip()
+        if not rel:
+            continue
+        # THIS FILE IS NEVER A CALLER. It names the scripts it reports on -- in
+        # the failure message below, on a non-comment line -- so without this it
+        # is its own caller and can never report anything. That is the second
+        # time this gate defeated itself with its own prose: the first was
+        # counting comments, caught by the mutation test; this one was caught by
+        # the same test after the comment fix, which is the argument for keeping
+        # a mutation test rather than trusting a green.
+        if rel == me:
+            continue
+        yield os.path.join(root, rel)
 
 
 def callers_of(name, root):
@@ -130,7 +140,18 @@ def self_test(quiet=False):
     Runs on the NORMAL path, not behind a flag -- a control nobody runs decays
     into a comment, and `check-gate-selftests` holds this file to that.
     """
+    def git(tmp, *args):
+        subprocess.run(["git", "-C", tmp, *args], check=True,
+                       capture_output=True, text=True)
+
+    def stage(tmp):
+        """`git ls-files` reads the INDEX, so the fixture has to be staged."""
+        git(tmp, "add", "-A")
+
     with tempfile.TemporaryDirectory() as tmp:
+        # A real git tree, because the gate reads the index and deliberately has
+        # no walk fallback. Cheap: three files.
+        git(tmp, "init", "-q")
         os.makedirs(os.path.join(tmp, "tests"))
         os.makedirs(os.path.join(tmp, "just"))
         called = os.path.join(tmp, "tests", "called-tests.sh")
@@ -140,6 +161,7 @@ def self_test(quiet=False):
         open(os.path.join(tmp, "just", "check.just"), "w").write(
             "a-gate:\n    ./tests/called-tests.sh\n"
         )
+        stage(tmp)
 
         stranded, checked = scan(tmp)
         assert checked == 2, f"expected to check 2 scripts, checked {checked}"
@@ -152,6 +174,7 @@ def self_test(quiet=False):
         open(os.path.join(tmp, "just", "check.just"), "a").write(
             "# orphan-tests.sh is mentioned here in prose only\n"
         )
+        stage(tmp)
         stranded, _ = scan(tmp)
         assert stranded == ["orphan-tests.sh"], \
             f"a comment mentioning a script must not count as a caller; got {stranded}"
@@ -160,6 +183,7 @@ def self_test(quiet=False):
         open(os.path.join(tmp, "just", "check.just"), "a").write(
             "another:\n    ./tests/orphan-tests.sh\n"
         )
+        stage(tmp)
         stranded, _ = scan(tmp)
         assert stranded == [], f"an invoked script must not be reported; got {stranded}"
 
