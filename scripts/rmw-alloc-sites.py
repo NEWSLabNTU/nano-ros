@@ -58,8 +58,6 @@ STEADY = {
     "serdata_from_ser_iov",
     "serdata_from_sample",
     "serdata_alloc",
-    "write_typed",
-    "write_fibonacci_get_result_response",
     "service_take_request",
     "service_send_response",
     "client_send_request",
@@ -102,14 +100,6 @@ DECLARED = {
         "the publish side not at all, since `dds_write` returns before the network "
         "does and the bytes have to be owned by then"
     ),
-    ("packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp", "write_typed"): (
-        "TWO per request and per reply — the request/reply analogue of the publish "
-        "path, reached from `client_send_request` and `service_send_response`"
-    ),
-    (
-        "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp",
-        "write_fibonacci_get_result_response",
-    ): ("nested inside `write_typed`, so it is on the same per-reply path"),
 }
 
 

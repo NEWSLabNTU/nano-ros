@@ -270,7 +270,7 @@ correcting them.
 
 ## Not to be confused with
 
-**#0970** (`0970-cyclone-rmw-should-own-its-sertype.md`, filed in PR #154 — not
+**#0970** (`archived/0970-cyclone-rmw-should-own-its-sertype.md`, RESOLVED 2026-09-03 — not
 linked because it has not landed on `main` yet) — the sertype migration
 itself, whose message half has landed. This is the reason its service half has
 not.
