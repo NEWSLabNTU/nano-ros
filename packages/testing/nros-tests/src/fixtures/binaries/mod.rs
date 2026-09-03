@@ -884,6 +884,30 @@ pub(crate) fn cargo_target_profile_dir() -> String {
     nros_cargo_profile::target_dir(&cargo_profile_name())
 }
 
+/// The `target/` profile DIRECTORY a row's platform builds its cargo fixtures
+/// into — the platform's carve-out when it has one, the ambient profile
+/// otherwise.
+///
+/// Issue 1027 / issue 0608. A resolver that already holds its manifest row has
+/// no reason to name a profile constant: the row carries the coordinate, and
+/// `nros_cargo_profile::platform_profile` is THE platform→profile derivation
+/// (its shell twin is `nros_cargo_platform_profile`). Naming
+/// `NUTTX_RUST_PROFILE` at a call site is the same defect one level down — it
+/// hardcodes an answer that a table already gives, so a platform whose carve-out
+/// changes leaves the resolver looking in a directory the builder stopped
+/// writing.
+///
+/// This is deliberately the SAME derivation [`rel_at_row_profile`] applies to a
+/// caller-built `rel`, exposed so a resolver can ask "which profile is on disk?"
+/// BEFORE it hands a path over — which is what the NuttX carve-out/ambient
+/// choice needs.
+pub(crate) fn row_profile_dir(row: &crate::fixtures::groups::GroupRow) -> String {
+    let (platform, _lang, _rmw) = &row.coord;
+    nros_cargo_profile::platform_profile(platform)
+        .map(nros_cargo_profile::target_dir)
+        .unwrap_or_else(cargo_target_profile_dir)
+}
+
 fn cargo_build_args() -> Vec<String> {
     let mut args = vec!["build".to_string()];
     args.extend(nros_cargo_profile::build_args(&cargo_profile_name()));
