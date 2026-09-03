@@ -96,6 +96,55 @@ Then, and only then, one of two things becomes provable:
 Either way the answer comes from a test that has an outside witness, not from
 reading the adapters.
 
+## The witness exists now, and the answer is (1) — measured 2026-09-03
+
+`packages/testing/nros-tests/tests/ros2_action_e2e.rs`: a stock
+`ros2 action send_goal`, over `rmw_cyclonedds_cpp`, against the nano-ros action
+server (the `action-server` native Rust fixture built for Cyclone). Run against
+ROS 2 Humble on this host:
+
+```
+Goal accepted with ID: 297f46db62f840c38ff15c0a58b862c3
+Result:
+    sequence: [0, 1, 1, 2, 3, 5]
+Goal finished with status: SUCCEEDED
+```
+
+Discovery works too — `ros2 action info /fibonacci` reports `Action servers: 1`
+and names the node.
+
+**So the corrections are RIGHT.** A real ROS 2 client accepts the goal, receives
+feedback, and gets the correct sequence back, which is option 1 above: ROS 2
+interop passes WITH the adapters. They are not compensating for something that
+no longer exists, and they must not simply be deleted.
+
+The test asserts the RESULT CONTENT, not a zero exit: the adapters move bytes
+inside the goal and result messages, so a wrong shape surfaces as a wrong
+sequence or a goal never accepted. Checking only the exit status would pass on a
+server that accepted the goal and computed nothing.
+
+Mutation-tested rather than assumed — pointing it at an action nothing serves
+fails on the goal-accepted assertion, so the witness can go red.
+
+### What this unblocks, and what it does NOT settle
+
+`service.cpp`'s migration (issue 0970's service half, and the third site of
+issue 0969) now has something that would notice a wire-format change. That was
+the whole blocker: "blocked on there being any way to know whether it broke
+something".
+
+Not settled: **where** the corrections belong. Option 1 above says a passing
+interop test means migrating `service.cpp` requires moving each correction to
+the point where nano-ros SERIALIZES — a `uint8[16]` written with a length prefix
+is wrong for every backend, not only this one, and the message path already did
+exactly that (publisher.cpp's 233.6 comment records the Rust runtime being fixed
+to emit the fixed `octet[16]` and the matching strip being deleted from both
+sides). This test makes that move verifiable; it does not perform it.
+
+Also not covered: the reverse direction, an nros action CLIENT against a `ros2`
+action server. The adapters sit on both sides of the service path, and this
+witnesses one. That is the obvious next cell.
+
 ## Not to be confused with
 
 **#0970** (`0970-cyclone-rmw-should-own-its-sertype.md`, filed in PR #154 — not
