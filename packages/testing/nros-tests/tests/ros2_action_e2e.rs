@@ -96,8 +96,13 @@ fn a_stock_ros2_client_drives_the_nano_ros_action_server() {
 
     assert!(
         text.contains("Goal accepted"),
-        "a stock ROS 2 client must get the goal ACCEPTED — if the goal-id \
-         adapter reshapes the UUID wrongly the server never accepts.\n{text}"
+        "a stock ROS 2 client must get the goal ACCEPTED — the server has to \
+         read a real ROS 2 SendGoal request, UUID and all.\n\
+         NOTE this does NOT exercise `strip_goal_id_len_at` (issue 0976): that \
+         adapter fires only when nano-ros WRITES a SendGoal/GetResult request, \
+         and here `ros2` writes them. What guards the server's receive side is \
+         `split_wire_header`'s deliberate non-insertion (service.cpp:589-599, \
+         issue #68).\n{text}"
     );
     assert!(
         text.contains("SUCCEEDED"),

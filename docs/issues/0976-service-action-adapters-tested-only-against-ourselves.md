@@ -113,9 +113,18 @@ Goal finished with status: SUCCEEDED
 Discovery works too — `ros2 action info /fibonacci` reports `Action servers: 1`
 and names the node.
 
-**So the corrections are RIGHT.** A real ROS 2 client accepts the goal, receives
-feedback, and gets the correct sequence back, which is option 1 above: ROS 2
-interop passes WITH the adapters. They are not compensating for something that
+**So the corrections are RIGHT.** A real ROS 2 client accepts the goal and gets
+the correct sequence back, which is option 1 above: ROS 2 interop passes WITH
+the adapters.
+
+(This paragraph said "receives feedback" until 2026-09-03. It does not: the
+command in `ros2_action_e2e.rs:85` carries no `--feedback`, so feedback is
+neither printed nor asserted. A `--feedback` helper exists at
+`packages/testing/nros-tests/src/ros_env.rs:651`, but on `DockerRosEnv`, not the
+`HostRosEnv` this test uses. The transcript quoted above is also a PARAPHRASE —
+`ros2 action send_goal` prints a YAML block list, `sequence:` then `- 0`, `- 1`,
+…, which is what the test's `contains("- {n}")` assertions match. The
+assertions were right; the prose describing them was not.) They are not compensating for something that
 no longer exists, and they must not simply be deleted.
 
 The test asserts the RESULT CONTENT, not a zero exit: the adapters move bytes
