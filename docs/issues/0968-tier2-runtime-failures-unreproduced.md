@@ -157,30 +157,40 @@ worth following — CLAUDE.md records the neighbouring shapes (the picolibc
 backing that needs ~75 KB; issue 0460's queryable-slot exhaustion) — but it is
 not a diagnosis and nothing here claims one.
 
-### RETRACTED: the zephyr results are about STALE images
+### The retraction above is ITSELF retracted — the zephyr results stand
 
-Issue 1003. Every zephyr entry in `nano-ros-workspace` is generated
-**2026-07-24**; the images built from them are from today. A full tier-2 build
-reported `== zephyr == OK` and recompiled the images from six-week-old generated
-sources.
+I withdrew the nine zephyr failures as "measurements of stale entry code". That
+was wrong, and the correction matters more than the original error.
 
-So the nine zephyr failures above are measurements of stale entry code. They may
-still be true of HEAD; they are not EVIDENCE about HEAD until the entries are
-regenerated and the cases re-run.
+The generated entries carry an mtime of **2026-07-24**. I read an old timestamp
+as old content. But the file is generated from
+`cmake/templates/zephyr_entry_main_typed.cpp.in`, and that template had not
+changed since **2026-06-13** — so the generated file was byte-identical to what
+a regeneration would produce. Old mtime, current content. The images were built
+from code that matched HEAD, and the nine failures are evidence about HEAD.
 
-**The freshness check that let this through was mine, and it was too narrow.** I
-compared the fixture stamp (`started_at=04:52:19Z`) with HEAD (`04:24:23Z`) and
-concluded the results were about this tree. The stamp covers the FIXTURE build;
-it says nothing about a generated file inside the zephyr west workspace, which
-is a different artifact on a different path — and that is the one that did not
-regenerate. Checking one artifact and generalising is issue 0196's class, done
-while quoting the rule against it.
+**An old mtime is not evidence of stale content.** A generated artifact is stale
+only when its PRODUCER has moved since it was written; the timestamp alone
+cannot tell you that, and comparing the two is the check I skipped in both
+directions — first trusting a fixture stamp that covered a different artifact,
+then distrusting an mtime whose content was fine.
 
-The threadx, esp32 and qemu-rtic results are NOT known to be affected — they do
-not build through the west workspace — but neither have they been checked the
-same way, and after this they should be before anyone acts on them.
+The original self-criticism still holds and is worth keeping: I compared the
+fixture stamp (`started_at=04:52:19Z`) with HEAD (`04:24:23Z`) and generalised
+from one artifact to another on a different path. That IS issue 0196's class.
+The remedy is to check the producer, not to distrust every old timestamp.
 
-### A real defect found on the way, which is NOT the cluster's cause
+**But one thing did change under these results.** Issue 1003 (the session-name
+defect described next) was live in every image measured here, and it is now
+fixed. The `pubsub` and `service` no-delivery signatures are precisely what a
+collided XRCE client key produces, so those cases must be re-run against the
+fix before anyone hunts further. The `action` boot failure
+(`Transport(BadAlloc)`) is a different shape and is not explained by it.
+
+The threadx, esp32 and qemu-rtic results do not build through the west
+workspace and are unaffected either way.
+
+### A real defect found on the way — issue 1003, now fixed, and a CANDIDATE cause for part of this cluster
 
 The generated zephyr C++ entry never passes a session name:
 
@@ -196,10 +206,21 @@ session_names per cpp process (shared-key hash collided as one client)"* — and
 the doc comment at `main.hpp:331` says the generated entry passes the boot-config
 node name, which it does not.
 
-That is a genuine defect and worth its own issue. It CANNOT be this cluster's
-cause: the rust and C cases fail the same way and do not go through that path.
-Recording it here so the next reader does not rediscover it and mistake it for
-the answer, which is what nearly happened.
+That is issue 1003, and it is fixed: all ten `cmake/templates/*_entry_main*`
+templates now pass the node's name as the session name.
+
+**My first reading of its scope was wrong.** I wrote that it "CANNOT be this
+cluster's cause: the rust and C cases fail the same way and do not go through
+that path". Half of that is false — the C entry is generated from
+`zephyr_entry_main_c_typed.cpp.in`, one of the same ten templates, so the C
+cases went through exactly that path. Only the rust path is genuinely
+independent (`nros::main!`, not the CMake templates).
+
+So the honest position: 1003 is a live candidate for the C `pubsub`/`service`
+no-delivery signatures — a collided XRCE client key is precisely that symptom —
+and is excluded only for the rust cases. It must be ruled out by RE-RUNNING
+against the fix, not by argument. It remains no explanation at all for the
+`action` boot failure (`Transport(BadAlloc)`), which is a different shape.
 
 
 ### Still NOT diagnosed
@@ -225,15 +246,20 @@ next person at a dead end.
 
 ## Work
 
-1. Rebuild tier-2 fixtures and re-run the 12 — the artifacts from the measuring
-   run were cleared by `runner-sweep.sh` afterwards, so nothing here is
-   currently reproducible.
-2. Triage per suite, not per test: esp32 (5 of 12) and threadx-cyclone (3) are
+1. **Re-run the zephyr C `pubsub` and `service` cases against the issue-1003
+   fix, first.** Those images were built while every C++ entry registered as
+   `"node"`; a collided XRCE client key produces exactly their symptom. If they
+   go green, that subset is closed and the cluster shrinks. Rust cases are not
+   affected — different entry path.
+2. Rebuild tier-2 fixtures and re-run the rest — the artifacts from the
+   measuring run were cleared by `runner-sweep.sh` afterwards, so nothing here
+   is currently reproducible.
+3. Triage per suite, not per test: esp32 (5 of 12) and threadx-cyclone (3) are
    the two clusters and likely share a cause each.
-3. Check each against main at the commit the fixtures were built from —
+4. Check each against main at the commit the fixtures were built from —
    `stat -c '%y'` on the artifact against `git log -1 --format=%ci`, per the
    0859-0862 rule.
-4. File per cause, once reproduced. Not before.
+5. File per cause, once reproduced. Not before.
 
 ## Step 1 attempted 2026-09-04 — and it found TWO build failures before any test ran
 

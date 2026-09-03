@@ -84,7 +84,7 @@ extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
     // Baked connect locator (QEMU slirp host = 10.0.2.2). Empty string →
     // backend discovery default. CycloneDDS ignores it (no router); domain id is
     // compile-time (`NROS_ENTRY_DOMAIN_ID`).
-    return ::nros::board::ThreadxBoard::run_components("@NROS_ENTRY_LOCATOR@", &__nros_entry_setup);
+    return ::nros::board::ThreadxBoard::run_components("@NROS_ENTRY_LOCATOR@", "@NROS_ENTRY_NODE_NAME@", &__nros_entry_setup);
 }
 
 // ThreadX board entry: the riscv64 `startup.c` registers `app_main` via

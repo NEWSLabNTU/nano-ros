@@ -74,7 +74,15 @@ def open_issues():
     out = sorted(set(out))
     rows = []
     for rel in sorted(out):
-        with open(os.path.join(ROOT, rel), encoding="utf8") as fh:
+        # A path can be CACHED and absent from the worktree: that is an issue
+        # archived (moved to `archived/`) but not yet staged, which is exactly
+        # when this runs. The `--others` half above covers the new file; this
+        # covers the removed one. Without it the generator dies on a traceback
+        # naming the old path, mid-archive.
+        path = os.path.join(ROOT, rel)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf8") as fh:
             text = fh.read()
         m = FM.match(text)
         if not m:
