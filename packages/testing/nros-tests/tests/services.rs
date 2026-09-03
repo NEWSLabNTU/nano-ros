@@ -18,6 +18,31 @@ use nros_tests::{
 use rstest::rstest;
 use std::{path::PathBuf, process::Command, time::Duration};
 
+/// The native Rust service client's per-attempt FAILURE marker.
+///
+/// `examples/native/rust/service-client/src/lib.rs` logs
+/// `Service call failed, retrying: {:?}` from the `Err` arm of
+/// `call_for_name` — the same wording every Rust group copy uses
+/// (`examples/{qemu-arm-nuttx,qemu-arm-freertos,threadx-linux}/rust/
+/// service-client`). MEASURED at 1 Hz, the timer period, starting ~1 s after
+/// spawn.
+///
+/// Issue 1026: the two tests below used to grep `"Timed out waiting"`, a
+/// string NOTHING in this tree prints for `/add_two_ints` — the only producer
+/// of that wording is the unrelated `service-client-callback` example, and it
+/// spells it `Timed out waiting for reply to {} + {}`. Both waits therefore
+/// always hit their deadline; the timeout test's third disjunct
+/// (`!client.is_running()`) then made it true by construction, because the
+/// `wait_for_all_output` fallback had just killed the process.
+///
+/// Not in `nros_tests::output` only because this wave owns one file; promoting
+/// it there (beside `SERVICE_RESULT_PREFIX`) is the right follow-up.
+const SERVICE_CALL_FAILED_MARKER: &str = "Service call failed, retrying:";
+
+/// How many consecutive failures prove the client is RETRYING rather than
+/// reporting once and wedging. At the measured 1 Hz this is reached in ~3 s.
+const SERVICE_RETRY_EVIDENCE: usize = 3;
+
 // =============================================================================
 // (Phase 182.3) `test_service_{server,client}_builds` removed — they only
 // asserted the service fixtures compiled, covered by `build-all` + the service
@@ -92,21 +117,38 @@ fn test_service_client_starts_without_server(
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
-    // Without a server the client must report a failure (and exit non-zero)
-    // rather than hanging or crashing: either the wait-for-service timeout,
-    // or — on backends whose readiness probe is optimistic (the CFFI zenoh
-    // path has no liveliness probe) — the per-call timeout.
-    let output = client
-        .wait_for_output_pattern("Timed out waiting", Duration::from_secs(10))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    // Without a server the very first call must FAIL and SAY SO. That is the
+    // whole property here: the error path is reachable and audible.
+    //
+    // Issue 1026 — this waits on the CONDITION, not on a lifetime. The client
+    // is `spin = "forever"` (issue 0274) and never exits, so the old
+    // `wait_for_output_pattern(dead pattern) → wait_for_all_output` pair spent
+    // 12 s and then KILLED it; worse, the `or_else` threw away the 10 s of
+    // output the first wait had collected, so the assertion only ever saw the
+    // last 2 s.
+    let (output, why) =
+        client.collect_until_count(SERVICE_CALL_FAILED_MARKER, 1, Duration::from_secs(15));
+    let alive = client.is_running();
+    // We own the lifetime; nothing above kills it.
+    client.kill();
 
     eprintln!("Client output (no server):\n{}", output);
 
     assert!(
-        output.contains("Timed out waiting for /add_two_ints service")
-            || output.contains("Service call failed"),
-        "client without a server should report the wait-for-service or call timeout"
+        output.contains(SERVICE_CALL_FAILED_MARKER),
+        "client without a server must report the failed call (`{SERVICE_CALL_FAILED_MARKER}`); \
+         got:\n{output}{}",
+        why.unwrap_or_default()
+    );
+    assert!(
+        !output.contains(SERVICE_RESULT_PREFIX),
+        "no server is running, so no reply can exist — yet the client printed \
+         `{SERVICE_RESULT_PREFIX}`:\n{output}"
+    );
+    assert!(
+        alive,
+        "the client must REPORT the failure and keep retrying, not die on it; \
+         it had exited by the time the first failure was observed:\n{output}"
     );
 }
 
@@ -206,20 +248,54 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
     let mut client = ManagedProcess::spawn_command(client_cmd, "service-client-timeout")
         .expect("Failed to start service client");
 
-    // Wait for client to report the wait-for-service/call timeout or exit
-    let output = client
-        .wait_for_output_pattern("Timed out waiting", Duration::from_secs(12))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    // What this test is FOR, restated after issue 1026: a client with no server
+    // must time out EVERY attempt and keep saying so at the timer cadence —
+    // not report once and wedge, not fall silent, and never manufacture a
+    // reply. The sibling above proves the error path is reachable at all; this
+    // one proves it stays reachable.
+    //
+    // The old shape could not fail on any build: it greped a string nothing
+    // prints, so the `or_else` fallback always ran, `wait_for_all_output`
+    // killed the process when ITS window closed, and the assertion's third
+    // disjunct `!client.is_running()` was therefore TRUE BY CONSTRUCTION.
+    //
+    // `collect_until_count` returns as soon as the count is reached and KILLS
+    // NOTHING on timeout (unlike `wait_for_output`/`wait_for_all_output`), so
+    // the 20 s here is a deadline, not the node's lifetime. MEASURED: the
+    // marker arrives at 1 Hz from ~1 s, so the wait returns in ~3 s.
+    let (output, why) = client.collect_until_count(
+        SERVICE_CALL_FAILED_MARKER,
+        SERVICE_RETRY_EVIDENCE,
+        Duration::from_secs(20),
+    );
+    let failures = count_pattern(&output, SERVICE_CALL_FAILED_MARKER);
+    let alive = client.is_running();
+    client.kill();
 
-    eprintln!("Timeout test output:\n{}", output);
+    eprintln!("Timeout test output ({failures} failures):\n{output}");
 
     assert!(
-        output.contains("Timed out waiting for /add_two_ints service")
-            || output.contains("Service call failed")
-            || !client.is_running(),
-        "client without a server should report the timeout (or exit)"
+        failures >= SERVICE_RETRY_EVIDENCE,
+        "a client with no server must report a failed call on every attempt: \
+         expected >= {SERVICE_RETRY_EVIDENCE} `{SERVICE_CALL_FAILED_MARKER}` within 20s, \
+         saw {failures}:\n{output}{}",
+        why.unwrap_or_default()
     );
+    assert!(
+        !output.contains(SERVICE_RESULT_PREFIX),
+        "no server is running, so every call must fail — yet the client printed \
+         `{SERVICE_RESULT_PREFIX}`:\n{output}"
+    );
+    assert!(
+        alive,
+        "the client must survive its own timeouts and keep retrying; it had \
+         exited after {failures} failures:\n{output}"
+    );
+
+    // Not observed here (stated per issue 1026's acceptance): whether the
+    // client would EVENTUALLY give up, and whether a call succeeds once a
+    // server appears. The first is not a contract the client has; the second
+    // is `test_service_multiple_sequential_calls` above.
 }
 
 // =============================================================================
