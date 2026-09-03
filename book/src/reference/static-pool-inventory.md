@@ -23,7 +23,7 @@ moves with it.
 | --- | ---: | --- | --- |
 | `LARGE_PAYLOADS` | 131,072 | `ZPICO_MAX_LARGE_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_LARGE_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:200` |
 | `SLOTS` | 8,192 | `NROS_RMW_SUBSCRIBER_SLOTS * 1024` | `packages/rmw/cffi/src/rust_adapter.rs:111` |
-| `SMALL_PAYLOADS` | 32,768 | `ZPICO_MAX_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_BUFFER_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:199` |
+| `SMALL_PAYLOADS` | — (knob `NROS_SUBSCRIBER_BUFFER_SIZE` has a computed default) | `ZPICO_MAX_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * NROS_SUBSCRIBER_BUFFER_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:199` |
 
 ## Every sizing knob
 
@@ -60,7 +60,7 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_SMOLTCP_MAX_SOCKETS` | 1 | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SMOLTCP_MAX_UDP_SOCKETS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:26` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:41` | `packages/drivers/net/nros-smoltcp` |
-| `NROS_SUBSCRIBER_BUFFER_SIZE` | computed — see `packages/core/nros-node/build.rs:171` | `packages/core/nros-node` |
+| `NROS_SUBSCRIBER_BUFFER_SIZE` | computed — see `packages/core/nros-node/build.rs:171` | `packages/core/nros-node` **(conflicting defaults — see below)** |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
 | `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:259` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
 | `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:488` | `packages/rmw/zenoh/nros-zpico-build` |
@@ -79,7 +79,14 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `ZPICO_PUBLISHER_TX_BUFFER_SIZE` | 1024 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_READ_TASK_PRIORITY` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_SERVICE_BUFFER_SIZE` | 1024 | `packages/rmw/zenoh/nros-rmw-zenoh` |
-| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | 1024 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_LARGE_SIZE` | 16384 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_RING_DEPTH` | 4 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` | 2048 | `packages/rmw/zenoh/nros-rmw-zenoh` |
+
+## Conflicting defaults
+
+These knobs are read in more than one place with DIFFERENT defaults, so
+setting one moves only part of the tree — the issue-0135 split-brain
+shape one layer up.
+
+* `NROS_SUBSCRIBER_BUFFER_SIZE`

@@ -58,6 +58,11 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS": "NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS",
     "NROS_DERIVED_EXECUTOR_MAX_CBS": "NROS_RESOLVED_NROS_EXECUTOR_MAX_CBS",
     "NROS_DERIVED_EXECUTOR_MAX_NODES": "NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",
+    # This pair is why the gate exists in the form it does. It used to land in
+    # NROS_RESOLVED_ZPICO_SUBSCRIBER_BUFFER_SIZE, which no pairing here names,
+    # so a derived 880 delivered as 1496 for four consecutive island builds and
+    # nothing said so -- over-sized, therefore silent.
+    "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": "NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",
 }
 
 
@@ -74,14 +79,23 @@ def read_cache(build_dir):
 
 
 def read_fragment(build_dir):
-    """NROS_DERIVED_* as the entity inventory fragment states them."""
+    """NROS_DERIVED_* as the inventories state them.
+
+    BOTH fragments, not one. The first version read only
+    `entity_inventory.cmake`, so every knob derived by the MESSAGE-BOUND
+    inventory was outside the gate entirely -- including
+    NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE, the pair whose mismatch this gate was
+    extended to catch. A gate that reads one of two sources reports success
+    about the half it can see, which is the failure it exists to prevent.
+    """
     out = {}
-    path = os.path.join(build_dir, "nros", "entity_inventory.cmake")
-    if not os.path.exists(path):
-        return out
-    with open(path, encoding="utf8", errors="ignore") as fh:
-        for m in re.finditer(r"^set\((NROS_DERIVED_[A-Z0-9_]+)\s+([^)]*)\)", fh.read(), re.M):
-            out[m.group(1)] = m.group(2).strip().strip('"')
+    for name in ("entity_inventory.cmake", "message_bound_knobs.cmake"):
+        path = os.path.join(build_dir, "nros", name)
+        if not os.path.exists(path):
+            continue
+        with open(path, encoding="utf8", errors="ignore") as fh:
+            for m in re.finditer(r"^set\((NROS_DERIVED_[A-Z0-9_]+)\s+([^)]*)\)", fh.read(), re.M):
+                out[m.group(1)] = m.group(2).strip().strip('"')
     return out
 
 

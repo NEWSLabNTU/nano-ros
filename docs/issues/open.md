@@ -76,6 +76,7 @@ fails if this block drifts.
 - **#0997** ([rmw, platform, embedded]) — The timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled, never lands in the queue, and every peer expires the participant's lease See `0997-*`.
 - **#1000** ([rmw, third-party]) — Vendored Cyclone: `handle_xevk_spdp`'s early returns orphan the PERIODIC spdp event — it leaves the heap, is never re-armed, and the participant goes silent forever See `1000-*`.
 - **#1001** (tooling, ci) — `check-action-client-arena-budget` walks the whole repo, so `check fast` costs minutes on a cold page cache — the pre-push gate is where that is felt See `1001-*`.
+- **#1002** (cmake) — A derived knob converges after THREE configures, not the two 0991 documents See `1002-*`.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1006** (tooling, build) — esp32-qemu's configure does not disable the backends it never uses, so its runtime dependency set is a property of the machine that built it See `1006-*`.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.

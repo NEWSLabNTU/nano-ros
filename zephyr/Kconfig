@@ -777,7 +777,7 @@ config NROS_SUBSCRIBER_BUFFER_SIZE
     default -1
     help
       Size of the static buffer for each subscriber slot (bytes) -- the SMALL
-      zenoh payload class. Maps to ZPICO_SUBSCRIBER_BUFFER_SIZE.
+      zenoh payload class. Maps to NROS_SUBSCRIBER_BUFFER_SIZE (one name: the executor arena reads it too, phase-403).
 
       -1 means DERIVE it from this image's message-bound inventory
       (phase-403 W8 / issue 0940): the largest derived bound at or under the
