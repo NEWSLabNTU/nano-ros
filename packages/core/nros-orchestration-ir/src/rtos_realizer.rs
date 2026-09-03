@@ -535,6 +535,102 @@ pub fn realize_rtos(ranked: &RankedPlan, input: &MapperInput, caps: &SchedCaps) 
         }
     }
 
+    // ---- issue 0259: derived PERFORMANCE placement --------------------------
+    //
+    // The issue's finding 2 is that `placement` is a MECHANISM, not a
+    // requirement: "pin to core N" implies nothing on its own, so the question
+    // is not "which contract fact means core-pin?" but "what does the realizer
+    // need in order to DECIDE?". The answer was an interference model over a
+    // core count — and the count did not exist. `SchedCaps.n_cores` supplies it
+    // now, so the decision is finally computable rather than blocked.
+    //
+    // This derives the PERFORMANCE half only: spread the measured load so no
+    // core is over-subscribed. Hardware locality ("this callback services the
+    // IMU whose IRQ lands on core 0") is the other half and is NOT derived
+    // here — it names a DEVICE and resolves against the board, which needs a
+    // device vocabulary this tree does not have. Chain colocation is likewise
+    // out: it needs an interference model, not just a count, and guessing one
+    // is the fabricated-hardware failure again.
+    //
+    // FOUR preconditions, each refusing rather than guessing:
+    //
+    //  1. `affinity` — the board must actually have the mechanism.
+    //  2. `n_cores >= 2` — on a uniprocessor every node lands on core 0, which
+    //     satisfies "a dim is derived" while saying nothing. That is exactly
+    //     the tautology this issue rejected for `preempt_threshold`, and it is
+    //     no better here.
+    //  3. Every PERIODIC node measured. One unmeasured node makes the packing a
+    //     statement about a taskset we cannot see; a bin-pack over unknowns is
+    //     the same fabrication as an invented WCET. Nodes with no period are
+    //     aperiodic, contribute no utilisation, and are left unpinned rather
+    //     than counted as zero.
+    //  4. The packing must FIT. See below — this is the part that finds
+    //     something the utilisation check cannot.
+    if let (true, Some(cores)) = (caps.affinity, caps.n_cores.filter(|c| *c >= 2)) {
+        let mut measured: Vec<(usize, f64)> = Vec::new();
+        let mut unmeasured = 0usize;
+        for (i, n) in nodes.iter().enumerate() {
+            match (n.budget_us, n.period_us) {
+                (Some(c), Some(t)) if t > 0 => measured.push((i, (c as f64) / (t as f64))),
+                (_, Some(_)) => unmeasured += 1,
+                _ => {}
+            }
+        }
+        if unmeasured == 0 && !measured.is_empty() {
+            // Worst-fit decreasing: largest utilisation first, each onto the
+            // least-loaded core. Worst-fit rather than first-fit because the
+            // goal is to SPREAD load — first-fit packs cores tight, which
+            // maximises interference on the ones it fills.
+            //
+            // Ties break on node name so the assignment is deterministic; a
+            // placement that moved between two identical bakes would make every
+            // downstream artifact diff noisily for no reason.
+            measured.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(core::cmp::Ordering::Equal)
+                    .then_with(|| nodes[a.0].name.cmp(&nodes[b.0].name))
+            });
+            let mut load = vec![0.0_f64; cores as usize];
+            let mut assign: Vec<(usize, usize)> = Vec::new();
+            for (idx, u) in &measured {
+                let core = load
+                    .iter()
+                    .enumerate()
+                    .min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(core::cmp::Ordering::Equal))
+                    .map(|(c, _)| c)
+                    .unwrap_or(0);
+                load[core] += *u;
+                assign.push((*idx, core));
+            }
+            // The packing check the aggregate utilisation cannot make. Three
+            // tasks at U=0.6 on two cores total 1.8 against a capacity of 2.0,
+            // so the system-wide check is silent — yet no core can hold two of
+            // them. Partitioned fixed-priority scheduling assigns each task to
+            // one core, so a per-core overflow is infeasible however much total
+            // headroom exists.
+            let worst = load.iter().cloned().fold(0.0_f64, f64::max);
+            if worst > 1.0 {
+                degradations.push(Degradation {
+                    node: "<system>".to_string(),
+                    dim: "placement",
+                    reason: format!(
+                        "no assignment of the {} measured periodic node(s) to {cores} core(s) \
+                         fits: the least-loaded packing still demands {:.2} of one processor. \
+                         Total utilisation can fit while no PARTITION does, because a task \
+                         runs on one core (issue 0259).",
+                        measured.len(),
+                        worst
+                    ),
+                });
+            } else {
+                for (idx, core) in assign {
+                    nodes[idx].core = Some(core as u32);
+                    nodes[idx].placement_real = DimRealization::Native;
+                }
+            }
+        }
+    }
+
     RtosPlan {
         nodes,
         degradations,
@@ -1093,6 +1189,131 @@ mod tests {
             "{}",
             u.reason
         );
+    }
+
+    /// SMP caps: the mechanism exists AND the count is declared. `caps_cores`
+    /// leaves `affinity` false, which is why the utilisation tests above never
+    /// trip the placement derivation.
+    fn caps_smp(cores: Option<u16>) -> SchedCaps {
+        SchedCaps {
+            n_cores: cores,
+            affinity: true,
+            ..caps(false, false, false)
+        }
+    }
+
+    /// Two light nodes on two cores are SPREAD, not stacked. Worst-fit puts the
+    /// second on the empty core rather than beside the first.
+    #[test]
+    fn measured_nodes_are_spread_across_the_declared_cores() {
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 1.0),
+                node_with_rate("/b", 100.0, 1.0),
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(2)));
+        let mut cores: Vec<u32> = plan.nodes.iter().filter_map(|n| n.core).collect();
+        cores.sort_unstable();
+        assert_eq!(cores, vec![0, 1], "both pinned, one per core");
+        assert!(
+            plan.nodes
+                .iter()
+                .all(|n| n.placement_real == DimRealization::Native)
+        );
+    }
+
+    /// The finding the aggregate utilisation check CANNOT make: three tasks at
+    /// U=0.6 total 1.80 against a capacity of 2.00, so the system-wide check is
+    /// silent — yet no core can hold two of them. A task runs on ONE core, so
+    /// total headroom does not imply a feasible partition.
+    #[test]
+    fn a_taskset_that_fits_in_total_but_in_no_partition_is_reported() {
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 6.0),
+                node_with_rate("/b", 100.0, 6.0),
+                node_with_rate("/c", 100.0, 6.0),
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(2)));
+        assert!(
+            !plan.degradations.iter().any(|d| d.dim == "utilization"),
+            "1.80 of 2.00 fits in aggregate, so that check must stay silent — \
+             otherwise this test is not exercising the partition case"
+        );
+        let p = plan
+            .degradations
+            .iter()
+            .find(|d| d.dim == "placement")
+            .expect("no partition of 3x0.60 onto 2 cores fits");
+        assert!(p.reason.contains("1.20"), "{}", p.reason);
+        assert!(
+            plan.nodes.iter().all(|n| n.core.is_none()),
+            "an infeasible packing must assign NOTHING, not a best effort"
+        );
+    }
+
+    /// One unmeasured periodic node and the whole derivation refuses. A
+    /// bin-pack over a taskset it cannot see is the same fabrication as an
+    /// invented WCET.
+    #[test]
+    fn one_unmeasured_periodic_node_blocks_the_whole_placement() {
+        let mut silent = node_with_rate("/silent", 100.0, 0.0);
+        silent.paths[0].exec_ms = None;
+        let input = MapperInput {
+            nodes: vec![node_with_rate("/a", 100.0, 1.0), silent],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(2)));
+        assert!(
+            plan.nodes.iter().all(|n| n.core.is_none()),
+            "one unmeasured node must silence placement for all of them"
+        );
+    }
+
+    /// A uniprocessor gets NOTHING. Pinning every node to core 0 would satisfy
+    /// "the dim is derived" while saying nothing — the same tautology this
+    /// issue rejected for `preempt_threshold`.
+    #[test]
+    fn a_uniprocessor_gets_no_derived_placement() {
+        let input = MapperInput {
+            nodes: vec![node_with_rate("/a", 100.0, 1.0)],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps_smp(Some(1)));
+        assert!(plan.nodes.iter().all(|n| n.core.is_none()));
+        assert!(
+            plan.nodes
+                .iter()
+                .all(|n| n.placement_real == DimRealization::NotRequested)
+        );
+    }
+
+    /// No affinity mechanism, no placement — however many cores are declared.
+    #[test]
+    fn a_board_without_affinity_gets_no_derived_placement() {
+        let input = MapperInput {
+            nodes: vec![
+                node_with_rate("/a", 100.0, 1.0),
+                node_with_rate("/b", 100.0, 1.0),
+            ],
+            legacy: None,
+            chains: vec![],
+        };
+        let ranked = chain_aware_rank(&input);
+        let plan = realize_rtos(&ranked, &input, &caps_cores(Some(4)));
+        assert!(plan.nodes.iter().all(|n| n.core.is_none()));
     }
 
     fn node_with_rate(name: &str, rate_hz: f64, exec_ms: f64) -> MapperNode {

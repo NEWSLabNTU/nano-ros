@@ -422,3 +422,71 @@ may be unrepresentable at runtime — in which case the honest realization is
 tier-level with a Degrade record ("ceiling applied at tier granularity;
 group-level non-preemption not enforced"). Decide group-granular vs
 tier-granular before implementing step 1.
+
+## `placement` DERIVED 2026-09-04 — the performance half, now that a core count exists
+
+The section above closed with "what placement needs first: a core count in the
+board descriptor, reaching `SchedCaps`". `n_cores` landed the same day, and this
+is the derivation it unblocked. `realize_rtos` now assigns `RealizedNode.core`
+and sets `placement_real = Native`.
+
+**Only the PERFORMANCE half**, which is the half finding 2 said must be derived
+rather than declared. Hardware locality is untouched: it names a DEVICE and
+resolves against the board, and this tree has no device vocabulary to name one
+with. Chain colocation is untouched too — it needs the interference model
+finding 2 describes, not just a count, and inventing one is the same
+fabricated-hardware failure as an invented WCET.
+
+Worst-fit decreasing: largest utilisation first, each onto the least-loaded
+core. Worst-fit rather than first-fit because the goal is to SPREAD load;
+first-fit packs cores tight, which maximises interference on the ones it fills.
+Ties break on node name, so two identical bakes produce identical placements
+rather than a diff nobody can explain.
+
+### Four preconditions, each refusing rather than guessing
+
+1. **`affinity`** — the board must have the mechanism.
+2. **`n_cores >= 2`** — on a uniprocessor every node lands on core 0, which
+   satisfies "a dim is derived" while saying nothing. That is exactly the
+   tautology this issue rejected for `preempt_threshold`, and it is no better
+   here.
+3. **Every PERIODIC node measured.** One unmeasured node and the whole
+   derivation refuses: a bin-pack over a taskset it cannot see is the same
+   fabrication as an invented WCET. Aperiodic nodes contribute no utilisation
+   and are left unpinned rather than counted as zero.
+4. **The packing must FIT** — see below.
+
+### The finding the aggregate utilisation check cannot make
+
+Three tasks at `U=0.6` on two cores total **1.80** against a capacity of
+**2.00**, so the system-wide utilisation check is correctly silent. Yet no core
+can hold two of them: partitioned fixed-priority scheduling runs a task on ONE
+core, so total headroom does not imply a feasible partition.
+
+That case is now a `Degradation { dim: "placement" }` carrying its inputs, and
+NO node is pinned — an infeasible packing assigns nothing rather than a best
+effort. It rides the existing `sched_warnings` route into `nros-plan.json` and
+`nros explain`, so it needed no new plumbing.
+
+### Verified
+
+Five tests, and the partition one proven by SABOTAGE rather than assumed:
+relaxing the fit guard to `worst > 99.0` makes
+`a_taskset_that_fits_in_total_but_in_no_partition_is_reported` fail, so it is
+testing the guard and not merely passing beside it. Its first assertion pins the
+premise — that the utilisation check stays silent on that taskset — so the test
+cannot quietly stop exercising the partition case. 100 lib tests green,
+`just check fast` green.
+
+## Still open after this
+
+* **`non_preempt`** — unchanged, and still not a realizer change. It needs
+  per-callback priorities within a tier, carried through `RealizedNode` and the
+  emitted `TierDef`, plus a runtime dispatch that honours them. Its own work
+  item, as recorded above.
+* **The inputs are SYNTHETIC.** RFC-0078's worked example says so: QEMU cannot
+  measure cycles and there is no hardware lane, so no run has produced a real
+  `nros.wcet.measurements/1` artifact. The placement machinery is correct and
+  will stay silent until something declares a WCET — which is the honest state,
+  not a defect, but it means this derivation has never run on measured numbers.
+* **Hardware locality** and **chain colocation**, as above.
