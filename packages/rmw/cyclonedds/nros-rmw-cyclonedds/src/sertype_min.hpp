@@ -46,15 +46,23 @@
 //     Issue 0970 does the same in `nros_sertype.{hpp,cpp}`; the message
 //     publisher and subscriber now use it and neither builds a typed sample.
 //
-// `service.cpp` is what still uses this builder, and issue 0976 is why it has
-// not followed. Two of its five action adapters do not merely read the typed
-// sample — `strip_goal_id_len_at` and `strip_nested_cdr_at` DELETE BYTES, so a
-// blob sertype would put an action's uncorrected CDR on the wire. Measured, the
-// only thing exercising them is nano-ros talking to nano-ros
-// (`test_native_cyclonedds_rust_action`), where both ends share whatever
-// convention the adapters implement — so the one property they exist to provide
-// is the one no test can observe. The migration is blocked on a ROS 2 action
-// interop test, not on effort.
+// `service.cpp` is what still uses this builder. Issue 0976 USED to be why it
+// had not followed: two of its five action adapters did not merely read the
+// typed sample — `strip_goal_id_len_at` and `strip_nested_cdr_at` DELETED
+// BYTES, so a blob sertype would have put an action's uncorrected CDR on the
+// wire, and nothing in the tree could tell.
+//
+// Both are GONE. `ros2_action_e2e.rs` gave the property an outside witness (a
+// stock ROS 2 action server and client, both directions), and with it the two
+// helpers were measured DECLINING on every call from all three languages while
+// the round trip stayed correct: nano-ros already emits the fixed `octet[16]`,
+// so there was nothing left to correct.
+//
+// What remains here is the RECEIVE side — `take_typed_wire` still reads a typed
+// sample, and the three receive adapters are still in place. Issue 0969 argues a
+// `dds_takecdr` rewrite removes the need for those rather than correcting them,
+// which is the same finding one direction over. That is the remaining step
+// before this builder can go.
 // --------------------------------------------------------------------------
 
 #include <dds/dds.h>
