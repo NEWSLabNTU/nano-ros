@@ -1,6 +1,6 @@
 ---
 id: 997
-title: "A FreeRTOS Cyclone participant stops announcing seconds after the first real traffic arrives, so every peer expires its lease and deletes it"
+title: "The timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled, never lands in the queue, and every peer expires the participant's lease"
 status: open
 area: [rmw, platform, embedded]
 severity: high
@@ -150,7 +150,71 @@ overflowing its 16 KiB stack — the same class of bug phase 177.26 fixed for
 `recvUC` at 1 KiB, and FreeRTOS's `an536-tasks.py` reports per-task high-water
 marks over the QEMU gdb stub.
 
-## What was NOT explained (superseded by the amendment above)
+## ROOT CAUSE LOCATED 2026-09-03 — the event tree is empty
+
+Read live over the QEMU gdb stub, on a stalled island, via
+`dds_global.m_domains.root` -> `dds_domain.gv.xevents`:
+
+```
+xevents                     = {roots = 0x0}      <- timed-event tree EMPTY
+msg_xevents                 = {root  = 0x0}
+non_timed_xmit_list_oldest  = 0x0
+non_timed_xmit_list_newest  = 0x2170b228         <- non-NULL
+terminate                   = 0
+cond.tasks                  = {len = 10, cnt = 1}
+```
+
+The SPDP resend that the last handler scheduled 8 seconds out — the trace line
+reads `(resched 8s)` at `cyclone+16.003` — **is not in the queue**. So `tev` is
+not failing to wake: it correctly computed "nothing is scheduled", waited with
+`portMAX_DELAY`, and FreeRTOS put it on the suspended list. Its indefinite wait
+is the SYMPTOM of an empty tree, not a defect in the wait.
+
+The queue is not shutting down (`terminate = 0`), and the waiter is properly
+registered (`cond.tasks.cnt = 1`).
+
+`non_timed_xmit_list` is also inconsistent: `oldest == NULL` while
+`newest != NULL`. A singly-linked list with a tail and no head, in the same
+struct that lost its event tree.
+
+So the question is why a scheduled event does not end up in `xevents`. The
+mechanism to look at first is `resched_xevent_if_earlier`, which re-arms ONLY
+when the new time is earlier than the stored one and silently does nothing
+otherwise — a lost update rather than a deadlock, which is also what the
+half-updated transmit list suggests.
+
+### Ruled out, by measurement rather than argument
+
+Each of these was a live hypothesis in this issue at some point. Recording the
+eliminations because re-deriving them is the expensive part:
+
+| hypothesis | why it is wrong |
+| --- | --- |
+| interval absent / `tev` never scheduled | seven transmits at the computed 8 s cadence |
+| `tev` stack overflow (phase 177.26 shape) | `used_below_sp` is FREE space below a descending stack: `tev` had 15912 of 16384 bytes unused |
+| heap exhaustion failing `ddsrt_tasklist_push` | `xMinimumEverFreeBytesRemaining` = 26,825,856 of 33,554,432. It never came close, and `cond.tasks.cnt = 1` proves the push succeeded |
+| lock convoy behind one stuck object | no two tasks share a wait object (`xEventListItem.pvContainer` differs for all) |
+| FreeRTOS tick / monotonic clock stalling | wall-clock vs Cyclone-internal drift is ~0.0 s across every transmit |
+| `tcpip_thread`'s NULL lwIP TLS semaphore | normal. `LWIP_NETCONN_SEM_PER_THREAD` semaphores are for netconn CLIENTS; lwIP's core thread is not one, nor are IDLE, `Tmr Svc`, or `poll` (netif input, tcpip mbox). Every socket-using thread has one |
+| CPU starvation by the priority-7 app task | IDLE is the running task |
+
+Also worth stating so the next reader does not chase it: `dq.user` and
+`dq.builtins` sitting suspended is NORMAL — a delivery queue waits indefinitely
+when empty. The anomaly is narrowly `tev`, because `tev` should always have the
+SPDP resend pending.
+
+### Instruments
+
+`autoware-safety-island/scripts/an536-blocked-on.py` (new) reports, per task,
+the object it is waiting on, by reading `xEventListItem.pvContainer` and mapping
+it back to the owning queue. That is what separates "blocked on a queue" from
+"blocked on a direct task notification" — the latter has NO wait object, which
+is how ddsrt implements condition variables on FreeRTOS
+(`ddsrt_cond_wait` -> `ulTaskNotifyTake`, `ddsrt_cond_signal` ->
+`xTaskNotifyGive`), and is what identified these three threads as condvar
+waiters rather than lock victims.
+
+## What was NOT explained (superseded by the amendments above)
 
 **Why the lease survived 81 seconds rather than 10.** With a 10-second advertised
 lease and a single announcement, expiry should land near `+10 s`, not `+81 s`.
