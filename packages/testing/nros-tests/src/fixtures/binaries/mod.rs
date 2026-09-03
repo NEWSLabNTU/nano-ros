@@ -1149,6 +1149,34 @@ fn cmake_dep_info_newer_source(binary_path: &Path) -> Option<PathBuf> {
     candidates.extend(zpico_candidates);
     let newer = newer.or(zpico_newer);
 
+    // issue 1005 — the arm above asks the BUILD SCRIPT what it READ. That is a
+    // different question from what the build script was COMPILED FROM, and the
+    // second question has no `rerun-if-changed` answer at all: a build-script
+    // DEPENDENCY crate is tracked by cargo through its unit graph, never as a
+    // recorded path. `Z_TRANSPORT_LEASE_MS` lives in `nros-zpico-build`, which
+    // appears in none of the 41 entries `zpico-sys` records, so every FreeRTOS
+    // zenoh fixture read FRESH for ten days while baking a lease value issue
+    // 0906 had measured as delivery-breaking (19 of 77 heard vs 77 of 77).
+    //
+    // Cargo already wrote the complete answer next to the artifact: the
+    // corrosion staticlib's own dep-info (`<profile>/libnros_c.d`), which lists
+    // EVERY rustc input for that unit — the target-side crates, the C shim the
+    // `cc` crate compiled, AND the whole build-script closure
+    // (`nros-zpico-build`, `nros-board-common`, `nros-cc-flags`,
+    // `nros-build-paths`). So this is the same "ask the tool that owns the
+    // graph" move phase-363 made for the `cc` inputs, one level up, read
+    // through the SAME `.d` helper the pure-cargo and Zephyr arms already use.
+    //
+    // Derived, not authored: nothing here enumerates a crate, so a build script
+    // that gains a dependency tomorrow is covered without anyone remembering.
+    // That is what direction (2) in the issue could not promise, and it is why
+    // this needs no generated list + gate the way issue 0627's CLI closure did
+    // — that one had to be authored because `source_stamp.rs` cannot shell
+    // `cargo metadata`; here cargo has already left its resolve on disk.
+    let (cargo_newer, cargo_candidates) = cargo_rust_inputs(build_dir, bin_mtime);
+    candidates.extend(cargo_candidates);
+    let newer = newer.or(cargo_newer);
+
     // issue 0764 — the CONTENT decides, through the same shared helper the
     // cargo dep-info arm (`dep_info_newer_source`) and the zephyr arm already
     // use. Before this, THIS arm compared raw mtimes while the build compared
@@ -1312,7 +1340,17 @@ fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<Path
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+        // issue 1005 — `is_dir()` (which STATS, following symlinks), never
+        // `entry.file_type()` (which LSTATS). Since the phase-340 shared cargo
+        // group dir landed, a cross-platform leaf's `build-<rmw>/cargo` is a
+        // SYMLINK into `build/corrosion-cargo/<platform>/<hash>/`, so an
+        // lstat-based walk stopped at it and this returned EMPTY for every
+        // FreeRTOS / NuttX / ThreadX fixture. The caller then fell through to
+        // its hand-authored bootstrap walk — the arm whose doc comment says it
+        // should be unreachable for a built fixture, announcing itself via
+        // `note_unmeasured_input_set()`. It had been running for the whole
+        // cross-compiled half of the tree.
+        if !path.is_dir() {
             continue;
         }
         let name = entry.file_name();
@@ -1325,6 +1363,142 @@ fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<Path
             continue;
         }
         found.extend(find_build_script_outputs(&path, prefix, depth + 1));
+    }
+    found
+}
+
+/// issue 1005 — the cargo-side input closure of a cmake/corrosion fixture,
+/// read from the dep-info cargo wrote for the staticlib it links.
+///
+/// The Rust half of a C/C++ fixture is one opaque `cargo` custom command as far
+/// as ninja is concerned, so [`cmake_dep_info_newer_source`]'s ninja arm never
+/// sees a single `.rs`. `zpico_c_inputs` closes part of that by replaying what
+/// `zpico-sys`'s build script RECORDED, but a recorded `rerun-if-changed` path
+/// can only ever name what a build script READ — never the crates the build
+/// script itself was COMPILED FROM. That is the class issue 1005 measured:
+/// `nros-zpico-build` is a build-DEPENDENCY, tracked correctly by cargo's unit
+/// graph and absent from every recorded path.
+///
+/// Cargo's own dep-info for the staticlib carries both halves. Measured on
+/// `examples/qemu-arm-freertos/c/talker/build-zenoh` (2026-09-04),
+/// `libnros_c.d` lists 236 in-repo inputs including `packages/core/**` (65),
+/// `zpico-sys/c/**` (14) and the build-script closure
+/// (`nros-zpico-build/src/lib.rs`, `nros-board-common/src/*`,
+/// `nros-cc-flags/src/lib.rs`, `nros-build-paths/src/lib.rs`).
+///
+/// Returns BOTH halves of one resolution — first newer input, and the whole
+/// candidate set to content-hash — for the same reason `zpico_c_inputs` does:
+/// two functions resolving one input set is issue 0442.
+///
+/// Empty when no cargo profile dir is found (a fixture with no Rust half, or a
+/// layout this cannot recognise): "nothing was measured", never "nothing
+/// changed" — and the arms above still apply.
+fn cargo_rust_inputs(
+    build_dir: &Path,
+    bin_mtime: std::time::SystemTime,
+) -> (Option<PathBuf>, Vec<PathBuf>) {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let mut newer: Option<PathBuf> = None;
+    for dep_file in cargo_unit_dep_files(build_dir) {
+        // issue 0764's rule, and the reason this does NOT call
+        // `dep_file_newer_than_for`: that helper RETURNS at the first newer
+        // entry, so its `walked` list is truncated there. The ninja arm above
+        // deliberately gathers the WHOLE set before deciding, because the
+        // content helper must be called once with every input — measured here
+        // at 139 of 236 in-repo inputs surviving the early return, with
+        // `nros-zpico-build/src/lib.rs` among the 97 that did not.
+        for dep_path in staleness::dep_file_paths(&dep_file) {
+            if staleness::note_candidate(&dep_path) {
+                continue;
+            }
+            if candidates.contains(&dep_path) {
+                continue; // `libnros_c.d` and `libnros_cpp.d` overlap heavily
+            }
+            if newer.is_none()
+                && let Ok(dep_mtime) = fs::metadata(&dep_path).and_then(|m| m.modified())
+                && dep_mtime > bin_mtime
+            {
+                newer = Some(dep_path.clone());
+            }
+            candidates.push(dep_path);
+        }
+    }
+    (newer, candidates)
+}
+
+/// The per-unit `.d` files cargo left at the top level of each profile dir
+/// under a cmake build dir (`<group>/<triple>/<profile>/libnros_c.d`).
+///
+/// The cargo target dir is a phase-340 group dir — usually a symlink to
+/// `build/corrosion-cargo/<platform>/<hash>/<group>` shared by every leaf of
+/// the family, which is correct here: those leaves link the SAME staticlib, so
+/// they have the same Rust input closure.
+///
+/// Only the top level of a profile dir is read. `deps/*.d` holds one file per
+/// intermediate unit, with paths written RELATIVE to the cargo invocation's
+/// cwd — the shape issue 0696 records as resolving against the nextest CWD and
+/// flagging the wrong file. The staticlib `.d` beside the `.a` is absolute and
+/// is already the union of those units.
+fn cargo_unit_dep_files(build_dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for profile in find_cargo_profile_dirs(build_dir, 0) {
+        let Ok(entries) = fs::read_dir(&profile) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("d") && path.is_file() {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// Directories that look like a cargo profile output dir — i.e. that contain a
+/// `deps/` child. Bounded like [`find_build_script_outputs`], and it does not
+/// descend into cargo's own bulk subtrees, so this stays a handful of
+/// `read_dir`s rather than a walk of a cmake tree.
+fn find_cargo_profile_dirs(dir: &Path, depth: usize) -> Vec<PathBuf> {
+    const MAX_DEPTH: usize = 8;
+    let mut found = Vec::new();
+    if depth > MAX_DEPTH {
+        return found;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return found;
+    };
+    let mut children: Vec<PathBuf> = Vec::new();
+    let mut is_profile = false;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Stat, not lstat: `build-<rmw>/cargo` is a symlink to the phase-340
+        // shared group dir on every cross-compiled leaf (see
+        // `find_build_script_outputs`). MAX_DEPTH bounds a symlink cycle.
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == "deps" {
+            is_profile = true;
+            continue;
+        }
+        // cargo's bulk subtrees and cmake's own: nothing under them is a
+        // profile dir, and `.fingerprint` alone is thousands of entries.
+        if matches!(
+            name.as_ref(),
+            ".fingerprint" | "build" | "incremental" | "examples" | "CMakeFiles" | "_deps"
+        ) {
+            continue;
+        }
+        children.push(path);
+    }
+    if is_profile {
+        found.push(dir.to_path_buf());
+    }
+    for child in children {
+        found.extend(find_cargo_profile_dirs(&child, depth + 1));
     }
     found
 }
@@ -6598,5 +6772,190 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// issue 1005 — a build-script DEPENDENCY crate is an input of a cmake
+    /// fixture, and the probe must be able to see it.
+    ///
+    /// `Z_TRANSPORT_LEASE_MS` lives in `nros-zpico-build`, which `zpico-sys`
+    /// build-depends on. Cargo tracks that through its unit graph and never
+    /// through a `rerun-if-changed` path, so the arm that replays recorded
+    /// paths is blind to it BY CONSTRUCTION — measured on the FreeRTOS C
+    /// talker, whose recorded set names 28 in-repo inputs and none of them
+    /// there. Ten days of FreeRTOS zenoh fixtures therefore read FRESH while
+    /// baking the 10 s lease issue 0906 measured at 19 heard of 77.
+    ///
+    /// Hermetic: a synthetic corrosion layout plus a `.d` in the shape cargo
+    /// writes, so this asserts the search and the parse rather than the state
+    /// of anybody's build tree.
+    #[test]
+    fn a_build_script_dependency_crate_is_a_staleness_input() {
+        let root = project_root();
+        let tmp = root.join("tmp/issue-1005-probe");
+        let _ = fs::remove_dir_all(&tmp);
+
+        // The layout corrosion produces, measured on
+        // `examples/qemu-arm-freertos/c/talker/build-zenoh` (2026-09-04):
+        //   cargo/<pkg>_<hash>/<triple>/<profile>/{deps/,libnros_c.d,libnros_c.a}
+        let profile = tmp.join("cargo/nano-ros_0b88c/thumbv7m-none-eabi/release");
+        fs::create_dir_all(profile.join("deps")).unwrap();
+
+        // The build-script dependency crate that issue 1005 measured.
+        let build_dep = root.join("packages/rmw/zenoh/nros-zpico-build/src/lib.rs");
+        assert!(
+            build_dep.is_file(),
+            "the crate this probes moved; re-point the test, do not delete it"
+        );
+        fs::write(
+            profile.join("libnros_c.d"),
+            format!(
+                "{}: {} /usr/include/stdio.h\n",
+                profile.join("libnros_c.a").display(),
+                build_dep.display(),
+            ),
+        )
+        .unwrap();
+        // `deps/*.d` must NOT be read: those name paths RELATIVE to the cargo
+        // invocation's cwd, and a nextest process resolving one against ITS cwd
+        // is issue 0696 — one wrong file, always the same one. The staticlib
+        // `.d` beside the `.a` is absolute and is already their union.
+        fs::write(
+            profile.join("deps/nros_zpico_build-dead.d"),
+            "x: src/lib.rs\n",
+        )
+        .unwrap();
+
+        let long_ago = std::time::SystemTime::UNIX_EPOCH;
+        let (newer, candidates) = cargo_rust_inputs(&tmp, long_ago);
+        assert_eq!(
+            newer.as_deref(),
+            Some(build_dep.as_path()),
+            "the build-script dependency must be reported: {candidates:?}"
+        );
+        assert!(
+            !candidates
+                .iter()
+                .any(|p| p.ends_with("src/lib.rs") && p.is_relative()),
+            "a relative `deps/*.d` entry must not enter the set (issue 0696): {candidates:?}"
+        );
+
+        // …and this is not a probe that simply always fires.
+        let far_future = std::time::SystemTime::now() + std::time::Duration::from_secs(86_400);
+        assert!(
+            cargo_rust_inputs(&tmp, far_future).0.is_none(),
+            "nothing is newer than a future artifact"
+        );
+
+        // The point of the arm: the RECORDED-path arm cannot express this. Its
+        // set is what a build script READ, never what it was COMPILED FROM.
+        let recorded = zpico_recorded_inputs(&tmp);
+        assert!(
+            !recorded.contains(&build_dep),
+            "if the recorded set ever names it, this test is vacuous"
+        );
+
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// issue 1005 — …and the PROBE must actually consult that arm.
+    ///
+    /// The test above drives `cargo_rust_inputs` directly, so it passes with
+    /// the arm unwired. That is the gap this codebase keeps finding in gates
+    /// (issue 0196): the rule is right and the wiring is not checked. So drive
+    /// `cmake_dep_info_newer_source` end to end over a synthetic build dir and
+    /// assert it reports the cargo-side input.
+    ///
+    /// The synthetic input is given a FUTURE mtime and the artifact a present
+    /// one, so every other arm is quiet by construction: `ninja -t deps` has no
+    /// graph to answer from, and the zpico bootstrap walk sees a real
+    /// `zpico-sys/c` tree that is older than the artifact. Whatever this
+    /// reports therefore came from the cargo arm and nowhere else.
+    #[test]
+    fn the_cmake_probe_consults_the_cargo_input_arm() {
+        let root = project_root();
+        let tmp = root.join("tmp/issue-1005-wiring");
+        let _ = fs::remove_dir_all(&tmp);
+        let build_dir = tmp.join("build-zenoh");
+        let profile = build_dir.join("cargo/nano-ros_0b88c/thumbv7m-none-eabi/release");
+        fs::create_dir_all(profile.join("deps")).unwrap();
+        // Present, but unanswerable: `ninja_dep_paths` requires the log to
+        // exist and yields nothing when the query fails.
+        fs::write(build_dir.join(".ninja_deps"), b"").unwrap();
+
+        let input = tmp.join("synthetic_input.rs");
+        fs::write(&input, "// issue 1005 wiring probe\n").unwrap();
+        fs::write(
+            profile.join("libnros_c.d"),
+            format!(
+                "{}: {}\n",
+                profile.join("libnros_c.a").display(),
+                input.display()
+            ),
+        )
+        .unwrap();
+
+        let binary = build_dir.join("c_talker");
+        fs::write(&binary, b"\x7fELF not really\n").unwrap();
+        let day = std::time::Duration::from_secs(86_400);
+        fs::File::options()
+            .write(true)
+            .open(&input)
+            .unwrap()
+            .set_times(fs::FileTimes::new().set_modified(std::time::SystemTime::now() + day))
+            .unwrap();
+
+        let verdict = cmake_dep_info_newer_source(&binary);
+        assert_eq!(
+            verdict.as_deref(),
+            Some(input.as_path()),
+            "the cmake probe must reach the cargo dep-info arm; without it the \
+             fixture reports FRESH against an input cargo itself recorded"
+        );
+
+        fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    /// issue 1005, second half — the build-script record lives across a SYMLINK.
+    ///
+    /// Since the phase-340 shared cargo group dir, a cross-compiled leaf's
+    /// `build-<rmw>/cargo` is a symlink into `build/corrosion-cargo/<platform>/
+    /// <hash>/`. `DirEntry::file_type()` LSTATs, so it answers "not a
+    /// directory" for that symlink and the walk stopped dead: measured
+    /// 2026-09-04, `zpico_recorded_inputs` returned 0 entries for every
+    /// FreeRTOS / NuttX / ThreadX fixture, and the probe silently ran the
+    /// hand-authored bootstrap walk that
+    /// `falling_back_to_a_hand_authored_input_set_is_reported` calls
+    /// unreachable. It reported 28 entries once the walk STATted instead.
+    ///
+    /// The fallback announces itself only through `probe_accounting()`, which
+    /// is rendered inside a STALE message — so on the FRESH path, the direction
+    /// that matters, it said nothing at all.
+    #[test]
+    fn the_build_script_record_is_found_across_a_symlinked_cargo_dir() {
+        let root = project_root();
+        let tmp = root.join("tmp/issue-1005-symlink");
+        let _ = fs::remove_dir_all(&tmp);
+
+        let build_dir = tmp.join("build-zenoh");
+        fs::create_dir_all(&build_dir).unwrap();
+        let group = tmp.join("corrosion-cargo/freertos/2e024fb928e1");
+        let bs = group.join("thumbv7m-none-eabi/release/build/zpico-sys-deadbeef");
+        fs::create_dir_all(&bs).unwrap();
+        let in_repo_file = root.join("packages/rmw/zenoh/zpico-sys/c/zpico/zpico.c");
+        fs::write(
+            bs.join("output"),
+            format!("cargo:rerun-if-changed={}\n", in_repo_file.display()),
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&group, build_dir.join("cargo")).unwrap();
+
+        let found = zpico_recorded_inputs(&build_dir);
+        assert!(
+            found.contains(&in_repo_file.canonicalize().unwrap()),
+            "the walk must cross the group-dir symlink, or every cross-compiled \
+             fixture silently falls back to the hand-authored input set: {found:?}"
+        );
+
+        fs::remove_dir_all(&tmp).unwrap();
     }
 }
