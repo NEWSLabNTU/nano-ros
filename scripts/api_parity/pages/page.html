@@ -1,0 +1,43 @@
+<title>__TITLE__</title>
+<style>/*CSS*/</style>
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">nano-ros · user API parity · phase-379</p>
+  <h1>__TITLE__</h1>
+  <p class="sub">__SUB__</p>
+  <div class="prov">
+    <span><b>compared against</b> __PROV__</span>
+    <span><b>rows</b> __TOTAL__</span>
+    <span><b>generated</b> __STAMP__</span>
+    <span><b>source</b> scripts/api-parity.py + docs/reference/api-parity-ledger/</span>
+  </div>
+  <nav class="pages">__NAV__</nav>
+</header>
+
+<div class="rail"><div class="rail-in">
+  <input id="q" type="search" placeholder="filter by name, signature, or reason…" aria-label="Filter items">
+  <div class="chips" id="chips"></div>
+  <button class="mini" id="expand" type="button">expand / collapse all</button>
+  <span class="railnote"><b id="shown">0</b> shown</span>
+</div></div>
+
+<main id="body"></main>
+
+<footer>
+  <p><b>How to read this.</b> Every row is one item in the recorded ROS 2 surface, one item
+  in ours, or a correlated pair. The seven states are decisions recorded in the parity
+  ledger, not guesses: <b>same</b> means the signature correlates exactly;
+  <b>re-shaped</b> means we keep the capability under a changed shape, with the platform
+  constraint named; <b>renamed</b> means the same thing under a different name;
+  <b>re-mapped</b> means one upstream item answers to several of ours or several to one —
+  those rows carry an explicit <code>provides</code> arrow, hand-authored, never inferred;
+  <b>rejected</b> means we declined it on the record; <b>not implemented</b> is an open gap;
+  <b>ours only</b> has no upstream counterpart.</p>
+  <p>A group states its reason once when every member shares one verdict, rather than
+  repeating it across the members. Where a reason cites a symbol in
+  <code>backticks</code>, that symbol is meant to exist — fifteen currently do not, which is
+  <b>issue 1012</b>.</p>
+</footer>
+</div>
+<script>window.__PARITY__ = "__DATA__";</script>
+<script>/*JS*/</script>

@@ -598,6 +598,37 @@ bump-manifest tag="" flag="":
 issues *ARGS:
     @python3 scripts/issues.py {{ARGS}}
 
+# Phase 379 — regenerate the three user-API comparison pages (C, C++, Rust).
+#
+# MECHANICAL. Two code inputs, one authored input:
+#   * our surface        re-extracted every run (clang for C/C++, nightly
+#                        rustdoc for Rust) by the same extractors the parity
+#                        gate uses -- never a hand-maintained list
+#   * ROS 2's surface    docs/reference/api-surface/{rclc,rclcpp,rclrs}.json
+#   * why, and what      docs/reference/api-parity-ledger/*.json -- the ONLY
+#     answers it         file a human writes. `why` is the reason a row
+#                        diverges, `provides` names our items that answer an
+#                        upstream one when the mapping is not 1:1.
+#
+# Which of the seven states a row lands in is COMPUTED from the correlator's
+# bucket and the ledger's verdict, both already gated. Adding a reason or a
+# re-mapping arrow means editing the ledger and re-running this; it must never
+# mean editing a page. `--self-test` (on the fast line, inside
+# `check-api-parity-ledger`) pins the derivation rules and the template
+# placeholders so the tool cannot rot into a hand-edited artifact.
+#
+# Needs clang + nightly rustdoc, no ROS install (the ROS side is recorded).
+# ~30 s. Output is gitignored -- these are artifacts, not tracked docs.
+#
+#   just api-comparison                       # -> tmp/api-comparison/
+#   just api-comparison --out tmp             # publish paths
+#   just api-comparison --urls urls.json      # cross-page nav links
+#
+# Regenerate the C / C++ / Rust user-API comparison pages.
+[group("docs")]
+api-comparison *args:
+    @python3 scripts/gen-api-comparison.py {{args}}
+
 # Reserve the next free issue id ATOMICALLY across parallel sessions, and print
 # it. Use this instead of eyeballing the highest existing number: that is a
 # check-then-act race, and it has produced six id collisions (see
