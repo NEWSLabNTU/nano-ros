@@ -25,4 +25,4 @@
 #
 # Full 40-char shas: a prefix would let an unrelated future commit match.
 
-packages/rmw/zenoh/zpico-sys/zenoh-pico fa7ad0f5b3f6054788ee2de520871c961989ba6b fb50388ecd545b0d058274cdbf35bf9d19742a51 phase-415: the patch line was REBASED from zenoh-pico 1.7.2 onto 1.8.0 (the zenoh ROS Humble ships), so the new tip is not a descendant of the old. Every patch is carried -- verified by tree comparison against backup/nano-ros-1.7.2-20260903, whose only difference is src/collections/seqnumber.c, which UPSTREAM deleted in 67fe16c0.
+packages/rmw/zenoh/zpico-sys/zenoh-pico fa7ad0f5b3f6054788ee2de520871c961989ba6b 0101b80d5468aea8ea07f5d910b435726e07f71f phase-415: the patch line was REBASED from zenoh-pico 1.7.2 onto 1.8.0 (the zenoh ROS Humble ships), so the new tip is not a descendant of the old. Every patch is carried -- verified by tree comparison against backup/nano-ros-1.7.2-20260903, whose only difference is src/collections/seqnumber.c, which UPSTREAM deleted in 67fe16c0.

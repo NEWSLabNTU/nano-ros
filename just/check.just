@@ -283,6 +283,7 @@ fast-serial: \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
+    zenoh-config-template \
     zenohd-flag-invocations \
     zenohd-resolution-parity \
     zenohd-router-skips \
@@ -1786,6 +1787,18 @@ interlock-visibility:
 [private]
 submodule-pins:
     @bash scripts/ci/submodule-pins-check.sh
+
+# zenoh-pico's `config.h` is BOTH a cmake-generated artifact (configure_file
+# writes it into the SOURCE tree) and a committed, hand-maintained file that is
+# the only config nano-ros reads. Being both is how it drifted three ways at
+# once — dropped `#ifndef` guards that made every `-D` inert, three of our own
+# features missing from the header, and a `#ifdef ZENOH_NUTTX` split the
+# template could not express. Phase 415 made generation lossless; this keeps it
+# so. Same shape as RFC-0054's committed bindgen output plus
+# `check-abi-bindings`. Offline: no cmake, no configure.
+[private]
+zenoh-config-template:
+    @python3 scripts/check-zenoh-config-template.py
 
 # The sibling of `check-submodule-pins`: that one asks whether a pin moved the
 # right DIRECTION, this one asks whether the commit it names exists anywhere a
