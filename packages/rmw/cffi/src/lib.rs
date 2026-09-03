@@ -3981,7 +3981,7 @@ impl ClientTrait for CffiClient {
         )))
     }
 
-    fn server_available(&self) -> Result<bool, TransportError> {
+    fn service_is_ready(&self) -> Result<bool, TransportError> {
         let Some(f) = self.vtable.service_server_is_available else {
             return Err(TransportError::Unsupported);
         };

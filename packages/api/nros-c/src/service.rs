@@ -1482,7 +1482,7 @@ pub unsafe extern "C" fn nros_client_server_available(
             Some(e) => e,
             None => return NROS_RET_NOT_INIT,
         };
-        match entry.handle.server_available() {
+        match entry.handle.service_is_ready() {
             Ok(true) => {
                 *out = 1;
                 NROS_RET_OK
@@ -1562,7 +1562,9 @@ pub unsafe extern "C" fn nros_client_wait_for_service(
                 Some(e) => e,
                 None => return NROS_RET_NOT_INIT,
             };
-            if entry.handle.is_server_ready() {
+            // issue 1008 — `Ok(true)` only. `is_server_ready` defaulted to
+            // `true`, so this returned OK without waiting on every backend.
+            if matches!(entry.handle.service_is_ready(), Ok(true)) {
                 return NROS_RET_OK;
             }
         }
@@ -1654,7 +1656,8 @@ pub unsafe extern "C" fn nros_client_service_is_ready(client: *const nros_client
         let exec_t = &mut *(internal.executor_ptr as *mut nros_executor_t);
         let exec = crate::executor::get_executor(&mut exec_t._opaque);
         match exec.service_client_entry_mut(internal.arena_entry_index as usize) {
-            Some(entry) => entry.handle.is_server_ready(),
+            // issue 1008 — a backend that cannot answer reports NOT ready.
+            Some(entry) => matches!(entry.handle.service_is_ready(), Ok(true)),
             None => false,
         }
     }

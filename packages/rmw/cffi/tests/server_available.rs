@@ -280,7 +280,7 @@ fn server_available_unsupported_when_slot_null() {
     assert_eq!(ret, NROS_RMW_RET_OK);
 
     let client = open_client("/svc_null_slot");
-    match client.server_available() {
+    match client.service_is_ready() {
         Err(TransportError::Unsupported) => {}
         other => panic!("expected Err(Unsupported), got {other:?}"),
     }
@@ -295,13 +295,13 @@ fn server_available_tracks_slot_return_value() {
 
     SCRIPT.store(NROS_RMW_RET_OK, Ordering::SeqCst);
     AVAIL.store(false, Ordering::SeqCst);
-    assert!(!client.server_available().unwrap());
+    assert!(!client.service_is_ready().unwrap());
 
     AVAIL.store(true, Ordering::SeqCst);
-    assert!(client.server_available().unwrap());
+    assert!(client.service_is_ready().unwrap());
 
     SCRIPT.store(NROS_RMW_RET_ERROR, Ordering::SeqCst);
-    assert!(client.server_available().is_err());
+    assert!(client.service_is_ready().is_err());
 
     // The case this shape RETIRES: the old slot multiplexed a count and a
     // status through one `int32_t`, so a backend reporting a participant count
@@ -323,7 +323,7 @@ fn server_available_tracks_slot_return_value() {
     SCRIPT.store(NROS_RMW_RET_ERROR, Ordering::SeqCst);
     AVAIL.store(true, Ordering::SeqCst);
     assert!(
-        client.server_available().is_err(),
+        client.service_is_ready().is_err(),
         "a backend that writes the out-param AND fails must still surface the error"
     );
     SCRIPT_WRITES_ON_ERROR.store(false, Ordering::SeqCst);

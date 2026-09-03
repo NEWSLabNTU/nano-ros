@@ -179,22 +179,39 @@ template <typename S> class Client {
     ///
     /// Returns the count from the RMW backend's matched-server view:
     /// * `1`  — at least one matching server is currently visible.
-    /// * `0`  — no matching server discovered yet.
-    /// * `-1` — backend cannot answer (e.g. XRCE without participant
-    ///           enumeration); caller must fall back to a timed
+    /// * `ok(false)` — no matching server discovered yet.
+    /// * `error(Unsupported)` — backend cannot answer (e.g. XRCE without
+    ///           participant enumeration); caller must fall back to a timed
     ///           `wait_for_service` or assume reachability.
+    /// * `error(<code>)` — the probe itself failed.
     ///
     /// Never spins the executor — synchronous, safe to call from
     /// inside callbacks. Mirrors `rclcpp::ClientBase::service_is_ready`
     /// but with a tri-state result instead of collapsing
     /// "don't know" and "no" into the same `false`.
-    int server_available() const {
-        if (!initialized_) return -1;
+    Expected<bool> service_is_ready() const {
+        if (!initialized_) return Expected<bool>::error(ErrorCode::NotInitialized);
         int out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(const_cast<uint8_t*>(storage_), &out);
-        if (ret != 0) return -1;
-        return out;
+        // A failed CALL and a backend that cannot ANSWER are different facts,
+        // and the old `int` form reported both as `-1`. Keep them apart.
+        if (ret != 0) return Expected<bool>::error(static_cast<ErrorCode>(ret));
+        if (out < 0) return Expected<bool>::error(ErrorCode::Unsupported);
+        return Expected<bool>::ok(out != 0);
+    }
+
+    /// @deprecated Use `service_is_ready()`.
+    ///
+    /// phase-379 W6 — preserved exactly: `1` ready, `0` not yet, `-1` cannot
+    /// answer. It cannot distinguish a failed call from an unsupported backend,
+    /// which is why it is replaced rather than kept.
+    [[deprecated("Client::server_available is deprecated; use "
+                 "Client::service_is_ready, which returns Expected<bool>")]] int
+    server_available() const {
+        auto r = service_is_ready();
+        if (!r.ok()) return -1;
+        return r.value() ? 1 : 0;
     }
 
     /// phase-338 W8 — block until a matching service server is discoverable.

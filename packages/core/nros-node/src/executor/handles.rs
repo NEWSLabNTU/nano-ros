@@ -1726,9 +1726,9 @@ impl<const REQ_BUF: usize, const REPLY_BUF: usize> RawServiceClient<REQ_BUF, REP
 
     /// Phase 124.G.3 — graph-aware "is the matching server up?"
     /// probe. Mirrors [`Client::server_available`] for the raw API.
-    pub fn server_available(&self) -> Result<bool, NodeError> {
+    pub fn service_is_ready(&self) -> Result<bool, NodeError> {
         use nros_rmw::ClientTrait;
-        self.handle.server_available().map_err(NodeError::Transport)
+        self.handle.service_is_ready().map_err(NodeError::Transport)
     }
 
     /// Try to receive a reply (non-blocking). Returns
@@ -2146,8 +2146,15 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         executor: &mut super::Executor,
         timeout: core::time::Duration,
     ) -> Result<bool, NodeError> {
-        // Already proven once — don't re-query.
-        if self.handle.is_server_ready() {
+        // Already proven once — don't re-query. `Ok(true)` ONLY: issue 1008.
+        //
+        // This read `is_server_ready()`, whose trait default is `true` and which
+        // only zenoh overrode — so on every cffi-backed image this fast path
+        // fired unconditionally and `wait_for_service` returned `Ok(true)`
+        // without waiting or probing. `Err` (backend cannot answer) and
+        // `Ok(false)` must both fall through to the wait loop, which is what the
+        // comment above always claimed.
+        if matches!(self.handle.service_is_ready(), Ok(true)) {
             return Ok(true);
         }
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
@@ -2186,14 +2193,12 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         }
     }
 
-    /// Snapshot whether a matching service server is currently visible.
-    ///
-    /// Non-blocking. Matches `rclcpp::ClientBase::service_is_ready` and
-    /// `rclpy.client.Client.service_is_ready`. Backends without liveliness
-    /// discovery return `true` (assume always reachable).
-    pub fn service_is_ready(&self) -> bool {
-        self.handle.is_server_ready()
-    }
+    // phase-379 W6 decision 2 — the bool-returning `service_is_ready` was
+    // DELETED here. It forwarded to `ClientTrait::is_server_ready`, whose trait
+    // default is `true` and which only zenoh overrode, so on every cffi-backed
+    // image (cyclonedds, XRCE, uORB) it answered "ready" without asking anything
+    // — issue 1008. The `Result` form below is the same query with rcl's two
+    // channels kept, and it is now the only one.
 
     /// Phase 124.C.3 — graph-aware server-availability probe.
     ///
@@ -2201,15 +2206,16 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// (zenoh queryable interest, DDS built-in topic reader), or
     /// `Err(NodeError::Transport(Unsupported))` when it can't (XRCE
     /// agent without participant enumeration). Distinct from
-    /// [`service_is_ready`](Self::service_is_ready) — that one
-    /// collapses "no" and "don't know" into the same `false`.
+    /// rclcpp collapses this to a bare `bool` and throws on error;
+    /// RFC-0018 forbids exceptions, so the `Result` carries what the
+    /// exception would have (phase-379 W6).
     ///
     /// Used to gate the first request so a startup-ordering race
     /// (client opens before server's discovery announcement lands)
     /// doesn't surface as a request-side timeout.
-    pub fn server_available(&self) -> Result<bool, NodeError> {
+    pub fn service_is_ready(&self) -> Result<bool, NodeError> {
         use nros_rmw::ClientTrait;
-        self.handle.server_available().map_err(NodeError::Transport)
+        self.handle.service_is_ready().map_err(NodeError::Transport)
     }
 }
 
@@ -2806,7 +2812,8 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
         executor: &mut super::Executor,
         timeout: core::time::Duration,
     ) -> Result<bool, NodeError> {
-        if self.core.send_goal_client.is_server_ready() {
+        // issue 1008 — `Ok(true)` only; see `wait_for_service` above.
+        if matches!(self.core.send_goal_client.service_is_ready(), Ok(true)) {
             return Ok(true);
         }
         let spin_interval = core::time::Duration::from_millis(DEFAULT_SPIN_INTERVAL_MS);
@@ -2848,7 +2855,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     /// Snapshot whether the action server is currently visible.
     /// Mirrors `rclcpp_action::Client::action_server_is_ready`.
     pub fn action_server_is_ready(&self) -> bool {
-        self.core.send_goal_client.is_server_ready()
+        matches!(self.core.send_goal_client.service_is_ready(), Ok(true))
     }
 
     /// Explicitly clear the "cancel reply in flight" flag (Phase 84.D3).

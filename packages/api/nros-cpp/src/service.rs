@@ -757,7 +757,7 @@ pub unsafe extern "C" fn nros_cpp_service_client_server_available(
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
     let client = unsafe { &*(storage as *const nros::internals::RmwServiceClient) };
-    match client.server_available() {
+    match client.service_is_ready() {
         Ok(true) => {
             unsafe { *out = 1 };
             NROS_CPP_RET_OK
@@ -815,7 +815,9 @@ pub unsafe extern "C" fn nros_cpp_service_client_wait_for_service(
     let client = unsafe { &mut *(storage as *mut nros::internals::RmwServiceClient) };
 
     // Latched: a previous wait already proved reachability.
-    if client.is_server_ready() {
+    // issue 1008 — `Ok(true)` only. The deleted `is_server_ready` defaulted to
+    // `true`, so this fast path fired on every backend that cannot answer.
+    if matches!(client.service_is_ready(), Ok(true)) {
         return NROS_CPP_RET_OK;
     }
 
