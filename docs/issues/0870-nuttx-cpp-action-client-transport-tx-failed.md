@@ -5,7 +5,7 @@ title: "NuttX C++ action client fails `create_action_client` — the session
 status: open
 type: bug
 area: rmw, examples
-related: [issue-0867, issue-0891, issue-0460]
+related: [issue-0867, issue-0891, issue-0460, issue-1007]
 ---
 
 ## Symptom
@@ -241,3 +241,77 @@ console. With printk unmuted, the next FAILING run names which declaration faile
 AND prints zenoh-pico's raw return code — at zero extra cost. Worth pairing with
 a log at the swallowed liveliness site (`shim/session.rs:564`), which is the
 canary the design deliberately muted.
+
+## 2026-09-03 experiment: COULD NOT REPRODUCE. The issue stays OPEN.
+
+The decisive question — do all SIX network operations fail, or only the
+subscriber — is **still unanswered**, because nothing failed.
+
+**MEASURED: 28 solo C++ runs, `--retries 0`, 28 PASS, 0 FAIL.**
+
+| batch | condition | result |
+| --- | --- | --- |
+| 22 runs | idle host (~5 of 48 cores) | 22/22 PASS, 44-50 s |
+| 3 runs | C++ co-selected with the C cell | 3/3 PASS |
+| 3 runs | 32 busy loops, load avg 35 | 3/3 PASS, 61-67 s |
+
+Every pass is a real round trip, not an early exit — `Result received:
+[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]`. At the reported 2-in-3 failure rate,
+28 consecutive passes has probability (1/3)^28. **The reported rate does not
+hold for the current build on this host.**
+
+**This is NOT a fix and must not be read as one.** This issue's own record says
+removing the diagnostics restored FAIL/PASS/FAIL, which points at a
+timing-sensitive fault whose probability moves with image CONTENT — and today's
+image carries more code than any previously measured one. Which change moved it
+is unknown, and per this issue's own history (three guesses already burned) no
+fourth is offered.
+
+### The instrumentation is armed now, verified by linkage
+
+`strings` on the fixtures, Aug-21 binary vs today:
+
+| string | Aug-21 | today |
+| --- | ---: | ---: |
+| `zpico: z_declare_subscriber (ring) failed: %d for '%s'` | 0 | 1 |
+| `zpico: z_liveliness_declare_token failed: %d for '%s'` | 0 | 1 |
+| `action client: feedback subscription failed` | — | 1 |
+| `action client: send_goal client failed` | — | 1 |
+
+Both C and C++; sizes grew 806,892 -> 852,964 (C++) and 752,604 -> 793,336 (C).
+Every `printk` in `zpico.c` is on a failure path, so **the NuttX printk arm is
+verified by LINKAGE, not by observation** — nothing emitted because nothing
+failed. The next failing run will speak; this one had nothing to say.
+
+### The history this reframes
+
+The binaries in this checkout when the experiment started were dated **Aug 21
+09:01**. This issue's quoted output (`zpico Generic -> ConnectionFailed`) comes
+from instrumentation landed **Aug 29** (`f5674ed52`). So the binaries in this
+tree were never the ones that produced those measurements — that work happened
+against a build that no longer exists here, and "it passes now" is not a delta
+against "it failed then". The two are not the same image and cannot be diffed.
+
+### First hard number on the C-vs-C++ asymmetry
+
+**C: 3/3 PASS at 26.4-27.2 s. C++: 44-50 s.** The C++ image takes ~20 s longer
+for the same action round trip on the same board and transport, even when it
+succeeds. That is a measurement, not a mechanism — but it is the first evidence
+of any kind about the asymmetry, which until now was only guesses.
+
+### Also found, filed separately
+
+* **Issue 1007** — a clean `just nuttx build-fixtures-arm` can leave every arm
+  cell unrunnable, and the remedy it prints is the command that just
+  short-circuited. Cost a forced kernel build plus a second full fixture rebuild
+  before any measurement could be taken.
+* Every NuttX C/C++ configure logs `no Corrosion at the pinned prefix … falling
+  through to FetchContent`, i.e. it clones Corrosion from git. It succeeded here
+  (network available); this is the offline-failure shape of issues 0500/0726.
+
+### What would actually settle this
+
+A failing run. Since it will not fail on demand here, the cheapest honest option
+is to leave the instrumentation in place and catch it in a sweep — the cell is
+reported FLAKY by nextest retries, so the CI history already knows when it fails
+even though no one has read a failing run since the diagnostics landed.
