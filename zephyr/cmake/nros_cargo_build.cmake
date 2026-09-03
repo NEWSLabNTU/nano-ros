@@ -262,7 +262,8 @@ function(_nros_load_derived_entity_inventory)
         NROS_DERIVED_MAX_SUBSCRIBERS
         NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
         NROS_DERIVED_MAX_PUBLISHERS
-        NROS_DERIVED_MAX_QUERYABLES)
+        NROS_DERIVED_MAX_QUERYABLES
+        NROS_DERIVED_EXECUTOR_MAX_NODES)
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
@@ -382,6 +383,13 @@ function(nros_resolve_knobs)
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     _nros_resolve_derivable_knob(NROS_MAX_QUERYABLES
         "${CONFIG_NROS_MAX_QUERYABLES}" NROS_DERIVED_MAX_QUERYABLES
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    # phase-412 W2 -- one node per declared component. The one under-count is a
+    # bridge, whose two nodes are runtime strings declared nowhere; that path
+    # now names this knob when the table fills, which is what makes deriving it
+    # safe rather than hopeful.
+    _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_NODES
+        "${CONFIG_NROS_EXECUTOR_MAX_NODES}" NROS_DERIVED_EXECUTOR_MAX_NODES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
 
     # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines).
@@ -585,7 +593,12 @@ function(nros_resolve_knobs)
         "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}"
         NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SC "${CONFIG_NROS_EXECUTOR_MAX_SC}")
-    _nros_resolve_knob(NROS_EXECUTOR_MAX_NODES "${CONFIG_NROS_EXECUTOR_MAX_NODES}")
+    # phase-412 W2 -- resolved ABOVE, with the other derivable knobs. A second
+    # _nros_resolve_knob here re-resolves it from the raw Kconfig value, which
+    # is the `-1` DERIVE SENTINEL, and the sentinel wins as though someone had
+    # stated it. Third instance of this exact shape in this file
+    # (NROS_RMW_SUBSCRIBER_SLOTS was the second); check-knob-delivery caught
+    # all of them, and none was visible to any other gate.
     # issue 0790 — shutdown-hook slots per phase. Read by nros-node/build.rs
     # through the derived CONFIG_<name> lookup, like its five siblings above.
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SHUTDOWN_CBS

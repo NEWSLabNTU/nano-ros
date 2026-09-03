@@ -238,8 +238,24 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
     let origin = unsafe { cstr_or_empty(origin) };
 
     // Source side.
+    // phase-412 W2 -- NAME the knob. A bridge creates TWO nodes whose names are
+    // RUNTIME strings, so they are the one node demand no declaration carries
+    // and the one case NROS_EXECUTOR_MAX_NODES can be derived short for. Every
+    // other consumer fails with `NodeError::NodeTableFull`, which names the
+    // knob; this path used to map it to a bare NROS_RMW_RET_ERROR and lose it.
+    // Deriving the knob is only safe because the shortfall is legible here.
     let mut src = match eb.executor.create_node_on(src_node, src_rmw) {
         Ok(n) => n,
+        Err(nros_node::executor::NodeError::NodeTableFull) => {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_bridge"),
+                "nros_pubsub_bridge_create: node table FULL creating the source \
+                 node -- raise NROS_EXECUTOR_MAX_NODES. A bridge creates TWO \
+                 nodes and declares neither, so a DERIVED value does not count \
+                 them (phase-412 W2)."
+            );
+            return NROS_RMW_RET_ERROR;
+        }
         Err(_) => return NROS_RMW_RET_ERROR,
     };
     let sub = match src.create_subscription_raw(src_topic, type_name, type_hash) {
@@ -251,6 +267,14 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
     // Destination side.
     let mut dst = match eb.executor.create_node_on(dst_node, dst_rmw) {
         Ok(n) => n,
+        Err(nros_node::executor::NodeError::NodeTableFull) => {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_bridge"),
+                "nros_pubsub_bridge_create: node table FULL creating the \
+                 destination node -- raise NROS_EXECUTOR_MAX_NODES (phase-412 W2)."
+            );
+            return NROS_RMW_RET_ERROR;
+        }
         Err(_) => return NROS_RMW_RET_ERROR,
     };
     let pubr = match dst.create_publisher_raw(dst_topic, type_name, type_hash) {
