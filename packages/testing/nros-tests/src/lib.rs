@@ -19,6 +19,7 @@
 
 pub mod alloc;
 pub mod checker;
+pub mod dds_isolation;
 pub mod esp32;
 // issue 0526 — LINK the posix C port, do not merely depend on it.
 //
