@@ -835,11 +835,6 @@ fn run_configure(cfg: &Handoff) -> Result<()> {
     Ok(())
 }
 
-/// Generate the entry package for a cargo image (W3.b), returning its
-/// directory. `None` when the launch tree cannot be resolved — reported as a
-/// warning rather than a failure, because a workspace whose entries are still
-/// hand-written must keep building through the migration (RFC-0065 D13).
-#[allow(clippy::too_many_arguments)]
 /// The capability axes a bringup's `system.toml` turns on — the axes a missing
 /// selection facade would silently drop (phase-413 W2).
 ///
@@ -862,12 +857,21 @@ fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
         .collect()
 }
 
-// Eight, and the sibling above carries the same allow for the same reason: this
-// is the entry generator's whole input, every parameter is a distinct fact about
-// the image being generated, and bundling them into a struct would move the
-// argument list rather than shorten it. Raised to eight by phase-397's depend
-// ladder (`nano_ros_root`); it started failing `-D warnings` only once clippy
-// began counting this one, which put `ci l1` red on main for everyone.
+/// Generate the entry package for a cargo image (W3.b), returning its
+/// directory. `None` when the launch tree cannot be resolved — reported as a
+/// warning rather than a failure, because a workspace whose entries are still
+/// hand-written must keep building through the migration (RFC-0065 D13).
+//
+// Eight arguments: this is the entry generator's whole input, every parameter is
+// a distinct fact about the image being generated, and bundling them into a
+// struct would move the argument list rather than shorten it.
+//
+// This allow is not new. It has been here since the eighth argument arrived, and
+// phase-413 W2 inserted `declared_capabilities` BETWEEN it and this function, so
+// both it and the doc comment above re-attached to that one-argument function —
+// silently, because a detached attribute is still valid syntax on whatever
+// follows it. Clippy then reported `too_many_arguments` against `generate_entry`,
+// naming the item that LOST the attribute and never the insertion that took it.
 #[allow(clippy::too_many_arguments)]
 fn generate_entry(
     root: &std::path::Path,
