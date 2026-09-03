@@ -98,3 +98,125 @@ For each site: either it waits on a condition rather than a lifetime, or it
 states in a comment what it cannot observe and why that is acceptable.
 `services.rs:212` must be able to FAIL — demonstrated by a mutation, not by
 inspection.
+
+<!-- BEGIN: services.rs wave (2026-09-04) -->
+## Fixed — `tests/services.rs` (both sites), 2026-09-04
+
+Scope of this block: `packages/testing/nros-tests/tests/services.rs` ONLY. The
+other seven sites in the table above are untouched.
+
+### What the test is actually for, and what the client really prints
+
+MEASURED, by running the fixture (`native/rust/service-client`, zenoh, against a
+`zenohd_unique` router with no server):
+
+```
+PROBE n=1 at 1.021163202s why=None seen_count=1
+PROBE n=2 at 2.020642364s why=None seen_count=1
+PROBE n=3 at 3.014332016s why=None seen_count=1
+PROBE n=4 at 4.018483002s why=None seen_count=1
+PROBE n=5 at 5.013361215s why=None seen_count=1
+PROBE n=6 at 6.01650743s  why=None seen_count=1
+```
+
+The client prints `[INFO] Service call failed, retrying: Runtime` — the `Err`
+arm of `call_for_name` in `examples/native/rust/service-client/src/lib.rs` —
+once per 1 s timer tick, from ~1 s after spawn, **forever**. It never exits
+(`spin = "forever"`, issue 0274) and it never prints anything resembling
+`Timed out waiting`. The only producer of that wording in the tree is the
+unrelated `service-client-callback` example, which spells it
+`Timed out waiting for reply to {} + {}`. So the greped pattern was dead in
+both tests.
+
+A fourth defect, on top of the three the issue listed: `or_else` **discards the
+first wait's output**. The 12 s window collected ~12 failure lines, the `Err`
+carried them into a formatted message, and `or_else` threw the whole thing
+away — so the assertion only ever saw the ~2 s the fallback re-collected. The
+original run printed two lines where twelve had happened.
+
+The property both tests are for, restated:
+
+* `test_service_client_starts_without_server` — the error path is REACHABLE:
+  the first call fails and says so, promptly, without the client dying.
+* `test_service_client_timeout` — it STAYS reachable: every attempt fails and
+  is reported at the timer cadence, no reply is ever manufactured, and the
+  client survives its own timeouts.
+
+Both now wait with `ManagedProcess::collect_until_count` (the `ManagedProcess`
+sibling of the `QemuProcess` primitive the issue names; it returns as soon as
+the count is reached and, unlike `wait_for_output`/`wait_for_all_output`, kills
+NOTHING on timeout). The tests own the lifetime and call `client.kill()`
+themselves. Assertions: `>= 3` failure markers within 20 s (1 Hz ⇒ ~3 s),
+`!output.contains(SERVICE_RESULT_PREFIX)`, and `is_running()` sampled BEFORE
+the kill.
+
+Stated bound, per acceptance: neither test observes whether the client would
+eventually give up (it has no such contract) nor that a call succeeds once a
+server appears (that is `test_service_multiple_sequential_calls`).
+
+### Mutation evidence
+
+**The old test passes with a fully working server present** — the sharpest
+statement of the defect. Same file, only the mutation added (spawn the server
+the test is supposed to be missing):
+
+```
+running 1 test
+Timeout test output:
+
+test test_service_client_timeout ... ok
+        PASS [  14.315s] nros-tests::services test_service_client_timeout
+```
+
+Note `Timeout test output:` is EMPTY: the assertion ran against `""` and passed
+on `!client.is_running()` alone, which the fallback's kill had just made true.
+
+**New test, same mutation (server present) — RED:**
+
+```
+a client with no server must report a failed call on every attempt: expected >= 3
+`Service call failed, retrying:` within 20s, saw 0:
+...
+[INFO] Result of add_two_ints: 5
+        FAIL [  20.316s] nros-tests::services test_service_client_timeout
+```
+
+**New test, SUT silenced** (stand in a client build whose `Err` arm prints
+nothing and never exits — the pre-phase-338 `Err(_) => {}` shape) — RED:
+
+```
+expected >= 3 `Service call failed, retrying:` within 20s, saw 0:
+...
+[INFO] Waiting for service requests
+        FAIL [  20.313s] nros-tests::services test_service_client_timeout
+```
+
+Same mutation against the sibling `test_service_client_starts_without_server` —
+also RED (`FAIL [ 15.315s]`).
+
+**Restored, GREEN**, whole file:
+
+```
+        PASS [   1.321s] nros-tests::services test_service_client_starts_without_server
+        PASS [   3.322s] nros-tests::services test_service_client_timeout
+     Summary [  10.681s] 5 tests run: 5 passed, 0 skipped
+```
+
+Wall clock also improves: the two tests were 14.3 s + 12 s of pure deadline;
+they are now 1.3 s + 3.3 s of real waiting.
+
+### Follow-ups this wave did not take
+
+* `SERVICE_CALL_FAILED_MARKER` is a file-local `const` in `services.rs`, not a
+  `nros_tests::output` constant, because this wave owned one file. It belongs
+  beside `SERVICE_RESULT_PREFIX` — every Rust group copy of the client
+  (`qemu-arm-nuttx`, `qemu-arm-freertos`, `threadx-linux`) prints the same
+  wording, and the C/C++ copies print a different one (`Service call failed
+  with error %d`), which is worth a second constant.
+* On the issue's point 3 (a gate for unfalsifiable assertions): the shape that
+  made this one unfalsifiable is *a disjunct the test's own preceding call
+  makes true* — here `!is_running()` after a helper that kills. That is
+  narrower than "unfalsifiable" in general and might be greppable: an
+  `is_running()`/`try_wait()` disjunct in an `assert!` that follows a
+  `wait_for_all_output`/`wait_for_output` in the same body. Not attempted here.
+<!-- END: services.rs wave (2026-09-04) -->
