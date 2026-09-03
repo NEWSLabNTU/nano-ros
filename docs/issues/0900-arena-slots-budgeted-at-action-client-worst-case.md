@@ -500,3 +500,42 @@ So the two are complements, not alternatives:
 * **3** — a checked manual knob where it cannot.
 
 Neither alone is both safe and useful across the tree.
+
+## The saving, MEASURED (2026-09-04) — and the default is wrong for action images too
+
+Everything above is mechanism. This is what it delivers, read from
+`nros-node`'s generated `ARENA_SIZE` rather than argued from the formula. The
+arena is inline on the task stack, so `just mem-report` cannot see it; the
+generated constant is the number that sizes the reservation.
+
+Isolated `CARGO_TARGET_DIR` per run, one variable, defaults otherwise
+(`MAX_CBS=4`, `DEFAULT_RX_BUF_SIZE=1024`):
+
+| `NROS_EXECUTOR_ACTION_CLIENTS` | `ARENA_SIZE` | saved vs default |
+| --- | ---: | ---: |
+| unset (= `MAX_CBS`, today's default) | 74,240 | — |
+| 1 | 30,848 | **43,392 B (42.4 KiB)** |
+| 0 | 16,384 | **57,856 B (56.5 KiB)** |
+
+The 56.5 KiB this issue has claimed throughout is confirmed to the byte.
+
+**What is new is the middle row, and it changes who this is for.** This issue is
+written as though the saving belongs to pub/sub images — "every pub/sub image
+56.5 KiB smaller" is how option 2 is phrased. But an image with ONE action
+client, which is what an action-client image typically has, still saves
+**43,392 bytes**, because the default budgets ALL FOUR slots at the action-client
+size rather than the one that needs it. The default is not merely conservative
+for images with no action client; it is wrong by 42 KiB for the images it was
+chosen to protect.
+
+That also removes the sharpest edge from option 2's objection. Flipping the
+default to 0 was rejected for breaking "every action-client image at
+REGISTRATION". The derivation makes that moot where it runs — an action-client
+image derives 1, not 0 — and the gate (W3) catches `knob == 0` with an action
+entity linked. The remaining exposure is an image that is neither derived nor
+gated, which is the same set the tri-state already falls back to worst-case for.
+
+Not measured here: an end-to-end image build showing the stack reservation
+shrink. The constant is what sizes it, and no image in the tree currently
+derives a non-default value, so that measurement needs an image built through
+the CMake seam with a declaring `nano_ros_node_register`.

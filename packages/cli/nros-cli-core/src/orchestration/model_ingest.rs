@@ -381,8 +381,15 @@ pub fn load_workspace_metadata(ws_root: &Path) -> Vec<JsonValue> {
 ///   timer counts ZERO in the model and ONE in the recorder — the exact hole
 ///   issue 0257 documented;
 /// - the recorder only sees what `Component::register` declares as an entity,
-///   and service/action CLIENTS are not recorded as node entities, while the
-///   model's wiring names them.
+///   while the model's wiring names things the recorder never runs to see.
+///
+/// That second bullet used to read "service/action CLIENTS are not recorded as
+/// node entities". That is no longer true (issue 0900): the recorder always
+/// captured them and the SIDECAR WRITER dropped them on the way out, which is
+/// fixed — `action_clients` and `service_clients` are emitted arrays now. The
+/// max rule still holds, for the reason above and for the timer hole below; it
+/// no longer holds for the client reason, and a stale rationale is how the next
+/// reader concludes the sidecar cannot answer a question it now can.
 ///
 /// Taking the max per node is monotone (never below today's model bound, so no
 /// existing build regresses) and never over-counts a node by mixing the two
