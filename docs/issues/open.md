@@ -82,5 +82,6 @@ fails if this block drifts.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
 - **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 15 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
+- **#1019** (api, docs) — Every `RCLCPP_*` log call in a ported C++ node is discarded on embedded, and `RCLCPP_*_STREAM` drops its message on every target See `1019-*`.
 
 <!-- END GENERATED open-issue list -->
