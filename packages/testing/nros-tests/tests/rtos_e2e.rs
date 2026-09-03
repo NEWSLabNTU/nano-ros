@@ -20,7 +20,11 @@ use nros_tests::{
     process::{ManagedProcess, kill_process_group},
 };
 use rstest::rstest;
-use std::{fmt, path::Path, time::Duration};
+use std::{
+    fmt,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 // =============================================================================
 // Parameter enums
@@ -90,6 +94,51 @@ impl RtosProcess {
         match self {
             RtosProcess::Qemu(p) => p.collect_until(pattern, timeout),
             RtosProcess::Managed(p) => p.collect_until(pattern, timeout),
+        }
+    }
+
+    /// Collect output until `pattern` has appeared `expected` times, or the
+    /// deadline passes — the COUNTING sibling of [`Self::collect_until`], and
+    /// lenient the same way: it returns what was printed either way, so the
+    /// caller asserts on the count and reports the real transcript.
+    ///
+    /// Issue 1013 — this is what a wait on a FREE-RUNNING node has to be. The
+    /// pub/sub cell used to end its talker with `wait_for_output`, a
+    /// run-to-completion wait ("wait for QEMU to produce output *and exit*")
+    /// aimed at a node that never exits; the timeout became the talker's
+    /// lifetime instead.
+    fn collect_until_count(&mut self, pattern: &str, expected: usize, timeout: Duration) -> String {
+        match self {
+            RtosProcess::Qemu(p) => p.collect_until_count(pattern, expected, timeout),
+            // `ManagedProcess::collect_until_count` splits an unmet count into
+            // an EMPTY string plus a diagnostic (issue 0670's rule: never let
+            // an assertion match the complaint about its own pattern). Correct
+            // there, wrong here — this call site asserts on the COUNT, so an
+            // empty string would report 0 samples where the process printed 19,
+            // and the number is the whole finding. So build the count wait out
+            // of the single-match wait: each call returns at the next
+            // occurrence, N calls cost N lines, and the accumulated text is the
+            // honest transcript.
+            RtosProcess::Managed(p) => {
+                let deadline = Instant::now() + timeout;
+                let mut out = String::new();
+                while count_pattern(&out, pattern) < expected {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    let chunk = p.collect_until(pattern, remaining);
+                    if chunk.is_empty() {
+                        // Nothing read before the deadline, or the process is
+                        // gone. Either way another lap would only spin.
+                        if !p.is_running() {
+                            break;
+                        }
+                    }
+                    out.push_str(&chunk);
+                }
+                out
+            }
         }
     }
 
@@ -601,6 +650,176 @@ fn boot_budget(platform: Platform) -> Duration {
     }
 }
 
+/// How many delivered samples the pub/sub cell requires before it is satisfied.
+///
+/// Every talker example in the matrix runs a **1 Hz** timer (`TimerDuration::
+/// from_millis(1000)` in the Rust ones, `nros_timer_init(..., 1000000000ULL,
+/// ...)` in the C/C++ ones), so this number is also *how many seconds of
+/// SESSION LIFE the cell observes* — the property issue 1013 says a 15 s
+/// run-to-completion window did not have.
+///
+/// **60 is derived, not chosen.** zenoh-pico's client lease task
+/// (`_zp_unicast_lease_task`, `src/transport/unicast/lease.c`) arms
+/// `next_lease = lease` and, at the first expiry, consumes the `_received` flag
+/// the handshake set; only the SECOND expiry with nothing received closes the
+/// session. A session whose peer never speaks therefore dies at **2 x lease** —
+/// issue 0906's 10 s lease lapsed at 19.5 s on the wire, measured.
+///
+/// The peer is `rmw_zenohd`, and its shipped
+/// `DEFAULT_RMW_ZENOH_ROUTER_CONFIG.json5` announces `lease: 60000` with
+/// `keep_alive: 2`, i.e. an idle router speaks every **30 s**. zenoh-pico takes
+/// `min(peer_lease, Z_TRANSPORT_LEASE)`. So the lease values split cleanly:
+///
+/// * `L >= 30 s` — the router is heard before the deadline; the session holds
+///   indefinitely. The shipped 60 s is in this set.
+/// * `L < 30 s` — it cannot be heard in time, and the session closes at
+///   `2L < 60 s`. Issue 0906's 10 s is in this set.
+///
+/// 60 samples is exactly the frontier between those two: **every** client-lease
+/// configuration that cannot hold a session against the ROS router fails this
+/// cell, and no configuration that can hold one is asked to prove more than
+/// that. A shorter window would readmit part of the broken half (a 40 s window
+/// passes any `L >= 20 s`); a longer one costs wall clock to prove nothing new
+/// about this class.
+///
+/// **The bound this does NOT cover, stated:** a defect whose first symptom is
+/// beyond 60 s of session life stays invisible here — the shipped 60 s lease's
+/// own lapse would be at 120 s, and a slow leak or a drift that needs minutes
+/// is out of reach of any per-cell window. Nothing in the suite covers that
+/// today; it wants a soak, not a bigger e2e budget.
+const PUBSUB_MIN_SAMPLES: usize = 60;
+
+/// How long the pub/sub cell will wait for [`PUBSUB_MIN_SAMPLES`] samples.
+///
+/// The wait starts when the talker is spawned, so it has to cover that image's
+/// boot, its network wait and its session open BEFORE the first of the 60
+/// seconds of publishing — which is what the old talker window measured at
+/// ">15 s" on QEMU, and NuttX's cold arm-virt boot makes worse. Keyed on
+/// platform for the same reason [`boot_budget`] is: every term in that list is
+/// a property of the emulator and the board, not of the language.
+fn pubsub_window(platform: Platform) -> Duration {
+    match platform {
+        // Cold arm-virt boot + slirp; the pre-1013 cell already gave this
+        // platform 3x the others.
+        Platform::Nuttx => Duration::from_secs(150),
+        // A native process — no emulator, no cold boot to absorb.
+        Platform::ThreadxLinux => Duration::from_secs(90),
+        _ => Duration::from_secs(120),
+    }
+}
+
+/// The zenoh router's per-SESSION DEBUG line, and the only evidence a test on
+/// this side of the link has that a peer re-dialled it.
+///
+/// Deliberately the transport line and not `"Accepted TCP connection"`: a
+/// healthy FreeRTOS pair produces THREE accepts and two sessions, because the
+/// first dial is abandoned before the handshake (measured: accept at t=0.0 with
+/// no transport, then one transport each at t=2.0 and t=22.0). Counting accepts
+/// would have to carry that boot artefact as slack, on every platform, forever.
+/// Sessions are the thing being asserted anyway.
+///
+/// It is third-party text (RFC-0075: the router is whatever ROS ships), so
+/// [`assert_no_session_churn`] treats "not one of these in the whole log" as a
+/// FAILURE rather than as zero reconnects — a rename upstream must show up as a
+/// red naming this constant, never as a cell that silently stops checking.
+const ROUTER_SESSION_MARKER: &str = "New transport opened";
+
+/// Router log filter for [`ROUTER_SESSION_MARKER`]. Scoped to the crate that
+/// emits it — a whole-router `debug` writes ~46 KB per cell to say the same
+/// thing.
+const ROUTER_SESSION_LOG_FILTER: &str = "zenoh_transport=debug";
+
+/// How many sessions the router may open during one pub/sub cell.
+///
+/// TWO is the invariant — one per node, held for the whole run. Measured on the
+/// shipped 60 s lease: exactly 2, on all three FreeRTOS languages, every run.
+/// The third slot is slack for ONE genuine re-open (a link that drops once, a
+/// platform whose bring-up re-dials); a lapse on a TIMER cannot hide under it,
+/// because a lease of `L` costs one re-open per node per `2L` and issue 0906's
+/// 10 s lease measured FIVE in this cell's window.
+const MAX_ROUTER_SESSIONS: usize = 3;
+
+/// Turn on the router's accept log for this test process.
+///
+/// SAFETY / why an env var: `ZenohRouter` reads `ZENOHD_LOG` when it SPAWNS the
+/// router, and there is no per-call switch. nextest runs each case as its own
+/// process, so this write happens once, before this cell's router exists and
+/// before any thread that could read the environment concurrently. An operator
+/// value is left alone — `ZENOHD_LOG=trace` is someone debugging, and its log
+/// is a superset of what this needs.
+fn enable_router_session_log() {
+    if std::env::var_os("ZENOHD_LOG").is_none() {
+        // SAFETY: single-threaded, once, at the top of the test.
+        unsafe { std::env::set_var("ZENOHD_LOG", ROUTER_SESSION_LOG_FILTER) };
+    }
+}
+
+/// The pub/sub cell's SECOND question: did the two nodes hold ONE session each,
+/// or did they re-dial the router on a timer?
+///
+/// Issue 1013 asked for a delivery window long enough to see issue 0906's 10 s
+/// `Z_TRANSPORT_LEASE` fail. Measured on this tree, a 60 s delivery window does
+/// NOT see it: rebuilt with the 10 s lease, FreeRTOS delivered **60 published /
+/// 60 heard** on all three languages. The defects that turned a lapse into lost
+/// messages (issues 0899, 0924, and the board's `LWIP_NETCONN_FULLDUPLEX`) have
+/// since been fixed, so the reopen now completes in ~15 ms and a 1 Hz publisher
+/// almost never has a sample in flight during one. "Almost never" is the whole
+/// problem: a delivery assertion would catch that build a few runs in a
+/// thousand, which is worse than not claiming to catch it.
+///
+/// What that build still does is re-handshake every `2 x lease`, exactly as 0906
+/// measured on the wire — and the router logs each one. So this is 0906's own
+/// acceptance ("ONE session for at least five lease periods, proven by a capture
+/// showing no second handshake"), automated from the router's own log instead of
+/// a packet capture. It is the half that actually fails on that build: **5
+/// sessions against a limit of 3, 3 languages out of 3**, while delivery reads
+/// perfect.
+fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Duration) {
+    let log_path = nros_tests::fixtures::fixture_log_path(&format!("zenohd-{port}"));
+    let log = std::fs::read_to_string(&log_path).unwrap_or_else(|e| {
+        panic!(
+            "{platform} {lang} pubsub E2E: cannot read the router log at {} ({e}).\n\
+             This cell asserts on it, so an unreadable log is a failure, not a pass. \
+             `enable_router_session_log` sets ZENOHD_LOG before the router starts; \
+             if that no longer reaches `ZenohRouter`, this is where it shows.",
+            log_path.display()
+        )
+    });
+    let sessions = count_pattern(&log, ROUTER_SESSION_MARKER);
+    eprintln!(
+        "[{} {}] router sessions opened: {} (max {})",
+        platform, lang, sessions, MAX_ROUTER_SESSIONS
+    );
+    assert!(
+        sessions >= 2,
+        "{platform} {lang} pubsub E2E: the router log records fewer than two \
+         `{ROUTER_SESSION_MARKER}` lines, yet both nodes demonstrably talked to it — so \
+         this cell's session-churn check just measured nothing.\n\
+         That line is third-party text (RFC-0075: the router is whatever ROS ships). \
+         Either the filter `{ROUTER_SESSION_LOG_FILTER}` no longer selects it or this \
+         zenoh renamed it; fix ROUTER_SESSION_MARKER / ROUTER_SESSION_LOG_FILTER in this \
+         file. Log: {}",
+        log_path.display(),
+    );
+    assert!(
+        sessions <= MAX_ROUTER_SESSIONS,
+        "{platform} {lang} pubsub E2E: the router opened {sessions} sessions in {window:?} \
+         for TWO nodes — they are re-dialling on a timer, not holding one session each.\n\
+         That is issue 0906's signature: zenoh-pico closes a session after 2 x \
+         `Z_TRANSPORT_LEASE` of silence, and `rmw_zenohd` speaks only every 30 s \
+         (`lease: 60000, keep_alive: 2`), so any client lease under 30 s lapses \
+         deterministically. Note delivery can look PERFECT while this fails — the reopen \
+         is fast now, which is exactly why the count is what this asserts on. Check \
+         `Z_TRANSPORT_LEASE_MS` in `packages/rmw/zenoh/nros-zpico-build/src/lib.rs` \
+         (60_000) and what the leaf actually BAKED — issue 1005: the staleness probe does \
+         not watch that constant, so a stale image can carry an old value. Sessions:\n{}",
+        log.lines()
+            .filter(|l| l.contains(ROUTER_SESSION_MARKER))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+}
+
 fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform) {
     if output.contains(readiness_pattern) {
         return;
@@ -637,8 +856,15 @@ fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform) {
 
 /// End-to-end pub/sub across Rust, C, and C++ on all four RTOS
 /// platforms. First node is the talker; second node is the listener.
-/// We wait for the listener to reach "Waiting for messages" before
-/// killing both, and assert that at least one "Received" line appeared.
+///
+/// We wait for the listener's readiness banner, then let BOTH nodes run until
+/// the listener has heard [`PUBSUB_MIN_SAMPLES`] samples — 60 at 1 Hz, so 60
+/// seconds of session life, the number derived at that constant. Neither node
+/// is killed before the count is in.
+///
+/// The old shape asserted `received > 0` after killing the talker at 15 s
+/// (issue 1013): it proved a sample could be delivered, never that the session
+/// survived long enough to keep delivering them.
 #[rstest]
 fn test_rtos_pubsub_e2e(
     #[values(
@@ -656,7 +882,12 @@ fn test_rtos_pubsub_e2e(
 
     let (talker_bin, listener_bin) = build_pair(platform, lang, Variant::Pubsub);
 
-    let _zenohd = platform
+    // Ask the router to record its TCP accepts BEFORE starting it — that log is
+    // this cell's only window onto session CONTINUITY (see
+    // `assert_no_session_churn`), and `ZenohRouter` decides whether to keep one
+    // at spawn time.
+    enable_router_session_log();
+    let zenohd = platform
         .zenoh_router_start(Variant::Pubsub, lang)
         .expect("Failed to start zenohd");
 
@@ -718,29 +949,50 @@ fn test_rtos_pubsub_e2e(
     let listener_boot = listener.collect_until(ready_marker, boot_budget(platform));
     ensure_ready(&listener_boot, ready_marker, platform);
 
-    // Let the talker run a bit and drain its output to avoid pipe back-pressure.
-    // NuttX C needs a longer window: cold QEMU boot + 5s app sleep + session
-    // open can eat >15 s before the first publish, and parallel retries from
-    // earlier flaky tests load the host further.
-    let talker_window = match platform {
-        Platform::Nuttx => Duration::from_secs(45),
-        _ => Duration::from_secs(15),
-    };
-    let talker_out = talker.wait_for_output(talker_window).unwrap_or_default();
-
-    // Phase 182.6 — early-exit on the first delivered sample instead of
-    // blind-collecting for the whole window. `wait_for_output_pattern` returns
-    // as soon as "Received" appears (typically a few seconds) yet still waits up
-    // to `listener_window` before giving up, so it both de-flakes (less host
-    // saturation from tests that used to burn the full 30 s / 90 s every run)
-    // and keeps the same failure deadline. The assert only needs ≥1 sample.
-    let listener_window = match platform {
-        Platform::Nuttx => Duration::from_secs(90),
-        _ => Duration::from_secs(30),
-    };
-    let final_out =
-        listener.collect_until(nros_tests::output::LISTENER_LOG_PREFIX, listener_window);
+    // ⚠️ The talker is FREE-RUNNING and nothing here may cut it short. ⚠️
+    //
+    // Issue 1013 — what stood here was
+    //
+    //     let talker_out = talker.wait_for_output(15s).unwrap_or_default();
+    //
+    // and `wait_for_output` is a RUN-TO-COMPLETION wait: its own doc says "wait
+    // for QEMU to produce output *and exit*", and at the deadline it
+    // `kill_process_group`s the guest. Pointed at a 1 Hz publisher — a node
+    // with no terminal state — the timeout silently became the talker's
+    // LIFETIME. Measured: exactly 12 publishes, every run, all three languages,
+    // whole cell in ~35 s. The assertion below was `received > 0`, so every
+    // defect whose first symptom lands after the twelfth publish was invisible
+    // AND the cell said PASS: a build carrying issue 0906's 10 s
+    // `Z_TRANSPORT_LEASE` — a session that provably dies at ~20 s — passed it
+    // 6 runs out of 6.
+    //
+    // The service and action cells never had this: they let the long-lived
+    // server run and wait on the CLIENT's terminal line. Pub/sub has no
+    // terminal line, so the wait is on a COUNT of delivered samples, and the
+    // talker is killed only after the count is in.
+    //
+    // Both processes now run undrained for the length of the wait. That is
+    // sound at these volumes and not by luck: an mps2 talker prints its boot
+    // banner plus one ~40-byte line per second, so a 90 s wait leaves single-
+    // digit kilobytes against a 64 KiB pipe buffer. A node that logs per-sample
+    // at any real rate would need this drained in slices.
+    let listener_window = pubsub_window(platform);
+    let already_heard = count_pattern(&listener_boot, nros_tests::output::LISTENER_LOG_PREFIX);
+    let final_out = listener.collect_until_count(
+        nros_tests::output::LISTENER_LOG_PREFIX,
+        PUBSUB_MIN_SAMPLES.saturating_sub(already_heard),
+        listener_window,
+    );
     let full_listener = format!("{}{}", listener_boot, final_out);
+
+    // The talker has been publishing the whole time; scrape its transcript for
+    // the log now that the listener's count is in. Bounded and NON-killing (the
+    // kill is two lines down either way) — this is a read, not a wait.
+    let talker_out = talker.collect_until_count(
+        nros_tests::output::TALKER_PAYLOAD_PREFIX,
+        PUBSUB_MIN_SAMPLES,
+        Duration::from_secs(5),
+    );
 
     talker.kill();
     listener.kill();
@@ -748,14 +1000,39 @@ fn test_rtos_pubsub_e2e(
     eprintln!("Talker output:\n{}", talker_out);
     eprintln!("Listener output:\n{}", full_listener);
 
+    // TALKER_PAYLOAD_PREFIX, not TALKER_LOG_PREFIX: only the opening payload
+    // quote separates a real publish line from setup prose containing the word
+    // "Publishing" (phase-295 W2).
+    let published = count_pattern(&talker_out, nros_tests::output::TALKER_PAYLOAD_PREFIX);
     let received = count_pattern(&full_listener, nros_tests::output::LISTENER_LOG_PREFIX);
-    eprintln!("[{} {}] messages received: {}", platform, lang, received);
-    assert!(
-        received > 0,
-        "{} {} pubsub E2E failed — 0 messages received",
-        platform,
-        lang
+    // Published vs heard is the shape issue 0906 was measured in ("77
+    // published, 19 heard"), so print both: a shortfall says the session
+    // stopped delivering, not that the talker stopped publishing.
+    eprintln!(
+        "[{} {}] messages published: {}, received: {} (need {})",
+        platform, lang, published, received, PUBSUB_MIN_SAMPLES
     );
+    assert!(
+        received >= PUBSUB_MIN_SAMPLES,
+        "{} {} pubsub E2E failed — heard {} of the {} samples this cell requires \
+         (talker printed {} publish lines) within {:?}.\n\
+         {} samples at 1 Hz is {} SECONDS of session life: a shortfall means \
+         delivery stopped part-way, which is what a session that expires looks \
+         like from here (issue 0906/1013). Listener output:\n{}",
+        platform,
+        lang,
+        received,
+        PUBSUB_MIN_SAMPLES,
+        published,
+        listener_window,
+        PUBSUB_MIN_SAMPLES,
+        PUBSUB_MIN_SAMPLES,
+        full_listener,
+    );
+    // Delivery is only half of it — see this function's header for why a build
+    // that lapses every 20 s can still deliver 60 of 60.
+    assert_no_session_churn(platform, lang, zenohd.port(), listener_window);
+
     eprintln!(
         "[PASS] {} {} pubsub E2E: {} messages",
         platform, lang, received

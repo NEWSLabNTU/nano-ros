@@ -579,6 +579,33 @@ impl QemuProcess {
         self.collect_until_pred(|out| out.contains(pattern), timeout)
     }
 
+    /// Collect output, stopping early once `pattern` has appeared `expected`
+    /// times — the COUNTING sibling of [`Self::collect_until`], lenient in
+    /// exactly the same way.
+    ///
+    /// This is the wait for a FREE-RUNNING producer, which is the one shape
+    /// [`Self::wait_for_output`] cannot serve: that call is run-to-completion
+    /// (it kills the guest at the deadline), so pointing it at a node with no
+    /// terminal state silently makes the timeout the node's LIFETIME —
+    /// issue 1013, where a 15 s window ended a 1 Hz talker after twelve
+    /// publishes and the cell still reported PASS. A count says what such a
+    /// test actually means: "keep it alive until it has produced this much".
+    ///
+    /// Returns whatever was printed, count reached or not, so the caller can
+    /// assert on the count itself and put the real transcript in its own
+    /// failure message.
+    pub fn collect_until_count(
+        &mut self,
+        pattern: &str,
+        expected: usize,
+        timeout: Duration,
+    ) -> String {
+        match self.collect_until_pred(|out| out.matches(pattern).count() >= expected, timeout) {
+            Ok(out) => out,
+            Err(e) => format!("<no output collected: {e}>"),
+        }
+    }
+
     /// The general form: collect until `done` accepts the accumulated output,
     /// or the deadline passes.
     ///
