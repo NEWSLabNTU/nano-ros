@@ -38,6 +38,8 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_EXECUTOR_MAX_NODES` | 4 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_SC` | 8 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` | 2 | `packages/core/nros-node` |
+| `NROS_FREERTOS_APP_STACK_KB` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:851` | `packages/tooling/nros-platform-config` |
+| `NROS_FREERTOS_HEAP_KB` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:850` | `packages/tooling/nros-platform-config` |
 | `NROS_KEYEXPR_STRING_SIZE` | 256 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `NROS_LET_BUFFER_SIZE` | 512 | `packages/tooling/nros-build-helpers` |
 | `NROS_MAX_ARRAY_LEN` | 32 | `packages/core/nros-params` |
@@ -63,11 +65,12 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_SUBSCRIBER_BUFFER_SIZE` | computed — see `packages/core/nros-node/build.rs:171` | `packages/core/nros-node` |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
 | `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:259` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
-| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:488` | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:487` | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:486` | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_GET_POLL_INTERVAL_MS` | 10 | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_GET_REPLY_BUF_SIZE` | 4096 | `packages/rmw/zenoh/nros-zpico-build` |
+| `NROS_ZEPHYR_HEAP_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:849` | `packages/tooling/nros-platform-config` |
+| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:977` | `packages/tooling/nros-platform-config` |
+| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:976` | `packages/tooling/nros-platform-config` |
+| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:978` | `packages/tooling/nros-platform-config` |
+| `ZPICO_GET_POLL_INTERVAL_MS` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:980` | `packages/tooling/nros-platform-config` |
+| `ZPICO_GET_REPLY_BUF_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:979` | `packages/tooling/nros-platform-config` |
 | `ZPICO_LEASE_TASK_PRIORITY` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_LARGE_SUBSCRIBERS` | 2 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_MAX_LIVELINESS` | 16 | `packages/rmw/zenoh/nros-zpico-build` |

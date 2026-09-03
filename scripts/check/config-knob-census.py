@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 32
+LADDER_FLOOR = 37
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -123,11 +123,11 @@ KNOB_CLASS = {
     "ZPICO_MAX_SESSIONS": ("derived", "phase-392 poses it explicitly: joins the model, or stays a knob and that phase says so"),
     "ZPICO_MAX_LIVELINESS": ("derived", "entity cap; phase-392"),
     "ZPICO_MAX_PENDING_GETS": ("derived", "entity cap; phase-392"),
-    "ZPICO_BATCH_UNICAST_SIZE": ("sizing", "wire batch buffer"),
-    "ZPICO_BATCH_MULTICAST_SIZE": ("sizing", "wire batch buffer"),
-    "ZPICO_FRAG_MAX_SIZE": ("sizing", "fragmentation ceiling"),
-    "ZPICO_GET_REPLY_BUF_SIZE": ("sizing", "reply staging block"),
-    "ZPICO_GET_POLL_INTERVAL_MS": ("sizing", "a poll interval, not a size; same ladder shape"),
+    "ZPICO_BATCH_UNICAST_SIZE": ("ladder", "zenoh.wire tenant"),
+    "ZPICO_BATCH_MULTICAST_SIZE": ("ladder", "zenoh.wire tenant"),
+    "ZPICO_FRAG_MAX_SIZE": ("ladder", "zenoh.wire tenant"),
+    "ZPICO_GET_REPLY_BUF_SIZE": ("ladder", "zenoh.wire tenant"),
+    "ZPICO_GET_POLL_INTERVAL_MS": ("ladder", "zenoh.wire tenant"),
     "ZPICO_READ_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
     "ZPICO_LEASE_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
     "NROS_LET_BUFFER_SIZE": ("sizing", "logical-execution-time buffer"),
@@ -274,6 +274,7 @@ def ladder_knobs():
         "RmwKnobs",
         "NetKnobs",
         "RuntimeKnobs",
+        "WireKnobs",
     ):
         fields = _struct_fields(src, struct)
         if fields:
