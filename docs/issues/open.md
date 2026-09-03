@@ -90,6 +90,8 @@ fails if this block drifts.
 - **#1021** (rmw, third-party) — zenoh-pico 1.8.0 does not compile with `Z_FEATURE_MATCHING=0`: an unguarded call to a MATCHING-only function See `1021-*`.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
+- **#1026** (testing) — Six run-to-completion waits are aimed at free-running nodes, turning a timeout into the node's lifetime — and one test cannot fail on any build See `1026-*`.
+- **#1027** (testing, build) — NuttX Rust fixtures resolve at a LEAF `target/` that phase-340 moved, so a freshly built image reports `not prebuilt` See `1027-*`.
 - **#1028** ([rmw, memory, build]) — NuttX is classified `hosted` because its `target_os` is not `\"none\"`, so it takes the Linux 32-queryable budget: 142,336 B of `.bss` in an image with zero queryables See `1028-*`.
 - **#1034** (testing, tooling) — The provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss` before the guest runs, and that stall is the whole C-vs-C++ asymmetry in issue 0870 See `1034-*`.
 - **#1038** (ci, build, testing) — nightly triage (phase-413 W2.3): three of six cell failures are one class — the platform job builds a lane whose prerequisites its own setup never installs; none is a product regression See `1038-*`.
