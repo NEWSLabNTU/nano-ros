@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
-**Status (2026-09-01): W2-W5, W7 and W8 done; W6's `executor`, `transport`,
-`zenoh.tx`, `memory`, `params` and `rmw` tenants done, its remaining tenants and W1
+**Status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
+`zenoh.tx`, `memory`, `params` and `rmw` tenants done, its remaining tenants
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
@@ -54,7 +54,7 @@ them. When W3 lands that file is a transport stanza and nothing else.
 
 | | What | Gate | State |
 | --- | --- | --- | --- |
-| **W1** | Platform axis resolves like rmw: descriptor beside its crate, by name over a search path | a platform outside the tree builds without forking `config/` | |
+| **W1** | Platform axis resolves like rmw: descriptor beside its crate, by name over a search path | a platform outside the tree builds without forking `config/` | **done** |
 | **W2** | De-name the platform sections — `[build.<rmw>]`, `[knobs.<rmw>.tx]` | a second backend receives platform knobs with neither side naming the other | **done** |
 | **W3** | `transport` tenant + `requires` / `implies` / `exactly-one-of` in the resolver | serial-only image builds with no hand-written link or driver lines | **done** |
 | **W4** | Provenance: `explain` reports implied and overridden | every knob prints rung, rule, and override | **done** |
@@ -71,25 +71,53 @@ those knobs are scattered, not wrong.
 
 ## W1 — the platform axis resolves like the others
 
-RFC-0049 opens by rejecting a central file, then implements one. rmw and board
-descriptors live in their packages; platform descriptors live in
+**Done.** The move landed 2026-08-30 in `3164c93a7`; the discovery half landed
+2026-09-04 (below). This section is kept because the shape it argues for is now
+the shape the tree has, and because two descriptors deliberately did not move.
+
+RFC-0049 opens by rejecting a central file, then implemented one. rmw and board
+descriptors live in their packages; platform descriptors lived in
 `config/<name>/` behind a single `--platforms-dir` root.
 
 * Move `config/<name>/nros-platform.toml` →
-  `packages/platform/nros-platform-<name>/nros-platform.toml`.
-* Resolve by name over a search path of workspaces, reusing RFC-0071 D5's
-  resolver rather than writing a second one.
+  `packages/platform/nros-platform-<name>/nros-platform.toml`. **Done for the
+  five platforms that HAVE a crate** — `posix`, `zephyr`, `freertos`, `nuttx`,
+  `threadx`. `bare-metal` and `generic` stay in `config/`, and that is not
+  residue: neither names a crate to sit beside, because neither is a port. They
+  are the fallbacks a board selects when no port applies, so `config/` is their
+  correct home until something owns them.
+* Resolve by name over a search path. **Done.** The loader keys each descriptor
+  on `names.first()`, falling back to the directory, so a package resolves under
+  the name it declares rather than the name of the folder someone cloned it
+  into.
 * Keep `--platforms-dir` / `$NROS_PLATFORMS_DIR` as an explicit single-root
-  override. It stops being the only way in.
+  override. It stops being the only way in. **Done** — but this was the half
+  that lagged, and it lagged silently. The search path was two fixed in-tree
+  directories plus the override, so an out-of-tree platform package resolved
+  ONLY if a human exported the variable; without it the build fell through to
+  the builtins with a `cargo:warning`, which reads as a working build. Nothing
+  derived the path from the workspace.
+
+  `nros ws board-facts` now does, because it is already the seam that knows
+  the workspace and already hands down `NROS_PLATFORM_NAME` and
+  `NROS_BOARD_TOML`. It scans the workspace for `<root>/<pkg>/nros-platform.toml`
+  and puts each `<root>` on `NROS_PLATFORMS_DIR`, after any value the caller
+  set — an explicit override still outranks discovery. Build outputs
+  (`build/`, `install/`, `log/`, `target/`) are skipped by name: they hold
+  COPIES of the very descriptors being looked for, and a copy resolving as a
+  platform is worse than not finding one.
 
 **Trap.** `config/` also holds `git-settings.txt`, `rust-targets.txt` and a
-README. This wave moves the platform descriptors only; `config/` does not
+README. This wave moved the platform descriptors only; `config/` does not
 disappear.
 
 **Gate.** A platform package outside the tree resolves and builds with
-`config/` untouched.
-
----
+`config/` untouched. **Met, and measured end to end**: a workspace holding
+`src/nros-platform-acme/nros-platform.toml` (`names = ["acme"]`,
+`[knobs.params] max_parameters = 77`) emits
+`NROS_PLATFORMS_DIR=<ws>/src` from `board-facts` with nothing exported, and a
+build resolving `acme` over that path compiles
+`pub const MAX_PARAMETERS: usize = 77;` — `config/` untouched throughout.
 
 ## W2 — de-name the platform sections
 
@@ -492,7 +520,11 @@ resolves is a mechanism people still use.
 * Env vars that were the *only* home for a knob before nano-ros #0749/#0752
   keep their names as front-ends. Env vars that duplicated a ladder knob are
   removed.
-* `config/<name>/nros-platform.toml` stops being read after W1's grace period.
+* `config/<name>/nros-platform.toml` stops being read after W1's grace period
+  — **for the five platforms W1 moved**. `config/bare-metal` and
+  `config/generic` are not a grace period and must keep resolving: neither has
+  a crate to live beside (see W1), so `config/` remains a legitimate rung of
+  the search path rather than the old central file.
 * A gate asserts no knob has two readers.
 
 **Gate.** For every migrated knob, exactly one reader exists, and
