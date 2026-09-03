@@ -145,6 +145,59 @@ Also not covered: the reverse direction, an nros action CLIENT against a `ros2`
 action server. The adapters sit on both sides of the service path, and this
 witnesses one. That is the obvious next cell.
 
+## MEASURED with the witness: the two write-side strips are DEAD (2026-09-03)
+
+The design call — if a correction is about ROS 2 compatibility and correctness,
+nano-ros should own it, not one backend — turns out to be already SATISFIED on
+the write path, and the backend code is vestigial.
+
+Instrumented both branches of `write_typed` and rebuilt the native fixtures
+(`strings` confirms 4 probe literals in each binary, so the instrumentation is
+linked rather than assumed). Then ran the nano-ros action client against the
+stock ROS 2 server:
+
+```
+2  PROBE strip_goal_id_len_at declined
+1  PROBE strip_nested_cdr_at(SendGoal) declined
+1  [INFO] Result received: [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+```
+
+They are REACHED and they DECLINE — every time — while the round trip succeeds
+against a real ROS 2 peer. Their guards test for the `[16,0,0,0]` length prefix
+and a nested encapsulation header, and neither is present: the Rust runtime
+already emits the fixed `octet[16]` (publisher.cpp's 233.6 note records that
+fix), so there is nothing left to strip.
+
+**So nano-ros already owns this correction.** The bytes are right at the source,
+which is where a ROS 2-compatibility fix belongs, and
+`strip_goal_id_len_at` / `strip_nested_cdr_at` are dead code on the write path.
+
+### One measurement error worth recording
+
+The first run of this reported "no probe fired at all", which would have meant
+`write_typed` was off the action path entirely. Wrong, and wrong in the
+convenient direction: the reverse cell CAPTURES the client's output into the
+assertion string, so the probe lines went into the capture rather than the
+terminal. Absence of evidence was an artifact of where the evidence was sent.
+Running the client directly is what produced the table above.
+
+### What this licenses, and what it does not
+
+Licensed: deleting the two write-side strips, and the `type_ends_with` branches
+that call them.
+
+NOT licensed yet: the same claim for the C and C++ action paths. This measured
+the RUST runtime. `nros-c`/`nros-cpp` action entries reach `write_typed` through
+the same C ABI but serialize through their own generated code, and nothing here
+observed them. The same probe against a C/C++ action entry is the remaining
+check, and it is cheap now that the witness exists.
+
+Also untouched: the three RECEIVE-side adapters
+(`take_fibonacci_get_result_response_wire` and the two `_SendGoal_*` /
+`_GetResult_Request_` memcpy branches). Those are a different question — issue
+0969 argues a `dds_takecdr` rewrite removes the need for them rather than
+correcting them.
+
 ## Not to be confused with
 
 **#0970** (`0970-cyclone-rmw-should-own-its-sertype.md`, filed in PR #154 — not
