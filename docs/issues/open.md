@@ -87,5 +87,6 @@ fails if this block drifts.
 - **#1020** (docs, api) — The C++ parity lane measures the NATIVE API against rclcpp and cannot see `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured See `1020-*`.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
+- **#1004** ([rmw, platform, embedded]) — an536 island stopped booting reliably at pin d2a8955c5: `create_subscription` returns TransportError, sometimes preceded by a stack overflow See `1004-*`.
 
 <!-- END GENERATED open-issue list -->
