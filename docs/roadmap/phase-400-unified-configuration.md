@@ -313,6 +313,28 @@ census fix below), and its largest families are:
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
 
+### `NROS_ZEPHYR_HEAP_SIZE` — the blocker was gone and the note still said it was
+
+The census had carried, for two waves: *"BLOCKED: the ladder crate depends on
+`nros-platform`, so the rungs are a cycle away."* `nros-platform/build.rs` said
+the same in its own words — *"giving it the toml rungs would need the ladder
+types in a crate BELOW both — a real refactor, not a dependency line."*
+
+That refactor is `nros-platform-config`, extracted for the `net` tenant. Both
+notes went stale the moment it landed and neither was updated, because nothing
+re-reads a reason once it is written.
+
+The `memory` tenant had ALREADY mapped this knob —
+`("zephyr", "heap_bytes") => "NROS_ZEPHYR_HEAP_SIZE"` — so the ladder modelled
+it while its only reader could not consult it: a mechanism that was correct,
+tested, and unreachable, which is the shape phase-412 opened to clean up. The
+build script now resolves through `memory_value`, composing env, Kconfig via
+`$DOTCONFIG`, the platform/board rung, and the builtin.
+
+Verified: builtin 65536, platform rung 131072, env override 4096.
+
+Backlog: **4**.
+
 ### The singletons — five migrated, three with reasons not to
 
 `[knobs.xrce]` (`custom_transport_mtu`, `stream_history`),
