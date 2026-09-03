@@ -639,6 +639,10 @@
     "verdict": "extension",
     "why": "see `c:client_try_recv_response`."
   },
+  "cpp:Service::try_recv_request_sized": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+  },
   "cpp:Subscription::Subscription<M>": {
     "verdict": "divergence",
     "why": "see `cpp:Publisher::Publisher<M>`."
@@ -842,9 +846,17 @@
     "verdict": "extension",
     "why": "the ours-only half of the `take` -> `try_recv` rename pair (`c:take`); recorded so the pair is visible from both sides."
   },
+  "cpp:Subscription::try_recv_sized": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+  },
   "cpp:Subscription::try_recv_validated": {
     "verdict": "extension",
     "why": "see `c:subscription_try_recv_validated`."
+  },
+  "cpp:Subscription::try_recv_validated_sized": {
+    "verdict": "extension",
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Subscription::use_take_shared_method": {
     "verdict": "declined",
