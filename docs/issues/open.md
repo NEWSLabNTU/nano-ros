@@ -84,5 +84,6 @@ fails if this block drifts.
 - **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 15 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 - **#1019** (api, docs) — Every `RCLCPP_*` log call in a ported C++ node is discarded on embedded, and `RCLCPP_*_STREAM` drops its message on every target See `1019-*`.
+- **#1020** (docs, api) — The C++ parity lane measures the NATIVE API against rclcpp and cannot see `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured See `1020-*`.
 
 <!-- END GENERATED open-issue list -->
