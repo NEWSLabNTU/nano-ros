@@ -117,6 +117,13 @@ jobs:
       # r3 (#0878): baked Zephyr's pinned Python build prereqs (west, pyelftools,
       # PyYAML, pykwalify, packaging) — without them every nightly cell failed at
       # `just zephyr setup` before any build.
+      # r4: the SECOND Zephyr SDK (1.0.1, for the 4.4 line) actually lands. The
+      # commit that added it (e569d9a55) left the tag at r3, and its image build
+      # 404'd on the download, so the registry kept serving one-SDK content under
+      # r3 while the tree said two — and every `zephyr 4.4 /*` cell went on
+      # failing `find_package(Zephyr-sdk 1.0)` against 0.17.4. Bumped because the
+      # published content changes, which is what `-rN` is for; r3 stays valid for
+      # anything still pinned to it.
       #
       # ORDERING, because this tag is hand-bumped rather than content-derived:
       # `nightly.yml` is moved to r3 in the SAME commit, and r3 does not exist in
@@ -126,7 +133,7 @@ jobs:
       # slack. If the image build fails, fix it before the next nightly rather
       # than reverting the consumers.
       IMAGE: ghcr.io/newslabntu/nano-ros-zephyr-ci
-      TAG: humble-sdk0.17.4-r3
+      TAG: humble-sdk0.17.4-r4
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GHCR

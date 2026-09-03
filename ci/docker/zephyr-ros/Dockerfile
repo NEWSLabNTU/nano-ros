@@ -107,8 +107,29 @@ RUN curl -fsSL -o /tmp/sdk.tar.xz \
 # both Config packages sit in the CMake user registry and each line's
 # `find_package` picks the one that satisfies it: 3.7 accepts either, 4.4
 # accepts only this one.
+#
+# `_gnu`, and the suffix is NOT optional — sdk-ng REPACKAGED at 1.0.
+#
+# The 0.x line ships one bundle per host, `zephyr-sdk-<ver>_linux-x86_64.tar.xz`.
+# The 1.x line splits it by toolchain flavour, so the same name without a
+# suffix simply does not exist and the build 404'd on its first run:
+#
+#   curl: (22) The requested URL returned error: 404
+#   ERROR: failed to build: process "/bin/sh -c curl -fsSL -o /tmp/sdk44.tar.xz …"
+#
+# Measured against the release API rather than guessed — v1.0.1 offers
+# `_gnu` (2033 MiB), `_llvm` (319 MiB) and `_minimal` (67 MiB), and no
+# unsuffixed bundle at all. `_gnu` is the one that corresponds to 0.17.4's
+# 1907 MiB bundle and carries the GNU toolchains `SDK_TARGETS` registers below;
+# `_minimal` is host tools only and would need a per-target download each.
+#
+# That 404 is why this image was never published with the second SDK: the
+# `images.yml` run for the commit that added it failed here, so the registry
+# kept serving the previous `-r3` content and every `zephyr 4.4 /*` nightly cell
+# went on failing `find_package(Zephyr-sdk 1.0)` against 0.17.4 — the exact
+# symptom the comment above says this block exists to fix.
 RUN curl -fsSL -o /tmp/sdk44.tar.xz \
-        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION_44}/zephyr-sdk-${ZEPHYR_SDK_VERSION_44}_linux-x86_64.tar.xz" \
+        "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZEPHYR_SDK_VERSION_44}/zephyr-sdk-${ZEPHYR_SDK_VERSION_44}_linux-x86_64_gnu.tar.xz" \
     && mkdir -p /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44} \
     && tar xf /tmp/sdk44.tar.xz -C /opt/zephyr-sdk-${ZEPHYR_SDK_VERSION_44} --strip-components=1 \
     && sdk_args="" && for t in ${SDK_TARGETS}; do sdk_args="$sdk_args -t $t"; done \
