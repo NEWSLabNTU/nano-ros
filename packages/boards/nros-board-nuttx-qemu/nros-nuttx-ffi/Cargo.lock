@@ -236,6 +236,7 @@ dependencies = [
  "cc",
  "nros-build-paths",
  "nros-cc-flags",
+ "nros-platform-config",
  "nros-sizes-build",
 ]
 
@@ -443,6 +444,7 @@ dependencies = [
  "nros-core",
  "nros-log",
  "nros-platform",
+ "nros-platform-config",
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-zephyr-build",
