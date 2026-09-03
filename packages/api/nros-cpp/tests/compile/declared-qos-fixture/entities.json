@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "phase-403 step 2 -- the INPUT for the compile-test fixture beside it.",
+    "",
+    "A `nros-metadata.json` shaped exactly as `nano_ros_node_register()` writes",
+    "one, holding a single component with three endpoints that cover the three",
+    "cases the C++ check has to tell apart:",
+    "",
+    "  /chatter    declared @depth=1  -- a row exists; a QoS(1) agrees and a",
+    "                                    QoS(10) must fail the BUILD",
+    "  /undeclared no @depth at all   -- NO row; nothing asserts, and the",
+    "                                    3-argument NROS_SUBSCRIBE keeps its",
+    "                                    historical default profile",
+    "  timer                          -- no QoS at all, so it is not in the",
+    "                                    depth population and does not count as",
+    "                                    an undeclared endpoint",
+    "",
+    "`nros/nros_declared_qos_generated.h` beside this file is what",
+    "`nros ws entity-inventory --component demo::listener --output-header`",
+    "renders from it. The two are held together by",
+    "`the_committed_compile_fixture_is_what_this_emitter_renders` in",
+    "packages/cli/nros-cli-core/src/entity_inventory.rs -- a checked-in artifact",
+    "with no gate is a copy that drifts."
+  ],
+  "components": [
+    {
+      "name": "listener",
+      "pkg": "demo",
+      "class": "demo::Listener",
+      "entities": [
+        "sub:std_msgs/msg/Int32:/chatter@depth=1",
+        "sub:std_msgs/msg/Bool:/undeclared",
+        "timer"
+      ]
+    }
+  ]
+}

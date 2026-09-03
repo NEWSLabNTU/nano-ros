@@ -58,6 +58,14 @@
 #      an absent list is not "nothing published" -- it reads as "this image
 #      receives nothing" and derives a class over an empty set.
 #
+#   A3. The DECLARED DEPTHS cross the same boundary (phase-403 step 2), and so
+#      does the count of endpoints that declared NONE. Depth multiplies the
+#      type bound, so an absent list read as "every endpoint is depth 0" sizes
+#      an arena an order of magnitude short; and a list read WITHOUT its
+#      undeclared count sizes an image from the subset of it that happened to
+#      be annotated. Asserted in A (published), B (refused, so absent) and C
+#      (cleared by a later refusal).
+#
 #   H. SEEDING. A refusal writes a placeholder fragment, because the consumer
 #      registers the path with CMAKE_CONFIGURE_DEPENDS and a ninja input with
 #      no producing rule is `missing and no known rule to make it` at LOAD,
@@ -133,7 +141,7 @@ chmod +x "$STUB"
 
 DERIVED_BODY="$TEST_TMPDIR/derived.cmake"
 cat > "$DERIVED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)
 set(NROS_ENTITY_INVENTORY_SOURCE "meta.json")
 set(NROS_ENTITY_INVENTORY_STATUS "derived")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
@@ -152,11 +160,15 @@ set(NROS_ENTITY_RECEIVED_TYPES_STATUS "resolved")
 set(NROS_ENTITY_RECEIVED_TYPES "demo/srv/Op_Request;nav_msgs/msg/Odometry;std_msgs/msg/Int32")
 set(NROS_ENTITY_RECEIVED_TYPE_COUNTS "demo/srv/Op_Request=1;nav_msgs/msg/Odometry=1;std_msgs/msg/Int32=2")
 set(NROS_ENTITY_RECEIVED_ENTITY_COUNT 4)
+set(NROS_ENTITY_DECLARED_DEPTH_STATUS "resolved")
+set(NROS_ENTITY_DECLARED_DEPTHS "nav_msgs/msg/Odometry|/localization/kinematic_state=1;std_msgs/msg/Int32|/chatter=10")
+set(NROS_ENTITY_DECLARED_DEPTH_COUNT 2)
+set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 3)
 EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
 cat > "$REFUSED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)
 set(NROS_ENTITY_INVENTORY_STATUS "refused")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
 set(NROS_ENTITY_INVENTORY_REASON "1 of 4 components in this image declare no entities:\n    demo::legacy (demo::Legacy)")
@@ -164,14 +176,16 @@ set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "refused")
 set(NROS_ENTITY_SUBSCRIBED_TYPES_REASON "the entity inventory itself did not compose")
 set(NROS_ENTITY_RECEIVED_TYPES_STATUS "refused")
 set(NROS_ENTITY_RECEIVED_TYPES_REASON "the entity inventory itself did not compose")
+set(NROS_ENTITY_DECLARED_DEPTH_STATUS "refused")
+set(NROS_ENTITY_DECLARED_DEPTH_REASON "the entity inventory itself did not compose")
 EOF
 
 # A schema this reader does NOT understand. Written as "one past supported"
 # rather than a literal, because the literal was `2` until phase-403 step 1
 # made 2 the supported version -- at which point the case silently stopped
-# testing anything it claimed to.
+# testing anything it claimed to. Step 2 moved it again, to 3/4.
 BAD_SCHEMA_BODY="$TEST_TMPDIR/bad-schema.cmake"
-sed 's/SCHEMA_VERSION 2/SCHEMA_VERSION 3/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
+sed 's/SCHEMA_VERSION 3/SCHEMA_VERSION 4/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
 
 NO_SCHEMA_BODY="$TEST_TMPDIR/no-schema.cmake"
 grep -v SCHEMA_VERSION "$DERIVED_BODY" > "$NO_SCHEMA_BODY"
@@ -235,6 +249,22 @@ check
 if ! grep -q "NROS_ENTITY_RECEIVED_TYPES=demo/srv/Op_Request;" <<<"$OUT"; then
     fail "A: the wider RECEIVED set did not reach the caller's scope -- $OUT"
 fi
+# phase-403 step 2. Depth MULTIPLIES the type bound above, so the arena cannot
+# be derived without it, and it has to cross the same boundary the rest does.
+check
+if ! grep -q "NROS_ENTITY_DECLARED_DEPTHS=nav_msgs/msg/Odometry|/localization/kinematic_state=1;" <<<"$OUT"; then
+    fail "A: the declared depths did not reach the caller's scope -- $OUT"
+fi
+# The one that is easy to leave out and expensive to leave out. An image where
+# three endpoints stated no depth is not an image with three depth-0 endpoints,
+# and a consumer that reads only the LIST would size it from the two that
+# happened to be annotated.
+check
+if ! grep -q "NROS_ENTITY_UNDECLARED_DEPTH_COUNT=3" <<<"$OUT"; then
+    fail "A: the UNDECLARED depth count did not reach the caller's scope. \
+Without it a consumer cannot tell a fully-declared image from a partly-declared \
+one, which is the whole reason the count is published -- $OUT"
+fi
 
 # ---------------------------------------------------------------------------
 # B. A refusal publishes the reason and NO number.
@@ -253,6 +283,19 @@ check
 if ! grep -q "declare no entities" <<<"$OUT"; then
     fail "B: the refusal reason did not reach the caller -- $OUT"
 fi
+# phase-403 step 2 -- and a refusal publishes NO depth list either. An absent
+# list read as "every endpoint is depth 0" would size an arena an order of
+# magnitude short, which is the same failure the absent TYPE list would cause
+# one line up.
+check
+if grep -q "NROS_ENTITY_DECLARED_DEPTHS=" <<<"$OUT"; then
+    fail "B: a refusal published a depth list -- $OUT"
+fi
+check
+if ! grep -q "NROS_ENTITY_DECLARED_DEPTH_STATUS=refused" <<<"$OUT"; then
+    fail "B: the depth view published no status, so a reader cannot tell \
+\"refused\" from \"this fragment predates the field\" -- $OUT"
+fi
 
 # ---------------------------------------------------------------------------
 # C. A refusal AFTER a derivation leaves no stale number standing.
@@ -268,6 +311,7 @@ set(ENV{NROS_STUB_BODY} "$REFUSED_BODY")
 nros_derive_entity_inventory_knobs(CLI "$STUB" METADATA "$META"
     OUTPUT_FILE "$TEST_TMPDIR/c2.cmake" QUIET)
 message(STATUS "second=[\${NROS_DERIVED_EXECUTOR_MAX_CBS}]")
+message(STATUS "second_depths=[\${NROS_ENTITY_DECLARED_DEPTHS}]")
 EOF
 OUT="$(NROS_STUB_BODY="$DERIVED_BODY" cmake -P "$SEQ" 2>&1)"
 check
@@ -277,6 +321,13 @@ fi
 check
 if ! grep -q "second=\[\]" <<<"$OUT"; then
     fail "C: a refusal left the previous number standing -- $OUT"
+fi
+# phase-403 step 2 -- the depth list is cleared by the same rule. A stale depth
+# table is worse than a stale count: it names topics that may no longer be
+# subscribed, at depths the current declaration never stated.
+check
+if ! grep -q "second_depths=\[\]" <<<"$OUT"; then
+    fail "C: a refusal left the previous DEPTH LIST standing -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------
@@ -289,7 +340,7 @@ log_info "D. an unrecognised schema refuses to be read"
 flat() { tr '\n' ' ' | tr -s ' '; }
 OUT="$(derive "$BAD_SCHEMA_BODY" 0 "$META" "$TEST_TMPDIR/d1.cmake" | flat)"
 check
-if ! grep -q "states entity-inventory schema version 3" <<<"$OUT"; then
+if ! grep -q "states entity-inventory schema version 4" <<<"$OUT"; then
     fail "D: a future schema was read rather than refused -- $OUT"
 fi
 check

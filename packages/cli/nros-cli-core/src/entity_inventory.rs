@@ -120,7 +120,14 @@ use std::collections::BTreeMap;
 /// received" would derive a payload class over an EMPTY set and publish a
 /// number smaller than any real sample. That is an incompatible addition even
 /// though nothing moved, so it bumps.
-pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 2;
+///
+/// **3** (phase-403 step 2): the declared QoS DEPTHS --
+/// `NROS_ENTITY_DECLARED_DEPTHS` and, load-bearing beside it,
+/// `NROS_ENTITY_UNDECLARED_DEPTH_COUNT`. Bumps on the same argument: a
+/// version-2 fragment carries no depth at all, and a reader that took the
+/// absent list for "every endpoint is depth 0" would size an arena an order of
+/// magnitude short. Absence has to be distinguishable from zero here too.
+pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 3;
 
 /// Canonical artifact name.
 pub const ENTITY_INVENTORY_JSON_NAME: &str = "nros_entity_inventory.json";
@@ -257,6 +264,21 @@ impl EntityKind {
         matches!(self, EntityKind::Subscription)
     }
 
+    /// Does an entity of this kind have a QoS HISTORY DEPTH at all?
+    ///
+    /// phase-403 step 2. `@depth=N` is a QoS attribute, and a timer and a guard
+    /// condition are not endpoints -- they carry no QoS, so a depth on one is a
+    /// statement about nothing. It is REJECTED rather than ignored, for the
+    /// reason an unknown kind is: a silently ignored attribute is a declaration
+    /// the author believes they made.
+    ///
+    /// Every other kind does carry one. A publisher's depth sizes no receive
+    /// buffer, so nothing reads it yet, but it is a real QoS field and
+    /// forbidding it here would make the grammar say something false.
+    pub fn carries_qos_depth(self) -> bool {
+        !matches!(self, EntityKind::Timer | EntityKind::GuardCondition)
+    }
+
     /// Parse one declared kind.
     ///
     /// Accepts the canonical [`Self::tag`] plus the short spellings a human
@@ -294,28 +316,106 @@ impl EntityKind {
 /// join without a second naming convention. It is OPTIONAL because a timer and
 /// a guard condition carry no type, and because a count is useful before every
 /// call site has been annotated. `name` is the topic / service / action name.
+/// `depth` is the QoS HISTORY DEPTH the author declared (phase-403 step 2), and
+/// it is `Option` for the reason every other field here is: the arena's
+/// per-subscription cost is `(depth + 1) * bound + (depth + 1) * 8`, so a
+/// DEFAULT is wrong by up to 10x in either direction -- assuming the ROS
+/// default 10 inflates an image that states 1 tenfold, and assuming 1
+/// UNDER-sizes one that took the default. `None` means NOBODY SAID, and a
+/// consumer that needs a depth must refuse on it. It must never read as 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EntityDecl {
     pub kind: EntityKind,
     pub type_name: Option<String>,
     pub name: Option<String>,
+    pub depth: Option<u32>,
 }
 
 impl EntityDecl {
-    /// Parse the declaration spelling: `<kind>[:<type>[:<name>]]`.
+    /// Parse the declaration spelling:
+    /// `<kind>[:<type>[:<name>]][@<attr>=<value>...]`.
     ///
-    /// `sub:nav_msgs/msg/Odometry:/localization/kinematic_state`, `timer`,
-    /// `publisher:autoware_vehicle_msgs/msg/GearCommand`.
+    /// `sub:nav_msgs/msg/Odometry:/localization/kinematic_state@depth=10`,
+    /// `timer`, `publisher:autoware_vehicle_msgs/msg/GearCommand`.
     ///
     /// A `*N` suffix on the kind repeats it: `timer*3`. A repeat count is the
     /// one concession to brevity, and it is on the KIND rather than a separate
     /// argument so a row can never lose its multiplier in transit.
+    ///
+    /// # Why attributes are NAMED and split off FIRST
+    ///
+    /// The positional part is parsed `splitn(3, ':')`, so the NAME takes the
+    /// rest of the spec and a fourth positional field would be ambiguous
+    /// against a topic containing a colon. `@depth=10` is therefore a named
+    /// attribute, which also leaves room for `@reliability=`, `@history=` and
+    /// `@durability=` without another grammar change.
+    ///
+    /// The `@` split runs BEFORE the `:` split, so an attribute attaches to the
+    /// whole declaration rather than to whichever field happens to be last.
+    /// That is safe because neither a ROS type name nor a ROS topic name may
+    /// contain `@` (REP-144 allows alphanumerics, `_`, `/`, `~`, `{`, `}`), so
+    /// the character cannot occur in the positional part.
+    ///
+    /// An UNKNOWN attribute is an error, never a skipped one, on this module's
+    /// standing rule: a silently ignored declaration is one the author believes
+    /// they made.
     pub fn parse(spec: &str) -> Result<Vec<Self>, String> {
         let spec = spec.trim();
         if spec.is_empty() {
             return Err("empty entity declaration".to_string());
         }
-        let mut parts = spec.splitn(3, ':');
+        let mut fields = spec.split('@');
+        let positional = fields.next().unwrap_or("").trim();
+        let mut depth: Option<u32> = None;
+        for attr in fields {
+            let attr = attr.trim();
+            if attr.is_empty() {
+                return Err(format!(
+                    "entity declaration `{spec}`: an empty `@` attribute states nothing. \
+                     Write `@depth=<N>` or drop the `@`."
+                ));
+            }
+            let (key, value) = attr.split_once('=').ok_or_else(|| {
+                format!(
+                    "entity declaration `{spec}`: attribute `@{attr}` has no value. \
+                     Attributes are `@<name>=<value>`, e.g. `@depth=10`."
+                )
+            })?;
+            match key.trim() {
+                "depth" => {
+                    if depth.is_some() {
+                        return Err(format!(
+                            "entity declaration `{spec}`: `@depth=` is stated twice. \
+                             One entity has one depth."
+                        ));
+                    }
+                    let n: u32 = value.trim().parse().map_err(|_| {
+                        format!(
+                            "entity declaration `{spec}`: `{}` is not a QoS depth. \
+                             It is a positive whole number of samples, e.g. `@depth=10`.",
+                            value.trim()
+                        )
+                    })?;
+                    if n == 0 {
+                        return Err(format!(
+                            "entity declaration `{spec}`: a QoS depth of 0 states nothing -- \
+                             KEEP_LAST(0) holds no sample. Omit `@depth=` to say \"not \
+                             declared\", which is a different claim and the one that makes a \
+                             size consumer REFUSE rather than guess."
+                        ));
+                    }
+                    depth = Some(n);
+                }
+                other => {
+                    return Err(format!(
+                        "entity declaration `{spec}`: unknown attribute `@{other}=` -- \
+                         expected one of: depth"
+                    ));
+                }
+            }
+        }
+
+        let mut parts = positional.splitn(3, ':');
         let kind_field = parts.next().unwrap_or("");
         let type_name = parts.next().map(str::trim).filter(|s| !s.is_empty());
         let name = parts.next().map(str::trim).filter(|s| !s.is_empty());
@@ -336,11 +436,19 @@ impl EntityDecl {
             None => (kind_field, 1),
         };
         let kind = EntityKind::parse(kind_str).map_err(|e| format!("in `{spec}`: {e}"))?;
+        if depth.is_some() && !kind.carries_qos_depth() {
+            return Err(format!(
+                "entity declaration `{spec}`: a `{}` has no QoS, so `@depth=` says nothing \
+                 about it. Drop the attribute.",
+                kind.tag()
+            ));
+        }
         Ok((0..repeat)
             .map(|_| EntityDecl {
                 kind,
                 type_name: type_name.map(str::to_string),
                 name: name.map(str::to_string),
+                depth,
             })
             .collect())
     }
@@ -552,6 +660,84 @@ impl ReceivedTypes {
             ReceivedTypes::Refused { .. } => None,
         }
     }
+}
+
+/// One endpoint that stated a QoS history DEPTH (phase-403 step 2).
+///
+/// `type_name` is the ROS spelling the declaration used (`pkg/msg/Name`);
+/// [`dds_type_name`] is what a C++ TU sees as `M::TYPE_NAME`. Both travel,
+/// because the two consumers key differently: the arena joins on the ROS
+/// spelling that the bound inventory also uses, and the compile-time check
+/// joins on whatever the generated message class actually carries.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredDepth {
+    pub kind: EntityKind,
+    pub type_name: String,
+    pub topic: String,
+    pub depth: u32,
+}
+
+/// Every declared depth in an image, plus how many endpoints did NOT state one.
+///
+/// The undeclared COUNT is the load-bearing field. `Resolved { rows: [] }` and
+/// `Resolved { rows: [...], undeclared: 4 }` are different facts: the first is
+/// an image that has not opted in at all, the second one that opted in
+/// partially, and a size consumer must refuse on both while a compile-time
+/// check must fire on neither. Reporting only the rows would collapse them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeclaredDepths {
+    Resolved {
+        /// Sorted by `(type_name, topic)` so the artifact is byte-stable.
+        rows: Vec<DeclaredDepth>,
+        /// Endpoints that COULD carry a depth ([`EntityKind::carries_qos_depth`])
+        /// and stated none. NOT zero-by-default: this is the number that says
+        /// "nobody said" for the rest of the image.
+        undeclared: usize,
+    },
+    Refused {
+        reason: String,
+    },
+}
+
+impl DeclaredDepths {
+    pub fn tag(&self) -> &'static str {
+        match self {
+            DeclaredDepths::Resolved { .. } => "resolved",
+            DeclaredDepths::Refused { .. } => "refused",
+        }
+    }
+
+    pub fn rows(&self) -> Option<&[DeclaredDepth]> {
+        match self {
+            DeclaredDepths::Resolved { rows, .. } => Some(rows),
+            DeclaredDepths::Refused { .. } => None,
+        }
+    }
+}
+
+/// The DDS-mangled spelling a generated C++ message class carries as
+/// `static constexpr const char* TYPE_NAME`.
+///
+/// `nav_msgs/msg/Odometry` -> `nav_msgs::msg::dds_::Odometry_`, which is
+/// literally what `packs/cpp/message.hpp.jinja` emits
+/// (`{{package_name}}::msg::dds_::{{message_name}}_`). Restated here rather
+/// than shared because that emitter is a Tera template in a different crate;
+/// `the_dds_spelling_matches_the_cpp_template` holds the two together.
+///
+/// A spelling that is already mangled (it contains `::`) passes through, so an
+/// author who declares the C++ name gets what they wrote. Anything that is not
+/// three `/`-separated segments also passes through unchanged: guessing at a
+/// mangling for a shape the codegen does not emit would put a key in the table
+/// that nothing can ever match, which is worse than no key.
+pub fn dds_type_name(ros_name: &str) -> String {
+    if ros_name.contains("::") {
+        return ros_name.to_string();
+    }
+    let parts: Vec<&str> = ros_name.split('/').collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty()) {
+        return ros_name.to_string();
+    }
+    format!("{}::{}::dds_::{}_", parts[0], parts[1], parts[2])
 }
 
 impl EntityInventory {
@@ -768,6 +954,183 @@ impl EntityInventory {
         ReceivedTypes::Resolved(counts.into_iter().collect())
     }
 
+    /// Every declared QoS history depth in this image (phase-403 step 2).
+    ///
+    /// REFUSES on exactly one condition -- the image's own composition refused,
+    /// because some component declared no `ENTITIES` at all. Its endpoints are
+    /// then unknown, so a depth table composed over the components that DID
+    /// answer would be missing rows that a compile-time check would then read
+    /// as "nobody declared this topic" and let through.
+    ///
+    /// It does NOT refuse on a missing depth. An endpoint that states none is
+    /// counted in `undeclared` and is simply absent from the table: that image
+    /// has not opted in, which is not an error. The arena (step 3) refuses on a
+    /// non-zero `undeclared` the way W8 refuses on an unbounded type; the
+    /// compile-time check sees no row and asserts nothing.
+    pub fn declared_depths(&self) -> DeclaredDepths {
+        if let Derivation::Refused { reason } = self.derive() {
+            return DeclaredDepths::Refused {
+                reason: format!(
+                    "the entity inventory itself did not compose, so the declared-depth table \
+                     would be missing whole components -- and a missing row reads as \"nobody \
+                     declared this endpoint\", which is the one thing the table must never \
+                     say wrongly:\n{reason}"
+                ),
+            };
+        }
+
+        let mut rows: Vec<DeclaredDepth> = Vec::new();
+        let mut undeclared = 0usize;
+        for c in self.components() {
+            for e in c.declaration.entities() {
+                if !e.kind.carries_qos_depth() {
+                    continue;
+                }
+                match (e.depth, &e.type_name, &e.name) {
+                    (Some(depth), Some(t), Some(n)) => rows.push(DeclaredDepth {
+                        kind: e.kind,
+                        type_name: t.clone(),
+                        topic: n.clone(),
+                        depth,
+                    }),
+                    // A depth with no type or no topic cannot be JOINED to
+                    // anything -- the table is keyed `(type, topic)` and the
+                    // arena charges a buffer per typed endpoint. It counts as
+                    // undeclared rather than being dropped silently, so the
+                    // count stays the honest "endpoints this image cannot size".
+                    (Some(_), _, _) | (None, _, _) => undeclared += 1,
+                }
+            }
+        }
+        rows.sort_by(|a, b| (&a.type_name, &a.topic).cmp(&(&b.type_name, &b.topic)));
+        DeclaredDepths::Resolved { rows, undeclared }
+    }
+
+    /// The C++ compile-time table: `nros_declared_qos_generated.h`.
+    ///
+    /// SUBSCRIPTIONS only, and that is the scope of the consumer rather than a
+    /// shortcut. `NROS_SUBSCRIBE` is the one macro that asserts against this
+    /// table, and keying `(type, topic)` means a publisher and a subscription
+    /// on the same pair would be two rows with one key. When the publish side
+    /// grows a check the row gains a kind column; until then a row nothing can
+    /// consult is a row that can silently be wrong.
+    ///
+    /// Emitted as an X-MACRO rather than a C++ array so the file is pure
+    /// preprocessor: it can then be included in any order, from any language
+    /// mode, and `nros/declared_qos.hpp` owns the one definition of the table's
+    /// TYPE. A generated header that also declared the struct would have to be
+    /// included at exactly one point of exactly one header.
+    ///
+    /// Both spellings of the type are emitted per row -- the ROS
+    /// `pkg/msg/Name` the declaration used and the DDS-mangled
+    /// `pkg::msg::dds_::Name_` a generated C++ class carries. The lookup is a
+    /// compile-time linear scan, so a second row costs nothing at runtime, and
+    /// which spelling a message class carries is a property of the CODEGEN that
+    /// produced it, not something this file should have to predict.
+    pub fn to_declared_qos_header(&self) -> String {
+        let mut s = String::new();
+        // Written line by line, NOT as one `\`-continued literal: Rust strips
+        // the leading whitespace after a line continuation, which silently ate
+        // the ` ` before every `*` and produced a comment block no C formatter
+        // would accept.
+        for line in [
+            "/* GENERATED by `nros ws entity-inventory` (phase-403 step 2). Do not edit.",
+            " *",
+            " * The QoS history DEPTH each subscription was DECLARED with, in",
+            " * `nano_ros_node_register(... ENTITIES sub:<type>:<topic>@depth=N ...)`.",
+            " * `nros/declared_qos.hpp` expands this into a `constexpr` table and",
+            " * `NROS_SUBSCRIBE` static_asserts the QoS it is handed against it, so a",
+            " * declaration and an implementation that disagree fail the BUILD naming",
+            " * the topic and both numbers.",
+            " *",
+            " * An ABSENT row is not depth 0 and not depth 10: it is \"nobody declared",
+            " * this endpoint\", and nothing asserts against it.",
+            " *",
+        ] {
+            s.push_str(line);
+            s.push('\n');
+        }
+        s.push_str(&format!(
+            " * Source: {}\n */\n",
+            self.source.replace("*/", "*_/")
+        ));
+        s.push_str("#ifndef NROS_DECLARED_QOS_GENERATED_H\n");
+        s.push_str("#define NROS_DECLARED_QOS_GENERATED_H\n\n");
+
+        let depths = self.declared_depths();
+        match &depths {
+            DeclaredDepths::Refused { reason } => {
+                // A refusal emits NO rows and says so in the file, on the rule
+                // the rest of this module holds: a consumer reads a table this
+                // module built or reads nothing. `NROS_DECLARED_QOS_ROWS` stays
+                // undefined, so `declared_qos.hpp` compiles an empty table and
+                // every call site keeps working unchecked.
+                s.push_str("/* NO TABLE. The entity inventory refused to compose:\n *   ");
+                s.push_str(&reason.replace('\n', "\n *   ").replace("*/", "*_/"));
+                s.push_str("\n */\n");
+                s.push_str("#define NROS_DECLARED_QOS_STATUS \"refused\"\n");
+            }
+            DeclaredDepths::Resolved { rows, undeclared } => {
+                let subs: Vec<&DeclaredDepth> = rows
+                    .iter()
+                    .filter(|r| r.kind == EntityKind::Subscription)
+                    .collect();
+                s.push_str("#define NROS_DECLARED_QOS_STATUS \"resolved\"\n");
+                s.push_str(&format!(
+                    "/* {} of this image's depth-carrying endpoints declared no depth. */\n",
+                    undeclared
+                ));
+                s.push_str(&format!(
+                    "#define NROS_DECLARED_QOS_UNDECLARED_COUNT {undeclared}\n\n"
+                ));
+                if subs.is_empty() {
+                    s.push_str(
+                        "/* No subscription in this image declared a depth, so there is no\n \
+                         * table to assert against. NROS_DECLARED_QOS_ROWS stays undefined\n \
+                         * -- an empty list and \"nobody said\" must not look alike. */\n",
+                    );
+                } else {
+                    s.push_str(
+                        "/* X-macro. `nros/declared_qos.hpp` defines NROS_DECLARED_QOS_ROW\n \
+                         * and expands this; nothing else may. */\n",
+                    );
+                    s.push_str("#define NROS_DECLARED_QOS_ROWS \\\n");
+                    for r in &subs {
+                        let dds = dds_type_name(&r.type_name);
+                        s.push_str(&format!(
+                            "    NROS_DECLARED_QOS_ROW(\"{}\", \"{}\", {}) \\\n",
+                            c_escape(&dds),
+                            c_escape(&r.topic),
+                            r.depth
+                        ));
+                        if dds != r.type_name {
+                            s.push_str(&format!(
+                                "    NROS_DECLARED_QOS_ROW(\"{}\", \"{}\", {}) \\\n",
+                                c_escape(&r.type_name),
+                                c_escape(&r.topic),
+                                r.depth
+                            ));
+                        }
+                    }
+                    s.push_str("    /* end */\n");
+                    let n_rows: usize = subs
+                        .iter()
+                        .map(|r| {
+                            if dds_type_name(&r.type_name) == r.type_name {
+                                1
+                            } else {
+                                2
+                            }
+                        })
+                        .sum();
+                    s.push_str(&format!("#define NROS_DECLARED_QOS_ROW_COUNT {n_rows}\n"));
+                }
+            }
+        }
+        s.push_str("\n#endif /* NROS_DECLARED_QOS_GENERATED_H */\n");
+        s
+    }
+
     /// The canonical artifact.
     pub fn to_json(&self) -> String {
         let derivation = self.derive();
@@ -794,6 +1157,14 @@ impl EntityInventory {
                             }
                             if let Some(n) = &e.name {
                                 r.insert("name".into(), n.clone().into());
+                            }
+                            // phase-403 step 2 -- present ONLY when declared.
+                            // A `"depth": 0` or a `"depth": null` on every row
+                            // would make "nobody said" and "said 0" the same
+                            // JSON, which is the collapse this whole inventory
+                            // is built to avoid.
+                            if let Some(d) = e.depth {
+                                r.insert("depth".into(), d.into());
                             }
                             serde_json::Value::Object(r)
                         })
@@ -858,6 +1229,42 @@ impl EntityInventory {
                 }
             }
             doc.insert(key.into(), serde_json::Value::Object(m));
+        }
+        // phase-403 step 2 -- the declared depths, as their own view. Same
+        // three states as the two above: a `status` is always present, the rows
+        // only when it resolved, and `undeclared` says how much of the image
+        // stayed silent, which is the number a size consumer refuses on.
+        {
+            let depths = self.declared_depths();
+            let mut m = serde_json::Map::new();
+            m.insert("status".into(), depths.tag().into());
+            match &depths {
+                DeclaredDepths::Refused { reason } => {
+                    m.insert("reason".into(), reason.clone().into());
+                }
+                DeclaredDepths::Resolved { rows, undeclared } => {
+                    m.insert("undeclared".into(), (*undeclared).into());
+                    m.insert(
+                        "endpoints".into(),
+                        rows.iter()
+                            .map(|r| {
+                                let mut o = serde_json::Map::new();
+                                o.insert("kind".into(), r.kind.tag().into());
+                                o.insert("type_name".into(), r.type_name.clone().into());
+                                o.insert(
+                                    "dds_type_name".into(),
+                                    dds_type_name(&r.type_name).into(),
+                                );
+                                o.insert("name".into(), r.topic.clone().into());
+                                o.insert("depth".into(), r.depth.into());
+                                serde_json::Value::Object(o)
+                            })
+                            .collect::<Vec<_>>()
+                            .into(),
+                    );
+                }
+            }
+            doc.insert("declared_depths".into(), serde_json::Value::Object(m));
         }
         format!(
             "{}\n",
@@ -1007,6 +1414,12 @@ impl EntityInventory {
              # classes.",
             &self.received_types(),
         ));
+        // phase-403 step 2 -- the QoS DEPTHS. The arena's per-subscription cost
+        // is `(depth + 1) * bound + (depth + 1) * 8`, so depth is a MULTIPLIER
+        // on the type bound the two views above supply, and no arena can derive
+        // without it. Emitted in both branches for the same reason they are: an
+        // absent variable would read as "every endpoint is depth 0".
+        s.push_str(&render_declared_depths(&self.declared_depths()));
         s
     }
 
@@ -1071,6 +1484,74 @@ fn render_received(what: &str, prose: &str, r: &ReceivedTypes) -> String {
         }
     }
     s
+}
+
+/// The declared-depth view, as CMake (phase-403 step 2).
+///
+/// Publishes four things, and the last two are the point:
+///
+///   `NROS_ENTITY_DECLARED_DEPTHS`        `type|topic=depth` triples, `;`-joined
+///   `NROS_ENTITY_DECLARED_DEPTH_COUNT`   how many endpoints stated one
+///   `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` how many COULD have and did not
+///   `NROS_ENTITY_DECLARED_DEPTH_STATUS`  resolved | refused
+///
+/// A consumer that sizes from depth must read the UNDECLARED count and refuse
+/// when it is non-zero. Reading only the list would size an image from the
+/// subset of its endpoints that happened to be annotated, which is the exact
+/// under-report `ENTITIES NONE` exists to prevent one level up.
+fn render_declared_depths(d: &DeclaredDepths) -> String {
+    let mut s = String::from(
+        "# phase-403 step 2 -- the DECLARED QoS history depths. Depth is a MULTIPLIER on\n\
+         # the type bound above: the arena's per-subscription cost is\n\
+         # `(depth + 1) * bound + (depth + 1) * 8`, measured at 86108 bytes for ten\n\
+         # subscriptions at the ROS default depth 10 and 24516 at depth 1.\n\
+         # A consumer that sizes from these must refuse while\n\
+         # NROS_ENTITY_UNDECLARED_DEPTH_COUNT is non-zero: an endpoint that stated no\n\
+         # depth has not opted in, and BOTH defaults are wrong -- 10 inflates an image\n\
+         # that meant 1 tenfold, and 1 under-sizes one that took the default.\n",
+    );
+    s.push_str(&format!(
+        "set(NROS_ENTITY_DECLARED_DEPTH_STATUS \"{}\")\n",
+        d.tag()
+    ));
+    match d {
+        DeclaredDepths::Refused { reason } => {
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DECLARED_DEPTH_REASON \"{}\")\n",
+                cmake_escape(reason)
+            ));
+            s.push_str(
+                "# No depth table. A consumer that needs one must REFUSE -- a partial table\n\
+                 # is indistinguishable from an image whose endpoints all took the default.\n",
+            );
+        }
+        DeclaredDepths::Resolved { rows, undeclared } => {
+            let triples: Vec<String> = rows
+                .iter()
+                .map(|r| format!("{}|{}={}", r.type_name, r.topic, r.depth))
+                .collect();
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DECLARED_DEPTHS \"{}\")\n",
+                triples.join(";")
+            ));
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DECLARED_DEPTH_COUNT {})\n",
+                rows.len()
+            ));
+            s.push_str(&format!(
+                "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT {undeclared})\n"
+            ));
+        }
+    }
+    s
+}
+
+/// A C string literal's body. The table's keys are ROS type and topic names, so
+/// in practice nothing here needs escaping -- which is exactly why it is done
+/// anyway: an unescaped quote or backslash reaching a generated header is a
+/// compile error in a file nobody edits, and the fix would be invisible.
+fn c_escape(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// CMake `set(... "...")` is quote- and backslash-sensitive, and a refusal
@@ -1226,6 +1707,260 @@ mod tests {
     #[test]
     fn a_repeat_count_of_zero_is_rejected() {
         assert!(EntityDecl::parse("timer*0").is_err());
+    }
+
+    // -----------------------------------------------------------------
+    // phase-403 step 2 -- the QoS DEPTH.
+    // -----------------------------------------------------------------
+
+    /// The grammar, in the spelling the design fixed: a NAMED attribute after
+    /// the positional fields, so reliability/history/durability can follow
+    /// without another grammar change, and so a fourth positional can never be
+    /// ambiguous against a topic.
+    #[test]
+    fn a_depth_attaches_as_a_named_attribute() {
+        let d =
+            EntityDecl::parse("sub:nav_msgs/msg/Odometry:/localization/kinematic_state@depth=10")
+                .unwrap()
+                .remove(0);
+        assert_eq!(d.kind, EntityKind::Subscription);
+        assert_eq!(d.type_name.as_deref(), Some("nav_msgs/msg/Odometry"));
+        assert_eq!(
+            d.name.as_deref(),
+            Some("/localization/kinematic_state"),
+            "the attribute must not be left on the end of the topic"
+        );
+        assert_eq!(d.depth, Some(10));
+    }
+
+    /// ABSENCE IS NOT ZERO -- the rule the whole inventory turns on, restated
+    /// one level down. `None` means nobody said; a size consumer refuses on it.
+    #[test]
+    fn an_undeclared_depth_is_none_and_never_zero() {
+        let d = EntityDecl::parse("sub:std_msgs/msg/Int32:/t")
+            .unwrap()
+            .remove(0);
+        assert_eq!(d.depth, None);
+        // And the spelling that WOULD collapse them is rejected outright: a
+        // KEEP_LAST(0) holds no sample, so `@depth=0` is not a smaller queue,
+        // it is a typo for "I did not want to say".
+        let err = EntityDecl::parse("sub:std_msgs/msg/Int32:/t@depth=0").unwrap_err();
+        assert!(err.contains("states nothing"), "{err}");
+        assert!(err.contains("REFUSE"), "names what absence buys: {err}");
+    }
+
+    /// An unknown attribute is an ERROR, never a skipped one -- the same rule
+    /// an unknown KIND follows, and for the same reason: a silently ignored
+    /// attribute is a declaration the author believes they made.
+    #[test]
+    fn an_unknown_attribute_is_rejected_rather_than_ignored() {
+        let err = EntityDecl::parse("sub:std_msgs/msg/Int32:/t@dpeth=1").unwrap_err();
+        assert!(err.contains("unknown attribute"), "{err}");
+        assert!(err.contains("depth"), "names the legal set: {err}");
+        // A bare attribute with no value is a typo too, not a flag.
+        assert!(EntityDecl::parse("sub:std_msgs/msg/Int32:/t@depth").is_err());
+        assert!(EntityDecl::parse("sub:std_msgs/msg/Int32:/t@").is_err());
+        assert!(EntityDecl::parse("sub:std_msgs/msg/Int32:/t@depth=ten").is_err());
+        // One entity has one depth.
+        assert!(EntityDecl::parse("sub:std_msgs/msg/Int32:/t@depth=1@depth=2").is_err());
+    }
+
+    /// A timer has no QoS, so a depth on one is a statement about nothing.
+    /// Rejected rather than ignored -- an author who wrote it meant something.
+    #[test]
+    fn a_depth_on_a_kind_with_no_qos_is_rejected() {
+        let err = EntityDecl::parse("timer@depth=5").unwrap_err();
+        assert!(err.contains("has no QoS"), "{err}");
+        assert!(EntityDecl::parse("guard@depth=5").is_err());
+        // Every other kind carries one. A publisher's depth sizes no receive
+        // buffer today, and forbidding it would make the grammar say something
+        // false about the QoS a publisher really has.
+        for k in ALL_ENTITY_KINDS {
+            assert_eq!(
+                k.carries_qos_depth(),
+                !matches!(k, EntityKind::Timer | EntityKind::GuardCondition),
+                "{} and QoS depth",
+                k.tag()
+            );
+        }
+    }
+
+    /// A repeat count multiplies the whole row, depth included -- otherwise
+    /// `sub*3:...@depth=1` would declare one sized endpoint and two silent ones.
+    #[test]
+    fn a_repeat_count_carries_the_depth_to_every_copy() {
+        let d = EntityDecl::parse("sub*3:std_msgs/msg/Int32:/t@depth=2").unwrap();
+        assert_eq!(d.len(), 3);
+        assert!(d.iter().all(|e| e.depth == Some(2)));
+    }
+
+    /// The image-wide view, and the field that makes it honest: how many
+    /// endpoints COULD have declared a depth and did not. Reporting only the
+    /// rows would make a partly-annotated image look fully declared.
+    #[test]
+    fn the_declared_depth_view_counts_what_stayed_silent() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/t@depth=1",
+                "sub:nav_msgs/msg/Odometry:/k@depth=10",
+                "sub:std_msgs/msg/Bool:/b",
+                "pub:std_msgs/msg/Bool:/p",
+                // No QoS at all, so not in the population either way.
+                "timer*4",
+            ],
+        ));
+        match inv.declared_depths() {
+            DeclaredDepths::Resolved { rows, undeclared } => {
+                assert_eq!(rows.len(), 2);
+                assert_eq!(rows[0].type_name, "nav_msgs/msg/Odometry", "sorted");
+                assert_eq!(rows[0].depth, 10);
+                assert_eq!(
+                    undeclared, 2,
+                    "the untyped-depth subscription and the publisher; the four timers \
+                     carry no QoS and are not in the population"
+                );
+            }
+            other => panic!("expected resolved, got {other:?}"),
+        }
+    }
+
+    /// An incomplete image has NO depth table, for the reason it has no type
+    /// set: a missing row reads as "nobody declared this endpoint", and that is
+    /// the one thing the table must never say wrongly -- it is what the
+    /// compile-time check treats as "assert nothing".
+    #[test]
+    fn an_incomplete_image_has_no_depth_table() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("a", "one", &["sub:std_msgs/msg/Int32:/t@depth=1"]));
+        inv.insert(ComponentEntities {
+            pkg: "b".into(),
+            component: "two".into(),
+            class: "b::Two".into(),
+            declaration: Declaration::Absent,
+        });
+        assert!(matches!(
+            inv.declared_depths(),
+            DeclaredDepths::Refused { .. }
+        ));
+        let c = inv.to_cmake();
+        assert!(c.contains("set(NROS_ENTITY_DECLARED_DEPTH_STATUS \"refused\")"));
+        assert!(
+            !c.contains("set(NROS_ENTITY_DECLARED_DEPTHS "),
+            "a refusal must publish no depth list at all: {c}"
+        );
+        // ...and the generated header carries no rows either, so every call
+        // site in that image compiles unchecked rather than against a partial
+        // table.
+        let h = inv.to_declared_qos_header();
+        assert!(h.contains("NROS_DECLARED_QOS_STATUS \"refused\""));
+        assert!(!h.contains("#define NROS_DECLARED_QOS_ROWS"));
+    }
+
+    /// The CMake projection carries the list AND the undeclared count.
+    #[test]
+    fn the_cmake_projection_carries_the_depths_and_what_stayed_silent() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/t@depth=1",
+                "sub:std_msgs/msg/Bool:/b",
+            ],
+        ));
+        let c = inv.to_cmake();
+        assert!(c.contains("set(NROS_ENTITY_DECLARED_DEPTHS \"std_msgs/msg/Int32|/t=1\")"));
+        assert!(c.contains("set(NROS_ENTITY_DECLARED_DEPTH_COUNT 1)"));
+        assert!(
+            c.contains("set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 1)"),
+            "the count of endpoints that said nothing is what a size consumer \
+             refuses on: {c}"
+        );
+        // The canonical transport carries the same three facts.
+        let j = inv.to_json();
+        assert!(j.contains("\"declared_depths\""));
+        assert!(j.contains("\"undeclared\": 1"));
+        assert!(j.contains("\"dds_type_name\": \"std_msgs::msg::dds_::Int32_\""));
+        // A row with no depth carries no `depth` key at all -- `"depth": 0` and
+        // `"depth": null` would each make "nobody said" look like an answer.
+        assert!(!j.contains("\"depth\": 0"));
+        assert!(!j.contains("\"depth\": null"));
+    }
+
+    /// The C++ table: subscriptions only, both spellings of the type, and NO
+    /// `NROS_DECLARED_QOS_ROWS` at all when nothing was declared.
+    #[test]
+    fn the_generated_header_emits_both_type_spellings_for_subscriptions() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/chatter@depth=1",
+                // A PUBLISHER with a declared depth is not in the table: it is
+                // keyed `(type, topic)`, and a pub and a sub on one pair would
+                // be two rows with one key. Nothing consults it yet either.
+                "pub:std_msgs/msg/Int32:/chatter@depth=1",
+            ],
+        ));
+        let h = inv.to_declared_qos_header();
+        assert!(
+            h.contains("NROS_DECLARED_QOS_ROW(\"std_msgs::msg::dds_::Int32_\", \"/chatter\", 1)")
+        );
+        assert!(h.contains("NROS_DECLARED_QOS_ROW(\"std_msgs/msg/Int32\", \"/chatter\", 1)"));
+        assert!(
+            h.contains("#define NROS_DECLARED_QOS_ROW_COUNT 2"),
+            "one subscription, two spellings, and the publisher contributes none: {h}"
+        );
+
+        // Nothing declared: the macro stays UNDEFINED, so `declared_qos.hpp`
+        // compiles an empty table. An empty ROWS list would be a different
+        // claim, and C++ has no empty array anyway.
+        let mut none = EntityInventory::new("test");
+        none.insert(stated("a", "one", &["sub:std_msgs/msg/Int32:/t"]));
+        let h = none.to_declared_qos_header();
+        assert!(!h.contains("#define NROS_DECLARED_QOS_ROWS"));
+        assert!(h.contains("#define NROS_DECLARED_QOS_UNDECLARED_COUNT 1"));
+    }
+
+    /// [`dds_type_name`] MIRRORS `packs/cpp/message.hpp.jinja`, so it is held
+    /// to it. The two live in different crates and the C++ side is a Tera
+    /// template, so this is the only thing standing between a mangling change
+    /// and a table whose keys match nothing -- which would leave every
+    /// `static_assert` in the tree vacuously true.
+    #[test]
+    fn the_dds_spelling_matches_the_cpp_template() {
+        let tpl = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../rosidl-codegen/packs/cpp/message.hpp.jinja");
+        let text =
+            std::fs::read_to_string(&tpl).unwrap_or_else(|e| panic!("read {}: {e}", tpl.display()));
+        assert!(
+            text.contains(
+                "static constexpr const char* TYPE_NAME = \
+                 \"{{ package_name }}::msg::dds_::{{ message_name }}_\";"
+            ),
+            "the C++ codegen no longer emits the TYPE_NAME spelling `dds_type_name` \
+             produces. Update BOTH, or the declared-QoS table keys on a name no \
+             message class carries and every NROS_SUBSCRIBE assertion silently \
+             passes.\n{}",
+            tpl.display()
+        );
+        assert_eq!(
+            dds_type_name("std_msgs/msg/Int32"),
+            "std_msgs::msg::dds_::Int32_"
+        );
+        // Already mangled, or not a three-segment ROS name: passed through.
+        // Guessing a mangling for a shape the codegen does not emit would put a
+        // key in the table that nothing can ever match.
+        assert_eq!(
+            dds_type_name("std_msgs::msg::dds_::Int32_"),
+            "std_msgs::msg::dds_::Int32_"
+        );
+        assert_eq!(dds_type_name("Weird"), "Weird");
+        assert_eq!(dds_type_name("a/b"), "a/b");
     }
 
     /// The CMake projection is `include()`able and composes: it sets the knob

@@ -49,13 +49,24 @@
 #                                and both action roles all carry receive
 #                                buffers that no payload class covers.
 #
+#   SUPPLIED HERE, consumed NEXT DOOR (phase-403 step 2):
+#     the declared QoS DEPTHS    `NROS_ENTITY_DECLARED_DEPTHS` is the multiplier
+#                                the arena needs on top of the type bound, and
+#                                `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` is what a
+#                                consumer must refuse on -- a table over the
+#                                endpoints that happened to be annotated sizes
+#                                an image from a subset of itself.
+#                                The same declaration also reaches the COMPILER:
+#                                `nano_ros_node_register()` renders it as
+#                                `<nros/nros_declared_qos_generated.h>` on the
+#                                component's own include path, and
+#                                `NROS_SUBSCRIBE` static_asserts the QoS at each
+#                                call site against it.
+#
 #   NOT YET, and deliberately left alone:
-#     NROS_EXECUTOR_ARENA_SIZE   the type set above is necessary and not
-#                                sufficient: the per-subscription cost is
-#                                `(depth + 1) * bound + (depth + 1) * 8`, and an
-#                                entity record carries no QoS DEPTH. Defaulting
-#                                it is wrong by up to 10x in either direction,
-#                                so depth must be declared first (step 2).
+#     NROS_EXECUTOR_ARENA_SIZE   the type set and the depths are both necessary
+#                                and still not sufficient: the arena needs a
+#                                size probe per entry KIND, which is step 3.
 #
 # =============================================================================
 # A PUBLISHER CLAIMS NO SLOT
@@ -123,6 +134,12 @@
 #   NROS_ENTITY_COUNT_<KIND>              per-kind counts
 #   NROS_DERIVED_EXECUTOR_MAX_CBS         unset when not derivable -- ABSENT
 #                                         means "no answer", never a default
+#   NROS_ENTITY_DECLARED_DEPTH_STATUS     resolved | refused (phase-403 step 2)
+#   NROS_ENTITY_DECLARED_DEPTHS           `type|topic=depth` triples
+#   NROS_ENTITY_DECLARED_DEPTH_COUNT      endpoints that stated a depth
+#   NROS_ENTITY_UNDECLARED_DEPTH_COUNT    endpoints that COULD have and did not.
+#                                         A consumer that sizes from depth must
+#                                         refuse while this is non-zero
 #
 # A derived value is a DEFAULT. Every consumer applies it only where nothing
 # else stated a number -- see `_nros_resolve_derivable_knob` in
@@ -147,7 +164,13 @@ include_guard(GLOBAL)
 # their absence for "this image receives nothing" would derive a payload class
 # over an EMPTY set. Absence has to be distinguishable from zero here for the
 # same reason `ENTITIES NONE` exists.
-set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 2 CACHE INTERNAL
+#
+# **3** (phase-403 step 2) added the QoS DEPTHS -- `NROS_ENTITY_DECLARED_DEPTHS`
+# and, load-bearing beside it, `NROS_ENTITY_UNDECLARED_DEPTH_COUNT`. Bumps on
+# the same argument again: depth is a MULTIPLIER on the type bound, so a reader
+# that took an absent list for "every endpoint is depth 0" would size an arena
+# an order of magnitude short.
+set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 3 CACHE INTERNAL
     "phase-403 W9: the nros_entity_inventory fragment schema this tree reads")
 
 # nros_entity_inventory_knobs_file(<out_var>)
@@ -241,7 +264,10 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
                NROS_DERIVED_EXECUTOR_MAX_NODES
-               NROS_ENTITY_INVENTORY_ENTITY_TOTAL)
+               NROS_ENTITY_INVENTORY_ENTITY_TOTAL
+               NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
+               NROS_ENTITY_DECLARED_DEPTHS NROS_ENTITY_DECLARED_DEPTH_COUNT
+               NROS_ENTITY_UNDECLARED_DEPTH_COUNT)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -367,6 +393,16 @@ function(nros_derive_entity_inventory_knobs)
             endif()
         endforeach()
     endforeach()
+    # phase-403 step 2 -- the declared QoS DEPTHS. The UNDECLARED count travels
+    # beside the list and is the one a size consumer reads FIRST: a list over
+    # the endpoints that happened to be annotated is a subset of the image, and
+    # sizing from a subset is the under-report this module exists to prevent.
+    foreach(_field DECLARED_DEPTH_STATUS DECLARED_DEPTH_REASON DECLARED_DEPTHS
+                   DECLARED_DEPTH_COUNT UNDECLARED_DEPTH_COUNT)
+        if(DEFINED NROS_ENTITY_${_field})
+            _nros_entity_publish(NROS_ENTITY_${_field} "${NROS_ENTITY_${_field}}")
+        endif()
+    endforeach()
 
     if(_E_QUIET)
         return()
@@ -446,7 +482,12 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_RECEIVED_TYPES_STATUS
         NROS_ENTITY_RECEIVED_TYPES
         NROS_ENTITY_RECEIVED_TYPE_COUNTS
-        NROS_ENTITY_RECEIVED_ENTITY_COUNT)
+        NROS_ENTITY_RECEIVED_ENTITY_COUNT
+        NROS_ENTITY_DECLARED_DEPTH_STATUS
+        NROS_ENTITY_DECLARED_DEPTHS
+        NROS_ENTITY_DECLARED_DEPTH_COUNT
+        NROS_ENTITY_UNDECLARED_DEPTH_COUNT
+        NROS_ENTITY_DECLARED_DEPTH_REASON)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()

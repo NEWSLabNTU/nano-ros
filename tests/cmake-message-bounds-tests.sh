@@ -174,7 +174,7 @@ derive() {
 entity_frag() {
     local path="$1" inv_status="$2" sub_status="$3"; shift 3
     {
-        echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)"
+        echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)"
         echo "set(NROS_ENTITY_INVENTORY_STATUS \"$inv_status\")"
         echo "set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 1)"
         echo "set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS \"$sub_status\")"
@@ -753,7 +753,7 @@ fi
 
 log_header "M -- a current schema that states no subscribed set REFUSES"
 {
-    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 2)"
+    echo "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)"
     echo "set(NROS_ENTITY_INVENTORY_STATUS \"derived\")"
 } > "$T/m3-ents.cmake"
 OUT="$(derive "$T/l1.cmake" -DNROS_BOUNDS_ENTITY_INVENTORY="$T/m3-ents.cmake")"
